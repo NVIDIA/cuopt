@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import io
@@ -513,13 +513,15 @@ class BaseResult:
         # we can send the sentinel value
         if self.is_done():
             logging.warning("Incumbent added after job marked done!")
-        sol["solution"] = sol["solution"].tolist()
+        solution = sol.get("solution")
+        if hasattr(solution, "tolist"):
+            sol["solution"] = solution.tolist()
         self.incumbents.append(sol)
 
     def get_current_incumbents(self):
         if self.is_done() and self.incumbents == []:
             logging.debug("returning incumbent sentinel")
-            return [{"solution": [], "cost": None}]
+            return [{"solution": [], "cost": None, "bound": None}]
         res = self.incumbents
         self.incumbents = []
         return res
@@ -692,6 +694,7 @@ class SolverBaseJob:
         validator_enabled,
         response_id=True,
         incumbents=False,
+        incumbent_set_solutions=False,
         solver_logs=False,
     ):
         self.id = id
@@ -700,6 +703,7 @@ class SolverBaseJob:
         self.validator_enabled = validator_enabled
         self.response_id = response_id
         self.incumbents = incumbents
+        self.incumbent_set_solutions = incumbent_set_solutions
 
         self.initial_etl_time = 0
         self.ncaid = ""
@@ -747,6 +751,9 @@ class SolverBaseJob:
 
     def return_incumbents(self):
         return self.incumbents
+
+    def return_incumbent_set_solutions(self):
+        return self.incumbent_set_solutions
 
     def delete_data(self):
         pass
@@ -852,6 +859,7 @@ class SolverLPJob(SolverBaseJob):
         response_id=True,
         transformed=False,
         incumbents=False,
+        incumbent_set_solutions=False,
         solver_logs=False,
     ):
         super().__init__(
@@ -861,6 +869,7 @@ class SolverLPJob(SolverBaseJob):
             validator_enabled,
             response_id,
             incumbents=incumbents,
+            incumbent_set_solutions=incumbent_set_solutions,
             solver_logs=solver_logs,
         )
         self.LP_data = LP_data
@@ -1026,6 +1035,7 @@ class SolverLPJob(SolverBaseJob):
             intermediate_sender=intermediate_sender
             if self.return_incumbents()
             else None,
+            incumbent_set_solutions=self.return_incumbent_set_solutions(),
             solver_logging=self.return_solver_logs(),
         )
         logging.debug(f"etl_time {etl}, solve_time {slv}")
@@ -1095,6 +1105,7 @@ class SolverBinaryJob:
         init_sols=[],
         warmstart_data=None,
         incumbents=False,
+        incumbent_set_solutions=False,
         solver_logs=False,
     ):
         # This class is a wrapper object around a real job. The actual
@@ -1126,6 +1137,7 @@ class SolverBinaryJob:
             validator_enabled,
             response_id,
             incumbents=incumbents,
+            incumbent_set_solutions=incumbent_set_solutions,
             solver_logs=solver_logs,
         )
 
@@ -1257,6 +1269,7 @@ class SolverBinaryJob:
                 self.resolved_job.response_id,
                 transformed=True,
                 incumbents=self.resolved_job.incumbents,
+                incumbent_set_solutions=self.resolved_job.incumbent_set_solutions,
                 solver_logs=self.resolved_job.return_solver_logs(),
             )
 
@@ -1341,6 +1354,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
         init_sols=[],
         warmstart_data=None,
         incumbents=False,
+        incumbent_set_solutions=False,
         solver_logs=False,
     ):
         self.file_path = file_path
@@ -1355,6 +1369,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
             init_sols=init_sols,
             warmstart_data=warmstart_data,
             incumbents=incumbents,
+            incumbent_set_solutions=incumbent_set_solutions,
             solver_logs=solver_logs,
         )
 
@@ -1502,6 +1517,7 @@ class SolverBinaryJobPath(SolverBinaryJob):
                 self.resolved_job.response_id,
                 transformed=True,
                 incumbents=self.resolved_job.incumbents,
+                incumbent_set_solutions=self.resolved_job.incumbent_set_solutions,
                 solver_logs=self.resolved_job.return_solver_logs(),
             )
 

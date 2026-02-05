@@ -21,9 +21,63 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace cuopt::mps_parser;
 using namespace cuopt::linear_programming;
+
+class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
+ public:
+  explicit c_get_solution_callback_t(cuOptMIPGetSolutionCallback callback) : callback_(callback) {}
+
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    if (callback_ == nullptr) { return; }
+    callback_(static_cast<const cuopt_float_t*>(data),
+              static_cast<const cuopt_float_t*>(objective_value),
+              static_cast<const cuopt_float_t*>(solution_bound),
+              user_data);
+  }
+
+ private:
+  cuOptMIPGetSolutionCallback callback_;
+};
+
+class c_set_solution_callback_t : public cuopt::internals::set_solution_callback_t {
+ public:
+  explicit c_set_solution_callback_t(cuOptMIPSetSolutionCallback callback) : callback_(callback) {}
+
+  void set_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    void* user_data) override
+  {
+    if (callback_ == nullptr) { return; }
+    callback_(static_cast<cuopt_float_t*>(data),
+              static_cast<cuopt_float_t*>(objective_value),
+              static_cast<const cuopt_float_t*>(solution_bound),
+              user_data);
+  }
+
+ private:
+  cuOptMIPSetSolutionCallback callback_;
+};
+
+// Owns solver settings and C callback wrappers for C API lifetime.
+struct solver_settings_handle_t {
+  solver_settings_handle_t() : settings(new solver_settings_t<cuopt_int_t, cuopt_float_t>()) {}
+  ~solver_settings_handle_t() { delete settings; }
+  solver_settings_t<cuopt_int_t, cuopt_float_t>* settings;
+  std::vector<std::unique_ptr<cuopt::internals::base_solution_callback_t>> callbacks;
+};
+
+solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
+{
+  return static_cast<solver_settings_handle_t*>(settings);
+}
 
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
@@ -570,16 +624,15 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr)
 {
   if (settings_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-  solver_settings_t<cuopt_int_t, cuopt_float_t>* settings =
-    new solver_settings_t<cuopt_int_t, cuopt_float_t>();
-  *settings_ptr = static_cast<cuOptSolverSettings>(settings);
+  solver_settings_handle_t* settings_handle = new solver_settings_handle_t();
+  *settings_ptr                             = static_cast<cuOptSolverSettings>(settings_handle);
   return CUOPT_SUCCESS;
 }
 
 void cuOptDestroySolverSettings(cuOptSolverSettings* settings_ptr)
 {
   if (settings_ptr == nullptr) { return; }
-  delete static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(*settings_ptr);
+  delete get_settings_handle(*settings_ptr);
   *settings_ptr = nullptr;
 }
 
@@ -591,7 +644,7 @@ cuopt_int_t cuOptSetParameter(cuOptSolverSettings settings,
   if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_value == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->set_parameter_from_string(parameter_name, parameter_value);
   } catch (const std::exception& e) {
@@ -610,7 +663,7 @@ cuopt_int_t cuOptGetParameter(cuOptSolverSettings settings,
   if (parameter_value == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_value_size <= 0) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     std::string parameter_value_str = solver_settings->get_parameter_as_string(parameter_name);
     std::snprintf(parameter_value, parameter_value_size, "%s", parameter_value_str.c_str());
@@ -627,7 +680,7 @@ cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->set_parameter<cuopt_int_t>(parameter_name, parameter_value);
   } catch (const std::invalid_argument& e) {
@@ -652,7 +705,7 @@ cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
   if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_value_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     *parameter_value_ptr = solver_settings->get_parameter<cuopt_int_t>(parameter_name);
   } catch (const std::invalid_argument& e) {
@@ -676,7 +729,7 @@ cuopt_int_t cuOptSetFloatParameter(cuOptSolverSettings settings,
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->set_parameter<cuopt_float_t>(parameter_name, parameter_value);
   } catch (const std::exception& e) {
@@ -693,12 +746,38 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
   if (parameter_name == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (parameter_value_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     *parameter_value_ptr = solver_settings->get_parameter<cuopt_float_t>(parameter_name);
   } catch (const std::exception& e) {
     return CUOPT_INVALID_ARGUMENT;
   }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
+                                           cuOptMIPGetSolutionCallback callback,
+                                           void* user_data)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solver_settings_handle_t* settings_handle = get_settings_handle(settings);
+  auto callback_wrapper                     = std::make_unique<c_get_solution_callback_t>(callback);
+  settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
+  settings_handle->callbacks.push_back(std::move(callback_wrapper));
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
+                                           cuOptMIPSetSolutionCallback callback,
+                                           void* user_data)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solver_settings_handle_t* settings_handle = get_settings_handle(settings);
+  auto callback_wrapper                     = std::make_unique<c_set_solution_callback_t>(callback);
+  settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
+  settings_handle->callbacks.push_back(std::move(callback_wrapper));
   return CUOPT_SUCCESS;
 }
 
@@ -711,7 +790,7 @@ cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
   if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
 
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->set_initial_pdlp_primal_solution(primal_solution, num_variables);
   } catch (const std::exception& e) {
@@ -729,7 +808,7 @@ cuopt_int_t cuOptSetInitialDualSolution(cuOptSolverSettings settings,
   if (num_constraints <= 0) { return CUOPT_INVALID_ARGUMENT; }
 
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->set_initial_pdlp_dual_solution(dual_solution, num_constraints);
   } catch (const std::exception& e) {
@@ -747,7 +826,7 @@ cuopt_int_t cuOptAddMIPStart(cuOptSolverSettings settings,
   if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
 
   solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-    static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+    get_settings_handle(settings)->settings;
   try {
     solver_settings->get_mip_settings().add_initial_solution(solution, num_variables);
   } catch (const std::exception& e) {
@@ -783,7 +862,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
   if (problem_and_stream_view->op_problem->get_problem_category() == problem_category_t::MIP ||
       problem_and_stream_view->op_problem->get_problem_category() == problem_category_t::IP) {
     solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-      static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+      get_settings_handle(settings)->settings;
     mip_solver_settings_t<cuopt_int_t, cuopt_float_t>& mip_settings =
       solver_settings->get_mip_settings();
     optimization_problem_t<cuopt_int_t, cuopt_float_t>* op_problem =
@@ -800,7 +879,7 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
       solution_and_stream_view->mip_solution_ptr->get_error_status().get_error_type());
   } else {
     solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
-      static_cast<solver_settings_t<cuopt_int_t, cuopt_float_t>*>(settings);
+      get_settings_handle(settings)->settings;
     pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>& pdlp_settings =
       solver_settings->get_pdlp_settings();
     optimization_problem_t<cuopt_int_t, cuopt_float_t>* op_problem =

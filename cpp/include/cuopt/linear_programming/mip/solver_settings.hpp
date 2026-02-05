@@ -37,8 +37,12 @@ class mip_solver_settings_t {
 
   /**
    * @brief Set the callback for the user solution
+   *
+   * @param[in] callback - Callback handler for user solutions.
+   * @param[in] user_data - Pointer to user-defined data forwarded to the callback.
    */
-  void set_mip_callback(internals::base_solution_callback_t* callback = nullptr);
+  void set_mip_callback(internals::base_solution_callback_t* callback = nullptr,
+                        void* user_data                               = nullptr);
 
   /**
    * @brief Add an primal solution.
@@ -91,7 +95,7 @@ class mip_solver_settings_t {
 
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
-  bool mip_scaling = true;
+  bool mip_scaling = false;
   bool presolve    = true;
   // this is for extracting info from different places of the solver during
   // benchmarks

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -105,7 +105,7 @@ f_t mip_solution_t<i_t, f_t>::get_mip_gap() const
 template <typename i_t, typename f_t>
 f_t mip_solution_t<i_t, f_t>::get_solution_bound() const
 {
-  return stats_.solution_bound;
+  return stats_.get_solution_bound();
 }
 
 template <typename i_t, typename f_t>

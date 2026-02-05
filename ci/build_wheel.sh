@@ -10,8 +10,6 @@ package_dir=$2
 
 source rapids-configure-sccache
 source rapids-date-string
-RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX="true"
-export RAPIDS_INIT_PIP_REMOVE_NVIDIA_INDEX
 source rapids-init-pip
 
 # Update the version to accomdate nightly and release changes for the wheel name

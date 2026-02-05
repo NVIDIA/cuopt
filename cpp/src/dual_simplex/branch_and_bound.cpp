@@ -282,6 +282,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::report(char symbol, f_t obj, f_t lower_bound, i_t node_depth)
 {
+  update_user_bound(lower_bound);
   i_t nodes_explored   = exploration_stats_.nodes_explored;
   i_t nodes_unexplored = exploration_stats_.nodes_unexplored;
   f_t user_obj         = compute_user_objective(original_lp_, obj);
@@ -298,6 +299,14 @@ void branch_and_bound_t<i_t, f_t>::report(char symbol, f_t obj, f_t lower_bound,
                        iter_node,
                        user_gap.c_str(),
                        toc(exploration_stats_.start_time));
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::update_user_bound(f_t lower_bound)
+{
+  if (user_bound_callback_ == nullptr) { return; }
+  f_t user_lower = compute_user_objective(original_lp_, lower_bound);
+  user_bound_callback_(user_lower);
 }
 
 template <typename i_t, typename f_t>
@@ -335,9 +344,10 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
           num_fractional);
       }
     }
+  } else {
+    settings_.log.debug("Solution objective not better than current upper_bound_. Not accepted.\n");
   }
   mutex_upper_.unlock();
-
   if (is_feasible) { report_heuristic(obj); }
   if (attempt_repair) {
     mutex_repair_.lock();

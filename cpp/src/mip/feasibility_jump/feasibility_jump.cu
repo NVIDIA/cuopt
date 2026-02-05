@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,7 @@
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
 
+#include <mip/diversity/diversity_manager.cuh>
 #include <mip/diversity/population.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
@@ -871,6 +872,14 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
     if (timer.check_time_limit() || steps >= settings.iteration_limit ||
         context.preempt_heuristic_solver_.load()) {
       limit_reached = true;
+    }
+
+    // every now and then, ensure external solutions are added to the population
+    // this is done here because FJ is called within FP and also after recombiners
+    // so FJ is one of the most inner and most frequent functions to be called
+    if (steps % 10000 == 0) {
+      context.diversity_manager_ptr->get_population_pointer()
+        ->add_external_solutions_to_population();
     }
 
 #if !FJ_SINGLE_STEP

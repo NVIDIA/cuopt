@@ -28,6 +28,7 @@
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <mps_parser/mps_data_model.hpp>
 
@@ -62,6 +63,15 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   auto hyper_params                                     = settings.hyper_params;
   hyper_params.update_primal_weight_on_initial_solution = false;
   hyper_params.update_step_size_on_initial_solution     = true;
+  if (settings.get_mip_callbacks().size() > 0) {
+    auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
+    if (problem.has_papilo_presolve_data()) {
+      callback_num_variables = problem.get_papilo_original_num_variables();
+    }
+    for (auto callback : settings.get_mip_callbacks()) {
+      callback->template setup<f_t>(callback_num_variables);
+    }
+  }
   // if the input problem is empty: early exit
   if (problem.empty) {
     detail::solution_t<i_t, f_t> solution(problem);
@@ -76,10 +86,33 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                      });
     problem.post_process_solution(solution);
     solution.compute_objective();  // just to ensure h_user_obj is set
-    auto stats           = solver_stats_t<i_t, f_t>{};
-    stats.solution_bound = solution.get_user_objective();
+    auto stats = solver_stats_t<i_t, f_t>{};
+    stats.set_solution_bound(solution.get_user_objective());
     // log the objective for scripts which need it
     CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
+    for (auto callback : settings.get_mip_callbacks()) {
+      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+        auto temp_sol(solution);
+        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+        std::vector<f_t> user_objective_vec(1);
+        std::vector<f_t> user_bound_vec(1);
+        user_objective_vec[0] = solution.get_user_objective();
+        user_bound_vec[0]     = stats.get_solution_bound();
+        if (problem.has_papilo_presolve_data()) {
+          problem.papilo_uncrush_assignment(temp_sol.assignment);
+        }
+        std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
+        raft::copy(user_assignment_vec.data(),
+                   temp_sol.assignment.data(),
+                   temp_sol.assignment.size(),
+                   temp_sol.handle_ptr->get_stream());
+        solution.handle_ptr->sync_stream();
+        get_sol_callback->get_solution(user_assignment_vec.data(),
+                                       user_objective_vec.data(),
+                                       user_bound_vec.data(),
+                                       get_sol_callback->get_user_data());
+      }
+    }
     return solution.get_solution(true, stats, false);
   }
   // problem contains unpreprocessed data
@@ -178,15 +211,26 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                       op_problem.get_handle_ptr()->get_stream());
     }
 
-    auto timer = cuopt::timer_t(time_limit);
-
+    auto timer           = cuopt::timer_t(time_limit);
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
+    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result;
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
-    auto run_presolve = settings.presolve;
-    run_presolve      = run_presolve && settings.get_mip_callbacks().empty();
-    run_presolve      = run_presolve && settings.initial_solutions.size() == 0;
+    auto run_presolve              = settings.presolve;
+    run_presolve                   = run_presolve && settings.initial_solutions.size() == 0;
+    bool has_set_solution_callback = false;
+    for (auto callback : settings.get_mip_callbacks()) {
+      if (callback != nullptr &&
+          callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
+        has_set_solution_callback = true;
+        break;
+      }
+    }
+    if (run_presolve && has_set_solution_callback) {
+      CUOPT_LOG_WARN("Presolve is disabled because set_solution callbacks are provided.");
+      run_presolve = false;
+    }
 
     if (!run_presolve) { CUOPT_LOG_INFO("Presolve is disabled, skipping"); }
 
@@ -209,12 +253,17 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
+      presolve_result.emplace(std::move(*result));
 
-      problem = detail::problem_t<i_t, f_t>(result->reduced_problem);
-      problem.set_implied_integers(result->implied_integer_indices);
+      problem = detail::problem_t<i_t, f_t>(presolve_result->reduced_problem);
+      problem.set_papilo_presolve_data(presolver.get(),
+                                       presolve_result->reduced_to_original_map,
+                                       presolve_result->original_to_reduced_map,
+                                       op_problem.get_n_variables());
+      problem.set_implied_integers(presolve_result->implied_integer_indices);
       presolve_time = timer.elapsed_time();
-      if (result->implied_integer_indices.size() > 0) {
-        CUOPT_LOG_INFO("%d implied integers", result->implied_integer_indices.size());
+      if (presolve_result->implied_integer_indices.size() > 0) {
+        CUOPT_LOG_INFO("%d implied integers", presolve_result->implied_integer_indices.size());
       }
       if (problem.is_objective_integral()) { CUOPT_LOG_INFO("Objective function is integral"); }
       CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);

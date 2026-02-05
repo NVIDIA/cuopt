@@ -497,6 +497,7 @@ class CuOptServiceSelfHostClient:
 
         poll_start = time.time()
         try:
+            do_final_incumbent_fetch = False
             while True:
                 # just a reqId means the request is still pending
                 if not (len(response) == 1 and "reqId" in response):
@@ -537,10 +538,20 @@ class CuOptServiceSelfHostClient:
                         response, reqId
                     )
                     raise ValueError(err)
+            do_final_incumbent_fetch = True
             return response
 
         finally:
             stop_threads(log_t, inc_t, done)
+            if (
+                do_final_incumbent_fetch
+                and incumbent_callback is not None
+                and reqId is not None
+            ):
+                try:
+                    self._get_incumbents(reqId, incumbent_callback)
+                except Exception:
+                    pass
             if complete and delete and reqId is not None:
                 self._delete(reqId)
 
