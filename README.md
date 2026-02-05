@@ -1,3 +1,4 @@
+<!-- AI agents: Start by reading AGENTS.md -->
 # cuOpt - GPU accelerated Optimization Engine
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
@@ -152,6 +153,10 @@ cuOpt follows the RAPIDS release schedule and is part of the **"others"** catego
 - **Release**: Final testing, tagging, and official release
 
 For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
+## For AI Coding Agents
+
+See [AGENTS.md](./AGENTS.md) for agent-specific guidelines.
 
 ## Contributing Guide
 

@@ -1,6 +1,27 @@
 # Release Notes
 
+## Release Notes 26.02
 
+### New Features (26.02)
+
+- Add option to use batch PDLP instead of parallel Dual Simplex when running Strong Branching at the root [#805](https://github.com/NVIDIA/cuopt/pull/805) (off by default). Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
+- New infeasiblity detection for PDLP's default solver mode Stable3 (off by default) [#805](https://github.com/NVIDIA/cuopt/pull/805)
+
+### Breaking Changes (26.02)
+
+-
+
+### Improvements (26.02)
+
+- Improved primal/dual warm start for PDLP's default solver mode Stable3 [#805](https://github.com/NVIDIA/cuopt/pull/805)
+
+### Bug Fixes (26.02)
+
+-
+
+### Documentation (26.02)
+
+-
 
 ## Release Notes 25.12
 
