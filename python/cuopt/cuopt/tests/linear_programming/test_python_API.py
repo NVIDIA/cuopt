@@ -395,9 +395,10 @@ def _run_incumbent_solutions(include_set_callback):
         x_val = sol["solution"][0]
         y_val = sol["solution"][1]
         cost = sol["cost"]
-        assert 2 * x_val + 4 * y_val >= 230
-        assert 3 * x_val + 2 * y_val <= 190
-        assert 5 * x_val + 3 * y_val == cost
+        tol = 1e-6
+        assert 2 * x_val + 4 * y_val >= 230 - tol
+        assert 3 * x_val + 2 * y_val <= 190 + tol
+        assert abs(5 * x_val + 3 * y_val - cost) < tol
 
 
 def test_incumbent_get_solutions():

@@ -1108,6 +1108,217 @@ i_t basis_update_t<i_t, f_t>::lower_triangular_multiply(const csc_matrix_t<i_t, 
   return new_nz;
 }
 
+// Start of middle product form: basis_update_mpf_t
+
+template <typename i_t, typename f_t>
+i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts_basic)
+{
+  const i_t m = L0_.m;
+
+  // Solve for U^T W^T = C_B^T
+  // We do this one row at a time of C_B
+  csc_matrix_t<i_t, f_t> WT(m, cuts_basic.m, 0);
+
+  i_t WT_nz = 0;
+  for (i_t k = 0; k < cuts_basic.m; k++) {
+    sparse_vector_t<i_t, f_t> rhs(cuts_basic, k);
+    u_transpose_solve(rhs);
+    WT.col_start[k] = WT_nz;
+    for (i_t q = 0; q < rhs.i.size(); q++) {
+      WT.i.push_back(rhs.i[q]);
+      WT.x.push_back(rhs.x[q]);
+      WT_nz++;
+    }
+  }
+  WT.col_start[cuts_basic.m] = WT_nz;
+
+#ifdef CHECK_W
+  {
+    for (i_t k = 0; k < cuts_basic.m; k++) {
+      std::vector<f_t> WT_col(m, 0.0);
+      WT.load_a_column(k, WT_col);
+      std::vector<f_t> CBT_col(m, 0.0);
+      matrix_transpose_vector_multiply(U0_, 1.0, WT_col, 0.0, CBT_col);
+      sparse_vector_t<i_t, f_t> CBT_col_sparse(cuts_basic, k);
+      std::vector<f_t> CBT_col_dense(m);
+      CBT_col_sparse.to_dense(CBT_col_dense);
+      for (i_t h = 0; h < m; h++) {
+        if (std::abs(CBT_col_dense[h] - CBT_col[h]) > 1e-6) {
+          printf("W: col %d CBT_col_dense[%d] = %e CBT_col[%d] = %e\n",
+                 k,
+                 h,
+                 CBT_col_dense[h],
+                 h,
+                 CBT_col[h]);
+          exit(1);
+        }
+      }
+    }
+  }
+#endif
+
+  csc_matrix_t<i_t, f_t> V(cuts_basic.m, m, 0);
+  if (num_updates_ > 0) {
+    // W = V T_0 ... T_{num_updates_ - 1}
+    // or V = W T_{num_updates_ - 1}^{-1} ... T_0^{-1}
+    // or V^T = T_0^{-T} ... T_{num_updates_ - 1}^{-T} W^T
+    // We can compute V^T column by column so that we have
+    // V^T(:, h) = T_0^{-T} ... T_{num_updates_ - 1}^{-T} W^T(:, h)
+    // or
+    // V(h, :) = T_0^{-T} ... T_{num_updates_ - 1}^{-T} W^T(:, h)
+    // So we can form V row by row in CSR and then covert it to CSC
+    // for appending to L0
+
+    csr_matrix_t<i_t, f_t> V_row(cuts_basic.m, m, 0);
+    i_t V_nz           = 0;
+    const f_t zero_tol = 1e-13;
+    for (i_t h = 0; h < cuts_basic.m; h++) {
+      sparse_vector_t<i_t, f_t> rhs(WT, h);
+      scatter_into_workspace(rhs);
+      i_t nz = rhs.i.size();
+      for (i_t k = num_updates_ - 1; k >= 0; --k) {
+        // T_k^{-T} = ( I - v u^T/(1 + u^T v))
+        // T_k^{-T} * b = b - v * (u^T * b) / (1 + u^T * v) = b - theta * v, theta = u^T b / mu
+
+        const i_t u_col = 2 * k;
+        const i_t v_col = 2 * k + 1;
+        const f_t mu    = mu_values_[k];
+
+        // dot = u^T * b
+        f_t dot         = dot_product(u_col, xi_workspace_, x_workspace_);
+        const f_t theta = dot / mu;
+        if (std::abs(theta) > zero_tol) {
+          add_sparse_column(S_, v_col, -theta, xi_workspace_, nz, x_workspace_);
+        }
+      }
+      gather_into_sparse_vector(nz, rhs);
+      V_row.row_start[h] = V_nz;
+      for (i_t q = 0; q < rhs.i.size(); q++) {
+        V_row.j.push_back(rhs.i[q]);
+        V_row.x.push_back(rhs.x[q]);
+        V_nz++;
+      }
+    }
+    V_row.row_start[cuts_basic.m] = V_nz;
+
+    V_row.to_compressed_col(V);
+
+#ifdef CHECK_V
+    csc_matrix_t<i_t, f_t> CB_col(cuts_basic.m, m, 0);
+    cuts_basic.to_compressed_col(CB_col);
+    for (i_t k = 0; k < m; k++) {
+      std::vector<f_t> U_col(m, 0.0);
+      U0_.load_a_column(k, U_col);
+      for (i_t h = num_updates_ - 1; h >= 0; --h) {
+        // T_h = ( I + u_h v_h^T)
+        // T_h * x = x + u_h * v_h^T * x = x + theta * u_h
+        const i_t u_col     = 2 * h;
+        const i_t v_col     = 2 * h + 1;
+        f_t theta           = dot_product(v_col, U_col);
+        const i_t col_start = S_.col_start[u_col];
+        const i_t col_end   = S_.col_start[u_col + 1];
+        for (i_t p = col_start; p < col_end; ++p) {
+          const i_t i = S_.i[p];
+          U_col[i] += theta * S_.x[p];
+        }
+      }
+      std::vector<f_t> CB_column(cuts_basic.m, 0.0);
+      matrix_vector_multiply(V, 1.0, U_col, 0.0, CB_column);
+      std::vector<f_t> CB_col_dense(cuts_basic.m);
+      CB_col.load_a_column(k, CB_col_dense);
+      for (i_t l = 0; l < cuts_basic.m; l++) {
+        if (std::abs(CB_col_dense[l] - CB_column[l]) > 1e-6) {
+          printf("V: col %d CB_col_dense[%d] = %e CB_column[%d] = %e\n",
+                 k,
+                 l,
+                 CB_col_dense[l],
+                 l,
+                 CB_column[l]);
+          exit(1);
+        }
+      }
+    }
+#endif
+  } else {
+    // W = V
+    WT.transpose(V);
+  }
+
+  // Extend u_i, v_i for i = 0, ..., num_updates_ - 1
+  S_.m += cuts_basic.m;
+
+  // Adjust L and U
+  // L = [ L0  0 ]
+  //     [ V   I ]
+
+  i_t V_nz = V.col_start[m];
+  i_t L_nz = L0_.col_start[m];
+  csc_matrix_t<i_t, f_t> new_L(m + cuts_basic.m, m + cuts_basic.m, L_nz + V_nz + cuts_basic.m);
+  i_t predicted_nz = L_nz + V_nz + cuts_basic.m;
+  L_nz             = 0;
+  for (i_t j = 0; j < m; ++j) {
+    new_L.col_start[j]  = L_nz;
+    const i_t col_start = L0_.col_start[j];
+    const i_t col_end   = L0_.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; ++p) {
+      new_L.i[L_nz] = L0_.i[p];
+      new_L.x[L_nz] = L0_.x[p];
+      L_nz++;
+    }
+    const i_t V_col_start = V.col_start[j];
+    const i_t V_col_end   = V.col_start[j + 1];
+    for (i_t p = V_col_start; p < V_col_end; ++p) {
+      new_L.i[L_nz] = V.i[p] + m;
+      new_L.x[L_nz] = V.x[p];
+      L_nz++;
+    }
+  }
+  for (i_t j = m; j < m + cuts_basic.m; ++j) {
+    new_L.col_start[j] = L_nz;
+    new_L.i[L_nz]      = j;
+    new_L.x[L_nz]      = 1.0;
+    L_nz++;
+  }
+  new_L.col_start[m + cuts_basic.m] = L_nz;
+  assert(L_nz == predicted_nz);
+
+  L0_ = new_L;
+
+  // Adjust U
+  // U = [ U0 0 ]
+  //     [ 0  I ]
+
+  i_t U_nz = U0_.col_start[m];
+  U0_.col_start.resize(m + cuts_basic.m + 1);
+  U0_.i.resize(U_nz + cuts_basic.m);
+  U0_.x.resize(U_nz + cuts_basic.m);
+  for (i_t k = m; k < m + cuts_basic.m; ++k) {
+    U0_.col_start[k] = U_nz;
+    U0_.i[U_nz]      = k;
+    U0_.x[U_nz]      = 1.0;
+    U_nz++;
+  }
+  U0_.col_start[m + cuts_basic.m] = U_nz;
+  U0_.n                           = m + cuts_basic.m;
+  U0_.m                           = m + cuts_basic.m;
+
+  compute_transposes();
+
+  // Adjust row_permutation_ and inverse_row_permutation_
+  row_permutation_.resize(m + cuts_basic.m);
+  inverse_row_permutation_.resize(m + cuts_basic.m);
+  for (i_t k = m; k < m + cuts_basic.m; ++k) {
+    row_permutation_[k] = k;
+  }
+  inverse_permutation(row_permutation_, inverse_row_permutation_);
+
+  // Adjust workspace sizes
+  xi_workspace_.resize(2 * (m + cuts_basic.m), 0);
+  x_workspace_.resize(m + cuts_basic.m, 0.0);
+
+  return 0;
+}
+
 template <typename i_t, typename f_t>
 void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
                                                              sparse_vector_t<i_t, f_t>& out) const
@@ -2057,16 +2268,18 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 
   if (L0_.m != A.m) { resize(A.m); }
   std::vector<i_t> q;
-  if (factorize_basis(A,
-                      settings,
-                      basic_list,
-                      L0_,
-                      U0_,
-                      row_permutation_,
-                      inverse_row_permutation_,
-                      q,
-                      deficient,
-                      slacks_needed) == -1) {
+  i_t status = factorize_basis(A,
+                               settings,
+                               basic_list,
+                               L0_,
+                               U0_,
+                               row_permutation_,
+                               inverse_row_permutation_,
+                               q,
+                               deficient,
+                               slacks_needed);
+  if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+  if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
     basis_repair(
       A, settings, lower, upper, deficient, slacks_needed, basic_list, nonbasic_list, vstatus);
@@ -2088,16 +2301,18 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
     }
 #endif
 
-    if (factorize_basis(A,
-                        settings,
-                        basic_list,
-                        L0_,
-                        U0_,
-                        row_permutation_,
-                        inverse_row_permutation_,
-                        q,
-                        deficient,
-                        slacks_needed) == -1) {
+    status = factorize_basis(A,
+                             settings,
+                             basic_list,
+                             L0_,
+                             U0_,
+                             row_permutation_,
+                             inverse_row_permutation_,
+                             q,
+                             deficient,
+                             slacks_needed);
+    if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+    if (status == -1) {
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }
 #endif

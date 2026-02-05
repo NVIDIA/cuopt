@@ -106,8 +106,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
-  dm.timer              = timer_;
-  bool presolve_success = dm.run_presolve(timer_.remaining_time());
+  dm.timer                = timer_;
+  const bool run_presolve = context.settings.presolve;
+  bool presolve_success   = run_presolve ? dm.run_presolve(timer_.remaining_time()) : true;
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
@@ -115,7 +116,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
-  if (context.problem_ptr->empty) {
+  if (run_presolve && context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
@@ -130,7 +131,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 
   // if the problem was reduced to a LP: run concurrent LP
-  if (context.problem_ptr->n_integer_vars == 0) {
+  if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
     pdlp_solver_settings_t<i_t, f_t> settings{};
     settings.time_limit = timer_.remaining_time();
@@ -174,11 +175,23 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
     // Fill in the settings for branch and bound
-    branch_and_bound_settings.time_limit           = timer_.remaining_time();
+    branch_and_bound_settings.time_limit           = timer_.get_time_limit();
+    branch_and_bound_settings.node_limit           = context.settings.node_limit;
     branch_and_bound_settings.print_presolve_stats = false;
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
-    branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+    branch_and_bound_settings.integer_tol    = context.settings.tolerances.integrality_tolerance;
+    branch_and_bound_settings.max_cut_passes = context.settings.max_cut_passes;
+    branch_and_bound_settings.mir_cuts       = context.settings.mir_cuts;
+    branch_and_bound_settings.mixed_integer_gomory_cuts =
+      context.settings.mixed_integer_gomory_cuts;
+    branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
+    branch_and_bound_settings.strong_chvatal_gomory_cuts =
+      context.settings.strong_chvatal_gomory_cuts;
+    branch_and_bound_settings.reduced_cost_strengthening =
+      context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
+    branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
 
     if (context.settings.num_cpu_threads < 0) {
       branch_and_bound_settings.num_threads = omp_get_max_threads() - 1;
@@ -218,7 +231,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem, branch_and_bound_settings);
+      branch_and_bound_problem, branch_and_bound_settings, timer_.get_tic_start());
     context.branch_and_bound_ptr = branch_and_bound.get();
     branch_and_bound->set_concurrent_lp_root_solve(true);
     auto* stats_ptr = &context.stats;

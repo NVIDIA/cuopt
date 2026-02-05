@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -23,7 +23,9 @@ enum class status_t {
   PRIMAL_UNBOUNDED = 1,
   NUMERICAL        = 2,
   NOT_LOADED       = 3,
-  ITERATION_LIMIT  = 4
+  TIME_LIMIT       = 4,
+  ITERATION_LIMIT  = 5,
+  CONCURRENT_LIMIT = 6
 };
 }
 

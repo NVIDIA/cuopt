@@ -271,8 +271,6 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
   // We must convert rows in the form: a_i^T x <= beta
   // into: a_i^T x + s_i = beta, s_i >= 0
 
-  csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
-  problem.A.to_compressed_row(Arow);
   i_t num_cols = problem.num_cols + less_rows;
   i_t nnz      = problem.A.col_start[problem.num_cols] + less_rows;
   problem.A.col_start.resize(num_cols + 1);
@@ -446,7 +444,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
   std::vector<i_t> q(m);
 
   i_t pivots = right_looking_lu_row_permutation_only(C, settings, 1e-13, tic(), q, pinv);
-
+  if (pivots == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (pivots < m) {
     settings.log.printf("Found %d dependent rows\n", m - pivots);
     const i_t num_dependent = m - pivots;
@@ -629,8 +627,8 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 
     // Empty var_types means that all variables are continuous
     bounds_strengthening_t<i_t, f_t> strengthening(problem, Arow, row_sense, {});
-    std::fill(strengthening.bounds_changed.begin(), strengthening.bounds_changed.end(), true);
-    strengthening.bounds_strengthening(problem.lower, problem.upper, settings);
+    std::vector<bool> bounds_changed(problem.num_cols, true);
+    strengthening.bounds_strengthening(settings, bounds_changed, problem.lower, problem.upper);
   }
 
   settings.log.debug(
@@ -1101,6 +1099,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     i_t infeasible;
     f_t dependent_row_start    = tic();
     const i_t independent_rows = find_dependent_rows(problem, settings, dependent_rows, infeasible);
+    if (independent_rows == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
     if (infeasible != kOk) {
       settings.log.printf("Found problem infeasible in presolve\n");
       return -1;

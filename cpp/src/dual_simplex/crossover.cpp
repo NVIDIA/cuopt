@@ -25,7 +25,7 @@ crossover_status_t return_to_status(int status)
 {
   if (status == -1) {
     return crossover_status_t::TIME_LIMIT;
-  } else if (status == -2) {
+  } else if (status == CONCURRENT_HALT_RETURN) {
     return crossover_status_t::CONCURRENT_LIMIT;
   } else {
     return crossover_status_t::NUMERICAL_ISSUES;
@@ -502,7 +502,32 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
         std::vector<i_t> q(m);
         std::vector<i_t> deficient;
         std::vector<i_t> slacks_needed;
-        factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        i_t rank =
+          factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        if (rank == CONCURRENT_HALT_RETURN) {
+          return CONCURRENT_HALT_RETURN;
+        } else if (rank != m) {
+          settings.log.printf("Failed to factorize basis. rank %d m %d\n", rank, m);
+          basis_repair(lp.A,
+                       settings,
+                       lp.lower,
+                       lp.upper,
+                       deficient,
+                       slacks_needed,
+                       basic_list,
+                       nonbasic_list,
+                       vstatus);
+          rank =
+            factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+          if (rank == CONCURRENT_HALT_RETURN) {
+            return CONCURRENT_HALT_RETURN;
+          } else if (rank == -1) {
+            settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
+            return -1;
+          } else {
+            settings.log.printf("Basis repaired\n");
+          }
+        }
         reorder_basic_list(q, basic_list);
         // Reordering the basic list causes us to mess up the superbasic list index
         // so we need to update it
@@ -535,7 +560,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
-      return -2;
+      return CONCURRENT_HALT_RETURN;
     }
   }
 
@@ -783,7 +808,9 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
         std::vector<i_t> slacks_needed;
         i_t rank =
           factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
-        if (rank != m) {
+        if (rank == CONCURRENT_HALT_RETURN) {
+          return CONCURRENT_HALT_RETURN;
+        } else if (rank != m) {
           settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
           basis_repair(lp.A,
                        settings,
@@ -794,8 +821,11 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
                        basic_list,
                        nonbasic_list,
                        vstatus);
-          if (factorize_basis(
-                lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
+          rank =
+            factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+          if (rank == CONCURRENT_HALT_RETURN) {
+            return CONCURRENT_HALT_RETURN;
+          } else if (rank == -1) {
             settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
             return -1;
           } else {
@@ -833,7 +863,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
-      return -2;
+      return CONCURRENT_HALT_RETURN;
     }
   }
 
@@ -1137,6 +1167,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   std::vector<i_t> slacks_needed;
 
   rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+  if (rank == CONCURRENT_HALT_RETURN) { return crossover_status_t::CONCURRENT_LIMIT; }
   if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -1148,8 +1179,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                  basic_list,
                  nonbasic_list,
                  vstatus);
-    if (factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) ==
-        -1) {
+    rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+    if (rank == CONCURRENT_HALT_RETURN) {
+      return crossover_status_t::CONCURRENT_LIMIT;
+    } else if (rank == -1) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
       return crossover_status_t::NUMERICAL_ISSUES;
     } else {
@@ -1218,8 +1251,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t primal_push_status  = primal_push(
       lp, settings, start_time, solution, ft, basic_list, nonbasic_list, superbasic_list, vstatus);
     if (primal_push_status < 0) { return return_to_status(primal_push_status); }
-    print_crossover_info(lp, settings, vstatus, solution, "Primal push complete");
     compute_dual_solution_from_basis(lp, ft, basic_list, nonbasic_list, solution.y, solution.z);
+    print_crossover_info(lp, settings, vstatus, solution, "Primal push complete");
   } else {
     settings.log.printf("No primal push needed. No superbasic variables\n");
   }
@@ -1336,7 +1369,9 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
       rank =
         factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
-      if (rank != m) {
+      if (rank == CONCURRENT_HALT_RETURN) {
+        return crossover_status_t::CONCURRENT_LIMIT;
+      } else if (rank != m) {
         settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
         basis_repair(lp.A,
                      settings,
@@ -1347,8 +1382,11 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                      basic_list,
                      nonbasic_list,
                      vstatus);
-        if (factorize_basis(
-              lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed) == -1) {
+        rank =
+          factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+        if (rank == CONCURRENT_HALT_RETURN) {
+          return crossover_status_t::CONCURRENT_LIMIT;
+        } else if (rank == -1) {
           settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
           return crossover_status_t::NUMERICAL_ISSUES;
         } else {
@@ -1358,8 +1396,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       reorder_basic_list(q, basic_list);
       ft.reset(L, U, p);
 
-      compute_dual_solution_from_basis(lp, ft, basic_list, nonbasic_list, solution.y, solution.z);
-
+      solution      = phase1_solution;
       i_t num_flips = 0;
       for (i_t j = 0; j < n; ++j) {
         if (vstatus[j] == variable_status_t::BASIC) { continue; }
@@ -1376,20 +1413,23 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
         }
       }
       settings.log.debug("Num flips %d\n", num_flips);
-      solution = phase1_solution;
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
-      std::vector<f_t> edge_norms;
-      dual::status_t status = dual_phase2(
-        2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
-      if (toc(start_time) > settings.time_limit) {
-        settings.log.printf("Time limit exceeded\n");
-        return crossover_status_t::TIME_LIMIT;
+      dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
+      dual::status_t status = dual::status_t::NUMERICAL;
+      if (dual_infeas <= settings.dual_tol) {
+        std::vector<f_t> edge_norms;
+        status = dual_phase2(
+          2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
+        if (toc(start_time) > settings.time_limit) {
+          settings.log.printf("Time limit exceeded\n");
+          return crossover_status_t::TIME_LIMIT;
+        }
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          settings.log.printf("Concurrent halt\n");
+          return crossover_status_t::CONCURRENT_LIMIT;
+        }
+        solution.iterations += iter;
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-        settings.log.printf("Concurrent halt\n");
-        return crossover_status_t::CONCURRENT_LIMIT;
-      }
-      solution.iterations += iter;
       primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
       dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
       primal_res    = primal_residual(lp, solution);

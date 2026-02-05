@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -39,7 +39,7 @@ class lp_solution_t {
   std::vector<f_t> x;
   // Dual solution vector. Lagrange multipliers for equality constraints.
   std::vector<f_t> y;
-  // Dual solution vector. Lagrange multipliers for inequality constraints.
+  // Reduced costs
   std::vector<f_t> z;
   f_t objective;
   f_t user_objective;

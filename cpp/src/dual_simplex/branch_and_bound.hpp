@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <dual_simplex/cuts.hpp>
 #include <dual_simplex/diving_heuristics.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/mip_node.hpp>
@@ -72,7 +73,8 @@ template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings);
+                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+                     f_t start_time);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -117,7 +119,17 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
-  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings);
+  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings,
+                                    lp_solution_t<i_t, f_t>& root_relax_soln,
+                                    std::vector<variable_status_t>& root_vstatus,
+                                    basis_update_mpf_t<i_t, f_t>& basis_update,
+                                    std::vector<i_t>& basic_list,
+                                    std::vector<i_t>& nonbasic_list,
+                                    std::vector<f_t>& edge_norms);
+
+  i_t find_reduced_cost_fixings(f_t upper_bound,
+                                std::vector<f_t>& lower_bounds,
+                                std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
@@ -143,6 +155,13 @@ class branch_and_bound_t {
 
   // Local lower bounds for each thread
   std::vector<omp_atomic_t<f_t>> local_lower_bounds_;
+
+  // Mutex for the original LP
+  // The heuristics threads look at the original LP. But the main thread modifies the
+  // size of the original LP by adding slacks for cuts. Heuristic threads should lock
+  // this mutex when accessing the original LP. The main thread should lock this mutex
+  // when modifying the original LP.
+  omp_mutex_t mutex_original_lp_;
 
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
@@ -196,7 +215,11 @@ class branch_and_bound_t {
   std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);
-  void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth);
+  void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas);
+
+  // Set the solution when found at the root node
+  void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
+                            const cut_info_t<i_t, f_t>& cut_info);
   void update_user_bound(f_t lower_bound);
 
   // Set the final solution.
@@ -211,6 +234,9 @@ class branch_and_bound_t {
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
+
+  // Initialize diving heuristics settings
+  void initialize_diving_heuristics_settings(std::vector<bnb_worker_type_t>& diving_strategies);
 
   // Ramp-up phase of the solver, where we greedily expand the tree until
   // there is enough unexplored nodes. This is done recursively using OpenMP tasks.
@@ -251,6 +277,7 @@ class branch_and_bound_t {
   dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                lp_problem_t<i_t, f_t>& leaf_problem,
                                lp_solution_t<i_t, f_t>& leaf_solution,
+                               std::vector<f_t>& leaf_edge_norms,
                                basis_update_mpf_t<i_t, f_t>& basis_factors,
                                std::vector<i_t>& basic_list,
                                std::vector<i_t>& nonbasic_list,
@@ -269,6 +296,7 @@ class branch_and_bound_t {
                                                              search_tree_t<i_t, f_t>& search_tree,
                                                              lp_problem_t<i_t, f_t>& leaf_problem,
                                                              lp_solution_t<i_t, f_t>& leaf_solution,
+                                                             std::vector<f_t>& leaf_edge_norms,
                                                              bnb_worker_type_t thread_type,
                                                              dual::status_t lp_status,
                                                              logger_t& log);

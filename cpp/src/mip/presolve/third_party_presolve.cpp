@@ -444,7 +444,7 @@ void check_presolve_status(const papilo::PresolveStatus& status)
 void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
-    case papilo::PostsolveStatus::kOk: CUOPT_LOG_INFO("Post-solve status: succeeded"); break;
+    case papilo::PostsolveStatus::kOk: CUOPT_LOG_DEBUG("Post-solve status: succeeded"); break;
     case papilo::PostsolveStatus::kFailed:
       CUOPT_LOG_INFO(
         "Post-solve status: Post solved solution violates constraints. This is most likely due to "
@@ -576,7 +576,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                  papilo_problem.getNCols(),
                  papilo_problem.getConstraintMatrix().getNnz());
 
-  CUOPT_LOG_INFO("Calling Papilo presolver");
+  CUOPT_LOG_INFO("Calling Papilo presolver (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
   set_presolve_methods<f_t>(papilo_presolver, category, dual_postsolve);
