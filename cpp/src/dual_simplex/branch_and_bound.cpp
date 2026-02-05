@@ -1991,7 +1991,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                                   root_relax_soln_,
                                                                   iter,
                                                                   edge_norms_);
-      exploration_stats_.total_lp_iters += root_relax_soln_.iterations;
+      exploration_stats_.total_lp_iters += iter;
       root_objective_      = compute_objective(original_lp_, root_relax_soln_.x);
       f_t dual_phase2_time = toc(dual_phase2_start_time);
       if (dual_phase2_time > 1.0) {
