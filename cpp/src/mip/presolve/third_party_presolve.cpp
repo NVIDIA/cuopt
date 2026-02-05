@@ -719,42 +719,14 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution_pslp(
-  const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
-{
-  // This code path should be never called, as this is meant for callbacks and they are not
-  // supported for LPs
-  auto reduced_problem = pslp_presolver_->reduced_prob;
-
-  int reduced_n_rows = reduced_problem->m;
-  int reduced_n_cols = reduced_problem->n;
-
-  cuopt_assert(reduced_n_cols == reduced_primal.size(), "Reduced problem columns mismatch");
-
-  std::vector<f_t> reduced_dual_vec(reduced_n_rows);
-  std::vector<f_t> reduced_reduced_costs_vec(reduced_n_cols);
-
-  postsolve(pslp_presolver_,
-            reduced_primal.data(),
-            reduced_dual_vec.data(),
-            reduced_reduced_costs_vec.data());
-
-  auto uncrushed_sol = pslp_presolver_->sol;
-  int n_cols         = uncrushed_sol->dim_x;
-
-  full_primal.resize(n_cols);
-  std::copy(uncrushed_sol->x, uncrushed_sol->x + n_cols, full_primal.begin());
-}
-
-template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
   if (presolver_ == cuopt::linear_programming::presolver_t::PSLP) {
-    cuopt_assert(false,
-                 "This code path should be never called, as this is meant for callbacks and they "
-                 "are not supported for LPs");
-    uncrush_primal_solution_pslp(reduced_primal, full_primal);
+    cuopt_expects(false,
+                  error_type_t::RuntimeError,
+                  "This code path should be never called, as this is meant for callbacks and they "
+                  "are not supported for LPs");
     return;
   }
 

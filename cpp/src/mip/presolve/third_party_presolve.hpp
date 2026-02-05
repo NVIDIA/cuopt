@@ -74,9 +74,6 @@ class third_party_presolve_t {
                  rmm::device_uvector<f_t>& reduced_costs,
                  rmm::cuda_stream_view stream_view);
 
-  void uncrush_primal_solution_pslp(const std::vector<f_t>& reduced_primal,
-                                    std::vector<f_t>& full_primal) const;
-
   bool maximize_                                    = false;
   cuopt::linear_programming::presolver_t presolver_ = cuopt::linear_programming::presolver_t::PSLP;
   // PSLP settings
