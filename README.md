@@ -1,5 +1,5 @@
 <!-- AI agents: Start by reading AGENTS.md -->
-# cuOpt - GPU accelerated Optimization Engine
+# cuOpt - GPU-accelerated Optimization Engine
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
 [![Version](https://img.shields.io/badge/version-26.02.00-blue)](https://github.com/NVIDIA/cuopt/releases)
@@ -12,12 +12,15 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP) and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering
-easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP) and vehicle routing problems (VRP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints, and MIPs with hundreds of thousands of variables. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
 For the latest stable version ensure you are on the `main` branch.
+
+## Latest Documentation
+
+[cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html))
 
 ## Supported APIs
 
