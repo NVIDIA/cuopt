@@ -162,7 +162,7 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   std::string test_instance,
   double time_limit     = 1,
   bool heuristics_only  = true,
-  presolver_t presolver = presolver_t::None)
+  presolver_t presolver = presolver_t::Default)
 {
   const raft::handle_t handle_{};
 
