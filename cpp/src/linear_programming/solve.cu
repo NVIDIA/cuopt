@@ -897,7 +897,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   const timer_t& timer,
   bool is_batch_mode)
 {
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent\n");
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent (showing only PDLP log)\n");
   timer_t timer_concurrent(timer.remaining_time());
 
   // Copy the settings so that we can set the concurrent halt pointer
@@ -1013,6 +1013,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_objective_value(),
       sol_pdlp.get_additional_termination_information().number_of_steps_taken,
       end_time);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Primal residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_primal_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_primal_residual);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Dual   residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_dual_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
   } else if (sol_barrier.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with barrier");
@@ -1025,6 +1035,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_objective_value(),
       sol_pdlp.get_additional_termination_information().number_of_steps_taken,
       end_time);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Primal residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_primal_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_primal_residual);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Dual   residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_dual_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
