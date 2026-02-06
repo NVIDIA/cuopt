@@ -1,5 +1,5 @@
 <!-- AI agents: Start by reading AGENTS.md -->
-# cuOpt - GPU-accelerated Optimization Engine
+# cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
 [![Version](https://img.shields.io/badge/version-26.02.00-blue)](https://github.com/NVIDIA/cuopt/releases)
