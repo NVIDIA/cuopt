@@ -262,7 +262,7 @@ void split_colors(i_t color,
       exit(1);
     }
     sum_to_sizes[0.0] += remaining_size;
-    color_sums[0.0] = std::vector<i_t>();
+    if (color_sums.count(0.0) == 0) { color_sums[0.0] = std::vector<i_t>(); }
   }
 
   i_t max_size = -1;
@@ -295,8 +295,8 @@ void split_colors(i_t color,
 
   // Collect sum==0.0 vertices in colors[color].vertices but not in vertices_to_refine_by_color
   if (adjust_color_sums_zero) {
-    for (i_t v : vertices_to_refine_by_color[color]) {
-      if (vertex_to_sum[v] == 0.0) { vertex_to_sum[v] = std::numeric_limits<f_t>::quiet_NaN(); }
+    for (i_t v : color_sums[0.0]) {
+      vertex_to_sum[v] = std::numeric_limits<f_t>::quiet_NaN();
     }
     for (i_t v : colors[color].vertices) {
       if (vertex_to_sum[v] == 0.0) { color_sums[0.0].push_back(v); }
