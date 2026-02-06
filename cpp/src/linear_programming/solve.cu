@@ -1171,6 +1171,57 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
       }
+
+      // Handle case where presolve completely solved the problem (reduced to 0 rows/cols)
+      // Must check before constructing problem_t since it fails on empty problems
+      if (result->reduced_problem.get_n_variables() == 0 &&
+          result->reduced_problem.get_n_constraints() == 0) {
+        CUOPT_LOG_INFO("Presolve completely solved the problem");
+        presolve_time = lp_timer.elapsed_time();
+        CUOPT_LOG_INFO("%s presolve time: %.2fs",
+                       settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
+                       presolve_time);
+
+        // Create empty solution vectors for the reduced problem
+        rmm::device_uvector<f_t> empty_primal(0, op_problem.get_handle_ptr()->get_stream());
+        rmm::device_uvector<f_t> empty_dual(0, op_problem.get_handle_ptr()->get_stream());
+        rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
+
+        // Run postsolve to get the full solution
+        presolver->undo(empty_primal,
+                        empty_dual,
+                        empty_reduced_costs,
+                        cuopt::linear_programming::problem_category_t::LP,
+                        false,  // status_to_skip
+                        settings.dual_postsolve,
+                        op_problem.get_handle_ptr()->get_stream());
+
+        // Create termination info with the objective from presolve
+        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
+          term_info;
+        term_info.primal_objective      = result->reduced_problem.get_objective_offset();
+        term_info.dual_objective        = result->reduced_problem.get_objective_offset();
+        term_info.number_of_steps_taken = 0;
+        term_info.solve_time            = presolve_time;
+        term_info.l2_primal_residual    = 0.0;
+        term_info.l2_dual_residual      = 0.0;
+        term_info.gap                   = 0.0;
+
+        std::vector<
+          typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+          term_vec{term_info};
+        std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
+
+        return optimization_problem_solution_t<i_t, f_t>(empty_primal,
+                                                         empty_dual,
+                                                         empty_reduced_costs,
+                                                         op_problem.get_objective_name(),
+                                                         op_problem.get_variable_names(),
+                                                         op_problem.get_row_names(),
+                                                         std::move(term_vec),
+                                                         std::move(status_vec));
+      }
+
       problem       = detail::problem_t<i_t, f_t>(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
       CUOPT_LOG_INFO("%s presolve time: %.2fs",

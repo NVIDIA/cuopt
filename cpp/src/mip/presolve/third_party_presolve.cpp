@@ -317,6 +317,14 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   op_problem.set_maximize(maximize);
   op_problem.set_problem_category(problem_category_t::LP);
 
+  // Handle empty reduced problem (presolve completely solved it)
+  if (n_cols == 0 && n_rows == 0) {
+    // Set empty constraint matrix with proper offsets
+    std::vector<i_t> empty_offsets = {0};
+    op_problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, empty_offsets.data(), 1);
+    return op_problem;
+  }
+
   op_problem.set_csr_constraint_matrix(
     reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
 
