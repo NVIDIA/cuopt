@@ -183,7 +183,7 @@ void compute_sums(const csc_matrix_t<i_t, f_t>& A,
 }
 
 template <typename i_t, typename f_t>
-i_t find_colors_to_split(const std::vector<i_t> colors_to_update,
+i_t find_colors_to_split(const std::vector<i_t>& colors_to_update,
                          const std::vector<color_t<i_t>>& colors,
                          const std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
                          const std::vector<f_t>& vertex_to_sum,
@@ -203,6 +203,8 @@ i_t find_colors_to_split(const std::vector<i_t> colors_to_update,
       // We didn't touch all the vertices in the color. These vertices must have a sum of 0.0
       if (0.0 > max_sum_by_color[color]) { max_sum_by_color[color] = 0.0; }
       if (0.0 < min_sum_by_color[color]) { min_sum_by_color[color] = 0.0; }
+    } else {
+      // We touched all the vertices in the color. Compute the minimum sum seen
     }
   }
 
@@ -1124,6 +1126,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   csc_matrix_t<i_t, f_t>& C_s = presolve_info.folding_info.C_s;
   C_s_row.to_compressed_col(C_s);
   settings.log.debug("Folding: Completed C^s\n");
+
 #ifdef DEBUG
   fid = fopen("C_s.txt", "w");
   C_s.write_matrix_market(fid);
@@ -1209,9 +1212,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   fclose(fid);
 #endif
 
-// #define BUILD_MATRIX_X_AND_Y
-
-// #define DEBUG  // Uncomment to enable expensive D^s D = I verification
+// Define DEBUG to enable expensive D^s D = I verification
 #ifdef DEBUG
   // Verify that D^s D = I
   csc_matrix_t<i_t, f_t> D_product(reduced_cols, reduced_cols, 1);
@@ -1360,7 +1361,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   settings.log.printf("Folding: Verified Y is doubly stochastic\n");
 #endif
 #endif
-  // #undef DEBUG
+
   //  Construct the matrix A_tilde
   settings.log.debug("Folding: Constructing A_tilde\n");
   i_t A_nnz                      = problem.A.col_start[n];
@@ -1381,7 +1382,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   csr_matrix_t<i_t, f_t> A_tilde_row(A_tilde.m, A_tilde.n, A_tilde.col_start[A_tilde.n]);
   A_tilde.to_compressed_row(A_tilde_row);
 
-// #define DEBUG  // Uncomment to enable expensive partition verification
+// Define DEBUG to enable expensive partition verification
 #ifdef DEBUG
   std::vector<i_t> row_to_color(A_tilde.m, -1);
   for (i_t k = 0; k < total_colors_seen; k++) {
@@ -1503,15 +1504,15 @@ void folding(lp_problem_t<i_t, f_t>& problem,
                         row_partition_violations);
   }
 
-  // X and Y matrices are no longer computed explicitly (memory optimization)
-  // fid = fopen("X.txt", "w");
-  // X.write_matrix_market(fid);
-  // fclose(fid);
-  // fid = fopen("Y.txt", "w");
-  // Y.write_matrix_market(fid);
-  // fclose(fid);
+#ifdef BUILD_MATRIX_X_AND_Y
+  fid = fopen("X.txt", "w");
+  X.write_matrix_market(fid);
+  fclose(fid);
+  fid = fopen("Y.txt", "w");
+  Y.write_matrix_market(fid);
+  fclose(fid);
 #endif
-  // #undef DEBUG
+#endif
 
   if (A_tilde.m != previous_rows || A_tilde.n != previous_cols) {
     settings.log.printf("Folding: A_tilde has %d rows and %d cols, expected %d and %d\n",
@@ -1524,7 +1525,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
 
   settings.log.debug("Folding: partial A_tilde nz %d predicted %d\n", nnz, A_nnz + 2 * nz_ub);
 
-// #define DEBUG  // Uncomment to enable expensive XA=AY verification
+// Define DEBUG to enable expensive XA=AY verification
 #ifdef DEBUG
 #ifdef BUILD_MATRIX_X_AND_Y
   FILE* fid;
@@ -1620,7 +1621,7 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   }
 #endif
 #endif
-  // #undef DEBUG
+
   //  Construct the matrix A_prime
   settings.log.debug("Folding: Constructing A_prime\n");
   csc_matrix_t<i_t, f_t> A_prime(reduced_rows, reduced_cols, 1);
@@ -1701,7 +1702,8 @@ void folding(lp_problem_t<i_t, f_t>& problem,
   settings.log.printf("Folding: time %.2f seconds\n", toc(start_time));
 
 #ifdef SOLVE_REDUCED_PROBLEM
-  // Solve the reduced problem
+  // Solve the reduced problem immediately after folding, instead of after presolve is complete.
+  // Useful for verifying that the folding is correct.
   lp_solution_t<i_t, f_t> reduced_solution(reduced_rows, reduced_cols);
   simplex_solver_settings_t<i_t, f_t> reduced_settings;
   reduced_settings.folding          = false;
