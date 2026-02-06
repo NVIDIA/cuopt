@@ -416,7 +416,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
 
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, solution);
+    user_problem, barrier_settings, timer.get_tic_start(), solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
@@ -474,12 +474,11 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
                  pdlp_solver_settings_t<i_t, f_t> const& settings,
                  const timer_t& timer)
 {
-  timer_t timer_dual_simplex(timer.remaining_time());
   f_t norm_user_objective = dual_simplex::vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = dual_simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit      = timer.remaining_time();
+  dual_simplex_settings.time_limit      = settings.time_limit;
   dual_simplex_settings.iteration_limit = settings.iteration_limit;
   dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
@@ -488,13 +487,11 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   }
 
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
-  auto status =
-    dual_simplex::solve_linear_program<i_t, f_t>(user_problem, dual_simplex_settings, solution);
+  auto status = dual_simplex::solve_linear_program<i_t, f_t>(
+    user_problem, dual_simplex_settings, timer.get_tic_start(), solution);
 
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
-                             "Dual simplex finished in %.2f seconds, total time %.2f",
-                             timer_dual_simplex.elapsed_time(),
-                             timer.elapsed_time());
+  CUOPT_LOG_CONDITIONAL_INFO(
+    !settings.inside_mip, "Dual simplex finished in %.2f seconds", timer.elapsed_time());
 
   if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
                                               status == dual_simplex::lp_status_t::UNBOUNDED ||
@@ -551,21 +548,18 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                    bool is_batch_mode)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
-  f_t start_time    = dual_simplex::tic();
   timer_t timer_pdlp(timer.remaining_time());
   auto sol             = run_pdlp_solver(problem, settings, timer, is_batch_mode);
   auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
-    CUOPT_LOG_CONDITIONAL_INFO(
-      !settings.inside_mip,
-      "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs, Total time %.3fs",
-      sol.get_termination_status_string().c_str(),
-      sol.get_objective_value(),
-      sol.get_additional_termination_information().number_of_steps_taken,
-      pdlp_solve_time,
-      sol.get_solve_time());
+    CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
+                               "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+                               sol.get_termination_status_string().c_str(),
+                               sol.get_objective_value(),
+                               sol.get_additional_termination_information().number_of_steps_taken,
+                               sol.get_solve_time());
   }
 
   const bool do_crossover = settings.crossover;
@@ -577,13 +571,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
     translate_to_crossover_problem(problem, sol, lp, initial_solution);
     dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-    dual_simplex_settings.time_limit      = timer.remaining_time();
+    dual_simplex_settings.time_limit      = settings.time_limit;
     dual_simplex_settings.iteration_limit = settings.iteration_limit;
     dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
     std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
     dual_simplex::crossover_status_t crossover_status = dual_simplex::crossover(
-      lp, dual_simplex_settings, initial_solution, start_time, vertex_solution, vstatus);
+      lp, dual_simplex_settings, initial_solution, timer.get_tic_start(), vertex_solution, vstatus);
     pdlp_termination_status_t termination_status = pdlp_termination_status_t::TimeLimit;
     auto to_termination_status                   = [](dual_simplex::crossover_status_t status) {
       switch (status) {
@@ -1003,10 +997,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                               1);
 
   f_t end_time = timer.elapsed_time();
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
-                             "Concurrent time:  %.3fs, total time %.3fs",
-                             timer_concurrent.elapsed_time(),
-                             end_time);
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
   // Check status to see if we should return the pdlp solution or the dual simplex solution
   if (!settings.inside_mip &&
       (sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::Optimal ||
@@ -1162,7 +1153,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       }
       problem       = detail::problem_t<i_t, f_t>(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
-      CUOPT_LOG_INFO("%s presolve time: %f",
+      CUOPT_LOG_INFO("%s presolve time: %.2fs",
                      settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                      presolve_time);
     }

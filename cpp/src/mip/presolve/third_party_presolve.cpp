@@ -280,7 +280,7 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   ctx.status    = run_presolver(ctx.presolver);
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-  CUOPT_LOG_INFO("PSLP presolver time: %d milliseconds", duration.count());
+  CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
   CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
                  ctx.presolver->stats->n_rows_reduced,
                  ctx.presolver->stats->n_cols_reduced,
