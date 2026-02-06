@@ -20,6 +20,7 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -95,7 +96,15 @@ struct clique_table_t {
 
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
-                          typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances);
+                          typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out = nullptr);
+
+template <typename i_t, typename f_t>
+void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+                        clique_table_t<i_t, f_t>& clique_table,
+                        typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                        bool remove_small_cliques,
+                        bool fill_var_clique_maps);
 
 }  // namespace cuopt::linear_programming::detail
 

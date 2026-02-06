@@ -19,6 +19,8 @@
 
 #include <utilities/scope_guard.hpp>
 
+#include <memory>
+
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
@@ -205,9 +207,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (!context.settings.heuristics_only && !problem_ptr->empty) {
     dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
     problem_ptr->get_host_user_problem(host_problem);
-    find_initial_cliques(host_problem, context.settings.tolerances);
+    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+    auto clique_table_ptr = context.settings.clique_cuts != 0 ? &clique_table : nullptr;
+    find_initial_cliques(host_problem, context.settings.tolerances, clique_table_ptr);
     problem_ptr->set_constraints_from_host_user_problem(host_problem);
     trivial_presolve(*problem_ptr, remap_cache_ids);
+    if (clique_table_ptr != nullptr) { problem_ptr->clique_table = std::move(clique_table); }
   }
   if (!problem_ptr->empty) {
     // do the resizing no-matter what, bounds presolve might not change the bounds but

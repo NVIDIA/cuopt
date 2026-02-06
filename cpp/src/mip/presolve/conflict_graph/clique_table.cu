@@ -496,6 +496,32 @@ void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table)
   }
 }
 
+template <typename i_t, typename f_t>
+void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+                        clique_table_t<i_t, f_t>& clique_table,
+                        typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                        bool remove_small_cliques_flag,
+                        bool fill_var_clique_maps_flag)
+{
+  cuopt_assert(clique_table.n_variables == problem.num_cols, "Clique table size mismatch");
+  cuopt_assert(problem.var_types.size() == static_cast<size_t>(problem.num_cols),
+               "Problem variable types size mismatch");
+  std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
+  std::unordered_set<i_t> set_packing_constraints;
+  dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
+  problem.A.to_compressed_row(A);
+  fill_knapsack_constraints(problem, knapsack_constraints, A);
+  make_coeff_positive_knapsack_constraint(
+    problem, knapsack_constraints, set_packing_constraints, tolerances);
+  sort_csr_by_constraint_coefficients(knapsack_constraints);
+  clique_table.tolerances = tolerances;
+  for (const auto& knapsack_constraint : knapsack_constraints) {
+    find_cliques_from_constraint(knapsack_constraint, clique_table);
+  }
+  if (remove_small_cliques_flag) { remove_small_cliques(clique_table); }
+  if (fill_var_clique_maps_flag) { fill_var_clique_maps(clique_table); }
+}
+
 // we want to remove constraints that are covered by extended cliques
 // for set partitioning constraints, we will keep the constraint on original problem but fix
 // extended vars to zero For a set partitioning constraint: v1+v2+...+vk = 1 and discovered:
@@ -738,7 +764,8 @@ void print_clique_table(const clique_table_t<i_t, f_t>& clique_table)
 
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
-                          typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances)
+                          typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out)
 {
   cuopt::timer_t timer(std::numeric_limits<double>::infinity());
   double t_fill   = 0.;
@@ -763,28 +790,42 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   // print_knapsack_constraints(knapsack_constraints);
   // TODO think about getting min_clique_size according to some problem property
   clique_config_t clique_config;
-  clique_table_t<i_t, f_t> clique_table(2 * problem.num_cols,
-                                        clique_config.min_clique_size,
-                                        clique_config.max_clique_size_for_extension);
-  clique_table.tolerances = tolerances;
+  std::shared_ptr<clique_table_t<i_t, f_t>> clique_table_shared;
+  clique_table_t<i_t, f_t> clique_table_local(2 * problem.num_cols,
+                                              clique_config.min_clique_size,
+                                              clique_config.max_clique_size_for_extension);
+  clique_table_t<i_t, f_t>* clique_table_ptr = &clique_table_local;
+  if (clique_table_out != nullptr) {
+    clique_table_shared =
+      std::make_shared<clique_table_t<i_t, f_t>>(2 * problem.num_cols,
+                                                 clique_config.min_clique_size,
+                                                 clique_config.max_clique_size_for_extension);
+    clique_table_ptr = clique_table_shared.get();
+  }
+  clique_table_ptr->tolerances = tolerances;
   for (const auto& knapsack_constraint : knapsack_constraints) {
-    find_cliques_from_constraint(knapsack_constraint, clique_table);
+    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr);
   }
   t_find = timer.elapsed_time();
   CUOPT_LOG_DEBUG("Number of cliques: %d, additional cliques: %d",
-                  clique_table.first.size(),
-                  clique_table.addtl_cliques.size());
+                  clique_table_ptr->first.size(),
+                  clique_table_ptr->addtl_cliques.size());
   // print_clique_table(clique_table);
   // remove small cliques and add them to adj_list
-  remove_small_cliques(clique_table);
+  remove_small_cliques(*clique_table_ptr);
   t_small = timer.elapsed_time();
   // fill var clique maps
-  fill_var_clique_maps(clique_table);
-  t_maps                 = timer.elapsed_time();
-  i_t n_extended_cliques = extend_cliques(knapsack_constraints, clique_table, problem, A);
+  fill_var_clique_maps(*clique_table_ptr);
+  t_maps = timer.elapsed_time();
+  if (clique_table_out != nullptr) { *clique_table_out = std::move(clique_table_shared); }
+  i_t n_extended_cliques = extend_cliques(knapsack_constraints, *clique_table_ptr, problem, A);
   t_extend               = timer.elapsed_time();
-  remove_dominated_cliques(
-    problem, A, clique_table, set_packing_constraints, knapsack_constraints, n_extended_cliques);
+  remove_dominated_cliques(problem,
+                           A,
+                           *clique_table_ptr,
+                           set_packing_constraints,
+                           knapsack_constraints,
+                           n_extended_cliques);
   t_remove = timer.elapsed_time();
   CUOPT_LOG_DEBUG(
     "Clique table timing (s): fill=%.6f coeff=%.6f sort=%.6f find=%.6f small=%.6f maps=%.6f "
@@ -801,10 +842,18 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   // exit(0);
 }
 
-#define INSTANTIATE(F_TYPE)                              \
-  template void find_initial_cliques<int, F_TYPE>(       \
-    dual_simplex::user_problem_t<int, F_TYPE> & problem, \
-    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances);
+#define INSTANTIATE(F_TYPE)                                               \
+  template void find_initial_cliques<int, F_TYPE>(                        \
+    dual_simplex::user_problem_t<int, F_TYPE> & problem,                  \
+    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
+    std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out);     \
+  template void build_clique_table<int, F_TYPE>(                          \
+    const dual_simplex::user_problem_t<int, F_TYPE>& problem,             \
+    clique_table_t<int, F_TYPE>& clique_table,                            \
+    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
+    bool remove_small_cliques_flag,                                       \
+    bool fill_var_clique_maps_flag);                                      \
+  template class clique_table_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

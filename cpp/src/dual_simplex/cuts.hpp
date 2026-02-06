@@ -15,12 +15,18 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include <cmath>
 #include <cstdint>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -29,7 +35,8 @@ enum cut_type_t : int8_t {
   MIXED_INTEGER_ROUNDING = 1,
   KNAPSACK               = 2,
   CHVATAL_GOMORY         = 3,
-  MAX_CUT_TYPE           = 4
+  CLIQUE                 = 4,
+  MAX_CUT_TYPE           = 5
 };
 
 template <typename i_t, typename f_t>
@@ -48,8 +55,9 @@ struct cut_info_t {
       num_cuts[static_cast<int>(cut_type)]++;
     }
   }
-  const char* cut_type_names[MAX_CUT_TYPE] = {"Gomory   ", "MIR      ", "Knapsack ", "Strong CG"};
-  std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
+  const char* cut_type_names[MAX_CUT_TYPE] = {
+    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   "};
+  std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
 };
 
 template <typename i_t, typename f_t>
@@ -226,8 +234,14 @@ class cut_generation_t {
                    const simplex_solver_settings_t<i_t, f_t>& settings,
                    csr_matrix_t<i_t, f_t>& Arow,
                    const std::vector<i_t>& new_slacks,
-                   const std::vector<variable_type_t>& var_types)
-    : cut_pool_(cut_pool), knapsack_generation_(lp, settings, Arow, new_slacks, var_types)
+                   const std::vector<variable_type_t>& var_types,
+                   const user_problem_t<i_t, f_t>& user_problem,
+                   std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>>
+                     clique_table = nullptr)
+    : cut_pool_(cut_pool),
+      knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
+      user_problem_(user_problem),
+      clique_table_(std::move(clique_table))
   {
   }
 
@@ -238,6 +252,7 @@ class cut_generation_t {
                      const std::vector<variable_type_t>& var_types,
                      basis_update_mpf_t<i_t, f_t>& basis_update,
                      const std::vector<f_t>& xstar,
+                     const std::vector<f_t>& reduced_costs,
                      const std::vector<i_t>& basic_list,
                      const std::vector<i_t>& nonbasic_list);
 
@@ -269,8 +284,17 @@ class cut_generation_t {
                               const std::vector<variable_type_t>& var_types,
                               const std::vector<f_t>& xstar);
 
+  // Generate clique cuts from conflict graph cliques
+  void generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<variable_type_t>& var_types,
+                            const std::vector<f_t>& xstar,
+                            const std::vector<f_t>& reduced_costs);
+
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
+  const user_problem_t<i_t, f_t>& user_problem_;
+  std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>> clique_table_;
 };
 
 template <typename i_t, typename f_t>

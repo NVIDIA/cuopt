@@ -232,9 +232,11 @@ template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  f_t start_time)
+  f_t start_time,
+  std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>> clique_table)
   : original_problem_(user_problem),
     settings_(solver_settings),
+    clique_table_(std::move(clique_table)),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
     Arow_(1, 1, 0),
     incumbent_(1),
@@ -1822,8 +1824,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
-  cut_generation_t<i_t, f_t> cut_generation(
-    cut_pool, original_lp_, settings_, Arow_, new_slacks_, var_types_);
+  cut_generation_t<i_t, f_t> cut_generation(cut_pool,
+                                            original_lp_,
+                                            settings_,
+                                            Arow_,
+                                            new_slacks_,
+                                            var_types_,
+                                            original_problem_,
+                                            clique_table_);
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
@@ -1861,6 +1869,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                    var_types_,
                                    basis_update,
                                    root_relax_soln_.x,
+                                   root_relax_soln_.z,
                                    basic_list,
                                    nonbasic_list);
       f_t cut_generation_time = toc(cut_start_time);

@@ -23,7 +23,13 @@
 
 #include <omp.h>
 #include <functional>
+#include <memory>
 #include <vector>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -74,7 +80,9 @@ class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time);
+                     f_t start_time,
+                     std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>>
+                       clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -137,6 +145,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>> clique_table_;
 
   // Initial guess.
   std::vector<f_t> guess_;
