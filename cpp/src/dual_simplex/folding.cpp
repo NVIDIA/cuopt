@@ -709,7 +709,7 @@ coloring_status_t color_graph(const csc_matrix_t<i_t, f_t>& A,
       i_t current_colors = num_row_colors + num_col_colors;
       last_log_time      = tic();
       settings.log.printf(
-        "Folding: %d refinements %d colors in %.2fs", num_refinements, current_colors, elapsed);
+        "Folding: %d refinements %d colors in %.2fs\n", num_refinements, current_colors, elapsed);
 #ifdef PRINT_INFO
       settings.log.debug(
         "Number of refinements %8d. Number of colors %d (row colors %d, col colors %d) stack size "
