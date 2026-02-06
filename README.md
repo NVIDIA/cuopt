@@ -16,7 +16,7 @@ NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed 
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
-For the latest stable version ensure you are on the `main` branch.
+For the latest version ensure you are on the `main` branch.
 
 ## Latest Documentation
 
