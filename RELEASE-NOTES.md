@@ -22,6 +22,7 @@
 - Improved primal/dual warm start for PDLP's default solver mode Stable3
 - Quadratic objectives can now be constructed via a matrix in Python API
 - QP barrier now updates and solves augmented system on the GPU
+- Improved performance for LP folding
 - Probing implications and better variable ordering to strengthen presolve and branching
 - Replace deprecated cuDF Column/Buffer APIs with pylibcudf and public cuDF interfaces
 - Modernize dependency pinnings; make CUDA runtime linkage static for portability
