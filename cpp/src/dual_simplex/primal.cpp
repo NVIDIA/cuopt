@@ -308,6 +308,7 @@ primal::status_t primal_phase2(i_t phase,
                  slacks_needed,
                  basic_list,
                  nonbasic_list,
+                 superbasic_list,
                  vstatus);
     rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
     if (rank == CONCURRENT_HALT_RETURN) {
