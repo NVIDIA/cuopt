@@ -287,64 +287,54 @@ void split_colors(i_t color,
   }
 
   // Paige-Tarjan O(n log n) optimization:
-  // The LARGEST part keeps the original color ID and "inherits" its stack slot.
+  // The largest part keeps the original color id and inherits its stack slot.
   // All other parts (smaller) become new colors and are added to the stack.
-  // This ensures each vertex is added to the stack O(log n) times.
 
-  bool largest_is_sum_zero = (max_sum == 0.0);
+  bool largest_is_sum_zero    = (max_sum == 0.0);
+  bool adjust_color_sums_zero = !largest_is_sum_zero && color_sums.count(0.0) > 0;
 
-  // Collect sum=0 vertices: those in colors[color].vertices but NOT in vertices_to_refine_by_color
-  // (vertices that have no neighbors in the refining color)
-  std::vector<i_t> sum_zero_vertices;
-  if (!largest_is_sum_zero && color_sums.count(0.0) > 0) {
-    // sum=0 exists but is NOT the largest - need to create a new color for it
-    // These are vertices in the color that don't touch the refining color
-    std::unordered_set<i_t> refined_set(vertices_to_refine_by_color[color].begin(),
-                                        vertices_to_refine_by_color[color].end());
+  // Collect sum==0.0 vertices in colors[color].vertices but not in vertices_to_refine_by_color
+  if (adjust_color_sums_zero) {
+    for (i_t v : vertices_to_refine_by_color[color]) {
+      if (vertex_to_sum[v] == 0.0) { vertex_to_sum[v] = std::numeric_limits<f_t>::quiet_NaN(); }
+    }
     for (i_t v : colors[color].vertices) {
-      if (refined_set.find(v) == refined_set.end()) { sum_zero_vertices.push_back(v); }
+      if (vertex_to_sum[v] == 0.0) { color_sums[0.0].push_back(v); }
     }
   }
 
   i_t vertices_considered = 0;
   for (auto& [sum, vertices] : color_sums) {
-    i_t size         = vertices.size();
-    bool is_sum_zero = (sum == 0.0);
+    i_t size = vertices.size();
 
-    if (is_sum_zero) {
-      const i_t additional_size =
-        (colors[color].vertices.size() - vertices_to_refine_by_color[color].size());
-      size += additional_size;
+    if (sum == 0.0) {
+      i_t additional_size =
+        colors[color].vertices.size() - vertices_to_refine_by_color[color].size();
+      if (!adjust_color_sums_zero) { size += additional_size; }
     }
 
     bool is_largest = (sum == max_sum && size == max_size);
     vertices_considered += size;
 
     if (is_largest) {
-      // Largest part keeps the original color - no new color created
-      // Paige-Tarjan optimization: largest is NOT added to stack
+      // Largest part keeps the original color id and inherits its stack slot, so it is not added to
+      // the stack
       continue;
     }
 
-    // Smaller parts get new colors and are added to the stack
-    // Note: for sum=0, 'vertices' is empty, so use sum_zero_vertices instead
-    const std::vector<i_t>& verts_to_use = is_sum_zero ? sum_zero_vertices : vertices;
+    colors.emplace_back(side_being_split, kActive, total_colors_seen, vertices);
 
-    if (!verts_to_use.empty()) {
-      colors.emplace_back(side_being_split, kActive, total_colors_seen, verts_to_use);
+    // All non-largest parts are added to the stack
+    color_stack.push_back(total_colors_seen);
+    color_in_stack[total_colors_seen] = 1;
 
-      // All non-largest parts are added to the stack
-      color_stack.push_back(total_colors_seen);
-      color_in_stack[total_colors_seen] = 1;
-
-      for (i_t v : verts_to_use) {
-        color_map_B[v] = total_colors_seen;
-      }
-
-      total_colors_seen++;
-      num_colors++;
-      num_side_colors++;
+    for (i_t v : vertices) {
+      color_map_B[v] = total_colors_seen;
     }
+
+    total_colors_seen++;
+    num_colors++;
+    num_side_colors++;
   }
 
   if (vertices_considered != colors[color].vertices.size()) {
@@ -360,7 +350,7 @@ void split_colors(i_t color,
   }
   // Also remove sum=0 vertices if they were moved (sum=0 wasn't the largest)
   if (!largest_is_sum_zero) {
-    for (i_t v : sum_zero_vertices) {
+    for (i_t v : color_sums[0.0]) {
       colors[color].vertices.erase(v);
     }
   }
