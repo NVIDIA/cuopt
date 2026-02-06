@@ -10,7 +10,7 @@
 - New infeasibility detection option for PDLP's default solver mode Stable3
 - Solutions callbacks added to C API, additionally cuopt supports dual_bound and user_data.
 - Multiple new diving techniques added for finding integer feasible solutions
-- PSLP presolve option for LP
+- The PSLP presolver (https://github.com/dance858/PSLP) is enabled by default for LP problems. To disable set presolve value to 0.  
 - Add batch solve for routing to boost throughput for many similar instances
 
 ### Breaking Changes (26.02)
