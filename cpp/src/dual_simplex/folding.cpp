@@ -183,13 +183,13 @@ void compute_sums(const csc_matrix_t<i_t, f_t>& A,
 }
 
 template <typename i_t, typename f_t>
-void find_colors_to_split(const std::vector<i_t> colors_to_update,
-                          const std::vector<color_t<i_t>>& colors,
-                          const std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
-                          const std::vector<f_t>& vertex_to_sum,
-                          std::vector<f_t>& max_sum_by_color,
-                          std::vector<f_t>& min_sum_by_color,
-                          std::vector<i_t>& colors_to_split)
+i_t find_colors_to_split(const std::vector<i_t> colors_to_update,
+                         const std::vector<color_t<i_t>>& colors,
+                         const std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
+                         const std::vector<f_t>& vertex_to_sum,
+                         std::vector<f_t>& max_sum_by_color,
+                         std::vector<f_t>& min_sum_by_color,
+                         std::vector<i_t>& colors_to_split)
 {
   for (i_t color : colors_to_update) {
     min_sum_by_color[color] = max_sum_by_color[color];
@@ -213,30 +213,31 @@ void find_colors_to_split(const std::vector<i_t> colors_to_update,
              color,
              max_sum_by_color[color],
              min_sum_by_color[color]);
-      exit(1);
+      return -1;
     }
     if (min_sum_by_color[color] < max_sum_by_color[color]) { colors_to_split.push_back(color); }
   }
+  return 0;
 }
 
 template <typename i_t, typename f_t>
-void split_colors(i_t color,
-                  i_t refining_color,
-                  int8_t side_being_split,
-                  std::vector<f_t>& vertex_to_sum,
-                  std::map<f_t, std::vector<i_t>>& color_sums,
-                  std::map<f_t, i_t>& sum_to_sizes,
-                  std::vector<color_t<i_t>>& colors,
-                  std::vector<i_t>& color_stack,
-                  std::vector<i_t>& color_in_stack,
-                  std::vector<i_t>& color_map_B,
-                  std::vector<i_t>& marked_vertices,
-                  std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
-                  std::vector<f_t>& min_sum_by_color,
-                  std::vector<f_t>& max_sum_by_color,
-                  i_t& num_colors,
-                  i_t& num_side_colors,
-                  i_t& total_colors_seen)
+i_t split_colors(i_t color,
+                 i_t refining_color,
+                 int8_t side_being_split,
+                 std::vector<f_t>& vertex_to_sum,
+                 std::map<f_t, std::vector<i_t>>& color_sums,
+                 std::map<f_t, i_t>& sum_to_sizes,
+                 std::vector<color_t<i_t>>& colors,
+                 std::vector<i_t>& color_stack,
+                 std::vector<i_t>& color_in_stack,
+                 std::vector<i_t>& color_map_B,
+                 std::vector<i_t>& marked_vertices,
+                 std::vector<std::vector<i_t>>& vertices_to_refine_by_color,
+                 std::vector<f_t>& min_sum_by_color,
+                 std::vector<f_t>& max_sum_by_color,
+                 i_t& num_colors,
+                 i_t& num_side_colors,
+                 i_t& total_colors_seen)
 {
   bool in_stack = color_in_stack[color];
 
@@ -259,7 +260,7 @@ void split_colors(i_t color,
       for (i_t v : vertices_to_refine_by_color[color]) {
         printf("Vertex %d\n", v);
       }
-      exit(1);
+      return -1;
     }
     sum_to_sizes[0.0] += remaining_size;
     if (color_sums.count(0.0) == 0) { color_sums[0.0] = std::vector<i_t>(); }
@@ -283,7 +284,7 @@ void split_colors(i_t color,
            color,
            color_sums.size(),
            in_stack);
-    exit(1);
+    return -1;
   }
 
   // Paige-Tarjan O(n log n) optimization:
@@ -341,7 +342,7 @@ void split_colors(i_t color,
     printf("Vertices considered %d does not match color size %ld\n",
            vertices_considered,
            colors[color].vertices.size());
-    exit(1);
+    return -1;
   }
 
   // Remove vertices that moved to new colors from the original color
@@ -364,6 +365,7 @@ void split_colors(i_t color,
   vertices_to_refine_by_color[color].clear();
   max_sum_by_color[color] = std::numeric_limits<f_t>::quiet_NaN();
   min_sum_by_color[color] = std::numeric_limits<f_t>::quiet_NaN();
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -524,57 +526,60 @@ coloring_status_t color_graph(const csc_matrix_t<i_t, f_t>& A,
                  max_sum_by_color);
 
     colors_to_split.clear();
-    find_colors_to_split(colors_to_update,
-                         colors,
-                         vertices_to_refine_by_color,
-                         vertex_to_sum,
-                         max_sum_by_color,
-                         min_sum_by_color,
-                         colors_to_split);
+    i_t status = find_colors_to_split(colors_to_update,
+                                      colors,
+                                      vertices_to_refine_by_color,
+                                      vertex_to_sum,
+                                      max_sum_by_color,
+                                      min_sum_by_color,
+                                      colors_to_split);
+    if (status != 0) { return coloring_status_t::COLORING_FAILED; }
     // We now need to split the current colors into new colors
     if (refining_color.row_or_column == kRow) {
       // Refining color is a row color.
       // See if we need to split the column colors
       for (i_t color : colors_to_split) {
-        split_colors(color,
-                     colors[refining_color_index].color,
-                     kCol,
-                     vertex_to_sum,
-                     color_sums,
-                     sum_to_sizes,
-                     colors,
-                     color_stack,
-                     color_in_stack,
-                     col_color_map,
-                     marked_vertices,
-                     vertices_to_refine_by_color,
-                     min_sum_by_color,
-                     max_sum_by_color,
-                     num_colors,
-                     num_col_colors,
-                     total_colors_seen);
+        i_t status = split_colors(color,
+                                  colors[refining_color_index].color,
+                                  kCol,
+                                  vertex_to_sum,
+                                  color_sums,
+                                  sum_to_sizes,
+                                  colors,
+                                  color_stack,
+                                  color_in_stack,
+                                  col_color_map,
+                                  marked_vertices,
+                                  vertices_to_refine_by_color,
+                                  min_sum_by_color,
+                                  max_sum_by_color,
+                                  num_colors,
+                                  num_col_colors,
+                                  total_colors_seen);
+        if (status != 0) { return coloring_status_t::COLORING_FAILED; }
       }
     } else {
       // Refining color is a column color.
       // See if we need to split the row colors
       for (i_t color : colors_to_split) {
-        split_colors(color,
-                     colors[refining_color_index].color,
-                     kRow,
-                     vertex_to_sum,
-                     color_sums,
-                     sum_to_sizes,
-                     colors,
-                     color_stack,
-                     color_in_stack,
-                     row_color_map,
-                     marked_vertices,
-                     vertices_to_refine_by_color,
-                     min_sum_by_color,
-                     max_sum_by_color,
-                     num_colors,
-                     num_row_colors,
-                     total_colors_seen);
+        i_t status = split_colors(color,
+                                  colors[refining_color_index].color,
+                                  kRow,
+                                  vertex_to_sum,
+                                  color_sums,
+                                  sum_to_sizes,
+                                  colors,
+                                  color_stack,
+                                  color_in_stack,
+                                  row_color_map,
+                                  marked_vertices,
+                                  vertices_to_refine_by_color,
+                                  min_sum_by_color,
+                                  max_sum_by_color,
+                                  num_colors,
+                                  num_row_colors,
+                                  total_colors_seen);
+        if (status != 0) { return coloring_status_t::COLORING_FAILED; }
       }
     }
 
