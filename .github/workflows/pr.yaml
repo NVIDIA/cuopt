@@ -35,6 +35,9 @@ jobs:
       - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+    if: always()
+    with:
+      needs: ${{ toJSON(needs) }}
   check-lean-ci:
     runs-on: ubuntu-latest
     outputs:

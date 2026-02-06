@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -35,6 +35,12 @@ class lp_state_t {
   lp_state_t(const lp_state_t<i_t, f_t>& other)
     : prev_primal(other.prev_primal, other.prev_primal.stream()),
       prev_dual(other.prev_dual, other.prev_dual.stream())
+  {
+  }
+
+  lp_state_t(const lp_state_t<i_t, f_t>& other, const raft::handle_t* handle_ptr)
+    : prev_primal(other.prev_primal, handle_ptr->get_stream()),
+      prev_dual(other.prev_dual, handle_ptr->get_stream())
   {
   }
 

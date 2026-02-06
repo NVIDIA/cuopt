@@ -210,9 +210,6 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
 
   mps_model.set_constraint_lower_bounds(constraint_lower.data(), m);
   mps_model.set_constraint_upper_bounds(constraint_upper.data(), m);
-
-  // TODO verify
-  // Set maximize flag (obj_scale: 1.0 for min, -1.0 for max)
   mps_model.set_maximize(user_problem.obj_scale < 0);
 
   return mps_model;
@@ -236,14 +233,10 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
   pc.strong_branch_up.assign(fractional.size(), 0);
   pc.num_strong_branches_completed = 0;
 
-  settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
-                      settings.num_threads,
-                      fractional.size());
-
   if (settings.mip_batch_pdlp_strong_branching) {
     settings.log.printf("Batch PDLP strong branching enabled\n");
 
-    std::chrono::steady_clock::time_point start_batch = std::chrono::steady_clock::now();
+    f_t start_batch = tic();
 
     // Use original_problem to create the BatchLP problem
     csr_matrix_t<i_t, f_t> A_row(original_problem.A.m, original_problem.A.n, 0);
@@ -263,8 +256,7 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
     const auto solutions =
       batch_pdlp_solve(original_problem.handle_ptr, mps_model, fractional, fraction_values);
-    std::chrono::steady_clock::time_point end_batch = std::chrono::steady_clock::now();
-    std::chrono::duration<f_t> duration             = end_batch - start_batch;
+    f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
     // Find max iteration on how many are done accross the batch
     i_t max_iterations = 0;
@@ -279,8 +271,8 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     }
 
     settings.log.printf(
-      "Batch PDLP strong branching took %.2f seconds. Solved %d/%d with max %d iterations\n",
-      duration.count(),
+      "Batch PDLP strong branching completed in %.2fs. Solved %d/%d with max %d iterations\n",
+      batch_pdlp_strong_branching_time,
       amount_done,
       fractional.size() * 2,
       max_iterations);
@@ -312,7 +304,10 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       pc.strong_branch_up[k]   = obj_up - root_obj;
     }
   } else {
-    std::chrono::steady_clock::time_point start_timea = std::chrono::steady_clock::now();
+    settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
+                        settings.num_threads,
+                        fractional.size());
+    f_t strong_branching_start_time = tic();
 
 #pragma omp parallel num_threads(settings.num_threads)
     {
@@ -349,9 +344,7 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
                              pc);
       }
     }
-    std::chrono::steady_clock::time_point end_timea = std::chrono::steady_clock::now();
-    std::chrono::duration<f_t> duration             = end_timea - start_timea;
-    settings.log.printf("Dual Simplex Strong branching took %.2f seconds\n", duration.count());
+    settings.log.printf("Strong branching completed in %.2fs\n", toc(strong_branching_start_time));
   }
 
   pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);

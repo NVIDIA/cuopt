@@ -125,10 +125,6 @@ for DEP in "${DEPENDENCIES[@]}"; do
   done
 done
 
-# Update project.json
-PROJECT_FILE="docs/cuopt/source/project.json"
-sed_runner 's/\("version": "\)[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]"/\1'${NEXT_FULL_TAG}'"/g' "${PROJECT_FILE}"
-
 # Update README.md version badge
 sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md
 

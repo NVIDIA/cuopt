@@ -216,10 +216,11 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   lp_dual_optimal_solution.resize(problem_ptr->n_constraints,
                                   problem_ptr->handle_ptr->get_stream());
   problem_ptr->handle_ptr->sync_stream();
-  CUOPT_LOG_INFO("After trivial presolve: %d constraints, %d variables, objective offset %f.",
+  CUOPT_LOG_INFO("After cuOpt presolve: %d constraints, %d variables, objective offset %f.",
                  problem_ptr->n_constraints,
                  problem_ptr->n_variables,
                  problem_ptr->presolve_data.objective_offset);
+  CUOPT_LOG_INFO("cuOpt presolve time: %.2f", stats.presolve_time);
   return true;
 }
 
@@ -524,7 +525,7 @@ void diversity_manager_t<i_t, f_t>::diversity_step(i_t max_iterations_without_im
 template <typename i_t, typename f_t>
 void diversity_manager_t<i_t, f_t>::set_new_user_bound(f_t new_bound)
 {
-  stats.solution_bound = new_bound;
+  stats.set_solution_bound(new_bound);
 }
 
 template <typename i_t, typename f_t>

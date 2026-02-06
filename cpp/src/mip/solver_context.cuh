@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,6 +11,8 @@
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
 
+#include <limits>
+
 #pragma once
 
 // Forward declare
@@ -20,6 +22,9 @@ class branch_and_bound_t;
 }
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+class diversity_manager_t;
 
 // Aggregate structure containing the global context of the solving process for convenience:
 // The current problem, user settings, raft handle and statistics objects
@@ -32,13 +37,14 @@ struct mip_solver_context_t {
     : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_), scaling(scaling)
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
-    stats.solution_bound = problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
-                                                 : -std::numeric_limits<f_t>::infinity();
+    stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
+                                                   : -std::numeric_limits<f_t>::infinity());
   }
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
+  diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
   pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling;

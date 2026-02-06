@@ -60,6 +60,7 @@ class mip_node_t {
       node_id(0),
       branch_var(-1),
       branch_dir(rounding_direction_t::NONE),
+      integer_infeasible(-1),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
       vstatus(basis)
   {
@@ -73,6 +74,7 @@ class mip_node_t {
              i_t branch_variable,
              rounding_direction_t branch_direction,
              f_t branch_var_value,
+             i_t integer_inf,
              const std::vector<variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(parent_node->lower_bound),
@@ -82,9 +84,9 @@ class mip_node_t {
       branch_var(branch_variable),
       branch_dir(branch_direction),
       fractional_val(branch_var_value),
+      integer_infeasible(integer_inf),
       objective_estimate(parent_node->objective_estimate),
       vstatus(basis)
-
   {
     branch_var_lower = branch_direction == rounding_direction_t::DOWN ? problem.lower[branch_var]
                                                                       : std::ceil(branch_var_value);
@@ -250,6 +252,7 @@ class mip_node_t {
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
+  i_t integer_infeasible;
 
   mip_node_t<i_t, f_t>* parent;
   std::unique_ptr<mip_node_t> children[2];
@@ -285,6 +288,7 @@ class search_tree_t {
   void branch(mip_node_t<i_t, f_t>* parent_node,
               const i_t branch_var,
               const f_t fractional_val,
+              const i_t integer_infeasible,
               const std::vector<variable_status_t>& parent_vstatus,
               const lp_problem_t<i_t, f_t>& original_lp,
               logger_t& log)
@@ -297,8 +301,8 @@ class search_tree_t {
                                                              branch_var,
                                                              rounding_direction_t::DOWN,
                                                              fractional_val,
+                                                             integer_infeasible,
                                                              parent_vstatus);
-
     graphviz_edge(log,
                   parent_node,
                   down_child.get(),
@@ -312,6 +316,7 @@ class search_tree_t {
                                                            branch_var,
                                                            rounding_direction_t::UP,
                                                            fractional_val,
+                                                           integer_infeasible,
                                                            parent_vstatus);
 
     graphviz_edge(log,

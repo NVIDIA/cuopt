@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -20,11 +20,12 @@ class bounds_strengthening_t {
                          const std::vector<char>& row_sense,
                          const std::vector<variable_type_t>& var_types);
 
-  bool bounds_strengthening(std::vector<f_t>& lower_bounds,
-                            std::vector<f_t>& upper_bounds,
-                            const simplex_solver_settings_t<i_t, f_t>& settings);
-
-  std::vector<bool> bounds_changed;
+  // If bounds_changed is empty, all constraints are scanned for changes.
+  // Otherwise, bounds_changed must be a vector of length n, where n is the number of variables.
+  bool bounds_strengthening(const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<bool>& bounds_changed,
+                            std::vector<f_t>& lower_bounds,
+                            std::vector<f_t>& upper_bounds);
 
  private:
   const csc_matrix_t<i_t, f_t>& A;

@@ -1,0 +1,68 @@
+{
+   "channel": "cuopt-regression-testing",
+   "username": "cuOpt Messaging",
+   "icon_emoji": ":robot_face:",
+  "blocks": [
+     {
+         "type": "section",
+    "text": {
+        "type": "mrkdwn",
+        "text": "${ONE_LINE_SUMMARY}"
+    }
+     },
+     {
+         "type": "divider"
+     },
+     {
+        "type": "section",
+        "text": {
+           "type": "mrkdwn",
+           "text": "<${REPORT_URL}|*Results Report*>\nBuild status and test results."
+        },
+        "accessory": {
+           "type": "button",
+           "url": "${REPORT_URL}",
+           "text": {
+              "type": "plain_text",
+              "emoji": true,
+              "text": "View"
+              },
+           "value": "click_me_123"
+        }
+     },
+     {
+        "type": "section",
+        "text": {
+           "type": "mrkdwn",
+           "text": "<${ASV_URL}|*ASV Dashboard*>\nBenchmark results."
+        },
+        "accessory": {
+           "type": "button",
+           "url": "${ASV_URL}",
+           "text": {
+              "type": "plain_text",
+              "emoji": true,
+              "text": "View"
+              },
+           "value": "click_me_123"
+        }
+     },
+      {
+          "type": "section",
+          "text": {
+             "type": "mrkdwn",
+             "text": "<${LOGS_URL}|*Logs*>\nAll available logs."
+             },
+          "accessory": {
+             "type": "button",
+             "url": "${LOGS_URL}",
+             "text": {
+                "type": "plain_text",
+                "emoji": true,
+                "text": "View"
+                },
+             "value": "click_me_123"
+          }
+      }
+  ]
+}

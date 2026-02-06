@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -151,8 +151,14 @@ class csr_matrix_t {
   // Create a new matrix with the marked rows removed
   i_t remove_rows(std::vector<i_t>& row_marker, csr_matrix_t<i_t, f_t>& Aout) const;
 
+  // Append rows from another CSR matrix
+  i_t append_rows(const csr_matrix_t<i_t, f_t>& C);
+
+  // Append a row from a sparse vector
+  i_t append_row(const sparse_vector_t<i_t, f_t>& c);
+
   // Ensures no repeated column indices within a row
-  void check_matrix(std::string matrix_name = "") const;
+  i_t check_matrix(std::string matrix_name = "") const;
 
   bool is_diagonal() const
   {

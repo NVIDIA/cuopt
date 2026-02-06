@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -169,6 +169,7 @@ cdef set_solver_setting(
     cdef uintptr_t c_last_restart_duality_gap_primal_solution
     cdef uintptr_t c_last_restart_duality_gap_dual_solution
     cdef uintptr_t callback_ptr = 0
+    cdef uintptr_t callback_user_data = 0
     if mip:
         if data_model_obj is not None and data_model_obj.get_initial_primal_solution().shape[0] != 0:  # noqa
             c_solver_settings.add_initial_mip_solution(
@@ -186,9 +187,15 @@ cdef set_solver_setting(
         for callback in callbacks:
             if callback:
                 callback_ptr = callback.get_native_callback()
+                callback_user_data = (
+                    callback.get_user_data_ptr()
+                    if hasattr(callback, "get_user_data_ptr")
+                    else 0
+                )
 
                 c_solver_settings.set_mip_callback(
-                    <base_solution_callback_t*>callback_ptr
+                    <base_solution_callback_t*>callback_ptr,
+                    <void*>callback_user_data
                 )
     else:
         if data_model_obj is not None and data_model_obj.get_initial_primal_solution().shape[0] != 0:  # noqa

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -84,10 +84,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
   step_length       = min_val;
   nonbasic_entering = candidate;
   // this should be temporary, find root causes where the candidate is not filled
-  if (nonbasic_entering == -1) {
-    // -1,-2 and -3 are reserved for other things
-    return -4;
-  }
+  if (nonbasic_entering == -1) { return RATIO_TEST_NUMERICAL_ISSUES; }
   const i_t j = entering_index = nonbasic_list_[nonbasic_entering];
 
   constexpr bool verbose = false;
@@ -123,16 +120,16 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
     nonbasic_entering = -1;
-    return -1;
+    return RATIO_TEST_NO_ENTERING_VARIABLE;
   }
 
   f_t slope          = slope_;
   nonbasic_entering  = -1;
-  i_t entering_index = -1;
+  i_t entering_index = RATIO_TEST_NO_ENTERING_VARIABLE;
 
   i_t k_idx = single_pass(
     0, num_breakpoints, indicies, ratios, slope, step_length, nonbasic_entering, entering_index);
-  if (k_idx == -4) { return -4; }
+  if (k_idx == RATIO_TEST_NUMERICAL_ISSUES) { return RATIO_TEST_NUMERICAL_ISSUES; }
   bool continue_search = k_idx >= 0 && num_breakpoints > 1 && slope > 0.0;
   if (!continue_search) {
     if constexpr (0) {
@@ -255,11 +252,11 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
     }
 
     if (toc(start_time_) > settings_.time_limit) {
-      entering_index = -2;
+      entering_index = RATIO_TEST_TIME_LIMIT;
       return;
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-      entering_index = -3;
+      entering_index = CONCURRENT_HALT_RETURN;
       return;
     }
   }

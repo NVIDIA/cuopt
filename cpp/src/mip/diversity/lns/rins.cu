@@ -22,6 +22,8 @@
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 
+#include <dual_simplex/tic_toc.hpp>
+
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
@@ -76,12 +78,12 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::enable()
 {
-  rins_thread              = std::make_unique<rins_thread_t<i_t, f_t>>();
-  rins_thread->rins_ptr    = this;
-  seed                     = cuopt::seed_generator::get_seed();
-  problem_copy             = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr);
-  problem_copy->handle_ptr = &rins_handle;
-  enabled                  = true;
+  rins_thread           = std::make_unique<rins_thread_t<i_t, f_t>>();
+  rins_thread->rins_ptr = this;
+  seed                  = cuopt::seed_generator::get_seed();
+  problem_ptr->handle_ptr->sync_stream();
+  problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr, &rins_handle);
+  enabled      = true;
 }
 
 template <typename i_t, typename f_t>
@@ -112,6 +114,7 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(dm.population.current_size() > 0, "No solutions in population");
 
   solution_t<i_t, f_t> best_sol(*problem_copy);
+  rins_handle.sync_stream();
   // copy the best from the population into a solution_t in the RINS stream
   {
     std::lock_guard<std::recursive_mutex> lock(dm.population.write_mutex);
@@ -259,6 +262,8 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.integer_tol     = context.settings.tolerances.integrality_tolerance;
   branch_and_bound_settings.num_threads     = 2;
   branch_and_bound_settings.num_bfs_workers = 1;
+  branch_and_bound_settings.max_cut_passes  = 0;
+  branch_and_bound_settings.sub_mip         = 1;
 
   // In the future, let RINS use all the diving heuristics. For now,
   // restricting to guided diving.
@@ -272,8 +277,8 @@ void rins_t<i_t, f_t>::run_rins()
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
   };
-  dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(branch_and_bound_problem,
-                                                              branch_and_bound_settings);
+  dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
+    branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic());
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 

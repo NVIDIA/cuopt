@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #include <dual_simplex/solve.hpp>
 
 #include <dual_simplex/barrier.hpp>
+#include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
@@ -140,6 +141,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   lp_problem_t<i_t, f_t> presolved_lp(original_lp.handle_ptr, 1, 1, 1);
   presolve_info_t<i_t, f_t> presolve_info;
   const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
+  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   constexpr bool write_out_matlab = false;
@@ -314,6 +316,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
+  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   // Apply columns scaling to the presolve LP
@@ -457,18 +460,59 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
       settings.log.printf("Primal objective: %e\n",
                           dot<i_t, f_t>(dualize_info.primal_problem.objective, primal_solution.x));
 
-      std::vector<f_t> primal_residual = dualize_info.primal_problem.rhs;
-      matrix_vector_multiply(
-        dualize_info.primal_problem.A, 1.0, primal_solution.x, -1.0, primal_residual);
       std::vector<i_t> inequality_rows(dualize_info.primal_problem.num_rows, 1);
       for (i_t i : dualize_info.equality_rows) {
         inequality_rows[i] = 0;
       }
+      i_t less_rows = 0;
       for (i_t i = 0; i < dualize_info.primal_problem.num_rows; ++i) {
-        if (inequality_rows[i] == 1) {
-          primal_residual[i] = std::max(primal_residual[i], 0.0);  // a_i^T x - b_i <= 0
-        }
+        if (inequality_rows[i] == 1) { less_rows++; }
       }
+      // Add slack variables to the primal problem
+      if (less_rows > 0) {
+        std::vector<f_t> slack_info = dualize_info.primal_problem.rhs;
+        matrix_vector_multiply(
+          dualize_info.primal_problem.A, -1.0, primal_solution.x, 1.0, slack_info);
+
+        lp_problem_t<i_t, f_t>& problem = dualize_info.primal_problem;
+        i_t num_cols                    = problem.num_cols + less_rows;
+        i_t nnz                         = problem.A.col_start[problem.num_cols] + less_rows;
+        problem.A.col_start.resize(num_cols + 1);
+        problem.A.i.resize(nnz);
+        problem.A.x.resize(nnz);
+        problem.lower.resize(num_cols);
+        problem.upper.resize(num_cols);
+        problem.objective.resize(num_cols);
+        primal_solution.x.resize(num_cols);
+        primal_solution.z.resize(num_cols);
+
+        i_t p = problem.A.col_start[problem.num_cols];
+        i_t j = problem.num_cols;
+        for (i_t i = 0; i < problem.num_rows; i++) {
+          if (inequality_rows[i] == 1) {
+            problem.lower[j]         = 0.0;
+            problem.upper[j]         = INFINITY;
+            problem.objective[j]     = 0.0;
+            problem.A.i[p]           = i;
+            problem.A.x[p]           = 1.0;
+            primal_solution.x[j]     = slack_info[i];
+            primal_solution.z[j]     = -primal_solution.y[i];
+            problem.A.col_start[j++] = p++;
+            inequality_rows[i]       = 0;
+            less_rows--;
+          }
+        }
+        problem.A.col_start[num_cols] = p;
+        assert(less_rows == 0);
+        assert(p == nnz);
+        problem.A.n      = num_cols;
+        problem.num_cols = num_cols;
+      }
+
+      std::vector<f_t> primal_residual = dualize_info.primal_problem.rhs;
+      matrix_vector_multiply(
+        dualize_info.primal_problem.A, 1.0, primal_solution.x, -1.0, primal_residual);
+
       f_t primal_residual_norm     = vector_norm_inf<i_t, f_t>(primal_residual);
       const f_t norm_b             = vector_norm_inf<i_t, f_t>(dualize_info.primal_problem.rhs);
       f_t primal_relative_residual = primal_residual_norm / (1.0 + norm_b);
@@ -505,6 +549,13 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
 
   if (settings.crossover && barrier_status == lp_status_t::OPTIMAL) {
+    {
+      std::vector<f_t> rhs = original_lp.rhs;
+      matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, rhs);
+      f_t primal_residual = vector_norm_inf<i_t, f_t>(rhs);
+      settings.log.printf("Primal residual before adding artificial variables: %e\n",
+                          primal_residual);
+    }
     // Check to see if we need to add artifical variables
     std::vector<i_t> artificial_variables;
     artificial_variables.reserve(original_lp.num_rows);
@@ -550,6 +601,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
              lp_solution.x.size(),
              lp_solution.z.size());
 #endif
+
+      std::vector<f_t> rhs = original_lp.rhs;
+      matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, rhs);
+      f_t primal_residual = vector_norm_inf<i_t, f_t>(rhs);
+      settings.log.printf("Primal residual after adding artificial variables: %e\n",
+                          primal_residual);
     }
 
     // Run crossover
@@ -597,7 +654,7 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, tic());
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -636,7 +693,7 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings);
+    branch_and_bound_t branch_and_bound(problem, settings, tic());
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {

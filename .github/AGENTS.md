@@ -1,15 +1,32 @@
-# AGENTS.md - AI Coding Agent Guidelines for cuOpt
+# AGENTS.md - cuOpt AI Agent Entry Point
 
-This file is intentionally **minimal**. Choose a role and follow the matching rules:
+AI agent skills for NVIDIA cuOpt optimization engine.
 
-- **Using cuOpt (model + solve problems)**: `.github/agents/cuopt-user.md`
-- **Developing cuOpt (changing this repo)**: `.github/agents/cuopt-developer.md`
+## Quick Start
 
-### Machine-readable skill manifest
+| Task | Read These Skills |
+|------|-------------------|
+| **Using cuOpt** (routing, LP, etc.) | `skills/cuopt-user-rules/` → then domain skill |
+| **Developing cuOpt** (contributing) | `skills/cuopt-developer/` |
 
-- **Primary**: `.github/.ai/skills/cuopt.yaml`
-- **Root shim (compat)**: `.ai/skills/cuopt.yaml`
+## Skills Directory
 
-### Canonical contribution guide
+See `skills/README.md` for the full index.
 
-- `CONTRIBUTING.md`
+### User Skills (read cuopt-user-rules first)
+- `skills/cuopt-routing/` — VRP, TSP, PDP
+- `skills/cuopt-lp-milp/` — Linear programming, integer variables
+- `skills/cuopt-qp/` — Quadratic programming
+- `skills/cuopt-debugging/` — Troubleshooting
+- `skills/cuopt-installation/` — Setup & requirements
+- `skills/cuopt-server/` — REST API deployment
+
+### Developer Skill (has its own rules)
+- `skills/cuopt-developer/` — Contributing code
+
+## Resources
+
+- [cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/)
+- [cuopt-examples repo](https://github.com/NVIDIA/cuopt-examples)
+- [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
+- [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)

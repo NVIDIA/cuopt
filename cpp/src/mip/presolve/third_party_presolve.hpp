@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
@@ -17,6 +18,8 @@ template <typename i_t, typename f_t>
 struct third_party_presolve_result_t {
   optimization_problem_t<i_t, f_t> reduced_problem;
   std::vector<i_t> implied_integer_indices;
+  std::vector<i_t> reduced_to_original_map;
+  std::vector<i_t> original_to_reduced_map;
   // clique info, etc...
 };
 
@@ -41,6 +44,15 @@ class third_party_presolve_t {
             bool status_to_skip,
             bool dual_postsolve,
             rmm::cuda_stream_view stream_view);
+
+  void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
+                               std::vector<f_t>& full_primal) const;
+  const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
+  const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
+
+ private:
+  std::vector<i_t> reduced_to_original_map_{};
+  std::vector<i_t> original_to_reduced_map_{};
 };
 
 }  // namespace cuopt::linear_programming::detail

@@ -696,6 +696,76 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
                                    cuopt_float_t* parameter_value);
 
 /**
+ * @brief Type of callback for receiving incumbent MIP solutions with user context.
+ *
+ * @param[in] solution - Pointer to incumbent solution values.
+ * The allocated array for solution pointer must be at least the number of variables in the original
+ * problem.
+ * @param[in] objective_value - Pointer to incumbent objective value.
+ * @param[in] solution_bound - Pointer to current solution (dual/user) bound.
+ * @param[in] user_data - Pointer to user data.
+ * @note All pointer arguments (solution, objective_value, solution_bound, user_data) refer to host
+ * memory and are only valid during the callback invocation. Do not pass device/GPU pointers.
+ * Copy any data you need to keep after the callback returns.
+ */
+typedef void (*cuOptMIPGetSolutionCallback)(const cuopt_float_t* solution,
+                                            const cuopt_float_t* objective_value,
+                                            const cuopt_float_t* solution_bound,
+                                            void* user_data);
+
+/**
+ * @brief Type of callback for injecting MIP solutions with user context.
+ *
+ * @param[out] solution - Pointer to solution values to set.
+ * The allocated array for solution pointer must be at least the number of variables in the original
+ * problem.
+ * @param[out] objective_value - Pointer to objective value to set.
+ * @param[in] solution_bound - Pointer to current solution (dual/user) bound.
+ * @param[in] user_data - Pointer to user data.
+ * @note All pointer arguments (solution, objective_value, solution_bound, user_data) refer to host
+ * memory and are only valid during the callback invocation. Do not pass device/GPU pointers.
+ * Copy any data you need to keep after the callback returns.
+ */
+typedef void (*cuOptMIPSetSolutionCallback)(cuopt_float_t* solution,
+                                            cuopt_float_t* objective_value,
+                                            const cuopt_float_t* solution_bound,
+                                            void* user_data);
+
+/**
+ * @brief Register a callback to receive incumbent MIP solutions.
+ *
+ * @param[in] settings - The solver settings object.
+ * @param[in] callback - Callback function to receive incumbent solutions.
+ * @param[in] user_data - User-defined pointer passed through to the callback.
+ *  It will be forwarded to ``cuOptMIPGetSolutionCallback`` when invoked.
+ * @note The callback arguments refer to host memory and are only valid during the callback
+ * invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback
+ * returns.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
+                                           cuOptMIPGetSolutionCallback callback,
+                                           void* user_data);
+
+/**
+ * @brief Register a callback to inject MIP solutions.
+ *
+ * @param[in] settings - The solver settings object.
+ * @param[in] callback - Callback function to inject solutions.
+ * @param[in] user_data - User-defined pointer passed through to the callback.
+ *  It will be forwarded to ``cuOptMIPSetSolutionCallback`` when invoked.
+ * @note Registering a set-solution callback disables presolve.
+ * @note The callback arguments refer to host memory and are only valid during the callback
+ * invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback
+ * returns.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
+                                           cuOptMIPSetSolutionCallback callback,
+                                           void* user_data);
+/**
  * @brief Set the initial primal solution for an LP solve.
  *
  * @note This function is only supported for PDLP.
