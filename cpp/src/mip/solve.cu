@@ -177,11 +177,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
     if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
-      settings.presolver = presolver_t::Papilo;
       if (settings.presolver == presolver_t::PSLP) {
         CUOPT_LOG_INFO(
           "PSLP presolver is not supported for MIP problems, using Papilo presolver instead");
       }
+      settings.presolver = presolver_t::Papilo;
     }
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
