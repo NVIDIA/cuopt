@@ -8,14 +8,14 @@
 - Mixed Integer Gomory, Knapsack, Mixed Integer Round, and Strong Chvatal Gomory cuts are now added at root node
 - Added an option to use batch PDLP when running strong branching at the root. Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
 - New infeasibility detection option for PDLP's default solver mode Stable3
-- Solutions callbacks added to C API
+- Solutions callbacks added to C API, additionally cuopt supports dual_bound and user_data.
 - Multiple new diving techniques added for finding integer feasible solutions
 - PSLP presolve option for LP
 - Add batch solve for routing to boost throughput for many similar instances
 
 ### Breaking Changes (26.02)
 
--
+- Solutions callbacks added to C API, additionally cuopt supports dual_bound and user_data.
 
 ### Improvements (26.02)
 
