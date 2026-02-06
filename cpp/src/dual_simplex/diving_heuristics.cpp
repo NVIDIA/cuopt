@@ -71,9 +71,8 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
                                          const std::vector<f_t>& root_solution,
                                          logger_t& log)
 {
-  std::lock_guard<omp_mutex_t> lock(pc.mutex);
   i_t branch_var                 = -1;
-  f_t max_score                  = std::numeric_limits<f_t>::lowest();
+  f_t max_score                  = -1;
   rounding_direction_t round_dir = rounding_direction_t::NONE;
   constexpr f_t eps              = 1e-6;
 
@@ -127,6 +126,15 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
     }
   }
 
+  // If we cannot choose the variable, then arbitrarily pick the first
+  // fractional variable and round it down. This only happens when
+  // there is only one fractional variable and its the pseudocost is
+  // infinite for both direction.
+  if (round_dir == rounding_direction_t::NONE) {
+    branch_var = fractional[0];
+    round_dir  = rounding_direction_t::DOWN;
+  }
+
   assert(round_dir != rounding_direction_t::NONE);
   assert(branch_var >= 0);
 
@@ -146,9 +154,8 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
                                      const std::vector<f_t>& incumbent,
                                      logger_t& log)
 {
-  std::lock_guard<omp_mutex_t> lock(pc.mutex);
   i_t branch_var                 = -1;
-  f_t max_score                  = std::numeric_limits<f_t>::lowest();
+  f_t max_score                  = -1;
   rounding_direction_t round_dir = rounding_direction_t::NONE;
   constexpr f_t eps              = 1e-6;
 

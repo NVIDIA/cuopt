@@ -181,9 +181,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.print_presolve_stats = false;
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
-    branch_and_bound_settings.integer_tol    = context.settings.tolerances.integrality_tolerance;
-    branch_and_bound_settings.max_cut_passes = context.settings.max_cut_passes;
-    branch_and_bound_settings.mir_cuts       = context.settings.mir_cuts;
+    branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+    branch_and_bound_settings.reliability_branching = solver_settings_.reliability_branching;
+    branch_and_bound_settings.max_cut_passes        = context.settings.max_cut_passes;
+    branch_and_bound_settings.mir_cuts              = context.settings.mir_cuts;
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
@@ -193,20 +194,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.reduced_cost_strengthening;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
+    branch_and_bound_settings.mip_batch_pdlp_strong_branching =
+      context.settings.mip_batch_pdlp_strong_branching;
 
     if (context.settings.num_cpu_threads < 0) {
-      branch_and_bound_settings.num_threads = omp_get_max_threads() - 1;
+      branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
-
-    i_t num_threads                           = branch_and_bound_settings.num_threads;
-    i_t num_bfs_workers                       = std::max(1, num_threads / 4);
-    i_t num_diving_workers                    = std::max(1, num_threads - num_bfs_workers);
-    branch_and_bound_settings.num_bfs_workers = num_bfs_workers;
-    branch_and_bound_settings.diving_settings.num_diving_workers = num_diving_workers;
-    branch_and_bound_settings.mip_batch_pdlp_strong_branching =
-      context.settings.mip_batch_pdlp_strong_branching;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
