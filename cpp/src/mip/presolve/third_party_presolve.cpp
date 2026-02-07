@@ -258,6 +258,14 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
     }
   }
 
+  // handle empty variable bounds
+  if (h_var_lb.empty()) {
+    h_var_lb = std::vector<f_t>(num_cols, -std::numeric_limits<f_t>::infinity());
+  }
+  if (h_var_ub.empty()) {
+    h_var_ub = std::vector<f_t>(num_cols, std::numeric_limits<f_t>::infinity());
+  }
+
   // Call PSLP presolver
   ctx.settings           = default_settings();
   ctx.settings->verbose  = false;
