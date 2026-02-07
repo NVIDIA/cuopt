@@ -53,6 +53,7 @@ def main():
         "solver_config": {
             "tolerances": {"optimality": 0.0001},
             "pdlp_solver_mode": 1,  # Stable2
+            "presolve": 0,
         },
     }
 
