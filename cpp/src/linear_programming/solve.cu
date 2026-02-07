@@ -1212,6 +1212,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
           term_vec{term_info};
         std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
 
+        CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
         return optimization_problem_solution_t<i_t, f_t>(empty_primal,
                                                          empty_dual,
                                                          empty_reduced_costs,
