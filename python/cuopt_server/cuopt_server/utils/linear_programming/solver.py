@@ -352,9 +352,9 @@ def create_solver(LP_data, warmstart_data):
 
         if solver_config.presolve is None:
             if is_mip(LP_data.variable_types):
-                solver_config.presolve = True
+                solver_config.presolve = 1
             else:
-                solver_config.presolve = False
+                solver_config.presolve = 2
 
         if solver_config.presolve is not None:
             solver_settings.set_parameter(
