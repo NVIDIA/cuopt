@@ -502,8 +502,8 @@ class SolverConfig(StrictModel):
     )
     presolve: Optional[int] = Field(
         default=None,
-        description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "
-        "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "
+        description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "  # noqa
+        "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
         "Default is 1 for MIP problems and 2 for LP problems.",
     )
     dual_postsolve: Optional[bool] = Field(
