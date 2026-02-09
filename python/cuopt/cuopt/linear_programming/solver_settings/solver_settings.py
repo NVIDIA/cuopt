@@ -176,8 +176,9 @@ class SolverSettings:
         To set each absolute and relative tolerance, use the provided setters.
         """
         for param in solver_params:
-            if param.endswith("tolerance") and not param.startswith("mip"):
-                self.settings_dict[param] = eps_optimal
+            if param.endswith("tolerance"):
+                if not param.startswith("mip") and "infeasible" not in param:
+                    self.settings_dict[param] = eps_optimal
 
     def set_pdlp_warm_start_data(self, pdlp_warm_start_data):
         """
