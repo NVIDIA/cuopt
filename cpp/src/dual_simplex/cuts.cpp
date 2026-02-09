@@ -37,20 +37,17 @@ bool build_clique_cut(const std::vector<i_t>& clique_vertices,
   cuopt_assert(num_vars > 0, "Clique cut num_vars must be positive");
   cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
                "Clique cut lower bounds size mismatch");
-  cuopt_assert(static_cast<size_t>(num_vars) <= upper_bounds.size(),
-               "Clique cut upper bounds size mismatch");
-  cuopt_assert(static_cast<size_t>(num_vars) <= var_types.size(),
-               "Clique cut var_types size mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
 
   cut.i.clear();
   cut.x.clear();
   i_t num_complements = 0;
+#ifdef ASSERT_MODE
   std::unordered_set<i_t> seen_original;
   std::unordered_set<i_t> seen_complement;
   seen_original.reserve(clique_vertices.size());
   seen_complement.reserve(clique_vertices.size());
-
+#endif
   for (const auto vertex_idx : clique_vertices) {
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
     const i_t var_idx     = vertex_idx % num_vars;
@@ -63,6 +60,8 @@ bool build_clique_cut(const std::vector<i_t>& clique_vertices,
     cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
     cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
 
+    // we store the cut in the form of >= 1, for easy violation check with dot product
+    // that's why compelements have 1 as coeff and normal vars have -1
     if (complement) {
       cuopt_assert(seen_original.count(var_idx) == 0,
                    "Clique contains a variable and its complement");
@@ -137,35 +136,50 @@ f_t sum_weights_bitset(const std::vector<uint64_t>& bs, const std::vector<f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void bron_kerbosch_bitset(bk_bitset_context_t<i_t, f_t>& ctx,
-                          std::vector<i_t>& R,
-                          std::vector<uint64_t>& P,
-                          std::vector<uint64_t>& X,
-                          f_t weight_R)
+void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
+                   std::vector<i_t>& R,       // current clique
+                   std::vector<uint64_t>& P,  // potential candidates
+                   std::vector<uint64_t>& X,  // already in the clique
+                   f_t weight_R)
 {
   ctx.num_calls++;
+  // stop the recursion, for perf reasons
   if (ctx.num_calls > ctx.max_calls) { return; }
 
+  // if P and X are empty, we are at maximal clique
   if (!bitset_any(P) && !bitset_any(X)) {
+    // if the weight is enough, add and exit
     if (weight_R >= ctx.min_weight) { ctx.cliques.push_back(R); }
     return;
   }
 
   const f_t sumP = sum_weights_bitset<i_t, f_t>(P, ctx.weights);
+  // check if all P is added to clique, would we exceed the weight?
   if (weight_R + sumP < ctx.min_weight) { return; }
 
   i_t pivot   = -1;
   i_t max_deg = -1;
+  // pivoting rule according to the highest degree vertex
+  // TODO try other pivoting strategies, we can also implement some online learning like MAB
   for (size_t w = 0; w < ctx.words; ++w) {
+    // union of P and X
     uint64_t word = P[w] | X[w];
     while (word) {
+      // least significant set bit idnex
       const int bit = __builtin_ctzll(word);
-      const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
+      // overall vertex index
+      const i_t v = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
+      // clear the least significant set bit (v)
       word &= (word - 1);
       i_t count = 0;
+      // count the number of neighbors of v in P
       for (size_t k = 0; k < ctx.words; ++k) {
         count += __builtin_popcountll(P[k] & ctx.adj[v][k]);
       }
+      // chose the highest degree v as the pivot
+      // we choose the highest degree as the pivot to reduce the recursion size
+      // later in this function we recurse on the candidate P / N(v)
+      // so it is good to maximize P n N(v)
       if (count > max_deg) {
         max_deg = count;
         pivot   = v;
@@ -175,28 +189,19 @@ void bron_kerbosch_bitset(bk_bitset_context_t<i_t, f_t>& ctx,
 
   std::vector<i_t> candidates;
   candidates.reserve(ctx.weights.size());
-  if (pivot >= 0) {
-    for (size_t w = 0; w < ctx.words; ++w) {
-      uint64_t word = P[w] & ~ctx.adj[pivot][w];
-      while (word) {
-        const int bit = __builtin_ctzll(word);
-        const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
-        word &= (word - 1);
-        candidates.push_back(v);
-      }
-    }
-  } else {
-    for (size_t w = 0; w < ctx.words; ++w) {
-      uint64_t word = P[w];
-      while (word) {
-        const int bit = __builtin_ctzll(word);
-        const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
-        word &= (word - 1);
-        candidates.push_back(v);
-      }
+  cuopt_assert(pivot >= 0, "Pivot must be valid when P or X is non-empty");
+  for (size_t w = 0; w < ctx.words; ++w) {
+    // P / N(pivot)
+    uint64_t word = P[w] & ~ctx.adj[pivot][w];
+    while (word) {
+      const int bit = __builtin_ctzll(word);
+      const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
+      word &= (word - 1);
+      candidates.push_back(v);
     }
   }
 
+  // note that candidates will include pivot if it is in P
   for (auto v : candidates) {
     R.push_back(v);
     std::vector<uint64_t> P_next(ctx.words, 0);
@@ -205,7 +210,7 @@ void bron_kerbosch_bitset(bk_bitset_context_t<i_t, f_t>& ctx,
       P_next[k] = P[k] & ctx.adj[v][k];
       X_next[k] = X[k] & ctx.adj[v][k];
     }
-    bron_kerbosch_bitset(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
+    bron_kerbosch(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
     R.pop_back();
     bitset_clear(P, static_cast<size_t>(v));
     bitset_set(X, static_cast<size_t>(v));
@@ -236,6 +241,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   std::unordered_set<i_t> clique_members(clique_vertices.begin(), clique_vertices.end());
   std::vector<i_t> candidates;
   candidates.reserve(adj_set.size());
+  // the candidate list if only the integer valued vertices
   for (const auto& candidate : adj_set) {
     if (clique_members.count(candidate) != 0) { continue; }
     i_t var_idx = candidate % num_vars;
@@ -243,6 +249,11 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
     if (std::abs(value - std::round(value)) <= integer_tol) { candidates.push_back(candidate); }
   }
 
+  // sort the candidates by reduced cost.
+  // smaller reduce cost disturbs dual simplex less
+  // less refactors and less iterations after resolve.
+  // it also increases the cut's effectiveness by keeping xstart not disturbed much
+  // if it is disturbed too much, the cut might become non-binding
   auto reduced_cost = [&](i_t vertex_idx) -> f_t {
     i_t var_idx = vertex_idx % num_vars;
     if (var_idx < 0 || var_idx >= static_cast<i_t>(reduced_costs.size())) { return 0.0; }
@@ -895,7 +906,6 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
   if (settings.clique_cuts == 0) { return; }
 
   const i_t num_vars = user_problem_.num_cols;
-  if (num_vars <= 0) { return; }
 
   if (clique_table_ == nullptr) {
     ::cuopt::linear_programming::detail::clique_config_t clique_config;
@@ -904,8 +914,8 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
       2 * num_vars, clique_config.min_clique_size, clique_config.max_clique_size_for_extension);
 
     typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
-    tolerances.presolve_absolute_tolerance = settings.integer_tol;
-    tolerances.absolute_tolerance          = settings.integer_tol;
+    tolerances.presolve_absolute_tolerance = settings.primal_tol;
+    tolerances.absolute_tolerance          = settings.primal_tol;
     tolerances.relative_tolerance          = settings.zero_tol;
     tolerances.integrality_tolerance       = settings.integer_tol;
     tolerances.absolute_mip_gap            = settings.absolute_mip_gap_tol;
@@ -923,7 +933,8 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
   const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   const f_t bound_tol     = settings.primal_tol;
   const f_t min_weight    = 1.0 + min_violation;
-  const i_t max_calls     = 100000;
+  // TODO this can be problem dependent
+  const i_t max_calls = 100000;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
@@ -933,6 +944,7 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
   vertices.reserve(num_vars * 2);
   weights.reserve(num_vars * 2);
 
+  // create the sub graph induced by fractional binary variables
   for (i_t j = 0; j < num_vars; ++j) {
     if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t lower_bound = user_problem_.lower[j];
@@ -962,15 +974,11 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
     auto& adj      = adj_local[idx];
     adj.reserve(adj_set.size() + 1);
     for (const auto neighbor : adj_set) {
-      if (neighbor >= 0 && neighbor < 2 * num_vars && in_subgraph[neighbor]) {
-        i_t local_neighbor = vertex_to_local[neighbor];
-        if (local_neighbor >= 0) { adj.push_back(local_neighbor); }
-      }
-    }
-    i_t complement = vertex_idx < num_vars ? vertex_idx + num_vars : vertex_idx - num_vars;
-    if (in_subgraph[complement]) {
-      i_t local_neighbor = vertex_to_local[complement];
-      if (local_neighbor >= 0) { adj.push_back(local_neighbor); }
+      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Neighbor out of range");
+      if (!in_subgraph[neighbor]) { continue; }
+      i_t local_neighbor = vertex_to_local[neighbor];
+      cuopt_assert(local_neighbor >= 0, "Local neighbor out of range");
+      adj.push_back(local_neighbor);
     }
     std::sort(adj.begin(), adj.end());
     adj.erase(std::unique(adj.begin(), adj.end()), adj.end());
@@ -993,7 +1001,7 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     bitset_set(P, idx);
   }
-  bron_kerbosch_bitset<i_t, f_t>(ctx, R, P, X, 0.0);
+  bron_kerbosch<i_t, f_t>(ctx, R, P, X, 0.0);
 
   sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
   f_t cut_rhs = 0.0;
