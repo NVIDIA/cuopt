@@ -1457,3 +1457,165 @@ DONE:
   cuOptDestroySolution(&solution);
   return status;
 }
+
+cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method, cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr, cuopt_float_t* dual_variables, cuopt_float_t* reduced_costs, cuopt_float_t *dual_obj_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  /* Solve the following problem
+   maximize 4*x1 + x2 + 5*x3 + 3*x4
+   subject to x1 - x2 - x3 + 3*x4 <= 1
+              5*x1 + x2 + 3*x3 + 8*x4 <= 55
+             -x1 + 2*x2 + 3*x3 -5 x4 <= 3
+             x1, x2, x3, x4 >= 0
+  */
+
+  cuopt_int_t num_variables = 4;
+  cuopt_int_t num_constraints = 3;
+  cuopt_int_t nnz = 12;
+  cuopt_int_t row_offsets[] = {0, 4, 8, 12};
+  cuopt_int_t column_indices[] = {0, 1, 2, 3,
+                                  0, 1, 2, 3,
+                                  0, 1, 2, 3};
+  cuopt_float_t values[] = {1.0, -1.0, -1.0,  3.0,
+                            5.0,  1.0,  3.0,  8.0,
+                           -1.0,  2.0,  3.0, -5.0};
+  cuopt_float_t rhs[] = {1.0, 55.0, 3.0};
+  char constraint_sense[] = {CUOPT_LESS_THAN, CUOPT_LESS_THAN, CUOPT_LESS_THAN};
+  cuopt_float_t var_lower_bounds[] = {0.0, 0.0, 0.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+  cuopt_float_t objective_coefficients[] = {4.0, 1.0, 5.0, 3.0};
+
+  cuopt_float_t time;
+  cuopt_int_t i, j;
+
+  cuopt_int_t status = cuOptCreateProblem(num_constraints,
+                                          num_variables,
+                                          CUOPT_MAXIMIZE,
+                                          0.0,
+                                          objective_coefficients,
+                                          row_offsets,
+                                          column_indices,
+                                          values,
+                                          constraint_sense,
+                                          rhs,
+                                          var_lower_bounds,
+                                          var_upper_bounds,
+                                          variable_types,
+                                          &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem\n");
+    goto DONE;
+  }
+
+  status = check_problem(problem,
+                         num_constraints,
+                         num_variables,
+                         nnz,
+                         CUOPT_MAXIMIZE,
+                         0.0,
+                         objective_coefficients,
+                         row_offsets,
+                         column_indices,
+                         values,
+                         constraint_sense,
+                         rhs,
+                         var_lower_bounds,
+                         var_upper_bounds,
+                         variable_types);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error checking problem\n");
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  };
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, method);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting parameter\n");
+    goto DONE;
+  }
+#if 0
+  status = cuOptSetIntegerParameter(settings, CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting parameter\n");
+    goto DONE;
+  }
+#endif
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem\n");
+    goto DONE;
+  }
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time\n");
+    goto DONE;
+  }
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status\n");
+    goto DONE;
+  }
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value\n");
+    goto DONE;
+  }
+  printf("Solve finished with termination status %s (%d) in %f seconds\n",
+         termination_status_to_string(*termination_status_ptr),
+         *termination_status_ptr,
+         time);
+  printf("Objective value: %f\n", *objective_ptr);
+
+
+  /* Get and print solution variables */
+  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nSolution: \n");
+  for (j = 0; j < num_variables; j++) {
+    printf("x%d = %f\n", j + 1, solution_values[j]);
+  }
+  free(solution_values);
+
+  status = cuOptGetDualSolution(solution, dual_variables);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting dual solution\n");
+    goto DONE;
+  }
+  for (i = 0; i < num_constraints; i++) {
+    printf("y%d = %f\n", i + 1, dual_variables[i]);
+  }
+  status = cuOptGetReducedCosts(solution, reduced_costs);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting reduced costs\n");
+    goto DONE;
+  }
+  for (j = 0; j < num_variables; j++) {
+    printf("z%d = %f\n", j + 1, reduced_costs[j]);
+  }
+
+  *dual_obj_ptr = 0.0;
+  for (i = 0; i < num_constraints; i++) {
+    *dual_obj_ptr += dual_variables[i] * rhs[i];
+  }
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}

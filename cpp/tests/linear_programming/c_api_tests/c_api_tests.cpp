@@ -146,6 +146,21 @@ TEST(c_api, test_write_problem)
   std::filesystem::remove(temp_file);
 }
 
+TEST(c_api, test_maximize_problem_dual_variables)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective, dual_objective;
+  cuopt_float_t dual_variables[3];
+  cuopt_float_t reduced_costs[4];
+  for (cuopt_int_t method = CUOPT_METHOD_CONCURRENT; method <= CUOPT_METHOD_BARRIER; method++) {
+    EXPECT_EQ(test_maximize_problem_dual_variables(
+                method, &termination_status, &objective, dual_variables, reduced_costs, &dual_objective),
+              CUOPT_SUCCESS);
+    EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_NEAR(objective, dual_objective, method == CUOPT_METHOD_CONCURRENT || method == CUOPT_METHOD_PDLP ? 1e-2 : 1e-5);
+  }
+}
+
 static bool test_mps_roundtrip(const std::string& mps_file_path)
 {
   using cuopt::linear_programming::problem_and_stream_view_t;
