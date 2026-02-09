@@ -159,9 +159,9 @@ def create_solver(LP_data, warmstart_data):
         for param in solver_params:
             param_value = None
             if param.endswith("tolerance"):
-                param_value = getattr(solver_config.tolerances, param)
+                param_value = getattr(solver_config.tolerances, param, None)
             else:
-                param_value = getattr(solver_config, param)
+                param_value = getattr(solver_config, param, None)
             if param_value is not None and param_value != "":
                 solver_settings.set_parameter(param, param_value)
 
