@@ -33,9 +33,6 @@ The response is as follows:
 Simple Quadratic Programming Example
 ------------------------------------
 
-.. note::
-   The QP solver is currently in beta.
-
 :download:`simple_qp_example.py <examples/simple_qp_example.py>`
 
 .. literalinclude:: examples/simple_qp_example.py

@@ -375,6 +375,11 @@ Linear Programming FAQs
     We use PaPILO presolve at the root node. It is enabled by default for MIP and disabled by default for LP.
     For LP, dual postsolve is not supported, for this reason dual solution and reduced costs are filled with Nans.
 
+.. dropdown:: How do I use warm start with PDLP?
+
+    To use warm start functionality with PDLP, you must explicitly disable presolve by setting CUOPT_PRESOLVE=0 in solver_config.
+    This is required because presolve transforms the problem, and the warm start solution from the original problem
+    cannot be applied to the presolved problem.
 
 Mixed Integer Linear Programming FAQs
 --------------------------------------
