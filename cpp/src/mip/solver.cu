@@ -106,9 +106,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
-  dm.timer                = timer_;
-  const bool run_presolve = context.settings.presolve;
-  bool presolve_success   = run_presolve ? dm.run_presolve(timer_.remaining_time()) : true;
+  dm.timer                         = timer_;
+  const bool run_presolve          = context.settings.presolve;
+  const double presolve_time_limit = std::min(0.1 * timer_.remaining_time(), 60.0);
+  bool presolve_success            = run_presolve ? dm.run_presolve(presolve_time_limit) : true;
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);

@@ -209,7 +209,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     problem_ptr->get_host_user_problem(host_problem);
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
     auto clique_table_ptr = context.settings.clique_cuts != 0 ? &clique_table : nullptr;
-    find_initial_cliques(host_problem, context.settings.tolerances, clique_table_ptr);
+    find_initial_cliques(
+      host_problem, context.settings.tolerances, clique_table_ptr, presolve_timer);
     problem_ptr->set_constraints_from_host_user_problem(host_problem);
     trivial_presolve(*problem_ptr, remap_cache_ids);
     if (clique_table_ptr != nullptr) { problem_ptr->clique_table = std::move(clique_table); }
