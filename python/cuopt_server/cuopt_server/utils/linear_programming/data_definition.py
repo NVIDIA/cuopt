@@ -319,7 +319,7 @@ class InitialSolution(StrictModel):
     )
 
 
-class Tolerances(StrictModel):
+class Tolerances(BaseModel):
     optimality: float = Field(
         default=None,
         description="absolute and relative tolerance on the primal feasibility, dual feasibility, and gap",  # noqa
