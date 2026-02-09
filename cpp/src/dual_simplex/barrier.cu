@@ -1153,14 +1153,14 @@ class iteration_data_t {
     }
 #ifdef HISTOGRAM
     settings.log.printf("Row Nz  # rows\n");
-    for (i_t k = 0; k < m; k++) {
+    for (i_t k = 0; k < n; k++) {
       if (histogram_row[k] > 0) { settings.log.printf("%6d %6d\n", k, histogram_row[k]); }
     }
 #endif
 
     n_dense_rows = 0;
     for (i_t k = 0; k < m; k++) {
-      if (histogram_row[k] > .1 * n) { n_dense_rows++; }
+      if (row_nz[k] > .1 * n) { n_dense_rows++; }
     }
 
     for (i_t k = 0; k < m; k++) {

@@ -258,13 +258,15 @@ void fj_t<i_t, f_t>::copy_weights(const weight_t<i_t, f_t>& weights,
                     fj_left_weights  = make_span(cstr_left_weights),
                     fj_right_weights = make_span(cstr_right_weights),
                     new_weights      = make_span(weights.cstr_weights)] __device__(i_t idx) {
-                     fj_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
+                     f_t new_weight = idx >= old_size ? 1. : new_weights[idx];
+                     cuopt_assert(isfinite(new_weight), "invalid weight");
+                     cuopt_assert(new_weight >= 0.0, "invalid weight");
+                     new_weight = std::max(new_weight, 0.0);
+
+                     fj_weights[idx] = idx >= old_size ? 1. : new_weight;
                      // TODO: ask Alice how we can manage the previous left,right weights
-                     fj_left_weights[idx]  = idx >= old_size ? 1. : new_weights[idx];
-                     fj_right_weights[idx] = idx >= old_size ? 1. : new_weights[idx];
-                     cuopt_assert(isfinite(fj_weights[idx]), "invalid weight");
-                     cuopt_assert(isfinite(fj_left_weights[idx]), "invalid left weight");
-                     cuopt_assert(isfinite(fj_right_weights[idx]), "invalid right weight");
+                     fj_left_weights[idx]  = idx >= old_size ? 1. : new_weight;
+                     fj_right_weights[idx] = idx >= old_size ? 1. : new_weight;
                    });
   thrust::transform(handle_ptr->get_thrust_policy(),
                     weights.objective_weight.data(),

@@ -114,25 +114,28 @@ class node_queue_t {
 
   std::optional<mip_node_t<i_t, f_t>*> pop_best_first()
   {
+    std::lock_guard<omp_mutex_t> lock(mutex);
     auto entry = best_first_heap.pop();
+
     if (entry.has_value()) { return std::exchange(entry.value()->node, nullptr); }
+
     return std::nullopt;
   }
 
   std::optional<mip_node_t<i_t, f_t>*> pop_diving()
   {
+    std::lock_guard<omp_mutex_t> lock(mutex);
+
     while (!diving_heap.empty()) {
       auto entry = diving_heap.pop();
+
       if (entry.has_value()) {
         if (auto node_ptr = entry.value()->node; node_ptr != nullptr) { return node_ptr; }
       }
     }
+
     return std::nullopt;
   }
-
-  void lock() { mutex.lock(); }
-
-  void unlock() { mutex.unlock(); }
 
   i_t diving_queue_size()
   {

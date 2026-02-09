@@ -2775,6 +2775,7 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
+template class knapsack_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
 template class mixed_integer_rounding_cut_t<int, double>;
 

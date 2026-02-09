@@ -227,18 +227,26 @@ class mip_node_t {
   }
 
   // This method creates a copy of the current node
-  // with its parent set to `nullptr` and `depth = 0`.
+  // with its parent set to `nullptr`
   // This detaches the node from the tree.
   mip_node_t<i_t, f_t> detach_copy() const
   {
-    mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
+    mip_node_t<i_t, f_t> copy;
+    copy.lower_bound        = lower_bound;
+    copy.objective_estimate = objective_estimate;
+    copy.depth              = depth;
+    copy.node_id            = node_id;
+    copy.integer_infeasible = integer_infeasible;
+    copy.vstatus            = vstatus;
     copy.branch_var         = branch_var;
     copy.branch_dir         = branch_dir;
     copy.branch_var_lower   = branch_var_lower;
     copy.branch_var_upper   = branch_var_upper;
     copy.fractional_val     = fractional_val;
-    copy.objective_estimate = objective_estimate;
-    copy.node_id            = node_id;
+    copy.parent             = nullptr;
+    copy.children[0]        = nullptr;
+    copy.children[1]        = nullptr;
+    copy.status             = node_status_t::PENDING;
     return copy;
   }
 

@@ -172,9 +172,17 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
-                                   mip_solver_settings_t<i_t, f_t> const& settings)
+                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
   try {
+    mip_solver_settings_t<i_t, f_t> settings(settings_const);
+    if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
+      if (settings.presolver == presolver_t::PSLP) {
+        CUOPT_LOG_INFO(
+          "PSLP presolver is not supported for MIP problems, using Papilo presolver instead");
+      }
+      settings.presolver = presolver_t::Papilo;
+    }
     constexpr f_t max_time_limit = 1000000000;
     f_t time_limit =
       (settings.time_limit == 0 || settings.time_limit == std::numeric_limits<f_t>::infinity() ||
@@ -217,7 +225,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result;
     detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
 
-    auto run_presolve              = settings.presolve;
+    auto run_presolve              = settings.presolver != presolver_t::None;
     run_presolve                   = run_presolve && settings.initial_solutions.size() == 0;
     bool has_set_solution_callback = false;
     for (auto callback : settings.get_mip_callbacks()) {
@@ -243,6 +251,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::MIP,
+                                     settings.presolver,
                                      dual_postsolve,
                                      settings.tolerances.absolute_tolerance,
                                      settings.tolerances.relative_tolerance,
@@ -311,8 +320,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         // add third party presolve time to cuopt presolve time
         full_stats.presolve_time += presolve_time;
 
-        // FIXME:: reduced_solution.get_stats() is not correct, we need to compute the stats for the
-        // full problem
+        // FIXME:: reduced_solution.get_stats() is not correct, we need to compute the stats for
+        // the full problem
         full_sol.post_process_completed = true;  // hack
         sol                             = full_sol.get_solution(true, full_stats);
       }

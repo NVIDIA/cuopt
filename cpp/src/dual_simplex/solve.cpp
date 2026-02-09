@@ -298,9 +298,9 @@ lp_status_t solve_linear_program_with_advanced_basis(
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution)
 {
-  f_t start_time     = tic();
   lp_status_t status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
 
@@ -621,11 +621,20 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 }
 
 template <typename i_t, typename f_t>
-lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
-                                 const simplex_solver_settings_t<i_t, f_t>& settings,
-                                 lp_solution_t<i_t, f_t>& solution)
+lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              lp_solution_t<i_t, f_t>& solution)
 {
   f_t start_time = tic();
+  return solve_linear_program_with_barrier(user_problem, settings, start_time, solution);
+}
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
+                                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                                 f_t start_time,
+                                 lp_solution_t<i_t, f_t>& solution)
+{
   lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
   std::vector<i_t> new_slacks;
   dualize_info_t<i_t, f_t> dualize_info;
@@ -645,6 +654,15 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   solution.l2_primal_residual = lp_solution.l2_primal_residual;
   solution.l2_dual_residual   = lp_solution.l2_dual_residual;
   return status;
+}
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
+                                 const simplex_solver_settings_t<i_t, f_t>& settings,
+                                 lp_solution_t<i_t, f_t>& solution)
+{
+  f_t start_time = tic();
+  return solve_linear_program(user_problem, settings, start_time, solution);
 }
 
 template <typename i_t, typename f_t>
@@ -744,8 +762,19 @@ template lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<int, double>& settings,
   lp_solution_t<int, double>& solution);
 
+template lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<int, double>& user_problem,
+  const simplex_solver_settings_t<int, double>& settings,
+  double start_time,
+  lp_solution_t<int, double>& solution);
+
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
                                           const simplex_solver_settings_t<int, double>& settings,
+                                          lp_solution_t<int, double>& solution);
+
+template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
+                                          const simplex_solver_settings_t<int, double>& settings,
+                                          double start_time,
                                           lp_solution_t<int, double>& solution);
 
 template int solve<int, double>(const user_problem_t<int, double>& user_problem,

@@ -63,12 +63,13 @@ parallel parts of the solvers.
 
 Presolve
 ^^^^^^^^
-``CUOPT_PRESOLVE`` controls whether presolve is enabled. Presolve can reduce problem size and improve solve time. Enabled by default for MIP, disabled by default for LP.
+``CUOPT_PRESOLVE`` controls which presolver to use for presolve reductions.
+cuOpt provides presolve reductions for linear programming (LP) problems using either PSLP or Papilo, and for mixed-integer programming (MIP) problems using Papilo. By default, Papilo presolve is always enabled for MIP problems. For LP problems, PSLP presolve is always enabled by default. You can explicitly control the presolver by setting this parameter to 0 (disable presolve), 1 (Papilo), or 2 (PSLP).
 
 Dual Postsolve
 ^^^^^^^^^^^^^^
-``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled. Disabling dual postsolve can improve solve time at the expense of not having
-access to the dual solution. Enabled by default for LP when presolve is enabled. This is not relevant for MIP problems.
+``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled when using Papilo presolver for LP problems. Disabling dual postsolve can improve solve time at the expense of not having
+access to the dual solution. Enabled by default for LP when Papilo presolve is selected. This is not relevant for MIP problems.
 
 Linear Programming
 ------------------

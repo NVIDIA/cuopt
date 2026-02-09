@@ -104,19 +104,12 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.print_presolve_stats = false;
       branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
       branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
-      branch_and_bound_settings.integer_tol     = context.settings.tolerances.integrality_tolerance;
-      branch_and_bound_settings.num_threads     = 2;
-      branch_and_bound_settings.num_bfs_workers = 1;
-      branch_and_bound_settings.max_cut_passes  = 0;
-      branch_and_bound_settings.sub_mip         = 1;
-
-      // In the future, let SubMIP use all the diving heuristics. For now,
-      // restricting to guided diving.
-      branch_and_bound_settings.diving_settings.num_diving_workers = 1;
-      branch_and_bound_settings.diving_settings.line_search_diving = 0;
-      branch_and_bound_settings.diving_settings.coefficient_diving = 0;
-      branch_and_bound_settings.diving_settings.pseudocost_diving  = 0;
-      branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
+      branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
+      branch_and_bound_settings.num_threads = 1;
+      branch_and_bound_settings.reliability_branching = 0;
+      branch_and_bound_settings.max_cut_passes        = 0;
+      branch_and_bound_settings.sub_mip               = 1;
+      branch_and_bound_settings.solution_callback     = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
         this->solution_callback(solution, objective);
       };

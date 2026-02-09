@@ -119,7 +119,7 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
 
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 30.;
-  settings.presolve   = true;
+  settings.presolver  = presolver_t::Papilo;
   int user_data       = 42;
   std::vector<std::pair<std::vector<double>, double>> solutions;
   test_get_solution_callback_t get_solution_callback(

@@ -48,6 +48,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
                  const std::vector<i_t>& slacks_needed,
                  std::vector<i_t>& basis_list,
                  std::vector<i_t>& nonbasic_list,
+                 std::vector<i_t>& superbasic_list,
                  std::vector<variable_status_t>& vstatus);
 
 // Form the basis matrix B = A(:, basic_list)

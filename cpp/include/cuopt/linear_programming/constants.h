@@ -57,6 +57,7 @@
 #define CUOPT_MIP_HEURISTICS_ONLY             "mip_heuristics_only"
 #define CUOPT_MIP_SCALING                     "mip_scaling"
 #define CUOPT_MIP_PRESOLVE                    "mip_presolve"
+#define CUOPT_MIP_RELIABILITY_BRANCHING       "mip_reliability_branching"
 #define CUOPT_MIP_CUT_PASSES                  "mip_cut_passes"
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS "mip_mixed_integer_rounding_cuts"
 #define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS   "mip_mixed_integer_gomory_cuts"
@@ -127,5 +128,10 @@
 #define CUOPT_VALIDATION_ERROR 4
 #define CUOPT_OUT_OF_MEMORY    5
 #define CUOPT_RUNTIME_ERROR    6
+
+#define CUOPT_PRESOLVE_DEFAULT -1
+#define CUOPT_PRESOLVE_OFF     0
+#define CUOPT_PRESOLVE_PAPILO  1
+#define CUOPT_PRESOLVE_PSLP    2
 
 #endif  // CUOPT_CONSTANTS_H
