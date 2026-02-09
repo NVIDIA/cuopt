@@ -80,7 +80,8 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
             i_t size
         ) except +
         void set_mip_callback(
-            base_solution_callback_t* callback
+            base_solution_callback_t* callback,
+            void* user_data
         ) except +
 
 
