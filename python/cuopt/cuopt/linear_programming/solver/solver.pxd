@@ -62,6 +62,8 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
 
         string get_parameter_as_string(const string& name) except +
 
+        vector[string] get_parameter_names() except +
+
         # LP settings
         void set_initial_pdlp_primal_solution(
             const f_t* initial_primal_solution,
@@ -78,8 +80,7 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
             i_t size
         ) except +
         void set_mip_callback(
-            base_solution_callback_t* callback,
-            void* user_data
+            base_solution_callback_t* callback
         ) except +
 
 
