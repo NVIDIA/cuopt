@@ -374,7 +374,7 @@ class Tolerances(StrictModel):
     )
 
 
-class SolverConfig(StrictModel):
+class SolverConfig(BaseModel):
     tolerances: Optional[Tolerances] = Field(
         default=Tolerances(),
         description="Note: Not supported for MILP."
