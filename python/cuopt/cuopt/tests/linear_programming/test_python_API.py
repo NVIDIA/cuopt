@@ -979,12 +979,21 @@ def test_cuts():
 
     # Set Solver Settings
     settings = SolverSettings()
-    settings.set_parameter(CUOPT_PRESOLVE, False)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
     settings.set_parameter(CUOPT_TIME_LIMIT, 1)
+    settings.set_parameter(CUOPT_MIP_CUT_PASSES, 0)
+
+    # Solve
+    problem.solve(settings)
+    assert problem.Status.name == "Optimal"
+    assert problem.SolutionStats.num_nodes > 0
+
+    # Update Solver Settings
     settings.set_parameter(CUOPT_MIP_CUT_PASSES, 10)
 
     # Solve
-    problem.solve()
+    problem.solve(settings)
 
     assert problem.Status.name == "Optimal"
     assert problem.ObjValue == pytest.approx(-126, abs=1e-3)
+    assert problem.SolutionStats.num_nodes == 0
