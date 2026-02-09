@@ -980,8 +980,15 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
       cuopt_assert(local_neighbor >= 0, "Local neighbor out of range");
       adj.push_back(local_neighbor);
     }
-    std::sort(adj.begin(), adj.end());
-    adj.erase(std::unique(adj.begin(), adj.end()), adj.end());
+#ifdef ASSERT_MODE
+    {
+      std::unordered_set<i_t> adj_check;
+      adj_check.reserve(adj.size());
+      for (const auto neighbor : adj) {
+        cuopt_assert(adj_check.insert(neighbor).second, "Duplicate neighbor in adjacency list");
+      }
+    }
+#endif
   }
 
   const size_t words = bitset_words(vertices.size());
