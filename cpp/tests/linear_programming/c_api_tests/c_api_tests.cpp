@@ -153,11 +153,14 @@ TEST(c_api, test_maximize_problem_dual_variables)
   cuopt_float_t dual_variables[3];
   cuopt_float_t reduced_costs[4];
   for (cuopt_int_t method = CUOPT_METHOD_CONCURRENT; method <= CUOPT_METHOD_BARRIER; method++) {
-    EXPECT_EQ(test_maximize_problem_dual_variables(
-                method, &termination_status, &objective, dual_variables, reduced_costs, &dual_objective),
-              CUOPT_SUCCESS);
+    EXPECT_EQ(
+      test_maximize_problem_dual_variables(
+        method, &termination_status, &objective, dual_variables, reduced_costs, &dual_objective),
+      CUOPT_SUCCESS);
     EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
-    EXPECT_NEAR(objective, dual_objective, method == CUOPT_METHOD_CONCURRENT || method == CUOPT_METHOD_PDLP ? 1e-2 : 1e-5);
+    EXPECT_NEAR(objective,
+                dual_objective,
+                method == CUOPT_METHOD_CONCURRENT || method == CUOPT_METHOD_PDLP ? 1e-2 : 1e-5);
   }
 }
 

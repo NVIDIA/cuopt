@@ -578,11 +578,11 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
   timer_t timer_pdlp(timer.remaining_time());
-  auto sol             = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
   // Negate dual variables and reduced costs for maximization problems
   if (problem.maximize) {
-      adjust_dual_solution_and_reduced_cost(
-        sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
+    adjust_dual_solution_and_reduced_cost(
+      sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
   }
   auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
