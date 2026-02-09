@@ -1468,7 +1468,7 @@ cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method, cuopt_int_t
    maximize 4*x1 + x2 + 5*x3 + 3*x4
    subject to x1 - x2 - x3 + 3*x4 <= 1
               5*x1 + x2 + 3*x3 + 8*x4 <= 55
-             -x1 + 2*x2 + 3*x3 -5 x4 <= 3
+             -x1 + 2*x2 + 3*x3 -5*x4 <= 3
              x1, x2, x3, x4 >= 0
   */
 
@@ -1542,13 +1542,6 @@ cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method, cuopt_int_t
     printf("Error setting parameter\n");
     goto DONE;
   }
-#if 0
-  status = cuOptSetIntegerParameter(settings, CUOPT_PRESOLVE, CUOPT_PRESOLVE_OFF);
-  if (status != CUOPT_SUCCESS) {
-    printf("Error setting parameter\n");
-    goto DONE;
-  }
-#endif
   status = cuOptSolve(problem, settings, &solution);
   if (status != CUOPT_SUCCESS) {
     printf("Error solving problem\n");

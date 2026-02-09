@@ -366,8 +366,8 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   if (problem.maximize) {
     adjust_dual_solution_and_reduced_cost(
       final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
   }
-  problem.handle_ptr->sync_stream();
 
   // Should be filled with more information from dual simplex
   std::vector<
@@ -583,6 +583,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
   if (problem.maximize) {
     adjust_dual_solution_and_reduced_cost(
       sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
   }
   auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
@@ -642,8 +643,9 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     if (problem.maximize) {
       adjust_dual_solution_and_reduced_cost(
         final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+        problem.handle_ptr->sync_stream();
     }
-    problem.handle_ptr->sync_stream();
+
 
     // Should be filled with more information from dual simplex
     std::vector<
