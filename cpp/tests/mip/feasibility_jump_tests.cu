@@ -11,7 +11,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include <linear_programming/utilities/problem_checking.cuh>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <mip/feasibility_jump/feasibility_jump.cuh>
 #include <mip/solution/solution.cuh>
 #include <mip/solver_context.cuh>

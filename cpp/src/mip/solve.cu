@@ -14,12 +14,12 @@
 #include <mip/utilities/sort_csr.cuh>
 #include <mip/utils.cuh>
 
-#include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
-#include <linear_programming/pdlp.cuh>
-#include <linear_programming/restart_strategy/pdlp_restart_strategy.cuh>
-#include <linear_programming/step_size_strategy/adaptive_step_size_strategy.hpp>
-#include <linear_programming/utilities/problem_checking.cuh>
-#include <linear_programming/utils.cuh>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
+#include <pdlp/pdlp.cuh>
+#include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
+#include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
+#include <pdlp/utilities/problem_checking.cuh>
+#include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>

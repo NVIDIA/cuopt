@@ -11,8 +11,8 @@
 #include "local_search/rounding/simple_rounding.cuh"
 #include "solver.cuh"
 
-#include <linear_programming/pdlp.cuh>
-#include <linear_programming/solve.cuh>
+#include <pdlp/pdlp.cuh>
+#include <pdlp/solve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>

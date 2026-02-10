@@ -7,7 +7,7 @@
 
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 
-#include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
 #include <utilities/work_limit_context.hpp>

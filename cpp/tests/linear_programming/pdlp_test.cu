@@ -5,10 +5,10 @@
  */
 /* clang-format on */
 
-#include <linear_programming/pdlp.cuh>
-#include <linear_programming/pdlp_constants.hpp>
-#include <linear_programming/solve.cuh>
-#include <linear_programming/utils.cuh>
+#include <pdlp/pdlp.cuh>
+#include <pdlp/pdlp_constants.hpp>
+#include <pdlp/solve.cuh>
+#include <pdlp/utils.cuh>
 #include <mps_parser.hpp>
 #include "utilities/pdlp_test_utilities.cuh"
 

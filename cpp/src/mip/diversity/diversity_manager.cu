@@ -13,7 +13,7 @@
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/problem/problem_helpers.cuh>
 
-#include <linear_programming/solve.cuh>
+#include <pdlp/solve.cuh>
 
 #include <utilities/scope_guard.hpp>
 

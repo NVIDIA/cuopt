@@ -12,7 +12,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
-#include <linear_programming/utils.cuh>
+#include <pdlp/utils.cuh>
 
 #include <raft/core/logger.hpp>
 

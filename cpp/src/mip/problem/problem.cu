@@ -14,7 +14,7 @@
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/macros.cuh>
 
-#include <linear_programming/utils.cuh>
+#include <pdlp/utils.cuh>
 #include <mip/mip_constants.hpp>
 
 #include <mip/presolve/third_party_presolve.hpp>

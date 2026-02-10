@@ -7,7 +7,7 @@
 
 #include <utilities/common_utils.hpp>
 
-#include <linear_programming/utilities/problem_checking.cuh>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <mip/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/error.hpp>

@@ -15,7 +15,7 @@
 #include <mip/utils.cuh>
 
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <linear_programming/pdlp.cuh>
+#include <pdlp/pdlp.cuh>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>

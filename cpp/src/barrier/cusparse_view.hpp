@@ -8,7 +8,7 @@
 
 #include <dual_simplex/sparse_matrix.hpp>
 
-#include <linear_programming/cusparse_view.hpp>
+#include <pdlp/cusparse_view.hpp>
 
 #include <cusparse_v2.h>
 

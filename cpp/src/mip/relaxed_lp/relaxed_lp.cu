@@ -9,11 +9,11 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <linear_programming/solve.cuh>
+#include <pdlp/solve.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 
-#include <linear_programming/pdlp.cuh>
+#include <pdlp/pdlp.cuh>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>

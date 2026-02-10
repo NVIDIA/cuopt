@@ -9,7 +9,7 @@
 #include "population.cuh"
 
 #include <thrust/for_each.h>
-#include <linear_programming/utils.cuh>
+#include <pdlp/utils.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/utils.cuh>
 #include <utilities/copy_helpers.hpp>

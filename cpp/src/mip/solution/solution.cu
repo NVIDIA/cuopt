@@ -9,7 +9,7 @@
 #include "solution.cuh"
 #include "solution_kernels.cuh"
 
-#include <linear_programming/utils.cuh>
+#include <pdlp/utils.cuh>
 #include <mip/diversity/recombiners/recombiner.cuh>
 #include <mip/local_search/rounding/simple_rounding.cuh>
 #include <mip/mip_constants.hpp>

@@ -11,7 +11,7 @@
 #include <thrust/logical.h>
 #include <thrust/transform_reduce.h>
 #include <cuopt/error.hpp>
-#include <linear_programming/utils.cuh>
+#include <pdlp/utils.cuh>
 #include <raft/random/rng_device.cuh>
 #include <random>
 #include <utilities/copy_helpers.hpp>
