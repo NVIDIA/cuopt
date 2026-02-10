@@ -12,46 +12,7 @@ from cuopt.linear_programming.internals import (
     GetSolutionCallback,
     SetSolutionCallback,
 )
-from cuopt.linear_programming.solver.solver_parameters import (
-    CUOPT_ABSOLUTE_DUAL_TOLERANCE,
-    CUOPT_ABSOLUTE_GAP_TOLERANCE,
-    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
-    CUOPT_AUGMENTED,
-    CUOPT_BARRIER_DUAL_INITIAL_POINT,
-    CUOPT_CROSSOVER,
-    CUOPT_CUDSS_DETERMINISTIC,
-    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
-    CUOPT_DUAL_POSTSOLVE,
-    CUOPT_DUALIZE,
-    CUOPT_ELIMINATE_DENSE_COLUMNS,
-    CUOPT_FIRST_PRIMAL_FEASIBLE,
-    CUOPT_FOLDING,
-    CUOPT_INFEASIBILITY_DETECTION,
-    CUOPT_ITERATION_LIMIT,
-    CUOPT_LOG_FILE,
-    CUOPT_LOG_TO_CONSOLE,
-    CUOPT_METHOD,
-    CUOPT_MIP_ABSOLUTE_GAP,
-    CUOPT_MIP_ABSOLUTE_TOLERANCE,
-    CUOPT_MIP_HEURISTICS_ONLY,
-    CUOPT_MIP_INTEGRALITY_TOLERANCE,
-    CUOPT_MIP_RELATIVE_GAP,
-    CUOPT_MIP_RELATIVE_TOLERANCE,
-    CUOPT_MIP_SCALING,
-    CUOPT_NUM_CPU_THREADS,
-    CUOPT_NUM_GPUS,
-    CUOPT_ORDERING,
-    CUOPT_PDLP_SOLVER_MODE,
-    CUOPT_PER_CONSTRAINT_RESIDUAL,
-    CUOPT_PRESOLVE,
-    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
-    CUOPT_RELATIVE_DUAL_TOLERANCE,
-    CUOPT_RELATIVE_GAP_TOLERANCE,
-    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
-    CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
-    CUOPT_STRICT_INFEASIBILITY,
-    CUOPT_TIME_LIMIT,
-)
+from cuopt.linear_programming.solver.solver_parameters import solver_params
 from cuopt.linear_programming.solver.solver_wrapper import (
     ErrorStatus,
     LPTerminationStatus,
@@ -195,29 +156,18 @@ def create_solver(LP_data, warmstart_data):
 
     if LP_data.solver_config is not None:
         solver_config = LP_data.solver_config
-        if solver_config.infeasibility_detection is not None:
-            solver_settings.set_parameter(
-                CUOPT_INFEASIBILITY_DETECTION,
-                solver_config.infeasibility_detection,
-            )
-        if solver_config.pdlp_solver_mode is not None:
-            solver_settings.set_parameter(
-                CUOPT_PDLP_SOLVER_MODE,
-                linear_programming.solver_settings.PDLPSolverMode(
-                    solver_config.pdlp_solver_mode
-                ),
-            )
-        if solver_config.method is not None:
-            solver_settings.set_parameter(
-                CUOPT_METHOD,
-                linear_programming.solver_settings.SolverMethod(
-                    solver_config.method
-                ),
-            )
-        if solver_config.crossover is not None:
-            solver_settings.set_parameter(
-                CUOPT_CROSSOVER, solver_config.crossover
-            )
+        for param in solver_params:
+            param_value = None
+            if param.endswith("tolerance"):
+                param_value = getattr(solver_config.tolerances, param, None)
+            else:
+                param_value = getattr(solver_config, param, None)
+            if param_value is not None and param_value != "":
+                solver_settings.set_parameter(param, param_value)
+
+    if LP_data.solver_config is not None:
+        solver_config = LP_data.solver_config
+
         try:
             lp_time_limit = float(os.environ.get("CUOPT_LP_TIME_LIMIT_SEC"))
         except Exception:
@@ -230,7 +180,7 @@ def create_solver(LP_data, warmstart_data):
             time_limit = solver_config.time_limit
         if time_limit is not None:
             logging.debug(f"setting LP time limit to {time_limit}sec")
-            solver_settings.set_parameter(CUOPT_TIME_LIMIT, time_limit)
+            solver_settings.set_parameter("time_limit", time_limit)
 
         try:
             lp_iteration_limit = int(
@@ -248,179 +198,14 @@ def create_solver(LP_data, warmstart_data):
             iteration_limit = solver_config.iteration_limit
         if iteration_limit is not None:
             logging.debug(f"setting LP iteration limit to {iteration_limit}")
-            solver_settings.set_parameter(
-                CUOPT_ITERATION_LIMIT, iteration_limit
-            )
+            solver_settings.set_parameter("iteration_limit", iteration_limit)
 
-        if solver_config.tolerances is not None:
-            tolerance = solver_config.tolerances
-            if tolerance.optimality is not None:
-                solver_settings.set_optimality_tolerance(tolerance.optimality)
-            if tolerance.absolute_dual_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_DUAL_TOLERANCE,
-                    tolerance.absolute_dual_tolerance,
-                )
-            if tolerance.absolute_primal_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
-                    tolerance.absolute_primal_tolerance,
-                )
-            if tolerance.absolute_gap_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_ABSOLUTE_GAP_TOLERANCE,
-                    tolerance.absolute_gap_tolerance,
-                )
-            if tolerance.relative_dual_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_DUAL_TOLERANCE,
-                    tolerance.relative_dual_tolerance,
-                )
-            if tolerance.relative_primal_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
-                    tolerance.relative_primal_tolerance,
-                )
-            if tolerance.relative_gap_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_RELATIVE_GAP_TOLERANCE,
-                    tolerance.relative_gap_tolerance,
-                )
-            if tolerance.primal_infeasible_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
-                    tolerance.primal_infeasible_tolerance,
-                )
-            if tolerance.dual_infeasible_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_DUAL_INFEASIBLE_TOLERANCE,
-                    tolerance.dual_infeasible_tolerance,
-                )
-            if tolerance.mip_integrality_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_INTEGRALITY_TOLERANCE,
-                    tolerance.mip_integrality_tolerance,
-                )
-            if tolerance.mip_absolute_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_ABSOLUTE_GAP, tolerance.mip_absolute_gap
-                )
-            if tolerance.mip_relative_gap is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_RELATIVE_GAP, tolerance.mip_relative_gap
-                )
-            if tolerance.mip_absolute_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_ABSOLUTE_TOLERANCE,
-                    tolerance.mip_absolute_tolerance,
-                )
-            if tolerance.mip_relative_tolerance is not None:
-                solver_settings.set_parameter(
-                    CUOPT_MIP_RELATIVE_TOLERANCE,
-                    tolerance.mip_relative_tolerance,
-                )
         if warmstart_data is not None:
             solver_settings.set_pdlp_warm_start_data(warmstart_data)
-        if solver_config.mip_scaling is not None:
-            solver_settings.set_parameter(
-                CUOPT_MIP_SCALING, solver_config.mip_scaling
-            )
-        if solver_config.mip_heuristics_only is not None:
-            solver_settings.set_parameter(
-                CUOPT_MIP_HEURISTICS_ONLY, solver_config.mip_heuristics_only
-            )
-        if solver_config.num_cpu_threads is not None:
-            solver_settings.set_parameter(
-                CUOPT_NUM_CPU_THREADS, solver_config.num_cpu_threads
-            )
-        if solver_config.num_gpus is not None:
-            solver_settings.set_parameter(
-                CUOPT_NUM_GPUS, solver_config.num_gpus
-            )
-        if solver_config.crossover is not None:
-            solver_settings.set_parameter(
-                CUOPT_CROSSOVER, solver_config.crossover
-            )
 
-        def is_mip(var_types):
-            if var_types is None or len(var_types) == 0:
-                return False
-            elif "I" in var_types:
-                return True
-
-            return False
-
-        if solver_config.presolve is None:
-            if is_mip(LP_data.variable_types):
-                solver_config.presolve = 1
-            else:
-                solver_config.presolve = 2
-
-        if solver_config.presolve is not None:
-            solver_settings.set_parameter(
-                CUOPT_PRESOLVE, solver_config.presolve
-            )
-
-        if solver_config.dual_postsolve is not None:
-            solver_settings.set_parameter(
-                CUOPT_DUAL_POSTSOLVE, solver_config.dual_postsolve
-            )
-
-        if solver_config.log_to_console is not None:
-            solver_settings.set_parameter(
-                CUOPT_LOG_TO_CONSOLE, solver_config.log_to_console
-            )
-        if solver_config.strict_infeasibility is not None:
-            solver_settings.set_parameter(
-                CUOPT_STRICT_INFEASIBILITY, solver_config.strict_infeasibility
-            )
         if solver_config.user_problem_file != "":
             warnings.append(ignored_warning("user_problem_file"))
-        if solver_config.per_constraint_residual is not None:
-            solver_settings.set_parameter(
-                CUOPT_PER_CONSTRAINT_RESIDUAL,
-                solver_config.per_constraint_residual,
-            )
-        if solver_config.save_best_primal_so_far is not None:
-            solver_settings.set_parameter(
-                CUOPT_SAVE_BEST_PRIMAL_SO_FAR,
-                solver_config.save_best_primal_so_far,
-            )
-        if solver_config.first_primal_feasible is not None:
-            solver_settings.set_parameter(
-                CUOPT_FIRST_PRIMAL_FEASIBLE,
-                solver_config.first_primal_feasible,
-            )
-        if solver_config.log_file != "":
-            solver_settings.set_parameter(
-                CUOPT_LOG_FILE, solver_config.log_file
-            )
-        if solver_config.augmented is not None:
-            solver_settings.set_parameter(
-                CUOPT_AUGMENTED, solver_config.augmented
-            )
-        if solver_config.folding is not None:
-            solver_settings.set_parameter(CUOPT_FOLDING, solver_config.folding)
-        if solver_config.dualize is not None:
-            solver_settings.set_parameter(CUOPT_DUALIZE, solver_config.dualize)
-        if solver_config.ordering is not None:
-            solver_settings.set_parameter(
-                CUOPT_ORDERING, solver_config.ordering
-            )
-        if solver_config.barrier_dual_initial_point is not None:
-            solver_settings.set_parameter(
-                CUOPT_BARRIER_DUAL_INITIAL_POINT,
-                solver_config.barrier_dual_initial_point,
-            )
-        if solver_config.eliminate_dense_columns is not None:
-            solver_settings.set_parameter(
-                CUOPT_ELIMINATE_DENSE_COLUMNS,
-                solver_config.eliminate_dense_columns,
-            )
-        if solver_config.cudss_deterministic is not None:
-            solver_settings.set_parameter(
-                CUOPT_CUDSS_DETERMINISTIC, solver_config.cudss_deterministic
-            )
+
         if solver_config.solution_file != "":
             warnings.append(ignored_warning("solution_file"))
 

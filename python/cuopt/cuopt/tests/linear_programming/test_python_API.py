@@ -30,10 +30,12 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_MIP_CUT_PASSES,
     CUOPT_METHOD,
     CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRESOLVE,
+    CUOPT_TIME_LIMIT,
 )
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
@@ -957,3 +959,41 @@ def test_quadratic_matrix_2():
     assert x2.getValue() == pytest.approx(0.0000000, abs=1e-3)
     assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
     assert problem.ObjValue == pytest.approx(3.715847, abs=1e-3)
+
+
+def test_cuts():
+    # Minimize - 86*y1 - 4*y2 - 40*y3
+    # subject to 774*y1 + 76*y2 + 42*y3 <= 875
+    #            67*y1 + 27*y2 + 53*y3 <= 875
+    #            y1, y2, y3 in {0, 1}
+
+    problem = Problem()
+    y1 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y1")
+    y2 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y2")
+    y3 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y3")
+
+    problem.addConstraint(774 * y1 + 76 * y2 + 42 * y3 <= 875)
+    problem.addConstraint(67 * y1 + 27 * y2 + 53 * y3 <= 875)
+
+    problem.setObjective(-86 * y1 - 4 * y2 - 40 * y3)
+
+    # Set Solver Settings
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 1)
+    settings.set_parameter(CUOPT_MIP_CUT_PASSES, 0)
+
+    # Solve
+    problem.solve(settings)
+    assert problem.Status.name == "Optimal"
+    assert problem.SolutionStats.num_nodes > 0
+
+    # Update Solver Settings
+    settings.set_parameter(CUOPT_MIP_CUT_PASSES, 10)
+
+    # Solve
+    problem.solve(settings)
+
+    assert problem.Status.name == "Optimal"
+    assert problem.ObjValue == pytest.approx(-126, abs=1e-3)
+    assert problem.SolutionStats.num_nodes == 0

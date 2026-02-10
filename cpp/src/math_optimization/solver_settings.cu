@@ -449,6 +449,25 @@ solver_settings_t<i_t, f_t>::get_string_parameters() const
   return string_parameters;
 }
 
+template <typename i_t, typename f_t>
+const std::vector<std::string> solver_settings_t<i_t, f_t>::get_parameter_names() const
+{
+  std::vector<std::string> parameter_names;
+  for (auto& param : int_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : float_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : bool_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : string_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  return parameter_names;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class solver_settings_t<int, float>;
 template void solver_settings_t<int, float>::set_parameter(const std::string& name, int value);
