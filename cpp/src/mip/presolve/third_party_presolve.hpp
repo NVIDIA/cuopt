@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -14,17 +15,17 @@
 
 #include <PSLP/PSLP_API.h>
 
-#if !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
-#endif
-#include <papilo/core/Presolve.hpp>
-#include <papilo/core/ProblemBuilder.hpp>
-#if !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
+namespace papilo {
+template <typename T>
+class PostsolveStorage;
+}
 
 namespace cuopt::linear_programming::detail {
+
+template <typename f_t>
+struct papilo_postsolve_deleter {
+  void operator()(papilo::PostsolveStorage<f_t>* ptr) const;
+};
 
 template <typename i_t, typename f_t>
 struct third_party_presolve_result_t {
@@ -87,8 +88,11 @@ class third_party_presolve_t {
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
 
-  // Papilo postsolve storage
-  papilo::PostsolveStorage<f_t> papilo_post_solve_storage_;
+  // Necessary due to a nvcc bug due to papilo's constexpr functions
+  // Keep the papilo includes in the .cpp to avoid bringing them
+  // into any .cu context
+  std::unique_ptr<papilo::PostsolveStorage<f_t>, papilo_postsolve_deleter<f_t>>
+    papilo_post_solve_storage_;
 
   std::vector<i_t> reduced_to_original_map_{};
   std::vector<i_t> original_to_reduced_map_{};

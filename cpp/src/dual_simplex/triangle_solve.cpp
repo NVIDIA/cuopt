@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,73 +11,9 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t, typename f_t>
-i_t lower_triangular_solve(const csc_matrix_t<i_t, f_t>& L, std::vector<f_t>& x)
-{
-  i_t n = L.n;
-  assert(x.size() == n);
-  for (i_t j = 0; j < n; ++j) {
-    i_t col_start = L.col_start[j];
-    i_t col_end   = L.col_start[j + 1];
-    if (x[j] != 0.0) {
-      x[j] /= L.x[col_start];
-      for (i_t p = col_start + 1; p < col_end; ++p) {
-        x[L.i[p]] -= L.x[p] * x[j];
-      }
-    }
-  }
-  return 0;
-}
-
-template <typename i_t, typename f_t>
-i_t lower_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& L, std::vector<f_t>& x)
-{
-  const i_t n = L.n;
-  assert(x.size() == n);
-  for (i_t j = n - 1; j >= 0; --j) {
-    const i_t col_start = L.col_start[j] + 1;
-    const i_t col_end   = L.col_start[j + 1];
-    for (i_t p = col_start; p < col_end; ++p) {
-      x[j] -= L.x[p] * x[L.i[p]];
-    }
-    x[j] /= L.x[L.col_start[j]];
-  }
-  return 0;
-}
-
-template <typename i_t, typename f_t>
-i_t upper_triangular_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x)
-{
-  const i_t n = U.n;
-  assert(x.size() == n);
-  for (i_t j = n - 1; j >= 0; --j) {
-    const i_t col_start = U.col_start[j];
-    const i_t col_end   = U.col_start[j + 1] - 1;
-    if (x[j] != 0.0) {
-      x[j] /= U.x[col_end];
-      for (i_t p = col_start; p < col_end; ++p) {
-        x[U.i[p]] -= U.x[p] * x[j];
-      }
-    }
-  }
-  return 0;
-}
-
-template <typename i_t, typename f_t>
-i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x)
-{
-  const i_t n = U.n;
-  assert(x.size() == n);
-  for (i_t j = 0; j < n; ++j) {
-    const i_t col_start = U.col_start[j];
-    const i_t col_end   = U.col_start[j + 1] - 1;
-    for (i_t p = col_start; p < col_end; ++p) {
-      x[j] -= U.x[p] * x[U.i[p]];
-    }
-    x[j] /= U.x[col_end];
-  }
-  return 0;
-}
+// NOTE: lower_triangular_solve, lower_triangular_transpose_solve,
+// upper_triangular_solve, and upper_triangular_transpose_solve are now
+// templated on vector types and defined in the header file.
 
 // \brief Reach computes the reach of b in the graph of G
 // \param[in] b - Sparse vector containing the rhs
@@ -204,17 +140,9 @@ i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int lower_triangular_solve<int, double>(const csc_matrix_t<int, double>& L,
-                                                 std::vector<double>& x);
-
-template int lower_triangular_transpose_solve<int, double>(const csc_matrix_t<int, double>& L,
-                                                           std::vector<double>& x);
-
-template int upper_triangular_solve<int, double>(const csc_matrix_t<int, double>& U,
-                                                 std::vector<double>& x);
-
-template int upper_triangular_transpose_solve<int, double>(const csc_matrix_t<int, double>& U,
-                                                           std::vector<double>& x);
+// NOTE: lower_triangular_solve, lower_triangular_transpose_solve,
+// upper_triangular_solve, and upper_triangular_transpose_solve are now
+// templated on vector types and defined in the header file, so no explicit instantiation needed.
 
 template int reach<int, double>(const sparse_vector_t<int, double>& b,
                                 const std::optional<std::vector<int>>& pinv,

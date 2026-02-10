@@ -10,6 +10,8 @@
 #include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
 #include <mip/problem/problem.cuh>
 #include <mip/relaxed_lp/lp_state.cuh>
+#include <utilities/work_limit_context.hpp>
+#include <utilities/work_unit_scheduler.hpp>
 
 #include <limits>
 
@@ -39,7 +41,11 @@ struct mip_solver_context_t {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
                                                    : -std::numeric_limits<f_t>::infinity());
+    gpu_heur_loop.deterministic = settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
   }
+
+  mip_solver_context_t(const mip_solver_context_t&)            = delete;
+  mip_solver_context_t& operator=(const mip_solver_context_t&) = delete;
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
@@ -49,6 +55,12 @@ struct mip_solver_context_t {
   const mip_solver_settings_t<i_t, f_t> settings;
   pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling;
   solver_stats_t<i_t, f_t> stats;
+  // Work limit context for tracking work units in deterministic mode (shared across all timers in
+  // GPU heuristic loop)
+  work_limit_context_t gpu_heur_loop{"GPUHeur"};
+
+  // synchronization every 5 seconds for deterministic mode
+  work_unit_scheduler_t work_unit_scheduler_{5.0};
 };
 
 }  // namespace cuopt::linear_programming::detail

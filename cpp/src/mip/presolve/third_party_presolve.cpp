@@ -9,6 +9,16 @@
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
+
+#if !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#endif
+#include <papilo/core/Presolve.hpp>
+#include <papilo/core/ProblemBuilder.hpp>
+#if !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #include <mip/mip_constants.hpp>
 #include <mip/presolve/gf2_presolve.hpp>
 #include <mip/presolve/third_party_presolve.hpp>
@@ -635,7 +645,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
       result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
     return std::nullopt;
   }
-  papilo_post_solve_storage_ = result.postsolve;
+  papilo_post_solve_storage_.reset(new papilo::PostsolveStorage<f_t>(result.postsolve));
   CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",
                  op_problem.get_n_constraints() - papilo_problem.getNRows(),
                  op_problem.get_n_variables() - papilo_problem.getNCols(),
@@ -703,10 +713,10 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
 
   papilo::Message Msg{};
   Msg.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
-  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_.getNum()};
+  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_->getNum()};
 
   bool is_optimal = false;
-  auto status     = post_solver.undo(reduced_sol, full_sol, papilo_post_solve_storage_, is_optimal);
+  auto status = post_solver.undo(reduced_sol, full_sol, *papilo_post_solve_storage_, is_optimal);
   check_postsolve_status(status);
 
   primal_solution.resize(full_sol.primal.size(), stream_view);
@@ -764,10 +774,10 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   papilo::Solution<f_t> full_sol;
   papilo::Message Msg{};
   Msg.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
-  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_.getNum()};
+  papilo::Postsolve<f_t> post_solver{Msg, papilo_post_solve_storage_->getNum()};
 
   bool is_optimal = false;
-  auto status     = post_solver.undo(reduced_sol, full_sol, papilo_post_solve_storage_, is_optimal);
+  auto status = post_solver.undo(reduced_sol, full_sol, *papilo_post_solve_storage_, is_optimal);
   check_postsolve_status(status);
   full_primal = std::move(full_sol.primal);
 }
@@ -779,11 +789,19 @@ third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
   if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
 }
 
+template <typename f_t>
+void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* ptr) const
+{
+  delete ptr;
+}
+
 #if MIP_INSTANTIATE_FLOAT
+template struct papilo_postsolve_deleter<float>;
 template class third_party_presolve_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
+template struct papilo_postsolve_deleter<double>;
 template class third_party_presolve_t<int, double>;
 #endif
 

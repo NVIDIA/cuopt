@@ -319,7 +319,7 @@ class InitialSolution(StrictModel):
     )
 
 
-class Tolerances(StrictModel):
+class Tolerances(BaseModel):
     optimality: float = Field(
         default=None,
         description="absolute and relative tolerance on the primal feasibility, dual feasibility, and gap",  # noqa
@@ -374,7 +374,7 @@ class Tolerances(StrictModel):
     )
 
 
-class SolverConfig(StrictModel):
+class SolverConfig(BaseModel):
     tolerances: Optional[Tolerances] = Field(
         default=Tolerances(),
         description="Note: Not supported for MILP."

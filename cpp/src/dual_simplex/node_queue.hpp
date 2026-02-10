@@ -59,6 +59,9 @@ class heap_t {
   void clear() { buffer.clear(); }
   bool empty() const { return buffer.empty(); }
 
+  // Read-only access to underlying buffer for iteration without modification
+  const std::vector<T>& data() const { return buffer; }
+
  private:
   std::vector<T> buffer;
   Comp comp;

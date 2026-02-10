@@ -30,9 +30,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.objective = cuopt::host_copy(model.objective_coefficients, handle_ptr->get_stream());
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = cuopt::host_copy(model.coefficients, handle_ptr->get_stream());
-  csr_A.j         = cuopt::host_copy(model.variables, handle_ptr->get_stream());
-  csr_A.row_start = cuopt::host_copy(model.offsets, handle_ptr->get_stream());
+  csr_A.x         = ins_vector<f_t>(cuopt::host_copy(model.coefficients, handle_ptr->get_stream()));
+  csr_A.j         = ins_vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
+  csr_A.row_start = ins_vector<i_t>(cuopt::host_copy(model.offsets, handle_ptr->get_stream()));
 
   csr_A.to_compressed_col(user_problem.A);
 
@@ -121,9 +121,9 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(
     problem.n_constraints, problem.n_variables, problem.nnz);
-  csr_A.x         = cuopt::host_copy(problem.coefficients, stream);
-  csr_A.j         = cuopt::host_copy(problem.variables, stream);
-  csr_A.row_start = cuopt::host_copy(problem.offsets, stream);
+  csr_A.x         = ins_vector<f_t>(cuopt::host_copy(problem.coefficients, stream));
+  csr_A.j         = ins_vector<i_t>(cuopt::host_copy(problem.variables, stream));
+  csr_A.row_start = ins_vector<i_t>(cuopt::host_copy(problem.offsets, stream));
 
   stream.synchronize();
   CUOPT_LOG_DEBUG("Converting to compressed column");

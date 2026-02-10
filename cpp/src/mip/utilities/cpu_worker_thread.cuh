@@ -18,9 +18,11 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -132,8 +134,12 @@ void cpu_worker_thread_base_t<Derived>::start_cpu_solver()
 template <typename Derived>
 bool cpu_worker_thread_base_t<Derived>::wait_for_cpu_solver()
 {
+  auto wait_start = std::chrono::high_resolution_clock::now();
   std::unique_lock<std::mutex> lock(cpu_mutex);
   cpu_cv.wait(lock, [this] { return cpu_thread_done || cpu_thread_terminate; });
+  auto wait_end    = std::chrono::high_resolution_clock::now();
+  double wait_time = std::chrono::duration<double>(wait_end - wait_start).count();
+  if (wait_time > 1.0) { CUOPT_LOG_DEBUG("CPU thread wait time: %.2f seconds", wait_time); }
 
   return static_cast<Derived*>(this)->get_result();
 }

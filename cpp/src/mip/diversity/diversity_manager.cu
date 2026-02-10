@@ -185,7 +185,11 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (termination_criterion_t::NO_UPDATE != term_crit) {
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
   }
-  if (!fj_only_run) {
+  bool run_probing_cache = !fj_only_run;
+  // Don't run probing cache in deterministic mode yet as neither B&B nor CPUFJ need it
+  // and it doesn't make use of work units yet
+  if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
+  if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
     const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
     const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
@@ -303,13 +307,53 @@ template <typename i_t, typename f_t>
 solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
 {
   raft::common::nvtx::range fun_scope("run_solver");
+
+  CUOPT_LOG_DEBUG("Determinism mode: %s",
+                  context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC ? "deterministic"
+                                                                                : "opportunistic");
+
+  // to automatically compute the solving time on scope exit
+  auto timer_raii_guard =
+    cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
+
+  // Debug: Allow disabling GPU heuristics to test B&B tree determinism in isolation
+  const char* disable_heuristics_env = std::getenv("CUOPT_DISABLE_GPU_HEURISTICS");
+  if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
+    CUOPT_LOG_INFO("Running deterministic mode with CPUFJ heuristic");
+    population.initialize_population();
+    population.allocate_solutions();
+
+    // Start CPUFJ in deterministic mode with B&B integration
+    if (context.branch_and_bound_ptr != nullptr) {
+      ls.start_cpufj_deterministic(*context.branch_and_bound_ptr);
+    }
+
+    while (!check_b_b_preemption()) {
+      if (timer.check_time_limit()) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // Stop CPUFJ when B&B is done
+    ls.stop_cpufj_deterministic();
+
+    population.add_external_solutions_to_population();
+    return population.best_feasible();
+  }
+  if (disable_heuristics_env != nullptr && std::string(disable_heuristics_env) == "1") {
+    CUOPT_LOG_INFO("GPU heuristics disabled via CUOPT_DISABLE_GPU_HEURISTICS=1");
+    population.initialize_population();
+    population.allocate_solutions();
+
+    while (!check_b_b_preemption()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    return population.best_feasible();
+  }
+
   population.timer     = timer;
   const f_t time_limit = timer.remaining_time();
   const f_t lp_time_limit =
     std::min(diversity_config.max_time_on_lp, time_limit * diversity_config.time_ratio_on_init_lp);
-  // to automatically compute the solving time on scope exit
-  auto timer_raii_guard =
-    cuopt::scope_guard([&]() { stats.total_solve_time = timer.elapsed_time(); });
   // after every change to the problem, we should resize all the relevant vars
   // we need to encapsulate that to prevent repetitions
   recombine_stats.reset();

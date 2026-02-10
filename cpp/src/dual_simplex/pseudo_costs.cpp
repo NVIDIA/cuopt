@@ -11,6 +11,8 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <raft/common/nvtx.hpp>
+
 #include <cuopt/linear_programming/solve.hpp>
 
 #include <omp.h>
@@ -33,6 +35,7 @@ void strong_branch_helper(i_t start,
                           const std::vector<f_t>& edge_norms,
                           pseudo_costs_t<i_t, f_t>& pc)
 {
+  raft::common::nvtx::range scope("BB::strong_branch_helper");
   lp_problem_t child_problem = original_lp;
 
   constexpr bool verbose = false;
@@ -467,37 +470,13 @@ void pseudo_costs_t<i_t, f_t>::initialized(i_t& num_initialized_down,
                                            f_t& pseudo_cost_down_avg,
                                            f_t& pseudo_cost_up_avg) const
 {
-  num_initialized_down = 0;
-  num_initialized_up   = 0;
-  pseudo_cost_down_avg = 0;
-  pseudo_cost_up_avg   = 0;
-  const i_t n          = pseudo_cost_sum_down.size();
-  for (i_t j = 0; j < n; j++) {
-    if (pseudo_cost_num_down[j] > 0) {
-      num_initialized_down++;
-      if (std::isfinite(pseudo_cost_sum_down[j])) {
-        pseudo_cost_down_avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
-      }
-    }
-
-    if (pseudo_cost_num_up[j] > 0) {
-      num_initialized_up++;
-
-      if (std::isfinite(pseudo_cost_sum_up[j])) {
-        pseudo_cost_up_avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
-      }
-    }
-  }
-  if (num_initialized_down > 0) {
-    pseudo_cost_down_avg /= num_initialized_down;
-  } else {
-    pseudo_cost_down_avg = 1.0;
-  }
-  if (num_initialized_up > 0) {
-    pseudo_cost_up_avg /= num_initialized_up;
-  } else {
-    pseudo_cost_up_avg = 1.0;
-  }
+  auto avgs            = compute_pseudo_cost_averages(pseudo_cost_sum_down.data(),
+                                           pseudo_cost_sum_up.data(),
+                                           pseudo_cost_num_down.data(),
+                                           pseudo_cost_num_up.data(),
+                                           pseudo_cost_sum_down.size());
+  pseudo_cost_down_avg = avgs.down_avg;
+  pseudo_cost_up_avg   = avgs.up_avg;
 }
 
 template <typename i_t, typename f_t>

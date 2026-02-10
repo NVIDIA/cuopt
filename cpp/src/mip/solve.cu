@@ -21,7 +21,7 @@
 #include <linear_programming/utilities/problem_checking.cuh>
 #include <linear_programming/utils.cuh>
 #include <utilities/logger.hpp>
-#include <utilities/timer.hpp>
+#include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
@@ -54,7 +54,7 @@ static void init_handler(const raft::handle_t* handle_ptr)
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
-                                 cuopt::timer_t& timer)
+                                 timer_t& timer)
 {
   raft::common::nvtx::range fun_scope("run_mip");
   auto constexpr const running_mip = true;
@@ -121,6 +121,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                  problem.presolve_data.objective_offset,
                  problem.presolve_data.objective_scaling_factor);
+  CUOPT_LOG_INFO("Model fingerprint: 0x%x", problem.get_fingerprint());
   cuopt_assert(problem.original_problem_ptr->get_n_variables() == scaled_problem.n_variables,
                "Size mismatch");
   cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
@@ -166,7 +167,10 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 
   auto sol = scaled_sol.get_solution(
     is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
-  detail::print_solution(scaled_problem.handle_ptr, sol.get_solution());
+
+  int hidesol =
+    std::getenv("CUOPT_MIP_HIDE_SOLUTION") ? atoi(std::getenv("CUOPT_MIP_HIDE_SOLUTION")) : 0;
+  if (!hidesol) { detail::print_solution(scaled_problem.handle_ptr, sol.get_solution()); }
   return sol;
 }
 
@@ -198,6 +202,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     print_version_info();
 
+    // Initialize seed generator if a specific seed is requested
+    if (settings.seed >= 0) { cuopt::seed_generator::set_seed(settings.seed); }
+
     raft::common::nvtx::range fun_scope("Running solver");
 
     // This is required as user might forget to set some fields
@@ -219,11 +226,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                       op_problem.get_handle_ptr()->get_stream());
     }
 
-    auto timer           = cuopt::timer_t(time_limit);
+    auto timer = timer_t(time_limit);
+
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result;
-    detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances());
+    detail::problem_t<i_t, f_t> problem(
+      op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
     auto run_presolve              = settings.presolver != presolver_t::None;
     run_presolve                   = run_presolve && settings.initial_solutions.size() == 0;
@@ -247,7 +256,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
+        presolve_time_limit = std::numeric_limits<double>::infinity();
+      }
       presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::MIP,
@@ -286,6 +298,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     if (run_presolve) {
       auto status_to_skip = sol.get_termination_status() == mip_termination_status_t::TimeLimit ||
+                            sol.get_termination_status() == mip_termination_status_t::WorkLimit ||
                             sol.get_termination_status() == mip_termination_status_t::Infeasible;
       auto primal_solution =
         cuopt::device_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());

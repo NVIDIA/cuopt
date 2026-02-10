@@ -10,6 +10,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <dual_simplex/branch_and_bound.hpp>
 #include <mip/diversity/diversity_manager.cuh>
 #include <mip/mip_constants.hpp>
 #include <mip/relaxed_lp/relaxed_lp.cuh>
@@ -81,20 +82,21 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                                                       fj_settings_t{},
                                                       /*randomize=*/counter > 0);
 
-    cpu_fj.fj_cpu->log_prefix           = "******* scratch " + std::to_string(counter) + ": ";
-    cpu_fj.fj_cpu->improvement_callback = [&population, problem_ptr = context.problem_ptr](
-                                            f_t obj, const std::vector<f_t>& h_vec) {
-      population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
-      (void)problem_ptr;
-      if (obj < local_search_best_obj) {
-        CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
-                        problem_ptr->get_user_obj_from_solver_obj(obj),
-                        problem_ptr->get_user_obj_from_solver_obj(
-                          population.is_feasible() ? population.best_feasible().get_objective()
-                                                   : std::numeric_limits<f_t>::max()));
-        local_search_best_obj = obj;
-      }
-    };
+    cpu_fj.fj_cpu->log_prefix = "******* scratch " + std::to_string(counter) + ": ";
+    cpu_fj.fj_cpu->improvement_callback =
+      [&population, problem_ptr = context.problem_ptr](
+        f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+        population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
+        (void)problem_ptr;
+        if (obj < local_search_best_obj) {
+          CUOPT_LOG_TRACE("******* New local search best obj %g, best overall %g",
+                          problem_ptr->get_user_obj_from_solver_obj(obj),
+                          problem_ptr->get_user_obj_from_solver_obj(
+                            population.is_feasible() ? population.best_feasible().get_objective()
+                                                     : std::numeric_limits<f_t>::max()));
+          local_search_best_obj = obj;
+        }
+      };
     counter++;
   };
 
@@ -119,7 +121,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
     solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
-    [this, &population](f_t obj, const std::vector<f_t>& h_vec) {
+    [this, &population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
@@ -143,6 +145,59 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
     cpu_fj.request_termination();
   }
   scratch_cpu_fj_on_lp_opt.request_termination();
+}
+
+template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::start_cpufj_deterministic(
+  dual_simplex::branch_and_bound_t<i_t, f_t>& bb)
+{
+  std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
+
+  solution_t<i_t, f_t> solution(*context.problem_ptr);
+  thrust::fill(solution.handle_ptr->get_thrust_policy(),
+               solution.assignment.begin(),
+               solution.assignment.end(),
+               0.0);
+  solution.clamp_within_bounds();
+
+  deterministic_cpu_fj.fj_ptr = &fj;
+  deterministic_cpu_fj.fj_cpu = fj.create_cpu_climber(solution,
+                                                      default_weights,
+                                                      default_weights,
+                                                      0.,
+                                                      context.preempt_heuristic_solver_,
+                                                      fj_settings_t{},
+                                                      /*randomize=*/true);
+
+  deterministic_cpu_fj.fj_cpu->log_prefix = "******* deterministic CPUFJ: ";
+
+  // Register with producer_sync for B&B synchronization
+  producer_sync_t& producer_sync             = bb.get_producer_sync();
+  deterministic_cpu_fj.fj_cpu->producer_sync = &producer_sync;
+  producer_sync.register_producer(&deterministic_cpu_fj.fj_cpu->work_units_elapsed);
+
+  // Set up callback to send solutions to B&B with work unit timestamps
+  deterministic_cpu_fj.fj_cpu->improvement_callback =
+    [&bb](f_t obj, const std::vector<f_t>& h_vec, double work_units) {
+      bb.queue_external_solution_deterministic(h_vec, work_units);
+    };
+
+  deterministic_cpu_fj.start_cpu_solver();
+
+  // Signal that registration is complete - B&B can now wait on producers
+  producer_sync.registration_complete();
+}
+
+template <typename i_t, typename f_t>
+void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
+{
+  if (deterministic_cpu_fj.fj_cpu) {
+    if (deterministic_cpu_fj.fj_cpu->producer_sync) {
+      deterministic_cpu_fj.fj_cpu->producer_sync->deregister_producer(
+        &deterministic_cpu_fj.fj_cpu->work_units_elapsed);
+    }
+    deterministic_cpu_fj.request_termination();
+  }
 }
 
 template <typename i_t, typename f_t>

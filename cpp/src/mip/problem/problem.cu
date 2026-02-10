@@ -20,6 +20,7 @@
 #include <mip/presolve/third_party_presolve.hpp>
 #include <mip/presolve/trivial_presolve.cuh>
 #include <mip/utils.cuh>
+#include <utilities/hashing.hpp>
 
 #include <thrust/binary_search.h>
 #include <thrust/copy.h>
@@ -92,6 +93,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
     compute_vars_with_objective_coeffs();
   }
   compute_transpose_of_problem();
+  compute_auxiliary_data();
   // Check after modifications
   cuopt_func_call(check_problem_representation(true, is_mip));
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
@@ -100,11 +102,13 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
 template <typename i_t, typename f_t>
 problem_t<i_t, f_t>::problem_t(
   const optimization_problem_t<i_t, f_t>& problem_,
-  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_)
+  const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_,
+  bool deterministic_)
   : original_problem_ptr(&problem_),
     handle_ptr(problem_.get_handle_ptr()),
     integer_fixed_variable_map(problem_.get_n_variables(), problem_.get_handle_ptr()->get_stream()),
     tolerances(tolerances_),
+    deterministic(deterministic_),
     n_variables(problem_.get_n_variables()),
     n_constraints(problem_.get_n_constraints()),
     n_binary_vars(0),
@@ -152,6 +156,7 @@ template <typename i_t, typename f_t>
 problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
   : original_problem_ptr(problem_.original_problem_ptr),
     tolerances(problem_.tolerances),
+    deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
     integer_fixed_variable_map(problem_.integer_fixed_variable_map, handle_ptr->get_stream()),
@@ -207,6 +212,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
                                const raft::handle_t* handle_ptr_)
   : original_problem_ptr(problem_.original_problem_ptr),
     tolerances(problem_.tolerances),
+    deterministic(problem_.deterministic),
     handle_ptr(handle_ptr_),
     integer_fixed_problem(problem_.integer_fixed_problem),
     integer_fixed_variable_map(problem_.integer_fixed_variable_map, handle_ptr->get_stream()),
@@ -261,6 +267,7 @@ template <typename i_t, typename f_t>
 problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep_copy)
   : original_problem_ptr(problem_.original_problem_ptr),
     tolerances(problem_.tolerances),
+    deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
     integer_fixed_variable_map(problem_.n_variables, handle_ptr->get_stream()),
@@ -465,6 +472,7 @@ template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_transpose_of_problem()
 {
   raft::common::nvtx::range fun_scope("compute_transpose_of_problem");
+  csrsort_cusparse(coefficients, variables, offsets, n_constraints, n_variables, handle_ptr);
   RAFT_CUBLAS_TRY(raft::linalg::detail::cublassetpointermode(
     handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
@@ -796,6 +804,55 @@ void problem_t<i_t, f_t>::recompute_auxilliary_data(bool check_representation)
 }
 
 template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::compute_auxiliary_data()
+{
+  raft::common::nvtx::range fun_scope("compute_auxiliary_data");
+
+  // Compute sparsity: nnz / (n_rows * n_cols)
+  sparsity = (n_constraints > 0 && n_variables > 0)
+               ? static_cast<double>(nnz) / (static_cast<double>(n_constraints) * n_variables)
+               : 0.0;
+
+  // Compute stddev of non-zeros per row (on device)
+  nnz_stddev     = 0.0;
+  unbalancedness = 0.0;
+  if (offsets.size() == static_cast<size_t>(n_constraints + 1) && n_constraints > 0) {
+    // First: compute nnz per row on device
+    rmm::device_uvector<i_t> d_nnz_per_row(n_constraints, handle_ptr->get_stream());
+    thrust::transform(handle_ptr->get_thrust_policy(),
+                      offsets.begin() + 1,
+                      offsets.begin() + n_constraints + 1,
+                      offsets.begin(),
+                      d_nnz_per_row.begin(),
+                      thrust::minus<i_t>());
+
+    // Compute mean
+    double sum  = thrust::reduce(handle_ptr->get_thrust_policy(),
+                                d_nnz_per_row.begin(),
+                                d_nnz_per_row.end(),
+                                0.0,
+                                thrust::plus<double>());
+    double mean = sum / n_constraints;
+
+    // Compute variance
+    double variance = thrust::transform_reduce(
+                        handle_ptr->get_thrust_policy(),
+                        d_nnz_per_row.begin(),
+                        d_nnz_per_row.end(),
+                        [mean] __device__(i_t x) -> double {
+                          double diff = static_cast<double>(x) - mean;
+                          return diff * diff;
+                        },
+                        0.0,
+                        thrust::plus<double>()) /
+                      n_constraints;
+
+    nnz_stddev     = std::sqrt(variance);
+    unbalancedness = nnz_stddev / mean;
+  }
+}
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_n_integer_vars()
 {
   raft::common::nvtx::range fun_scope("compute_n_integer_vars");
@@ -882,6 +939,9 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
   auto pb_view = view();
 
   handle_ptr->sync_stream();
+
+  // CHANGE
+  if (deterministic) { time_limit = std::numeric_limits<f_t>::infinity(); }
 
   // previously used constants were based on 40GB of memory. Scale accordingly on smaller GPUs
   // We can't rely on querying free memory or allocation try/catch
@@ -1454,6 +1514,7 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   cuopt_assert(n_variables == assignment.size(), "Assignment size issue");
   problem_t<i_t, f_t> problem(*this, true);
   CUOPT_LOG_DEBUG("Fixing %d variables", variables_to_fix.size());
+  CUOPT_LOG_DEBUG("Model fingerprint before fixing: 0x%x", get_fingerprint());
   // we will gather from this and scatter back to the original problem
   variable_map.resize(assignment.size() - variables_to_fix.size(), handle_ptr->get_stream());
   // compute variable map to recover the assignment later
@@ -1473,6 +1534,9 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   cuopt_assert(result_end - variable_map.data() == variable_map.size(),
                "Size issue in set_difference");
+  CUOPT_LOG_DEBUG("Fixing assignment hash 0x%x, vars to fix: 0x%x",
+                  detail::compute_hash(assignment, handle_ptr->get_stream()),
+                  detail::compute_hash(variables_to_fix, handle_ptr->get_stream()));
   problem.fix_given_variables(*this, assignment, variables_to_fix, handle_ptr);
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   problem.remove_given_variables(*this, assignment, variable_map, handle_ptr);
@@ -1493,11 +1557,11 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   auto end_time = std::chrono::high_resolution_clock::now();
   double time_taken =
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-  static double total_time_taken = 0.;
-  static int total_calls         = 0;
+  [[maybe_unused]] static double total_time_taken = 0.;
+  [[maybe_unused]] static int total_calls         = 0;
   total_time_taken += time_taken;
   total_calls++;
-  CUOPT_LOG_DEBUG(
+  CUOPT_LOG_TRACE(
     "Time taken to fix variables: %f milliseconds, average: %f milliseconds total time: %f",
     time_taken,
     total_time_taken / total_calls,
@@ -1505,7 +1569,7 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   // if the fixing is greater than 150, mark this as expensive.
   // this way we can avoid frequent fixings for this problem
   constexpr double expensive_time_threshold = 150;
-  if (time_taken > expensive_time_threshold) { expensive_to_fix_vars = true; }
+  if (time_taken > expensive_time_threshold && !deterministic) { expensive_to_fix_vars = true; }
   return problem;
 }
 
@@ -1577,6 +1641,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   coefficients.resize(nnz, handle_ptr->get_stream());
   variables.resize(nnz, handle_ptr->get_stream());
   compute_transpose_of_problem();
+  compute_auxiliary_data();
   combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
   handle_ptr->sync_stream();
   recompute_auxilliary_data();
@@ -1802,6 +1867,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
   standardize_bounds(variable_constraint_map, *this);
   compute_csr(variable_constraint_map, *this);
   compute_transpose_of_problem();
+  compute_auxiliary_data();
   cuopt_func_call(check_problem_representation(true, false));
   presolve_data.initialize_var_mapping(*this, handle_ptr);
   integer_indices.resize(n_variables, handle_ptr->get_stream());
@@ -1869,9 +1935,9 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = cuopt::host_copy(coefficients, stream);
-  csr_A.j         = cuopt::host_copy(variables, stream);
-  csr_A.row_start = cuopt::host_copy(offsets, stream);
+  csr_A.x         = ins_vector<f_t>(cuopt::host_copy(coefficients, stream));
+  csr_A.j         = ins_vector<i_t>(cuopt::host_copy(variables, stream));
+  csr_A.row_start = ins_vector<i_t>(cuopt::host_copy(offsets, stream));
 
   csr_A.to_compressed_col(user_problem.A);
 
@@ -1964,6 +2030,44 @@ f_t problem_t<i_t, f_t>::get_user_obj_from_solver_obj(f_t solver_obj) const
 }
 
 template <typename i_t, typename f_t>
+uint32_t problem_t<i_t, f_t>::get_fingerprint() const
+{
+  // CSR representation should be unique and sorted at this point
+  auto stream = handle_ptr->get_stream();
+
+  uint32_t h_coeff      = detail::compute_hash(coefficients, stream);
+  uint32_t h_vars       = detail::compute_hash(variables, stream);
+  uint32_t h_offsets    = detail::compute_hash(offsets, stream);
+  uint32_t h_rev_coeff  = detail::compute_hash(reverse_coefficients, stream);
+  uint32_t h_rev_off    = detail::compute_hash(reverse_offsets, stream);
+  uint32_t h_rev_constr = detail::compute_hash(reverse_constraints, stream);
+  uint32_t h_obj        = detail::compute_hash(objective_coefficients, stream);
+  uint32_t h_varbounds  = detail::compute_hash(variable_bounds, stream);
+  uint32_t h_clb        = detail::compute_hash(constraint_lower_bounds, stream);
+  uint32_t h_cub        = detail::compute_hash(constraint_upper_bounds, stream);
+  uint32_t h_vartypes   = detail::compute_hash(variable_types, stream);
+  uint32_t h_obj_off    = detail::compute_hash(presolve_data.objective_offset);
+  uint32_t h_obj_scale  = detail::compute_hash(presolve_data.objective_scaling_factor);
+
+  std::vector<uint32_t> hashes = {
+    h_coeff,
+    h_vars,
+    h_offsets,
+    h_rev_coeff,
+    h_rev_off,
+    h_rev_constr,
+    h_obj,
+    h_varbounds,
+    h_clb,
+    h_cub,
+    h_vartypes,
+    h_obj_off,
+    h_obj_scale,
+  };
+  return detail::compute_hash(hashes);
+}
+
+template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_vars_with_objective_coeffs()
 {
   raft::common::nvtx::range fun_scope("compute_vars_with_objective_coeffs");
@@ -1999,6 +2103,7 @@ void problem_t<i_t, f_t>::add_cutting_plane_at_objective(f_t objective)
                                objective);
   insert_constraints(h_constraints);
   compute_transpose_of_problem();
+  compute_auxiliary_data();
   cuopt_func_call(check_problem_representation(true));
 }
 

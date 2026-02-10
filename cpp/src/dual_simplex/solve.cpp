@@ -24,6 +24,8 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <raft/common/nvtx.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <queue>
@@ -106,8 +108,10 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           const simplex_solver_settings_t<i_t, f_t>& settings,
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
-                                          std::vector<f_t>& edge_norms)
+                                          std::vector<f_t>& edge_norms,
+                                          work_limit_context_t* work_unit_context)
 {
+  raft::common::nvtx::range scope("DualSimplex::solve_lp");
   const i_t m = original_lp.num_rows;
   const i_t n = original_lp.num_cols;
   assert(m <= n);
@@ -122,7 +126,8 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                                   basic_list,
                                                   nonbasic_list,
                                                   vstatus,
-                                                  edge_norms);
+                                                  edge_norms,
+                                                  work_unit_context);
 }
 
 template <typename i_t, typename f_t>
@@ -135,12 +140,17 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
-  std::vector<f_t>& edge_norms)
+  std::vector<f_t>& edge_norms,
+  work_limit_context_t* work_unit_context)
 {
   lp_status_t lp_status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> presolved_lp(original_lp.handle_ptr, 1, 1, 1);
   presolve_info_t<i_t, f_t> presolve_info;
-  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
+  i_t ok;
+  {
+    raft::common::nvtx::range scope_presolve("DualSimplex::presolve");
+    ok = presolve(original_lp, settings, presolved_lp, presolve_info);
+  }
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
@@ -156,7 +166,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
                             presolved_lp.num_cols,
                             presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
-  column_scaling(presolved_lp, settings, lp, column_scales);
+  {
+    raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
+    column_scaling(presolved_lp, settings, lp, column_scales);
+  }
   assert(presolved_lp.num_cols == lp.num_cols);
   lp_problem_t<i_t, f_t> phase1_problem(original_lp.handle_ptr, 1, 1, 1);
   std::vector<variable_status_t> phase1_vstatus;
@@ -182,14 +195,27 @@ lp_status_t solve_linear_program_with_advanced_basis(
   i_t iter = 0;
   lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
   edge_norms.clear();
-  dual::status_t phase1_status = dual_phase2(
-    1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, edge_norms);
+  dual::status_t phase1_status;
+  {
+    raft::common::nvtx::range scope_phase1("DualSimplex::phase1");
+    phase1_status = dual_phase2(1,
+                                1,
+                                start_time,
+                                phase1_problem,
+                                settings,
+                                phase1_vstatus,
+                                phase1_solution,
+                                iter,
+                                edge_norms,
+                                work_unit_context);
+  }
   if (phase1_status == dual::status_t::NUMERICAL ||
       phase1_status == dual::status_t::DUAL_UNBOUNDED) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
   }
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
+  if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
   if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
   if (phase1_status == dual::status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
   phase1_obj = phase1_solution.objective;
@@ -213,7 +239,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                             nonbasic_list,
                                                             solution,
                                                             iter,
-                                                            edge_norms);
+                                                            edge_norms,
+                                                            work_unit_context);
     if (status == dual::status_t::NUMERICAL) {
       // Became dual infeasible. Try phase 1 again
       phase1_vstatus = vstatus;
@@ -232,7 +259,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                       nonbasic_list,
                                       phase1_solution,
                                       iter,
-                                      edge_norms);
+                                      edge_norms,
+                                      work_unit_context);
       vstatus = phase1_vstatus;
       edge_norms.clear();
       status = dual_phase2_with_advanced_basis(2,
@@ -247,7 +275,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                nonbasic_list,
                                                solution,
                                                iter,
-                                               edge_norms);
+                                               edge_norms,
+                                               work_unit_context);
     }
     constexpr bool primal_cleanup = false;
     if (status == dual::status_t::OPTIMAL && primal_cleanup) {
@@ -273,6 +302,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
     }
     if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
+    if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
     if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
     if (status == dual::status_t::CONCURRENT_LIMIT) { lp_status = lp_status_t::CONCURRENT_LIMIT; }
     if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
@@ -744,7 +774,8 @@ template lp_status_t solve_linear_program_advanced(
   const simplex_solver_settings_t<int, double>& settings,
   lp_solution_t<int, double>& original_solution,
   std::vector<variable_status_t>& vstatus,
-  std::vector<double>& edge_norms);
+  std::vector<double>& edge_norms,
+  work_limit_context_t* work_unit_context);
 
 template lp_status_t solve_linear_program_with_advanced_basis(
   const lp_problem_t<int, double>& original_lp,
@@ -755,7 +786,8 @@ template lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<int>& basic_list,
   std::vector<int>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
-  std::vector<double>& edge_norms);
+  std::vector<double>& edge_norms,
+  work_limit_context_t* work_unit_context);
 
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,

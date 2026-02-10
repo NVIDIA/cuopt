@@ -20,6 +20,8 @@
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <raft/common/nvtx.hpp>
+#include <utilities/hashing.hpp>
 
 #include <omp.h>
 
@@ -30,8 +32,11 @@
 #include <deque>
 #include <future>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -145,6 +150,8 @@ dual::status_t convert_lp_status_to_dual_status(lp_status_t status)
     return dual::status_t::ITERATION_LIMIT;
   } else if (status == lp_status_t::TIME_LIMIT) {
     return dual::status_t::TIME_LIMIT;
+  } else if (status == lp_status_t::WORK_LIMIT) {
+    return dual::status_t::WORK_LIMIT;
   } else if (status == lp_status_t::NUMERICAL_ISSUES) {
     return dual::status_t::NUMERICAL;
   } else if (status == lp_status_t::CUTOFF) {
@@ -317,7 +324,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::report(
-  char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas)
+  char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas, double work_time)
 {
   update_user_bound(lower_bound);
   const i_t nodes_explored   = exploration_stats_.nodes_explored;
@@ -327,17 +334,33 @@ void branch_and_bound_t<i_t, f_t>::report(
   const f_t iters            = static_cast<f_t>(exploration_stats_.total_lp_iters);
   const f_t iter_node        = nodes_explored > 0 ? iters / nodes_explored : iters;
   const std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
-  settings_.log.printf("%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f\n",
-                       symbol,
-                       nodes_explored,
-                       nodes_unexplored,
-                       user_obj,
-                       user_lower,
-                       node_int_infeas,
-                       node_depth,
-                       iter_node,
-                       user_gap.c_str(),
-                       toc(exploration_stats_.start_time));
+  if (work_time >= 0) {
+    settings_.log.printf(
+      "%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f %9.2f\n",
+      symbol,
+      nodes_explored,
+      nodes_unexplored,
+      user_obj,
+      user_lower,
+      node_int_infeas,
+      node_depth,
+      iter_node,
+      user_gap.c_str(),
+      work_time,
+      toc(exploration_stats_.start_time));
+  } else {
+    settings_.log.printf("%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f\n",
+                         symbol,
+                         nodes_explored,
+                         nodes_unexplored,
+                         user_obj,
+                         user_lower,
+                         node_int_infeas,
+                         node_depth,
+                         iter_node,
+                         user_gap.c_str(),
+                         toc(exploration_stats_.start_time));
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -470,6 +493,47 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::queue_external_solution_deterministic(
+  const std::vector<f_t>& solution, double work_unit_ts)
+{
+  // In deterministic mode, queue the solution to be processed at the correct work unit timestamp
+  // This ensures deterministic ordering of solution events
+
+  if (solution.size() != original_problem_.num_cols) {
+    settings_.log.printf(
+      "Solution size mismatch %ld %d\n", solution.size(), original_problem_.num_cols);
+    return;
+  }
+
+  mutex_original_lp_.lock();
+  std::vector<f_t> crushed_solution;
+  crush_primal_solution<i_t, f_t>(
+    original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
+  f_t obj = compute_objective(original_lp_, crushed_solution);
+
+  // Validate solution before queueing
+  f_t primal_err;
+  f_t bound_err;
+  i_t num_fractional;
+  bool is_feasible = check_guess(
+    original_lp_, settings_, var_types_, crushed_solution, primal_err, bound_err, num_fractional);
+  mutex_original_lp_.unlock();
+
+  if (!is_feasible) {
+    // Queue for repair
+    mutex_repair_.lock();
+    repair_queue_.push_back(crushed_solution);
+    mutex_repair_.unlock();
+    return;
+  }
+
+  // Queue the solution with its work unit timestamp
+  mutex_heuristic_queue_.lock();
+  heuristic_solution_queue_.push_back({obj, std::move(crushed_solution), 0, -1, 0, work_unit_ts});
+  mutex_heuristic_queue_.unlock();
+}
+
+template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_norms,
                                                    const std::vector<f_t>& potential_solution,
                                                    f_t& repaired_obj,
@@ -535,6 +599,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 {
+  raft::common::nvtx::range scope("BB::repair_heuristics");
   // Check if there are any solutions to repair
   std::vector<std::vector<f_t>> to_repair;
   mutex_repair_.lock();
@@ -612,8 +677,15 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   if (solver_status_ == mip_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
   }
+  if (solver_status_ == mip_status_t::WORK_LIMIT) {
+    settings_.log.printf("Work limit reached. Stopping the solver...\n");
+  }
   if (solver_status_ == mip_status_t::NODE_LIMIT) {
     settings_.log.printf("Node limit reached. Stopping the solver...\n");
+  }
+
+  if (settings_.heuristic_preemption_callback != nullptr) {
+    settings_.heuristic_preemption_callback();
   }
 
   f_t gap              = upper_bound_ - lower_bound;
@@ -777,6 +849,415 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   }
 }
 
+// ============================================================================
+// Policies for update_tree
+// These allow sharing the tree update logic between the default and deterministic codepaths
+// ============================================================================
+
+// Compiler is able to devirtualize the policy objects in update_tree_impl.
+// This is for self-documenting purposes
+template <typename i_t, typename f_t>
+struct tree_update_policy_t {
+  virtual ~tree_update_policy_t()                                                  = default;
+  virtual f_t upper_bound() const                                                  = 0;
+  virtual void update_pseudo_costs(mip_node_t<i_t, f_t>* node, f_t obj)            = 0;
+  virtual void handle_integer_solution(mip_node_t<i_t, f_t>* node,
+                                       f_t obj,
+                                       const std::vector<f_t>& x)                  = 0;
+  virtual branch_variable_t<i_t> select_branch_variable(mip_node_t<i_t, f_t>* node,
+                                                        const std::vector<i_t>& fractional,
+                                                        const std::vector<f_t>& x) = 0;
+  virtual void update_objective_estimate(mip_node_t<i_t, f_t>* node,
+                                         const std::vector<i_t>& fractional,
+                                         const std::vector<f_t>& x)                = 0;
+  virtual void on_node_completed(mip_node_t<i_t, f_t>* node,
+                                 node_status_t status,
+                                 rounding_direction_t dir)                         = 0;
+  virtual void on_numerical_issue(mip_node_t<i_t, f_t>*)                           = 0;
+  virtual void graphviz(search_tree_t<i_t, f_t>&, mip_node_t<i_t, f_t>*, const char*, f_t) = 0;
+  virtual void on_optimal_callback(const std::vector<f_t>&, f_t)                           = 0;
+};
+
+template <typename i_t, typename f_t>
+struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
+  branch_and_bound_t<i_t, f_t>& bnb;
+  branch_and_bound_worker_t<i_t, f_t>* worker;
+  logger_t& log;
+
+  nondeterministic_policy_t(branch_and_bound_t<i_t, f_t>& bnb,
+                            branch_and_bound_worker_t<i_t, f_t>* worker,
+                            logger_t& log)
+    : bnb(bnb), worker(worker), log(log)
+  {
+  }
+
+  f_t upper_bound() const override { return bnb.upper_bound_.load(); }
+
+  void update_pseudo_costs(mip_node_t<i_t, f_t>* node, f_t leaf_obj) override
+  {
+    bnb.pc_.update_pseudo_costs(node, leaf_obj);
+  }
+
+  void handle_integer_solution(mip_node_t<i_t, f_t>* node,
+                               f_t obj,
+                               const std::vector<f_t>& x) override
+  {
+    bnb.add_feasible_solution(obj, x, node->depth, worker->search_strategy);
+  }
+
+  branch_variable_t<i_t> select_branch_variable(mip_node_t<i_t, f_t>* node,
+                                                const std::vector<i_t>& fractional,
+                                                const std::vector<f_t>&) override
+  {
+    return bnb.variable_selection(node, fractional, worker);
+  }
+
+  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
+                                 const std::vector<i_t>& fractional,
+                                 const std::vector<f_t>& x) override
+  {
+    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
+      logger_t pc_log;
+      pc_log.log               = false;
+      node->objective_estimate = bnb.pc_.obj_estimate(fractional, x, node->lower_bound, pc_log);
+    }
+  }
+
+  void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
+  {
+    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
+      fetch_min(bnb.lower_bound_ceiling_, node->lower_bound);
+      log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
+                 node->node_id,
+                 compute_user_objective(bnb.original_lp_, bnb.lower_bound_ceiling_.load()));
+    }
+  }
+
+  void graphviz(search_tree_t<i_t, f_t>& tree,
+                mip_node_t<i_t, f_t>* node,
+                const char* label,
+                f_t value) override
+  {
+    tree.graphviz_node(log, node, label, value);
+  }
+
+  void on_optimal_callback(const std::vector<f_t>& x, f_t objective) override
+  {
+    if (worker->search_strategy == search_strategy_t::BEST_FIRST &&
+        bnb.settings_.node_processed_callback != nullptr) {
+      std::vector<f_t> original_x;
+      uncrush_primal_solution(bnb.original_problem_, bnb.original_lp_, x, original_x);
+      bnb.settings_.node_processed_callback(original_x, objective);
+    }
+  }
+
+  void on_node_completed(mip_node_t<i_t, f_t>*, node_status_t, rounding_direction_t) override {}
+};
+
+template <typename i_t, typename f_t, typename WorkerT>
+struct deterministic_policy_base_t : tree_update_policy_t<i_t, f_t> {
+  branch_and_bound_t<i_t, f_t>& bnb;
+  WorkerT& worker;
+
+  deterministic_policy_base_t(branch_and_bound_t<i_t, f_t>& bnb, WorkerT& worker)
+    : bnb(bnb), worker(worker)
+  {
+  }
+
+  f_t upper_bound() const override { return worker.local_upper_bound; }
+
+  void update_pseudo_costs(mip_node_t<i_t, f_t>* node, f_t leaf_obj) override
+  {
+    if (node->branch_var < 0) return;
+    f_t change = std::max(leaf_obj - node->lower_bound, f_t(0));
+    f_t frac   = node->branch_dir == rounding_direction_t::DOWN
+                   ? node->fractional_val - std::floor(node->fractional_val)
+                   : std::ceil(node->fractional_val) - node->fractional_val;
+    if (frac > 1e-10) {
+      worker.pc_snapshot.queue_update(
+        node->branch_var, node->branch_dir, change / frac, worker.clock, worker.worker_id);
+    }
+  }
+
+  void on_numerical_issue(mip_node_t<i_t, f_t>*) override {}
+  void graphviz(search_tree_t<i_t, f_t>&, mip_node_t<i_t, f_t>*, const char*, f_t) override {}
+  void on_optimal_callback(const std::vector<f_t>&, f_t) override {}
+};
+
+template <typename i_t, typename f_t>
+struct deterministic_bfs_policy_t
+  : deterministic_policy_base_t<i_t, f_t, deterministic_bfs_worker_t<i_t, f_t>> {
+  using base = deterministic_policy_base_t<i_t, f_t, deterministic_bfs_worker_t<i_t, f_t>>;
+  using base::base;
+
+  void handle_integer_solution(mip_node_t<i_t, f_t>* node,
+                               f_t obj,
+                               const std::vector<f_t>& x) override
+  {
+    if (obj < this->worker.local_upper_bound) {
+      this->worker.local_upper_bound = obj;
+      this->worker.integer_solutions.push_back(
+        {obj, x, node->depth, this->worker.worker_id, this->worker.next_solution_seq++});
+    }
+  }
+
+  branch_variable_t<i_t> select_branch_variable(mip_node_t<i_t, f_t>*,
+                                                const std::vector<i_t>& fractional,
+                                                const std::vector<f_t>& x) override
+  {
+    i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x);
+    auto dir = martin_criteria(x[var], this->bnb.root_relax_soln_.x[var]);
+    return {var, dir};
+  }
+
+  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
+                                 const std::vector<i_t>& fractional,
+                                 const std::vector<f_t>& x) override
+  {
+    node->objective_estimate =
+      this->worker.pc_snapshot.obj_estimate(fractional, x, node->lower_bound);
+  }
+
+  void on_node_completed(mip_node_t<i_t, f_t>* node,
+                         node_status_t status,
+                         rounding_direction_t dir) override
+  {
+    switch (status) {
+      case node_status_t::INFEASIBLE: this->worker.record_infeasible(node); break;
+      case node_status_t::FATHOMED: this->worker.record_fathomed(node, node->lower_bound); break;
+      case node_status_t::INTEGER_FEASIBLE:
+        this->worker.record_integer_solution(node, node->lower_bound);
+        break;
+      case node_status_t::HAS_CHILDREN:
+        this->worker.record_branched(node,
+                                     node->get_down_child()->node_id,
+                                     node->get_up_child()->node_id,
+                                     node->branch_var,
+                                     node->fractional_val);
+        this->bnb.exploration_stats_.nodes_unexplored += 2;
+        this->worker.enqueue_children_for_plunge(node->get_down_child(), node->get_up_child(), dir);
+        break;
+      case node_status_t::NUMERICAL: this->worker.record_numerical(node); break;
+      default: break;
+    }
+    if (status != node_status_t::HAS_CHILDREN) { this->worker.recompute_bounds_and_basis = true; }
+  }
+
+  void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
+  {
+    this->worker.local_lower_bound_ceiling =
+      std::min<f_t>(node->lower_bound, this->worker.local_lower_bound_ceiling);
+  }
+};
+
+template <typename i_t, typename f_t>
+struct deterministic_diving_policy_t
+  : deterministic_policy_base_t<i_t, f_t, deterministic_diving_worker_t<i_t, f_t>> {
+  using base = deterministic_policy_base_t<i_t, f_t, deterministic_diving_worker_t<i_t, f_t>>;
+
+  std::deque<mip_node_t<i_t, f_t>*>& stack;
+  i_t max_backtrack_depth;
+
+  deterministic_diving_policy_t(branch_and_bound_t<i_t, f_t>& bnb,
+                                deterministic_diving_worker_t<i_t, f_t>& worker,
+                                std::deque<mip_node_t<i_t, f_t>*>& stack,
+                                i_t max_backtrack_depth)
+    : base(bnb, worker), stack(stack), max_backtrack_depth(max_backtrack_depth)
+  {
+  }
+
+  void handle_integer_solution(mip_node_t<i_t, f_t>* node,
+                               f_t obj,
+                               const std::vector<f_t>& x) override
+  {
+    if (obj < this->worker.local_upper_bound) {
+      this->worker.local_upper_bound = obj;
+      this->worker.queue_integer_solution(obj, x, node->depth);
+    }
+  }
+
+  branch_variable_t<i_t> select_branch_variable(mip_node_t<i_t, f_t>*,
+                                                const std::vector<i_t>& fractional,
+                                                const std::vector<f_t>& x) override
+  {
+    switch (this->worker.diving_type) {
+      case search_strategy_t::PSEUDOCOST_DIVING:
+        return this->worker.variable_selection_from_snapshot(fractional, x);
+
+      case search_strategy_t::LINE_SEARCH_DIVING:
+        if (this->worker.root_solution) {
+          logger_t log;
+          log.log = false;
+          return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
+        }
+        return this->worker.variable_selection_from_snapshot(fractional, x);
+
+      case search_strategy_t::GUIDED_DIVING:
+        return this->worker.guided_variable_selection(fractional, x);
+
+      case search_strategy_t::COEFFICIENT_DIVING: {
+        logger_t log;
+        log.log = false;
+        return coefficient_diving<i_t, f_t>(this->bnb.original_lp_,
+                                            fractional,
+                                            x,
+                                            this->bnb.var_up_locks_,
+                                            this->bnb.var_down_locks_,
+                                            log);
+      }
+
+      default: return this->worker.variable_selection_from_snapshot(fractional, x);
+    }
+  }
+
+  void update_objective_estimate(mip_node_t<i_t, f_t>* node,
+                                 const std::vector<i_t>& fractional,
+                                 const std::vector<f_t>& x) override
+  {
+  }
+
+  void on_node_completed(mip_node_t<i_t, f_t>* node,
+                         node_status_t status,
+                         rounding_direction_t dir) override
+  {
+    if (status == node_status_t::HAS_CHILDREN) {
+      if (dir == rounding_direction_t::UP) {
+        stack.push_front(node->get_down_child());
+        stack.push_front(node->get_up_child());
+      } else {
+        stack.push_front(node->get_up_child());
+        stack.push_front(node->get_down_child());
+      }
+      if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > max_backtrack_depth) {
+        stack.pop_back();
+      }
+      this->worker.recompute_bounds_and_basis = false;
+    } else {
+      this->worker.recompute_bounds_and_basis = true;
+    }
+  }
+};
+
+template <typename i_t, typename f_t>
+template <typename WorkerT, typename Policy>
+std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::update_tree_impl(
+  mip_node_t<i_t, f_t>* node_ptr,
+  search_tree_t<i_t, f_t>& search_tree,
+  WorkerT* worker,
+  dual::status_t lp_status,
+  Policy& policy)
+{
+  constexpr f_t inf                      = std::numeric_limits<f_t>::infinity();
+  const f_t abs_fathom_tol               = settings_.absolute_mip_gap_tol / 10;
+  lp_problem_t<i_t, f_t>& leaf_problem   = worker->leaf_problem;
+  lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
+  const f_t upper_bound                  = policy.upper_bound();
+  node_status_t status                   = node_status_t::PENDING;
+  rounding_direction_t round_dir         = rounding_direction_t::NONE;
+
+  if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
+    node_ptr->lower_bound = inf;
+    policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
+    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
+    status = node_status_t::INFEASIBLE;
+
+  } else if (lp_status == dual::status_t::CUTOFF) {
+    f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
+    node_ptr->lower_bound = upper_bound;
+    policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
+    search_tree.update(node_ptr, node_status_t::FATHOMED);
+    status = node_status_t::FATHOMED;
+
+  } else if (lp_status == dual::status_t::OPTIMAL) {
+    std::vector<i_t> leaf_fractional;
+    i_t num_frac = fractional_variables(settings_, leaf_solution.x, var_types_, leaf_fractional);
+
+#ifdef DEBUG_FRACTIONAL_FIXED
+    for (i_t j : leaf_fractional) {
+      if (leaf_problem.lower[j] == leaf_problem.upper[j]) {
+        printf(
+          "Node %d: Fixed variable %d has a fractional value %e. Lower %e upper %e. Variable "
+          "status %d\n",
+          node_ptr->node_id,
+          j,
+          leaf_solution.x[j],
+          leaf_problem.lower[j],
+          leaf_problem.upper[j],
+          node_ptr->vstatus[j]);
+      }
+    }
+#endif
+
+    f_t leaf_obj = compute_objective(leaf_problem, leaf_solution.x);
+
+    policy.graphviz(search_tree, node_ptr, "lower bound", leaf_obj);
+    policy.update_pseudo_costs(node_ptr, leaf_obj);
+    node_ptr->lower_bound = leaf_obj;
+    policy.on_optimal_callback(leaf_solution.x, leaf_obj);
+
+    if (num_frac == 0) {
+      policy.handle_integer_solution(node_ptr, leaf_obj, leaf_solution.x);
+      policy.graphviz(search_tree, node_ptr, "integer feasible", leaf_obj);
+      search_tree.update(node_ptr, node_status_t::INTEGER_FEASIBLE);
+      status = node_status_t::INTEGER_FEASIBLE;
+
+    } else if (leaf_obj <= upper_bound + abs_fathom_tol) {
+      auto [branch_var, dir] =
+        policy.select_branch_variable(node_ptr, leaf_fractional, leaf_solution.x);
+      round_dir = dir;
+
+      assert(node_ptr->vstatus.size() == leaf_problem.num_cols);
+      assert(branch_var >= 0);
+      assert(dir != rounding_direction_t::NONE);
+
+      policy.update_objective_estimate(node_ptr, leaf_fractional, leaf_solution.x);
+
+      logger_t log;
+      log.log = false;
+      search_tree.branch(node_ptr,
+                         branch_var,
+                         leaf_solution.x[branch_var],
+                         num_frac,
+                         node_ptr->vstatus,
+                         leaf_problem,
+                         log);
+      search_tree.update(node_ptr, node_status_t::HAS_CHILDREN);
+      status = node_status_t::HAS_CHILDREN;
+
+    } else {
+      policy.graphviz(search_tree, node_ptr, "fathomed", leaf_obj);
+      search_tree.update(node_ptr, node_status_t::FATHOMED);
+      status = node_status_t::FATHOMED;
+    }
+  } else if (lp_status == dual::status_t::TIME_LIMIT) {
+    policy.graphviz(search_tree, node_ptr, "timeout", 0.0);
+    status = node_status_t::PENDING;
+  } else if (lp_status == dual::status_t::WORK_LIMIT) {
+    policy.graphviz(search_tree, node_ptr, "work limit", 0.0);
+    status = node_status_t::PENDING;
+  } else {
+    policy.on_numerical_issue(node_ptr);
+    policy.graphviz(search_tree, node_ptr, "numerical", 0.0);
+    search_tree.update(node_ptr, node_status_t::NUMERICAL);
+    status = node_status_t::NUMERICAL;
+  }
+
+  policy.on_node_completed(node_ptr, status, round_dir);
+  return {status, round_dir};
+}
+
+template <typename i_t, typename f_t>
+std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::update_tree(
+  mip_node_t<i_t, f_t>* node_ptr,
+  search_tree_t<i_t, f_t>& search_tree,
+  branch_and_bound_worker_t<i_t, f_t>* worker,
+  dual::status_t lp_status,
+  logger_t& log)
+{
+  nondeterministic_policy_t<i_t, f_t> policy{*this, worker, log};
+  return update_tree_impl(node_ptr, search_tree, worker, lp_status, policy);
+}
+
 template <typename i_t, typename f_t>
 dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
@@ -784,6 +1265,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log)
 {
+  raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
   i_t num_integer_variables = 0;
   for (i_t j = 0; j < original_lp_.num_cols; j++) {
@@ -907,129 +1389,6 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   return lp_status;
 }
 template <typename i_t, typename f_t>
-std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::update_tree(
-  mip_node_t<i_t, f_t>* node_ptr,
-  search_tree_t<i_t, f_t>& search_tree,
-  branch_and_bound_worker_t<i_t, f_t>* worker,
-  dual::status_t lp_status,
-  logger_t& log)
-{
-  const f_t abs_fathom_tol                     = settings_.absolute_mip_gap_tol / 10;
-  std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
-  lp_problem_t<i_t, f_t>& leaf_problem         = worker->leaf_problem;
-  lp_solution_t<i_t, f_t>& leaf_solution       = worker->leaf_solution;
-
-  if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
-    // Node was infeasible. Do not branch
-    node_ptr->lower_bound = inf;
-    search_tree.graphviz_node(log, node_ptr, "infeasible", 0.0);
-    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
-    return {node_status_t::INFEASIBLE, rounding_direction_t::NONE};
-
-  } else if (lp_status == dual::status_t::CUTOFF) {
-    // Node was cut off. Do not branch
-    node_ptr->lower_bound = upper_bound_;
-    f_t leaf_objective    = compute_objective(leaf_problem, leaf_solution.x);
-    search_tree.graphviz_node(log, node_ptr, "cut off", leaf_objective);
-    search_tree.update(node_ptr, node_status_t::FATHOMED);
-    return {node_status_t::FATHOMED, rounding_direction_t::NONE};
-
-  } else if (lp_status == dual::status_t::OPTIMAL) {
-    // LP was feasible
-    std::vector<i_t> leaf_fractional;
-    i_t leaf_num_fractional =
-      fractional_variables(settings_, leaf_solution.x, var_types_, leaf_fractional);
-
-#ifdef DEBUG_FRACTIONAL_FIXED
-    // Check if any of the fractional variables were fixed to their bounds
-    for (i_t j : leaf_fractional) {
-      if (leaf_problem.lower[j] == leaf_problem.upper[j]) {
-        printf(
-          "Node %d: Fixed variable %d has a fractional value %e. Lower %e upper %e. Variable "
-          "status %d\n",
-          node_ptr->node_id,
-          j,
-          leaf_solution.x[j],
-          leaf_problem.lower[j],
-          leaf_problem.upper[j],
-          leaf_vstatus[j]);
-      }
-    }
-#endif
-
-    f_t leaf_objective = compute_objective(leaf_problem, leaf_solution.x);
-    search_tree.graphviz_node(log, node_ptr, "lower bound", leaf_objective);
-    pc_.update_pseudo_costs(node_ptr, leaf_objective);
-    node_ptr->lower_bound = leaf_objective;
-
-    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      if (settings_.node_processed_callback != nullptr) {
-        std::vector<f_t> original_x;
-        uncrush_primal_solution(original_problem_, original_lp_, leaf_solution.x, original_x);
-        settings_.node_processed_callback(original_x, leaf_objective);
-      }
-    }
-
-    if (leaf_num_fractional == 0) {
-      // Found a integer feasible solution
-      add_feasible_solution(
-        leaf_objective, leaf_solution.x, node_ptr->depth, worker->search_strategy);
-      search_tree.graphviz_node(log, node_ptr, "integer feasible", leaf_objective);
-      search_tree.update(node_ptr, node_status_t::INTEGER_FEASIBLE);
-      return {node_status_t::INTEGER_FEASIBLE, rounding_direction_t::NONE};
-
-    } else if (leaf_objective <= upper_bound_ + abs_fathom_tol) {
-      // Choose fractional variable to branch on
-      auto [branch_var, round_dir] = variable_selection(node_ptr, leaf_fractional, worker);
-
-      assert(leaf_vstatus.size() == leaf_problem.num_cols);
-      assert(branch_var >= 0);
-      assert(round_dir != rounding_direction_t::NONE);
-
-      // Note that the exploration thread is the only one that can insert new nodes into the heap,
-      // and thus, we only need to calculate the objective estimate here (it is used for
-      // sorting the nodes for diving).
-      if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-        logger_t pc_log;
-        pc_log.log = false;
-        node_ptr->objective_estimate =
-          pc_.obj_estimate(leaf_fractional, leaf_solution.x, node_ptr->lower_bound, pc_log);
-      }
-
-      search_tree.branch(node_ptr,
-                         branch_var,
-                         leaf_solution.x[branch_var],
-                         leaf_num_fractional,
-                         leaf_vstatus,
-                         leaf_problem,
-                         log);
-      search_tree.update(node_ptr, node_status_t::HAS_CHILDREN);
-      return {node_status_t::HAS_CHILDREN, round_dir};
-
-    } else {
-      search_tree.graphviz_node(log, node_ptr, "fathomed", leaf_objective);
-      search_tree.update(node_ptr, node_status_t::FATHOMED);
-      return {node_status_t::FATHOMED, rounding_direction_t::NONE};
-    }
-  } else {
-    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      fetch_min(lower_bound_ceiling_, node_ptr->lower_bound);
-      log.printf(
-        "LP returned status %d on node %d. This indicates a numerical issue. The best bound is set "
-        "to "
-        "%+10.6e.\n",
-        lp_status,
-        node_ptr->node_id,
-        compute_user_objective(original_lp_, lower_bound_ceiling_.load()));
-    }
-
-    search_tree.graphviz_node(log, node_ptr, "numerical", 0.0);
-    search_tree.update(node_ptr, node_status_t::NUMERICAL);
-    return {node_status_t::NUMERICAL, rounding_direction_t::NONE};
-  }
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker)
 {
   std::deque<mip_node_t<i_t, f_t>*> stack;
@@ -1133,6 +1492,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>* worker)
 {
+  raft::common::nvtx::range scope("BB::diving_thread");
   logger_t log;
   log.log = false;
 
@@ -1435,7 +1795,8 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                   std::ref(basic_list),
                                   std::ref(nonbasic_list),
                                   std::ref(root_vstatus),
-                                  std::ref(edge_norms));
+                                  std::ref(edge_norms),
+                                  nullptr);
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   // to finish
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
@@ -1560,6 +1921,8 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range scope("BB::solve");
+
   logger_t log;
   log.log                             = false;
   log.log_prefix                      = settings_.log.log_prefix;
@@ -1570,6 +1933,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   original_lp_.A.to_compressed_row(Arow_);
 
   if (guess_.size() != 0) {
+    raft::common::nvtx::range scope_guess("BB::check_initial_guess");
     std::vector<f_t> crushed_guess;
     crush_primal_solution(original_problem_, original_lp_, guess_, new_slacks_, crushed_guess);
     f_t primal_err;
@@ -1642,6 +2006,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, -inf);
+    return solver_status_;
+  }
+
+  if (root_status == lp_status_t::WORK_LIMIT) {
+    solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
     return solver_status_;
   }
@@ -1965,17 +2335,20 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
-  strong_branching<i_t, f_t>(original_problem_,
-                             original_lp_,
-                             settings_,
-                             exploration_stats_.start_time,
-                             var_types_,
-                             root_relax_soln_.x,
-                             fractional,
-                             root_objective_,
-                             root_vstatus_,
-                             edge_norms_,
-                             pc_);
+  {
+    raft::common::nvtx::range scope_sb("BB::strong_branching");
+    strong_branching<i_t, f_t>(original_problem_,
+                               original_lp_,
+                               settings_,
+                               exploration_stats_.start_time,
+                               var_types_,
+                               root_relax_soln_.x,
+                               fractional,
+                               root_objective_,
+                               root_vstatus_,
+                               edge_norms_,
+                               pc_);
+  }
 
   if (toc(exploration_stats_.start_time) > settings_.time_limit) {
     solver_status_ = mip_status_t::TIME_LIMIT;
@@ -2054,29 +2427,1235 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.diving_settings.coefficient_diving != 0) {
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
   }
+  if (settings_.deterministic) {
+    settings_.log.printf(
+      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node "
+      "|   Gap    |  Work |  Time  |\n");
+  } else {
+    settings_.log.printf(
+      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node "
+      "|   Gap    |  Time  |\n");
+  }
 
-  settings_.log.printf(
-    " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   "
-    "Gap    "
-    "|  Time  |\n");
-
-  if (settings_.num_threads > 1) {
+  if (settings_.deterministic) {
+    run_deterministic_coordinator(Arow_);
+  } else if (settings_.num_threads > 1) {
 #pragma omp parallel num_threads(settings_.num_threads)
     {
 #pragma omp master
       run_scheduler();
     }
-
   } else {
     single_threaded_solve();
   }
 
   is_running_ = false;
 
-  f_t lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
-                                                            : search_tree_.root.lower_bound;
+  // Compute final lower bound
+  f_t lower_bound;
+  if (deterministic_mode_enabled_) {
+    lower_bound    = deterministic_compute_lower_bound();
+    solver_status_ = deterministic_global_termination_status_;
+  } else {
+    lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
+                                                          : search_tree_.root.lower_bound;
+  }
   set_final_solution(solution, lower_bound);
   return solver_status_;
+}
+
+// ============================================================================
+//  Deterministic implementation
+// ============================================================================
+
+// The deterministic BSP model is based on letting independent workers execute during virtual time
+// intervals, and exchange data during serialized interval sync points.
+/*
+
+Work Units:   0                              0.5                              1.0
+              │                               │                                │
+              │◄──────── Horizon 0 ──────────►│◄───────── Horizon 1 ──────────►│
+              │                               │                                │
+══════════════╪═══════════════════════════════╪════════════════════════════════╪════
+              │                               │                                │
+              │                        ┌──────────────┐                  ┌──────────────┐
+ BFS Worker 0 │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │              │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │              │
+ ├ plunge     │  explore nodes         │              │  explore nodes   │              │
+ │  stack     │  emit events (wut)     │              │  emit events     │              │
+ ├ backlog    │                        │   SYNC S1    │                  │   SYNC S2    │
+ │  heap      │                        │              │                  │              │
+ ├ PC snap    │                        │ • Sort by    │                  │ • Sort by    │
+ ├ events[]   │                        │   (wut, w,   │                  │   (wut, w,   │
+ └ solutions[]│                        │    seq)      │                  │    seq)      │
+──────────────┼────────────────────────│ • Replay     │──────────────────│ • Replay     │
+              │                        │ • Merge PC   │                  │ • Merge PC   │
+ BFS Worker 1 │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ • Merge sols │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │ • Merge sols │
+ ├ plunge     │  explore nodes         │ • Prune      │  explore nodes   │ • Prune      │
+ │  stack     │  emit events (wut)     │ • Balance    │  emit events     │ • Balance    │
+ ├ backlog    │                        │ • Assign     │                  │ • Assign     │
+ │  heap      │                        │ • Snapshot   │                  │ • Snapshot   │
+ ├ PC snap    │                        │              │                  │              │
+ ├ events[]   │                        │ [38779ebd]   │                  │ [2ad65699]   │
+ └ solutions[]│                        │              │                  │              │
+──────────────┼────────────────────────│              │──────────────────│              │
+              │                        │              │                  │              │
+ Diving D0    │ ░░░░░░░░░░░░░░░░░░░░░░ │              │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │              │
+ ├ dive_queue │  (waiting)             │              │  dive, find sols │              │
+ ├ PC snap    │                        │              │                  │              │
+ ├ incumbent  │                        │              │                  │              │
+ │  snap      │                        │              │                  │              │
+ ├ pc_updates │                        │              │                  │              │
+ └ solutions[]│                        │              │                  │              │
+──────────────┼────────────────────────│              │──────────────────│              │
+              │                        │              │                  │              │
+ Diving D1    │ ░░░░░░░░░░░░░░░░░░░░░░ │              │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ │              │
+ ├ dive_queue │  (waiting)             │              │  dive, find sols │              │
+ ├ PC snap    │                        │              │                  │              │
+ ├ incumbent  │                        └──────────────┘                  └──────────────┘
+ │  snap      │
+ ├ pc_updates │
+ └ solutions[]│
+══════════════╪═══════════════════════════════════════════════════════════════════════════
+              │
+              ▼
+──────────────────────────────────────────────────────────────────────────────────────────►
+                                                                        Work Unit Time
+
+Legend:  ▓▓▓ = actively working    ░░░ = waiting at barrier    [hash] = state hash for verification
+         wut = work unit timestamp    PC = pseudo-costs    snap = snapshot (local copy)
+
+*/
+
+/* Glossary for B&B Determinism:
+
+Tree Update Policy:
+  Class implementing the determinism_base_policy_t interface,
+  specifying operations to be executed based on the outcomes of the current node
+  in order to unify the deterministic and nondeterministic codepaths.
+Worker Pool:
+  Static structure containing worker types for deterministic B&B,
+  with a 1thread:1worker mapping.
+Work Unit Scheduler:
+  Class orchestrating the deterministic workers, handling periodic synchronization
+  after a set amount of work unit time is elapsed.
+Snapshots:
+  Local copy of the global state of the solver (incumbent, pseudocosts, upper bound)
+  renewed after every sync step in the deterministic codepath
+  in order to ensure deterministic playback
+  Local snapshots are updated by their respective worker within a horizon,
+  and then merged during the sync step, and broadcast to workers for the next horizon.
+Producer:
+  Independent thread which produces heuristic solutions without depending on the B&B state.
+  Therefore, its synchronization requirements are more lax: it can run "ahead" of B&B safely.
+Determinism Sync Callback:
+  Function that is executed serially (by a single thread) at each synchronization point
+  of the determinism codepath. Equivalent to the OpenMP 'single' directive.
+Event / BB Event:
+  Event susceptible of modifying the global state, recorded within each horizon to be
+  sorted and replayed at the sync callback in order to update the global state serially.
+Packed Id:
+  Unique representation of a node from its <worker_id, seq_id> tuple, packed as a 64bit integer.
+Producer Sync:
+  Synchronization point ensuring the produced is never running "in the past" wrt B&B.
+  Producing solutions in the past would break determinism, therefore this unidirectional sync
+ensures no such thing can occur. Instrumentation Aggregator: Collects multiple instrument vectors
+into a single aggregation point for estimating work from memory operations. Worker Context: Object
+representing the "context" (e.g.: the worker) that should register the amount of work recorded There
+is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure they
+remained synchronized together. Queued Integer Solutions: New integer solutions found within
+horizons are queued with a work unit timestamp, in order to be sorted and played in order during the
+sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is used
+to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
+nondeterministic. To fix this, in deterministic mode, nodes are addressed by a tuple <worker_id,
+seq_id>
+  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential ID
+local to the worker.\ This sequential ID is similar in principle to the global atomic ID sequence of
+the nondeterminsitic mode but since it is local to each worker, it is updated serially and thus is
+deterministic. worker IDs are unique, and sequence IDs are unique to their workers, therefor
+  <worker_id, seq_id> is a globally unique node identifier.
+Pseudocost Update:
+  Each worker updates its local pseudocosts when branching. These updates are queued within
+horizons. During the horizon sync, these updates are all played in order, and the newly updated
+global pseudocosts are broadcast to the worker's pseudocost snapshots for the coming horizon.
+
+*/
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matrix_t<i_t, f_t>& Arow)
+{
+  raft::common::nvtx::range scope("BB::deterministic_coordinator");
+
+  deterministic_horizon_step_ = 0.50;
+
+  // Compute worker counts using the same formula as reliability-branching scheduler
+  const i_t num_workers = 2 * settings_.num_threads;
+  std::vector<search_strategy_t> search_strategies =
+    get_search_strategies(settings_.diving_settings);
+  std::array<i_t, num_search_strategies> max_num_workers =
+    get_max_workers(num_workers, search_strategies);
+
+  const int num_bfs_workers = max_num_workers[search_strategy_t::BEST_FIRST];
+  int num_diving_workers    = 0;
+  for (size_t i = 1; i < search_strategies.size(); ++i) {
+    num_diving_workers += max_num_workers[search_strategies[i]];
+  }
+
+  deterministic_mode_enabled_              = true;
+  deterministic_current_horizon_           = deterministic_horizon_step_;
+  deterministic_horizon_number_            = 0;
+  deterministic_global_termination_status_ = mip_status_t::UNSET;
+
+  deterministic_workers_ = std::make_unique<deterministic_bfs_worker_pool_t<i_t, f_t>>(
+    num_bfs_workers, original_lp_, Arow, var_types_, settings_);
+
+  if (num_diving_workers > 0) {
+    // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
+    std::vector<search_strategy_t> diving_types(search_strategies.begin() + 1,
+                                                search_strategies.end());
+
+    if (settings_.diving_settings.coefficient_diving != 0) {
+      calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
+    }
+
+    if (!diving_types.empty()) {
+      deterministic_diving_workers_ =
+        std::make_unique<deterministic_diving_worker_pool_t<i_t, f_t>>(num_diving_workers,
+                                                                       diving_types,
+                                                                       original_lp_,
+                                                                       Arow,
+                                                                       var_types_,
+                                                                       settings_,
+                                                                       &root_relax_soln_.x);
+    }
+  }
+
+  deterministic_scheduler_ = std::make_unique<work_unit_scheduler_t>(deterministic_horizon_step_);
+
+  scoped_context_registrations_t context_registrations(*deterministic_scheduler_);
+  for (auto& worker : *deterministic_workers_) {
+    context_registrations.add(worker.work_context);
+  }
+  if (deterministic_diving_workers_) {
+    for (auto& worker : *deterministic_diving_workers_) {
+      context_registrations.add(worker.work_context);
+    }
+  }
+
+  int actual_diving_workers =
+    deterministic_diving_workers_ ? (int)deterministic_diving_workers_->size() : 0;
+  settings_.log.printf(
+    "Deterministic Mode: %d BFS workers + %d diving workers, horizon step = %.2f work "
+    "units\n",
+    num_bfs_workers,
+    actual_diving_workers,
+    deterministic_horizon_step_);
+
+  search_tree_.root.get_down_child()->origin_worker_id = -1;
+  search_tree_.root.get_down_child()->creation_seq     = 0;
+  search_tree_.root.get_up_child()->origin_worker_id   = -1;
+  search_tree_.root.get_up_child()->creation_seq       = 1;
+
+  (*deterministic_workers_)[0].enqueue_node(search_tree_.root.get_down_child());
+  (*deterministic_workers_)[1 % num_bfs_workers].enqueue_node(search_tree_.root.get_up_child());
+
+  deterministic_scheduler_->set_sync_callback([this](double) { deterministic_sync_callback(); });
+
+  std::vector<f_t> incumbent_snapshot;
+  if (incumbent_.has_incumbent) { incumbent_snapshot = incumbent_.x; }
+
+  deterministic_broadcast_snapshots(*deterministic_workers_, incumbent_snapshot);
+  if (deterministic_diving_workers_) {
+    deterministic_broadcast_snapshots(*deterministic_diving_workers_, incumbent_snapshot);
+  }
+
+  const int total_thread_count = num_bfs_workers + num_diving_workers;
+
+#pragma omp parallel num_threads(total_thread_count)
+  {
+    int thread_id = omp_get_thread_num();
+    if (thread_id < num_bfs_workers) {
+      auto& worker          = (*deterministic_workers_)[thread_id];
+      f_t worker_start_time = tic();
+      run_deterministic_bfs_loop(worker, search_tree_);
+      worker.total_runtime += toc(worker_start_time);
+    } else {
+      int diving_id         = thread_id - num_bfs_workers;
+      auto& worker          = (*deterministic_diving_workers_)[diving_id];
+      f_t worker_start_time = tic();
+      run_deterministic_diving_loop(worker);
+      worker.total_runtime += toc(worker_start_time);
+    }
+  }
+
+  settings_.log.printf("\n");
+  settings_.log.printf("BFS Worker Statistics:\n");
+  settings_.log.printf(
+    "  Worker |  Nodes  | Branched | Pruned | Infeas. | IntSol | Assigned |  Clock   | "
+    "Sync%% | NoWork\n");
+  settings_.log.printf(
+    "  "
+    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-------"
+    "\n");
+  for (const auto& worker : *deterministic_workers_) {
+    double sync_time    = worker.work_context.total_sync_time;
+    double total_time   = worker.total_runtime;  // Already includes sync time
+    double sync_percent = (total_time > 0) ? (100.0 * sync_time / total_time) : 0.0;
+    settings_.log.printf("  %6d | %7d | %8d | %6d | %7d | %6d | %8d | %7.3fs | %4.1f%% | %5.2fs\n",
+                         worker.worker_id,
+                         worker.total_nodes_processed,
+                         worker.total_nodes_branched,
+                         worker.total_nodes_pruned,
+                         worker.total_nodes_infeasible,
+                         worker.total_integer_solutions,
+                         worker.total_nodes_assigned,
+                         total_time,
+                         std::min(99.9, sync_percent),
+                         worker.total_nowork_time);
+  }
+
+  // Print diving worker statistics
+  if (deterministic_diving_workers_ && deterministic_diving_workers_->size() > 0) {
+    settings_.log.printf("\n");
+    settings_.log.printf("Diving Worker Statistics:\n");
+    settings_.log.printf("  Worker |  Type  |  Dives  | Nodes  | IntSol |  Clock   | NoWork\n");
+    settings_.log.printf("  -------+--------+---------+--------+--------+----------+-------\n");
+    for (const auto& worker : *deterministic_diving_workers_) {
+      const char* type_str = "???";
+      switch (worker.diving_type) {
+        case search_strategy_t::PSEUDOCOST_DIVING: type_str = "PC"; break;
+        case search_strategy_t::LINE_SEARCH_DIVING: type_str = "LS"; break;
+        case search_strategy_t::GUIDED_DIVING: type_str = "GD"; break;
+        case search_strategy_t::COEFFICIENT_DIVING: type_str = "CD"; break;
+        default: break;
+      }
+      settings_.log.printf("  %6d | %6s | %7d | %6d | %6d | %7.3fs | %5.2fs\n",
+                           worker.worker_id,
+                           type_str,
+                           worker.total_dives,
+                           worker.total_nodes_explored,
+                           worker.total_integer_solutions,
+                           worker.total_runtime,
+                           worker.total_nowork_time);
+    }
+  }
+
+  if (producer_sync_.num_producers() > 0 || producer_wait_count_ > 0) {
+    double avg_wait =
+      (producer_wait_count_ > 0) ? total_producer_wait_time_ / producer_wait_count_ : 0.0;
+    settings_.log.printf("Producer Sync Statistics:\n");
+    settings_.log.printf(
+      "  Producers: %zu, Syncs: %d\n", producer_sync_.num_producers(), producer_wait_count_);
+    settings_.log.printf("  Total wait: %.3fs, Avg: %.4fs, Max: %.4fs\n",
+                         total_producer_wait_time_,
+                         avg_wait,
+                         max_producer_wait_time_);
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
+  deterministic_bfs_worker_t<i_t, f_t>& worker, search_tree_t<i_t, f_t>& search_tree)
+{
+  raft::common::nvtx::range scope("BB::worker_loop");
+
+  while (deterministic_global_termination_status_ == mip_status_t::UNSET) {
+    if (worker.has_work()) {
+      mip_node_t<i_t, f_t>* node = worker.dequeue_node();
+      if (node == nullptr) { continue; }
+
+      worker.current_node = node;
+
+      f_t upper_bound = worker.local_upper_bound;
+      f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node->lower_bound);
+      if (node->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+        worker.current_node = nullptr;
+        worker.record_fathomed(node, node->lower_bound);
+        search_tree.update(node, node_status_t::FATHOMED);
+        --exploration_stats_.nodes_unexplored;
+        continue;
+      }
+
+      bool is_child                     = (node->parent == worker.last_solved_node);
+      worker.recompute_bounds_and_basis = !is_child;
+
+      node_status_t status    = solve_node_deterministic(worker, node, search_tree);
+      worker.last_solved_node = node;
+
+      worker.current_node = nullptr;
+      continue;
+    }
+
+    // No work - advance to sync point to participate in barrier
+    f_t nowork_start = tic();
+    deterministic_scheduler_->wait_for_next_sync(worker.work_context);
+    worker.total_nowork_time += toc(nowork_start);
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
+{
+  raft::common::nvtx::range scope("BB::deterministic_sync_callback");
+
+  ++deterministic_horizon_number_;
+  double horizon_end = deterministic_current_horizon_;
+
+  double wait_start = tic();
+  producer_sync_.wait_for_producers(horizon_end);
+  double wait_time = toc(wait_start);
+  total_producer_wait_time_ += wait_time;
+  max_producer_wait_time_ = std::max(max_producer_wait_time_, wait_time);
+  ++producer_wait_count_;
+
+  work_unit_context_.global_work_units_elapsed = horizon_end;
+
+  bb_event_batch_t<i_t, f_t> all_events = deterministic_workers_->collect_and_sort_events();
+
+  deterministic_sort_replay_events(all_events);
+
+  // deterministic_prune_worker_nodes_vs_incumbent();
+
+  deterministic_collect_diving_solutions_and_update_pseudocosts();
+
+  for (auto& worker : *deterministic_workers_) {
+    worker.integer_solutions.clear();
+  }
+  if (deterministic_diving_workers_) {
+    for (auto& worker : *deterministic_diving_workers_) {
+      worker.integer_solutions.clear();
+    }
+  }
+
+  deterministic_populate_diving_heap();
+
+  deterministic_assign_diving_nodes();
+
+  deterministic_balance_worker_loads();
+
+  uint32_t state_hash = 0;
+  {
+    std::vector<uint64_t> state_data;
+    state_data.push_back(static_cast<uint64_t>(exploration_stats_.nodes_explored));
+    state_data.push_back(static_cast<uint64_t>(exploration_stats_.nodes_unexplored));
+    f_t ub = upper_bound_.load();
+    f_t lb = deterministic_compute_lower_bound();
+    state_data.push_back(std::bit_cast<uint64_t>(ub));
+    state_data.push_back(std::bit_cast<uint64_t>(lb));
+
+    for (auto& worker : *deterministic_workers_) {
+      if (worker.current_node != nullptr) {
+        state_data.push_back(worker.current_node->get_id_packed());
+      }
+      for (auto* node : worker.plunge_stack) {
+        state_data.push_back(node->get_id_packed());
+      }
+      for (auto* node : worker.backlog.data()) {
+        state_data.push_back(node->get_id_packed());
+      }
+    }
+
+    if (deterministic_diving_workers_) {
+      for (auto& diving_worker : *deterministic_diving_workers_) {
+        for (const auto& dive_entry : diving_worker.dive_queue) {
+          state_data.push_back(dive_entry.node.get_id_packed());
+        }
+      }
+    }
+
+    state_hash = detail::compute_hash(state_data);
+    state_hash ^= pc_.compute_state_hash();
+  }
+
+  deterministic_current_horizon_ += deterministic_horizon_step_;
+
+  std::vector<f_t> incumbent_snapshot;
+  if (incumbent_.has_incumbent) { incumbent_snapshot = incumbent_.x; }
+
+  deterministic_broadcast_snapshots(*deterministic_workers_, incumbent_snapshot);
+  if (deterministic_diving_workers_) {
+    deterministic_broadcast_snapshots(*deterministic_diving_workers_, incumbent_snapshot);
+  }
+
+  f_t lower_bound = deterministic_compute_lower_bound();
+  f_t upper_bound = upper_bound_.load();
+  f_t abs_gap     = upper_bound - lower_bound;
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+
+  if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+    deterministic_global_termination_status_ = mip_status_t::OPTIMAL;
+  }
+
+  if (!deterministic_workers_->any_has_work()) {
+    // Tree exhausted - check if we found a solution
+    if (upper_bound == std::numeric_limits<f_t>::infinity()) {
+      deterministic_global_termination_status_ = mip_status_t::INFEASIBLE;
+    } else {
+      deterministic_global_termination_status_ = mip_status_t::OPTIMAL;
+    }
+  }
+
+  if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+    deterministic_global_termination_status_ = mip_status_t::TIME_LIMIT;
+  }
+
+  // Stop early if next horizon exceeds work limit
+  if (deterministic_current_horizon_ > settings_.work_limit) {
+    deterministic_global_termination_status_ = mip_status_t::WORK_LIMIT;
+  }
+
+  // Signal shutdown to prevent threads from entering barriers after termination
+  if (deterministic_global_termination_status_ != mip_status_t::UNSET) {
+    deterministic_scheduler_->signal_shutdown();
+  }
+
+  f_t time_since_last_log =
+    exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
+  if (time_since_last_log >= 1) {
+    report(' ', upper_bound, lower_bound, 0, 0, deterministic_current_horizon_);
+    exploration_stats_.last_log = tic();
+  }
+
+  f_t obj              = compute_user_objective(original_lp_, upper_bound);
+  f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
+  std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+
+  std::string idle_workers;
+  i_t idle_count = 0;
+  for (const auto& w : *deterministic_workers_) {
+    if (!w.has_work() && w.current_node == nullptr) { ++idle_count; }
+  }
+  idle_workers = idle_count > 0 ? std::to_string(idle_count) + " idle" : "";
+
+#ifdef DETERMINISM_LOG_SYNCS
+  settings_.log.printf("W%-5g %8d   %8lu    %+13.6e    %+10.6e    %s %8.2f  [%08x]%s%s\n",
+                       deterministic_current_horizon_,
+                       exploration_stats_.nodes_explored,
+                       exploration_stats_.nodes_unexplored,
+                       obj,
+                       user_lower,
+                       gap_user.c_str(),
+                       toc(exploration_stats_.start_time),
+                       state_hash,
+                       idle_workers.empty() ? "" : " ",
+                       idle_workers.c_str());
+#endif
+}
+
+template <typename i_t, typename f_t>
+node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
+  deterministic_bfs_worker_t<i_t, f_t>& worker,
+  mip_node_t<i_t, f_t>* node_ptr,
+  search_tree_t<i_t, f_t>& search_tree)
+{
+  raft::common::nvtx::range scope("BB::solve_node_deterministic");
+
+  double work_units_at_start = worker.work_context.global_work_units_elapsed;
+
+  std::fill(worker.bounds_changed.begin(), worker.bounds_changed.end(), false);
+
+  if (worker.recompute_bounds_and_basis) {
+    worker.leaf_problem.lower = original_lp_.lower;
+    worker.leaf_problem.upper = original_lp_.upper;
+    node_ptr->get_variable_bounds(
+      worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
+  } else {
+    node_ptr->update_branched_variable_bounds(
+      worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
+  }
+
+  double remaining_time = settings_.time_limit - toc(exploration_stats_.start_time);
+
+  // Bounds strengthening
+  simplex_solver_settings_t<i_t, f_t> lp_settings = settings_;
+  lp_settings.set_log(false);
+
+  lp_settings.cut_off       = worker.local_upper_bound + settings_.dual_tol;
+  lp_settings.inside_mip    = 2;
+  lp_settings.time_limit    = remaining_time;
+  lp_settings.scale_columns = false;
+
+  bool feasible = true;
+#ifndef DETERMINISM_DISABLE_BOUNDS_STRENGTHENING
+  raft::common::nvtx::range scope_bs("BB::bound_strengthening");
+  feasible = worker.node_presolver.bounds_strengthening(
+    lp_settings, worker.bounds_changed, worker.leaf_problem.lower, worker.leaf_problem.upper);
+
+  if (settings_.deterministic) {
+    // TEMP APPROXIMATION;
+    worker.work_context.record_work_sync_on_horizon(worker.node_presolver.last_nnz_processed / 1e8);
+  }
+#endif
+
+  if (!feasible) {
+    node_ptr->lower_bound = std::numeric_limits<f_t>::infinity();
+    search_tree.update(node_ptr, node_status_t::INFEASIBLE);
+    worker.record_infeasible(node_ptr);
+    --exploration_stats_.nodes_unexplored;
+    ++exploration_stats_.nodes_explored;
+    worker.recompute_bounds_and_basis = true;
+    return node_status_t::INFEASIBLE;
+  }
+
+  // Solve LP relaxation
+  worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
+  std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
+  i_t node_iter                                = 0;
+  f_t lp_start_time                            = tic();
+  std::vector<f_t> leaf_edge_norms             = edge_norms_;
+
+  dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
+                                                             0,
+                                                             worker.recompute_bounds_and_basis,
+                                                             lp_start_time,
+                                                             worker.leaf_problem,
+                                                             lp_settings,
+                                                             leaf_vstatus,
+                                                             worker.basis_factors,
+                                                             worker.basic_list,
+                                                             worker.nonbasic_list,
+                                                             worker.leaf_solution,
+                                                             node_iter,
+                                                             leaf_edge_norms,
+                                                             &worker.work_context);
+
+  if (lp_status == dual::status_t::NUMERICAL) {
+    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+    lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
+                                                                         lp_start_time,
+                                                                         lp_settings,
+                                                                         worker.leaf_solution,
+                                                                         worker.basis_factors,
+                                                                         worker.basic_list,
+                                                                         worker.nonbasic_list,
+                                                                         leaf_vstatus,
+                                                                         leaf_edge_norms,
+                                                                         &worker.work_context);
+    lp_status                 = convert_lp_status_to_dual_status(second_status);
+  }
+
+  double work_performed = worker.work_context.global_work_units_elapsed - work_units_at_start;
+  worker.clock += work_performed;
+
+  exploration_stats_.total_lp_solve_time += toc(lp_start_time);
+  exploration_stats_.total_lp_iters += node_iter;
+  ++exploration_stats_.nodes_explored;
+  --exploration_stats_.nodes_unexplored;
+
+  deterministic_bfs_policy_t<i_t, f_t> policy{*this, worker};
+  auto [status, round_dir] = update_tree_impl(node_ptr, search_tree, &worker, lp_status, policy);
+
+  return status;
+}
+
+template <typename i_t, typename f_t>
+template <typename PoolT, typename WorkerTypeGetter>
+void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
+  PoolT& pool, WorkerTypeGetter get_worker_type)
+{
+  std::vector<queued_integer_solution_t<i_t, f_t>*> all_solutions;
+  for (auto& worker : pool) {
+    for (auto& sol : worker.integer_solutions) {
+      all_solutions.push_back(&sol);
+    }
+  }
+
+  // relies on queued_integer_solution_t's operator<
+  // sorts based on objective first, then the <worker_id, seq_id> tuple
+  std::sort(all_solutions.begin(),
+            all_solutions.end(),
+            [](const queued_integer_solution_t<i_t, f_t>* a,
+               const queued_integer_solution_t<i_t, f_t>* b) { return *a < *b; });
+
+  f_t deterministic_lower = deterministic_compute_lower_bound();
+  f_t current_upper       = upper_bound_.load();
+
+  for (const auto* sol : all_solutions) {
+    if (sol->objective < current_upper) {
+      f_t user_obj         = compute_user_objective(original_lp_, sol->objective);
+      f_t user_lower       = compute_user_objective(original_lp_, deterministic_lower);
+      i_t nodes_explored   = exploration_stats_.nodes_explored.load();
+      i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
+
+      search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
+      report(feasible_solution_symbol(worker_type),
+             sol->objective,
+             deterministic_lower,
+             sol->depth,
+             0,
+             deterministic_current_horizon_);
+
+      bool improved = false;
+      if (sol->objective < upper_bound_) {
+        upper_bound_ = sol->objective;
+        incumbent_.set_incumbent_solution(sol->objective, sol->solution);
+        current_upper = sol->objective;
+        improved      = true;
+      }
+
+      if (improved && settings_.solution_callback != nullptr) {
+        std::vector<f_t> original_x;
+        uncrush_primal_solution(original_problem_, original_lp_, sol->solution, original_x);
+        settings_.solution_callback(original_x, sol->objective);
+      }
+    }
+  }
+
+  for (auto& worker : pool) {
+    worker.integer_solutions.clear();
+  }
+}
+
+template <typename i_t, typename f_t>
+template <typename PoolT>
+void branch_and_bound_t<i_t, f_t>::deterministic_merge_pseudo_cost_updates(PoolT& pool)
+{
+  std::vector<pseudo_cost_update_t<i_t, f_t>> all_pc_updates;
+  for (auto& worker : pool) {
+    auto updates = worker.pc_snapshot.take_updates();
+    all_pc_updates.insert(all_pc_updates.end(), updates.begin(), updates.end());
+  }
+  std::sort(all_pc_updates.begin(), all_pc_updates.end());
+  pc_.merge_updates(all_pc_updates);
+}
+
+template <typename i_t, typename f_t>
+template <typename PoolT>
+void branch_and_bound_t<i_t, f_t>::deterministic_broadcast_snapshots(
+  PoolT& pool, const std::vector<f_t>& incumbent_snapshot)
+{
+  deterministic_snapshot_t<i_t, f_t> snap;
+  snap.upper_bound    = upper_bound_.load();
+  snap.total_lp_iters = exploration_stats_.total_lp_iters.load();
+  snap.incumbent      = incumbent_snapshot;
+  snap.pc_snapshot    = pc_.create_snapshot();
+
+  for (auto& worker : pool) {
+    worker.set_snapshots(snap);
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
+  const bb_event_batch_t<i_t, f_t>& events)
+{
+  // Infeasible solutions from GPU heuristics are queued for repair; process them now
+  {
+    std::vector<std::vector<f_t>> to_repair;
+    // TODO: support repair queue in deterministic mode
+    // mutex_repair_.lock();
+    // if (repair_queue_.size() > 0) {
+    //   to_repair = repair_queue_;
+    //   repair_queue_.clear();
+    // }
+    // mutex_repair_.unlock();
+
+    std::sort(to_repair.begin(),
+              to_repair.end(),
+              [](const std::vector<f_t>& a, const std::vector<f_t>& b) { return a < b; });
+
+    if (to_repair.size() > 0) {
+      settings_.log.debug("Deterministic sync: Attempting to repair %ld injected solutions\n",
+                          to_repair.size());
+      for (const std::vector<f_t>& potential_solution : to_repair) {
+        std::vector<f_t> repaired_solution;
+        f_t repaired_obj;
+        bool success =
+          repair_solution(edge_norms_, potential_solution, repaired_obj, repaired_solution);
+        if (success) {
+          // Queue repaired solution with work unit timestamp (...workstamp?)
+          mutex_heuristic_queue_.lock();
+          heuristic_solution_queue_.push_back(
+            {repaired_obj, std::move(repaired_solution), 0, -1, 0, deterministic_current_horizon_});
+          mutex_heuristic_queue_.unlock();
+        }
+      }
+    }
+  }
+
+  // Extract heuristic solutions, keeping future solutions for next horizon
+  // Use deterministic_current_horizon_ as the upper bound (horizon_end)
+  std::vector<queued_integer_solution_t<i_t, f_t>> heuristic_solutions;
+  mutex_heuristic_queue_.lock();
+  {
+    std::vector<queued_integer_solution_t<i_t, f_t>> future_solutions;
+    for (auto& sol : heuristic_solution_queue_) {
+      if (sol.work_timestamp < deterministic_current_horizon_) {
+        heuristic_solutions.push_back(std::move(sol));
+      } else {
+        future_solutions.push_back(std::move(sol));
+      }
+    }
+    heuristic_solution_queue_ = std::move(future_solutions);
+  }
+  mutex_heuristic_queue_.unlock();
+
+  // sort by work unit timestamp, with objective and solution values as tie-breakers
+  std::sort(
+    heuristic_solutions.begin(),
+    heuristic_solutions.end(),
+    [](const queued_integer_solution_t<i_t, f_t>& a, const queued_integer_solution_t<i_t, f_t>& b) {
+      if (a.work_timestamp != b.work_timestamp) { return a.work_timestamp < b.work_timestamp; }
+      if (a.objective != b.objective) { return a.objective < b.objective; }
+      return a.solution < b.solution;  // edge-case - lexicographical comparison
+    });
+
+  // Merge B&B events and heuristic solutions for unified timeline replay
+  size_t event_idx     = 0;
+  size_t heuristic_idx = 0;
+
+  while (event_idx < events.events.size() || heuristic_idx < heuristic_solutions.size()) {
+    bool process_event     = false;
+    bool process_heuristic = false;
+
+    if (event_idx >= events.events.size()) {
+      process_heuristic = true;
+    } else if (heuristic_idx >= heuristic_solutions.size()) {
+      process_event = true;
+    } else {
+      // Both have items - pick the one with smaller WUT
+      if (events.events[event_idx].work_timestamp <=
+          heuristic_solutions[heuristic_idx].work_timestamp) {
+        process_event = true;
+      } else {
+        process_heuristic = true;
+      }
+    }
+
+    if (process_event) {
+      const auto& event = events.events[event_idx++];
+      switch (event.type) {
+        case bb_event_type_t::NODE_INTEGER:
+        case bb_event_type_t::NODE_BRANCHED:
+        case bb_event_type_t::NODE_FATHOMED:
+        case bb_event_type_t::NODE_INFEASIBLE:
+        case bb_event_type_t::NODE_NUMERICAL: break;
+      }
+    }
+
+    if (process_heuristic) {
+      const auto& hsol = heuristic_solutions[heuristic_idx++];
+
+      CUOPT_LOG_TRACE(
+        "Deterministic sync: Heuristic solution received at WUT %f with objective %g, current "
+        "horizon %f",
+        hsol.work_timestamp,
+        hsol.objective,
+        deterministic_current_horizon_);
+
+      // Process heuristic solution at its correct work unit timestamp position
+      f_t new_upper = std::numeric_limits<f_t>::infinity();
+
+      if (hsol.objective < upper_bound_) {
+        upper_bound_ = hsol.objective;
+        incumbent_.set_incumbent_solution(hsol.objective, hsol.solution);
+        new_upper = hsol.objective;
+      }
+
+      if (new_upper < std::numeric_limits<f_t>::infinity()) {
+        report_heuristic(new_upper);
+
+        if (settings_.solution_callback != nullptr) {
+          std::vector<f_t> original_x;
+          uncrush_primal_solution(original_problem_, original_lp_, hsol.solution, original_x);
+          settings_.solution_callback(original_x, hsol.objective);
+        }
+      }
+    }
+  }
+
+  // Merge integer solutions from BFS workers and update global incumbent
+  deterministic_process_worker_solutions(*deterministic_workers_,
+                                         [](const deterministic_bfs_worker_pool_t<i_t, f_t>&, int) {
+                                           return search_strategy_t::BEST_FIRST;
+                                         });
+
+  // Merge and apply pseudo-cost updates from BFS workers
+  deterministic_merge_pseudo_cost_updates(*deterministic_workers_);
+
+  for (const auto& worker : *deterministic_workers_) {
+    fetch_min(lower_bound_ceiling_, worker.local_lower_bound_ceiling);
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_prune_worker_nodes_vs_incumbent()
+{
+  f_t upper_bound = upper_bound_.load();
+
+  for (auto& worker : *deterministic_workers_) {
+    // Check nodes in plunge stack - filter in place
+    {
+      std::deque<mip_node_t<i_t, f_t>*> surviving;
+      for (auto* node : worker.plunge_stack) {
+        if (node->lower_bound >= upper_bound) {
+          search_tree_.update(node, node_status_t::FATHOMED);
+          --exploration_stats_.nodes_unexplored;
+        } else {
+          surviving.push_back(node);
+        }
+      }
+      worker.plunge_stack = std::move(surviving);
+    }
+
+    // Check nodes in backlog heap - filter and rebuild
+    {
+      std::vector<mip_node_t<i_t, f_t>*> surviving;
+      for (auto* node : worker.backlog.data()) {
+        if (node->lower_bound >= upper_bound) {
+          search_tree_.update(node, node_status_t::FATHOMED);
+          --exploration_stats_.nodes_unexplored;
+        } else {
+          surviving.push_back(node);
+        }
+      }
+      worker.backlog.clear();
+      for (auto* node : surviving) {
+        worker.backlog.push(node);
+      }
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_balance_worker_loads()
+{
+  const size_t num_workers = deterministic_workers_->size();
+  if (num_workers <= 1) return;
+
+  constexpr bool force_rebalance_every_sync = false;
+
+  // Count work for each worker: current_node (if any) + plunge_stack + backlog
+  std::vector<size_t> work_counts(num_workers);
+  size_t total_work = 0;
+  size_t max_work   = 0;
+  size_t min_work   = std::numeric_limits<size_t>::max();
+
+  for (size_t w = 0; w < num_workers; ++w) {
+    auto& worker   = (*deterministic_workers_)[w];
+    work_counts[w] = worker.queue_size();
+    total_work += work_counts[w];
+    max_work = std::max(max_work, work_counts[w]);
+    min_work = std::min(min_work, work_counts[w]);
+  }
+  if (total_work == 0) return;
+
+  bool needs_balance;
+  if (force_rebalance_every_sync) {
+    needs_balance = (total_work > 1);
+  } else {
+    needs_balance = (min_work == 0 && max_work >= 2) || (min_work > 0 && max_work > 4 * min_work);
+  }
+
+  if (!needs_balance) return;
+
+  std::vector<mip_node_t<i_t, f_t>*> all_nodes;
+  for (auto& worker : *deterministic_workers_) {
+    for (auto* node : worker.backlog.data()) {
+      all_nodes.push_back(node);
+    }
+    worker.backlog.clear();
+  }
+
+  if (all_nodes.empty()) return;
+
+  auto deterministic_less = [](const mip_node_t<i_t, f_t>* a, const mip_node_t<i_t, f_t>* b) {
+    if (a->origin_worker_id != b->origin_worker_id) {
+      return a->origin_worker_id < b->origin_worker_id;
+    }
+    return a->creation_seq < b->creation_seq;
+  };
+  std::sort(all_nodes.begin(), all_nodes.end(), deterministic_less);
+
+  // Distribute nodes
+  for (size_t i = 0; i < all_nodes.size(); ++i) {
+    size_t worker_idx = i % num_workers;
+    (*deterministic_workers_)[worker_idx].enqueue_node(all_nodes[i]);
+  }
+}
+
+template <typename i_t, typename f_t>
+f_t branch_and_bound_t<i_t, f_t>::deterministic_compute_lower_bound()
+{
+  // Compute lower bound from BFS worker local structures only
+  f_t lower_bound = lower_bound_ceiling_.load();
+
+  // Check all BFS worker queues
+  for (const auto& worker : *deterministic_workers_) {
+    // Check paused node (current_node)
+    if (worker.current_node != nullptr) {
+      lower_bound = std::min(worker.current_node->lower_bound, lower_bound);
+    }
+
+    // Check plunge stack nodes
+    for (auto* node : worker.plunge_stack) {
+      lower_bound = std::min(node->lower_bound, lower_bound);
+    }
+
+    // Check backlog heap nodes
+    for (auto* node : worker.backlog.data()) {
+      lower_bound = std::min(node->lower_bound, lower_bound);
+    }
+  }
+
+  // Tree is exhausted
+  if (lower_bound == std::numeric_limits<f_t>::infinity() && incumbent_.has_incumbent) {
+    lower_bound = upper_bound_.load();
+  }
+
+  return lower_bound;
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_populate_diving_heap()
+{
+  // Clear diving heap from previous horizon
+  diving_heap_.clear();
+
+  if (!deterministic_diving_workers_ || deterministic_diving_workers_->size() == 0) return;
+
+  const int num_diving                  = deterministic_diving_workers_->size();
+  constexpr int target_nodes_per_worker = 10;
+  const int target_total                = num_diving * target_nodes_per_worker;
+  f_t upper_bound                       = upper_bound_.load();
+
+  // Collect candidate nodes from BFS worker backlog heaps
+  std::vector<std::pair<mip_node_t<i_t, f_t>*, f_t>> candidates;
+
+  for (auto& worker : *deterministic_workers_) {
+    for (auto* node : worker.backlog.data()) {
+      if (node->lower_bound < upper_bound) {
+        f_t score = node->objective_estimate;
+        if (score >= inf) { score = node->lower_bound; }
+        candidates.push_back({node, score});
+      }
+    }
+  }
+
+  if (candidates.empty()) return;
+
+  // Technically not necessary as it stands since the worker assignments and ordering are
+  // deterministic
+  std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+    if (a.second != b.second) return a.second < b.second;
+    if (a.first->origin_worker_id != b.first->origin_worker_id) {
+      return a.first->origin_worker_id < b.first->origin_worker_id;
+    }
+    return a.first->creation_seq < b.first->creation_seq;
+  });
+
+  int nodes_to_take = std::min(target_total, (int)candidates.size());
+
+  for (int i = 0; i < nodes_to_take; ++i) {
+    diving_heap_.push({candidates[i].first, candidates[i].second});
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_assign_diving_nodes()
+{
+  if (!deterministic_diving_workers_ || deterministic_diving_workers_->size() == 0) {
+    diving_heap_.clear();
+    return;
+  }
+
+  constexpr int target_nodes_per_worker = 10;
+
+  // Round-robin assignment
+  int worker_idx        = 0;
+  const int num_workers = deterministic_diving_workers_->size();
+
+  while (!diving_heap_.empty()) {
+    auto& worker = (*deterministic_diving_workers_)[worker_idx];
+    worker_idx   = (worker_idx + 1) % num_workers;
+
+    // Skip workers that already have enough nodes
+    if ((int)worker.dive_queue_size() >= target_nodes_per_worker) {
+      bool all_full = true;
+      for (auto& w : *deterministic_diving_workers_) {
+        if ((int)w.dive_queue_size() < target_nodes_per_worker) {
+          all_full = false;
+          break;
+        }
+      }
+      if (all_full) break;  // all workers have enough nodes, stop assigning
+      continue;             // this worker is full, try next one
+    }
+
+    auto entry = diving_heap_.pop();
+    if (entry.has_value()) { worker.enqueue_dive_node(entry.value().node, original_lp_); }
+  }
+
+  diving_heap_.clear();
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_collect_diving_solutions_and_update_pseudocosts()
+{
+  if (!deterministic_diving_workers_) return;
+
+  // Collect integer solutions from diving workers and update global incumbent
+  deterministic_process_worker_solutions(
+    *deterministic_diving_workers_,
+    [](const deterministic_diving_worker_pool_t<i_t, f_t>& pool, int worker_id) {
+      return pool[worker_id].diving_type;
+    });
+
+  // Merge pseudo-cost updates from diving workers
+  deterministic_merge_pseudo_cost_updates(*deterministic_diving_workers_);
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::run_deterministic_diving_loop(
+  deterministic_diving_worker_t<i_t, f_t>& worker)
+{
+  raft::common::nvtx::range scope("BB::diving_worker_loop");
+
+  while (deterministic_global_termination_status_ == mip_status_t::UNSET) {
+    // Process dives from queue until empty or horizon exhausted
+    auto entry_opt = worker.dequeue_dive_node();
+    if (entry_opt.has_value()) {
+      deterministic_dive(worker, std::move(entry_opt.value()));
+      continue;
+    }
+
+    // Queue empty - wait for next sync point where we'll be assigned new nodes
+    f_t nowork_start = tic();
+    deterministic_scheduler_->wait_for_next_sync(worker.work_context);
+    worker.total_nowork_time += toc(nowork_start);
+    // Termination status is checked in loop condition
+  }
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::deterministic_dive(
+  deterministic_diving_worker_t<i_t, f_t>& worker, dive_queue_entry_t<i_t, f_t> entry)
+{
+  raft::common::nvtx::range scope("BB::deterministic_dive");
+
+  // Create local search tree for the dive
+  search_tree_t<i_t, f_t> dive_tree(std::move(entry.node));
+  std::deque<mip_node_t<i_t, f_t>*> stack;
+  stack.push_front(&dive_tree.root);
+
+  worker.dive_lower = std::move(entry.resolved_lower);
+  worker.dive_upper = std::move(entry.resolved_upper);
+
+  const i_t max_nodes_per_dive      = settings_.diving_settings.node_limit;
+  const i_t max_backtrack_depth     = settings_.diving_settings.backtrack_limit;
+  i_t nodes_this_dive               = 0;
+  worker.lp_iters_this_dive         = 0;
+  worker.recompute_bounds_and_basis = true;
+
+  while (!stack.empty() && deterministic_global_termination_status_ == mip_status_t::UNSET &&
+         nodes_this_dive < max_nodes_per_dive) {
+    mip_node_t<i_t, f_t>* node_ptr = stack.front();
+    stack.pop_front();
+
+    // Prune check using snapshot upper bound
+    f_t rel_gap = user_relative_gap(original_lp_, worker.local_upper_bound, node_ptr->lower_bound);
+    if (node_ptr->lower_bound > worker.local_upper_bound ||
+        rel_gap < settings_.relative_mip_gap_tol) {
+      worker.recompute_bounds_and_basis = true;
+      continue;
+    }
+
+    // Setup bounds for this node
+    std::fill(worker.bounds_changed.begin(), worker.bounds_changed.end(), false);
+
+    if (worker.recompute_bounds_and_basis) {
+      worker.leaf_problem.lower = worker.dive_lower;
+      worker.leaf_problem.upper = worker.dive_upper;
+      node_ptr->get_variable_bounds(
+        worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
+    } else {
+      node_ptr->update_branched_variable_bounds(
+        worker.leaf_problem.lower, worker.leaf_problem.upper, worker.bounds_changed);
+    }
+
+    double remaining_time = settings_.time_limit - toc(exploration_stats_.start_time);
+    if (remaining_time <= 0) { break; }
+
+    // Setup LP settings
+    simplex_solver_settings_t<i_t, f_t> lp_settings = settings_;
+    lp_settings.set_log(false);
+    lp_settings.cut_off       = worker.local_upper_bound + settings_.dual_tol;
+    lp_settings.inside_mip    = 2;
+    lp_settings.time_limit    = remaining_time;
+    lp_settings.scale_columns = false;
+
+#ifndef DETERMINISM_DISABLE_BOUNDS_STRENGTHENING
+    bool feasible = worker.node_presolver.bounds_strengthening(
+      lp_settings, worker.bounds_changed, worker.leaf_problem.lower, worker.leaf_problem.upper);
+
+    if (settings_.deterministic) {
+      // TEMP APPROXIMATION;
+      worker.work_context.record_work_sync_on_horizon(worker.node_presolver.last_nnz_processed /
+                                                      1e8);
+    }
+
+    if (!feasible) {
+      worker.recompute_bounds_and_basis = true;
+      continue;
+    }
+#endif
+
+    {
+      f_t factor                  = settings_.diving_settings.iteration_limit_factor;
+      i_t max_iter                = (i_t)(factor * worker.total_lp_iters_snapshot);
+      lp_settings.iteration_limit = max_iter - worker.lp_iters_this_dive;
+      if (lp_settings.iteration_limit <= 0) { break; }
+    }
+
+    // Solve LP relaxation
+    worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
+    std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
+    i_t node_iter                                = 0;
+    f_t lp_start_time                            = tic();
+    std::vector<f_t> leaf_edge_norms             = edge_norms_;
+
+    dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
+                                                               0,
+                                                               worker.recompute_bounds_and_basis,
+                                                               lp_start_time,
+                                                               worker.leaf_problem,
+                                                               lp_settings,
+                                                               leaf_vstatus,
+                                                               worker.basis_factors,
+                                                               worker.basic_list,
+                                                               worker.nonbasic_list,
+                                                               worker.leaf_solution,
+                                                               node_iter,
+                                                               leaf_edge_norms,
+                                                               &worker.work_context);
+
+    if (lp_status == dual::status_t::NUMERICAL) {
+      lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
+                                                                           lp_start_time,
+                                                                           lp_settings,
+                                                                           worker.leaf_solution,
+                                                                           worker.basis_factors,
+                                                                           worker.basic_list,
+                                                                           worker.nonbasic_list,
+                                                                           leaf_vstatus,
+                                                                           leaf_edge_norms,
+                                                                           &worker.work_context);
+      lp_status                 = convert_lp_status_to_dual_status(second_status);
+    }
+
+    ++nodes_this_dive;
+    ++worker.total_nodes_explored;
+    worker.lp_iters_this_dive += node_iter;
+
+    worker.clock = worker.work_context.global_work_units_elapsed;
+
+    if (lp_status == dual::status_t::TIME_LIMIT || lp_status == dual::status_t::WORK_LIMIT ||
+        lp_status == dual::status_t::ITERATION_LIMIT) {
+      break;
+    }
+
+    deterministic_diving_policy_t<i_t, f_t> policy{*this, worker, stack, max_backtrack_depth};
+    update_tree_impl(node_ptr, dive_tree, &worker, lp_status, policy);
+  }
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE

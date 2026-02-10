@@ -102,6 +102,13 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
 
+  auto& A_i    = A.i.underlying();
+  auto& A_x    = A.x.underlying();
+  auto& Arow_j = Arow.j.underlying();
+  auto& Arow_x = Arow.x.underlying();
+
+  size_t nnz_processed = 0;
+
   if (!bounds_changed.empty()) {
     std::fill(constraint_changed.begin(), constraint_changed.end(), false);
     for (i_t j = 0; j < n; ++j) {
@@ -109,7 +116,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
         const i_t col_start = A.col_start[j];
         const i_t col_end   = A.col_start[j + 1];
         for (i_t p = col_start; p < col_end; ++p) {
-          const i_t i           = A.i[p];
+          const i_t i           = A_i[p];
           constraint_changed[i] = true;
         }
       }
@@ -127,12 +134,13 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       if (!constraint_changed[i]) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
+      nnz_processed += (row_end - row_start);
 
       f_t min_a = 0.0;
       f_t max_a = 0.0;
       for (i_t p = row_start; p < row_end; ++p) {
-        const i_t j    = Arow.j[p];
-        const f_t a_ij = Arow.x[p];
+        const i_t j    = Arow_j[p];
+        const f_t a_ij = Arow_x[p];
 
         variable_changed[j] = true;
         if (a_ij > 0) {
@@ -162,6 +170,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
           cnst_ub,
           min_a,
           max_a);
+        last_nnz_processed = nnz_processed;
         return false;
       }
 
@@ -181,11 +190,12 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
 
       const i_t col_start = A.col_start[k];
       const i_t col_end   = A.col_start[k + 1];
+      nnz_processed += (col_end - col_start);
       for (i_t p = col_start; p < col_end; ++p) {
-        const i_t i = A.i[p];
+        const i_t i = A_i[p];
 
         if (!constraint_changed[i]) { continue; }
-        const f_t a_ik = A.x[p];
+        const f_t a_ik = A_x[p];
 
         f_t delta_min_act = delta_min_activity[i];
         f_t delta_max_act = delta_max_activity[i];
@@ -213,6 +223,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       if (new_lb > new_ub + settings.primal_tol) {
         settings.log.debug(
           "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
+        last_nnz_processed = nnz_processed;
         return false;
       }
       if (new_lb != old_lb || new_ub != old_ub) {
@@ -280,6 +291,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   lower_bounds = lower;
   upper_bounds = upper;
 
+  last_nnz_processed = nnz_processed;
   return true;
 }
 

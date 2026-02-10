@@ -307,6 +307,28 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
 
 std::atomic<int> global_concurrent_halt{0};
 
+template <typename f_t>
+void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_solution,
+                                           rmm::device_uvector<f_t>& reduced_cost,
+                                           rmm::cuda_stream_view stream_view)
+{
+  // y <- -y
+  cub::DeviceTransform::Transform(
+    dual_solution.data(),
+    dual_solution.data(),
+    dual_solution.size(),
+    [] HD(f_t dual) { return -dual; },
+    stream_view);
+
+  // z <- -z
+  cub::DeviceTransform::Transform(
+    reduced_cost.data(),
+    reduced_cost.data(),
+    reduced_cost.size(),
+    [] HD(f_t reduced_cost) { return -reduced_cost; },
+    stream_view);
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   detail::problem_t<i_t, f_t>& problem,
@@ -339,6 +361,13 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   rmm::device_uvector<f_t> final_reduced_cost =
     cuopt::device_copy(solution.z, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
+
+  // Negate dual variables and reduced costs for maximization problems
+  if (problem.maximize) {
+    adjust_dual_solution_and_reduced_cost(
+      final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+  }
 
   // Should be filled with more information from dual simplex
   std::vector<
@@ -549,7 +578,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
   timer_t timer_pdlp(timer.remaining_time());
-  auto sol             = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  // Negate dual variables and reduced costs for maximization problems
+  if (problem.maximize) {
+    adjust_dual_solution_and_reduced_cost(
+      sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+  }
   auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished");
@@ -603,6 +638,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
       cuopt::device_copy(vertex_solution.y, problem.handle_ptr->get_stream());
     rmm::device_uvector<f_t> final_reduced_cost =
       cuopt::device_copy(vertex_solution.z, problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+    // Negate dual variables and reduced costs for maximization problems
+    if (problem.maximize) {
+      adjust_dual_solution_and_reduced_cost(
+        final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+      problem.handle_ptr->sync_stream();
+    }
 
     // Should be filled with more information from dual simplex
     std::vector<

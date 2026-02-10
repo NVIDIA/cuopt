@@ -13,6 +13,10 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/types.hpp>
 
+namespace cuopt {
+struct work_limit_context_t;
+}
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -27,7 +31,8 @@ enum class lp_status_t {
   NUMERICAL_ISSUES = 5,
   CUTOFF           = 6,
   CONCURRENT_LIMIT = 7,
-  UNSET            = 8
+  WORK_LIMIT       = 8,
+  UNSET            = 9
 };
 
 static std::string lp_status_to_string(lp_status_t status)
@@ -41,6 +46,7 @@ static std::string lp_status_to_string(lp_status_t status)
     case lp_status_t::NUMERICAL_ISSUES: return "NUMERICAL_ISSUES";
     case lp_status_t::CUTOFF: return "CUTOFF";
     case lp_status_t::CONCURRENT_LIMIT: return "CONCURRENT_LIMIT";
+    case lp_status_t::WORK_LIMIT: return "WORK_LIMIT";
     case lp_status_t::UNSET: return "UNSET";
   }
   return "UNKNOWN";
@@ -61,7 +67,8 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                           const simplex_solver_settings_t<i_t, f_t>& settings,
                                           lp_solution_t<i_t, f_t>& original_solution,
                                           std::vector<variable_status_t>& vstatus,
-                                          std::vector<f_t>& edge_norms);
+                                          std::vector<f_t>& edge_norms,
+                                          work_limit_context_t* work_unit_context = nullptr);
 
 // Solve the LP using dual simplex and keep the `basis_update_mpf_t`
 // for future use.
@@ -75,7 +82,8 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus,
-  std::vector<f_t>& edge_norms);
+  std::vector<f_t>& edge_norms,
+  work_limit_context_t* work_unit_context = nullptr);
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,

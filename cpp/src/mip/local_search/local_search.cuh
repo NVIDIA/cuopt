@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -20,6 +20,11 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+
+namespace cuopt::linear_programming::dual_simplex {
+template <typename i_t, typename f_t>
+class branch_and_bound_t;
+}
 
 namespace cuopt::linear_programming::detail {
 
@@ -87,6 +92,10 @@ class local_search_t {
                    const std::string& source);
 
   i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
+
+  // Start CPUFJ thread for deterministic mode with B&B integration
+  void start_cpufj_deterministic(dual_simplex::branch_and_bound_t<i_t, f_t>& bb);
+  void stop_cpufj_deterministic();
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,
                                            f_t& best_objective);
@@ -120,6 +129,7 @@ class local_search_t {
   std::array<cpu_fj_thread_t<i_t, f_t>, 8> ls_cpu_fj;
   std::array<cpu_fj_thread_t<i_t, f_t>, 1> scratch_cpu_fj;
   cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
+  cpu_fj_thread_t<i_t, f_t> deterministic_cpu_fj;
   problem_t<i_t, f_t> problem_with_objective_cut;
   bool cutting_plane_added_for_active_run{false};
 };

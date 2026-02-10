@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -27,29 +27,9 @@ void csc_matrix_t<i_t, f_t>::scale_columns(const std::vector<f_t, Allocator>& sc
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-template int
-matrix_vector_multiply<int, double, PinnedHostAllocator<double>, PinnedHostAllocator<double>>(
-  const csc_matrix_t<int, double>& A,
-  double alpha,
-  const std::vector<double, PinnedHostAllocator<double>>& x,
-  double beta,
-  std::vector<double, PinnedHostAllocator<double>>& y);
 
-template int
-matrix_vector_multiply<int, double, PinnedHostAllocator<double>, std::allocator<double>>(
-  const csc_matrix_t<int, double>& A,
-  double alpha,
-  const std::vector<double, PinnedHostAllocator<double>>& x,
-  double beta,
-  std::vector<double, std::allocator<double>>& y);
-
-template int
-matrix_vector_multiply<int, double, std::allocator<double>, PinnedHostAllocator<double>>(
-  const csc_matrix_t<int, double>& A,
-  double alpha,
-  const std::vector<double, std::allocator<double>>& x,
-  double beta,
-  std::vector<double, PinnedHostAllocator<double>>& y);
+// NOTE: matrix_vector_multiply is now templated on VectorX and VectorY.
+// Since it's defined inline in the header, no explicit instantiation is needed here.
 
 template int matrix_transpose_vector_multiply<int,
                                               double,
