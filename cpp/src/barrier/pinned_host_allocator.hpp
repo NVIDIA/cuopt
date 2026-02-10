@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <dual_simplex/dense_vector.hpp>
+#include <barrier/dense_vector.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 

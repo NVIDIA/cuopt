@@ -7,14 +7,14 @@
 
 #pragma once
 
-#include <dual_simplex/bb_event.hpp>
-#include <dual_simplex/branch_and_bound_worker.hpp>
-#include <dual_simplex/diving_heuristics.hpp>
-#include <dual_simplex/node_queue.hpp>
+#include <branch_and_bound/bb_event.hpp>
+#include <branch_and_bound/branch_and_bound_worker.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/node_queue.hpp>
+
 #include <utilities/work_limit_context.hpp>
 
 #include <optional>
-
 #include <cmath>
 #include <deque>
 #include <limits>

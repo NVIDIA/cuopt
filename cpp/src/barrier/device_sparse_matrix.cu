@@ -5,8 +5,9 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/device_sparse_matrix.cuh>
-#include <dual_simplex/pinned_host_allocator.hpp>
+#include <barrier/device_sparse_matrix.cuh>
+#include <barrier/pinned_host_allocator.hpp>
+
 #include <dual_simplex/sparse_matrix.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {

@@ -14,7 +14,7 @@
 #include <linear_programming/pdlp.cuh>
 #include <linear_programming/solve.cuh>
 
-#include <dual_simplex/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 

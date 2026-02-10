@@ -7,20 +7,23 @@
 
 #pragma once
 
-#include <dual_simplex/bb_event.hpp>
-#include <dual_simplex/branch_and_bound_worker.hpp>
-#include <dual_simplex/cuts.hpp>
-#include <dual_simplex/deterministic_workers.hpp>
-#include <dual_simplex/diving_heuristics.hpp>
+#include <branch_and_bound/bb_event.hpp>
+#include <branch_and_bound/branch_and_bound_worker.hpp>
+#include <branch_and_bound/deterministic_workers.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
+#include <branch_and_bound/mip_node.hpp>
+#include <branch_and_bound/node_queue.hpp>
+#include <branch_and_bound/pseudo_costs.hpp>
+
+#include <cuts/cuts.hpp>
+
 #include <dual_simplex/initial_basis.hpp>
-#include <dual_simplex/mip_node.hpp>
-#include <dual_simplex/node_queue.hpp>
 #include <dual_simplex/phase2.hpp>
-#include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/types.hpp>
+
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/producer_sync.hpp>
@@ -28,6 +31,7 @@
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <omp.h>
+
 #include <functional>
 #include <vector>
 

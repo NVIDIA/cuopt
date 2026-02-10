@@ -5,7 +5,8 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/dense_vector.hpp>
+#include <barrier/dense_vector.hpp>
+
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/types.hpp>
 

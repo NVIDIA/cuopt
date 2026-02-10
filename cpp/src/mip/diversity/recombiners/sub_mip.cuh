@@ -10,7 +10,7 @@
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
 #include "recombiner.cuh"
 
-#include <dual_simplex/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>

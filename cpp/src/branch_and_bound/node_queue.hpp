@@ -5,14 +5,14 @@
 
 #pragma once
 
+#include <branch_and_bound/mip_node.hpp>
+
 #include <algorithm>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <utility>
 #include <vector>
-
-#include <dual_simplex/mip_node.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 

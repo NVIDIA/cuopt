@@ -5,24 +5,26 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/barrier.hpp>
+#include <barrier/barrier.hpp>
 
-#include <dual_simplex/conjugate_gradient.hpp>
-#include <dual_simplex/cusparse_info.hpp>
-#include <dual_simplex/dense_matrix.hpp>
-#include <dual_simplex/dense_vector.hpp>
-#include <dual_simplex/device_sparse_matrix.cuh>
-#include <dual_simplex/iterative_refinement.hpp>
+#include <barrier/conjugate_gradient.hpp>
+#include <barrier/cusparse_info.hpp>
+#include <barrier/dense_matrix.hpp>
+#include <barrier/dense_vector.hpp>
+#include <barrier/device_sparse_matrix.cuh>
+#include <barrier/iterative_refinement.hpp>
+#include <barrier/sparse_cholesky.cuh>
+#include <barrier/sparse_matrix_kernels.cuh>
+#include <barrier/cusparse_view.hpp>
+
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_cholesky.cuh>
+
 #include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_matrix_kernels.cuh>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/types.hpp>
 
 #include <dual_simplex/vector_math.cuh>
-#include "dual_simplex/cusparse_view.hpp"
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>

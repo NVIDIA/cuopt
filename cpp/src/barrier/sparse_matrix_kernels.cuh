@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <dual_simplex/cusparse_info.hpp>
-#include <dual_simplex/device_sparse_matrix.cuh>
+#include <barrier/cusparse_info.hpp>
+#include <barrier/device_sparse_matrix.cuh>
 
 namespace cuopt::linear_programming::dual_simplex {
 

@@ -7,9 +7,11 @@
 
 #pragma once
 
+#include <branch_and_bound/pseudo_costs.hpp>
+
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
-#include <dual_simplex/pseudo_costs.hpp>
+
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {

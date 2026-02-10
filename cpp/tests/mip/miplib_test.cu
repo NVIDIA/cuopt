@@ -7,7 +7,7 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
-#include "dual_simplex/branch_and_bound.hpp"
+#include "branch_and_bound/branch_and_bound.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"
 

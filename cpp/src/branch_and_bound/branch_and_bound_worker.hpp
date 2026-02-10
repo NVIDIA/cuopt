@@ -7,9 +7,10 @@
 
 #pragma once
 
+#include <branch_and_bound/mip_node.hpp>
+
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
-#include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/phase2.hpp>
 
 #include <utilities/pcgenerator.hpp>

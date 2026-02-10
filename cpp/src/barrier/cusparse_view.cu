@@ -5,10 +5,11 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/dense_vector.hpp>
-#include <dual_simplex/pinned_host_allocator.hpp>
+#include <barrier/dense_vector.hpp>
+#include <barrier/pinned_host_allocator.hpp>
+#include <barrier/cusparse_view.hpp>
+
 #include <dual_simplex/sparse_matrix.hpp>
-#include "dual_simplex/cusparse_view.hpp"
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>

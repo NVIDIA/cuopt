@@ -5,10 +5,12 @@
  */
 /* clang-format on */
 
+#include <cuts/cuts.hpp>
+
 #include <dual_simplex/basis_solves.hpp>
-#include <dual_simplex/cuts.hpp>
-#include <dual_simplex/dense_matrix.hpp>
 #include <dual_simplex/tic_toc.hpp>
+
+#include <barrier/dense_matrix.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 

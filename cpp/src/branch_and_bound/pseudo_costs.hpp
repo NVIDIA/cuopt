@@ -7,12 +7,14 @@
 
 #pragma once
 
+#include <branch_and_bound/branch_and_bound_worker.hpp>
+#include <branch_and_bound/mip_node.hpp>
+
 #include <dual_simplex/basis_updates.hpp>
-#include <dual_simplex/branch_and_bound_worker.hpp>
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/types.hpp>
+
 #include <utilities/omp_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
 

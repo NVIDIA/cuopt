@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include "dual_simplex/types.hpp"
+#include <dual_simplex/types.hpp>
 
 #include <cmath>
 #include <cstdio>

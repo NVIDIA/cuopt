@@ -7,9 +7,11 @@
 
 #include <dual_simplex/solve.hpp>
 
-#include <dual_simplex/barrier.hpp>
+#include <barrier/barrier.hpp>
+
+#include <branch_and_bound/branch_and_bound.hpp>
+
 #include <dual_simplex/basis_solves.hpp>
-#include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>

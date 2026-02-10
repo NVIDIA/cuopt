@@ -5,15 +5,16 @@
  */
 /* clang-format on */
 
+#include <branch_and_bound/pseudo_costs.hpp>
+
 #include <dual_simplex/phase2.hpp>
-#include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <raft/common/nvtx.hpp>
-
 #include <cuopt/linear_programming/solve.hpp>
+
+#include <raft/common/nvtx.hpp>
 
 #include <omp.h>
 

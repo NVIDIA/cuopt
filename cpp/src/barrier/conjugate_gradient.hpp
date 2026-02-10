@@ -6,10 +6,11 @@
 /* clang-format on */
 #pragma once
 
-#include "dual_simplex/dense_vector.hpp"
-#include "dual_simplex/simplex_solver_settings.hpp"
-#include "dual_simplex/types.hpp"
-#include "dual_simplex/vector_math.hpp"
+#include <barrier/dense_vector.hpp>
+
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <dual_simplex/types.hpp>
+#include <dual_simplex/vector_math.hpp>
 
 #include <cmath>
 #include <cstdio>

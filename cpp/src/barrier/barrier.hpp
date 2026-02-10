@@ -6,16 +6,17 @@
 /* clang-format on */
 #pragma once
 
-#include <rmm/device_uvector.hpp>
-#include "dual_simplex/dense_vector.hpp"
-#include "dual_simplex/pinned_host_allocator.hpp"
-#include "dual_simplex/presolve.hpp"
-#include "dual_simplex/simplex_solver_settings.hpp"
-#include "dual_simplex/solution.hpp"
-#include "dual_simplex/solve.hpp"
-#include "dual_simplex/sparse_matrix.hpp"
-#include "dual_simplex/tic_toc.hpp"
+#include <barrier/dense_vector.hpp>
+#include <barrier/pinned_host_allocator.hpp>
 
+#include <dual_simplex/presolve.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <dual_simplex/solution.hpp>
+#include <dual_simplex/solve.hpp>
+#include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/tic_toc.hpp>
+
+#include <rmm/device_uvector.hpp>
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>

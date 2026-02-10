@@ -5,21 +5,23 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/branch_and_bound.hpp>
+#include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/mip_node.hpp>
+#include <branch_and_bound/pseudo_costs.hpp>
+
+#include <cuts/cuts.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/crossover.hpp>
-#include <dual_simplex/cuts.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/mip_node.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
-#include <dual_simplex/pseudo_costs.hpp>
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+
 #include <raft/common/nvtx.hpp>
 #include <utilities/hashing.hpp>
 

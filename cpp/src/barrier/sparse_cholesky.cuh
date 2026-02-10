@@ -6,11 +6,12 @@
 /* clang-format on */
 #pragma once
 
-#include "dual_simplex/dense_vector.hpp"
-#include "dual_simplex/device_sparse_matrix.cuh"
-#include "dual_simplex/simplex_solver_settings.hpp"
-#include "dual_simplex/sparse_matrix.hpp"
-#include "dual_simplex/tic_toc.hpp"
+#include <barrier/dense_vector.hpp>
+#include <barrier/device_sparse_matrix.cuh>
+
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/tic_toc.hpp>
 
 #include <cuda_runtime.h>
 #include <utilities/driver_helpers.cuh>

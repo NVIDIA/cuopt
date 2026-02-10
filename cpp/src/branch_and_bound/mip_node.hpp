@@ -9,6 +9,7 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
+
 #include <utilities/hashing.hpp>
 #include <utilities/omp_helpers.hpp>
 

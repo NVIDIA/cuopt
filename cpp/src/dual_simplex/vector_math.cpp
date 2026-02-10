@@ -5,7 +5,8 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/pinned_host_allocator.hpp>
+#include <barrier/pinned_host_allocator.hpp>
+
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/vector_math.hpp>
 

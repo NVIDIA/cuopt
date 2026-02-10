@@ -6,22 +6,26 @@
 /* clang-format on */
 #pragma once
 
+#include <barrier/dense_vector.hpp>
+
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <dual_simplex/types.hpp>
+#include <dual_simplex/vector_math.hpp>
+
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
 #include <thrust/inner_product.h>
 #include <thrust/reduce.h>
 #include <thrust/transform.h>
 #include <thrust/transform_reduce.h>
+
+#include <rmm/device_uvector.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
-#include <rmm/device_uvector.hpp>
 #include <vector>
-#include "dual_simplex/dense_vector.hpp"
-#include "dual_simplex/simplex_solver_settings.hpp"
-#include "dual_simplex/types.hpp"
-#include "dual_simplex/vector_math.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 

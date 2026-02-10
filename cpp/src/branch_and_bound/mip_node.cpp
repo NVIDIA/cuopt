@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/mip_node.hpp>
+#include <branch_and_bound/mip_node.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 

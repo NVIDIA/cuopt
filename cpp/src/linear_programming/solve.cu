@@ -32,9 +32,10 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/version_info.hpp>
 
+#include <barrier/sparse_cholesky.cuh>
+
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_cholesky.cuh>
 #include <dual_simplex/tic_toc.hpp>
 #include <linear_programming/utilities/problem_checking.cuh>
 
