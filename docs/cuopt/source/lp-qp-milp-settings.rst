@@ -1,9 +1,9 @@
 =================================
-LP, QP and MILP Settings
+LP, QP, and MILP Settings
 =================================
 
 
-This page describes the parameter settings available for cuOpt's LP, QP and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
+This page describes the parameter settings available for cuOpt's LP, QP, and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
 Please refer to examples in :doc:`C </cuopt-c/lp-qp-milp/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
@@ -372,7 +372,7 @@ Scaling
 ``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem. When true scaling is applied,
 when false, no scaling is applied.
 
-.. note:: the defaulte value is true.
+.. note:: the defaulte value is false.
 
 
 Absolute Tolerance
@@ -424,3 +424,92 @@ If the Best Objective and the Dual Bound are both zero the gap is zero. If the b
 gap is infinity.
 
 .. note:: the default value is ``1e-4``.
+
+
+Cut Passes
+^^^^^^^^^^
+
+``CUOPT_MIP_CUT_PASSES`` controls the number of cut passes to run. Set this value to 0 to disable cuts. Set this value to larger numbers to perform more cut passes.
+
+.. note:: the default value is ``10``.
+
+Mixed Integer Rounding Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS`` controls whether to use mixed integer rounding cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer rounding cuts based on the problem characteristics.
+Set this value to 1 to enable mixed integer rounding cuts.
+Set this value to 0 to disable mixed integer rounding cuts.
+
+.. note:: the default value is ``-1`` (automatic).
+
+Mixed Integer Gomory Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS`` controls whether to use mixed integer Gomory cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer Gomory cuts based on the problem characteristics.
+Set this value to 1 to enable mixed integer Gomory cuts.
+Set this value to 0 to disable mixed integer Gomory cuts.
+
+.. note:: the default value is ``-1`` (automatic).
+
+Strong Chvatal-Gomory Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS`` controls whether to use strong Chvatal-Gomory cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use strong Chvatal-Gomory cuts based on the problem characteristics.
+Set this value to 1 to enable strong Chvatal Gomory cuts.
+Set this value to 0 to disable strong Chvatal Gomory cuts.
+
+.. note:: the default value is ``-1`` (automatic).
+
+Knapsack Cuts
+^^^^^^^^^^^^^
+
+``CUOPT_MIP_KNAPSACK_CUTS`` controls whether to use knapsack cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use knapsack cuts based on the problem characteristics.
+Set this value to 1 to enable knapsack cuts.
+Set this value to 0 to disable knapsack cuts.
+
+.. note:: the default value is ``-1`` (automatic).
+
+
+Cut Change Threshold
+^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_CUT_CHANGE_THRESHOLD`` controls the threshold for the improvement in the dual bound per cut pass.
+Larger values require the dual bound to improve significantly in each cut pass.
+Set this value to 0 to allow the cut passes to continue even if the dual bound does not improve.
+
+.. note:: the default value is ``1e-3``.
+
+Cut Min Orthogonality
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_CUT_MIN_ORTHOGONALITY`` controls the minimum orthogonality required for a cut to be added to the LP relaxation.
+Set this value close to 1, to require all cuts be close to orthogonal to each other.
+Set this value close to zero to allow more cuts to be added to the LP relaxation.
+
+.. note:: the default value is ``0.5``.
+
+Reduced Cost Strengthening
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_REDUCED_COST_STRENGTHENING`` controls whether to use reduced-cost strengthening.
+When enabled, the solver will use integer feasible solutions to strengthen the bounds of integer variables.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use reduced-cost strengthening based on the problem characteristics.
+Set this value to 0 to disable reduced-cost strengthening.
+Set this value to 1 to perform reduced-cost strengthening during the root cut passes.
+Set this value to 2 to perform reduced-cost strengthening during the root cut passes and after strong branching.
+
+.. note:: the default value is ``-1`` (automatic).
+
+Reliability Branching
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_RELIABILITY_BRANCHING`` controls the reliability branching mode.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use reliability branching, and the reliability branching factor, based on the problem characteristics.
+Set this value to 0 to disable reliability branching.
+Set this value to k > 0, to enable reliability branching. A variable will be considered reliable if it has been branched on k times.
+
+.. note:: the default value is ``-1`` (automatic).

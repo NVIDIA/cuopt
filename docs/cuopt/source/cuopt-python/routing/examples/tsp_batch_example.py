@@ -42,9 +42,13 @@ def main():
     print(f"Solved {len(solutions)} TSPs in batch.")
     for i, (size, solution) in enumerate(zip(tsp_sizes, solutions)):
         status = solution.get_status()
-        status_str = "SUCCESS" if status == routing.SolutionStatus.SUCCESS else status
+        status_str = (
+            "SUCCESS" if status == routing.SolutionStatus.SUCCESS else status
+        )
         vehicle_count = solution.get_vehicle_count()
-        print(f"  TSP {i} (size {size}): status={status_str}, vehicles={vehicle_count}")
+        print(
+            f"  TSP {i} (size {size}): status={status_str}, vehicles={vehicle_count}"
+        )
 
 
 if __name__ == "__main__":
