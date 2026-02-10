@@ -4,7 +4,7 @@ Routing Examples
 
 This section contains examples for the cuOpt routing Python API.
 
-TSP batch mode
+TSP Batch Mode
 --------------
 
 The routing Python API supports **batch mode** for solving many TSP (or routing) instances in a single call. Instead of calling :func:`cuopt.routing.Solve` repeatedly, you build a list of :class:`cuopt.routing.DataModel` objects and call :func:`cuopt.routing.BatchSolve`. The solver runs the problems in parallel to improve throughput.
