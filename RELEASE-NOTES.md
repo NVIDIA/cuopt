@@ -9,7 +9,7 @@
 - Added an option to use batch PDLP when running strong branching at the root. Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
 - Quadratic programming (QP) solver is now generally available (previously beta)
 - New infeasibility detection option for PDLP's default solver mode Stable3
-- Solutions callbacks added to C API. Users can now retrieve the dual bound and pass in user data.
+- Solutions callbacks added to C API. Users can now retrieve the dual bound and pass in user data
 - Multiple new diving techniques added for finding integer feasible solutions
 - The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable
 - Added a batch solve for routing to boost throughput for many similar instances
