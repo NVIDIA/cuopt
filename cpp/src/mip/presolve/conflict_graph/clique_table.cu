@@ -171,15 +171,17 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     }
     // equality part
     else {
-      bool is_set_partitioning = problem.rhs[i] == 1.;
+      // For equality rows, partitioning status should not depend on raw rhs scale here.
+      // The exact set-packing/partitioning check is finalized later in
+      // make_coeff_positive_knapsack_constraint after coefficient normalization.
+      bool is_set_partitioning = true;
       bool ranged_constraint   = ranged_constraint_counter < problem.num_range_rows &&
                                problem.range_rows[ranged_constraint_counter] == i;
       // less than part
       knapsack_constraint.rhs = problem.rhs[i];
       if (ranged_constraint) {
         knapsack_constraint.rhs += problem.range_value[ranged_constraint_counter];
-        is_set_partitioning =
-          problem.range_value[ranged_constraint_counter] == 0. && problem.rhs[i] == 1.;
+        is_set_partitioning = problem.range_value[ranged_constraint_counter] == 0.;
         ranged_constraint_counter++;
       }
       for (i_t j = constraint_range.first; j < constraint_range.second; j++) {
@@ -361,7 +363,10 @@ void insert_clique_into_problem(const std::vector<i_t>& clique,
     new_vars.push_back(var_idx);
     new_coeffs.push_back(coeff);
   }
-  f_t rhs = coeff_scale + rhs_offset;
+  // For complemented literals (1 - x), expansion contributes a constant term on the left:
+  //   coeff_scale * (1 - x) = coeff_scale - coeff_scale * x
+  // Move constants to the right, so rhs must decrease by rhs_offset.
+  f_t rhs = coeff_scale - rhs_offset;
   // insert the new clique into the problem as a new constraint
   A.insert_row(new_vars, new_coeffs);
   problem.row_sense.push_back('L');
@@ -597,6 +602,8 @@ void remove_dominated_cliques(
       return i == a.size();
     };
     auto fix_difference = [&](const std::vector<i_t>& superset, const std::vector<i_t>& subset) {
+      cuopt_assert(std::is_sorted(subset.begin(), subset.end()),
+                   "subset vector passed to fix_difference is not sorted");
       for (auto var_idx : superset) {
         if (std::binary_search(subset.begin(), subset.end(), var_idx)) { continue; }
         if (var_idx >= problem.num_cols) {
@@ -644,23 +651,33 @@ void remove_dominated_cliques(
       size_t start = find_window_start(signature);
       size_t end   = std::min(sp_sigs.size(), start + dominance_window);
       for (size_t idx = start; idx < end; idx++) {
-        const auto& sp = sp_sigs[idx];
+        const auto& sp      = sp_sigs[idx];
+        const auto& vars_sp = cstr_vars[sp.knapsack_idx];
+        if (vars_sp.size() > curr_clique_vars.size()) { continue; }
+        cuopt_assert(std::is_sorted(vars_sp.begin(), vars_sp.end()),
+                     "vars_sp vector passed to is_subset is not sorted");
+        if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
+        // If this is a real model row and it is already marked for removal, it must not drive
+        // additional fixings/removals.
         if (sp.row_idx >= 0 && sp.row_idx < static_cast<i_t>(removal_marker.size()) &&
             removal_marker[sp.row_idx]) {
           continue;
         }
-        const auto& vars_sp = cstr_vars[sp.knapsack_idx];
-        if (vars_sp.size() > curr_clique_vars.size()) { continue; }
-        if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
         if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
           CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
                           clique_idx,
                           sp.row_idx);
           // note that we never deleter set partitioning constraints but it fixes some other
           // variables
-          fix_difference(curr_clique_vars, vars_sp);
+          if (vars_sp.size() != curr_clique_vars.size()) {
+            fix_difference(curr_clique_vars, vars_sp);
+          }
         } else {
-          if (sp.row_idx >= 0 && sp.row_idx < A.m) { removal_marker[sp.row_idx] = true; }
+          // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
+          // removed from A.
+          if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
+          if (removal_marker[sp.row_idx]) { continue; }
+          removal_marker[sp.row_idx] = true;
         }
       }
       if ((i % 128) == 0) {
