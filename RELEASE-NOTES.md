@@ -11,14 +11,14 @@
 - New infeasibility detection option for PDLP's default solver mode Stable3
 - Solutions callbacks added to C API. Users can now retrieve the dual bound and pass in user data.
 - Multiple new diving techniques added for finding integer feasible solutions
-- The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable.
+- The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable
 - Added a batch solve for routing to boost throughput for many similar instances
-- Added experimental support for determinism in the parallel branch-and-bound solver. GPU heuristics are not supported yet in this mode.
+- Added experimental support for determinism in the parallel branch-and-bound solver. GPU heuristics are not supported yet in this mode
 
 ### Breaking Changes (26.02)
 
 - The signatures of the solution callbacks have changed for the Python API
-- To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically.
+- To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically
 
 ### Improvements (26.02)
 
@@ -36,7 +36,7 @@
 
 ### Bug Fixes (26.02)
 
-- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems.
+- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems
 - Fix out-of-bounds in dense-column detection in barrier
 - Correct infeasible-list handling to avoid incorrect infeasibility reports in dual simplex
 - Fix race conditions found via Clang host build + ThreadSanitizer
