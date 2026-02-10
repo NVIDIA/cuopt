@@ -13,6 +13,7 @@
 - Multiple new diving techniques added for finding integer feasible solutions
 - The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable.
 - Added a batch solve for routing to boost throughput for many similar instances
+- Added experimental support for determinism in the parallel branch-and-bound solver. GPU heuristics are not supported yet in this mode.
 
 ### Breaking Changes (26.02)
 
@@ -31,6 +32,7 @@
 - Build/tooling: add `--split-compile`, `--jobserver`, Clang host build, ThreadSanitizer, improved container scripts, and branch/commit metadata in images
 - Use explicit `cudaStream_t` with `cub::DeviceTransform` and non-blocking streams for GPU control
 - Enable barrier LP tests, add regression testing, and add SonarQube static analysis
+- Added parameter for specifying the random seed used by the solver
 
 ### Bug Fixes (26.02)
 
