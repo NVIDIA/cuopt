@@ -11,8 +11,8 @@
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
-#include <mip/presolve/trivial_presolve.cuh>
-#include <mip/relaxed_lp/relaxed_lp.cuh>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
+#include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>

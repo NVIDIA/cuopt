@@ -8,7 +8,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <rmm/device_uvector.hpp>
 

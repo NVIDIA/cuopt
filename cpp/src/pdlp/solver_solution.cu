@@ -9,7 +9,7 @@
 
 #include <math_optimization/solution_writer.hpp>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>

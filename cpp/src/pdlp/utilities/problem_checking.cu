@@ -9,10 +9,10 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <thrust/functional.h>
 #include <thrust/logical.h>

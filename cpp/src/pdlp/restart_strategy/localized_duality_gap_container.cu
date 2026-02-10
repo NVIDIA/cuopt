@@ -11,7 +11,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 

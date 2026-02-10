@@ -11,7 +11,7 @@
 #include <pdlp/termination_strategy/convergence_information.hpp>
 #include <pdlp/utils.cuh>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>

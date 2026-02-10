@@ -13,7 +13,7 @@
 
 #include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/common/nvtx.hpp>

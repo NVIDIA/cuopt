@@ -8,7 +8,7 @@
 #include <utilities/common_utils.hpp>
 
 #include <pdlp/utilities/problem_checking.cuh>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/error.hpp>
 

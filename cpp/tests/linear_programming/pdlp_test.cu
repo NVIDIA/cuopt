@@ -20,7 +20,7 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
 
 #include <utilities/copy_helpers.hpp>

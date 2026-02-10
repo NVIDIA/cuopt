@@ -13,7 +13,7 @@
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/utils.cuh>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>

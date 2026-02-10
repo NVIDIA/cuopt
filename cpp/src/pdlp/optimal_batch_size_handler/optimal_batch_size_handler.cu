@@ -13,7 +13,7 @@
 
 #include <raft/sparse/detail/cusparse_macros.h>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 namespace cuopt::linear_programming::detail {
 

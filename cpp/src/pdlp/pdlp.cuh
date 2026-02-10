@@ -20,7 +20,7 @@
 #include <pdlp/termination_strategy/termination_strategy.hpp>
 #include <pdlp/termination_strategy/convergence_information.hpp>
 
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <utilities/timer.hpp>
 

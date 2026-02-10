@@ -15,7 +15,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <utilities/unique_pinned_ptr.hpp>
 

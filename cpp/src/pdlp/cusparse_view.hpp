@@ -10,7 +10,7 @@
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/saddle_point.hpp>
 
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>

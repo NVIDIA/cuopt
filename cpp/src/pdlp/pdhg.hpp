@@ -12,7 +12,7 @@
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/ping_pong_graph.cuh>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <raft/core/handle.hpp>
 

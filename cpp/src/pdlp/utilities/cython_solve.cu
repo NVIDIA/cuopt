@@ -10,7 +10,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
-#include <mip/logger.hpp>
+#include <mip_heuristics/logger.hpp>
 #include <mps_parser/data_model_view.hpp>
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/writer.hpp>

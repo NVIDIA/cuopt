@@ -10,7 +10,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdhg.hpp>
 
-#include <mip/solution/solution.cuh>
+#include <mip_heuristics/solution/solution.cuh>
 
 #include <raft/core/handle.hpp>
 

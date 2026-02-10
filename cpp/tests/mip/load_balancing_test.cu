@@ -11,9 +11,9 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
-#include <mip/presolve/bounds_presolve.cuh>
-#include <mip/presolve/load_balanced_bounds_presolve.cuh>
-#include <mip/problem/load_balanced_problem.cuh>
+#include <mip_heuristics/presolve/bounds_presolve.cuh>
+#include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
+#include <mip_heuristics/problem/load_balanced_problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>

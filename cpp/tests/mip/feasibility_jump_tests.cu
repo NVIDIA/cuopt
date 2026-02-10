@@ -12,9 +12,9 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
-#include <mip/feasibility_jump/feasibility_jump.cuh>
-#include <mip/solution/solution.cuh>
-#include <mip/solver_context.cuh>
+#include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/solution/solution.cuh>
+#include <mip_heuristics/solver_context.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 

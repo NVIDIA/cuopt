@@ -10,7 +10,7 @@
 #include <utilities/logger.hpp>
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <raft/common/nvtx.hpp>

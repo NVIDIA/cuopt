@@ -9,8 +9,8 @@
 
 #include <cuopt/linear_programming/solve.hpp>
 #include <pdlp/utils.cuh>
-#include <mip/presolve/trivial_presolve.cuh>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>

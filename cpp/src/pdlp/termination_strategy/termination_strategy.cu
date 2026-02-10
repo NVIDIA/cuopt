@@ -10,7 +10,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/termination_strategy.hpp>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>

@@ -13,7 +13,7 @@
 
 #include <raft/core/device_span.hpp>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/error.hpp>
 

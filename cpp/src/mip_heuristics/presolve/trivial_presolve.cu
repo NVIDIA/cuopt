@@ -1,0 +1,21 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
+
+namespace cuopt::linear_programming::detail {
+
+#if MIP_INSTANTIATE_FLOAT
+template void trivial_presolve(problem_t<int, float>& problem, bool remap_cache_ids);
+#endif
+
+#if MIP_INSTANTIATE_DOUBLE
+template void trivial_presolve(problem_t<int, double>& problem, bool remap_cache_ids);
+#endif
+
+}  // namespace cuopt::linear_programming::detail

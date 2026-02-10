@@ -10,7 +10,7 @@
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <thrust/fill.h>
 

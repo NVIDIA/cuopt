@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
 #include <utilities/copy_helpers.hpp>
 

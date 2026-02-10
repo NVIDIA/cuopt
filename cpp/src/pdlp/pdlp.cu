@@ -15,7 +15,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/linear_programming/pdlp/solver_solution.hpp"
 
 #include <utilities/copy_helpers.hpp>

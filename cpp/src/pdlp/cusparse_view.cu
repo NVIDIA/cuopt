@@ -11,7 +11,7 @@
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/utils.cuh>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>

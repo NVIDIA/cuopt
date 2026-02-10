@@ -1,0 +1,137 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#pragma once
+
+#include <mip_heuristics/diversity/population.cuh>
+#include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
+#include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
+#include <mip_heuristics/local_search/line_segment_search/line_segment_search.cuh>
+#include <mip_heuristics/solution/solution.cuh>
+#include <mip_heuristics/solver.cuh>
+#include <utilities/timer.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
+namespace cuopt::linear_programming::dual_simplex {
+template <typename i_t, typename f_t>
+class branch_and_bound_t;
+}
+
+namespace cuopt::linear_programming::detail {
+
+// make sure RANDOM is always the last
+enum class ls_method_t : int {
+  FJ_ANNEALING = 0,
+  FJ_LINE_SEGMENT,
+  RANDOM,
+  LS_METHODS_SIZE = RANDOM
+};
+
+template <typename i_t, typename f_t>
+struct ls_config_t {
+  bool at_least_one_parent_feasible{true};
+  f_t best_objective_of_parents{std::numeric_limits<f_t>::lowest()};
+  i_t n_local_mins_for_line_segment       = 50;
+  i_t n_points_to_search_for_line_segment = 5;
+  i_t n_local_mins                        = 2500;
+  i_t iteration_limit_for_line_segment    = 20 * n_local_mins_for_line_segment;
+  i_t iteration_limit                     = 20 * n_local_mins;
+  ls_method_t ls_method                   = ls_method_t::RANDOM;
+};
+
+template <typename i_t, typename f_t>
+class local_search_t {
+ public:
+  local_search_t() = delete;
+  local_search_t(mip_solver_context_t<i_t, f_t>& context,
+                 rmm::device_uvector<f_t>& lp_optimal_solution_);
+
+  void start_cpufj_scratch_threads(population_t<i_t, f_t>& population);
+  void start_cpufj_lptopt_scratch_threads(population_t<i_t, f_t>& population);
+  void stop_cpufj_scratch_threads();
+  void generate_fast_solution(solution_t<i_t, f_t>& solution, timer_t timer);
+  bool generate_solution(solution_t<i_t, f_t>& solution,
+                         bool perturb,
+                         population_t<i_t, f_t>* population_ptr,
+                         f_t time_limit = 300.);
+  bool run_fj_until_timer(solution_t<i_t, f_t>& solution,
+                          const weight_t<i_t, f_t>& weights,
+                          timer_t timer);
+  bool run_local_search(solution_t<i_t, f_t>& solution,
+                        const weight_t<i_t, f_t>& weights,
+                        timer_t timer,
+                        const ls_config_t<i_t, f_t>& ls_config);
+  bool run_fj_annealing(solution_t<i_t, f_t>& solution,
+                        timer_t timer,
+                        const ls_config_t<i_t, f_t>& ls_config);
+  bool run_fj_line_segment(solution_t<i_t, f_t>& solution,
+                           timer_t timer,
+                           const ls_config_t<i_t, f_t>& ls_config);
+  bool run_fj_on_zero(solution_t<i_t, f_t>& solution, timer_t timer);
+  bool check_fj_on_lp_optimal(solution_t<i_t, f_t>& solution, bool perturb, timer_t timer);
+  bool run_staged_fp(solution_t<i_t, f_t>& solution,
+                     timer_t timer,
+                     population_t<i_t, f_t>* population_ptr);
+  bool run_fp(solution_t<i_t, f_t>& solution,
+              timer_t timer,
+              population_t<i_t, f_t>* population_ptr = nullptr);
+  void resize_vectors(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr);
+
+  bool do_fj_solve(solution_t<i_t, f_t>& solution,
+                   fj_t<i_t, f_t>& fj,
+                   f_t time_limit,
+                   const std::string& source);
+
+  i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
+
+  // Start CPUFJ thread for deterministic mode with B&B integration
+  void start_cpufj_deterministic(dual_simplex::branch_and_bound_t<i_t, f_t>& bb);
+  void stop_cpufj_deterministic();
+  void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
+                                           rmm::device_uvector<f_t>& best_solution,
+                                           f_t& best_objective);
+  void resize_to_new_problem();
+  void resize_to_old_problem(problem_t<i_t, f_t>* old_problem_ptr);
+  void reset_alpha_and_run_recombiners(solution_t<i_t, f_t>& solution,
+                                       problem_t<i_t, f_t>* old_problem_ptr,
+                                       population_t<i_t, f_t>* population_ptr,
+                                       i_t i,
+                                       i_t last_unimproved_iteration,
+                                       rmm::device_uvector<f_t>& best_solution,
+                                       f_t& best_objective);
+  void reset_alpha_and_save_solution(solution_t<i_t, f_t>& solution,
+                                     problem_t<i_t, f_t>* old_problem_ptr,
+                                     population_t<i_t, f_t>* population_ptr,
+                                     i_t i,
+                                     i_t last_unimproved_iteration,
+                                     rmm::device_uvector<f_t>& best_solution,
+                                     f_t& best_objective);
+
+  mip_solver_context_t<i_t, f_t>& context;
+  rmm::device_uvector<f_t>& lp_optimal_solution;
+  bool lp_optimal_exists{false};
+  rmm::device_uvector<f_t> fj_sol_on_lp_opt;
+  fj_t<i_t, f_t> fj;
+  constraint_prop_t<i_t, f_t> constraint_prop;
+  line_segment_search_t<i_t, f_t> line_segment_search;
+  feasibility_pump_t<i_t, f_t> fp;
+  std::mt19937 rng;
+
+  std::array<cpu_fj_thread_t<i_t, f_t>, 8> ls_cpu_fj;
+  std::array<cpu_fj_thread_t<i_t, f_t>, 1> scratch_cpu_fj;
+  cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
+  cpu_fj_thread_t<i_t, f_t> deterministic_cpu_fj;
+  problem_t<i_t, f_t> problem_with_objective_cut;
+  bool cutting_plane_added_for_active_run{false};
+};
+
+}  // namespace cuopt::linear_programming::detail

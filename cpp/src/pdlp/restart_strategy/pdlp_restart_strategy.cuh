@@ -17,7 +17,7 @@
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 
 #include <raft/core/handle.hpp>
 

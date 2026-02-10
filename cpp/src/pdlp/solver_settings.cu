@@ -9,7 +9,7 @@
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <math_optimization/solution_writer.hpp>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mps_parser/utilities/span.hpp>
 #include <utilities/logger.hpp>
 

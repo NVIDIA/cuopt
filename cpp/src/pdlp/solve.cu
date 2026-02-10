@@ -18,11 +18,11 @@
 #include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
 
-#include <mip/mip_constants.hpp>
-#include <mip/presolve/third_party_presolve.hpp>
-#include <mip/presolve/trivial_presolve.cuh>
-#include <mip/solver.cuh>
-#include <mip/utilities/sort_csr.cuh>
+#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
+#include <mip_heuristics/solver.cuh>
+#include <mip_heuristics/utilities/sort_csr.cuh>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
