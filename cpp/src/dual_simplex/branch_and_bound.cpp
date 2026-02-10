@@ -1757,12 +1757,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    // FIXME: rarely dual simplex detects infeasible whereas it is feasible.
-    // to add a small safety net, check if there is a primal solution already.
-    // Uncomment this if the issue with cost266-UUE is resolved
-    // if (settings.heuristic_preemption_callback != nullptr) {
-    //   settings.heuristic_preemption_callback();
-    // }
+    if (settings.heuristic_preemption_callback != nullptr) {
+      settings.heuristic_preemption_callback();
+    }
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
@@ -1861,17 +1858,23 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #endif
 
       // Generate cuts and add them to the cut pool
-      f_t cut_start_time = tic();
-      cut_generation.generate_cuts(original_lp_,
-                                   settings_,
-                                   Arow_,
-                                   new_slacks_,
-                                   var_types_,
-                                   basis_update,
-                                   root_relax_soln_.x,
-                                   root_relax_soln_.z,
-                                   basic_list,
-                                   nonbasic_list);
+      f_t cut_start_time    = tic();
+      bool problem_feasible = cut_generation.generate_cuts(original_lp_,
+                                                           settings_,
+                                                           Arow_,
+                                                           new_slacks_,
+                                                           var_types_,
+                                                           basis_update,
+                                                           root_relax_soln_.x,
+                                                           root_relax_soln_.z,
+                                                           basic_list,
+                                                           nonbasic_list);
+      if (!problem_feasible) {
+        if (settings_.heuristic_preemption_callback != nullptr) {
+          settings_.heuristic_preemption_callback();
+        }
+        return mip_status_t::INFEASIBLE;
+      }
       f_t cut_generation_time = toc(cut_start_time);
       if (cut_generation_time > 1.0) {
         settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);

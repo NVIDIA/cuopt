@@ -245,7 +245,7 @@ class cut_generation_t {
   {
   }
 
-  void generate_cuts(const lp_problem_t<i_t, f_t>& lp,
+  bool generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      csr_matrix_t<i_t, f_t>& Arow,
                      const std::vector<i_t>& new_slacks,
@@ -285,7 +285,7 @@ class cut_generation_t {
                               const std::vector<f_t>& xstar);
 
   // Generate clique cuts from conflict graph cliques
-  void generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
+  bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
                             const std::vector<variable_type_t>& var_types,
                             const std::vector<f_t>& xstar,

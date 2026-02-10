@@ -20,19 +20,21 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
+enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
+
 template <typename i_t, typename f_t>
-bool build_clique_cut(const std::vector<i_t>& clique_vertices,
-                      i_t num_vars,
-                      const std::vector<variable_type_t>& var_types,
-                      const std::vector<f_t>& lower_bounds,
-                      const std::vector<f_t>& upper_bounds,
-                      const std::vector<f_t>& xstar,
-                      f_t bound_tol,
-                      f_t min_violation,
-                      sparse_vector_t<i_t, f_t>& cut,
-                      f_t& cut_rhs)
+clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertices,
+                                           i_t num_vars,
+                                           const std::vector<variable_type_t>& var_types,
+                                           const std::vector<f_t>& lower_bounds,
+                                           const std::vector<f_t>& upper_bounds,
+                                           const std::vector<f_t>& xstar,
+                                           f_t bound_tol,
+                                           f_t min_violation,
+                                           sparse_vector_t<i_t, f_t>& cut,
+                                           f_t& cut_rhs)
 {
-  if (clique_vertices.size() < 2) { return false; }
+  if (clique_vertices.size() < 2) { return clique_cut_build_status_t::NO_CUT; }
 
   cuopt_assert(num_vars > 0, "Clique cut num_vars must be positive");
   cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
@@ -42,12 +44,10 @@ bool build_clique_cut(const std::vector<i_t>& clique_vertices,
   cut.i.clear();
   cut.x.clear();
   i_t num_complements = 0;
-#ifdef ASSERT_MODE
   std::unordered_set<i_t> seen_original;
   std::unordered_set<i_t> seen_complement;
   seen_original.reserve(clique_vertices.size());
   seen_complement.reserve(clique_vertices.size());
-#endif
   for (const auto vertex_idx : clique_vertices) {
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
     const i_t var_idx     = vertex_idx % num_vars;
@@ -63,29 +63,28 @@ bool build_clique_cut(const std::vector<i_t>& clique_vertices,
     // we store the cut in the form of >= 1, for easy violation check with dot product
     // that's why compelements have 1 as coeff and normal vars have -1
     if (complement) {
-      cuopt_assert(seen_original.count(var_idx) == 0,
-                   "Clique contains a variable and its complement");
+      if (seen_original.count(var_idx) > 0) { return clique_cut_build_status_t::INFEASIBLE; }
       cuopt_assert(seen_complement.insert(var_idx).second, "Duplicate complement in clique");
       num_complements++;
       cut.i.push_back(var_idx);
       cut.x.push_back(1.0);
     } else {
-      cuopt_assert(seen_complement.count(var_idx) == 0,
-                   "Clique contains a variable and its complement");
+      if (seen_complement.count(var_idx) > 0) { return clique_cut_build_status_t::INFEASIBLE; }
       cuopt_assert(seen_original.insert(var_idx).second, "Duplicate variable in clique");
       cut.i.push_back(var_idx);
       cut.x.push_back(-1.0);
     }
   }
 
-  if (cut.i.empty()) { return false; }
+  if (cut.i.empty()) { return clique_cut_build_status_t::NO_CUT; }
 
   cut_rhs = static_cast<f_t>(num_complements - 1);
   cut.sort();
 
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
-  return violation > min_violation;
+  if (violation > min_violation) { return clique_cut_build_status_t::CUT_ADDED; }
+  return clique_cut_build_status_t::NO_CUT;
 }
 
 template <typename i_t, typename f_t>
@@ -822,7 +821,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 }
 
 template <typename i_t, typename f_t>
-void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
+bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const simplex_solver_settings_t<i_t, f_t>& settings,
                                                csr_matrix_t<i_t, f_t>& Arow,
                                                const std::vector<i_t>& new_slacks,
@@ -857,7 +856,11 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Clique cuts
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
-    generate_clique_cuts(lp, settings, var_types, xstar, reduced_costs);
+    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, reduced_costs);
+    if (!feasible) {
+      settings.log.printf("Clique cuts proved infeasible\n");
+      return false;
+    }
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
@@ -873,6 +876,7 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
+  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -896,14 +900,14 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
 }
 
 template <typename i_t, typename f_t>
-void cut_generation_t<i_t, f_t>::generate_clique_cuts(
+bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& reduced_costs)
 {
-  if (settings.clique_cuts == 0) { return; }
+  if (settings.clique_cuts == 0) { return true; }
 
   const i_t num_vars = user_problem_.num_cols;
 
@@ -925,7 +929,7 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
       user_problem_, *clique_table_, tolerances, true, true);
   }
 
-  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) { return; }
+  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) { return true; }
 
   cuopt_assert(clique_table_->n_variables == num_vars, "Clique table variable count mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
@@ -958,7 +962,7 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
     weights.push_back(1.0 - xj);
   }
 
-  if (vertices.empty()) { return; }
+  if (vertices.empty()) { return true; }
 
   std::vector<i_t> vertex_to_local(2 * num_vars, -1);
   std::vector<char> in_subgraph(2 * num_vars, 0);
@@ -1020,19 +1024,25 @@ void cut_generation_t<i_t, f_t>::generate_clique_cuts(
     }
     extend_clique_vertices<i_t, f_t>(
       clique_vertices, *clique_table_, xstar, reduced_costs, num_vars, settings.integer_tol);
-    if (build_clique_cut<i_t, f_t>(clique_vertices,
-                                   num_vars,
-                                   var_types,
-                                   user_problem_.lower,
-                                   user_problem_.upper,
-                                   xstar,
-                                   bound_tol,
-                                   min_violation,
-                                   cut,
-                                   cut_rhs)) {
+    const auto build_status = build_clique_cut<i_t, f_t>(clique_vertices,
+                                                         num_vars,
+                                                         var_types,
+                                                         user_problem_.lower,
+                                                         user_problem_.upper,
+                                                         xstar,
+                                                         bound_tol,
+                                                         min_violation,
+                                                         cut,
+                                                         cut_rhs);
+    if (build_status == clique_cut_build_status_t::INFEASIBLE) {
+      settings.log.debug("Detected contradictory variable/complement clique\n");
+      return false;
+    }
+    if (build_status == clique_cut_build_status_t::CUT_ADDED) {
       cut_pool_.add_cut(cut_type_t::CLIQUE, cut, cut_rhs);
     }
   }
+  return true;
 }
 
 template <typename i_t, typename f_t>
