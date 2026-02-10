@@ -376,7 +376,7 @@ Linear Programming FAQs
 
 .. dropdown:: How do I use warm start with PDLP?
 
-    To use warm start functionality with PDLP, you must explicitly disable presolve by setting CUOPT_PRESOLVE=0 in solver_config.
+    To use warm start functionality with PDLP, you must explicitly disable presolve by setting ``CUOPT_PRESOLVE=0`` in solver_config.
     This is required because presolve transforms the problem, and the warm start solution from the original problem
     cannot be applied to the presolved problem.
 
