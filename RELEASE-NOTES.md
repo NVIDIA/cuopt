@@ -36,6 +36,7 @@
 
 ### Bug Fixes (26.02)
 
+- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems.
 - Fix out-of-bounds in dense-column detection in barrier
 - Correct infeasible-list handling to avoid incorrect infeasibility reports in dual simplex
 - Fix race conditions found via Clang host build + ThreadSanitizer
@@ -76,7 +77,6 @@
 
 - A crash in the incumbent test is resolved.
 - Fixed memory leaks in Barrier and PDLP's cuSPARSE usage.
-- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems.
 - The explored nodes in the MIP log now correctly reflects the actual nodes examined.
 - A compilation issue in the solve_MIP benchmarking executable is fixed, restoring benchmark builds.
 - A logger bug when log_to_console is false is fixed.
