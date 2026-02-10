@@ -17,7 +17,7 @@
 
 ### Breaking Changes (26.02)
 
-- The signature of the solution callbacks have changed for the Python API
+- The signatures of the solution callbacks have changed for the Python API
 - To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically.
 
 ### Improvements (26.02)
