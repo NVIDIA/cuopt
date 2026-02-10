@@ -401,12 +401,14 @@ bool extend_clique(const std::vector<i_t>& clique,
   i_t n_of_complement_conflicts = 0;
   i_t complement_conflict_var   = -1;
   for (size_t idx = 0; idx < extension_candidates.size(); idx++) {
-    i_t var_idx = extension_candidates[idx];
-    bool add    = true;
+    i_t var_idx                 = extension_candidates[idx];
+    bool add                    = true;
+    bool complement_conflict    = false;
+    i_t complement_conflict_idx = -1;
     for (size_t i = 0; i < new_clique.size(); i++) {
       if (var_idx % clique_table.n_variables == new_clique[i] % clique_table.n_variables) {
-        n_of_complement_conflicts++;
-        complement_conflict_var = var_idx % clique_table.n_variables;
+        complement_conflict     = true;
+        complement_conflict_idx = var_idx % clique_table.n_variables;
       }
       // check if the tested variable conflicts with all vars in the new clique
       if (!clique_table.check_adjacency(var_idx, new_clique[i])) {
@@ -414,7 +416,13 @@ bool extend_clique(const std::vector<i_t>& clique,
         break;
       }
     }
-    if (add) { new_clique.push_back(var_idx); }
+    if (add) {
+      new_clique.push_back(var_idx);
+      if (complement_conflict) {
+        n_of_complement_conflicts++;
+        complement_conflict_var = complement_conflict_idx;
+      }
+    }
   }
   // if we found a larger cliqe, insert it into the formulation
   if (new_clique.size() > clique.size()) {
