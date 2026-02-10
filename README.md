@@ -20,7 +20,7 @@ For the latest version ensure you are on the `main` branch.
 
 ## Latest Documentation
 
-[cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html))
+[cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
 ## Supported APIs
 
