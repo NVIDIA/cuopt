@@ -1,9 +1,9 @@
 =================================
-LP, QP and MILP Settings
+LP, QP, and MILP Settings
 =================================
 
 
-This page describes the parameter settings available for cuOpt's LP, QP and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
+This page describes the parameter settings available for cuOpt's LP, QP, and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
 Please refer to examples in :doc:`C </cuopt-c/lp-qp-milp/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
@@ -23,7 +23,7 @@ may run slightly over the limit. If set along with the iteration limit, cuOpt wi
 the first limit (iteration or time) is hit.
 
 
-.. note:: by default there is no time limit. So cuOpt will run until it finds an optimal solution,
+.. note:: By default there is no time limit. So cuOpt will run until it finds an optimal solution,
    or proves the problem is infeasible or unbounded.
 
 
@@ -33,25 +33,25 @@ Log to Console
 ``CUOPT_LOG_TO_CONSOLE`` controls whether cuOpt should log information to the console during a solve.
 If true, a logging info is written to the console, if false no logging info is written to the console (logs may still be written to a file.)
 
-.. note:: the default value is true.
+.. note:: The default value is true.
 
 Log File
 ^^^^^^^^
 ``CUOPT_LOG_FILE`` controls the name of a log file where cuOpt should write information about the solve.
 
-.. note:: the default value is ``""`` and no log file is written. This setting is ignored by the cuOpt service, use the log callback feature instead.
+.. note:: The default value is ``""`` and no log file is written. This setting is ignored by the cuOpt service, use the log callback feature instead.
 
 Solution File
 ^^^^^^^^^^^^^
 ``CUOPT_SOLUTION_FILE`` controls the name of a file where cuOpt should write the solution.
 
-.. note:: the default value is ``""`` and no solution file is written. This setting is ignored by the cuOpt service.
+.. note:: The default value is ``""`` and no solution file is written. This setting is ignored by the cuOpt service.
 
 User Problem File
 ^^^^^^^^^^^^^^^^^
 ``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem.
 
-.. note:: the default value is ``""`` and no user problem file is written. This setting is ignored by the cuOpt service.
+.. note:: The default value is ``""`` and no user problem file is written. This setting is ignored by the cuOpt service.
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^
@@ -59,7 +59,7 @@ Num CPU Threads
 the amount of CPU resources cuOpt uses. Set this to a large value to improve solve times for CPU
 parallel parts of the solvers.
 
-.. note:: by default the number of CPU threads is automatically determined based on the number of CPU cores.
+.. note:: By default the number of CPU threads is automatically determined based on the number of CPU cores.
 
 Presolve
 ^^^^^^^^
@@ -123,7 +123,7 @@ For performance reasons, cuOpt's does not constantly checks for iteration limit,
 the solver might run a few extra iterations over the limit. If set along with the time limit,
 cuOpt will stop at the first limit (iteration or time) reached.
 
-.. note:: by default there is no iteration limit. So, cuOpt will run until it finds an optimal solution,
+.. note:: By default there is no iteration limit. So, cuOpt will run until it finds an optimal solution,
    or proves the problem is infeasible or unbounded.
 
 
@@ -141,7 +141,7 @@ is not always accurate. Some problems detected as infeasible may converge under 
 Detecting infeasibility consumes both more runtime and memory. The added runtime is between 3% and 7%,
 the added memory consumption is between 10% and 20%.
 
-.. note:: by default PDLP will not detect infeasibility. Dual simplex will always detect infeasibility
+.. note:: By default PDLP will not detect infeasibility. Dual simplex will always detect infeasibility
    regardless of this setting.
 
 Strict Infeasibility
@@ -151,7 +151,7 @@ Strict Infeasibility
 is detected as infeasible, PDLP will stop. When false both the current and average solution need to be
 detected as infeasible for PDLP to stop.
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 .. _crossover:
 
@@ -165,7 +165,7 @@ between their bounds. Enabling crossover allows the user to obtain a high-qualit
 that lies at a vertex of the feasible region. If n is the number of variables, and m is the number of
 constraints, n - m variables will be on their bounds in a basic solution.
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 Save Best Primal So Far
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -176,21 +176,21 @@ With this parameter set to true, PDLP
 * If no primal feasible was found, the one with the lowest primal residual will be kept
 * If two have the same primal residual, the one with the best objective will be kept
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 First Primal Feasible
 ^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_FIRST_PRIMAL_FEASIBLE`` controls whether PDLP should stop when the first primal feasible solution is found.
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 Per Constraint Residual
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_PER_CONSTRAINT_RESIDUAL`` controls whether PDLP should compute the primal & dual residual per constraint instead of globally.
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 Barrier Solver Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -206,7 +206,7 @@ Folding
 * ``0``: Disable folding
 * ``1``: Force folding to run
 
-.. note:: the default value is ``-1`` (automatic).
+.. note:: The default value is ``-1`` (automatic).
 
 Dualize
 """""""
@@ -217,7 +217,7 @@ Dualize
 * ``0``: Don't attempt to dualize
 * ``1``: Force dualize
 
-.. note:: the default value is ``-1`` (automatic).
+.. note:: The default value is ``-1`` (automatic).
 
 Ordering
 """"""""
@@ -228,7 +228,7 @@ Ordering
 * ``0``: cuDSS default ordering
 * ``1``: AMD (Approximate Minimum Degree) ordering
 
-.. note:: the default value is ``-1`` (automatic).
+.. note:: The default value is ``-1`` (automatic).
 
 Augmented System
 """"""""""""""""
@@ -239,7 +239,7 @@ Augmented System
 * ``0``: Solve the ADAT system (normal equations)
 * ``1``: Solve the augmented system
 
-.. note:: the default value is ``-1`` (automatic). The augmented system may be more stable for some problems, while ADAT may be faster for others.
+.. note:: The default value is ``-1`` (automatic). The augmented system may be more stable for some problems, while ADAT may be faster for others.
 
 Eliminate Dense Columns
 """"""""""""""""""""""""
@@ -252,7 +252,7 @@ However, extra solves must be performed at each iteration.
 
 This setting only has an effect when the ADAT (normal equation) system is solved.
 
-.. note:: the default value is ``true``.
+.. note:: The default value is ``true``.
 
 cuDSS Deterministic Mode
 """""""""""""""""""""""""
@@ -262,7 +262,7 @@ cuDSS Deterministic Mode
 * ``true``: Use deterministic mode
 * ``false``: Use non-deterministic mode (default)
 
-.. note:: the default value is ``false``. Enable deterministic mode if reproducibility is more important than performance.
+.. note:: The default value is ``false``. Enable deterministic mode if reproducibility is more important than performance.
 
 Dual Initial Point
 """"""""""""""""""
@@ -273,7 +273,7 @@ Dual Initial Point
 * ``0``: Use an initial point from a heuristic approach based on the paper "On Implementing Mehrotra's Predictor–Corrector Interior-Point Method for Linear Programming" (SIAM J. Optimization, 1992) by Lustig, Martsten, Shanno.
 * ``1``: Use an initial point from solving a least squares problem that minimizes the norms of the dual variables and reduced costs while statisfying the dual equality constraints.
 
-.. note:: the default value is ``-1`` (automatic).
+.. note:: The default value is ``-1`` (automatic).
 
 Absolute Primal Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -299,7 +299,7 @@ The primal feasibility condition is computed as follows::
 
    primal_feasiblity < absolute_primal_tolerance + relative_primal_tolerance * l2_norm(b)
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 Absolute Dual Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -312,7 +312,7 @@ The dual feasibility condition is computed as follows::
 
    dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 Relative Dual Tolerance
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -323,7 +323,7 @@ The dual feasibility condition is computed as follows::
 
    dual_feasiblity < absolute_dual_tolerance + relative_dual_tolerance * l2_norm(c)
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 
 Absolute Gap Tolerance
@@ -336,7 +336,7 @@ The duality gap is computed as follows::
 
    duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 
 Relative Gap Tolerance
@@ -348,7 +348,7 @@ The duality gap is computed as follows::
 
    duality_gap < absolute_gap_tolerance + relative_gap_tolerance * (|primal_objective| + |dual_objective|)
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
 
 
 Mixed Integer Linear Programming
@@ -364,7 +364,7 @@ Heuristics only
 bound is improved via the GPU. When set to false, both the GPU and CPU are used and
 the dual bound is improved on the CPU.
 
-.. note:: the default value is false.
+.. note:: The default value is false.
 
 Scaling
 ^^^^^^^
@@ -372,7 +372,7 @@ Scaling
 ``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem. When true scaling is applied,
 when false, no scaling is applied.
 
-.. note:: the defaulte value is true.
+.. note:: The default value is false.
 
 
 Absolute Tolerance
@@ -380,14 +380,14 @@ Absolute Tolerance
 
 ``CUOPT_MIP_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
 
-.. note:: the default value is ``1e-6``.
+.. note:: The default value is ``1e-6``.
 
 Relative Tolerance
 ^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_MIP_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
 
-.. note:: the default value is ``1e-12``.
+.. note:: The default value is ``1e-12``.
 
 
 Integrality Tolerance
@@ -396,7 +396,7 @@ Integrality Tolerance
 ``CUOPT_MIP_INTEGRALITY_TOLERANCE`` controls the MIP integrality tolerance. A variable is considered to be integral, if
 it is within the integrality tolerance of an integer.
 
-.. note:: the default value is ``1e-5``.
+.. note:: The default value is ``1e-5``.
 
 Absolute MIP Gap
 ^^^^^^^^^^^^^^^^
@@ -411,7 +411,7 @@ when minimizing or
 
 when maximizing.
 
-.. note:: the default value is ``1e-10``.
+.. note:: The default value is ``1e-10``.
 
 Relative MIP Gap
 ^^^^^^^^^^^^^^^^
@@ -423,4 +423,93 @@ Relative MIP Gap
 If the Best Objective and the Dual Bound are both zero the gap is zero. If the best objective value is zero, the
 gap is infinity.
 
-.. note:: the default value is ``1e-4``.
+.. note:: The default value is ``1e-4``.
+
+
+Cut Passes
+^^^^^^^^^^
+
+``CUOPT_MIP_CUT_PASSES`` controls the number of cut passes to run. Set this value to 0 to disable cuts. Set this value to larger numbers to perform more cut passes.
+
+.. note:: The default value is ``10``.
+
+Mixed Integer Rounding Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS`` controls whether to use mixed integer rounding cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer rounding cuts based on the problem characteristics.
+Set this value to 1 to enable mixed integer rounding cuts.
+Set this value to 0 to disable mixed integer rounding cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Mixed Integer Gomory Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS`` controls whether to use mixed integer Gomory cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer Gomory cuts based on the problem characteristics.
+Set this value to 1 to enable mixed integer Gomory cuts.
+Set this value to 0 to disable mixed integer Gomory cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Strong Chvatal-Gomory Cuts
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS`` controls whether to use strong Chvatal-Gomory cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use strong Chvatal-Gomory cuts based on the problem characteristics.
+Set this value to 1 to enable strong Chvatal Gomory cuts.
+Set this value to 0 to disable strong Chvatal Gomory cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Knapsack Cuts
+^^^^^^^^^^^^^
+
+``CUOPT_MIP_KNAPSACK_CUTS`` controls whether to use knapsack cuts.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use knapsack cuts based on the problem characteristics.
+Set this value to 1 to enable knapsack cuts.
+Set this value to 0 to disable knapsack cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+
+Cut Change Threshold
+^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_CUT_CHANGE_THRESHOLD`` controls the threshold for the improvement in the dual bound per cut pass.
+Larger values require the dual bound to improve significantly in each cut pass.
+Set this value to 0 to allow the cut passes to continue even if the dual bound does not improve.
+
+.. note:: The default value is ``1e-3``.
+
+Cut Min Orthogonality
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_CUT_MIN_ORTHOGONALITY`` controls the minimum orthogonality required for a cut to be added to the LP relaxation.
+Set this value close to 1, to require all cuts be close to orthogonal to each other.
+Set this value close to zero to allow more cuts to be added to the LP relaxation.
+
+.. note:: The default value is ``0.5``.
+
+Reduced Cost Strengthening
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_REDUCED_COST_STRENGTHENING`` controls whether to use reduced-cost strengthening.
+When enabled, the solver will use integer feasible solutions to strengthen the bounds of integer variables.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use reduced-cost strengthening based on the problem characteristics.
+Set this value to 0 to disable reduced-cost strengthening.
+Set this value to 1 to perform reduced-cost strengthening during the root cut passes.
+Set this value to 2 to perform reduced-cost strengthening during the root cut passes and after strong branching.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Reliability Branching
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_RELIABILITY_BRANCHING`` controls the reliability branching mode.
+The default value of ``-1`` (automatic) means that the solver will decide whether to use reliability branching, and the reliability branching factor, based on the problem characteristics.
+Set this value to 0 to disable reliability branching.
+Set this value to k > 0, to enable reliability branching. A variable will be considered reliable if it has been branched on k times.
+
+.. note:: The default value is ``-1`` (automatic).

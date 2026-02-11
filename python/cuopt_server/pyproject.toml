@@ -19,9 +19,9 @@ authors = [
 ]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "cuopt==26.2.*,>=0.0.0a0",
+    "cuopt==26.4.*,>=0.0.0a0",
     "cupy-cuda13x>=13.6.0",
     "fastapi",
     "jsonref==1.1.0",
@@ -35,7 +35,6 @@ dependencies = [
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -88,8 +87,8 @@ select = [
     "distro-too-large-compressed",
 ]
 
-# PyPI limit is 100 MiB, fail CI before we get too close to that
-max_allowed_size_compressed = '75M'
+# PyPI hard limit is 1GiB, but try to keep this as small as possible
+max_allowed_size_compressed = '15Mi'
 
 [tool.pytest.ini_options]
 testpaths = ["cuopt_server/tests"]

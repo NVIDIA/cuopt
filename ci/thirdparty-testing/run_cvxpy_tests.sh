@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -e -u -o pipefail
@@ -25,7 +25,6 @@ pip wheel \
 echo "installing 'cvxpy' with cuopt"
 python -m pip install \
     --constraint "${PIP_CONSTRAINT}" \
-    --extra-index-url=https://pypi.nvidia.com \
     --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
     'pytest-error-for-skips>=2.0.2' \
     "$(echo ./dist/cvxpy*.whl)[CUOPT,testing]"

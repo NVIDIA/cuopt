@@ -10,6 +10,11 @@ solving of similar problems.
 Note:
     Warmstart is only applicable to LP, not for MILP.
 
+Important:
+    To use warm start with PDLP, presolve must be explicitly disabled.
+    Set "presolve": "off" in solver_config, as presolve transforms the problem
+    and the warm start solution from the original problem cannot be applied.
+
 Requirements:
     - cuOpt server running (default: localhost:5000)
     - cuopt_sh_client package installed

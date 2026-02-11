@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -27,7 +27,6 @@ EOF
 
 # echo to expand wildcard before adding `[extra]` requires for pip
 rapids-pip-retry install \
-    --extra-index-url=https://pypi.nvidia.com \
     --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \

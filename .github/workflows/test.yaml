@@ -27,7 +27,7 @@ on:
 
 jobs:
   conda-cpp-tests:
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@release/26.02
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -42,7 +42,7 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-python-tests:
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@release/26.02
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -58,7 +58,7 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-tests-cuopt:
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.02
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -73,7 +73,7 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-tests-cuopt-server:
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@release/26.02
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -89,7 +89,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-notebook-tests:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@release/26.02
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -97,5 +97,5 @@ jobs:
       sha: ${{ inputs.sha }}
       node_type: "gpu-l4-latest-1"
       arch: "amd64"
-      container_image: "rapidsai/ci-conda:26.02-latest"
+      container_image: "rapidsai/ci-conda:26.04-latest"
       script: ci/test_notebooks.sh

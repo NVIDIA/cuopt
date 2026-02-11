@@ -1,7 +1,8 @@
-# cuOpt - GPU accelerated Optimization Engine
+<!-- AI agents: Start by reading AGENTS.md -->
+# cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.02.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Version](https://img.shields.io/badge/version-26.04.00-blue)](https://github.com/NVIDIA/cuopt/releases)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -11,12 +12,15 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP) and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering
-easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints, and MIPs with hundreds of thousands of variables. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
-For the latest stable version ensure you are on the `main` branch.
+For the latest version, ensure you are on the `main` branch.
+
+## Latest Documentation
+
+[cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
 ## Supported APIs
 
@@ -53,7 +57,7 @@ This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) projec
 
 ### Python requirements
 
-* Python >=3.10, <=3.13
+* Python >=3.11, <=3.13
 
 ### OS requirements
 
@@ -79,7 +83,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
+  cuopt-server-cu12==26.04.* cuopt-sh-client==26.04.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -87,7 +91,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.02.* cuopt-sh-client==26.02.*
+  cuopt-server-cu12==26.04.* cuopt-sh-client==26.04.*
 ```
 
 For CUDA 13.x:
@@ -95,7 +99,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
+  cuopt-server-cu13==26.04.* cuopt-sh-client==26.04.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -103,7 +107,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.02.* cuopt-sh-client==26.02.*
+  cuopt-server-cu13==26.04.* cuopt-sh-client==26.04.*
 ```
 
 
@@ -114,7 +118,7 @@ cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forg
 All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.02.* cuopt-sh-client=26.02.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.04.* cuopt-sh-client=26.04.*
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -152,6 +156,10 @@ cuOpt follows the RAPIDS release schedule and is part of the **"others"** catego
 - **Release**: Final testing, tagging, and official release
 
 For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
+## For AI Coding Agents
+
+See [AGENTS.md](./AGENTS.md) for agent-specific guidelines.
 
 ## Contributing Guide
 

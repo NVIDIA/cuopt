@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -11,6 +11,10 @@ from packaging.version import Version
 import subprocess
 import sys
 import os
+import tempfile
+import json
+from sphinx.util.fileutil import copy_asset_file
+from pathlib import Path
 
 # Run cuopt server help command and save output
 subprocess.run(
@@ -166,7 +170,7 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 html_css_files = ["swagger-nvidia.css"]
-html_extra_path = ["project.json", "versions1.json"]
+html_extra_path = ["versions1.json"]
 
 
 # -- Options for Breathe (Doxygen) ----------------------------------------
@@ -330,6 +334,20 @@ def skip_unwanted_inherited_members(app, what, name, obj, skip, options):
     return skip
 
 
+def write_project_json(app, _builder):
+    json_data = {
+        "name": "cuopt",
+        "version": cuopt.__version__,
+        "url": "https://github.com/nvidia/cuopt",
+        "description": "NVIDIA cuOpt is an optimization engine",
+    }
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "project.json"
+        with open(path, "w") as f:
+            json.dump(json_data, f)
+        copy_asset_file(path, app.outdir / "project.json")
+
+
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
 }
@@ -363,3 +381,4 @@ linkcheck_ignore = [
 def setup(app):
     app.setup_extension("sphinx.ext.autodoc")
     app.connect("autodoc-skip-member", skip_unwanted_inherited_members)
+    app.connect("write-started", write_project_json)
