@@ -18,9 +18,6 @@ LP, QP and MILP API Reference
    :members:
    :undoc-members:
 
-.. note::
-   The QP solver is currently in beta.
-
 .. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
    :members:
    :undoc-members:

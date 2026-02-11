@@ -13,6 +13,11 @@ The Routing solver is available in two forms:
 
 Both options provide the same routing optimization capabilities while offering flexibility in deployment and integration approaches.
 
+Batch Solving (TSP)
+------------------------------
+
+The Python API supports solving multiple TSP (or routing) instances in a single call via **batch mode**. Use :func:`cuopt.routing.BatchSolve` with a list of :class:`cuopt.routing.DataModel` objects to run many problems in parallel and improve throughput. See :doc:`cuopt-python/routing/routing-examples` for details and an example.
+
 Heterogeneous Fleet
 ------------------------------
 

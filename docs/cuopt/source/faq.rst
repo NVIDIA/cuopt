@@ -374,6 +374,11 @@ Linear Programming FAQs
 
     cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, and Papilo for mixed-integer programming (MIP) problems. For MIP problems, Papilo presolve is always enabled by default. For LP problems, PSLP presolve is always enabled by default. Presolve is controlled by the ``CUOPT_PRESOLVE`` setting.
 
+.. dropdown:: How do I use warm start with PDLP?
+
+    To use warm start functionality with PDLP, you must explicitly disable presolve by setting ``CUOPT_PRESOLVE=0`` in solver_config.
+    This is required because presolve transforms the problem, and the warm start solution from the original problem
+    cannot be applied to the presolved problem.
 
 Mixed Integer Linear Programming FAQs
 --------------------------------------

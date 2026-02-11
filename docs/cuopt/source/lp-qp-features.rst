@@ -58,9 +58,6 @@ There are two ways to specify constraints to the LP solver:
 Quadratic Programming
 ---------------------
 
-.. note::
-   The QP solver is currently in beta.
-
 cuOpt supports problems with quadratic objectives of the form:
 
 .. code-block:: text
