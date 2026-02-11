@@ -15,9 +15,11 @@ function(ConfigureTest CMAKE_TEST_NAME)
         # set target compile options
         CXX_STANDARD 20
         CXX_STANDARD_REQUIRED ON
-        INTERFACE_POSITION_INDEPENDENT_CODE ON
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
-        )
+    )
 
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
