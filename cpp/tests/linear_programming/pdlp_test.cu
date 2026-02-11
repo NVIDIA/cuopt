@@ -1962,7 +1962,7 @@ TEST(pdlp_class, float32_concurrent_throws_validation_error)
   EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
 }
 
-TEST(pdlp_class, float32_presolve_throws_validation_error)
+TEST(pdlp_class, float32_papilo_presolve_works)
 {
   const raft::handle_t handle_{};
 
@@ -1970,13 +1970,36 @@ TEST(pdlp_class, float32_presolve_throws_validation_error)
   cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
     cuopt::mps_parser::parse_mps<int, float>(path, true);
 
-  auto solver_settings    = pdlp_solver_settings_t<int, float>{};
-  solver_settings.method  = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.presolve = true;
+  auto solver_settings      = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = cuopt::linear_programming::presolver_t::Papilo;
 
   optimization_problem_solution_t<int, float> solution =
     solve_lp(&handle_, op_problem, solver_settings);
-  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    afiro_primal_objective_f32,
+    solution.get_additional_termination_information().primal_objective));
+}
+
+TEST(pdlp_class, float32_pslp_presolve_works)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
+    cuopt::mps_parser::parse_mps<int, float>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = cuopt::linear_programming::presolver_t::PSLP;
+
+  optimization_problem_solution_t<int, float> solution =
+    solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    afiro_primal_objective_f32,
+    solution.get_additional_termination_information().primal_objective));
 }
 
 TEST(pdlp_class, float32_crossover_throws_validation_error)

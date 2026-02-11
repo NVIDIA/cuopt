@@ -247,7 +247,7 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
 
 #define INSTANTIATE(F_TYPE) template class GF2Presolve<F_TYPE>;
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

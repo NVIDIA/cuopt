@@ -1126,6 +1126,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
     }
   } else {
     // Float precision only supports PDLP without presolve/crossover
+    // TODO when running with cuopt_cli this doesn't show, should we just use CUOPT_LOG_INFO instead?
     cuopt_expects(settings.method == method_t::PDLP,
                   error_type_t::ValidationError,
                   "Float precision only supports PDLP method. DualSimplex, Barrier, and Concurrent "
@@ -1300,41 +1301,39 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     auto solution = solve_lp_with_method(problem, settings, lp_timer, is_batch_mode);
 
-    if constexpr (std::is_same_v<f_t, double>) {
-      if (run_presolve) {
-        auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
-                                                  op_problem.get_handle_ptr()->get_stream());
-        auto dual_solution =
-          cuopt::device_copy(solution.get_dual_solution(), op_problem.get_handle_ptr()->get_stream());
-        auto reduced_costs =
-          cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
-        bool status_to_skip = false;
+    if (run_presolve) {
+      auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
+                                                op_problem.get_handle_ptr()->get_stream());
+      auto dual_solution =
+        cuopt::device_copy(solution.get_dual_solution(), op_problem.get_handle_ptr()->get_stream());
+      auto reduced_costs =
+        cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
+      bool status_to_skip = false;
 
-        presolver->undo(primal_solution,
-                        dual_solution,
-                        reduced_costs,
-                        cuopt::linear_programming::problem_category_t::LP,
-                        status_to_skip,
-                        settings.dual_postsolve,
-                        op_problem.get_handle_ptr()->get_stream());
+      presolver->undo(primal_solution,
+                      dual_solution,
+                      reduced_costs,
+                      cuopt::linear_programming::problem_category_t::LP,
+                      status_to_skip,
+                      settings.dual_postsolve,
+                      op_problem.get_handle_ptr()->get_stream());
 
-        std::vector<
-          typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-          term_vec = solution.get_additional_termination_informations();
-        std::vector<pdlp_termination_status_t> status_vec = solution.get_terminations_status();
+      std::vector<
+        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+        term_vec = solution.get_additional_termination_informations();
+      std::vector<pdlp_termination_status_t> status_vec = solution.get_terminations_status();
 
-        // Create a new solution with the full problem solution
-        solution =
-          optimization_problem_solution_t<i_t, f_t>(primal_solution,
-                                                    dual_solution,
-                                                    reduced_costs,
-                                                    std::move(solution.get_pdlp_warm_start_data()),
-                                                    op_problem.get_objective_name(),
-                                                    op_problem.get_variable_names(),
-                                                    op_problem.get_row_names(),
-                                                    std::move(term_vec),
-                                                    std::move(status_vec));
-      }
+      // Create a new solution with the full problem solution
+      solution =
+        optimization_problem_solution_t<i_t, f_t>(primal_solution,
+                                                  dual_solution,
+                                                  reduced_costs,
+                                                  std::move(solution.get_pdlp_warm_start_data()),
+                                                  op_problem.get_objective_name(),
+                                                  op_problem.get_variable_names(),
+                                                  op_problem.get_row_names(),
+                                                  std::move(term_vec),
+                                                  std::move(status_vec));
     }
 
     if (settings.sol_file != "") {

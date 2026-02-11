@@ -30,6 +30,21 @@
 
 namespace cuopt::linear_programming::detail {
 
+// Helper to convert vector from one type to another (only when types differ)
+template <typename To, typename From>
+std::vector<To> convert_vector(const std::vector<From>& src)
+{
+  if constexpr (std::is_same_v<To, From>) {
+    return src;  // No conversion needed
+  } else {
+    std::vector<To> dst(src.size());
+    for (size_t i = 0; i < src.size(); ++i) {
+      dst[i] = static_cast<To>(src[i]);
+    }
+    return dst;
+  }
+}
+
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
                                           problem_category_t category,
@@ -220,61 +235,69 @@ PSLPContext build_and_run_pslp_presolver(const optimization_problem_t<i_t, f_t>&
   const auto& constr_ub    = op_problem.get_constraint_upper_bounds();
   const auto& var_types    = op_problem.get_variable_types();
 
-  // Copy data to host
-  std::vector<f_t> h_coefficients(coefficients.size());
+  // Copy data to host (using f_t type)
+  std::vector<f_t> h_coefficients_ft(coefficients.size());
   auto stream_view = op_problem.get_handle_ptr()->get_stream();
-  raft::copy(h_coefficients.data(), coefficients.data(), coefficients.size(), stream_view);
+  raft::copy(h_coefficients_ft.data(), coefficients.data(), coefficients.size(), stream_view);
   std::vector<i_t> h_offsets(offsets.size());
   raft::copy(h_offsets.data(), offsets.data(), offsets.size(), stream_view);
   std::vector<i_t> h_variables(variables.size());
   raft::copy(h_variables.data(), variables.data(), variables.size(), stream_view);
-  std::vector<f_t> h_obj_coeffs(obj_coeffs.size());
-  raft::copy(h_obj_coeffs.data(), obj_coeffs.data(), obj_coeffs.size(), stream_view);
-  std::vector<f_t> h_var_lb(var_lb.size());
-  raft::copy(h_var_lb.data(), var_lb.data(), var_lb.size(), stream_view);
-  std::vector<f_t> h_var_ub(var_ub.size());
-  raft::copy(h_var_ub.data(), var_ub.data(), var_ub.size(), stream_view);
-  std::vector<f_t> h_bounds(bounds.size());
-  raft::copy(h_bounds.data(), bounds.data(), bounds.size(), stream_view);
+  std::vector<f_t> h_obj_coeffs_ft(obj_coeffs.size());
+  raft::copy(h_obj_coeffs_ft.data(), obj_coeffs.data(), obj_coeffs.size(), stream_view);
+  std::vector<f_t> h_var_lb_ft(var_lb.size());
+  raft::copy(h_var_lb_ft.data(), var_lb.data(), var_lb.size(), stream_view);
+  std::vector<f_t> h_var_ub_ft(var_ub.size());
+  raft::copy(h_var_ub_ft.data(), var_ub.data(), var_ub.size(), stream_view);
+  std::vector<f_t> h_bounds_ft(bounds.size());
+  raft::copy(h_bounds_ft.data(), bounds.data(), bounds.size(), stream_view);
   std::vector<char> h_row_types(row_types.size());
   raft::copy(h_row_types.data(), row_types.data(), row_types.size(), stream_view);
-  std::vector<f_t> h_constr_lb(constr_lb.size());
-  raft::copy(h_constr_lb.data(), constr_lb.data(), constr_lb.size(), stream_view);
-  std::vector<f_t> h_constr_ub(constr_ub.size());
-  raft::copy(h_constr_ub.data(), constr_ub.data(), constr_ub.size(), stream_view);
+  std::vector<f_t> h_constr_lb_ft(constr_lb.size());
+  raft::copy(h_constr_lb_ft.data(), constr_lb.data(), constr_lb.size(), stream_view);
+  std::vector<f_t> h_constr_ub_ft(constr_ub.size());
+  raft::copy(h_constr_ub_ft.data(), constr_ub.data(), constr_ub.size(), stream_view);
   std::vector<var_t> h_var_types(var_types.size());
   raft::copy(h_var_types.data(), var_types.data(), var_types.size(), stream_view);
 
   stream_view.synchronize();
   if (maximize) {
-    for (size_t i = 0; i < h_obj_coeffs.size(); ++i) {
-      h_obj_coeffs[i] = -h_obj_coeffs[i];
+    for (size_t i = 0; i < h_obj_coeffs_ft.size(); ++i) {
+      h_obj_coeffs_ft[i] = -h_obj_coeffs_ft[i];
     }
   }
 
-  auto constr_bounds_empty = h_constr_lb.empty() && h_constr_ub.empty();
+  auto constr_bounds_empty = h_constr_lb_ft.empty() && h_constr_ub_ft.empty();
   if (constr_bounds_empty) {
     for (size_t i = 0; i < h_row_types.size(); ++i) {
       if (h_row_types[i] == 'L') {
-        h_constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        h_constr_ub.push_back(h_bounds[i]);
+        h_constr_lb_ft.push_back(-std::numeric_limits<f_t>::infinity());
+        h_constr_ub_ft.push_back(h_bounds_ft[i]);
       } else if (h_row_types[i] == 'G') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+        h_constr_lb_ft.push_back(h_bounds_ft[i]);
+        h_constr_ub_ft.push_back(std::numeric_limits<f_t>::infinity());
       } else if (h_row_types[i] == 'E') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(h_bounds[i]);
+        h_constr_lb_ft.push_back(h_bounds_ft[i]);
+        h_constr_ub_ft.push_back(h_bounds_ft[i]);
       }
     }
   }
 
   // handle empty variable bounds
-  if (h_var_lb.empty()) {
-    h_var_lb = std::vector<f_t>(num_cols, -std::numeric_limits<f_t>::infinity());
+  if (h_var_lb_ft.empty()) {
+    h_var_lb_ft = std::vector<f_t>(num_cols, -std::numeric_limits<f_t>::infinity());
   }
-  if (h_var_ub.empty()) {
-    h_var_ub = std::vector<f_t>(num_cols, std::numeric_limits<f_t>::infinity());
+  if (h_var_ub_ft.empty()) {
+    h_var_ub_ft = std::vector<f_t>(num_cols, std::numeric_limits<f_t>::infinity());
   }
+
+  // Convert to double for PSLP API if necessary (PSLP only accepts double*)
+  std::vector<double> h_coefficients = convert_vector<double>(h_coefficients_ft);
+  std::vector<double> h_obj_coeffs   = convert_vector<double>(h_obj_coeffs_ft);
+  std::vector<double> h_var_lb       = convert_vector<double>(h_var_lb_ft);
+  std::vector<double> h_var_ub       = convert_vector<double>(h_var_ub_ft);
+  std::vector<double> h_constr_lb    = convert_vector<double>(h_constr_lb_ft);
+  std::vector<double> h_constr_ub    = convert_vector<double>(h_constr_ub_ft);
 
   // Call PSLP presolver
   ctx.settings           = default_settings();
@@ -331,7 +354,7 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
   // PSLP does not allow setting the objective offset, so we add the original objective offset to
   // the reduced objective offset
   obj_offset += original_obj_offset;
-  op_problem.set_objective_offset(obj_offset);
+  op_problem.set_objective_offset(static_cast<f_t>(obj_offset));
   op_problem.set_maximize(maximize);
   op_problem.set_problem_category(problem_category_t::LP);
 
@@ -343,21 +366,65 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
     return op_problem;
   }
 
-  op_problem.set_csr_constraint_matrix(
-    reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
+  if constexpr (std::is_same_v<f_t, double>) {
+    // PSLP uses double internally, so we can use the data directly
+    op_problem.set_csr_constraint_matrix(
+      reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
 
-  std::vector<f_t> h_obj_coeffs(n_cols);
-  std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
-  if (maximize) {
-    for (size_t i = 0; i < n_cols; ++i) {
-      h_obj_coeffs[i] = -h_obj_coeffs[i];
+      std::vector<f_t> h_obj_coeffs(n_cols);
+      std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
+      if (maximize) {
+        for (size_t i = 0; i < n_cols; ++i) {
+          h_obj_coeffs[i] = -h_obj_coeffs[i];
+        }
+      }
+      op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
+    op_problem.set_constraint_lower_bounds(reduced_prob->lhs, n_rows);
+    op_problem.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
+    op_problem.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
+    op_problem.set_variable_upper_bounds(reduced_prob->ubs, n_cols);
+  } else {
+    // Convert PSLP double arrays to f_t
+    // Constraint matrix values (Ax)
+    std::vector<f_t> h_Ax(nnz);
+    for (int i = 0; i < nnz; ++i) {
+      h_Ax[i] = static_cast<f_t>(reduced_prob->Ax[i]);
     }
+    op_problem.set_csr_constraint_matrix(
+      h_Ax.data(), nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
+
+    // Objective coefficients
+    std::vector<f_t> h_obj_coeffs(n_cols);
+    for (int i = 0; i < n_cols; ++i) {
+      h_obj_coeffs[i] = static_cast<f_t>(reduced_prob->c[i]);
+    }
+    if (maximize) {
+      for (int i = 0; i < n_cols; ++i) {
+        h_obj_coeffs[i] = -h_obj_coeffs[i];
+      }
+    }
+    op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
+
+    // Constraint bounds
+    std::vector<f_t> h_constr_lb(n_rows);
+    std::vector<f_t> h_constr_ub(n_rows);
+    for (int i = 0; i < n_rows; ++i) {
+      h_constr_lb[i] = static_cast<f_t>(reduced_prob->lhs[i]);
+      h_constr_ub[i] = static_cast<f_t>(reduced_prob->rhs[i]);
+    }
+    op_problem.set_constraint_lower_bounds(h_constr_lb.data(), n_rows);
+    op_problem.set_constraint_upper_bounds(h_constr_ub.data(), n_rows);
+
+    // Variable bounds
+    std::vector<f_t> h_var_lb(n_cols);
+    std::vector<f_t> h_var_ub(n_cols);
+    for (int i = 0; i < n_cols; ++i) {
+      h_var_lb[i] = static_cast<f_t>(reduced_prob->lbs[i]);
+      h_var_ub[i] = static_cast<f_t>(reduced_prob->ubs[i]);
+    }
+    op_problem.set_variable_lower_bounds(h_var_lb.data(), n_cols);
+    op_problem.set_variable_upper_bounds(h_var_ub.data(), n_cols);
   }
-  op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
-  op_problem.set_constraint_lower_bounds(reduced_prob->lhs, n_rows);
-  op_problem.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
-  op_problem.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
-  op_problem.set_variable_upper_bounds(reduced_prob->ubs, n_cols);
 
   return op_problem;
 }
@@ -396,6 +463,7 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
       obj.coefficients[i] = -obj.coefficients[i];
     }
   }
+
   op_problem.set_objective_coefficients(obj.coefficients.data(), obj.coefficients.size());
 
   auto& constraint_matrix = papilo_problem.getConstraintMatrix();
@@ -430,8 +498,9 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
   i_t nnz = constraint_matrix.getNnz();
   assert(offsets[nrows] == nnz);
 
-  const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
-  const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
+  const int* cols     = constraint_matrix.getConstraintMatrix().getColumns();
+  const f_t* coeffs   = constraint_matrix.getConstraintMatrix().getValues();
+
   op_problem.set_csr_constraint_matrix(
     &(coeffs[start]), nnz, &(cols[start]), nnz, offsets.data(), nrows + 1);
 
@@ -497,7 +566,8 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+    presolver.addPresolveMethod(
+      uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
   }
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
@@ -535,7 +605,7 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
                           f_t absolute_tolerance,
                           f_t relative_tolerance,
-                          double time_limit,
+                          f_t time_limit,
                           bool dual_postsolve,
                           i_t num_cpu_threads)
 {
@@ -625,7 +695,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   CUOPT_LOG_INFO("Calling Papilo presolver (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
-  set_presolve_methods<f_t>(papilo_presolver, category, dual_postsolve);
+  set_presolve_methods(papilo_presolver, category, dual_postsolve);
   set_presolve_options<i_t, f_t>(papilo_presolver,
                                  category,
                                  absolute_tolerance,
@@ -633,7 +703,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                                  time_limit,
                                  dual_postsolve,
                                  num_cpu_threads);
-  set_presolve_parameters<f_t>(
+  set_presolve_parameters(
     papilo_presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
 
   // Disable papilo logs
@@ -697,12 +767,15 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   }
 
   if (status_to_skip) { return; }
+
   std::vector<f_t> primal_sol_vec_h(primal_solution.size());
   raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
   std::vector<f_t> dual_sol_vec_h(dual_solution.size());
   raft::copy(dual_sol_vec_h.data(), dual_solution.data(), dual_solution.size(), stream_view);
   std::vector<f_t> reduced_costs_vec_h(reduced_costs.size());
-  raft::copy(reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+  raft::copy(
+    reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+
   papilo::Solution<f_t> reduced_sol(primal_sol_vec_h);
   if (dual_postsolve) {
     reduced_sol.dual         = dual_sol_vec_h;
@@ -734,26 +807,71 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
                                                  rmm::device_uvector<f_t>& reduced_costs,
                                                  rmm::cuda_stream_view stream_view)
 {
-  std::vector<f_t> h_primal_solution(primal_solution.size());
-  std::vector<f_t> h_dual_solution(dual_solution.size());
-  std::vector<f_t> h_reduced_costs(reduced_costs.size());
-  raft::copy(h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
-  raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
-  raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+  if constexpr (std::is_same_v<f_t, double>) {
+    // PSLP uses double internally, so we can use the data directly
+    std::vector<double> h_primal_solution(primal_solution.size());
+    std::vector<double> h_dual_solution(dual_solution.size());
+    std::vector<double> h_reduced_costs(reduced_costs.size());
+    raft::copy(
+      h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
+    raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
+    raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+    stream_view.synchronize();
 
-  postsolve(
-    pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
+    postsolve(
+      pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
 
-  auto uncrushed_sol = pslp_presolver_->sol;
-  int n_cols         = uncrushed_sol->dim_x;
-  int n_rows         = uncrushed_sol->dim_y;
+    auto uncrushed_sol = pslp_presolver_->sol;
+    int n_cols         = uncrushed_sol->dim_x;
+    int n_rows         = uncrushed_sol->dim_y;
 
-  primal_solution.resize(n_cols, stream_view);
-  dual_solution.resize(n_rows, stream_view);
-  reduced_costs.resize(n_cols, stream_view);
-  raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
-  raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
-  raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
+    primal_solution.resize(n_cols, stream_view);
+    dual_solution.resize(n_rows, stream_view);
+    reduced_costs.resize(n_cols, stream_view);
+    raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
+    raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
+    raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
+  } else {
+    // Convert f_t to double for PSLP postsolve API
+    std::vector<f_t> h_primal_solution_ft(primal_solution.size());
+    std::vector<f_t> h_dual_solution_ft(dual_solution.size());
+    std::vector<f_t> h_reduced_costs_ft(reduced_costs.size());
+    raft::copy(
+      h_primal_solution_ft.data(), primal_solution.data(), primal_solution.size(), stream_view);
+    raft::copy(h_dual_solution_ft.data(), dual_solution.data(), dual_solution.size(), stream_view);
+    raft::copy(h_reduced_costs_ft.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+    stream_view.synchronize();
+
+    std::vector<double> h_primal_solution = convert_vector<double>(h_primal_solution_ft);
+    std::vector<double> h_dual_solution   = convert_vector<double>(h_dual_solution_ft);
+    std::vector<double> h_reduced_costs   = convert_vector<double>(h_reduced_costs_ft);
+
+    postsolve(
+      pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
+
+    auto uncrushed_sol = pslp_presolver_->sol;
+    int n_cols         = uncrushed_sol->dim_x;
+    int n_rows         = uncrushed_sol->dim_y;
+
+    // Convert double results back to f_t and copy to device
+    std::vector<f_t> h_primal_out(n_cols);
+    std::vector<f_t> h_dual_out(n_rows);
+    std::vector<f_t> h_reduced_costs_out(n_cols);
+    for (int i = 0; i < n_cols; ++i) {
+      h_primal_out[i]        = static_cast<f_t>(uncrushed_sol->x[i]);
+      h_reduced_costs_out[i] = static_cast<f_t>(uncrushed_sol->z[i]);
+    }
+    for (int i = 0; i < n_rows; ++i) {
+      h_dual_out[i] = static_cast<f_t>(uncrushed_sol->y[i]);
+    }
+
+    primal_solution.resize(n_cols, stream_view);
+    dual_solution.resize(n_rows, stream_view);
+    reduced_costs.resize(n_cols, stream_view);
+    raft::copy(primal_solution.data(), h_primal_out.data(), n_cols, stream_view);
+    raft::copy(dual_solution.data(), h_dual_out.data(), n_rows, stream_view);
+    raft::copy(reduced_costs.data(), h_reduced_costs_out.data(), n_cols, stream_view);
+  }
 
   stream_view.synchronize();
 }
@@ -795,7 +913,7 @@ void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* pt
   delete ptr;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template struct papilo_postsolve_deleter<float>;
 template class third_party_presolve_t<int, float>;
 #endif

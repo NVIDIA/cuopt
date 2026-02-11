@@ -70,11 +70,10 @@ static void parse_arguments(argparse::ArgumentParser& program)
       "Path to PDLP hyper-params file to configure PDLP solver. Has priority over PDLP solver "
       "modes.");
 
-  program.add_argument("--presolve")
-    .help("enable/disable presolve (default: true for MIP problems, false for LP problems)")
-    .default_value(0)
-    .scan<'i', int>()
-    .choices(0, 1);
+  program.add_argument("--presolver")
+    .help("Presolver to use. Possible values: None, Papilo, PSLP, Default")
+    .default_value("Default")
+    .choices("None", "Papilo", "PSLP", "Default");
 
   program.add_argument("--solution-path").help("Path where solution file will be generated");
 
@@ -99,6 +98,15 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
 }
 
+static cuopt::linear_programming::presolver_t string_to_presolver(const std::string& presolver)
+{
+  if (presolver == "None") return cuopt::linear_programming::presolver_t::None;
+  if (presolver == "Papilo") return cuopt::linear_programming::presolver_t::Papilo;
+  if (presolver == "PSLP") return cuopt::linear_programming::presolver_t::PSLP;
+  if (presolver == "Default") return cuopt::linear_programming::presolver_t::Default;
+  return cuopt::linear_programming::presolver_t::Default;
+}
+
 template <typename f_t>
 static cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> create_solver_settings(
   const argparse::ArgumentParser& program)
@@ -113,7 +121,7 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> create_solver
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
   settings.crossover = program.get<int>("--crossover");
-  settings.presolve  = program.get<int>("--presolve");
+  settings.presolver  = string_to_presolver(program.get<std::string>("--presolver"));
 
   return settings;
 }
