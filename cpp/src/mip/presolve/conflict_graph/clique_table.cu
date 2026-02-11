@@ -206,13 +206,16 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
 }
 
 template <typename i_t, typename f_t>
-void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table)
+void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t& timer)
 {
+  if (timer.check_time_limit()) { return; }
+
   i_t num_removed_first = 0;
   i_t num_removed_addtl = 0;
   std::vector<bool> to_delete(clique_table.first.size(), false);
   // if a clique is small, we remove it from the cliques and add it to adjlist
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
+    if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
     if (clique.size() <= (size_t)clique_table.min_clique_size) {
       for (size_t i = 0; i < clique.size(); i++) {
@@ -226,6 +229,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table)
     }
   }
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
+    if (timer.check_time_limit()) { return; }
     const auto& addtl_clique = clique_table.addtl_cliques[addtl_c];
     i_t size_of_clique =
       clique_table.first[addtl_clique.clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
@@ -519,8 +523,10 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
                         clique_table_t<i_t, f_t>& clique_table,
                         typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                         bool remove_small_cliques_flag,
-                        bool fill_var_clique_maps_flag)
+                        bool fill_var_clique_maps_flag,
+                        cuopt::timer_t& timer)
 {
+  if (timer.check_time_limit()) { return; }
   cuopt_assert(clique_table.n_variables == problem.num_cols, "Clique table size mismatch");
   cuopt_assert(problem.var_types.size() == static_cast<size_t>(problem.num_cols),
                "Problem variable types size mismatch");
@@ -534,9 +540,12 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
   sort_csr_by_constraint_coefficients(knapsack_constraints);
   clique_table.tolerances = tolerances;
   for (const auto& knapsack_constraint : knapsack_constraints) {
+    if (timer.check_time_limit()) { return; }
     find_cliques_from_constraint(knapsack_constraint, clique_table);
   }
-  if (remove_small_cliques_flag) { remove_small_cliques(clique_table); }
+  if (timer.check_time_limit()) { return; }
+  if (remove_small_cliques_flag) { remove_small_cliques(clique_table, timer); }
+  if (timer.check_time_limit()) { return; }
   if (fill_var_clique_maps_flag) { fill_var_clique_maps(clique_table); }
 }
 
@@ -863,7 +872,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                   clique_table_ptr->addtl_cliques.size());
   // print_clique_table(clique_table);
   // remove small cliques and add them to adj_list
-  remove_small_cliques(*clique_table_ptr);
+  remove_small_cliques(*clique_table_ptr, timer);
   t_small = stage_timer.elapsed_time();
   // fill var clique maps
   fill_var_clique_maps(*clique_table_ptr);
@@ -906,7 +915,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     clique_table_t<int, F_TYPE>& clique_table,                            \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
     bool remove_small_cliques_flag,                                       \
-    bool fill_var_clique_maps_flag);                                      \
+    bool fill_var_clique_maps_flag,                                       \
+    cuopt::timer_t& timer);                                               \
   template class clique_table_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT

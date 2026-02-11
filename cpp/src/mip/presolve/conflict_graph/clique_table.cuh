@@ -108,7 +108,8 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
                         clique_table_t<i_t, f_t>& clique_table,
                         typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                         bool remove_small_cliques,
-                        bool fill_var_clique_maps);
+                        bool fill_var_clique_maps,
+                        cuopt::timer_t& timer);
 
 }  // namespace cuopt::linear_programming::detail
 

@@ -294,7 +294,8 @@ class cut_generation_t {
                             const simplex_solver_settings_t<i_t, f_t>& settings,
                             const std::vector<variable_type_t>& var_types,
                             const std::vector<f_t>& xstar,
-                            const std::vector<f_t>& reduced_costs);
+                            const std::vector<f_t>& reduced_costs,
+                            f_t start_time);
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
