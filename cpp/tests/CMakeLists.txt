@@ -37,6 +37,15 @@ set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 function(ConfigureTest CMAKE_TEST_NAME)
     add_executable(${CMAKE_TEST_NAME} ${ARGN})
 
+    set_target_properties(${CMAKE_TEST_NAME}
+        PROPERTIES
+        # set target compile options
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        INTERFACE_POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+    )
+
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
