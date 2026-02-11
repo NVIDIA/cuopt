@@ -249,17 +249,31 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t
   // Done in previous function
 
   // K(x'+delta_x)
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                       reusable_device_scalar_value_1_.data(),  // 1
-                                       cusparse_view_.A,
-                                       cusparse_view_.tmp_primal,
-                                       reusable_device_scalar_value_0_.data(),  // 1
-                                       cusparse_view_.dual_gradient,
-                                       CUSPARSE_SPMV_CSR_ALG2,
-                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                       stream_view_));
+  if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+    // Mixed precision SpMV: FP32 matrix with FP64 vectors
+    mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
+                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                         reusable_device_scalar_value_1_.data(),  // 1
+                         cusparse_view_.A_mixed_,
+                         cusparse_view_.tmp_primal,
+                         reusable_device_scalar_value_0_.data(),  // 0
+                         cusparse_view_.dual_gradient,
+                         CUSPARSE_SPMV_CSR_ALG2,
+                         cusparse_view_.buffer_non_transpose_mixed_.data(),
+                         stream_view_);
+  } else {
+    RAFT_CUSPARSE_TRY(
+      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                         reusable_device_scalar_value_1_.data(),  // 1
+                                         cusparse_view_.A,
+                                         cusparse_view_.tmp_primal,
+                                         reusable_device_scalar_value_0_.data(),  // 0
+                                         cusparse_view_.dual_gradient,
+                                         CUSPARSE_SPMV_CSR_ALG2,
+                                         (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                         stream_view_));
+  }
 
   // y - (sigma*dual_gradient)
   // max(min(0, sigma*constraint_upper+primal_product), sigma*constraint_lower+primal_product)
@@ -287,17 +301,31 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
   // A_t @ y
 
   if (!batch_mode_) {
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_1_.data(),
-                                         cusparse_view_.A_T,
-                                         cusparse_view_.dual_solution,
-                                         reusable_device_scalar_value_0_.data(),
-                                         cusparse_view_.current_AtY,
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view_.buffer_transpose.data(),
-                                         stream_view_));
+    if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+      // Mixed precision SpMV: FP32 matrix with FP64 vectors
+      mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
+                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                           reusable_device_scalar_value_1_.data(),
+                           cusparse_view_.A_T_mixed_,
+                           cusparse_view_.dual_solution,
+                           reusable_device_scalar_value_0_.data(),
+                           cusparse_view_.current_AtY,
+                           CUSPARSE_SPMV_CSR_ALG2,
+                           cusparse_view_.buffer_transpose_mixed_.data(),
+                           stream_view_);
+    } else {
+      RAFT_CUSPARSE_TRY(
+        raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                           reusable_device_scalar_value_1_.data(),
+                                           cusparse_view_.A_T,
+                                           cusparse_view_.dual_solution,
+                                           reusable_device_scalar_value_0_.data(),
+                                           cusparse_view_.current_AtY,
+                                           CUSPARSE_SPMV_CSR_ALG2,
+                                           (f_t*)cusparse_view_.buffer_transpose.data(),
+                                           stream_view_));
+    }
   } else {
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm(
       handle_ptr_->get_cusparse_handle(),
@@ -319,17 +347,31 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
 {
   // A @ x
   if (!batch_mode_) {
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_1_.data(),
-                                         cusparse_view_.A,
-                                         cusparse_view_.reflected_primal_solution,
-                                         reusable_device_scalar_value_0_.data(),
-                                         cusparse_view_.dual_gradient,
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                         stream_view_));
+    if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+      // Mixed precision SpMV: FP32 matrix with FP64 vectors
+      mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
+                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                           reusable_device_scalar_value_1_.data(),
+                           cusparse_view_.A_mixed_,
+                           cusparse_view_.reflected_primal_solution,
+                           reusable_device_scalar_value_0_.data(),
+                           cusparse_view_.dual_gradient,
+                           CUSPARSE_SPMV_CSR_ALG2,
+                           cusparse_view_.buffer_non_transpose_mixed_.data(),
+                           stream_view_);
+    } else {
+      RAFT_CUSPARSE_TRY(
+        raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                           reusable_device_scalar_value_1_.data(),
+                                           cusparse_view_.A,
+                                           cusparse_view_.reflected_primal_solution,
+                                           reusable_device_scalar_value_0_.data(),
+                                           cusparse_view_.dual_gradient,
+                                           CUSPARSE_SPMV_CSR_ALG2,
+                                           (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                           stream_view_));
+    }
   } else {
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm(
       handle_ptr_->get_cusparse_handle(),

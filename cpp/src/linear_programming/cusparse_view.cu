@@ -10,6 +10,7 @@
 
 #include <linear_programming/cusparse_view.hpp>
 #include <linear_programming/pdlp_climber_strategy.hpp>
+#include <linear_programming/pdlp_constants.hpp>
 #include <linear_programming/utils.cuh>
 #include <mip/mip_constants.hpp>
 
@@ -20,6 +21,14 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <dlfcn.h>
+
+#include <thrust/transform.h>
+#include <thrust/execution_policy.h>
+
+// Functor for double-to-float conversion on GPU
+struct double_to_float_functor {
+  __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }
+};
 
 namespace cuopt::linear_programming::detail {
 
@@ -304,7 +313,12 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_{op_problem_scaled.coefficients},
     A_offsets_{op_problem_scaled.offsets},
     A_indices_{op_problem_scaled.variables},
-    climber_strategies_(climber_strategies)
+    climber_strategies_(climber_strategies),
+    A_float_{0, handle_ptr->get_stream()},
+    A_T_float_{0, handle_ptr->get_stream()},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    mixed_precision_enabled_{false}
 {
   raft::common::nvtx::range fun_scope("Initializing cuSparse view");
 
@@ -583,6 +597,108 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       handle_ptr->get_stream());
   }
 #endif
+
+  // Initialize mixed precision SpMV support
+  // Only when f_t = double and enable_mixed_precision_spmv is true
+  if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+    mixed_precision_enabled_ = true;
+
+    // Create FP32 copies of A and A_T matrix values
+    A_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
+    A_T_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
+
+    // Convert A values from double to float
+    thrust::transform(thrust::cuda::par.on(handle_ptr->get_stream()),
+                      op_problem_scaled.coefficients.data(),
+                      op_problem_scaled.coefficients.data() + op_problem_scaled.nnz,
+                      A_float_.data(),
+                      double_to_float_functor{});
+
+    // Convert A_T values from double to float
+    thrust::transform(thrust::cuda::par.on(handle_ptr->get_stream()),
+                      A_T_.data(),
+                      A_T_.data() + op_problem_scaled.nnz,
+                      A_T_float_.data(),
+                      double_to_float_functor{});
+
+    // Create FP32 matrix descriptors for mixed precision SpMV
+    RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_mixed_,
+                                        op_problem_scaled.n_constraints,
+                                        op_problem_scaled.n_variables,
+                                        op_problem_scaled.nnz,
+                                        const_cast<i_t*>(op_problem_scaled.offsets.data()),
+                                        const_cast<i_t*>(op_problem_scaled.variables.data()),
+                                        A_float_.data(),
+                                        CUSPARSE_INDEX_32I,
+                                        CUSPARSE_INDEX_32I,
+                                        CUSPARSE_INDEX_BASE_ZERO,
+                                        CUDA_R_32F));
+
+    RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_T_mixed_,
+                                        op_problem_scaled.n_variables,
+                                        op_problem_scaled.n_constraints,
+                                        op_problem_scaled.nnz,
+                                        const_cast<i_t*>(A_T_offsets_.data()),
+                                        const_cast<i_t*>(A_T_indices_.data()),
+                                        A_T_float_.data(),
+                                        CUSPARSE_INDEX_32I,
+                                        CUSPARSE_INDEX_32I,
+                                        CUSPARSE_INDEX_BASE_ZERO,
+                                        CUDA_R_32F));
+
+    // Compute buffer sizes for mixed precision SpMV
+    const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
+    const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
+
+    size_t buffer_size_non_transpose_mixed =
+      mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+                                      CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                      alpha_d.data(),
+                                      A_mixed_,
+                                      c,
+                                      beta_d.data(),
+                                      dual_solution,
+                                      CUSPARSE_SPMV_CSR_ALG2,
+                                      handle_ptr->get_stream());
+    buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed, handle_ptr->get_stream());
+
+    size_t buffer_size_transpose_mixed =
+      mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+                                      CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                      alpha_d.data(),
+                                      A_T_mixed_,
+                                      dual_solution,
+                                      beta_d.data(),
+                                      c,
+                                      CUSPARSE_SPMV_CSR_ALG2,
+                                      handle_ptr->get_stream());
+    buffer_transpose_mixed_.resize(buffer_size_transpose_mixed, handle_ptr->get_stream());
+
+#if CUDA_VER_12_4_UP
+    // Preprocess mixed precision SpMV
+    mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
+                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                    alpha_d.data(),
+                                    A_mixed_,
+                                    c,
+                                    beta_d.data(),
+                                    dual_solution,
+                                    CUSPARSE_SPMV_CSR_ALG2,
+                                    buffer_non_transpose_mixed_.data(),
+                                    handle_ptr->get_stream());
+
+    mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
+                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                    alpha_d.data(),
+                                    A_T_mixed_,
+                                    dual_solution,
+                                    beta_d.data(),
+                                    c,
+                                    CUSPARSE_SPMV_CSR_ALG2,
+                                    buffer_transpose_mixed_.data(),
+                                    handle_ptr->get_stream());
+#endif
+  }
 }
 
 // Used by pdlp object for current and average termination condition
@@ -625,7 +741,12 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_{op_problem.coefficients},
     A_offsets_{op_problem.offsets},
     A_indices_{op_problem.variables},
-    climber_strategies_(climber_strategies)
+    climber_strategies_(climber_strategies),
+    A_float_{0, handle_ptr->get_stream()},
+    A_T_float_{0, handle_ptr->get_stream()},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    mixed_precision_enabled_{false}
 {
 #ifdef PDLP_DEBUG_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -832,7 +953,12 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_{existing_cusparse_view.A_},
     A_offsets_{existing_cusparse_view.A_offsets_},
     A_indices_{existing_cusparse_view.A_indices_},
-    climber_strategies_(existing_cusparse_view.climber_strategies_)
+    climber_strategies_(existing_cusparse_view.climber_strategies_),
+    A_float_{0, handle_ptr->get_stream()},
+    A_T_float_{0, handle_ptr->get_stream()},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    mixed_precision_enabled_{false}
 {
 #ifdef PDLP_DEBUG_MODE
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -942,9 +1068,95 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     A_(dummy_float),
     A_offsets_(dummy_int),
     A_indices_(dummy_int),
-    climber_strategies_(climber_strategies)
+    climber_strategies_(climber_strategies),
+    A_float_{0, handle_ptr->get_stream()},
+    A_T_float_{0, handle_ptr->get_stream()},
+    buffer_non_transpose_mixed_{0, handle_ptr->get_stream()},
+    buffer_transpose_mixed_{0, handle_ptr->get_stream()},
+    mixed_precision_enabled_{false}
 {
 }
+
+// Update FP32 matrix copies after scaling (must be called after scale_problem())
+template <typename i_t, typename f_t>
+void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
+{
+  if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+    if (!mixed_precision_enabled_) { return; }
+
+    // The A_ and A_T_ references point to the scaled matrix data
+    // Update the FP32 copies with the scaled values
+    thrust::transform(thrust::cuda::par.on(handle_ptr_->get_stream()),
+                      A_.data(),
+                      A_.data() + A_.size(),
+                      A_float_.data(),
+                      double_to_float_functor{});
+
+    thrust::transform(thrust::cuda::par.on(handle_ptr_->get_stream()),
+                      A_T_.data(),
+                      A_T_.data() + A_T_.size(),
+                      A_T_float_.data(),
+                      double_to_float_functor{});
+
+    handle_ptr_->get_stream().synchronize();
+  }
+}
+
+// Mixed precision SpMV implementation: FP32 matrix with FP64 vectors and FP64 compute type
+size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
+                                       cusparseOperation_t opA,
+                                       const double* alpha,
+                                       cusparseSpMatDescr_t matA,  // FP32 matrix
+                                       cusparseDnVecDescr_t vecX,  // FP64 vector
+                                       const double* beta,
+                                       cusparseDnVecDescr_t vecY,  // FP64 vector
+                                       cusparseSpMVAlg_t alg,
+                                       cudaStream_t stream)
+{
+  size_t bufferSize = 0;
+  RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
+  RAFT_CUSPARSE_TRY(cusparseSpMV_bufferSize(
+    handle, opA, alpha, matA, vecX, beta, vecY, CUDA_R_64F, alg, &bufferSize));
+  return bufferSize;
+}
+
+void mixed_precision_spmv(cusparseHandle_t handle,
+                          cusparseOperation_t opA,
+                          const double* alpha,
+                          cusparseSpMatDescr_t matA,  // FP32 matrix
+                          cusparseDnVecDescr_t vecX,  // FP64 vector
+                          const double* beta,
+                          cusparseDnVecDescr_t vecY,  // FP64 vector
+                          cusparseSpMVAlg_t alg,
+                          void* externalBuffer,
+                          cudaStream_t stream)
+{
+  RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
+  RAFT_CUSPARSE_TRY(
+    cusparseSpMV(handle, opA, alpha, matA, vecX, beta, vecY, CUDA_R_64F, alg, externalBuffer));
+}
+
+#if CUDA_VER_12_4_UP
+void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
+                                     cusparseOperation_t opA,
+                                     const double* alpha,
+                                     cusparseSpMatDescr_t matA,  // FP32 matrix
+                                     cusparseDnVecDescr_t vecX,  // FP64 vector
+                                     const double* beta,
+                                     cusparseDnVecDescr_t vecY,  // FP64 vector
+                                     cusparseSpMVAlg_t alg,
+                                     void* externalBuffer,
+                                     cudaStream_t stream)
+{
+  static const auto func =
+    dynamic_load_runtime::function<cusparseSpMV_preprocess_sig>("cusparseSpMV_preprocess");
+  if (func.has_value()) {
+    RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
+    RAFT_CUSPARSE_TRY(
+      (*func)(handle, opA, alpha, matA, vecX, beta, vecY, CUDA_R_64F, alg, externalBuffer));
+  }
+}
+#endif
 
 #if PDLP_INSTANTIATE_FLOAT
 template class cusparse_sp_mat_descr_wrapper_t<int, float>;
