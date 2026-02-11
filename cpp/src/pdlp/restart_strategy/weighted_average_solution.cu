@@ -7,10 +7,10 @@
 
 #include <cuopt/error.hpp>
 
+#include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/weighted_average_solution.hpp>
 #include <pdlp/utils.cuh>
-#include <mip_heuristics/mip_constants.hpp>
 
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/divide.cuh>

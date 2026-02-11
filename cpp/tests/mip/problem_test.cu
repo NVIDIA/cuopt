@@ -8,11 +8,11 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
-#include <pdlp/utils.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>

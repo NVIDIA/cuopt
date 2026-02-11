@@ -7,9 +7,9 @@
 
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 
-#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 

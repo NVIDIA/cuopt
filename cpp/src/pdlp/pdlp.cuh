@@ -17,8 +17,8 @@
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
-#include <pdlp/termination_strategy/termination_strategy.hpp>
 #include <pdlp/termination_strategy/convergence_information.hpp>
+#include <pdlp/termination_strategy/termination_strategy.hpp>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -31,7 +31,6 @@
 
 #include <optional>
 #include <unordered_set>
-
 
 namespace cuopt::linear_programming::detail {
 /**

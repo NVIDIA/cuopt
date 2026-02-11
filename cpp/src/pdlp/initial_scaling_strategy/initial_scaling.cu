@@ -10,10 +10,10 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/utils.cuh>
-#include <mip_heuristics/mip_constants.hpp>
 
 #include <raft/common/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>

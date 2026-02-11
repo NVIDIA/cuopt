@@ -5,9 +5,9 @@
  */
 /* clang-format on */
 
+#include <barrier/cusparse_view.hpp>
 #include <barrier/dense_vector.hpp>
 #include <barrier/pinned_host_allocator.hpp>
-#include <barrier/cusparse_view.hpp>
 
 #include <dual_simplex/sparse_matrix.hpp>
 

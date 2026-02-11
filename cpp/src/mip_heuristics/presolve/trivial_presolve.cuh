@@ -8,9 +8,9 @@
 #pragma once
 
 #include <cuopt/error.hpp>
-#include <pdlp/utils.cuh>
 #include <mip_heuristics/presolve/trivial_presolve_helpers.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 
 #include <thrust/count.h>

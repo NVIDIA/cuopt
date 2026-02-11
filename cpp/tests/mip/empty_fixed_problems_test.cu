@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,10 +9,10 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <pdlp/pdlp.cuh>
-#include <pdlp/utilities/problem_checking.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
+#include <pdlp/pdlp.cuh>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 

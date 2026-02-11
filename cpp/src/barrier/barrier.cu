@@ -9,13 +9,13 @@
 
 #include <barrier/conjugate_gradient.hpp>
 #include <barrier/cusparse_info.hpp>
+#include <barrier/cusparse_view.hpp>
 #include <barrier/dense_matrix.hpp>
 #include <barrier/dense_vector.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/iterative_refinement.hpp>
 #include <barrier/sparse_cholesky.cuh>
 #include <barrier/sparse_matrix_kernels.cuh>
-#include <barrier/cusparse_view.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>

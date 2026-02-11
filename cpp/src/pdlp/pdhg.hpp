@@ -7,12 +7,12 @@
 
 #pragma once
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utilities/ping_pong_graph.cuh>
-#include <mip_heuristics/problem/problem.cuh>
 
 #include <raft/core/handle.hpp>
 

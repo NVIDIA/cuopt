@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
+#include <mps_parser.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
-#include <mps_parser.hpp>
 #include "utilities/pdlp_test_utilities.cuh"
 
 #include <utilities/base_fixture.hpp>

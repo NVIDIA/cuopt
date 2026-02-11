@@ -9,9 +9,9 @@
 #include "population.cuh"
 
 #include <thrust/for_each.h>
-#include <pdlp/utils.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
+#include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 

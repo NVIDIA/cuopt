@@ -9,9 +9,9 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <pdlp/solve.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
+#include <pdlp/solve.cuh>
 
 #include <pdlp/pdlp.cuh>
 

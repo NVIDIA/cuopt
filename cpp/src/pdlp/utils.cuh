@@ -7,9 +7,9 @@
 
 #pragma once
 
+#include <optional>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
-#include <optional>
 #include <utilities/macros.cuh>
 
 #include <raft/core/device_span.hpp>

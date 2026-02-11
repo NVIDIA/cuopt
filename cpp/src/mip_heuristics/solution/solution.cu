@@ -9,10 +9,10 @@
 #include "solution.cuh"
 #include "solution_kernels.cuh"
 
-#include <pdlp/utils.cuh>
 #include <mip_heuristics/diversity/recombiners/recombiner.cuh>
 #include <mip_heuristics/local_search/rounding/simple_rounding.cuh>
 #include <mip_heuristics/mip_constants.hpp>
+#include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/seed_generator.cuh>
 
