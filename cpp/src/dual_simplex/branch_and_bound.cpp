@@ -1757,8 +1757,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    if (settings.heuristic_preemption_callback != nullptr) {
-      settings.heuristic_preemption_callback();
+    if (settings_.heuristic_preemption_callback != nullptr) {
+      settings_.heuristic_preemption_callback();
     }
     return mip_status_t::INFEASIBLE;
   }
