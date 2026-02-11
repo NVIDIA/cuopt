@@ -11,6 +11,8 @@
 
 #include <thrust/functional.h>
 
+#include <utilities/copy_helpers.hpp>
+
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t>
