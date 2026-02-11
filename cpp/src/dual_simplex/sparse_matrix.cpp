@@ -685,8 +685,10 @@ void csr_matrix_t<i_t, f_t>::insert_row(const std::vector<i_t>& vars,
   this->row_start.push_back(this->row_start.back() + vars.size());
   this->m++;
   this->nz_max += vars.size();
-  this->j.insert(this->j.end(), vars.begin(), vars.end());
-  this->x.insert(this->x.end(), coeffs.begin(), coeffs.end());
+  this->j.reserve(this->nz_max);
+  this->x.reserve(this->nz_max);
+  this->j.underlying().insert(this->j.underlying().end(), vars.begin(), vars.end());
+  this->x.underlying().insert(this->x.underlying().end(), coeffs.begin(), coeffs.end());
 }
 
 // x <- x + alpha * A(:, j)

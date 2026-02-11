@@ -2118,6 +2118,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            var_types_,
                                                            basis_update,
                                                            root_relax_soln_.x,
+                                                           root_relax_soln_.z,
                                                            basic_list,
                                                            nonbasic_list,
                                                            exploration_stats_.start_time);

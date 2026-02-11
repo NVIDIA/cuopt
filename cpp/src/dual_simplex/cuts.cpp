@@ -843,7 +843,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const std::vector<i_t>& nonbasic_list,
                                                f_t start_time)
 {
-  if (toc(start_time) >= settings.time_limit) { return; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
 
   // Generate Gomory and CG Cuts
   if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
@@ -863,7 +863,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
-  if (toc(start_time) >= settings.time_limit) { return; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
 
   // Generate Knapsack cuts
   if (settings.knapsack_cuts != 0) {
@@ -874,7 +874,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
-  if (toc(start_time) >= settings.time_limit) { return; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
 
   // Generate Clique cuts
   if (settings.clique_cuts != 0) {

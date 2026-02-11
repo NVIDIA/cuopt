@@ -1914,9 +1914,9 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
   empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
 
   auto stream = handle_ptr->get_stream();
-  cuopt::device_copy(coefficients, csr_A.x, stream);
-  cuopt::device_copy(variables, csr_A.j, stream);
-  cuopt::device_copy(offsets, csr_A.row_start, stream);
+  cuopt::device_copy(coefficients, csr_A.x.underlying(), stream);
+  cuopt::device_copy(variables, csr_A.j.underlying(), stream);
+  cuopt::device_copy(offsets, csr_A.row_start.underlying(), stream);
 
   std::vector<f_t> h_constraint_lower_bounds(n_constraints);
   std::vector<f_t> h_constraint_upper_bounds(n_constraints);
