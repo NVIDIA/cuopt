@@ -9,6 +9,7 @@
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/triangle_solve.hpp>
+#include <raft/common/nvtx.hpp>
 
 #include <cmath>
 #include <limits>
@@ -35,6 +36,7 @@ i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
                                       std::vector<f_t>& solution,
                                       std::vector<f_t>& Lsol) const
 {
+  raft::common::nvtx::range scope("LU::b_solve");
   const i_t m = L0_.m;
   assert(row_permutation_.size() == m);
   assert(rhs.size() == m);
@@ -86,6 +88,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::b_transpose_solve(const std::vector<f_t>& rhs,
                                                 std::vector<f_t>& solution) const
 {
+  raft::common::nvtx::range scope("LU::b_transpose_solve");
   // Observe that
   // P*B = L*U
   // B'*P' = U'*L'
@@ -2263,6 +2266,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus)
 {
+  raft::common::nvtx::range scope("LU::refactor_basis");
   std::vector<i_t> deficient;
   std::vector<i_t> slacks_needed;
   std::vector<i_t> superbasic_list;  // Empty superbasic list

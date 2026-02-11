@@ -14,12 +14,6 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t>
-struct branch_variable_t {
-  i_t variable;
-  rounding_direction_t direction;
-};
-
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& solution,

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -11,6 +11,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_METHOD,
     CUOPT_PDLP_SOLVER_MODE,
+    CUOPT_PRESOLVE,
 )
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
@@ -38,6 +39,7 @@ def test_warmstart(cuoptproc):  # noqa
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
     data["solver_config"] = settings.toDict()
 
     headers = {"CLIENT-VERSION": "custom"}

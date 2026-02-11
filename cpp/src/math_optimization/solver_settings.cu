@@ -60,6 +60,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   float_parameters = {
     {CUOPT_TIME_LIMIT, &mip_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_WORK_LIMIT, &mip_settings.work_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
     {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, 0.0, 1e-1, 1e-4},
     {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, 0.0, 1e-1, 1e-4},
     {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, 0.0, 1e-1, 1e-4},
@@ -99,6 +100,11 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
     {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 1, 0},
+    {CUOPT_PRESOLVE, reinterpret_cast<int*>(&pdlp_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
+    {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
+    {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
+    {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1}
   };
 
     // Bool parameters
@@ -115,8 +121,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_CROSSOVER, &pdlp_settings.crossover, false},
     {CUOPT_ELIMINATE_DENSE_COLUMNS, &pdlp_settings.eliminate_dense_columns, true},
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
-    {CUOPT_PRESOLVE, &pdlp_settings.presolve, false},
-    {CUOPT_PRESOLVE, &mip_settings.presolve, true},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true}
   };
   // String parameters
@@ -447,6 +451,25 @@ const std::vector<parameter_info_t<std::string>>&
 solver_settings_t<i_t, f_t>::get_string_parameters() const
 {
   return string_parameters;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<std::string> solver_settings_t<i_t, f_t>::get_parameter_names() const
+{
+  std::vector<std::string> parameter_names;
+  for (auto& param : int_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : float_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : bool_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  for (auto& param : string_parameters) {
+    parameter_names.push_back(param.param_name);
+  }
+  return parameter_names;
 }
 
 #if MIP_INSTANTIATE_FLOAT

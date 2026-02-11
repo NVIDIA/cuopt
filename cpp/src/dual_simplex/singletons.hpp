@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -42,11 +42,11 @@ void create_row_representationon(const csc_matrix_t<i_t, f_t>& A,
 template <typename i_t, typename f_t>
 i_t complete_permutationn(i_t singletons, std::vector<i_t>& Xdeg, std::vector<i_t>& Xperm);
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
                     i_t& row_singletons,
-                    std::vector<i_t>& row_perm,
+                    VectorI& row_perm,
                     i_t& col_singleton,
-                    std::vector<i_t>& col_perm);
+                    VectorI& col_perm);
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -32,6 +32,7 @@
 #define CUOPT_DUAL_INFEASIBLE_TOLERANCE       "dual_infeasible_tolerance"
 #define CUOPT_ITERATION_LIMIT                 "iteration_limit"
 #define CUOPT_TIME_LIMIT                      "time_limit"
+#define CUOPT_WORK_LIMIT                      "work_limit"
 #define CUOPT_PDLP_SOLVER_MODE                "pdlp_solver_mode"
 #define CUOPT_METHOD                          "method"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL         "per_constraint_residual"
@@ -49,6 +50,7 @@
 #define CUOPT_CUDSS_DETERMINISTIC             "cudss_deterministic"
 #define CUOPT_PRESOLVE                        "presolve"
 #define CUOPT_DUAL_POSTSOLVE                  "dual_postsolve"
+#define CUOPT_MIP_DETERMINISM_MODE            "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE          "mip_absolute_tolerance"
 #define CUOPT_MIP_RELATIVE_TOLERANCE          "mip_relative_tolerance"
 #define CUOPT_MIP_INTEGRALITY_TOLERANCE       "mip_integrality_tolerance"
@@ -57,6 +59,7 @@
 #define CUOPT_MIP_HEURISTICS_ONLY             "mip_heuristics_only"
 #define CUOPT_MIP_SCALING                     "mip_scaling"
 #define CUOPT_MIP_PRESOLVE                    "mip_presolve"
+#define CUOPT_MIP_RELIABILITY_BRANCHING       "mip_reliability_branching"
 #define CUOPT_MIP_CUT_PASSES                  "mip_cut_passes"
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS "mip_mixed_integer_rounding_cuts"
 #define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS   "mip_mixed_integer_gomory_cuts"
@@ -71,6 +74,11 @@
 #define CUOPT_NUM_CPU_THREADS                 "num_cpu_threads"
 #define CUOPT_NUM_GPUS                        "num_gpus"
 #define CUOPT_USER_PROBLEM_FILE               "user_problem_file"
+#define CUOPT_RANDOM_SEED                     "random_seed"
+
+/* @brief MIP determinism mode constants */
+#define CUOPT_MODE_OPPORTUNISTIC 0
+#define CUOPT_MODE_DETERMINISTIC 1
 
 /* @brief LP/MIP termination status constants */
 #define CUOPT_TERIMINATION_STATUS_NO_TERMINATION   0
@@ -83,6 +91,7 @@
 #define CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE  7
 #define CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND   8
 #define CUOPT_TERIMINATION_STATUS_CONCURRENT_LIMIT 9
+#define CUOPT_TERIMINATION_STATUS_WORK_LIMIT       10
 
 /* @brief The objective sense constants */
 #define CUOPT_MINIMIZE 1
@@ -128,5 +137,10 @@
 #define CUOPT_VALIDATION_ERROR 4
 #define CUOPT_OUT_OF_MEMORY    5
 #define CUOPT_RUNTIME_ERROR    6
+
+#define CUOPT_PRESOLVE_DEFAULT -1
+#define CUOPT_PRESOLVE_OFF     0
+#define CUOPT_PRESOLVE_PAPILO  1
+#define CUOPT_PRESOLVE_PSLP    2
 
 #endif  // CUOPT_CONSTANTS_H

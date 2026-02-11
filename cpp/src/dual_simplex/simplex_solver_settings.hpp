@@ -22,18 +22,25 @@ namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
 struct diving_heuristics_settings_t {
-  i_t num_diving_workers = -1;
-
   // -1 automatic, 0 disabled, 1 enabled
   i_t line_search_diving = -1;
   i_t pseudocost_diving  = -1;
   i_t guided_diving      = -1;
   i_t coefficient_diving = -1;
 
-  i_t min_node_depth         = 10;
-  i_t node_limit             = 500;
+  // The minimum depth to start diving from.
+  i_t min_node_depth = 10;
+
+  // The maximum number of nodes when performing a dive.
+  i_t node_limit = 500;
+
+  // The maximum number of dual simplex iteration allowed
+  // in a single dive. This set in terms of the total number of
+  // iterations in the best-first threads.
   f_t iteration_limit_factor = 0.05;
-  i_t backtrack_limit        = 5;
+
+  // The maximum backtracking allowed.
+  i_t backtrack_limit = 5;
 };
 
 template <typename i_t, typename f_t>
@@ -43,6 +50,7 @@ struct simplex_solver_settings_t {
     : iteration_limit(std::numeric_limits<i_t>::max()),
       node_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
+      work_limit(std::numeric_limits<f_t>::infinity()),
       absolute_mip_gap_tol(0.0),
       relative_mip_gap_tol(1e-3),
       integer_tol(1e-5),
@@ -73,6 +81,7 @@ struct simplex_solver_settings_t {
       print_presolve_stats(true),
       barrier_presolve(false),
       cudss_deterministic(false),
+      deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
       num_gpus(1),
@@ -96,16 +105,14 @@ struct simplex_solver_settings_t {
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
-      num_bfs_workers(std::max(num_threads / 4, 1)),
       random_seed(0),
+      reliability_branching(-1),
       inside_mip(0),
       sub_mip(0),
-      reliability_branching(-1),
       solution_callback(nullptr),
       heuristic_preemption_callback(nullptr),
       concurrent_halt(nullptr)
   {
-    diving_settings.num_diving_workers = std::max(num_threads - num_bfs_workers, 1);
   }
 
   void set_log(bool logging) const { log.log = logging; }
@@ -115,6 +122,7 @@ struct simplex_solver_settings_t {
   i_t iteration_limit;
   i_t node_limit;
   f_t time_limit;
+  f_t work_limit;
   f_t absolute_mip_gap_tol;  // Tolerance on mip gap to declare optimal
   f_t relative_mip_gap_tol;  // Tolerance on mip gap to declare optimal
   f_t integer_tol;           // Tolerance on integralitiy violation
@@ -150,6 +158,7 @@ struct simplex_solver_settings_t {
   bool barrier_presolve;      // true to use barrier presolve
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
+  bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
@@ -177,15 +186,20 @@ struct simplex_solver_settings_t {
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
   f_t cut_min_orthogonality;       // minimum orthogonality for cuts
-  i_t num_bfs_workers;             // number of threads dedicated to the best-first search
   i_t mip_batch_pdlp_strong_branching{0};  // 0 if not using batch PDLP for strong branching, 1 if
                                            // using batch PDLP for strong branching
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
 
+  // Settings for the reliability branching.
+  // - -1: automatic
+  // - 0: disable (use pseudocost branching instead)
+  // - k > 0, a variable is considered reliable if it has been branched on k times.
+  i_t reliability_branching;
+
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   i_t sub_mip;     // 0 if in regular MIP solve, 1 if in sub-MIP solve
-  i_t reliability_branching;  // -1 automatic, 0 to disable, >0 to enable reliability branching
+
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void(const std::vector<f_t>&, f_t)> node_processed_callback;
   std::function<void()> heuristic_preemption_callback;

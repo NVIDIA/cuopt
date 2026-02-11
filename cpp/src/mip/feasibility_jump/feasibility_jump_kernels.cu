@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -119,6 +119,7 @@ DI void update_weights(typename fj_t<i_t, f_t>::climber_data_t::view_t& fj)
     if (threadIdx.x == 0) {
       // DEVICE_LOG_DEBUG("weight of con %d updated to %g, excess %f\n", cstr_idx, new_weight,
       //     curr_excess_score);
+      new_weight                = std::max(new_weight, 0.0);
       fj.cstr_weights[cstr_idx] = max(fj.cstr_weights[cstr_idx], new_weight);
       if (curr_lower_excess < 0.) {
         fj.cstr_left_weights[cstr_idx] = new_weight;

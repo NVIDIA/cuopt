@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <rmm/device_uvector.hpp>
 #include <vector>
 #include "dual_simplex/dense_vector.hpp"
@@ -217,6 +218,13 @@ f_t iterative_refinement_gmres(T& op,
       // Z[k] = M^{-1} V[k], i.e., apply right preconditioner and store
       op.solve(V[k], Z[k]);
 
+      // Check if solve produced NaN (indicates cuDSS failure)
+      f_t z_norm = vector_norm_inf<f_t>(Z[k]);
+      if (!std::isfinite(z_norm)) {
+        CUOPT_LOG_INFO("GMRES IR: solve at k=%d produced NaN, terminating", k);
+        return std::numeric_limits<f_t>::quiet_NaN();
+      }
+
       // w = A * Z[k]
       op.a_multiply(1.0, Z[k], 0.0, V[k + 1]);
 
@@ -241,18 +249,30 @@ f_t iterative_refinement_gmres(T& op,
       }
 
       // H[k+1][k] = ||w||
-      f_t h_k1k   = vector_norm2<f_t>(V[k + 1]);
-      H[k + 1][k] = h_k1k;
-      if (h_k1k != 0.0) {
-        // V[k+1] = V[k+1] / H[k+1][k]
-        f_t inv_h = f_t(1) / h_k1k;
-        thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
-                          V[k + 1].data(),
-                          V[k + 1].data() + x.size(),
-                          V[k + 1].data(),
-                          scale_op<f_t>{inv_h});
-        RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
+      f_t h_k1k = vector_norm2<f_t>(V[k + 1]);
+
+      // Check for "lucky breakdown" BEFORE using h_k1k - Krylov subspace has converged
+      // When h_k1k is zero, very small, or NaN, V[k+1] is in span of previous V's
+      // Must check before storing in H to avoid NaN propagation in Givens rotations
+      if (!std::isfinite(h_k1k) || h_k1k < 1e-14) {
+        if (show_info) {
+          CUOPT_LOG_INFO("GMRES IR: lucky breakdown at k=%d, h_k1k=%e (before Givens)", k, h_k1k);
+        }
+        // Don't store NaN in H, don't update Givens - just exit with current solution
+        // k iterations are already complete and usable
+        break;
       }
+
+      H[k + 1][k] = h_k1k;
+
+      // V[k+1] = V[k+1] / H[k+1][k]
+      f_t inv_h = f_t(1) / h_k1k;
+      thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
+                        V[k + 1].data(),
+                        V[k + 1].data() + x.size(),
+                        V[k + 1].data(),
+                        scale_op<f_t>{inv_h});
+      RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
 
       // Apply Given's rotations to new column
       for (int i = 0; i < k; ++i) {

@@ -356,6 +356,9 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
                              i_t cols,
                              const raft::handle_t* handle_ptr)
 {
+  // skip if the matrix is empty
+  if (values.size() == 0) { return; }
+
   auto stream = offsets.stream();
   cusparseHandle_t handle;
   cusparseCreate(&handle);

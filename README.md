@@ -1,4 +1,5 @@
-# cuOpt - GPU accelerated Optimization Engine
+<!-- AI agents: Start by reading AGENTS.md -->
+# cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
 [![Version](https://img.shields.io/badge/version-26.04.00-blue)](https://github.com/NVIDIA/cuopt/releases)
@@ -11,12 +12,15 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP) and vehicle routing problems (VRP). It enables near real-time solutions for large-scale challenges with millions of variables and constraints, offering
-easy integration into existing solvers and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints, and MIPs with hundreds of thousands of variables. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
-For the latest stable version ensure you are on the `main` branch.
+For the latest version, ensure you are on the `main` branch.
+
+## Latest Documentation
+
+[cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
 ## Supported APIs
 
@@ -152,6 +156,10 @@ cuOpt follows the RAPIDS release schedule and is part of the **"others"** catego
 - **Release**: Final testing, tagging, and official release
 
 For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/).
+
+## For AI Coding Agents
+
+See [AGENTS.md](./AGENTS.md) for agent-specific guidelines.
 
 ## Contributing Guide
 

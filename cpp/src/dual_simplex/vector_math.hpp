@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <vector>
 
@@ -56,17 +57,41 @@ template <typename i_t, typename f_t>
 f_t sparse_dot(i_t* xind, f_t* xval, i_t nx, i_t* yind, f_t* yval, i_t ny);
 
 // Computes x = P*b or x=b(p) in MATLAB.
-template <typename i_t, typename f_t>
-i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x);
+template <typename VectorI, typename VectorF_in, typename VectorF_out>
+int permute_vector(const VectorI& p, const VectorF_in& b, VectorF_out& x)
+{
+  auto n = p.size();
+  assert(x.size() == n);
+  assert(b.size() == n);
+  for (decltype(n) k = 0; k < n; ++k) {
+    x[k] = b[p[k]];
+  }
+  return 0;
+}
 
 // Computes x = P'*b or x(p) = b in MATLAB.
-template <typename i_t, typename f_t>
-i_t inverse_permute_vector(const std::vector<i_t>& p,
-                           const std::vector<f_t>& b,
-                           std::vector<f_t>& x);
+template <typename VectorI, typename VectorF_in, typename VectorF_out>
+int inverse_permute_vector(const VectorI& p, const VectorF_in& b, VectorF_out& x)
+{
+  auto n = p.size();
+  assert(x.size() == n);
+  assert(b.size() == n);
+  for (decltype(n) k = 0; k < n; ++k) {
+    x[p[k]] = b[k];
+  }
+  return 0;
+}
 
 // Computes pinv from p. Or pinv(p) = 1:n in MATLAB
-template <typename i_t>
-i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv);
+template <typename VectorI_in, typename VectorI_out>
+int inverse_permutation(const VectorI_in& p, VectorI_out& pinv)
+{
+  auto n = p.size();
+  if (pinv.size() != n) { pinv.resize(n); }
+  for (decltype(n) k = 0; k < n; ++k) {
+    pinv[p[k]] = k;
+  }
+  return 0;
+}
 
 }  // namespace cuopt::linear_programming::dual_simplex

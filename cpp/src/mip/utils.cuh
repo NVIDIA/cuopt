@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,6 +15,7 @@
 #include <raft/random/rng_device.cuh>
 #include <random>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/hashing.hpp>
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 
@@ -28,6 +29,22 @@ constexpr double default_cont_lower = -std::numeric_limits<double>::infinity();
 constexpr int default_int_upper     = std::numeric_limits<int>::max();
 constexpr int default_int_lower     = std::numeric_limits<int>::min();
 constexpr double zero_bound         = 0.;
+
+template <typename i_t>
+inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_view stream)
+{
+  auto h_contents = cuopt::host_copy(values, stream);
+  RAFT_CHECK_CUDA(stream);
+  return compute_hash(h_contents);
+}
+
+template <typename i_t>
+inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, rmm::cuda_stream_view stream)
+{
+  auto h_contents = cuopt::host_copy(values, stream);
+  RAFT_CHECK_CUDA(stream);
+  return compute_hash(h_contents);
+}
 
 template <typename i_t, typename f_t>
 HDI f_t get_cstr_tolerance(f_t combined_bound, f_t abs_tol, f_t rel_tol)

@@ -146,6 +146,24 @@ TEST(c_api, test_write_problem)
   std::filesystem::remove(temp_file);
 }
 
+TEST(c_api, test_maximize_problem_dual_variables)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective, dual_objective;
+  cuopt_float_t dual_variables[3];
+  cuopt_float_t reduced_costs[4];
+  for (cuopt_int_t method = CUOPT_METHOD_CONCURRENT; method <= CUOPT_METHOD_BARRIER; method++) {
+    EXPECT_EQ(
+      test_maximize_problem_dual_variables(
+        method, &termination_status, &objective, dual_variables, reduced_costs, &dual_objective),
+      CUOPT_SUCCESS);
+    EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_NEAR(objective,
+                dual_objective,
+                method == CUOPT_METHOD_CONCURRENT || method == CUOPT_METHOD_PDLP ? 1e-2 : 1e-5);
+  }
+}
+
 static bool test_mps_roundtrip(const std::string& mps_file_path)
 {
   using cuopt::linear_programming::problem_and_stream_view_t;
@@ -225,3 +243,27 @@ INSTANTIATE_TEST_SUITE_P(c_api,
                                            "/mip/enlight_hard.mps",
                                            "/mip/enlight11.mps",
                                            "/mip/supportcase22.mps"));
+
+class DeterministicBBTestFixture
+  : public ::testing::TestWithParam<std::tuple<std::string, int, double, double>> {};
+TEST_P(DeterministicBBTestFixture, deterministic_reproducibility)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename                    = rapidsDatasetRootDir + std::get<0>(GetParam());
+  int num_threads                         = std::get<1>(GetParam());
+  double time_limit                       = std::get<2>(GetParam());
+  double work_limit                       = std::get<3>(GetParam());
+
+  // Run 3 times and verify identical results
+  EXPECT_EQ(test_deterministic_bb(filename.c_str(), 3, num_threads, time_limit, work_limit),
+            CUOPT_SUCCESS);
+}
+INSTANTIATE_TEST_SUITE_P(c_api,
+                         DeterministicBBTestFixture,
+                         ::testing::Values(
+                           // Low thread count
+                           std::make_tuple("/mip/gen-ip054.mps", 4, 60.0, 2),
+                           // High thread count (high contention)
+                           std::make_tuple("/mip/gen-ip054.mps", 128, 60.0, 2),
+                           // Different instance
+                           std::make_tuple("/mip/bb_optimality.mps", 8, 60.0, 2)));

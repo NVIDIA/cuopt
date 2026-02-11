@@ -13,6 +13,8 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/triangle_solve.hpp>
 
+#include <raft/common/nvtx.hpp>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t>
@@ -57,14 +59,14 @@ void get_basis_from_vstatus(i_t m,
 
 namespace {
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 void write_singleton_info(i_t m,
                           i_t col_singletons,
                           i_t row_singletons,
                           const csc_matrix_t<i_t, f_t>& B,
-                          const std::vector<i_t>& row_perm,
-                          const std::vector<i_t>& row_perm_inv,
-                          const std::vector<i_t>& col_perm)
+                          const VectorI& row_perm,
+                          const VectorI& row_perm_inv,
+                          const VectorI& col_perm)
 {
   FILE* file = fopen("singleton_debug.m", "w");
   if (file != NULL) {
@@ -94,7 +96,7 @@ void write_singleton_info(i_t m,
   fclose(file);
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 void write_factor_info(const char* filename,
                        i_t m,
                        i_t row_singletons,
@@ -104,8 +106,8 @@ void write_factor_info(const char* filename,
                        const csc_matrix_t<i_t, f_t>& D,
                        const csc_matrix_t<i_t, f_t>& L,
                        const csc_matrix_t<i_t, f_t>& U,
-                       const std::vector<i_t>& row_perm,
-                       const std::vector<i_t>& col_perm)
+                       const VectorI& row_perm,
+                       const VectorI& col_perm)
 {
   FILE* file = fopen(filename, "w");
   if (file != NULL) {
@@ -165,6 +167,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                     std::vector<i_t>& deficient,
                     std::vector<i_t>& slacks_needed)
 {
+  raft::common::nvtx::range scope("LU::factorize_basis");
   const i_t m              = basic_list.size();
   constexpr f_t medium_tol = 1e-12;
 
@@ -778,6 +781,8 @@ i_t b_transpose_solve(const csc_matrix_t<i_t, f_t>& L,
   // B'*P'*w = U'*L'*w = c
   // U'*r = c
   // L'*w = r
+
+  raft::common::nvtx::range scope("LU::b_transpose_solve");
 
   // Solve for r such that U'*r = c
   std::vector<f_t> r = rhs;

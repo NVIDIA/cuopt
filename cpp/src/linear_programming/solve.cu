@@ -307,6 +307,28 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
 
 std::atomic<int> global_concurrent_halt{0};
 
+template <typename f_t>
+void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_solution,
+                                           rmm::device_uvector<f_t>& reduced_cost,
+                                           rmm::cuda_stream_view stream_view)
+{
+  // y <- -y
+  cub::DeviceTransform::Transform(
+    dual_solution.data(),
+    dual_solution.data(),
+    dual_solution.size(),
+    [] HD(f_t dual) { return -dual; },
+    stream_view);
+
+  // z <- -z
+  cub::DeviceTransform::Transform(
+    reduced_cost.data(),
+    reduced_cost.data(),
+    reduced_cost.size(),
+    [] HD(f_t reduced_cost) { return -reduced_cost; },
+    stream_view);
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   detail::problem_t<i_t, f_t>& problem,
@@ -339,6 +361,13 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   rmm::device_uvector<f_t> final_reduced_cost =
     cuopt::device_copy(solution.z, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
+
+  // Negate dual variables and reduced costs for maximization problems
+  if (problem.maximize) {
+    adjust_dual_solution_and_reduced_cost(
+      final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+  }
 
   // Should be filled with more information from dual simplex
   std::vector<
@@ -416,7 +445,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
 
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem, barrier_settings, solution);
+    user_problem, barrier_settings, timer.get_tic_start(), solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
@@ -474,12 +503,11 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
                  pdlp_solver_settings_t<i_t, f_t> const& settings,
                  const timer_t& timer)
 {
-  timer_t timer_dual_simplex(timer.remaining_time());
   f_t norm_user_objective = dual_simplex::vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = dual_simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-  dual_simplex_settings.time_limit      = timer.remaining_time();
+  dual_simplex_settings.time_limit      = settings.time_limit;
   dual_simplex_settings.iteration_limit = settings.iteration_limit;
   dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
   if (dual_simplex_settings.concurrent_halt != nullptr) {
@@ -488,13 +516,11 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   }
 
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
-  auto status =
-    dual_simplex::solve_linear_program<i_t, f_t>(user_problem, dual_simplex_settings, solution);
+  auto status = dual_simplex::solve_linear_program<i_t, f_t>(
+    user_problem, dual_simplex_settings, timer.get_tic_start(), solution);
 
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
-                             "Dual simplex finished in %.2f seconds, total time %.2f",
-                             timer_dual_simplex.elapsed_time(),
-                             timer.elapsed_time());
+  CUOPT_LOG_CONDITIONAL_INFO(
+    !settings.inside_mip, "Dual simplex finished in %.2f seconds", timer.elapsed_time());
 
   if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
                                               status == dual_simplex::lp_status_t::UNBOUNDED ||
@@ -551,21 +577,24 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                    bool is_batch_mode)
 {
   auto start_solver = std::chrono::high_resolution_clock::now();
-  f_t start_time    = dual_simplex::tic();
   timer_t timer_pdlp(timer.remaining_time());
-  auto sol             = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
+  // Negate dual variables and reduced costs for maximization problems
+  if (problem.maximize) {
+    adjust_dual_solution_and_reduced_cost(
+      sol.get_dual_solution(), sol.get_reduced_cost(), problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+  }
   auto pdlp_solve_time = timer_pdlp.elapsed_time();
   sol.set_solve_time(timer.elapsed_time());
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished");
   if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
-    CUOPT_LOG_CONDITIONAL_INFO(
-      !settings.inside_mip,
-      "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs, Total time %.3fs",
-      sol.get_termination_status_string().c_str(),
-      sol.get_objective_value(),
-      sol.get_additional_termination_information().number_of_steps_taken,
-      pdlp_solve_time,
-      sol.get_solve_time());
+    CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
+                               "Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+                               sol.get_termination_status_string().c_str(),
+                               sol.get_objective_value(),
+                               sol.get_additional_termination_information().number_of_steps_taken,
+                               sol.get_solve_time());
   }
 
   const bool do_crossover = settings.crossover;
@@ -577,13 +606,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
     translate_to_crossover_problem(problem, sol, lp, initial_solution);
     dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-    dual_simplex_settings.time_limit      = timer.remaining_time();
+    dual_simplex_settings.time_limit      = settings.time_limit;
     dual_simplex_settings.iteration_limit = settings.iteration_limit;
     dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
     std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
     dual_simplex::crossover_status_t crossover_status = dual_simplex::crossover(
-      lp, dual_simplex_settings, initial_solution, start_time, vertex_solution, vstatus);
+      lp, dual_simplex_settings, initial_solution, timer.get_tic_start(), vertex_solution, vstatus);
     pdlp_termination_status_t termination_status = pdlp_termination_status_t::TimeLimit;
     auto to_termination_status                   = [](dual_simplex::crossover_status_t status) {
       switch (status) {
@@ -609,6 +638,13 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
       cuopt::device_copy(vertex_solution.y, problem.handle_ptr->get_stream());
     rmm::device_uvector<f_t> final_reduced_cost =
       cuopt::device_copy(vertex_solution.z, problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+    // Negate dual variables and reduced costs for maximization problems
+    if (problem.maximize) {
+      adjust_dual_solution_and_reduced_cost(
+        final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+      problem.handle_ptr->sync_stream();
+    }
 
     // Should be filled with more information from dual simplex
     std::vector<
@@ -759,7 +795,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     pdlp_solver_settings_t<i_t, f_t> warm_start_settings = settings;
     warm_start_settings.new_bounds.clear();
     warm_start_settings.method               = cuopt::linear_programming::method_t::PDLP;
-    warm_start_settings.presolve             = false;
+    warm_start_settings.presolver            = cuopt::linear_programming::presolver_t::None;
     warm_start_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
     warm_start_settings.detect_infeasibility = false;
     warm_start_settings.iteration_limit      = iteration_limit;
@@ -790,7 +826,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
   const auto original_new_bounds                  = batch_settings.new_bounds;
   batch_settings.method                           = cuopt::linear_programming::method_t::PDLP;
-  batch_settings.presolve                         = false;
+  batch_settings.presolver                        = presolver_t::None;
   batch_settings.pdlp_solver_mode                 = pdlp_solver_mode_t::Stable3;
   batch_settings.detect_infeasibility             = false;
   batch_settings.iteration_limit                  = iteration_limit;
@@ -903,7 +939,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   const timer_t& timer,
   bool is_batch_mode)
 {
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent\n");
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running concurrent (showing only PDLP log)\n");
   timer_t timer_concurrent(timer.remaining_time());
 
   // Copy the settings so that we can set the concurrent halt pointer
@@ -1003,10 +1039,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                               1);
 
   f_t end_time = timer.elapsed_time();
-  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
-                             "Concurrent time:  %.3fs, total time %.3fs",
-                             timer_concurrent.elapsed_time(),
-                             end_time);
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
   // Check status to see if we should return the pdlp solution or the dual simplex solution
   if (!settings.inside_mip &&
       (sol_dual_simplex.get_termination_status() == pdlp_termination_status_t::Optimal ||
@@ -1022,6 +1055,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_objective_value(),
       sol_pdlp.get_additional_termination_information().number_of_steps_taken,
       end_time);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Primal residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_primal_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_primal_residual);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Dual   residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_dual_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
   } else if (sol_barrier.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with barrier");
@@ -1034,6 +1077,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       sol_pdlp.get_objective_value(),
       sol_pdlp.get_additional_termination_information().number_of_steps_taken,
       end_time);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Primal residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_primal_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_primal_residual);
+    CUOPT_LOG_CONDITIONAL_INFO(
+      !settings.inside_mip,
+      "Dual   residual (abs/rel): %8.2e/%8.2e",
+      sol_pdlp.get_additional_termination_information().l2_dual_residual,
+      sol_pdlp.get_additional_termination_information().l2_relative_dual_residual);
     return sol_pdlp;
   } else if (sol_pdlp.get_termination_status() == pdlp_termination_status_t::Optimal) {
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Solved with PDLP");
@@ -1087,8 +1140,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     if (op_problem.has_quadratic_objective()) {
       CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
-      settings.method   = method_t::Barrier;
-      settings.presolve = false;
+      settings.method    = method_t::Barrier;
+      settings.presolver = presolver_t::None;
       // check for sense of the problem
       if (op_problem.get_sense()) {
         CUOPT_LOG_ERROR("Quadratic problems must be minimized");
@@ -1127,9 +1180,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);
 
+    // handle default presolve
+    if (settings.presolver == presolver_t::Default) {
+      settings.presolver = presolver_t::PSLP;
+      CUOPT_LOG_INFO("Using PSLP presolver");
+    }
+
     [[maybe_unused]] double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
-    auto run_presolve = settings.presolve;
+    auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
     if (!run_presolve && !settings_const.inside_mip) {
       CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
@@ -1145,6 +1204,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::LP,
+                                     settings.presolver,
                                      settings.dual_postsolve,
                                      settings.tolerances.absolute_primal_tolerance,
                                      settings.tolerances.relative_primal_tolerance,
@@ -1153,9 +1213,63 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
       }
+
+      // Handle case where presolve completely solved the problem (reduced to 0 rows/cols)
+      // Must check before constructing problem_t since it fails on empty problems
+      if (result->reduced_problem.get_n_variables() == 0 &&
+          result->reduced_problem.get_n_constraints() == 0) {
+        CUOPT_LOG_INFO("Presolve completely solved the problem");
+        presolve_time = lp_timer.elapsed_time();
+        CUOPT_LOG_INFO("%s presolve time: %.2fs",
+                       settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
+                       presolve_time);
+
+        // Create empty solution vectors for the reduced problem
+        rmm::device_uvector<f_t> empty_primal(0, op_problem.get_handle_ptr()->get_stream());
+        rmm::device_uvector<f_t> empty_dual(0, op_problem.get_handle_ptr()->get_stream());
+        rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
+
+        // Run postsolve to get the full solution
+        presolver->undo(empty_primal,
+                        empty_dual,
+                        empty_reduced_costs,
+                        cuopt::linear_programming::problem_category_t::LP,
+                        false,  // status_to_skip
+                        settings.dual_postsolve,
+                        op_problem.get_handle_ptr()->get_stream());
+
+        // Create termination info with the objective from presolve
+        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
+          term_info;
+        term_info.primal_objective      = result->reduced_problem.get_objective_offset();
+        term_info.dual_objective        = result->reduced_problem.get_objective_offset();
+        term_info.number_of_steps_taken = 0;
+        term_info.solve_time            = presolve_time;
+        term_info.l2_primal_residual    = 0.0;
+        term_info.l2_dual_residual      = 0.0;
+        term_info.gap                   = 0.0;
+
+        std::vector<
+          typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+          term_vec{term_info};
+        std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
+
+        CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
+        return optimization_problem_solution_t<i_t, f_t>(empty_primal,
+                                                         empty_dual,
+                                                         empty_reduced_costs,
+                                                         op_problem.get_objective_name(),
+                                                         op_problem.get_variable_names(),
+                                                         op_problem.get_row_names(),
+                                                         std::move(term_vec),
+                                                         std::move(status_vec));
+      }
+
       problem       = detail::problem_t<i_t, f_t>(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
-      CUOPT_LOG_INFO("Papilo presolve time: %f", presolve_time);
+      CUOPT_LOG_INFO("%s presolve time: %.2fs",
+                     settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
+                     presolve_time);
     }
 
     if (!settings_const.inside_mip) {

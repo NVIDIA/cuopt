@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -30,6 +30,7 @@ enum class mip_termination_status_t : int8_t {
   Infeasible    = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
   Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
   TimeLimit     = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
+  WorkLimit     = CUOPT_TERIMINATION_STATUS_WORK_LIMIT,
 };
 
 template <typename i_t, typename f_t>

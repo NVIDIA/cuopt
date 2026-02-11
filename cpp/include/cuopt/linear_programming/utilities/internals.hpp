@@ -12,6 +12,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include <cuopt/linear_programming/constants.h>
 namespace cuopt {
 namespace internals {
 
@@ -109,6 +110,24 @@ struct parameter_info_t<std::string> {
   std::string param_name;
   std::string* value_ptr;
   std::string default_value;
+};
+
+/**
+ * @brief Enum representing the different presolvers that can be used to solve the
+ * linear programming problem.
+ *
+ * Default: Use the default presolver.
+ * None: No presolver.
+ * Papilo: Use the Papilo presolver.
+ * PSLP: Use the PSLP presolver.
+ *
+ * @note Default presolver is None.
+ */
+enum presolver_t : int {
+  Default = CUOPT_PRESOLVE_DEFAULT,
+  None    = CUOPT_PRESOLVE_OFF,
+  Papilo  = CUOPT_PRESOLVE_PAPILO,
+  PSLP    = CUOPT_PRESOLVE_PSLP
 };
 
 }  // namespace linear_programming
