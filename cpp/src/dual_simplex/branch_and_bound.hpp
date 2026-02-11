@@ -7,7 +7,10 @@
 
 #pragma once
 
+#include <dual_simplex/bb_event.hpp>
+#include <dual_simplex/branch_and_bound_worker.hpp>
 #include <dual_simplex/cuts.hpp>
+#include <dual_simplex/deterministic_workers.hpp>
 #include <dual_simplex/diving_heuristics.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/mip_node.hpp>
@@ -20,6 +23,9 @@
 #include <dual_simplex/types.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
+#include <utilities/producer_sync.hpp>
+#include <utilities/work_limit_context.hpp>
+#include <utilities/work_unit_scheduler.hpp>
 
 #include <omp.h>
 #include <functional>
@@ -35,19 +41,7 @@ enum class mip_status_t {
   NODE_LIMIT = 4,  // The maximum number of nodes was reached (not implemented)
   NUMERICAL  = 5,  // The solver encountered a numerical error
   UNSET      = 6,  // The status is not set
-};
-
-// Indicate the search and variable selection algorithms used by each thread
-// in B&B (See [1]).
-//
-// [1] T. Achterberg, “Constraint Integer Programming,” PhD, Technischen Universität Berlin,
-// Berlin, 2007. doi: 10.14279/depositonce-1634.
-enum class bnb_worker_type_t {
-  BEST_FIRST         = 0,  // Best-First + Plunging.
-  PSEUDOCOST_DIVING  = 1,  // Pseudocost diving (9.2.5)
-  LINE_SEARCH_DIVING = 2,  // Line search diving (9.2.4)
-  GUIDED_DIVING = 3,  // Guided diving (9.2.3). If no incumbent is found yet, use pseudocost diving.
-  COEFFICIENT_DIVING = 4  // Coefficient diving (9.2.1)
+  WORK_LIMIT = 7,  // The solver reached a deterministic work limit
 };
 
 template <typename i_t, typename f_t>
@@ -57,17 +51,13 @@ template <typename i_t, typename f_t>
 void upper_bound_callback(f_t upper_bound);
 
 template <typename i_t, typename f_t>
-struct bnb_stats_t {
-  f_t start_time                        = 0.0;
-  omp_atomic_t<f_t> total_lp_solve_time = 0.0;
-  omp_atomic_t<i_t> nodes_explored      = 0;
-  omp_atomic_t<i_t> nodes_unexplored    = 0;
-  omp_atomic_t<f_t> total_lp_iters      = 0;
-
-  // This should only be used by the main thread
-  omp_atomic_t<f_t> last_log             = 0.0;
-  omp_atomic_t<i_t> nodes_since_last_log = 0;
-};
+struct nondeterministic_policy_t;
+template <typename i_t, typename f_t, typename WorkerT>
+struct deterministic_policy_base_t;
+template <typename i_t, typename f_t>
+struct deterministic_bfs_policy_t;
+template <typename i_t, typename f_t>
+struct deterministic_diving_policy_t;
 
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
@@ -102,6 +92,9 @@ class branch_and_bound_t {
   // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
 
+  // This queues the solution to be processed at the correct work unit timestamp
+  void queue_external_solution_deterministic(const std::vector<f_t>& solution, double work_unit_ts);
+
   void set_user_bound_callback(std::function<void(f_t)> callback)
   {
     user_bound_callback_ = std::move(callback);
@@ -134,9 +127,16 @@ class branch_and_bound_t {
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
   mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
 
+  work_limit_context_t& get_work_unit_context() { return work_unit_context_; }
+
+  // Get producer sync for external heuristics (e.g., CPUFJ) to register
+  producer_sync_t& get_producer_sync() { return producer_sync_; }
+
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+
+  work_limit_context_t work_unit_context_{"B&B"};
 
   // Initial guess.
   std::vector<f_t> guess_;
@@ -152,9 +152,6 @@ class branch_and_bound_t {
   // Here we assume that the constraints are in the form `Ax = b, l <= x <= u`.
   std::vector<i_t> var_up_locks_;
   std::vector<i_t> var_down_locks_;
-
-  // Local lower bounds for each thread
-  std::vector<omp_atomic_t<f_t>> local_lower_bounds_;
 
   // Mutex for the original LP
   // The heuristics threads look at the original LP. But the main thread modifies the
@@ -173,7 +170,7 @@ class branch_and_bound_t {
   mip_solution_t<i_t, f_t> incumbent_;
 
   // Structure with the general info of the solver.
-  bnb_stats_t<i_t, f_t> exploration_stats_;
+  branch_and_bound_stats_t<i_t, f_t> exploration_stats_;
 
   // Mutex for repair
   omp_mutex_t mutex_repair_;
@@ -200,14 +197,21 @@ class branch_and_bound_t {
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
-  // Count the number of subtrees that are currently being explored.
-  omp_atomic_t<i_t> active_subtrees_;
+  // Count the number of workers per type that either are being executed or
+  // are waiting to be executed.
+  std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
+
+  // Worker pool
+  branch_and_bound_worker_pool_t<i_t, f_t> worker_pool_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
-  omp_atomic_t<bool> is_running{false};
+  omp_atomic_t<bool> is_running_{false};
 
-  omp_atomic_t<bool> should_report_;
+  // Minimum number of node in the queue. When the queue size is less than
+  // this variable, the nodes are added directly to the queue instead of
+  // the local stack. This also determines the end of the ramp-up phase.
+  i_t min_node_queue_size_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
   // its blocks the progression of the lower bound.
@@ -215,7 +219,12 @@ class branch_and_bound_t {
   std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);
-  void report(char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas);
+  void report(char symbol,
+              f_t obj,
+              f_t lower_bound,
+              i_t node_depth,
+              i_t node_int_infeas,
+              double work_time = -1);
 
   // Set the solution when found at the root node
   void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
@@ -230,82 +239,160 @@ class branch_and_bound_t {
   void add_feasible_solution(f_t leaf_objective,
                              const std::vector<f_t>& leaf_solution,
                              i_t leaf_depth,
-                             bnb_worker_type_t thread_type);
+                             search_strategy_t thread_type);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  // Initialize diving heuristics settings
-  void initialize_diving_heuristics_settings(std::vector<bnb_worker_type_t>& diving_strategies);
-
-  // Ramp-up phase of the solver, where we greedily expand the tree until
-  // there is enough unexplored nodes. This is done recursively using OpenMP tasks.
-  void exploration_ramp_up(mip_node_t<i_t, f_t>* node, i_t initial_heap_size);
-
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_from(i_t task_id,
-                   mip_node_t<i_t, f_t>* start_node,
-                   lp_problem_t<i_t, f_t>& leaf_problem,
-                   bounds_strengthening_t<i_t, f_t>& node_presolver,
-                   basis_update_mpf_t<i_t, f_t>& basis_update,
-                   std::vector<i_t>& basic_list,
-                   std::vector<i_t>& nonbasic_list);
-
-  // Each "main" thread pops a node from the global heap and then performs a plunge
-  // (i.e., a shallow dive) into the subtree determined by the node.
-  void best_first_thread(i_t task_id);
+  void plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_from(mip_node_t<i_t, f_t>& start_node,
-                 const std::vector<f_t>& start_lower,
-                 const std::vector<f_t>& start_upper,
-                 lp_problem_t<i_t, f_t>& leaf_problem,
-                 bounds_strengthening_t<i_t, f_t>& node_presolver,
-                 basis_update_mpf_t<i_t, f_t>& basis_update,
-                 std::vector<i_t>& basic_list,
-                 std::vector<i_t>& nonbasic_list,
-                 bnb_worker_type_t diving_type);
+  void dive_with(branch_and_bound_worker_t<i_t, f_t>* worker);
 
-  // Each diving thread pops the first node from the dive queue and then performs
-  // a deep dive into the subtree determined by the node.
-  void diving_thread(bnb_worker_type_t diving_type);
+  // Run the scheduler whose will schedule and manage
+  // all the other workers.
+  void run_scheduler();
+
+  // Run the branch-and-bound algorithm in single threaded mode.
+  // This disable all diving heuristics.
+  void single_threaded_solve();
 
   // Solve the LP relaxation of a leaf node
   dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                               lp_problem_t<i_t, f_t>& leaf_problem,
-                               lp_solution_t<i_t, f_t>& leaf_solution,
-                               std::vector<f_t>& leaf_edge_norms,
-                               basis_update_mpf_t<i_t, f_t>& basis_factors,
-                               std::vector<i_t>& basic_list,
-                               std::vector<i_t>& nonbasic_list,
-                               bounds_strengthening_t<i_t, f_t>& node_presolver,
-                               bnb_worker_type_t thread_type,
-                               bool recompute_bounds_and_basis,
-                               const std::vector<f_t>& root_lower,
-                               const std::vector<f_t>& root_upper,
-                               bnb_stats_t<i_t, f_t>& stats,
+                               branch_and_bound_worker_t<i_t, f_t>* worker,
+                               branch_and_bound_stats_t<i_t, f_t>& stats,
                                logger_t& log);
-
-  // Update the tree based on the LP relaxation. Returns the status
-  // of the node and, if appropriated, the preferred rounding direction
-  // when visiting the children.
-  std::pair<node_status_t, rounding_direction_t> update_tree(mip_node_t<i_t, f_t>* node_ptr,
-                                                             search_tree_t<i_t, f_t>& search_tree,
-                                                             lp_problem_t<i_t, f_t>& leaf_problem,
-                                                             lp_solution_t<i_t, f_t>& leaf_solution,
-                                                             std::vector<f_t>& leaf_edge_norms,
-                                                             bnb_worker_type_t thread_type,
-                                                             dual::status_t lp_status,
-                                                             logger_t& log);
 
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
                                             const std::vector<i_t>& fractional,
-                                            const std::vector<f_t>& solution,
-                                            bnb_worker_type_t type);
+                                            branch_and_bound_worker_t<i_t, f_t>* worker);
+
+  // Policy-based tree update shared between opportunistic and deterministic codepaths.
+  template <typename WorkerT, typename Policy>
+  std::pair<node_status_t, rounding_direction_t> update_tree_impl(
+    mip_node_t<i_t, f_t>* node_ptr,
+    search_tree_t<i_t, f_t>& search_tree,
+    WorkerT* worker,
+    dual::status_t lp_status,
+    Policy& policy);
+
+  // Opportunistic tree update wrapper.
+  std::pair<node_status_t, rounding_direction_t> update_tree(
+    mip_node_t<i_t, f_t>* node_ptr,
+    search_tree_t<i_t, f_t>& search_tree,
+    branch_and_bound_worker_t<i_t, f_t>* worker,
+    dual::status_t lp_status,
+    logger_t& log);
+
+  // ============================================================================
+  // Deterministic BSP (Bulk Synchronous Parallel) methods for deterministic parallel B&B
+  // ============================================================================
+
+  // Main deterministic coordinator loop
+  void run_deterministic_coordinator(const csr_matrix_t<i_t, f_t>& Arow);
+
+  // Gather all events generated, sort by WU timestamp, apply
+  void deterministic_sort_replay_events(const bb_event_batch_t<i_t, f_t>& events);
+
+  // Prune nodes held by workers based on new incumbent
+  void deterministic_prune_worker_nodes_vs_incumbent();
+
+  // Balance worker loads - redistribute nodes only if significant imbalance detected
+  void deterministic_balance_worker_loads();
+
+  node_status_t solve_node_deterministic(deterministic_bfs_worker_t<i_t, f_t>& worker,
+                                         mip_node_t<i_t, f_t>* node_ptr,
+                                         search_tree_t<i_t, f_t>& search_tree);
+
+  f_t deterministic_compute_lower_bound();
+
+  void run_deterministic_bfs_loop(deterministic_bfs_worker_t<i_t, f_t>& worker,
+                                  search_tree_t<i_t, f_t>& search_tree);
+
+  // Executed when all workers reach barrier
+  // Handles termination logic serially in deterministic mode
+  void deterministic_sync_callback();
+
+  void run_deterministic_diving_loop(deterministic_diving_worker_t<i_t, f_t>& worker);
+
+  void deterministic_dive(deterministic_diving_worker_t<i_t, f_t>& worker,
+                          dive_queue_entry_t<i_t, f_t> entry);
+
+  // Populate diving heap from BFS worker backlogs at sync
+  void deterministic_populate_diving_heap();
+
+  // Assign starting nodes to diving workers from diving heap
+  void deterministic_assign_diving_nodes();
+
+  // Collect and merge diving solutions at sync
+  void deterministic_collect_diving_solutions_and_update_pseudocosts();
+
+  template <typename PoolT, typename WorkerTypeGetter>
+  void deterministic_process_worker_solutions(PoolT& pool, WorkerTypeGetter get_worker_type);
+
+  template <typename PoolT>
+  void deterministic_merge_pseudo_cost_updates(PoolT& pool);
+
+  template <typename PoolT>
+  void deterministic_broadcast_snapshots(PoolT& pool, const std::vector<f_t>& incumbent_snapshot);
+
+  friend struct nondeterministic_policy_t<i_t, f_t>;
+  friend struct deterministic_bfs_policy_t<i_t, f_t>;
+  friend struct deterministic_diving_policy_t<i_t, f_t>;
+
+ private:
+  // unique_ptr as we only want to initialize these if we're in the deterministic codepath
+  std::unique_ptr<deterministic_bfs_worker_pool_t<i_t, f_t>> deterministic_workers_;
+  std::unique_ptr<cuopt::work_unit_scheduler_t> deterministic_scheduler_;
+  mip_status_t deterministic_global_termination_status_{mip_status_t::UNSET};
+  double deterministic_horizon_step_{5.0};     // Work unit step per horizon (tunable)
+  double deterministic_current_horizon_{0.0};  // Current horizon target
+  bool deterministic_mode_enabled_{false};
+  int deterministic_horizon_number_{0};  // Current horizon number (for debugging)
+
+  // Producer synchronization for external heuristics (CPUFJ)
+  // B&B waits for registered producers at each horizon sync
+  producer_sync_t producer_sync_;
+
+  // Producer wait time statistics
+  double total_producer_wait_time_{0.0};
+  double max_producer_wait_time_{0.0};
+  i_t producer_wait_count_{0};
+
+  // Determinism heuristic solution queue - solutions received from GPU heuristics
+  // Stored with work unit timestamp for deterministic ordering
+  omp_mutex_t mutex_heuristic_queue_;
+  std::vector<queued_integer_solution_t<i_t, f_t>> heuristic_solution_queue_;
+
+  // ============================================================================
+  // Determinism Diving state
+  // ============================================================================
+
+  // Diving worker pool
+  // unique_ptr as we only want to initialize these if we're in the deterministic codepath
+  std::unique_ptr<deterministic_diving_worker_pool_t<i_t, f_t>> deterministic_diving_workers_;
+
+  // Diving heap - nodes available for diving, sorted by objective estimate
+  struct diving_entry_t {
+    mip_node_t<i_t, f_t>* node;
+    f_t score;
+  };
+  struct diving_score_comp {
+    bool operator()(const diving_entry_t& a, const diving_entry_t& b) const
+    {
+      if (a.score != b.score) return a.score > b.score;  // Min-heap by score
+      if (a.node->origin_worker_id != b.node->origin_worker_id) {
+        return a.node->origin_worker_id > b.node->origin_worker_id;
+      }
+      return a.node->creation_seq > b.node->creation_seq;
+    }
+  };
+  heap_t<diving_entry_t, diving_score_comp> diving_heap_;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

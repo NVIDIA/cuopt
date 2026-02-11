@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/utilities/internals.hpp>
 #include <optional>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_uvector.hpp>
@@ -225,7 +226,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
-  bool presolve{false};
+  presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
   method_t method{method_t::Concurrent};

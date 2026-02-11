@@ -27,6 +27,8 @@ class bounds_strengthening_t {
                             std::vector<f_t>& lower_bounds,
                             std::vector<f_t>& upper_bounds);
 
+  size_t last_nnz_processed{0};
+
  private:
   const csc_matrix_t<i_t, f_t>& A;
   const csr_matrix_t<i_t, f_t>& Arow;

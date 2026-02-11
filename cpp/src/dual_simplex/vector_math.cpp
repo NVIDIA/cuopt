@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -122,44 +122,8 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   return dot;
 }
 
-// x = b(p)
-template <typename i_t, typename f_t>
-i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x)
-{
-  i_t n = p.size();
-  assert(x.size() == n);
-  assert(b.size() == n);
-  for (i_t k = 0; k < n; ++k) {
-    x[k] = b[p[k]];
-  }
-  return 0;
-}
-
-// x(p) = b
-template <typename i_t, typename f_t>
-i_t inverse_permute_vector(const std::vector<i_t>& p,
-                           const std::vector<f_t>& b,
-                           std::vector<f_t>& x)
-{
-  i_t n = p.size();
-  assert(x.size() == n);
-  assert(b.size() == n);
-  for (i_t k = 0; k < n; ++k) {
-    x[p[k]] = b[k];
-  }
-  return 0;
-}
-
-template <typename i_t>
-i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
-{
-  i_t n = p.size();
-  if (pinv.size() != n) { pinv.resize(n); }
-  for (i_t k = 0; k < n; ++k) {
-    pinv[p[k]] = k;
-  }
-  return 0;
-}
+// NOTE: permute_vector, inverse_permute_vector, and inverse_permutation are now
+// templated on vector types and defined in the header file.
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
@@ -195,15 +159,8 @@ template double sparse_dot<int, double>(int const* xind,
 template double sparse_dot<int, double>(
   int* xind, double* xval, int nx, int* yind, double* yval, int ny);
 
-template int permute_vector<int, double>(const std::vector<int>& p,
-                                         const std::vector<double>& b,
-                                         std::vector<double>& x);
-
-template int inverse_permute_vector<int, double>(const std::vector<int>& p,
-                                                 const std::vector<double>& b,
-                                                 std::vector<double>& x);
-
-template int inverse_permutation<int>(const std::vector<int>& p, std::vector<int>& pinv);
+// NOTE: permute_vector, inverse_permute_vector, and inverse_permutation are now
+// templated on vector types and defined in the header file, so no explicit instantiation needed.
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

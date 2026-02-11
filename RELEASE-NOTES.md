@@ -1,6 +1,56 @@
 # Release Notes
 
+## Release Notes 26.02
 
+### New Features (26.02)
+
+- New parallel reliability branching inside MIP solver
+- Mixed Integer Gomory, Mixed Integer Rounding, Knapsack and Strong Chvatal Gomory cuts are now added at root node
+- Added an option to use batch PDLP when running strong branching at the root. Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
+- Quadratic programming (QP) solver is now generally available (previously beta)
+- New infeasibility detection option for PDLP's default solver mode Stable3
+- Solutions callbacks added to C API. Users can now retrieve the dual bound and pass in user data
+- Multiple new diving techniques added for finding integer feasible solutions
+- The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable
+- Added a batch solve for routing to boost throughput for many similar instances
+- Added experimental support for determinism in the parallel branch-and-bound solver. GPU heuristics are not supported yet in this mode
+
+### Breaking Changes (26.02)
+
+- The signatures of the solution callbacks have changed for the Python API
+- To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically
+
+### Improvements (26.02)
+
+- Improved primal/dual warm start for PDLP's default solver mode Stable3
+- Quadratic objectives can now be constructed via a matrix in Python API
+- QP barrier now updates and solves augmented system on the GPU
+- Improved performance for LP folding
+- Probing implications and better variable ordering to strengthen presolve and branching
+- Replace deprecated cuDF Column/Buffer APIs with pylibcudf and public cuDF interfaces
+- Modernize dependency pinnings; make CUDA runtime linkage static for portability
+- Build/tooling: add `--split-compile`, `--jobserver`, Clang host build, ThreadSanitizer, improved container scripts, and branch/commit metadata in images
+- Use explicit `cudaStream_t` with `cub::DeviceTransform` and non-blocking streams for GPU control
+- Enable barrier LP tests, add regression testing, and add SonarQube static analysis
+- Added parameter for specifying the random seed used by the solver
+
+### Bug Fixes (26.02)
+
+- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems
+- Fix out-of-bounds in dense-column detection in barrier
+- Correct infeasible-list handling to avoid incorrect infeasibility reports in dual simplex
+- Fix race conditions found via Clang host build + ThreadSanitizer
+- Resolve CUDA–Numba version mismatches with cuDF
+- Fix device code to include required trailing return types
+- Fix issue in crossover after dualization in barrier
+- Repair container build and test failures
+- Miscellaneous additional fixes and stability improvements
+
+### Documentation (26.02)
+
+- Update README and top-level docs for current build and usage
+- Document new repository branching strategies and release-cycle details in README and CONTRIBUTING
+- Add best practices for batch solving
 
 ## Release Notes 25.12
 

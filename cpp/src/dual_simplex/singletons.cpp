@@ -1,14 +1,17 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <dual_simplex/singletons.hpp>
 #include <dual_simplex/triangle_solve.hpp>
+#include <utilities/memory_instrumentation.hpp>
 
 #include <cstdio>
+
+using cuopt::ins_vector;
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -128,8 +131,8 @@ void create_row_representation(const csc_matrix_t<i_t, f_t>& A,
 }
 
 // Complete the permuation
-template <typename i_t>
-i_t complete_permutation(i_t singletons, std::vector<i_t>& Xdeg, std::vector<i_t>& Xperm)
+template <typename i_t, typename VectorI>
+i_t complete_permutation(i_t singletons, std::vector<i_t>& Xdeg, VectorI& Xperm)
 {
   i_t n = Xdeg.size();
   assert(Xperm.size() == n);
@@ -154,12 +157,12 @@ i_t complete_permutation(i_t singletons, std::vector<i_t>& Xdeg, std::vector<i_t
   return num_empty;
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
                     i_t& row_singletons,
-                    std::vector<i_t>& row_perm,
+                    VectorI& row_perm,
                     i_t& col_singletons,
-                    std::vector<i_t>& col_perm)
+                    VectorI& col_perm)
 {
   i_t n  = A.n;
   i_t m  = A.m;
@@ -198,12 +201,14 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
     row_form = true;
 
     // Find column singletons
+    auto& col_perm_vec = static_cast<std::vector<i_t>&>(col_perm);
+    auto& row_perm_vec = static_cast<std::vector<i_t>&>(row_perm);
     row_col_graph_t<i_t> graph{Cdeg.begin(),
-                               col_perm.begin(),
-                               A.col_start.cbegin(),
-                               A.i.cbegin(),
+                               col_perm_vec.begin(),
+                               A.col_start.underlying().cbegin(),
+                               A.i.underlying().cbegin(),
                                Rdeg.begin(),
-                               row_perm.begin(),
+                               row_perm_vec.begin(),
                                Rp.cbegin(),
                                Rj.cbegin()};
 
@@ -229,14 +234,16 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
     }
 
     // Find row singletons
+    auto& row_perm_vec2 = static_cast<std::vector<i_t>&>(row_perm);
+    auto& col_perm_vec2 = static_cast<std::vector<i_t>&>(col_perm);
     row_col_graph_t<i_t> graph{Rdeg.begin(),
-                               row_perm.begin(),
+                               row_perm_vec2.begin(),
                                Rp.cbegin(),
                                Rj.cbegin(),
                                Cdeg.begin(),
-                               col_perm.begin(),
-                               A.col_start.cbegin(),
-                               A.i.cbegin()};
+                               col_perm_vec2.begin(),
+                               A.col_start.underlying().cbegin(),
+                               A.i.underlying().cbegin()};
 #ifdef SINGLETON_DEBUG
     printf("Searching for row singletons %ld\n", singleton_queue.size());
 #endif
@@ -280,15 +287,24 @@ template void create_row_representation<int, double>(const csc_matrix_t<int, dou
                                                      std::vector<int>& col_index,
                                                      std::vector<int>& workspace);
 // Complete the permuation
-template int complete_permutation<int>(int singletons,
-                                       std::vector<int>& Xdeg,
-                                       std::vector<int>& Xperm);
+template int complete_permutation<int, std::vector<int>>(int singletons,
+                                                         std::vector<int>& Xdeg,
+                                                         std::vector<int>& Xperm);
+template int complete_permutation<int, ins_vector<int>>(int singletons,
+                                                        std::vector<int>& Xdeg,
+                                                        ins_vector<int>& Xperm);
 
-template int find_singletons<int, double>(const csc_matrix_t<int, double>& A,
-                                          int& row_singletons,
-                                          std::vector<int>& row_perm,
-                                          int& col_singleton,
-                                          std::vector<int>& col_perm);
+template int find_singletons<int, double, std::vector<int>>(const csc_matrix_t<int, double>& A,
+                                                            int& row_singletons,
+                                                            std::vector<int>& row_perm,
+                                                            int& col_singleton,
+                                                            std::vector<int>& col_perm);
+
+template int find_singletons<int, double, ins_vector<int>>(const csc_matrix_t<int, double>& A,
+                                                           int& row_singletons,
+                                                           ins_vector<int>& row_perm,
+                                                           int& col_singleton,
+                                                           ins_vector<int>& col_perm);
 
 #endif
 

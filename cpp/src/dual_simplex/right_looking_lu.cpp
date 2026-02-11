@@ -7,10 +7,15 @@
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/tic_toc.hpp>
+#include <utilities/memory_instrumentation.hpp>
+
+#include <raft/common/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+
+using cuopt::ins_vector;
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -28,9 +33,9 @@ struct element_t {
 };
 constexpr int kNone = -1;
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
-                           const std::vector<i_t>& column_list,
+                           const VectorI& column_list,
                            std::vector<i_t>& Cdegree,
                            std::vector<i_t>& Rdegree,
                            std::vector<std::vector<i_t>>& col_count,
@@ -67,9 +72,9 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
   return Bnz;
 }
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
-                  const std::vector<i_t>& column_list,
+                  const VectorI& column_list,
                   i_t Bnz,
                   std::vector<element_t<i_t, f_t>>& elements,
                   std::vector<i_t>& first_in_row,
@@ -567,16 +572,17 @@ void remove_pivot_col(i_t pivot_i,
 
 }  // namespace
 
-template <typename i_t, typename f_t>
+template <typename i_t, typename f_t, typename VectorI>
 i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      f_t tol,
-                     const std::vector<i_t>& column_list,
-                     std::vector<i_t>& q,
+                     const VectorI& column_list,
+                     VectorI& q,
                      csc_matrix_t<i_t, f_t>& L,
                      csc_matrix_t<i_t, f_t>& U,
-                     std::vector<i_t>& pinv)
+                     VectorI& pinv)
 {
+  raft::common::nvtx::range scope("LU::right_looking_lu");
   const i_t n = column_list.size();
   const i_t m = A.m;
 
@@ -1143,14 +1149,25 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
-                                           const simplex_solver_settings_t<int, double>& settings,
-                                           double tol,
-                                           const std::vector<int>& column_list,
-                                           std::vector<int>& q,
-                                           csc_matrix_t<int, double>& L,
-                                           csc_matrix_t<int, double>& U,
-                                           std::vector<int>& pinv);
+template int right_looking_lu<int, double, std::vector<int>>(
+  const csc_matrix_t<int, double>& A,
+  const simplex_solver_settings_t<int, double>& settings,
+  double tol,
+  const std::vector<int>& column_list,
+  std::vector<int>& q,
+  csc_matrix_t<int, double>& L,
+  csc_matrix_t<int, double>& U,
+  std::vector<int>& pinv);
+
+template int right_looking_lu<int, double, ins_vector<int>>(
+  const csc_matrix_t<int, double>& A,
+  const simplex_solver_settings_t<int, double>& settings,
+  double tol,
+  const ins_vector<int>& column_list,
+  ins_vector<int>& q,
+  csc_matrix_t<int, double>& L,
+  csc_matrix_t<int, double>& U,
+  ins_vector<int>& pinv);
 
 template int right_looking_lu_row_permutation_only<int, double>(
   const csc_matrix_t<int, double>& A,

@@ -46,3 +46,6 @@ ConfigureTest(PRESOLVE_TEST
 ConfigureTest(MIP_TERMINATION_STATUS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/termination_test.cu
 )
+ConfigureTest(DETERMINISM_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/determinism_test.cu
+)

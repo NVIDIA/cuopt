@@ -51,7 +51,8 @@ template <typename i_t, typename f_t>
 class problem_t {
  public:
   problem_t(const optimization_problem_t<i_t, f_t>& problem,
-            const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {});
+            const typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_ = {},
+            bool deterministic                                                       = false);
   problem_t() = delete;
   // copy constructor
   problem_t(const problem_t<i_t, f_t>& problem);
@@ -75,6 +76,7 @@ class problem_t {
   void check_problem_representation(bool check_transposed       = false,
                                     bool check_mip_related_data = true);
   void recompute_auxilliary_data(bool check_representation = true);
+  void compute_auxiliary_data();
   void compute_n_integer_vars();
   void compute_binary_var_table();
   void compute_related_variables(double time_limit);
@@ -118,6 +120,8 @@ class problem_t {
 
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+
+  uint32_t get_fingerprint() const;
 
   void add_cutting_plane_at_objective(f_t objective);
   void compute_vars_with_objective_coeffs();
@@ -242,6 +246,12 @@ class problem_t {
   bool maximize{false};
   bool is_binary_pb{false};
   bool empty{false};
+  bool deterministic{false};
+
+  // Auxiliary problem statistics
+  double sparsity{0.0};
+  double nnz_stddev{0.0};
+  double unbalancedness{0.0};
 
   presolve_data_t<i_t, f_t> presolve_data;
 

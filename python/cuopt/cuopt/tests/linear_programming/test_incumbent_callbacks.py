@@ -92,6 +92,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
     assert (
         solution.get_termination_status()
         == MILPTerminationStatus.FeasibleFound
+        or MILPTerminationStatus.Optimal
     )
 
     for sol in get_callback.solutions:

@@ -9,6 +9,7 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/hashing.hpp>
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
@@ -227,18 +228,29 @@ class mip_node_t {
   }
 
   // This method creates a copy of the current node
-  // with its parent set to `nullptr` and `depth = 0`.
+  // with its parent set to `nullptr`
   // This detaches the node from the tree.
   mip_node_t<i_t, f_t> detach_copy() const
   {
-    mip_node_t<i_t, f_t> copy(lower_bound, vstatus);
+    mip_node_t<i_t, f_t> copy;
+    copy.lower_bound        = lower_bound;
+    copy.objective_estimate = objective_estimate;
+    copy.depth              = depth;
+    copy.node_id            = node_id;
+    copy.integer_infeasible = integer_infeasible;
+    copy.vstatus            = vstatus;
     copy.branch_var         = branch_var;
     copy.branch_dir         = branch_dir;
     copy.branch_var_lower   = branch_var_lower;
     copy.branch_var_upper   = branch_var_upper;
     copy.fractional_val     = fractional_val;
-    copy.objective_estimate = objective_estimate;
-    copy.node_id            = node_id;
+    copy.parent             = nullptr;
+    copy.children[0]        = nullptr;
+    copy.children[1]        = nullptr;
+    copy.status             = node_status_t::PENDING;
+
+    copy.origin_worker_id = origin_worker_id;
+    copy.creation_seq     = creation_seq;
     return copy;
   }
 
@@ -258,6 +270,32 @@ class mip_node_t {
   std::unique_ptr<mip_node_t> children[2];
 
   std::vector<variable_status_t> vstatus;
+
+  // Worker-local identification for deterministic ordering:
+  // - origin_worker_id: which worker created this node
+  // - creation_seq: sequence number within that worker (cumulative across horizons, serial)
+  // The tuple (origin_worker_id, creation_seq) is unique and stable
+  int32_t origin_worker_id{-1};
+  int32_t creation_seq{-1};
+
+  uint64_t get_id_packed() const
+  {
+    return (static_cast<uint64_t>(origin_worker_id + 1) << 32) |
+           static_cast<uint64_t>(static_cast<uint32_t>(creation_seq));
+  }
+
+  uint32_t compute_path_hash() const
+  {
+    std::vector<uint64_t> path_steps;
+    const mip_node_t* node = this;
+    while (node != nullptr && node->branch_var >= 0) {
+      uint64_t step = static_cast<uint64_t>(node->branch_var) << 1;
+      step |= (node->branch_dir == rounding_direction_t::UP) ? 1 : 0;
+      path_steps.push_back(step);
+      node = node->parent;
+    }
+    return detail::compute_hash(path_steps);
+  }
 };
 
 template <typename i_t, typename f_t>

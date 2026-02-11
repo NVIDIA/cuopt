@@ -9,16 +9,20 @@
 
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/memory_instrumentation.hpp>
 
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 
+// Import instrumented vector type
+using cuopt::ins_vector;
+
 // A sparse vector stored as a list of nonzero coefficients and their indices
 template <typename i_t, typename f_t>
 class sparse_vector_t {
  public:
-  sparse_vector_t() : n(0), i({}), x({}) {}
+  sparse_vector_t() : n(0), i(), x() {}
   // Construct a sparse vector of dimension n with nz nonzero coefficients
   sparse_vector_t(i_t n, i_t nz) : n(n), i(nz), x(nz) {}
   // Construct a sparse vector from a dense vector.
@@ -33,9 +37,13 @@ class sparse_vector_t {
   void to_csc(csc_matrix_t<i_t, f_t>& A) const;
   // convert a sparse vector into a dense vector. Dense vector is cleared and resized.
   void to_dense(std::vector<f_t>& x_dense) const;
+  // convert a sparse vector into an instrumented dense vector.
+  void to_dense(ins_vector<f_t>& x_dense) const;
   // scatter a sparse vector into a dense vector. Assumes x_dense is already cleared or
   // preinitialized
   void scatter(std::vector<f_t>& x_dense) const;
+  // scatter into instrumented vector
+  void scatter(ins_vector<f_t>& x_dense) const;
   // inverse permute the current sparse vector
   void inverse_permute_vector(const std::vector<i_t>& p);
   // inverse permute a sparse vector into another sparse vector
@@ -51,11 +59,20 @@ class sparse_vector_t {
   void negate();
   f_t find_coefficient(i_t index) const;
 
+  void clear()
+  {
+    i.clear();
+    x.clear();
+  }
+
+  // Reset from a column of a CSC matrix
+  void from_csc_column(const csc_matrix_t<i_t, f_t>& A, i_t col);
+
   void squeeze(sparse_vector_t<i_t, f_t>& y) const;
 
   i_t n;
-  std::vector<i_t> i;
-  std::vector<f_t> x;
+  ins_vector<i_t> i;
+  ins_vector<f_t> x;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

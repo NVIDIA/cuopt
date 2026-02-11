@@ -5,9 +5,6 @@
 Simple Quadratic Programming Example
 ====================================
 
-.. note::
-   The QP solver is currently in beta.
-
 This example demonstrates how to formulate and solve a simple
 Quadratic Programming (QP) problem using the cuOpt Python API.
 
