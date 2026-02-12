@@ -66,13 +66,15 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     // that's why compelements have 1 as coeff and normal vars have -1
     if (complement) {
       if (seen_original.count(var_idx) > 0) { return clique_cut_build_status_t::INFEASIBLE; }
-      cuopt_assert(seen_complement.insert(var_idx).second, "Duplicate complement in clique");
+      cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");
+      seen_complement.insert(var_idx);
       num_complements++;
       cut.i.push_back(var_idx);
       cut.x.push_back(1.0);
     } else {
       if (seen_complement.count(var_idx) > 0) { return clique_cut_build_status_t::INFEASIBLE; }
-      cuopt_assert(seen_original.insert(var_idx).second, "Duplicate variable in clique");
+      cuopt_assert(seen_original.count(var_idx) == 0, "Duplicate variable in clique");
+      seen_original.insert(var_idx);
       cut.i.push_back(var_idx);
       cut.x.push_back(-1.0);
     }
