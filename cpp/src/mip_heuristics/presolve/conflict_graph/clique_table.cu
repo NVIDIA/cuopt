@@ -22,8 +22,8 @@
 #include <algorithm>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <limits>
-#include <mip/mip_constants.hpp>
-#include <mip/utils.cuh>
+#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/utils.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>

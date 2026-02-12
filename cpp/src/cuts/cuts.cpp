@@ -9,7 +9,7 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/tic_toc.hpp>
-#include <mip/presolve/conflict_graph/clique_table.cuh>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <utilities/macros.cuh>
 
 #include <cstdint>
