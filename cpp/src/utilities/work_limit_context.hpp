@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <string>
 
-#include <mip/logger.hpp>
+#include <mip_heuristics/logger.hpp>
 
 #include "timer.hpp"
 #include "work_unit_scheduler.hpp"
