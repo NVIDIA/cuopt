@@ -2509,7 +2509,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   std::vector<f_t> c_basic(m);
   std::vector<f_t> xB_workspace(m);
 
-  phase2_work_estimate += n * 2 * m;
+  phase2_work_estimate += 2 * (n + m);
 
   dual::status_t status = dual::status_t::UNSET;
 
@@ -3481,8 +3481,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     iter++;
 
     // Clear delta_z
-    phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
     phase2_work_estimate += 3 * delta_z_indices.size();
+    phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
 
     f_t now = toc(start_time);
 
@@ -3492,9 +3492,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
       phase2_work_estimate += ft.work_estimate();
       ft.clear_work_estimate();
-      if (work_unit_context) {
-        work_unit_context->record_work_sync_on_horizon(phase2_work_estimate / 1e8);
-      }
+      work_unit_context->record_work_sync_on_horizon(phase2_work_estimate / 1e8);
       phase2_work_estimate = 0.0;
 
       last_feature_log_iter = iter;

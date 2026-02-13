@@ -1264,7 +1264,7 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   } else {
     // W = V
     WT.transpose(V);
-    work_estimate_ += 3 * V_nz;
+    work_estimate_ += 3 * WT.col_start[WT.n];
   }
 
   // Extend u_i, v_i for i = 0, ..., num_updates_ - 1

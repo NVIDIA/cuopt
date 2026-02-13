@@ -33,9 +33,9 @@ struct element_t {
 };
 constexpr int kNone = -1;
 
-template <typename i_t, typename f_t, typename VectorI>
+template <typename i_t, typename f_t>
 i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
-                           const VectorI& column_list,
+                           const std::vector<i_t>& column_list,
                            std::vector<i_t>& Cdegree,
                            std::vector<i_t>& Rdegree,
                            std::vector<std::vector<i_t>>& col_count,
@@ -79,9 +79,9 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
   return Bnz;
 }
 
-template <typename i_t, typename f_t, typename VectorI>
+template <typename i_t, typename f_t>
 i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
-                  const VectorI& column_list,
+                  const std::vector<i_t>& column_list,
                   i_t Bnz,
                   std::vector<element_t<i_t, f_t>>& elements,
                   std::vector<i_t>& first_in_row,

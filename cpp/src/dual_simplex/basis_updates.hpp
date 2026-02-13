@@ -480,7 +480,7 @@ class basis_update_mpf_t {
 
   f_t hypersparse_threshold_;
 
-  mutable f_t work_estimate_;
+  mutable f_t work_estimate_{0.0};
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

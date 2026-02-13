@@ -129,7 +129,7 @@ f_t sparse_dot(const std::vector<i_t>& xind,
 template <typename i_t, typename f_t>
 i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x)
 {
-  auto n = p.size();
+  i_t n = p.size();
   assert(x.size() == n);
   assert(b.size() == n);
   for (i_t k = 0; k < n; ++k) {
@@ -145,7 +145,7 @@ i_t inverse_permute_vector(const std::vector<i_t>& p,
                            const std::vector<f_t>& b,
                            std::vector<f_t>& x)
 {
-  auto n = p.size();
+  i_t n = p.size();
   assert(x.size() == n);
   assert(b.size() == n);
   for (i_t k = 0; k < n; ++k) {
@@ -159,7 +159,7 @@ i_t inverse_permute_vector(const std::vector<i_t>& p,
 template <typename i_t>
 i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
 {
-  auto n = p.size();
+  i_t n = p.size();
   if (pinv.size() != n) { pinv.resize(n); }
   for (i_t k = 0; k < n; ++k) {
     pinv[p[k]] = k;

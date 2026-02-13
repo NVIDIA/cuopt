@@ -214,14 +214,12 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
     row_form = true;
 
     // Find column singletons
-    auto& col_perm_vec = static_cast<std::vector<i_t>&>(col_perm);
-    auto& row_perm_vec = static_cast<std::vector<i_t>&>(row_perm);
     row_col_graph_t<i_t> graph{Cdeg.begin(),
-                               col_perm_vec.begin(),
+                               col_perm.begin(),
                                A.col_start.cbegin(),
                                A.i.cbegin(),
                                Rdeg.begin(),
-                               row_perm_vec.begin(),
+                               row_perm.begin(),
                                Rp.cbegin(),
                                Rj.cbegin()};
 
@@ -250,14 +248,12 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
     }
 
     // Find row singletons
-    auto& row_perm_vec2 = static_cast<std::vector<i_t>&>(row_perm);
-    auto& col_perm_vec2 = static_cast<std::vector<i_t>&>(col_perm);
     row_col_graph_t<i_t> graph{Rdeg.begin(),
-                               row_perm_vec2.begin(),
+                               row_perm.begin(),
                                Rp.cbegin(),
                                Rj.cbegin(),
                                Cdeg.begin(),
-                               col_perm_vec2.begin(),
+                               col_perm.begin(),
                                A.col_start.cbegin(),
                                A.i.cbegin()};
 #ifdef SINGLETON_DEBUG
