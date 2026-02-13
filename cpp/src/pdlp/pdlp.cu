@@ -21,8 +21,8 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
-#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/eltwise.cuh>
 #include <raft/linalg/ternary_op.cuh>
