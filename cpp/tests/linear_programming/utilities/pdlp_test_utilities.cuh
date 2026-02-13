@@ -9,8 +9,8 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 
-#include <linear_programming/utils.cuh>
 #include <mps_parser.hpp>
+#include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 

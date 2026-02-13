@@ -11,8 +11,6 @@
 
 #include <routing/generator/generator.hpp>
 
-#include <raft/random/rng.cuh>
-
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/sequence.h>
 

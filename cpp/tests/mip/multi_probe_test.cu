@@ -9,11 +9,11 @@
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <linear_programming/initial_scaling_strategy/initial_scaling.cuh>
-#include <linear_programming/utilities/problem_checking.cuh>
-#include <mip/presolve/bounds_presolve.cuh>
-#include <mip/presolve/multi_probe.cuh>
+#include <mip_heuristics/presolve/bounds_presolve.cuh>
+#include <mip_heuristics/presolve/multi_probe.cuh>
 #include <mps_parser/parser.hpp>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <utilities/common_utils.hpp>
