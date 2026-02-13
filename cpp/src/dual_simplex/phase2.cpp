@@ -1181,8 +1181,8 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
     const f_t dual_tol =
       settings.dual_tol;  // lower to 1e-7 or less will cause 25fv47 and d2q06c to cycle
     if (vstatus[j] == variable_status_t::NONBASIC_LOWER && z[j] < -dual_tol) {
-      const f_t delta             = lp.upper[j] - lp.lower[j];
-      const f_t atilde_start_size = atilde_index.size();
+      const f_t delta                = lp.upper[j] - lp.lower[j];
+      const size_t atilde_start_size = atilde_index.size();
       scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
       work_estimate += 2 * (atilde_index.size() - atilde_start_size) +
                        4 * (lp.A.col_start[j + 1] - lp.A.col_start[j]) + 10;
@@ -1194,8 +1194,8 @@ i_t flip_bounds(const lp_problem_t<i_t, f_t>& lp,
 #endif
       num_flipped++;
     } else if (vstatus[j] == variable_status_t::NONBASIC_UPPER && z[j] > dual_tol) {
-      const f_t delta             = lp.lower[j] - lp.upper[j];
-      const f_t atilde_start_size = atilde_index.size();
+      const f_t delta                = lp.lower[j] - lp.upper[j];
+      const size_t atilde_start_size = atilde_index.size();
       scatter_dense(lp.A, j, -delta, atilde, mark, atilde_index);
       work_estimate += 2 * (atilde_index.size() - atilde_start_size) +
                        4 * (lp.A.col_start[j + 1] - lp.A.col_start[j]) + 10;
@@ -1406,7 +1406,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     work_estimate += 2 * v_sparse.i.size();
   }
   v_sparse.scatter(v);
-  work_estimate += 2 * v.size();
+  work_estimate += 2 * v_sparse.i.size();
 
   const i_t leaving_index        = basic_list[basic_leaving_index];
   const f_t prev_dy_norm_squared = delta_y_steepest_edge[leaving_index];
@@ -2518,8 +2518,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   settings.log.printf("Dual Simplex Phase %d\n", phase);
   std::vector<variable_status_t> vstatus_old = vstatus;
   std::vector<f_t> z_old                     = z;
-
-  phase2_work_estimate += m;
+  phase2_work_estimate += 4 * n;
 
   phase2::bound_info(lp, settings);
   phase2_work_estimate += 2 * n;
