@@ -37,11 +37,11 @@ i_t reach(const sparse_vector_t<i_t, f_t>& b,
       top = depth_first_search(b.i[p], pinv, G, top, xi, xi.begin() + m, work_estimate);
     }
   }
-  work_estimate += 4*bnz;
+  work_estimate += 4 * bnz;
   for (i_t p = top; p < m; ++p) {  // restore G
     MARK(G.col_start, xi[p]);
   }
-  work_estimate += 3*(m - top);
+  work_estimate += 3 * (m - top);
   return top;
 }
 
@@ -79,12 +79,12 @@ i_t depth_first_search(i_t j,
       // Point to the first outgoing edge of node j
       pstack[head] = (jnew < 0) ? 0 : UNFLIP(G.col_start[jnew]);
     }
-    done   = 1;  // Node j is done if no unvisited neighbors
-    i_t p2 = (jnew < 0) ? 0 : UNFLIP(G.col_start[jnew + 1]);
+    done           = 1;  // Node j is done if no unvisited neighbors
+    i_t p2         = (jnew < 0) ? 0 : UNFLIP(G.col_start[jnew + 1]);
     const i_t psav = pstack[head];
     i_t p;
     for (p = psav; p < p2; ++p) {  // Examine all neighbors of j
-      i_t i = G.i[p];                          // Consider neighbor i
+      i_t i = G.i[p];              // Consider neighbor i
       if (MARKED(G.col_start, i)) {
         continue;  // skip visited node i
       }
@@ -93,7 +93,7 @@ i_t depth_first_search(i_t j,
       done         = 0;  // node j is not done
       break;             // break to start dfs at node i
     }
-    work_estimate += 3*(p- psav) + 10;
+    work_estimate += 3 * (p - psav) + 10;
     if (done) {
       pstack[head] = 0;  // restore pstack so it can be used again in other routines
       xi[head]     = 0;  // restore xi so it can be used again in other routines
@@ -118,13 +118,13 @@ i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
   for (i_t p = top; p < m; ++p) {
     x[xi[p]] = 0;  // Clear x vector
   }
-  work_estimate += 2*(m - top);
+  work_estimate += 2 * (m - top);
 
   const i_t bnz = b.i.size();
   for (i_t p = 0; p < bnz; ++p) {
     x[b.i[p]] = b.x[p];  // Scatter b
   }
-  work_estimate += 3*bnz;
+  work_estimate += 3 * bnz;
 
   for (i_t px = top; px < m; ++px) {
     i_t j = xi[px];                   // x(j) is nonzero
@@ -143,7 +143,7 @@ i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
       end = G.col_start[J + 1] - 1;
     }
     x[j] /= Gjj;
-    work_estimate += 4*(end - p) + 7;
+    work_estimate += 4 * (end - p) + 7;
     for (; p < end; ++p) {
       x[G.i[p]] -= G.x[p] * x[j];  // x(i) -= G(i,j) * x(j)
     }

@@ -11,7 +11,6 @@
 
 #include <dual_simplex/types.hpp>
 
-
 // #include <thrust/for_each.h>
 // #include <thrust/iterator/counting_iterator.h>
 
@@ -959,13 +958,12 @@ template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
                                          double alpha,
                                          std::vector<double>& x);
 
-template void scatter_dense<int, double>(
-  const csc_matrix_t<int, double>& A,
-  int j,
-  double alpha,
-  std::vector<double>& x,
-  std::vector<int>& mark,
-  std::vector<int>& indices);
+template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
+                                         int j,
+                                         double alpha,
+                                         std::vector<double>& x,
+                                         std::vector<int>& mark,
+                                         std::vector<int>& indices);
 
 template int multiply<int, double>(const csc_matrix_t<int, double>& A,
                                    const csc_matrix_t<int, double>& B,

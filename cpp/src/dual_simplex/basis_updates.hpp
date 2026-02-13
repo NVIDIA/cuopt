@@ -265,7 +265,7 @@ class basis_update_mpf_t {
     assert(p.size() == Linit.m);
     row_permutation_ = p;
     inverse_permutation(row_permutation_, inverse_row_permutation_);
-    work_estimate_ += 4*p.size();
+    work_estimate_ += 4 * p.size();
     clear();
     compute_transposes();
     reset_stats();
@@ -372,7 +372,7 @@ class basis_update_mpf_t {
   {
     L0_.transpose(L0_transpose_);
     U0_.transpose(U0_transpose_);
-    work_estimate_ += 6*L0_.col_start[L0_.n] + 6*U0_.col_start[U0_.n];
+    work_estimate_ += 6 * L0_.col_start[L0_.n] + 6 * U0_.col_start[U0_.n];
   }
 
   void multiply_lu(csc_matrix_t<i_t, f_t>& out) const;
@@ -405,7 +405,7 @@ class basis_update_mpf_t {
     mu_values_.clear();
     mu_values_.reserve(refactor_frequency_);
     num_updates_ = 0;
-    work_estimate_ += 2*refactor_frequency_;
+    work_estimate_ += 2 * refactor_frequency_;
 
     std::fill(xi_workspace_.begin(), xi_workspace_.end(), 0);
     std::fill(x_workspace_.begin(), x_workspace_.end(), 0.0);

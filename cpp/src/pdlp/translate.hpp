@@ -30,8 +30,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.objective = cuopt::host_copy(model.objective_coefficients, handle_ptr->get_stream());
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = std::vector<f_t>(cuopt::host_copy(model.coefficients, handle_ptr->get_stream()));
-  csr_A.j         = std::vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
+  csr_A.x = std::vector<f_t>(cuopt::host_copy(model.coefficients, handle_ptr->get_stream()));
+  csr_A.j = std::vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(model.offsets, handle_ptr->get_stream()));
 
   csr_A.to_compressed_col(user_problem.A);

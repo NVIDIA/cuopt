@@ -61,7 +61,9 @@ template <typename i_t, typename f_t>
 i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x);
 // Computes x = P'*b or x(p) = b in MATLAB.
 template <typename i_t, typename f_t>
-i_t inverse_permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x);
+i_t inverse_permute_vector(const std::vector<i_t>& p,
+                           const std::vector<f_t>& b,
+                           std::vector<f_t>& x);
 
 // Computes pinv from p. Or pinv(p) = 1:n in MATLAB
 template <typename i_t>

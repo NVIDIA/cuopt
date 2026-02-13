@@ -45,8 +45,8 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>&
         idx++;
       }
     }
-    work_estimate_ += 4*nz;
-    work_estimate_ += 4*idx;
+    work_estimate_ += 4 * nz;
+    work_estimate_ += 4 * idx;
     pivot_tol /= 10;
   }
   return idx;
@@ -88,8 +88,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::single_pass(i_t start,
       harris_found++;
     }
   }
-  work_estimate_ += (end - start) + 2*min_found + 6*harris_found;
-
+  work_estimate_ += (end - start) + 2 * min_found + 6 * harris_found;
 
   step_length       = min_val;
   nonbasic_entering = candidate;
@@ -126,7 +125,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
   // Compute the initial set of breakpoints
   std::vector<i_t> indicies(nz);
   std::vector<f_t> ratios(nz);
-  work_estimate_ += 2*nz;
+  work_estimate_ += 2 * nz;
   i_t num_breakpoints = compute_breakpoints(indicies, ratios);
   if constexpr (verbose) { settings_.log.printf("Initial breakpoints %d\n", num_breakpoints); }
   if (num_breakpoints == 0) {
@@ -174,7 +173,7 @@ i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_step_length(f_t& step_length,
     for (i_t k = 0; k < num_breakpoints - 1; ++k) {
       if (ratios[k] > max_ratio) { max_ratio = ratios[k]; }
     }
-    work_estimate_ += 2*num_breakpoints;
+    work_estimate_ += 2 * num_breakpoints;
     settings_.log.printf(
       "Starting heap passes. %d breakpoints max ratio %e\n", num_breakpoints - 1, max_ratio);
     bucket_pass(
@@ -230,7 +229,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
   };
 
   std::make_heap(bare_idx.begin(), bare_idx.end(), compare);
-  work_estimate_ += 3*bare_idx.size();
+  work_estimate_ += 3 * bare_idx.size();
 
   while (bare_idx.size() > 0 && slope > 0) {
     // Remove minimum ratio from the heap and rebalance

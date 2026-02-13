@@ -125,12 +125,12 @@ class csc_matrix_t {
     return true;
   }
 
-  i_t m;                      // number of rows
-  i_t n;                      // number of columns
-  i_t nz_max;                 // maximum number of entries
-  std::vector<i_t> col_start; // column pointers (size n + 1)
-  std::vector<i_t> i;         // row indices, size nz_max
-  std::vector<f_t> x;         // numerical values, size nz_max
+  i_t m;                       // number of rows
+  i_t n;                       // number of columns
+  i_t nz_max;                  // maximum number of entries
+  std::vector<i_t> col_start;  // column pointers (size n + 1)
+  std::vector<i_t> i;          // row indices, size nz_max
+  std::vector<f_t> x;          // numerical values, size nz_max
 
   static_assert(std::is_signed_v<i_t>);  // Require signed integers (we make use of this
                                          // to avoid extra space / computation)
@@ -173,12 +173,12 @@ class csr_matrix_t {
     return true;
   }
 
-  i_t nz_max;                 // maximum number of nonzero entries
-  i_t m;                      // number of rows
-  i_t n;                      // number of cols
-  std::vector<i_t> row_start; // row pointers (size m + 1)
-  std::vector<i_t> j;         // column indices, size nz_max
-  std::vector<f_t> x;         // numerical values, size nz_max
+  i_t nz_max;                  // maximum number of nonzero entries
+  i_t m;                       // number of rows
+  i_t n;                       // number of cols
+  std::vector<i_t> row_start;  // row pointers (size m + 1)
+  std::vector<i_t> j;          // column indices, size nz_max
+  std::vector<f_t> x;          // numerical values, size nz_max
 
   static_assert(std::is_signed_v<i_t>);
 };

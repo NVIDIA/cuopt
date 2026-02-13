@@ -58,13 +58,13 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
       Bnz++;
     }
   }
-  work_estimate += 3*n + 2*Bnz;
+  work_estimate += 3 * n + 2 * Bnz;
 
   for (i_t k = 0; k < n; ++k) {
     assert(Cdegree[k] <= m && Cdegree[k] >= 0);
     col_count[Cdegree[k]].push_back(k);
   }
-  work_estimate += 3*n;
+  work_estimate += 3 * n;
 
   for (i_t k = 0; k < m; ++k) {
     assert(Rdegree[k] <= n && Rdegree[k] >= 0);
@@ -74,7 +74,7 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
       if (verbose) { printf("Zero degree row %d\n", k); }
     }
   }
-  work_estimate += 4*m;
+  work_estimate += 4 * m;
 
   return Bnz;
 }
@@ -119,7 +119,7 @@ i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
       nz++;
     }
   }
-  work_estimate += 3*n + 15*nz;
+  work_estimate += 3 * n + 15 * nz;
   assert(nz == Bnz);
 
   for (i_t j = 0; j < n; j++) {
@@ -130,7 +130,7 @@ i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
       assert(entry->i < m);
     }
   }
-  work_estimate += 2*n + nz;
+  work_estimate += 2 * n + nz;
 
   for (i_t i = 0; i < m; i++) {
     for (i_t p = first_in_row[i]; p != kNone; p = elements[p].next_in_row) {
@@ -140,7 +140,7 @@ i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
       assert(entry->j >= 0);
     }
   }
-  work_estimate += 2*m + nz;
+  work_estimate += 2 * m + nz;
 
   return 0;
 }
@@ -343,7 +343,7 @@ void update_Cdegree_and_col_count(i_t pivot_i,
     if (j != pivot_j && cdeg >= 0) { col_count[cdeg].push_back(j); }
     loop_count++;
   }
-  work_estimate += 7*loop_count;
+  work_estimate += 7 * loop_count;
   Cdegree[pivot_j] = -1;
 }
 
@@ -379,7 +379,7 @@ void update_Rdegree_and_row_count(i_t pivot_i,
     if (i != pivot_i && rdeg >= 0) { row_count[rdeg].push_back(i); }
     loop_count++;
   }
-  work_estimate += 7*loop_count;
+  work_estimate += 7 * loop_count;
   Rdegree[pivot_i] = -1;
 }
 
@@ -410,10 +410,10 @@ void schur_complement(i_t pivot_i,
     for (i_t p3 = first_in_row[i]; p3 != kNone; p3 = elements[p3].next_in_row) {
       row_last = p3;
     }
-    work_estimate += 2*Rdegree[i];
+    work_estimate += 2 * Rdegree[i];
     row_last_workspace[i] = row_last;
   }
-  work_estimate += 4*Cdegree[pivot_j];
+  work_estimate += 4 * Cdegree[pivot_j];
 
   for (i_t p0 = first_in_row[pivot_i]; p0 != kNone; p0 = elements[p0].next_in_row) {
     element_t<i_t, f_t>* entry = &elements[p0];
@@ -430,7 +430,7 @@ void schur_complement(i_t pivot_i,
       column_j_workspace[i] = p1;
       col_last              = p1;
     }
-    work_estimate += 5*Cdegree[j];
+    work_estimate += 5 * Cdegree[j];
 
     for (i_t p1 = first_in_col[pivot_j]; p1 != kNone; p1 = elements[p1].next_in_column) {
       element_t<i_t, f_t>* e = &elements[p1];
@@ -486,7 +486,7 @@ void schur_complement(i_t pivot_i,
             // Remove row i from row_count[rdeg]
             std::swap(*it, row_count[rdeg].back());
             row_count[rdeg].pop_back();
-            work_estimate += 2*(it - row_count[rdeg].begin());
+            work_estimate += 2 * (it - row_count[rdeg].begin());
             break;
           }
         }
@@ -501,7 +501,7 @@ void schur_complement(i_t pivot_i,
             // Remove col j from col_count[cdeg]
             std::swap(*it, col_count[cdeg].back());
             col_count[cdeg].pop_back();
-            work_estimate += 2*(it - col_count[cdeg].begin());
+            work_estimate += 2 * (it - col_count[cdeg].begin());
             break;
           }
         }
@@ -509,7 +509,7 @@ void schur_complement(i_t pivot_i,
         col_count[cdeg].push_back(j);  // Add column j to col_count[cdeg]
       }
     }
-    work_estimate += 10*Cdegree[pivot_j];
+    work_estimate += 10 * Cdegree[pivot_j];
 
     for (i_t p1 = first_in_col[j]; p1 != kNone; p1 = elements[p1].next_in_column) {
       element_t<i_t, f_t>* e = &elements[p1];
@@ -517,9 +517,9 @@ void schur_complement(i_t pivot_i,
       assert(e->j == j);
       column_j_workspace[i] = kNone;
     }
-    work_estimate += 5*Cdegree[j];
+    work_estimate += 5 * Cdegree[j];
   }
-  work_estimate += 10*Rdegree[pivot_i];
+  work_estimate += 10 * Rdegree[pivot_i];
 }
 
 template <typename i_t, typename f_t>
@@ -538,8 +538,8 @@ void remove_pivot_row(i_t pivot_i,
     element_t<i_t, f_t>* e = &elements[p0];
     const i_t j            = e->j;
     if (j == pivot_j) { continue; }
-    i_t last         = kNone;
-    f_t max_in_col_j = 0;
+    i_t last           = kNone;
+    f_t max_in_col_j   = 0;
     i_t col_loop_count = 0;
     for (i_t p = first_in_col[j]; p != kNone; p = elements[p].next_in_column) {
       element_t<i_t, f_t>* entry = &elements[p];
@@ -559,11 +559,11 @@ void remove_pivot_row(i_t pivot_i,
       last = p;
       col_loop_count++;
     }
-    work_estimate += 3*col_loop_count;
+    work_estimate += 3 * col_loop_count;
     max_in_column[j] = max_in_col_j;
     row_loop_count++;
   }
-  work_estimate += 5*row_loop_count;
+  work_estimate += 5 * row_loop_count;
 
   first_in_row[pivot_i] = kNone;
 }
@@ -608,14 +608,14 @@ void remove_pivot_col(i_t pivot_i,
       last = p;
       row_loop_count++;
     }
-    work_estimate += 3*row_loop_count;
+    work_estimate += 3 * row_loop_count;
 #ifdef THRESHOLD_ROOK_PIVOTING
     max_in_row[i] = max_in_row_i;
 #endif
     col_loop_count++;
   }
   first_in_col[pivot_j] = kNone;
-  work_estimate += 3*col_loop_count;
+  work_estimate += 3 * col_loop_count;
 }
 
 }  // namespace
@@ -645,26 +645,27 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
   std::vector<i_t> Rdegree(n);  // Rdegree[i] is the degree of row i
   std::vector<i_t> Cdegree(n);  // Cdegree[j] is the degree of column j
-  work_estimate += 2*n;
+  work_estimate += 2 * n;
 
   std::vector<std::vector<i_t>> col_count(
     n + 1);  // col_count[nz] is a list of columns with nz nonzeros in the active submatrix
   std::vector<std::vector<i_t>> row_count(
     n + 1);  // row_count[nz] is a list of rows with nz nonzeros in the active submatrix
-  work_estimate += 2*n;
+  work_estimate += 2 * n;
 
-  const i_t Bnz = initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
+  const i_t Bnz =
+    initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
   std::vector<element_t<i_t, f_t>> elements(Bnz);
   std::vector<i_t> first_in_row(n, kNone);
   std::vector<i_t> first_in_col(n, kNone);
-  work_estimate += 2*n + Bnz;
+  work_estimate += 2 * n + Bnz;
   load_elements(A, column_list, Bnz, elements, first_in_row, first_in_col, work_estimate);
 
   std::vector<i_t> column_j_workspace(n, kNone);
   std::vector<i_t> row_last_workspace(n);
   std::vector<f_t> max_in_column(n);
   std::vector<f_t> max_in_row(m);
-  work_estimate += 3*n + m;
+  work_estimate += 3 * n + m;
 
   initialize_max_in_column(first_in_col, elements, max_in_column);
   work_estimate += Bnz;
@@ -678,7 +679,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   Urow.n = Urow.m = n;
   Urow.row_start.resize(n + 1, -1);
   i_t Unz = 0;
-  work_estimate += 2*n;
+  work_estimate += 2 * n;
 
   i_t Lnz = 0;
   L.x.clear();
@@ -688,7 +689,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   std::fill(pinv.begin(), pinv.end(), -1);
   std::vector<i_t> qinv(n);
   std::fill(qinv.begin(), qinv.end(), -1);
-  work_estimate += 4*n;
+  work_estimate += 4 * n;
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
@@ -747,7 +748,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
         Unz++;
       }
     }
-    work_estimate += 4*(Unz - Urow.row_start[k]);
+    work_estimate += 4 * (Unz - Urow.row_start[k]);
 
     // L <- [L l]
     L.col_start[k] = Lnz;
@@ -768,11 +769,13 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
         Lnz++;
       }
     }
-    work_estimate += 4*(Lnz - L.col_start[k]);
+    work_estimate += 4 * (Lnz - L.col_start[k]);
 
     // Update Cdegree and col_count
-    update_Cdegree_and_col_count(pivot_i, pivot_j, first_in_row, Cdegree, col_count, elements, work_estimate);
-    update_Rdegree_and_row_count(pivot_i, pivot_j, first_in_col, Rdegree, row_count, elements, work_estimate);
+    update_Cdegree_and_col_count(
+      pivot_i, pivot_j, first_in_row, Cdegree, col_count, elements, work_estimate);
+    update_Rdegree_and_row_count(
+      pivot_i, pivot_j, first_in_col, Rdegree, row_count, elements, work_estimate);
 
     // A22 <- A22 - l u^T
     schur_complement(pivot_i,
@@ -795,8 +798,10 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      work_estimate);
 
     // Remove the pivot row
-    remove_pivot_row(pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements, work_estimate);
-    remove_pivot_col(pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements, work_estimate);
+    remove_pivot_row(
+      pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements, work_estimate);
+    remove_pivot_col(
+      pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements, work_estimate);
 
     // Set pivot entry to sentinel value
     pivot_entry->i = -1;
@@ -927,7 +932,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     }
     work_estimate += n;
     inverse_permutation(qinv, q);
-    work_estimate += 2*n;
+    work_estimate += 2 * n;
 
     return pivots;
   }
@@ -940,7 +945,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   for (i_t p = 0; p < Lnz; ++p) {
     L.i[p] = pinv[L.i[p]];
   }
-  work_estimate += 3*Lnz;
+  work_estimate += 3 * Lnz;
 
 #ifdef CHECK_LOWER_TRIANGULAR
   for (i_t j = 0; j < n; ++j) {
@@ -962,16 +967,16 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> row_perm(n);
   work_estimate += n;
   inverse_permutation(pinv, row_perm);
-  work_estimate += 2*n;
+  work_estimate += 2 * n;
 
   std::vector<i_t> identity(n);
   for (i_t k = 0; k < n; k++) {
     identity[k] = k;
   }
-  work_estimate += 2*n;
+  work_estimate += 2 * n;
 
   U_unpermuted.permute_rows_and_cols(identity, q, U);
-  work_estimate += 3*U.n + 5*Unz;
+  work_estimate += 3 * U.n + 5 * Unz;
 
 #ifdef CHECK_UPPER_TRIANGULAR
   for (i_t k = 0; k < n; ++k) {
@@ -1001,7 +1006,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   // We return the inverser row permutation vector pinv and the column permutation vector q
 
   f_t factorization_start_time = tic();
-  f_t work_estimate = 0;
+  f_t work_estimate            = 0;
   const i_t n                  = A.n;
   const i_t m                  = A.m;
   assert(pinv.size() == m);
@@ -1019,7 +1024,8 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     column_list[k] = k;
   }
 
-  const i_t Bnz = initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
+  const i_t Bnz =
+    initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
   std::vector<element_t<i_t, f_t>> elements(Bnz);
   std::vector<i_t> first_in_row(m, kNone);
   std::vector<i_t> first_in_col(n, kNone);
@@ -1117,7 +1123,8 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     // Remove the pivot row
     remove_pivot_row<i_t, f_t>(
       pivot_i, pivot_j, first_in_col, first_in_row, max_in_column, elements, work_estimate);
-    remove_pivot_col<i_t, f_t>(pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements, work_estimate);
+    remove_pivot_col<i_t, f_t>(
+      pivot_i, pivot_j, first_in_col, first_in_row, max_in_row, elements, work_estimate);
 
     // Set pivot entry to sentinel value
     pivot_entry->i = -1;
@@ -1224,16 +1231,15 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int right_looking_lu<int, double>(
-  const csc_matrix_t<int, double>& A,
-  const simplex_solver_settings_t<int, double>& settings,
-  double tol,
-  const std::vector<int>& column_list,
-  std::vector<int>& q,
-  csc_matrix_t<int, double>& L,
-  csc_matrix_t<int, double>& U,
-  std::vector<int>& pinv,
-  double& work_estimate);
+template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
+                                           const simplex_solver_settings_t<int, double>& settings,
+                                           double tol,
+                                           const std::vector<int>& column_list,
+                                           std::vector<int>& q,
+                                           csc_matrix_t<int, double>& L,
+                                           csc_matrix_t<int, double>& U,
+                                           std::vector<int>& pinv,
+                                           double& work_estimate);
 
 template int right_looking_lu_row_permutation_only<int, double>(
   const csc_matrix_t<int, double>& A,

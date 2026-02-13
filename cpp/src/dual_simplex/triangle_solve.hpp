@@ -43,14 +43,16 @@ i_t lower_triangular_solve(const csc_matrix_t<i_t, f_t>& L, std::vector<f_t>& x,
       }
     }
   }
-  work_estimate += 3*n + 3*L.col_start[n];
+  work_estimate += 3 * n + 3 * L.col_start[n];
   return 0;
 }
 
 // Solve L'*x = b. On input x contains the right-hand side b, on output the
 // solution
 template <typename i_t, typename f_t>
-i_t lower_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& L, std::vector<f_t>& x, f_t& work_estimate)
+i_t lower_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& L,
+                                     std::vector<f_t>& x,
+                                     f_t& work_estimate)
 {
   const i_t n = L.n;
   assert(x.size() == n);
@@ -63,7 +65,7 @@ i_t lower_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& L, std::vecto
     }
     x[j] /= L.x[L.col_start[j]];
   }
-  work_estimate += 6*n + 4*L.col_start[n];
+  work_estimate += 6 * n + 4 * L.col_start[n];
   return 0;
 }
 
@@ -83,17 +85,19 @@ i_t upper_triangular_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x,
       for (i_t p = col_start; p < col_end; ++p) {
         x[U.i[p]] -= U.x[p] * x_j;
       }
-      work_estimate += 3*(col_end - col_start) + 3;
+      work_estimate += 3 * (col_end - col_start) + 3;
     }
   }
-  work_estimate += 3*n;
+  work_estimate += 3 * n;
   return 0;
 }
 
 // Solve U'*x = b. On input x contains the right-hand side b, on output the
 // solution
 template <typename i_t, typename f_t>
-i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vector<f_t>& x, f_t& work_estimate)
+i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U,
+                                     std::vector<f_t>& x,
+                                     f_t& work_estimate)
 {
   const i_t n = U.n;
   assert(x.size() == n);
@@ -105,7 +109,7 @@ i_t upper_triangular_transpose_solve(const csc_matrix_t<i_t, f_t>& U, std::vecto
     }
     x[j] /= U.x[col_end];
   }
-  work_estimate += 4*n + 4*U.col_start[n];
+  work_estimate += 4 * n + 4 * U.col_start[n];
   return 0;
 }
 

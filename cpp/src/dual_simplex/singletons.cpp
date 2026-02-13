@@ -67,7 +67,7 @@ i_t order_singletons(std::queue<i_t>& singleton_queue,
         break;
       }
     }
-    work_estimate += 2*(xend - G.Xp[xpivot]);
+    work_estimate += 2 * (xend - G.Xp[xpivot]);
     assert(ypivot != kEmpty);
     assert(G.Ydeg[ypivot] >= 0);
 
@@ -85,7 +85,7 @@ i_t order_singletons(std::queue<i_t>& singleton_queue,
         singleton_queue.push(x);
       }
     }
-    work_estimate += 2*(yend - G.Yp[ypivot]);
+    work_estimate += 2 * (yend - G.Yp[ypivot]);
     // Mark the pivot by flipping the degrees
     G.Xdeg[xpivot] = FLIP(1);
     G.Ydeg[ypivot] = FLIP(G.Ydeg[ypivot]);
@@ -122,11 +122,11 @@ void create_row_representation(const csc_matrix_t<i_t, f_t>& A,
   for (i_t p = 0; p < nz; ++p) {
     workspace[A.i[p]]++;
   }
-  work_estimate += 3*nz;
+  work_estimate += 3 * nz;
 
   // Compute rowstart and overwrite workspace
   cumulative_sum(workspace, row_start);
-  work_estimate += 4*workspace.size();
+  work_estimate += 4 * workspace.size();
 
   for (i_t j = 0; j < n; ++j) {
     const i_t col_start = A.col_start[j];
@@ -136,7 +136,7 @@ void create_row_representation(const csc_matrix_t<i_t, f_t>& A,
       col_index[q] = j;
     }
   }
-  work_estimate += 2*n + 4*nz;
+  work_estimate += 2 * n + 4 * nz;
 }
 
 // Complete the permuation
@@ -183,7 +183,7 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
   std::vector<i_t> Cdeg(n);
   std::vector<i_t> Rp(m + 1);
   std::vector<i_t> Rj(nz);
-  work_estimate += 3*m + n + nz;
+  work_estimate += 3 * m + n + nz;
 
   i_t max_queue_len = std::max(m, n);
   std::queue<i_t> singleton_queue;
@@ -197,7 +197,7 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
       Rdeg[A.i[p]]++;
     }
   }
-  work_estimate += 2*n + 2*nz;
+  work_estimate += 2 * n + 2 * nz;
 
   // Add all columns of degree 1 to the queue
   for (i_t j = n - 1; j >= 0; --j) {
@@ -279,12 +279,12 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
   printf("Col singletons %d\n", col_singletons);
 #endif
   i_t num_empty_cols = complete_permutation(singletons_found, Cdeg, col_perm);
-  work_estimate += 2*Cdeg.size();
+  work_estimate += 2 * Cdeg.size();
 #ifdef SINGLETON_DEBUG
   printf("Completed col perm. %d empty cols. Starting row perm\n", num_empty_cols);
 #endif
   i_t num_empty_rows = complete_permutation(singletons_found, Rdeg, row_perm);
-  work_estimate += 2*Rdeg.size();
+  work_estimate += 2 * Rdeg.size();
 #ifdef SINGLETON_DEBUG
   printf("Empty rows %d Empty columns %d\n", num_empty_rows, num_empty_cols);
 #endif
@@ -296,9 +296,9 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
 template struct row_col_graph_t<int>;
 
 template int order_singletons<int, double>(std::queue<int>& singleton_queue,
-                                   int& singletons_found,
-                                   row_col_graph_t<int>& G,
-                                   double& work_estimate);
+                                           int& singletons_found,
+                                           row_col_graph_t<int>& G,
+                                           double& work_estimate);
 
 // \param [in,out]  workspace - size m
 template void create_row_representation<int, double>(const csc_matrix_t<int, double>& A,
@@ -312,11 +312,11 @@ template int complete_permutation<int>(int singletons,
                                        std::vector<int>& Xperm);
 
 template int find_singletons<int, double>(const csc_matrix_t<int, double>& A,
-                                                            int& row_singletons,
-                                                            std::vector<int>& row_perm,
-                                                            int& col_singleton,
-                                                            std::vector<int>& col_perm,
-                                                            double& work_estimate);
+                                          int& row_singletons,
+                                          std::vector<int>& row_perm,
+                                          int& col_singleton,
+                                          std::vector<int>& col_perm,
+                                          double& work_estimate);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

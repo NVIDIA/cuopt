@@ -295,8 +295,8 @@ primal::status_t primal_phase2(i_t phase,
   std::vector<i_t> q(m);
   std::vector<i_t> deficient;
   std::vector<i_t> slacks_needed;
-  i_t rank =
-    factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed, work_estimate);
+  i_t rank = factorize_basis(
+    lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed, work_estimate);
   if (rank == CONCURRENT_HALT_RETURN) {
     return primal::status_t::CONCURRENT_LIMIT;
   } else if (rank != m) {
@@ -312,7 +312,8 @@ primal::status_t primal_phase2(i_t phase,
                  superbasic_list,
                  vstatus,
                  work_estimate);
-    rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed, work_estimate);
+    rank = factorize_basis(
+      lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed, work_estimate);
     if (rank == CONCURRENT_HALT_RETURN) {
       return primal::status_t::CONCURRENT_LIMIT;
     } else if (rank == -1) {

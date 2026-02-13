@@ -183,14 +183,14 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
     form_b(A, basic_list, B, work_estimate);
     std::vector<i_t> row_perm(m);
     std::vector<i_t> col_perm(m);
-    work_estimate += 2*m;
+    work_estimate += 2 * m;
     i_t row_singletons;
     i_t col_singletons;
     find_singletons(B, row_singletons, row_perm, col_singletons, col_perm, work_estimate);
     std::vector<i_t> row_perm_inv(m);
     work_estimate += m;
     inverse_permutation(row_perm, row_perm_inv);
-    work_estimate += 3*m;
+    work_estimate += 3 * m;
 
 #ifdef PRINT_SINGLETONS
     printf("Singletons row %d col %d num %d\n",
@@ -225,7 +225,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
       const i_t Bnz = B.col_start[m];
       L.reallocate(Bnz);
       U.reallocate(Bnz);
-      work_estimate += 2*Bnz;
+      work_estimate += 2 * Bnz;
       i_t Lnz = 0;
       // Fill in L(:, 0:col_singletons-1) with I
       for (i_t k = 0; k < col_singletons; ++k) {
@@ -235,7 +235,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         Lnz++;
         assert(Lnz <= Bnz);
       }
-      work_estimate += 3*col_singletons;
+      work_estimate += 3 * col_singletons;
 
       i_t Unz = 0;
       // Fill in U(:, 0:col_singletons-1) with U_11
@@ -250,10 +250,10 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
           Unz++;
           assert(Unz <= Bnz);
         }
-        work_estimate += 4*(col_end - col_start);
+        work_estimate += 4 * (col_end - col_start);
       }
       if (col_singletons > 0) { U.col_start[col_singletons] = Unz; }
-      work_estimate += 3*col_singletons;
+      work_estimate += 3 * col_singletons;
 
       // Ensure U(i, i) is at the end of column i for U_11
       for (i_t k = 0; k < col_singletons; ++k) {
@@ -271,7 +271,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         }
         work_estimate += (col_before_end - col_start);
       }
-      work_estimate += 2*col_singletons;
+      work_estimate += 2 * col_singletons;
 
       // Fill in L(:, col_singletons:col_singletons+row_singletons-1) with L_22 and L_32
       //     and U(:, col_singletons:col_singletons+row_singletons-1) with U_12 and I
@@ -296,7 +296,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
             assert(Unz <= Bnz);
           }
         }
-        work_estimate += 5*(col_end - col_start);
+        work_estimate += 5 * (col_end - col_start);
         // add in the identity in U
         U.i[Unz] = k;
         U.x[Unz] = 1.0;
@@ -304,8 +304,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         assert(Unz <= Bnz);
       }
       L.col_start[num_singletons] = Lnz;
-      work_estimate += 7*(num_singletons - col_singletons);
-
+      work_estimate += 7 * (num_singletons - col_singletons);
 
       // Ensure L(i, i) is at the beginning of column i for L_22 and L32
       for (i_t k = col_singletons; k < num_singletons; ++k) {
@@ -328,7 +327,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         work_estimate += (col_end - col_start);
         assert(found_diag);
       }
-      work_estimate += 4*(num_singletons - col_singletons);
+      work_estimate += 4 * (num_singletons - col_singletons);
 
       // Compute how many nonzeros in B we have used so far so we know
       // how many nonzeros are in S
@@ -358,14 +357,14 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
               assert(Snz <= Snz_max);
             }
           }
-          work_estimate += 3*(col_end - col_start);
+          work_estimate += 3 * (col_end - col_start);
         }
         S.col_start[Sdim] = Snz;  // Finalize S
-        work_estimate += 4*(m - num_singletons);
+        work_estimate += 4 * (m - num_singletons);
 
         csc_matrix_t<i_t, f_t> SL(Sdim, Sdim, Snz);
         csc_matrix_t<i_t, f_t> SU(Sdim, Sdim, Snz);
-        work_estimate += 2*Sdim + 2*Snz;
+        work_estimate += 2 * Sdim + 2 * Snz;
 
         // Factorize S
         std::vector<i_t> S_perm_inv(Sdim);
@@ -378,7 +377,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         for (i_t h = 0; h < Sdim; ++h) {
           identity[h] = h;
         }
-        work_estimate += 3*Sdim;
+        work_estimate += 3 * Sdim;
 
         Srank = right_looking_lu(S,
                                  settings,
@@ -400,17 +399,17 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
           for (i_t h = Srank; h < Sdim; ++h) {
             deficient[h - Srank] = col_perm[num_singletons + S_col_perm[h]];
           }
-          work_estimate += 3*(Sdim - Srank);
+          work_estimate += 3 * (Sdim - Srank);
           // Get S_perm
           std::vector<i_t> S_perm(Sdim);
           inverse_permutation(S_perm_inv, S_perm);
-          work_estimate += 4*Sdim;
+          work_estimate += 4 * Sdim;
           // Get the slacks needed
           slacks_needed.resize(Sdim - Srank);
           for (i_t h = Srank; h < Sdim; ++h) {
             slacks_needed[h - Srank] = row_perm[num_singletons + S_perm[h]];
           }
-          work_estimate += 3*(Sdim - Srank);
+          work_estimate += 3 * (Sdim - Srank);
 
           return -1;
         }
@@ -423,17 +422,17 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
           col_perm_sav[q_j] = col_perm[h];
           q_j++;
         }
-        work_estimate += 2*(m - num_singletons);
+        work_estimate += 2 * (m - num_singletons);
         q_j = 0;
         for (i_t h = num_singletons; h < m; ++h) {
           col_perm[h] = col_perm_sav[S_col_perm[q_j]];
           q_j++;
         }
-        work_estimate += 2*(m - num_singletons);
+        work_estimate += 2 * (m - num_singletons);
 
         std::vector<i_t> S_perm(m);
         inverse_permutation(S_perm_inv, S_perm);
-        work_estimate += 4*m;
+        work_estimate += 4 * m;
         actual_factor = toc(actual_factor_start);
 
         // Permute the rows of L_32 according to S_perm_inv
@@ -449,11 +448,14 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
           }
           work_estimate += (col_end - col_start);
         }
-        work_estimate += 3*(num_singletons - col_singletons);
+        work_estimate += 3 * (num_singletons - col_singletons);
 
         const i_t SLnz    = SL.col_start[Sdim];
         const i_t Lnz_max = Lnz + SLnz;
-        if (Lnz_max > Bnz) { L.reallocate(Lnz_max);  work_estimate += Lnz_max;}
+        if (Lnz_max > Bnz) {
+          L.reallocate(Lnz_max);
+          work_estimate += Lnz_max;
+        }
 
         // Fill in L(:, num_singletons:m-1) with L_33
         for (i_t k = num_singletons; k < m; ++k) {
@@ -468,16 +470,19 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
             Lnz++;
             assert(Lnz <= Lnz_max);
           }
-          work_estimate += 4*(col_end - col_start);
+          work_estimate += 4 * (col_end - col_start);
         }
-        work_estimate += 3*(m - num_singletons);
+        work_estimate += 3 * (m - num_singletons);
 
         assert(Lnz == Lnz_max);
         L.col_start[m] = Lnz;  // Finalize L
 
         const i_t SUnz    = SU.col_start[Sdim];
         const i_t Unz_max = Unz + SUnz + (Bnz - Bnz_used);
-        if (Unz_max > Bnz) { U.reallocate(Unz_max);  work_estimate += Unz_max;}
+        if (Unz_max > Bnz) {
+          U.reallocate(Unz_max);
+          work_estimate += Unz_max;
+        }
 
         // Fill in U(:, num_singletons:m-1) with U_13 and U_33
         for (i_t k = num_singletons; k < m; ++k) {
@@ -496,7 +501,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
               assert(Unz <= Unz_max);
             }
           }
-          work_estimate += 3*(B_col_end - B_col_start);
+          work_estimate += 3 * (B_col_end - B_col_start);
 
           // U_33
           const i_t l           = k - num_singletons;
@@ -509,9 +514,9 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
             Unz++;
             assert(Unz <= Unz_max);
           }
-          work_estimate += 4*(U_col_end - U_col_start);
+          work_estimate += 4 * (U_col_end - U_col_start);
         }
-        work_estimate += 5*(m - num_singletons);
+        work_estimate += 5 * (m - num_singletons);
 
         assert(Unz <= Unz_max);
         U.col_start[m] = Unz;  // Finalize U
@@ -520,15 +525,15 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         for (i_t k = 0; k < Sdim; ++k) {
           last_perm[k] = row_perm[num_singletons + k];
         }
-        work_estimate += 3*Sdim;
+        work_estimate += 3 * Sdim;
 
         // Fix up row permutations
         for (i_t k = 0; k < Sdim; ++k) {
           row_perm[num_singletons + k] = last_perm[S_perm[k]];
         }
-        work_estimate += 3*Sdim;
+        work_estimate += 3 * Sdim;
         inverse_permutation(row_perm, row_perm_inv);
-        work_estimate += 3*row_perm.size();
+        work_estimate += 3 * row_perm.size();
       } else {
         L.col_start[m] = Lnz;  // Finalize L
         U.col_start[m] = Unz;  // Finalize U
@@ -613,9 +618,9 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   q.resize(m);
   work_estimate += m;
   f_t fact_start = tic();
-  rank           = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv, work_estimate);
+  rank = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv, work_estimate);
   inverse_permutation(pinv, p);
-  work_estimate += 3*pinv.size();
+  work_estimate += 3 * pinv.size();
 
   if (rank != m) {
     // Get the rank deficient columns
@@ -624,13 +629,13 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
     for (i_t h = rank; h < m; ++h) {
       deficient[h - rank] = q[h];
     }
-    work_estimate += 3*(m - rank);
+    work_estimate += 3 * (m - rank);
     // Get the slacks needed
     slacks_needed.resize(m - rank);
     for (i_t h = rank; h < m; ++h) {
       slacks_needed[h - rank] = p[h];
     }
-    work_estimate += 3*(m - rank);
+    work_estimate += 3 * (m - rank);
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     settings.log.printf("Concurrent halt\n");
@@ -694,7 +699,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
       slacks_found++;
     }
   }
-  work_estimate += 3*m + 2*slacks_found;
+  work_estimate += 3 * m + 2 * slacks_found;
 
   assert(slacks_found == m);
 
@@ -706,7 +711,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
   for (i_t k = 0; k < num_nonbasic; ++k) {
     nonbasic_map[nonbasic_list[k]] = k;
   }
-  work_estimate += 2*num_nonbasic;
+  work_estimate += 2 * num_nonbasic;
 
   // Create a superbasic_map
   std::vector<i_t> superbasic_map(
@@ -716,7 +721,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
   for (i_t k = 0; k < num_superbasic; ++k) {
     superbasic_map[superbasic_list[k]] = k;
   }
-  work_estimate += 2*num_superbasic;
+  work_estimate += 2 * num_superbasic;
 
   const i_t columns_to_replace = deficient.size();
   for (i_t k = 0; k < columns_to_replace; ++k) {
@@ -744,7 +749,7 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
     }
     vstatus[replace_j] = variable_status_t::BASIC;
   }
-  work_estimate += 11*columns_to_replace;
+  work_estimate += 11 * columns_to_replace;
 
   return 0;
 }
@@ -763,9 +768,9 @@ i_t form_b(const csc_matrix_t<i_t, f_t>& A,
     const i_t col_end   = A.col_start[j + 1];
     Bnz += (col_end - col_start);
   }
-  work_estimate += 3*m;
+  work_estimate += 3 * m;
   B.reallocate(Bnz);
-  work_estimate += 2*Bnz;
+  work_estimate += 2 * Bnz;
   const i_t Bnz_check = Bnz;
   Bnz                 = 0;
   for (i_t k = 0; k < m; ++k) {
@@ -779,8 +784,8 @@ i_t form_b(const csc_matrix_t<i_t, f_t>& A,
       Bnz++;
     }
   }
-  work_estimate += 4*m;
-  work_estimate += 4*Bnz;
+  work_estimate += 4 * m;
+  work_estimate += 4 * Bnz;
   B.col_start[m] = Bnz;
   assert(Bnz_check == Bnz);
   return 0;

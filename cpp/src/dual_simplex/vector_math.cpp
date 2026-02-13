@@ -141,7 +141,9 @@ i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::ve
 // Computes x = P'*b or x(p) = b in MATLAB.
 // Work is 3 * n
 template <typename i_t, typename f_t>
-i_t inverse_permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x)
+i_t inverse_permute_vector(const std::vector<i_t>& p,
+                           const std::vector<f_t>& b,
+                           std::vector<f_t>& x)
 {
   auto n = p.size();
   assert(x.size() == n);
@@ -164,7 +166,6 @@ i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
   }
   return 0;
 }
-
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
