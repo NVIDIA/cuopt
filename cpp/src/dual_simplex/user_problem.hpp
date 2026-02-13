@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -47,6 +47,7 @@ struct user_problem_t {
   std::vector<std::string> col_names;
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
+  bool objective_is_integral{false};
   std::vector<variable_type_t> var_types;
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;

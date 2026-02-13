@@ -39,15 +39,14 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t, typename ArrayType>
-HDI thrust::tuple<f_t, f_t> get_mtm_for_bound(
-  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-  i_t var_idx,
-  i_t cstr_idx,
-  f_t cstr_coeff,
-  f_t bound,
-  f_t sign,
-  const ArrayType& assignment,
-  const ArrayType& lhs_vector)
+thrust::tuple<f_t, f_t> get_mtm_for_bound(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                                          i_t var_idx,
+                                          i_t cstr_idx,
+                                          f_t cstr_coeff,
+                                          f_t bound,
+                                          f_t sign,
+                                          const ArrayType& assignment,
+                                          const ArrayType& lhs_vector)
 {
   f_t delta_ij = 0;
   f_t slack    = 0;
@@ -63,7 +62,7 @@ HDI thrust::tuple<f_t, f_t> get_mtm_for_bound(
 }
 
 template <typename i_t, typename f_t, MTMMoveType move_type, typename ArrayType>
-HDI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
+thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
   const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
   i_t var_idx,
   i_t cstr_idx,
@@ -109,17 +108,16 @@ HDI thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
 }
 
 template <typename i_t, typename f_t>
-HDI std::pair<f_t, f_t> feas_score_constraint(
-  const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-  i_t var_idx,
-  f_t delta,
-  i_t cstr_idx,
-  f_t cstr_coeff,
-  f_t c_lb,
-  f_t c_ub,
-  f_t current_lhs,
-  f_t left_weight,
-  f_t right_weight)
+std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
+                                          i_t var_idx,
+                                          f_t delta,
+                                          i_t cstr_idx,
+                                          f_t cstr_coeff,
+                                          f_t c_lb,
+                                          f_t c_ub,
+                                          f_t current_lhs,
+                                          f_t left_weight,
+                                          f_t right_weight)
 {
   cuopt_assert(isfinite(delta), "invalid delta");
   cuopt_assert(cstr_coeff != 0 && isfinite(cstr_coeff), "invalid coefficient");

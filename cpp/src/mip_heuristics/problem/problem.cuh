@@ -88,6 +88,7 @@ class problem_t {
   void insert_variables(variables_delta_t<i_t, f_t>& h_vars);
   void insert_constraints(constraints_delta_t<i_t, f_t>& h_constraints);
   void set_implied_integers(const std::vector<i_t>& implied_integer_indices);
+  void recompute_objective_integrality();
   void resize_variables(size_t size);
   void resize_constraints(size_t matrix_size, size_t constraint_size, size_t var_size);
   void preprocess_problem();

@@ -569,15 +569,16 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   // Copy info from user_problem to problem
-  problem.num_rows     = user_problem.num_rows;
-  problem.num_cols     = user_problem.num_cols;
-  problem.A            = user_problem.A;
-  problem.objective    = user_problem.objective;
-  problem.obj_scale    = user_problem.obj_scale;
-  problem.obj_constant = user_problem.obj_constant;
-  problem.rhs          = user_problem.rhs;
-  problem.lower        = user_problem.lower;
-  problem.upper        = user_problem.upper;
+  problem.num_rows              = user_problem.num_rows;
+  problem.num_cols              = user_problem.num_cols;
+  problem.A                     = user_problem.A;
+  problem.objective             = user_problem.objective;
+  problem.obj_scale             = user_problem.obj_scale;
+  problem.obj_constant          = user_problem.obj_constant;
+  problem.objective_is_integral = user_problem.objective_is_integral;
+  problem.rhs                   = user_problem.rhs;
+  problem.lower                 = user_problem.lower;
+  problem.upper                 = user_problem.upper;
 
   // Make a copy of row_sense so we can modify it
   std::vector<char> row_sense = user_problem.row_sense;
