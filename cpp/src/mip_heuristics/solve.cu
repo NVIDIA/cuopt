@@ -32,9 +32,9 @@
 
 #include <mps_parser/mps_data_model.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/core/handle.hpp>
 
 #include <cuda_profiler_api.h>

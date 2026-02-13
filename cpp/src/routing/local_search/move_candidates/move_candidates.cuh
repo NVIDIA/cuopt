@@ -22,7 +22,7 @@
 #include "scross_move_candidates.cuh"
 #include "vrp_move_candidates.cuh"
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
 
 #include <rmm/device_scalar.hpp>

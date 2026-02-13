@@ -12,7 +12,7 @@
 #include "../diversity/helpers.hpp"
 #include "ab_cycle.hpp"
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <climits>
 #include <cmath>

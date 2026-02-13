@@ -16,7 +16,7 @@
 
 #include <cuopt/error.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/sparse/linalg/transpose.cuh>
 

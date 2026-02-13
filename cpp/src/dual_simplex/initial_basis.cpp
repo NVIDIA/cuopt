@@ -11,7 +11,7 @@
 #include <dual_simplex/singletons.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>

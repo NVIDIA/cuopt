@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <utilities/logger.hpp>
 #include "solution_writer.hpp"
 
