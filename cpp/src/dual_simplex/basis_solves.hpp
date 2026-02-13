@@ -36,7 +36,8 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                     std::vector<i_t>& pinv,
                     std::vector<i_t>& q,
                     std::vector<i_t>& deficient,
-                    std::vector<i_t>& slacks_need);
+                    std::vector<i_t>& slacks_need,
+                    f_t& work_estimate);
 
 // Repair the basis by bringing in slacks
 template <typename i_t, typename f_t>
@@ -49,13 +50,15 @@ i_t basis_repair(const csc_matrix_t<i_t, f_t>& A,
                  std::vector<i_t>& basis_list,
                  std::vector<i_t>& nonbasic_list,
                  std::vector<i_t>& superbasic_list,
-                 std::vector<variable_status_t>& vstatus);
+                 std::vector<variable_status_t>& vstatus,
+                 f_t& work_estimate);
 
 // Form the basis matrix B = A(:, basic_list)
 template <typename i_t, typename f_t>
 i_t form_b(const csc_matrix_t<i_t, f_t>& A,
            const std::vector<i_t>& basic_list,
-           csc_matrix_t<i_t, f_t>& B);
+           csc_matrix_t<i_t, f_t>& B,
+           f_t& work_estimate);
 
 // y = B*x = sum_{j in basis} A(:, j) * x(k)
 template <typename i_t, typename f_t>
