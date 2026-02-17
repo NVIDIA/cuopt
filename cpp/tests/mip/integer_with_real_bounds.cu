@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -18,9 +18,9 @@ TEST(mip_solve, integer_with_real_bounds_test)
 {
   auto time_limit      = 1;
   auto heuristics_only = true;
-  auto presolve        = false;
+  auto presolver       = cuopt::linear_programming::presolver_t::None;
   auto [termination_status, obj_val, lb] =
-    test_mps_file("mip/integer-with-real-bounds.mps", time_limit, heuristics_only, presolve);
+    test_mps_file("mip/integer-with-real-bounds.mps", time_limit, heuristics_only, presolver);
   EXPECT_EQ(termination_status, mip_termination_status_t::Optimal);
   EXPECT_NEAR(obj_val, 4, 1e-5);
 }

@@ -25,6 +25,8 @@ cuOpt Routing Python API Reference
 
 .. autofunction:: cuopt.routing.Solve
 
+.. autofunction:: cuopt.routing.BatchSolve
+
 .. autoclass:: cuopt.routing.Assignment
    :members:
    :undoc-members:

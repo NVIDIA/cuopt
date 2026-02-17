@@ -58,9 +58,6 @@ There are two ways to specify constraints to the LP solver:
 Quadratic Programming
 ---------------------
 
-.. note::
-   The QP solver is currently in beta.
-
 cuOpt supports problems with quadratic objectives of the form:
 
 .. code-block:: text
@@ -120,8 +117,8 @@ Crossover allows you to obtain a high-quality basic solution from the results of
 Presolve
 --------
 
-Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. It is enabled by default for MIP problems, and disabled by default for LP problems.
-Furthermore, for LP problems, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
+Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, and Papilo for mixed-integer programming (MIP) problems. For MIP problems, Papilo presolve is always enabled by default. For LP problems, PSLP presolve is always enabled by default. Users can manually select to disable presolve by setting this parameter to 0, enable Papilo presolve by setting this parameter to 1, or enable PSLP presolve by setting this parameter to 2.
+Furthermore, for LP problems with Papilo presolver, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
 
 
 Logging

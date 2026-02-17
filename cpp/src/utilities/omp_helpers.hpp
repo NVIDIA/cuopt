@@ -10,7 +10,8 @@
 #ifdef _OPENMP
 
 #include <omp.h>
-#include <type_traits>
+#include <memory>
+#include <utility>
 
 namespace cuopt {
 
@@ -18,14 +19,39 @@ namespace cuopt {
 // https://www.openmp.org/spec-html/5.1/openmpse39.html#x224-2570003.9
 class omp_mutex_t {
  public:
-  omp_mutex_t() { omp_init_lock(&mutex); }
-  virtual ~omp_mutex_t() { omp_destroy_lock(&mutex); }
-  void lock() { omp_set_lock(&mutex); }
-  void unlock() { omp_unset_lock(&mutex); }
-  bool try_lock() { return omp_test_lock(&mutex); }
+  omp_mutex_t() : mutex(new omp_lock_t) { omp_init_lock(mutex.get()); }
+
+  omp_mutex_t(const omp_mutex_t&) = delete;
+
+  omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
+
+  omp_mutex_t& operator=(const omp_mutex_t&) = delete;
+
+  omp_mutex_t& operator=(omp_mutex_t&& other)
+  {
+    if (&other != this) {
+      if (mutex) { omp_destroy_lock(mutex.get()); }
+      mutex = std::move(other.mutex);
+    }
+    return *this;
+  }
+
+  virtual ~omp_mutex_t()
+  {
+    if (mutex) {
+      omp_destroy_lock(mutex.get());
+      mutex.reset();
+    }
+  }
+
+  void lock() { omp_set_lock(mutex.get()); }
+
+  void unlock() { omp_unset_lock(mutex.get()); }
+
+  bool try_lock() { return omp_test_lock(mutex.get()); }
 
  private:
-  omp_lock_t mutex;
+  std::unique_ptr<omp_lock_t> mutex;
 };
 
 // Wrapper for omp atomic operations. See
@@ -42,7 +68,7 @@ class omp_atomic_t {
     return new_val;
   }
 
-  operator T() { return load(); }
+  operator T() const { return load(); }
   T operator+=(T inc) { return fetch_add(inc) + inc; }
   T operator-=(T inc) { return fetch_sub(inc) - inc; }
 

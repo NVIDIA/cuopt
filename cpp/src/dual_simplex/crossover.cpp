@@ -15,6 +15,8 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <raft/common/nvtx.hpp>
+
 #include <array>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -83,6 +85,7 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        const std::vector<variable_status_t>& vstatus,
                        const std::vector<f_t>& z)
 {
+  raft::common::nvtx::range scope("DualSimplex::dual_infeasibility");
   const i_t n             = lp.num_cols;
   const i_t m             = lp.num_rows;
   i_t num_infeasible      = 0;
@@ -1135,6 +1138,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                              lp_solution_t<i_t, f_t>& solution,
                              std::vector<variable_status_t>& vstatus)
 {
+  raft::common::nvtx::range scope("Barrier::crossover");
   const i_t m         = lp.num_rows;
   const i_t n         = lp.num_cols;
   f_t crossover_start = tic();

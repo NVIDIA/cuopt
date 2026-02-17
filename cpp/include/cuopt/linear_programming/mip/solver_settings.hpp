@@ -84,8 +84,10 @@ class mip_solver_settings_t {
   tolerances_t tolerances;
 
   f_t time_limit                = std::numeric_limits<f_t>::infinity();
+  f_t work_limit                = std::numeric_limits<f_t>::infinity();
   i_t node_limit                = std::numeric_limits<i_t>::max();
   bool heuristics_only          = false;
+  i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
   i_t max_cut_passes            = 10;  // number of cut passes to make
   i_t mir_cuts                  = -1;
@@ -106,7 +108,24 @@ class mip_solver_settings_t {
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   bool mip_scaling = false;
-  bool presolve    = true;
+  presolver_t presolver{presolver_t::Default};
+  /**
+   * @brief Determinism mode for MIP solver.
+   *
+   * Controls the determinism behavior of the MIP solver:
+   * - CUOPT_MODE_OPPORTUNISTIC (0): Default mode, allows non-deterministic
+   *   parallelism for better performance
+   * - CUOPT_MODE_DETERMINISTIC (1): Ensures deterministic results across runs
+   *   at potential cost of performance
+   */
+  int determinism_mode = CUOPT_MODE_OPPORTUNISTIC;
+  /**
+   * @brief Random seed for the MIP solver.
+   *
+   * Controls the initial seed for random number generation in the solver.
+   * Use -1 to generate a random seed.
+   */
+  i_t seed = -1;
   // this is for extracting info from different places of the solver during
   // benchmarks
   benchmark_info_t* benchmark_info_ptr = nullptr;

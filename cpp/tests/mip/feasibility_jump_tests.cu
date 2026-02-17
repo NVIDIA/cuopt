@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,11 +11,11 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include <linear_programming/utilities/problem_checking.cuh>
-#include <mip/feasibility_jump/feasibility_jump.cuh>
-#include <mip/solution/solution.cuh>
-#include <mip/solver_context.cuh>
+#include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/solution/solution.cuh>
+#include <mip_heuristics/solver_context.cuh>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
