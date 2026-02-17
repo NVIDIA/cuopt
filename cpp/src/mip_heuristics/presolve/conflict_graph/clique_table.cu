@@ -790,6 +790,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           cuopt::timer_t& timer)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
+#ifdef DEBUG_CLIQUE_TABLE
   double t_fill   = 0.;
   double t_coeff  = 0.;
   double t_sort   = 0.;
@@ -798,17 +799,24 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double t_maps   = 0.;
   double t_extend = 0.;
   double t_remove = 0.;
+#endif
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
   std::unordered_set<i_t> set_packing_constraints;
   dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
+#ifdef DEBUG_CLIQUE_TABLE
   t_fill = stage_timer.elapsed_time();
+#endif
   make_coeff_positive_knapsack_constraint(
     problem, knapsack_constraints, set_packing_constraints, tolerances);
+#ifdef DEBUG_CLIQUE_TABLE
   t_coeff = stage_timer.elapsed_time();
+#endif
   sort_csr_by_constraint_coefficients(knapsack_constraints);
+#ifdef DEBUG_CLIQUE_TABLE
   t_sort = stage_timer.elapsed_time();
+#endif
   // print_knapsack_constraints(knapsack_constraints);
   // TODO think about getting min_clique_size according to some problem property
   clique_config_t clique_config;
@@ -821,19 +829,27 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     find_cliques_from_constraint(knapsack_constraint, clique_table);
   }
   if (timer.check_time_limit()) { return; }
+#ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();
+#endif
   CUOPT_LOG_DEBUG("Number of cliques: %d, additional cliques: %d",
                   clique_table.first.size(),
                   clique_table.addtl_cliques.size());
   // print_clique_table(clique_table);
   // remove small cliques and add them to adj_list
   remove_small_cliques(clique_table);
+#ifdef DEBUG_CLIQUE_TABLE
   t_small = stage_timer.elapsed_time();
+#endif
   // fill var clique maps
   fill_var_clique_maps(clique_table);
-  t_maps                 = stage_timer.elapsed_time();
+#ifdef DEBUG_CLIQUE_TABLE
+  t_maps = stage_timer.elapsed_time();
+#endif
   i_t n_extended_cliques = extend_cliques(knapsack_constraints, clique_table, problem, A, timer);
-  t_extend               = stage_timer.elapsed_time();
+#ifdef DEBUG_CLIQUE_TABLE
+  t_extend = stage_timer.elapsed_time();
+#endif
   remove_dominated_cliques(problem,
                            A,
                            clique_table,
@@ -841,6 +857,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                            knapsack_constraints,
                            n_extended_cliques,
                            timer);
+#ifdef DEBUG_CLIQUE_TABLE
   t_remove = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(
     "Clique table timing (s): fill=%.6f coeff=%.6f sort=%.6f find=%.6f small=%.6f maps=%.6f "
@@ -854,6 +871,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     t_extend - t_maps,
     t_remove - t_extend,
     t_remove);
+#endif
 }
 
 #define INSTANTIATE(F_TYPE)                                               \
