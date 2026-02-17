@@ -194,7 +194,7 @@ class CuOptServiceWebHostedClient(CuOptServiceSelfHostClient):
             HTTP response object
         """
         # Add authentication headers
-        headers = kwargs.get("headers", {})
+        headers = kwargs.get("headers", {}).copy()
         headers.update(self._get_auth_headers())
         kwargs["headers"] = headers
 
