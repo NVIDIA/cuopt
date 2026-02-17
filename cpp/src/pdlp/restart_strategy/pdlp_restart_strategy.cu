@@ -34,6 +34,7 @@
 #include <thrust/for_each.h>
 #include <thrust/functional.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/reverse_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
@@ -1990,18 +1991,18 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                                    threshold_.end(),
                                    std::numeric_limits<f_t>::infinity());
     // Easier / Cleaner than to do reverse iterator arithmetic
-    f_t* start = threshold_.data();
-    f_t* end   = threshold_.data() + primal_size_h_ + dual_size_h_;
-    auto highest_negInf_primal =
-      thrust::find(handle_ptr_->get_thrust_policy(),
-                   thrust::device_ptr<f_t>(end),
-                   thrust::device_ptr<f_t>(start),
-                   -std::numeric_limits<f_t>::infinity());
+    f_t* start                 = threshold_.data();
+    f_t* end                   = threshold_.data() + primal_size_h_ + dual_size_h_;
+    using rev_iter_t           = thrust::reverse_iterator<thrust::device_ptr<f_t>>;
+    auto highest_negInf_primal = thrust::find(handle_ptr_->get_thrust_policy(),
+                                              rev_iter_t(thrust::device_ptr<f_t>(end)),
+                                              rev_iter_t(thrust::device_ptr<f_t>(start)),
+                                              -std::numeric_limits<f_t>::infinity());
 
     // Set ranges accordingly
     i_t index_start_primal = 0;
     i_t index_end_primal   = primal_size_h_ + dual_size_h_;
-    if (highest_negInf_primal != thrust::device_ptr<f_t>(start)) {
+    if (highest_negInf_primal != rev_iter_t(thrust::device_ptr<f_t>(start))) {
       cuopt_assert(device_to_host_value(thrust::raw_pointer_cast(&*highest_negInf_primal)) ==
                      -std::numeric_limits<f_t>::infinity(),
                    "Incorrect primal reverse iterator");
