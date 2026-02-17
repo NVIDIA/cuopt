@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
@@ -16,6 +17,8 @@
 #include <pdlp/solve.cuh>
 
 #include <utilities/scope_guard.hpp>
+
+#include <memory>
 
 constexpr bool fj_only_run = false;
 
@@ -204,6 +207,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   const bool remap_cache_ids = true;
   trivial_presolve(*problem_ptr, remap_cache_ids);
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
+  if (!context.settings.heuristics_only && !problem_ptr->empty) {
+    dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+    problem_ptr->get_host_user_problem(host_problem);
+    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+    find_initial_cliques(host_problem, context.settings.tolerances, presolve_timer);
+    problem_ptr->set_constraints_from_host_user_problem(host_problem);
+    trivial_presolve(*problem_ptr, remap_cache_ids);
+  }
   // May overconstrain if Papilo presolve has been run before
   if (context.settings.presolver == presolver_t::None) {
     if (!problem_ptr->empty) {

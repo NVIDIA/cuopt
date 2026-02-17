@@ -22,8 +22,8 @@
 #include <algorithm>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <limits>
-#include <mip/mip_constants.hpp>
-#include <mip/utils.cuh>
+#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/utils.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
@@ -854,7 +854,6 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     t_extend - t_maps,
     t_remove - t_extend,
     t_remove);
-  // exit(0);
 }
 
 #define INSTANTIATE(F_TYPE)                                               \
