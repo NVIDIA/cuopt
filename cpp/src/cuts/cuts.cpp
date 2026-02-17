@@ -34,9 +34,23 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
                                            f_t bound_tol,
                                            f_t min_violation,
                                            sparse_vector_t<i_t, f_t>& cut,
-                                           f_t& cut_rhs)
+                                           f_t& cut_rhs,
+                                           f_t* work_estimate,
+                                           f_t max_work_estimate)
 {
+  auto add_work = [&](f_t accesses) -> bool {
+    if (work_estimate == nullptr) { return false; }
+    *work_estimate += accesses;
+    return *work_estimate > max_work_estimate;
+  };
+
   if (clique_vertices.size() < 2) { return clique_cut_build_status_t::NO_CUT; }
+  const f_t clique_size = static_cast<f_t>(clique_vertices.size());
+  // Coarse function-level estimate:
+  // validate/transform vertices + duplicate checks + cut construction + sort + violation check
+  if (add_work(16.0 * clique_size + 4.0 * clique_size * std::log2(clique_size + 1.0))) {
+    return clique_cut_build_status_t::NO_CUT;
+  }
 
   cuopt_assert(num_vars > 0, "Clique cut num_vars must be positive");
   cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
@@ -100,8 +114,29 @@ struct bk_bitset_context_t {
   f_t start_time;
   f_t time_limit;
   size_t words;
+  f_t* work_estimate;
+  f_t max_work_estimate;
   i_t num_calls{0};
+  bool work_limit_reached{false};
   std::vector<std::vector<i_t>> cliques;
+
+  bool add_work(f_t accesses)
+  {
+    if (work_estimate == nullptr) { return false; }
+    *work_estimate += accesses;
+    if (*work_estimate > max_work_estimate) {
+      work_limit_reached = true;
+      return true;
+    }
+    return false;
+  }
+
+  bool over_work_limit() const
+  {
+    if (work_limit_reached) { return true; }
+    if (work_estimate == nullptr) { return false; }
+    return *work_estimate > max_work_estimate;
+  }
 };
 
 inline size_t bitset_words(size_t n) { return (n + 63) / 64; }
@@ -147,15 +182,21 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
                    std::vector<uint64_t>& X,  // already in the clique
                    f_t weight_R)
 {
+  if (ctx.over_work_limit()) { return; }
   if (toc(ctx.start_time) >= ctx.time_limit) { return; }
   ctx.num_calls++;
   // stop the recursion, for perf reasons
   if (ctx.num_calls > ctx.max_calls) { return; }
+  // Coarse recursive cost: touch call state + frontiers + weight bookkeeping
+  if (ctx.add_work(static_cast<f_t>(6 * ctx.words + R.size() + 4))) { return; }
 
   // if P and X are empty, we are at maximal clique
   if (!bitset_any(P) && !bitset_any(X)) {
     // if the weight is enough, add and exit
-    if (weight_R >= ctx.min_weight) { ctx.cliques.push_back(R); }
+    if (weight_R >= ctx.min_weight) {
+      if (ctx.add_work(static_cast<f_t>(R.size()))) { return; }
+      ctx.cliques.push_back(R);
+    }
     return;
   }
 
@@ -163,8 +204,9 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   // check if all P is added to clique, would we exceed the weight?
   if (weight_R + sumP < ctx.min_weight) { return; }
 
-  i_t pivot   = -1;
-  i_t max_deg = -1;
+  i_t pivot                   = -1;
+  i_t max_deg                 = -1;
+  i_t pivot_vertices_examined = 0;
   // pivoting rule according to the highest degree vertex
   // TODO try other pivoting strategies, we can also implement some online learning like MAB
   for (size_t w = 0; w < ctx.words; ++w) {
@@ -173,6 +215,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     uint64_t word = P[w] | X[w];
     while (word) {
       if (toc(ctx.start_time) >= ctx.time_limit) { return; }
+      pivot_vertices_examined++;
       // least significant set bit idnex
       const int bit = __builtin_ctzll(word);
       // overall vertex index
@@ -194,6 +237,11 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       }
     }
   }
+  // Coarse cost of pivot scan: for each visited vertex, scan one adjacency row over all words.
+  if (ctx.add_work(static_cast<f_t>(pivot_vertices_examined) *
+                   static_cast<f_t>(2 * ctx.words + 4))) {
+    return;
+  }
 
   std::vector<i_t> candidates;
   candidates.reserve(ctx.weights.size());
@@ -210,6 +258,13 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       candidates.push_back(v);
     }
   }
+  const i_t num_candidates = static_cast<i_t>(candidates.size());
+  // Coarse cost of candidate extraction from P \ N(pivot)
+  if (ctx.add_work(static_cast<f_t>(ctx.words + 3 * num_candidates))) { return; }
+  // Coarse cost for all branch setups in this recursion frame.
+  if (ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(4 * ctx.words + 8))) {
+    return;
+  }
 
   // note that candidates will include pivot if it is in P
   for (auto v : candidates) {
@@ -222,6 +277,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       X_next[k] = X[k] & ctx.adj[v][k];
     }
     bron_kerbosch(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
+    if (ctx.over_work_limit()) { return; }
     R.pop_back();
     bitset_clear(P, static_cast<size_t>(v));
     bitset_set(X, static_cast<size_t>(v));
@@ -236,10 +292,19 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                             i_t num_vars,
                             f_t integer_tol,
                             f_t start_time,
-                            f_t time_limit)
+                            f_t time_limit,
+                            f_t* work_estimate,
+                            f_t max_work_estimate)
 {
+  auto add_work = [&](f_t accesses) -> bool {
+    if (work_estimate == nullptr) { return false; }
+    *work_estimate += accesses;
+    return *work_estimate > max_work_estimate;
+  };
+
   if (toc(start_time) >= time_limit) { return; }
   if (clique_vertices.empty()) { return; }
+  const f_t initial_clique_size = static_cast<f_t>(clique_vertices.size());
 
   i_t smallest_degree     = std::numeric_limits<i_t>::max();
   i_t smallest_degree_var = -1;
@@ -264,6 +329,15 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
     f_t value   = candidate >= num_vars ? (1.0 - xstar[var_idx]) : xstar[var_idx];
     if (std::abs(value - std::round(value)) <= integer_tol) { candidates.push_back(candidate); }
   }
+  const f_t candidate_size = static_cast<f_t>(candidates.size());
+  const f_t sort_work =
+    candidate_size > 0.0 ? 6.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
+  // Coarse function-level estimate:
+  // degree scan + candidate filtering + sort + extension checks
+  const f_t estimated_extension_work =
+    2.0 * initial_clique_size + 4.0 * static_cast<f_t>(adj_set.size()) + sort_work +
+    2.0 * candidate_size * initial_clique_size + 2.0 * candidate_size;
+  if (add_work(estimated_extension_work)) { return; }
 
   // sort the candidates by reduced cost.
   // smaller reduce cost disturbs dual simplex less
@@ -988,7 +1062,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   const f_t bound_tol     = settings.primal_tol;
   const f_t min_weight    = 1.0 + min_violation;
   // TODO this can be problem dependent
-  const i_t max_calls = 100000;
+  const i_t max_calls         = 100000;
+  f_t work_estimate           = 0.0;
+  const f_t max_work_estimate = 2e9;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
@@ -1012,6 +1088,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     vertices.push_back(j + num_vars);
     weights.push_back(1.0 - xj);
   }
+  // Coarse loop estimate: variable scans + selected vertex/weight writes
+  work_estimate += 4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
 
   if (vertices.empty()) { return true; }
 
@@ -1022,13 +1101,18 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     vertex_to_local[vertices[idx]] = static_cast<i_t>(idx);
     in_subgraph[vertices[idx]]     = 1;
   }
+  work_estimate += 3.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
 
   std::vector<std::vector<i_t>> adj_local(vertices.size());
+  size_t total_adj_entries = 0;
+  size_t kept_adj_entries  = 0;
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     i_t vertex_idx = vertices[idx];
     auto adj_set   = clique_table_->get_adj_set_of_var(vertex_idx);
-    auto& adj      = adj_local[idx];
+    total_adj_entries += adj_set.size();
+    auto& adj = adj_local[idx];
     adj.reserve(adj_set.size() + 1);
     for (const auto neighbor : adj_set) {
       if (toc(start_time) >= settings.time_limit) { return true; }
@@ -1038,6 +1122,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       cuopt_assert(local_neighbor >= 0, "Local neighbor out of range");
       adj.push_back(local_neighbor);
     }
+    kept_adj_entries += adj.size();
 #ifdef ASSERT_MODE
     {
       std::unordered_set<i_t> adj_check;
@@ -1048,11 +1133,16 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     }
 #endif
   }
+  work_estimate += static_cast<f_t>(vertices.size()) + static_cast<f_t>(total_adj_entries) +
+                   2.0 * static_cast<f_t>(kept_adj_entries);
+  if (work_estimate > max_work_estimate) { return true; }
 
   const size_t words = bitset_words(vertices.size());
   std::vector<std::vector<uint64_t>> adj_bitset(vertices.size(), std::vector<uint64_t>(words, 0));
+  size_t local_adj_entries = 0;
   for (size_t v = 0; v < adj_local.size(); ++v) {
     if (toc(start_time) >= settings.time_limit) { return true; }
+    local_adj_entries += adj_local[v].size();
     for (const auto neighbor : adj_local[v]) {
       if (toc(start_time) >= settings.time_limit) { return true; }
       if (neighbor >= 0 && static_cast<size_t>(neighbor) < vertices.size()) {
@@ -1060,17 +1150,30 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       }
     }
   }
+  work_estimate += static_cast<f_t>(adj_local.size()) + 3.0 * static_cast<f_t>(local_adj_entries);
+  if (work_estimate > max_work_estimate) { return true; }
 
-  bk_bitset_context_t<i_t, f_t> ctx{
-    adj_bitset, weights, min_weight, max_calls, start_time, settings.time_limit, words};
+  bk_bitset_context_t<i_t, f_t> ctx{adj_bitset,
+                                    weights,
+                                    min_weight,
+                                    max_calls,
+                                    start_time,
+                                    settings.time_limit,
+                                    words,
+                                    &work_estimate,
+                                    max_work_estimate};
   std::vector<i_t> R;
   std::vector<uint64_t> P(words, 0);
   std::vector<uint64_t> X(words, 0);
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     bitset_set(P, idx);
   }
+  work_estimate += 2.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
   bron_kerbosch<i_t, f_t>(ctx, R, P, X, 0.0);
+  if (ctx.over_work_limit()) { return true; }
   if (toc(start_time) >= settings.time_limit) { return true; }
+  if (work_estimate > max_work_estimate) { return true; }
 
   sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
   f_t cut_rhs = 0.0;
@@ -1081,6 +1184,8 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     for (auto local_idx : clique_local) {
       clique_vertices.push_back(vertices[local_idx]);
     }
+    work_estimate += 3.0 * static_cast<f_t>(clique_local.size()) + 1.0;
+    if (work_estimate > max_work_estimate) { return true; }
     extend_clique_vertices<i_t, f_t>(clique_vertices,
                                      *clique_table_,
                                      xstar,
@@ -1088,7 +1193,10 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                                      num_vars,
                                      settings.integer_tol,
                                      start_time,
-                                     settings.time_limit);
+                                     settings.time_limit,
+                                     &work_estimate,
+                                     max_work_estimate);
+    if (work_estimate > max_work_estimate) { return true; }
     if (toc(start_time) >= settings.time_limit) { return true; }
     const auto build_status = build_clique_cut<i_t, f_t>(clique_vertices,
                                                          num_vars,
@@ -1099,7 +1207,10 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                                                          bound_tol,
                                                          min_violation,
                                                          cut,
-                                                         cut_rhs);
+                                                         cut_rhs,
+                                                         &work_estimate,
+                                                         max_work_estimate);
+    if (work_estimate > max_work_estimate) { return true; }
     if (build_status == clique_cut_build_status_t::INFEASIBLE) {
       settings.log.debug("Detected contradictory variable/complement clique\n");
       return false;
