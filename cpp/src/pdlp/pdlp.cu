@@ -34,8 +34,10 @@
 #include <cub/cub.cuh>
 
 #include <thrust/count.h>
+#include <thrust/logical.h>
 #include <thrust/extrema.h>
 
+#include <cmath>
 #include <optional>
 #include <unordered_set>
 
@@ -1406,9 +1408,26 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
                                  const f_t interaction,
                                  f_t* fixed_point_error)
 {
+  cuopt_assert(!isnan(norm_squared_delta_primal), "norm_squared_delta_primal must not be NaN");
+  cuopt_assert(!isnan(norm_squared_delta_dual), "norm_squared_delta_dual must not be NaN");
+  cuopt_assert(!isnan(primal_weight), "primal_weight must not be NaN");
+  cuopt_assert(!isnan(step_size), "step_size must not be NaN");
+  cuopt_assert(!isnan(interaction), "interaction must not be NaN");
+  cuopt_assert(norm_squared_delta_primal >= f_t(0.0), "norm_squared_delta_primal must be >= 0");
+  cuopt_assert(norm_squared_delta_dual >= f_t(0.0), "norm_squared_delta_dual must be >= 0");
+  cuopt_assert(primal_weight > f_t(0.0), "primal_weight must be > 0");
+  cuopt_assert(step_size > f_t(0.0), "step_size must be > 0");
+
   const f_t movement =
     norm_squared_delta_primal * primal_weight + norm_squared_delta_dual / primal_weight;
   const f_t computed_interaction = f_t(2.0) * interaction * step_size;
+
+  //printf("movement %lf\n", movement);
+  //printf("computed_interaction %lf\n", computed_interaction);
+
+  cuopt_assert(
+    movement + computed_interaction >= f_t(0.0),
+    "Movement + computed interaction must be >= 0");
 
   *fixed_point_error = cuda::std::sqrt(movement + computed_interaction);
 
@@ -1790,6 +1809,68 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   // Sync to make sure all previous cuSparse operations are finished before setting the
   // potential_next_dual_solution
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+
+  // Validate reflected solutions have no NaN/Inf
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_reflected_primal().data(),
+                    pdhg_solver_.get_reflected_primal().data() +
+                      pdhg_solver_.get_reflected_primal().size(),
+                    is_nan_or_inf<f_t>{}),
+    "reflected_primal contains NaN or Inf in compute_fixed_error");
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_reflected_dual().data(),
+                    pdhg_solver_.get_reflected_dual().data() +
+                      pdhg_solver_.get_reflected_dual().size(),
+                    is_nan_or_inf<f_t>{}),
+    "reflected_dual contains NaN or Inf in compute_fixed_error");
+
+  // Validate primal/dual solutions have no NaN/Inf
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_primal_solution().data(),
+                    pdhg_solver_.get_primal_solution().data() +
+                      pdhg_solver_.get_primal_solution().size(),
+                    is_nan_or_inf<f_t>{}),
+    "primal_solution contains NaN or Inf in compute_fixed_error");
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_dual_solution().data(),
+                    pdhg_solver_.get_dual_solution().data() +
+                      pdhg_solver_.get_dual_solution().size(),
+                    is_nan_or_inf<f_t>{}),
+    "dual_solution contains NaN or Inf in compute_fixed_error");
+
+  // Validate deltas have no NaN/Inf
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
+                    pdhg_solver_.get_saddle_point_state().get_delta_primal().data() +
+                      pdhg_solver_.get_saddle_point_state().get_delta_primal().size(),
+                    is_nan_or_inf<f_t>{}),
+    "delta_primal contains NaN or Inf in compute_fixed_error");
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
+                    pdhg_solver_.get_saddle_point_state().get_delta_dual().data() +
+                      pdhg_solver_.get_saddle_point_state().get_delta_dual().size(),
+                    is_nan_or_inf<f_t>{}),
+    "delta_dual contains NaN or Inf in compute_fixed_error");
+
+  // Validate primal_weight and step_size have no NaN/Inf
+  cuopt_assert(
+    !thrust::any_of(handle_ptr_->get_thrust_policy(),
+                    primal_weight_.data(),
+                    primal_weight_.data() + primal_weight_.size(),
+                    is_nan_or_inf<f_t>{}),
+    "primal_weight_ contains NaN or Inf in compute_fixed_error");
+  cuopt_assert(!thrust::any_of(handle_ptr_->get_thrust_policy(),
+                               step_size_.data(),
+                               step_size_.data() + step_size_.size(),
+                               is_nan_or_inf<f_t>{}),
+              "step_size_ contains NaN or Inf in compute_fixed_error");
+
   // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
                                            (void*)pdhg_solver_.get_reflected_dual().data()));
@@ -1813,6 +1894,49 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     RAFT_CUDA_TRY(cudaStreamSynchronize(
       stream_view_));  // To make sure all the data is written from device to host
     RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+    // Host-side diagnostic: copy small device arrays and verify movement + interaction >= 0
+    {
+      const auto bs = climber_strategies_.size();
+      std::vector<f_t> h_nsq_dp(bs), h_nsq_dd(bs), h_pw(bs), h_ss(bs), h_inter(bs);
+      RAFT_CUDA_TRY(cudaMemcpy(h_nsq_dp.data(),
+                                step_size_strategy_.get_norm_squared_delta_primal().data(),
+                                bs * sizeof(f_t),
+                                cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(cudaMemcpy(h_nsq_dd.data(),
+                                step_size_strategy_.get_norm_squared_delta_dual().data(),
+                                bs * sizeof(f_t),
+                                cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(cudaMemcpy(
+        h_pw.data(), primal_weight_.data(), bs * sizeof(f_t), cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(
+        cudaMemcpy(h_ss.data(), step_size_.data(), bs * sizeof(f_t), cudaMemcpyDeviceToHost));
+      RAFT_CUDA_TRY(cudaMemcpy(h_inter.data(),
+                                step_size_strategy_.get_interaction().data(),
+                                bs * sizeof(f_t),
+                                cudaMemcpyDeviceToHost));
+      for (size_t i = 0; i < bs; ++i) {
+        const f_t movement = h_nsq_dp[i] * h_pw[i] + h_nsq_dd[i] / h_pw[i];
+        const f_t comp_inter = f_t(2.0) * h_inter[i] * h_ss[i];
+        if (movement + comp_inter < f_t(0.0)) {
+          fprintf(stderr,
+                  "DIAGNOSTIC [%zu]: movement=%.17e comp_inter=%.17e sum=%.17e "
+                  "norm_sq_dx=%.17e norm_sq_dy=%.17e pw=%.17e ss=%.17e interaction=%.17e\n",
+                  i,
+                  (double)movement,
+                  (double)comp_inter,
+                  (double)(movement + comp_inter),
+                  (double)h_nsq_dp[i],
+                  (double)h_nsq_dd[i],
+                  (double)h_pw[i],
+                  (double)h_ss[i],
+                  (double)h_inter[i]);
+        }
+        cuopt_assert(movement + comp_inter >= f_t(0.0),
+                     "Host check: movement + computed_interaction must be >= 0");
+      }
+    }
+
 #ifdef CUPDLP_DEBUG_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
 #endif
@@ -1847,9 +1971,15 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 #endif
 
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+    cuopt_assert(!std::isnan(restart_strategy_.fixed_point_error_[i]),
+                 "fixed_point_error_ must not be NaN after compute_fixed_error");
+    cuopt_assert(restart_strategy_.fixed_point_error_[i] >= f_t(0.0),
+                 "fixed_point_error_ must be >= 0 after compute_fixed_error");
     if (has_restarted[i]) {
       restart_strategy_.initial_fixed_point_error_[i] = restart_strategy_.fixed_point_error_[i];
-      has_restarted[i]                                = false;
+      cuopt_assert(!std::isnan(restart_strategy_.initial_fixed_point_error_[i]),
+                   "initial_fixed_point_error_ must not be NaN after assignment");
+      has_restarted[i] = false;
     }
   }
 }
@@ -1869,6 +1999,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
   CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
@@ -1945,6 +2076,7 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
   CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
                            CUBLAS_OP_T,
                            CUBLAS_OP_N,
@@ -2632,7 +2764,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     rmm::device_uvector<f_t> d_atq(n, stream_view_);
 
     std::mt19937 gen(1);
-    std::normal_distribution<double> dist(0.0, 1.0);
+    std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
 
     for (int i = 0; i < m; ++i)
       z[i] = dist(gen);
@@ -2684,7 +2816,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                            vecATQ,
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_transpose.data(),
-                                           stream_view_));
+                                           stream_view_.value()));
 
       // z = A @ A_t_q
       RAFT_CUSPARSE_TRY(
@@ -2697,7 +2829,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                            vecZ,
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_non_transpose.data(),
-                                           stream_view_));
+                                           stream_view_.value()));
       // sigma_max_sq = dot(q, z)
       RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                                       m,
@@ -2706,7 +2838,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                                       d_z.data(),
                                                       primal_stride,
                                                       sigma_max_sq.data(),
-                                                      stream_view_));
+                                                      stream_view_.value()));
 
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(d_q.data(), d_z.data()),

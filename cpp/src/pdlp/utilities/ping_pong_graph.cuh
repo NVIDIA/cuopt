@@ -21,7 +21,7 @@ template <typename i_t>
 class ping_pong_graph_t {
  public:
   ping_pong_graph_t(rmm::cuda_stream_view stream_view, bool is_legacy_batch_mode = false)
-    : stream_view_(stream_view), is_legacy_batch_mode_(is_legacy_batch_mode)
+    : stream_view_(stream_view), is_legacy_batch_mode_(true)
   {
   }
 

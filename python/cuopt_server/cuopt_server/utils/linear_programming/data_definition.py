@@ -450,6 +450,11 @@ class SolverConfig(BaseModel):
         description="Set True to run heuristics only, False to run "
         "heuristics and branch and bound for MILP",
     )
+    mip_batch_pdlp_strong_branching: Optional[int] = Field(
+        default=0,
+        description="Set 1 to enable batch PDLP strong branching "
+        "in the MIP solver, 0 to disable.",
+    )
     num_cpu_threads: Optional[int] = Field(
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa

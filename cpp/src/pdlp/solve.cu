@@ -793,6 +793,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 
   // If need warm start, solve the LP alone
   if (primal_dual_init || primal_weight_init) {
+    std::cout << "Solving LP for warm start" << std::endl;
     pdlp_solver_settings_t<i_t, f_t> warm_start_settings = settings;
     warm_start_settings.new_bounds.clear();
     warm_start_settings.method               = cuopt::linear_programming::method_t::PDLP;
@@ -840,6 +841,8 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     batch_settings.set_initial_step_size(initial_step_size);
   }
   if (primal_weight_init) { batch_settings.set_initial_primal_weight(initial_primal_weight); }
+
+  std::cout << "Solving batch PDLP" << std::endl;
 
   for (int i = 0; i < max_batch_size; i += optimal_batch_size) {
     const int current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
