@@ -38,7 +38,6 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
-#include <thrust/transform_reduce.h>
 
 #include <cub/cub.cuh>
 

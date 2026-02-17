@@ -1188,24 +1188,42 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                           f_t& avg)
 {
   auto abs_op      = [] __host__ __device__(f_t x) { return abs(x); };
-  auto min_nonzero = [] __host__ __device__(f_t x) {
+  auto min_nonzero = [] __host__ __device__(f_t x) -> f_t {
     return x == 0 ? std::numeric_limits<f_t>::max() : abs(x);
   };
 
-  smallest = thrust::transform_reduce(rmm::exec_policy(vec.stream()),
-                                      vec.begin(),
-                                      vec.end(),
-                                      min_nonzero,
-                                      std::numeric_limits<f_t>::max(),
-                                      thrust::minimum<f_t>());
+  auto stream = vec.stream();
+  auto n      = static_cast<int>(vec.size());
 
-  largest = thrust::transform_reduce(
-    rmm::exec_policy(vec.stream()), vec.begin(), vec.end(), abs_op, 0.0f, thrust::maximum<f_t>());
+  rmm::device_scalar<f_t> d_smallest(stream);
+  rmm::device_scalar<f_t> d_largest(stream);
+  rmm::device_scalar<f_t> d_sum(stream);
 
-  f_t sum = thrust::transform_reduce(
-    rmm::exec_policy(vec.stream()), vec.begin(), vec.end(), abs_op, 0.0f, thrust::plus<f_t>());
+  auto min_nz_iter = thrust::make_transform_iterator(vec.cbegin(), min_nonzero);
+  auto abs_iter    = thrust::make_transform_iterator(vec.cbegin(), abs_op);
 
-  avg = sum / vec.size();
+  void* d_temp   = nullptr;
+  size_t bytes_1 = 0, bytes_2 = 0, bytes_3 = 1;
+  cub::DeviceReduce::Reduce(
+    d_temp, bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream);
+  cub::DeviceReduce::Reduce(
+    d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream);
+  cub::DeviceReduce::Reduce(
+    d_temp, bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream);
+
+  size_t max_bytes = std::max({bytes_1, bytes_2, bytes_3});
+  rmm::device_buffer temp_buf(max_bytes, stream);
+
+  cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream);
+  cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream);
+  cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream);
+
+  smallest = d_smallest.value(stream);
+  largest  = d_largest.value(stream);
+  avg      = d_sum.value(stream) / vec.size();
 };
 
 template <typename f_t>
@@ -1895,47 +1913,6 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
       stream_view_));  // To make sure all the data is written from device to host
     RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-    // Host-side diagnostic: copy small device arrays and verify movement + interaction >= 0
-    {
-      const auto bs = climber_strategies_.size();
-      std::vector<f_t> h_nsq_dp(bs), h_nsq_dd(bs), h_pw(bs), h_ss(bs), h_inter(bs);
-      RAFT_CUDA_TRY(cudaMemcpy(h_nsq_dp.data(),
-                                step_size_strategy_.get_norm_squared_delta_primal().data(),
-                                bs * sizeof(f_t),
-                                cudaMemcpyDeviceToHost));
-      RAFT_CUDA_TRY(cudaMemcpy(h_nsq_dd.data(),
-                                step_size_strategy_.get_norm_squared_delta_dual().data(),
-                                bs * sizeof(f_t),
-                                cudaMemcpyDeviceToHost));
-      RAFT_CUDA_TRY(cudaMemcpy(
-        h_pw.data(), primal_weight_.data(), bs * sizeof(f_t), cudaMemcpyDeviceToHost));
-      RAFT_CUDA_TRY(
-        cudaMemcpy(h_ss.data(), step_size_.data(), bs * sizeof(f_t), cudaMemcpyDeviceToHost));
-      RAFT_CUDA_TRY(cudaMemcpy(h_inter.data(),
-                                step_size_strategy_.get_interaction().data(),
-                                bs * sizeof(f_t),
-                                cudaMemcpyDeviceToHost));
-      for (size_t i = 0; i < bs; ++i) {
-        const f_t movement = h_nsq_dp[i] * h_pw[i] + h_nsq_dd[i] / h_pw[i];
-        const f_t comp_inter = f_t(2.0) * h_inter[i] * h_ss[i];
-        if (movement + comp_inter < f_t(0.0)) {
-          fprintf(stderr,
-                  "DIAGNOSTIC [%zu]: movement=%.17e comp_inter=%.17e sum=%.17e "
-                  "norm_sq_dx=%.17e norm_sq_dy=%.17e pw=%.17e ss=%.17e interaction=%.17e\n",
-                  i,
-                  (double)movement,
-                  (double)comp_inter,
-                  (double)(movement + comp_inter),
-                  (double)h_nsq_dp[i],
-                  (double)h_nsq_dd[i],
-                  (double)h_pw[i],
-                  (double)h_ss[i],
-                  (double)h_inter[i]);
-        }
-        cuopt_assert(movement + comp_inter >= f_t(0.0),
-                     "Host check: movement + computed_interaction must be >= 0");
-      }
-    }
 
 #ifdef CUPDLP_DEBUG_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
