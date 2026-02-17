@@ -2485,6 +2485,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           search_tree_.update(start_node.value(), node_status_t::FATHOMED);
           continue;
         } else {
+          node_queue_.push(
+            start_node.value());  // Needed to ensure we don't lose the correct lower bound
           break;
         }
       }
