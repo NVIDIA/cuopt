@@ -2484,9 +2484,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
             settings_.log, start_node.value(), "cutoff", start_node.value()->lower_bound);
           search_tree_.update(start_node.value(), node_status_t::FATHOMED);
           continue;
+        } else {
+          break;
         }
       }
-      lower_bound = search_tree_.root.lower_bound;
+      lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound() : search_tree_.root.lower_bound;
     } else {
       lower_bound = search_tree_.root.lower_bound;
     }
