@@ -652,6 +652,8 @@ struct primal_reflected_projection_bulk_op {
     cuopt_assert(!isnan(step_size), "primal_step_size is NaN in primal_reflected_projection");
     cuopt_assert(!isnan(primal_val), "primal_solution is NaN in primal_reflected_projection");
     cuopt_assert(!isnan(aty_val), "current_AtY is NaN in primal_reflected_projection");
+    cuopt_assert(!isinf(step_size), "primal_step_size is Inf in primal_reflected_projection");
+    cuopt_assert(step_size > f_t(0.0), "primal_step_size must be > 0");
 
     f_t reflected = primal_val - step_size * (obj_coef - aty_val);
 
@@ -688,6 +690,8 @@ struct dual_reflected_projection_bulk_op {
     cuopt_assert(!isnan(step_size), "dual_step_size is NaN in dual_reflected_projection");
     cuopt_assert(!isnan(current_dual), "dual_solution is NaN in dual_reflected_projection");
     cuopt_assert(!isnan(dual_gradient[idx]), "dual_gradient is NaN in dual_reflected_projection");
+    cuopt_assert(!isinf(step_size), "dual_step_size is Inf in dual_reflected_projection");
+    cuopt_assert(step_size > f_t(0.0), "dual_step_size must be > 0");
 
     const f_t tmp = current_dual / step_size - dual_gradient[idx];
     const f_t tmp_proj =

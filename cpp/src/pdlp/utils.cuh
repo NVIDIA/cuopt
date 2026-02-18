@@ -606,7 +606,7 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
 {
   auto stream   = handle_ptr->get_stream();
   auto abs_iter = thrust::make_transform_iterator(input_vector.data(), abs_t<f_t>{});
-  auto n        = static_cast<int>(input_vector.size());
+  auto n        = input_vector.size();
 
   void* d_temp          = nullptr;
   size_t temp_bytes     = 0;
