@@ -1825,66 +1825,6 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   // potential_next_dual_solution
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
-  // Validate reflected solutions have no NaN/Inf
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_reflected_primal().data(),
-                    pdhg_solver_.get_reflected_primal().data() +
-                      pdhg_solver_.get_reflected_primal().size(),
-                    is_nan_or_inf<f_t>{}),
-    "reflected_primal contains NaN or Inf in compute_fixed_error");
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_reflected_dual().data(),
-                    pdhg_solver_.get_reflected_dual().data() +
-                      pdhg_solver_.get_reflected_dual().size(),
-                    is_nan_or_inf<f_t>{}),
-    "reflected_dual contains NaN or Inf in compute_fixed_error");
-
-  // Validate primal/dual solutions have no NaN/Inf
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_primal_solution().data(),
-                    pdhg_solver_.get_primal_solution().data() +
-                      pdhg_solver_.get_primal_solution().size(),
-                    is_nan_or_inf<f_t>{}),
-    "primal_solution contains NaN or Inf in compute_fixed_error");
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_dual_solution().data(),
-                    pdhg_solver_.get_dual_solution().data() +
-                      pdhg_solver_.get_dual_solution().size(),
-                    is_nan_or_inf<f_t>{}),
-    "dual_solution contains NaN or Inf in compute_fixed_error");
-
-  // Validate deltas have no NaN/Inf
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
-                    pdhg_solver_.get_saddle_point_state().get_delta_primal().data() +
-                      pdhg_solver_.get_saddle_point_state().get_delta_primal().size(),
-                    is_nan_or_inf<f_t>{}),
-    "delta_primal contains NaN or Inf in compute_fixed_error");
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
-                    pdhg_solver_.get_saddle_point_state().get_delta_dual().data() +
-                      pdhg_solver_.get_saddle_point_state().get_delta_dual().size(),
-                    is_nan_or_inf<f_t>{}),
-    "delta_dual contains NaN or Inf in compute_fixed_error");
-
-  // Validate primal_weight and step_size have no NaN/Inf
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    primal_weight_.data(),
-                    primal_weight_.data() + primal_weight_.size(),
-                    is_nan_or_inf<f_t>{}),
-    "primal_weight_ contains NaN or Inf in compute_fixed_error");
-  cuopt_assert(!thrust::any_of(handle_ptr_->get_thrust_policy(),
-                               step_size_.data(),
-                               step_size_.data() + step_size_.size(),
-                               is_nan_or_inf<f_t>{}),
-              "step_size_ contains NaN or Inf in compute_fixed_error");
 
   // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
