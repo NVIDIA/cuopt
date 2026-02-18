@@ -79,7 +79,8 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
     i_t row_singletons;
     i_t col_singletons;
     std::vector<i_t> row_perm(N);
-    find_singletons(C, row_singletons, row_perm, col_singletons, q);
+    f_t work_estimate = 0;
+    find_singletons(C, row_singletons, row_perm, col_singletons, q, work_estimate);
     std::vector<i_t> row_perm_inv(N);
     inverse_permutation(row_perm, row_perm_inv);
 

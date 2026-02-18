@@ -237,7 +237,8 @@ i_t basis_update_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 #endif
   // First solve
   // L0*x0 = b
-  dual_simplex::lower_triangular_solve(L0_, rhs);
+  f_t work_estimate = 0;
+  dual_simplex::lower_triangular_solve(L0_, rhs, work_estimate);
 #ifdef CHECK_LOWER_SOLVE
   {
     matrix_vector_multiply(L0_, 1.0, rhs, -1.0, residual);
@@ -275,8 +276,9 @@ i_t basis_update_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
   // L0*x0 = b
   const i_t m = L0_.m;
 
-  i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
+  f_t work_estimate = 0;
+  i_t top           = sparse_triangle_solve<i_t, f_t, true>(
+    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data(), work_estimate);
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_L_SOLVE
@@ -370,7 +372,8 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
   }
   // L0'*y = c
   // TODO: handle a sparse rhs
-  dual_simplex::lower_triangular_transpose_solve(L0_, rhs);
+  f_t work_estimate = 0;
+  dual_simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate);
   return 0;
 }
 
@@ -500,8 +503,9 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) 
   rhs.to_dense(cprime_dense);
 #endif
 
-  i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    rhs, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
+  f_t work_estimate = 0;
+  i_t top           = sparse_triangle_solve<i_t, f_t, false>(
+    rhs, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data(), work_estimate);
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_LOWER_TRANSPOSE_SOLVE
@@ -558,7 +562,8 @@ i_t basis_update_t<i_t, f_t>::u_solve(std::vector<f_t>& x) const
   std::vector<f_t> residual = bprime;
 #endif
 
-  dual_simplex::upper_triangular_solve(U_, bprime);
+  f_t work_estimate = 0;
+  dual_simplex::upper_triangular_solve(U_, bprime, work_estimate);
 
 #ifdef CHECK_UPPER_SOLVE
   matrix_vector_multiply(U_, 1.0, bprime, -1.0, residual);
@@ -582,8 +587,9 @@ i_t basis_update_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
   sparse_vector_t<i_t, f_t> bprime(m, 0);
   rhs.inverse_permute_vector(col_permutation_, bprime);
 
-  i_t top = sparse_triangle_solve<i_t, f_t, false>(
-    bprime, std::nullopt, xi_workspace_, U_, x_workspace_.data());
+  f_t work_estimate = 0;
+  i_t top           = sparse_triangle_solve<i_t, f_t, false>(
+    bprime, std::nullopt, xi_workspace_, U_, x_workspace_.data(), work_estimate);
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
   rhs.inverse_permute_vector(inverse_col_permutation_);
@@ -604,7 +610,8 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& x) const
   const i_t m = U_.m;
   std::vector<f_t> bprime(m);
   inverse_permute_vector(col_permutation_, x, bprime);
-  dual_simplex::upper_triangular_transpose_solve(U_, bprime);
+  f_t work_estimate = 0;
+  dual_simplex::upper_triangular_transpose_solve(U_, bprime, work_estimate);
   permute_vector(col_permutation_, bprime, x);
   return 0;
 }
@@ -649,8 +656,9 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& rhs) 
 #endif
 
   // U'*y = bprime
-  i_t top = sparse_triangle_solve<i_t, f_t, true>(
-    bprime, std::nullopt, xi_workspace_, U_transpose_, x_workspace_.data());
+  f_t work_estimate = 0;
+  i_t top           = sparse_triangle_solve<i_t, f_t, true>(
+    bprime, std::nullopt, xi_workspace_, U_transpose_, x_workspace_.data(), work_estimate);
   solve_to_sparse_vector(top, rhs);  // Uses xi_workspace_ and x_workspace_ to fill rhs
 
 #ifdef CHECK_WORKSPACE
@@ -871,8 +879,9 @@ i_t basis_update_t<i_t, f_t>::update(std::vector<f_t>& utilde, i_t leaving_index
 
   // Solve U'*w = delta*et
   std::vector<f_t> w(m);
-  w[t] = delta;
-  dual_simplex::upper_triangular_transpose_solve(U_, w);
+  w[t]              = delta;
+  f_t work_estimate = 0;
+  dual_simplex::upper_triangular_transpose_solve(U_, w, work_estimate);
 #ifdef PARANOID
   {
     // Compute the residual of the solve
@@ -1111,7 +1120,9 @@ i_t basis_update_t<i_t, f_t>::lower_triangular_multiply(const csc_matrix_t<i_t, 
   return new_nz;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////
 // Start of middle product form: basis_update_mpf_t
+//////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts_basic)
@@ -1121,10 +1132,12 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   // Solve for U^T W^T = C_B^T
   // We do this one row at a time of C_B
   csc_matrix_t<i_t, f_t> WT(m, cuts_basic.m, 0);
+  work_estimate_ += cuts_basic.m;
 
   i_t WT_nz = 0;
   for (i_t k = 0; k < cuts_basic.m; k++) {
     sparse_vector_t<i_t, f_t> rhs(cuts_basic, k);
+    work_estimate_ += rhs.i.size();
     u_transpose_solve(rhs);
     WT.col_start[k] = WT_nz;
     for (i_t q = 0; q < rhs.i.size(); q++) {
@@ -1132,6 +1145,7 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
       WT.x.push_back(rhs.x[q]);
       WT_nz++;
     }
+    work_estimate_ += 3 * rhs.i.size();
   }
   WT.col_start[cuts_basic.m] = WT_nz;
 
@@ -1161,6 +1175,8 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
 #endif
 
   csc_matrix_t<i_t, f_t> V(cuts_basic.m, m, 0);
+  work_estimate_ += m;
+  i_t V_nz = 0;
   if (num_updates_ > 0) {
     // W = V T_0 ... T_{num_updates_ - 1}
     // or V = W T_{num_updates_ - 1}^{-1} ... T_0^{-1}
@@ -1173,11 +1189,12 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
     // for appending to L0
 
     csr_matrix_t<i_t, f_t> V_row(cuts_basic.m, m, 0);
-    i_t V_nz           = 0;
+    work_estimate_ += m;
     const f_t zero_tol = 1e-13;
     for (i_t h = 0; h < cuts_basic.m; h++) {
       sparse_vector_t<i_t, f_t> rhs(WT, h);
       scatter_into_workspace(rhs);
+      work_estimate_ += 2 * rhs.i.size();
       i_t nz = rhs.i.size();
       for (i_t k = num_updates_ - 1; k >= 0; --k) {
         // T_k^{-T} = ( I - v u^T/(1 + u^T v))
@@ -1201,10 +1218,12 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
         V_row.x.push_back(rhs.x[q]);
         V_nz++;
       }
+      work_estimate_ += 2 * rhs.i.size();
     }
     V_row.row_start[cuts_basic.m] = V_nz;
 
     V_row.to_compressed_col(V);
+    work_estimate_ += 3 * V_nz;
 
 #ifdef CHECK_V
     csc_matrix_t<i_t, f_t> CB_col(cuts_basic.m, m, 0);
@@ -1245,6 +1264,7 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   } else {
     // W = V
     WT.transpose(V);
+    work_estimate_ += 3 * WT.col_start[WT.n];
   }
 
   // Extend u_i, v_i for i = 0, ..., num_updates_ - 1
@@ -1254,9 +1274,10 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   // L = [ L0  0 ]
   //     [ V   I ]
 
-  i_t V_nz = V.col_start[m];
+  V_nz     = V.col_start[m];
   i_t L_nz = L0_.col_start[m];
   csc_matrix_t<i_t, f_t> new_L(m + cuts_basic.m, m + cuts_basic.m, L_nz + V_nz + cuts_basic.m);
+  work_estimate_ += (L_nz + V_nz + cuts_basic.m) + (m + cuts_basic.m);
   i_t predicted_nz = L_nz + V_nz + cuts_basic.m;
   L_nz             = 0;
   for (i_t j = 0; j < m; ++j) {
@@ -1276,16 +1297,19 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
       L_nz++;
     }
   }
+  work_estimate_ += 4 * L_nz;
   for (i_t j = m; j < m + cuts_basic.m; ++j) {
     new_L.col_start[j] = L_nz;
     new_L.i[L_nz]      = j;
     new_L.x[L_nz]      = 1.0;
     L_nz++;
   }
+  work_estimate_ += 3 * cuts_basic.m;
   new_L.col_start[m + cuts_basic.m] = L_nz;
   assert(L_nz == predicted_nz);
 
   L0_ = new_L;
+  work_estimate_ += 2 * L_nz;
 
   // Adjust U
   // U = [ U0 0 ]
@@ -1295,12 +1319,14 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   U0_.col_start.resize(m + cuts_basic.m + 1);
   U0_.i.resize(U_nz + cuts_basic.m);
   U0_.x.resize(U_nz + cuts_basic.m);
+  work_estimate_ += 2 * (U_nz + cuts_basic.m) + (m + cuts_basic.m);
   for (i_t k = m; k < m + cuts_basic.m; ++k) {
     U0_.col_start[k] = U_nz;
     U0_.i[U_nz]      = k;
     U0_.x[U_nz]      = 1.0;
     U_nz++;
   }
+  work_estimate_ += 3 * cuts_basic.m;
   U0_.col_start[m + cuts_basic.m] = U_nz;
   U0_.n                           = m + cuts_basic.m;
   U0_.m                           = m + cuts_basic.m;
@@ -1310,14 +1336,17 @@ i_t basis_update_mpf_t<i_t, f_t>::append_cuts(const csr_matrix_t<i_t, f_t>& cuts
   // Adjust row_permutation_ and inverse_row_permutation_
   row_permutation_.resize(m + cuts_basic.m);
   inverse_row_permutation_.resize(m + cuts_basic.m);
+  work_estimate_ += 2 * (m + cuts_basic.m);
   for (i_t k = m; k < m + cuts_basic.m; ++k) {
     row_permutation_[k] = k;
   }
+  work_estimate_ += cuts_basic.m;
   inverse_permutation(row_permutation_, inverse_row_permutation_);
 
   // Adjust workspace sizes
   xi_workspace_.resize(2 * (m + cuts_basic.m), 0);
   x_workspace_.resize(m + cuts_basic.m, 0.0);
+  work_estimate_ += 3 * (m + cuts_basic.m);
 
   return 0;
 }
@@ -1331,6 +1360,7 @@ void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
   out.x.clear();
   out.i.reserve(nz);
   out.x.reserve(nz);
+  work_estimate_ += 2 * nz;
   const f_t zero_tol = 1e-13;
   for (i_t k = 0; k < nz; ++k) {
     const i_t i = xi_workspace_[m + k];
@@ -1342,6 +1372,8 @@ void basis_update_mpf_t<i_t, f_t>::gather_into_sparse_vector(i_t nz,
     xi_workspace_[i]     = 0;
     x_workspace_[i]      = 0.0;
   }
+  work_estimate_ += 5 * nz;
+  work_estimate_ += 3 * out.i.size();
 }
 
 template <typename i_t, typename f_t>
@@ -1355,10 +1387,12 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_workspace(i_t top) const
     xi_workspace_[p]      = 0;
     nz++;
   }
+  work_estimate_ += 3 * (m - top);
   for (i_t k = 0; k < nz; ++k) {
     const i_t i      = xi_workspace_[m + k];
     xi_workspace_[i] = 1;
   }
+  work_estimate_ += 2 * nz;
 }
 
 template <typename i_t, typename f_t>
@@ -1372,6 +1406,7 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_sparse_vector(i_t top,
   out.i.clear();
   out.x.reserve(nz);
   out.i.reserve(nz);
+  work_estimate_ += 2 * nz;
   i_t k              = 0;
   const f_t zero_tol = 1e-13;
   for (i_t p = top; p < m; ++p) {
@@ -1384,6 +1419,7 @@ void basis_update_mpf_t<i_t, f_t>::solve_to_sparse_vector(i_t top,
     xi_workspace_[p] = 0;
     k++;
   }
+  work_estimate_ += 4 * k + 3 * out.i.size();
 }
 
 template <typename i_t, typename f_t>
@@ -1397,10 +1433,12 @@ i_t basis_update_mpf_t<i_t, f_t>::scatter_into_workspace(const sparse_vector_t<i
     xi_workspace_[i]     = 1;
     xi_workspace_[m + k] = i;
   }
+  work_estimate_ += 3 * nz;
   // scatter values into x_workspace_
   for (i_t k = 0; k < nz; ++k) {
     x_workspace_[in.i[k]] = in.x[k];
   }
+  work_estimate_ += 3 * nz;
   return nz;
 }
 
@@ -1412,11 +1450,13 @@ void basis_update_mpf_t<i_t, f_t>::grow_storage(i_t nz, i_t& S_start, i_t& S_nz)
   const i_t new_last_S_col = last_S_col + 2;
   if (new_last_S_col >= S_.col_start.size()) {
     S_.col_start.resize(new_last_S_col + refactor_frequency_);
+    work_estimate_ += new_last_S_col + refactor_frequency_;
   }
   S_nz = S_.col_start[last_S_col];
   if (S_nz + nz > S_.i.size()) {
     S_.i.resize(std::max(2 * S_nz, S_nz + nz));
     S_.x.resize(std::max(2 * S_nz, S_nz + nz));
+    work_estimate_ += 2 * std::max(2 * S_nz, S_nz + nz);
   }
   S_start = last_S_col;
   assert(S_nz + nz <= S_.i.size());
@@ -1431,6 +1471,7 @@ i_t basis_update_mpf_t<i_t, f_t>::nonzeros(const std::vector<f_t>& x) const
   for (i_t i = 0; i < xsz; ++i) {
     if (x[i] != 0.0) { nz++; }
   }
+  work_estimate_ += xsz;
   return nz;
 }
 
@@ -1445,6 +1486,7 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col, const std::vector<f_t>& x
     const i_t i = S_.i[p];
     dot += S_.x[p] * x[i];
   }
+  work_estimate_ += 3 * (col_end - col_start);
   return dot;
 }
 
@@ -1457,10 +1499,15 @@ f_t basis_update_mpf_t<i_t, f_t>::dot_product(i_t col,
   f_t dot             = 0.0;
   const i_t col_start = S_.col_start[col];
   const i_t col_end   = S_.col_start[col + 1];
+  i_t nz_mark         = 0;
   for (i_t p = col_start; p < col_end; ++p) {
     const i_t i = S_.i[p];
-    if (mark[i]) { dot += S_.x[p] * x[i]; }
+    if (mark[i]) {
+      dot += S_.x[p] * x[i];
+      nz_mark++;
+    }
   }
+  work_estimate_ += 2 * nz_mark + (col_end - col_start);
   return dot;
 }
 
@@ -1477,6 +1524,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     const i_t i = S.i[p];
     x[i] += theta * S.x[p];
   }
+  work_estimate_ += 3 * (col_end - col_start);
 }
 
 template <typename i_t, typename f_t>
@@ -1490,6 +1538,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
   const i_t m         = L0_.m;
   const i_t col_start = S.col_start[col];
   const i_t col_end   = S.col_start[col + 1];
+  i_t nz_start        = nz;
   for (i_t p = col_start; p < col_end; ++p) {
     const i_t i = S.i[p];
     if (!mark[i]) {
@@ -1500,6 +1549,7 @@ void basis_update_mpf_t<i_t, f_t>::add_sparse_column(const csc_matrix_t<i_t, f_t
     }
     x[i] += theta * S.x[p];
   }
+  work_estimate_ += 4 * (col_end - col_start) + 2 * (nz - nz_start);
 }
 
 template <typename i_t, typename f_t>
@@ -1528,14 +1578,17 @@ i_t basis_update_mpf_t<i_t, f_t>::b_transpose_solve(const std::vector<f_t>& rhs,
 
   // Solve for r such that U'*r = c
   std::vector<f_t> r = rhs;
+  work_estimate_ += 2 * r.size();
   u_transpose_solve(r);
   UTsol = r;
+  work_estimate_ += 2 * r.size();
 
   // Solve for w such that L'*w = r
   l_transpose_solve(r);
 
   // Compute y = P'*w
   inverse_permute_vector(row_permutation_, r, solution);
+  work_estimate_ += 3 * r.size();
 
   return 0;
 }
@@ -1630,7 +1683,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& rhs) const
 {
   total_dense_U_transpose_++;
-  dual_simplex::upper_triangular_transpose_solve(U0_, rhs);
+  dual_simplex::upper_triangular_transpose_solve(U0_, rhs, work_estimate_);
   return 0;
 }
 
@@ -1641,7 +1694,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& r
   // U0'*x = y
   // Solve U0'*x0 = y
   i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
-    rhs, std::nullopt, xi_workspace_, U0_transpose_, x_workspace_.data());
+    rhs, std::nullopt, xi_workspace_, U0_transpose_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
   return 0;
 }
@@ -1671,9 +1724,10 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
 
     if (std::abs(theta) > zero_tol) { add_sparse_column(S_, v_col, -theta, rhs); }
   }
+  work_estimate_ += 2 * num_updates_;
 
   // Solve for x such that L0^T * x = b'
-  dual_simplex::lower_triangular_transpose_solve(L0_, rhs);
+  dual_simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate_);
 
   return 0;
 }
@@ -1729,6 +1783,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
     }
 #endif
   }
+  work_estimate_ += 2 * num_updates_;
 
 #ifdef CHECK_MULTIPLY
   for (i_t i = 0; i < m; ++i) {
@@ -1743,9 +1798,10 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
 #endif
 
   sparse_vector_t<i_t, f_t> b(m, nz);
+  work_estimate_ += nz;
   gather_into_sparse_vector(nz, b);
   i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
-    b, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data());
+    b, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
 
 #ifdef CHECK_SPARSE_SOLVE
@@ -1772,6 +1828,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
 {
   const i_t m = L0_.m;
   std::vector<f_t> Lsol(m);
+  work_estimate_ += m;
   return b_solve(rhs, solution, Lsol);
 }
 
@@ -1788,6 +1845,7 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
   // P*B*x = P*b
 
   permute_vector(row_permutation_, rhs, solution);
+  work_estimate_ += 3 * rhs.size();
 
   // L*U*x = b'
   // Solve for v such that L*v = b'
@@ -1795,7 +1853,10 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs,
   std::vector<f_t> rhs_permuted = solution;
 #endif
   l_solve(solution);
-  if (need_Lsol) { Lsol = solution; }
+  if (need_Lsol) {
+    Lsol = solution;
+    work_estimate_ += 2 * solution.size();
+  }
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> Lsol_check = Lsol;
@@ -1836,7 +1897,9 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
 {
   const i_t m = L0_.m;
   solution    = rhs;
+  work_estimate_ += 2 * rhs.i.size();
   solution.inverse_permute_vector(inverse_row_permutation_);
+  work_estimate_ += 3 * rhs.i.size();
 
 #ifdef CHECK_PERMUTATION
   std::vector<f_t> permuation_rhs;
@@ -1866,10 +1929,15 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
   } else {
     std::vector<f_t> solution_dense;
     solution.to_dense(solution_dense);
+    work_estimate_ += solution_dense.size();
     l_solve(solution_dense);
     solution.from_dense(solution_dense);
+    work_estimate_ += solution_dense.size();
   }
-  if (need_Lsol) { Lsol = solution; }
+  if (need_Lsol) {
+    Lsol = solution;
+    work_estimate_ += 2 * solution.i.size();
+  }
   sum_L_ += static_cast<f_t>(solution.i.size()) / input_size;
 
 #ifdef CHECK_L_SOLVE
@@ -1897,8 +1965,10 @@ i_t basis_update_mpf_t<i_t, f_t>::b_solve(const sparse_vector_t<i_t, f_t>& rhs,
   } else {
     std::vector<f_t> solution_dense;
     solution.to_dense(solution_dense);
+    work_estimate_ += solution_dense.size();
     u_solve(solution_dense);
     solution.from_dense(solution_dense);
+    work_estimate_ += solution_dense.size();
   }
   sum_U_ += static_cast<f_t>(solution.i.size()) / rhs_size;
 
@@ -1921,7 +1991,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(std::vector<f_t>& rhs) const
   total_dense_U_++;
   const i_t m = L0_.m;
   // U*x = y
-  dual_simplex::upper_triangular_solve(U0_, rhs);
+  dual_simplex::upper_triangular_solve(U0_, rhs, work_estimate_);
   return 0;
 }
 
@@ -1934,7 +2004,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   // Solve U0*x = y
   i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
-    rhs, std::nullopt, xi_workspace_, U0_, x_workspace_.data());
+    rhs, std::nullopt, xi_workspace_, U0_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
 
   return 0;
@@ -1955,7 +2025,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> rhs_check = rhs;
 #endif
-  dual_simplex::lower_triangular_solve(L0_, rhs);
+  dual_simplex::lower_triangular_solve(L0_, rhs, work_estimate_);
 
 #ifdef CHECK_L0_SOLVE
   matrix_vector_multiply(L0_, 1.0, rhs, -1.0, residual);
@@ -1979,6 +2049,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 
     if (std::abs(theta) > zero_tol) { add_sparse_column(S_, u_col, -theta, rhs); }
   }
+  work_estimate_ += 2 * num_updates_;
 
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> inout = rhs;
@@ -2004,7 +2075,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
 
   // First solve L0*x0 = y
   i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
-    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data());
+    rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data(), work_estimate_);
   solve_to_workspace(top);  // Uses xi_workspace_ and x_workspace_ to fill rhs
   i_t nz = m - top;
   // Then T0 * T1 * ... * T_{num_updates_ - 1} * x = x0
@@ -2027,6 +2098,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
       add_sparse_column(S_, u_col, -theta, xi_workspace_, nz, x_workspace_);
     }
   }
+  work_estimate_ += 2 * num_updates_;
 
   gather_into_sparse_vector(nz, rhs);
 
@@ -2049,6 +2121,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
   const i_t col_start = U0_.col_start[leaving_index];
   const i_t col_end   = U0_.col_start[leaving_index + 1];
   std::vector<f_t> u  = utilde;
+  work_estimate_ += 2 * utilde.size();
   // u = utilde - U0(:, leaving_index)
   add_sparse_column(U0_, leaving_index, -1.0, u);
 
@@ -2069,9 +2142,11 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
 
   // Scatter u into S
   S_.append_column(u);
+  work_estimate_ += u.size() + 3 * u_nz;
 
   // Scatter v into S
   S_.append_column(etilde);
+  work_estimate_ += etilde.size() + 3 * v_nz;
 
   // Compute mu = 1 + v^T * u
   const f_t mu = 1.0 + sparse_dot(S_.i.data() + S_.col_start[S_start],
@@ -2080,6 +2155,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const std::vector<f_t>& utilde,
                                   S_.i.data() + S_.col_start[S_start + 1],
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   v_nz);
+  work_estimate_ += 3 * std::min(u_nz, v_nz);
 
   if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
@@ -2126,6 +2202,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
 
   // Ensure the workspace is sorted. Otherwise, the sparse dot will be incorrect.
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
+  work_estimate_ += (m + nz) * std::log2(m + nz);
 
   // Gather the workspace into a column of S
   i_t S_start;
@@ -2133,10 +2210,13 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
   grow_storage(nz + etilde.i.size(), S_start, S_nz);
 
   S_.append_column(nz, xi_workspace_.data() + m, x_workspace_.data());
+  work_estimate_ += 5 * nz;
 
   // Gather etilde into a column of S
   etilde.sort();  // Needs to be sorted for the sparse dot. TODO(CMM): Is etilde sorted on input?
+  work_estimate_ += etilde.i.size() * std::log2(etilde.i.size());
   S_.append_column(etilde);
+  work_estimate_ += 4 * etilde.i.size();
 
   // Compute mu = 1 + v^T * u
   const f_t mu = 1.0 + sparse_dot(S_.i.data() + S_.col_start[S_start],
@@ -2145,6 +2225,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
                                   S_.i.data() + S_.col_start[S_start + 1],
                                   S_.x.data() + S_.col_start[S_start + 1],
                                   S_.col_start[S_start + 2] - S_.col_start[S_start + 1]);
+  work_estimate_ += 3 * std::min(nz, static_cast<i_t>(etilde.i.size()));
 
   if (std::abs(mu) < 1E-8 || std::abs(mu) > 1E+8) {
     // Force a refactor. Otherwise we will get numerical issues when dividing by mu.
@@ -2158,6 +2239,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
     x_workspace_[i]      = 0.0;
     xi_workspace_[m + k] = 0;
   }
+  work_estimate_ += 4 * nz;
 
 #ifdef PRINT_MU_INFO
   printf("Update mu %e u nz %d v nz %d\n",
@@ -2190,7 +2272,6 @@ void basis_update_mpf_t<i_t, f_t>::l_multiply(std::vector<f_t>& inout) const
     const f_t theta = dot;
     add_sparse_column(S_, u_col, theta, inout);
   }
-
   std::vector<f_t> out(m, 0.0);
   matrix_vector_multiply(L0_, 1.0, inout, 0.0, out);
   inout = out;
@@ -2271,7 +2352,10 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   std::vector<i_t> slacks_needed;
   std::vector<i_t> superbasic_list;  // Empty superbasic list
 
-  if (L0_.m != A.m) { resize(A.m); }
+  if (L0_.m != A.m) {
+    resize(A.m);
+    work_estimate_ += A.m;
+  }
   std::vector<i_t> q;
   i_t status = factorize_basis(A,
                                settings,
@@ -2282,7 +2366,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                                inverse_row_permutation_,
                                q,
                                deficient,
-                               slacks_needed);
+                               slacks_needed,
+                               work_estimate_);
   if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
@@ -2295,7 +2380,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                  basic_list,
                  nonbasic_list,
                  superbasic_list,
-                 vstatus);
+                 vstatus,
+                 work_estimate_);
 
 #ifdef CHECK_BASIS_REPAIR
     const i_t m = A.m;
@@ -2323,7 +2409,8 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                              inverse_row_permutation_,
                              q,
                              deficient,
-                             slacks_needed);
+                             slacks_needed,
+                             work_estimate_);
     if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
     if (status == -1) {
 #ifdef CHECK_L_FACTOR
@@ -2338,6 +2425,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
 
   assert(q.size() == A.m);
   reorder_basic_list(q, basic_list);  // We no longer need q after reordering the basic list
+  work_estimate_ += 3 * q.size();
   reset();
   return 0;
 }
