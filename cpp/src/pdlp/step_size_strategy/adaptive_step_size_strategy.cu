@@ -455,31 +455,6 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     cuda::std::minus<>{},
     stream_view_.value());
 
-  // Validate tmp_primal (A^T @ delta_y) has no NaN/Inf
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_.value()));
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    tmp_primal.data(),
-                    tmp_primal.data() + tmp_primal.size(),
-                    is_nan_or_inf<f_t>{}),
-    "tmp_primal (A^T @ delta_y) contains NaN or Inf in compute_interaction_and_movement");
-
-  // Validate delta_primal and delta_dual inputs have no NaN/Inf
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    current_saddle_point_state.get_delta_primal().data(),
-                    current_saddle_point_state.get_delta_primal().data() +
-                      current_saddle_point_state.get_delta_primal().size(),
-                    is_nan_or_inf<f_t>{}),
-    "delta_primal contains NaN or Inf in compute_interaction_and_movement");
-  cuopt_assert(
-    !thrust::any_of(handle_ptr_->get_thrust_policy(),
-                    current_saddle_point_state.get_delta_dual().data(),
-                    current_saddle_point_state.get_delta_dual().data() +
-                      current_saddle_point_state.get_delta_dual().size(),
-                    is_nan_or_inf<f_t>{}),
-    "delta_dual contains NaN or Inf in compute_interaction_and_movement");
-
   if (!batch_mode_) {
     // compute interaction (x'-x) . (A(y'-y))
     RAFT_CUBLAS_TRY(
