@@ -189,8 +189,11 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
       }
       // greater than part: convert it to less than
       knapsack_constraint_t<i_t, f_t> knapsack_constraint2;
-      knapsack_constraint2.cstr_idx = A.m + added_constraints++;
-      knapsack_constraint2.rhs      = -problem.rhs[i];
+      // Mark synthetic rows from equality splitting with negative ids so they never alias real row
+      // indices (including rows appended later by clique extension).
+      knapsack_constraint2.cstr_idx = -(added_constraints + 1);
+      added_constraints++;
+      knapsack_constraint2.rhs = -problem.rhs[i];
       for (i_t j = constraint_range.first; j < constraint_range.second; j++) {
         knapsack_constraint2.entries.push_back({A.j[j], -A.x[j]});
       }
@@ -378,8 +381,13 @@ bool extend_clique(const std::vector<i_t>& clique,
                    clique_table_t<i_t, f_t>& clique_table,
                    dual_simplex::user_problem_t<i_t, f_t>& problem,
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
-                   f_t coeff_scale)
+                   f_t coeff_scale,
+                   i_t min_extension_gain,
+                   i_t remaining_rows_budget,
+                   i_t remaining_nnz_budget,
+                   i_t& inserted_row_nnz)
 {
+  inserted_row_nnz        = 0;
   i_t smallest_degree     = std::numeric_limits<i_t>::max();
   i_t smallest_degree_var = -1;
   // find smallest degree vertex in the current set packing constraint
@@ -436,6 +444,8 @@ bool extend_clique(const std::vector<i_t>& clique,
                       n_of_complement_conflicts,
                       complement_conflict_var);
       cuopt_assert(n_of_complement_conflicts == 1, "There can only be one complement conflict");
+      // Keep the discovered extension in the clique table for downstream dominance checks.
+      clique_table.first.push_back(new_clique);
       // fix all other variables other than complementing var
       for (size_t i = 0; i < new_clique.size(); i++) {
         if (new_clique[i] % clique_table.n_variables != complement_conflict_var) {
@@ -454,14 +464,23 @@ bool extend_clique(const std::vector<i_t>& clique,
           }
         }
       }
-      return false;
+      return true;
     } else {
+      // Keep the discovered extension in the clique table even when row insertion is skipped by
+      // row/nnz budgets.
       clique_table.first.push_back(new_clique);
 #if DEBUG_KNAPSACK_CONSTRAINTS
       CUOPT_LOG_DEBUG("Extended clique: %lu from %lu", new_clique.size(), clique.size());
 #endif
+      i_t extension_gain = static_cast<i_t>(new_clique.size() - clique.size());
+      if (extension_gain < min_extension_gain) { return true; }
+      if (remaining_rows_budget <= 0 ||
+          remaining_nnz_budget < static_cast<i_t>(new_clique.size())) {
+        return true;
+      }
       // insert the new clique into the problem as a new constraint
       insert_clique_into_problem(new_clique, problem, A, coeff_scale);
+      inserted_row_nnz = static_cast<i_t>(new_clique.size());
     }
   }
   return new_clique.size() > clique.size();
@@ -477,19 +496,100 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
                    cuopt::timer_t& timer)
 {
-  i_t n_extended_cliques = 0;
-  // we try extending cliques on set packing constraints
-  for (const auto& knapsack_constraint : knapsack_constraints) {
+  constexpr i_t min_extension_gain       = 2;
+  constexpr i_t extension_yield_window   = 64;
+  constexpr i_t min_successes_per_window = 1;
+
+  i_t base_rows      = A.m;
+  i_t base_nnz       = A.row_start[A.m];
+  i_t max_added_rows = std::max<i_t>(8, base_rows / 50);
+  i_t max_added_nnz  = std::max<i_t>(8 * clique_table.max_clique_size_for_extension, base_nnz / 50);
+
+  i_t added_rows       = 0;
+  i_t added_nnz        = 0;
+  i_t window_attempts  = 0;
+  i_t window_successes = 0;
+
+  CUOPT_LOG_DEBUG("Clique extension heuristics: min_gain=%d row_budget=%d nnz_budget=%d",
+                  min_extension_gain,
+                  max_added_rows,
+                  max_added_nnz);
+  struct extension_candidate_t {
+    i_t knapsack_idx;
+    i_t estimated_gain;
+    i_t clique_size;
+  };
+  std::vector<extension_candidate_t> extension_worklist;
+  extension_worklist.reserve(knapsack_constraints.size());
+  for (i_t knapsack_idx = 0; knapsack_idx < static_cast<i_t>(knapsack_constraints.size());
+       knapsack_idx++) {
     if (timer.check_time_limit()) { break; }
+    const auto& knapsack_constraint = knapsack_constraints[knapsack_idx];
     if (!knapsack_constraint.is_set_packing) { continue; }
-    if (knapsack_constraint.entries.size() < (size_t)clique_table.max_clique_size_for_extension) {
-      std::vector<i_t> clique;
-      for (const auto& entry : knapsack_constraint.entries) {
-        clique.push_back(entry.col);
+    i_t clique_size = static_cast<i_t>(knapsack_constraint.entries.size());
+    if (clique_size >= clique_table.max_clique_size_for_extension) { continue; }
+    i_t smallest_degree = std::numeric_limits<i_t>::max();
+    for (const auto& entry : knapsack_constraint.entries) {
+      smallest_degree = std::min(smallest_degree, clique_table.get_degree_of_var(entry.col));
+    }
+    // The smallest-degree vertex upper-bounds how many new literals can be added.
+    i_t estimated_gain = std::max<i_t>(0, smallest_degree - (clique_size - 1));
+    if (estimated_gain < min_extension_gain) { continue; }
+    extension_worklist.push_back({knapsack_idx, estimated_gain, clique_size});
+  }
+  std::stable_sort(extension_worklist.begin(),
+                   extension_worklist.end(),
+                   [](const extension_candidate_t& a, const extension_candidate_t& b) {
+                     if (a.estimated_gain != b.estimated_gain) {
+                       return a.estimated_gain > b.estimated_gain;
+                     }
+                     if (a.clique_size != b.clique_size) { return a.clique_size < b.clique_size; }
+                     return a.knapsack_idx < b.knapsack_idx;
+                   });
+  CUOPT_LOG_DEBUG("Clique extension candidates after scoring: %zu", extension_worklist.size());
+
+  i_t n_extended_cliques = 0;
+  // Try highest estimated gain candidates first so budget is spent on promising rows.
+  for (const auto& candidate : extension_worklist) {
+    if (timer.check_time_limit()) { break; }
+    if (added_rows >= max_added_rows || added_nnz >= max_added_nnz) {
+      CUOPT_LOG_DEBUG(
+        "Stopping clique extension: budget reached (rows=%d nnz=%d)", added_rows, added_nnz);
+      break;
+    }
+    window_attempts++;
+    const auto& knapsack_constraint = knapsack_constraints[candidate.knapsack_idx];
+    std::vector<i_t> clique;
+    for (const auto& entry : knapsack_constraint.entries) {
+      clique.push_back(entry.col);
+    }
+    i_t inserted_row_nnz = 0;
+    f_t coeff_scale      = knapsack_constraint.entries[0].val;
+    bool extended_clique = extend_clique(clique,
+                                         clique_table,
+                                         problem,
+                                         A,
+                                         coeff_scale,
+                                         min_extension_gain,
+                                         max_added_rows - added_rows,
+                                         max_added_nnz - added_nnz,
+                                         inserted_row_nnz);
+    if (extended_clique) {
+      n_extended_cliques++;
+      window_successes++;
+      if (inserted_row_nnz > 0) {
+        added_rows++;
+        added_nnz += inserted_row_nnz;
       }
-      f_t coeff_scale      = knapsack_constraint.entries[0].val;
-      bool extended_clique = extend_clique(clique, clique_table, problem, A, coeff_scale);
-      if (extended_clique) { n_extended_cliques++; }
+    }
+    if (window_attempts >= extension_yield_window) {
+      if (window_successes < min_successes_per_window) {
+        CUOPT_LOG_DEBUG(
+          "Stopping clique extension: low yield (%d/%d)", window_successes, window_attempts);
+        break;
+      }
+      window_attempts  = 0;
+      window_successes = 0;
     }
   }
   // problem.A.check_matrix();
@@ -622,10 +722,10 @@ void remove_dominated_cliques(
         }
       }
     };
-    auto find_window_start = [&](long long signature) {
-      auto it = std::lower_bound(
-        sp_sigs.begin(), sp_sigs.end(), signature, [](const auto& a, long long value) {
-          return a.signature < value;
+    auto find_window_end = [&](long long signature) {
+      auto it = std::upper_bound(
+        sp_sigs.begin(), sp_sigs.end(), signature, [](long long value, const auto& a) {
+          return value < a.signature;
         });
       return static_cast<size_t>(std::distance(sp_sigs.begin(), it));
     };
@@ -648,10 +748,12 @@ void remove_dominated_cliques(
       for (auto v : curr_clique_vars) {
         signature += static_cast<long long>(v);
       }
-      size_t start = find_window_start(signature);
-      size_t end   = std::min(sp_sigs.size(), start + dominance_window);
-      for (size_t idx = start; idx < end; idx++) {
-        const auto& sp      = sp_sigs[idx];
+      // Subsets must have signature <= current clique signature. Scan only that side.
+      size_t end   = find_window_end(signature);
+      size_t start = (end > dominance_window) ? (end - dominance_window) : 0;
+      for (size_t idx = end; idx > start; idx--) {
+        size_t cand_idx     = idx - 1;
+        const auto& sp      = sp_sigs[cand_idx];
         const auto& vars_sp = cstr_vars[sp.knapsack_idx];
         if (vars_sp.size() > curr_clique_vars.size()) { continue; }
         cuopt_assert(std::is_sorted(vars_sp.begin(), vars_sp.end()),
@@ -664,12 +766,12 @@ void remove_dominated_cliques(
           continue;
         }
         if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
-          CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
-                          clique_idx,
-                          sp.row_idx);
           // note that we never deleter set partitioning constraints but it fixes some other
           // variables
           if (vars_sp.size() != curr_clique_vars.size()) {
+            CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
+                            clique_idx,
+                            sp.row_idx);
             fix_difference(curr_clique_vars, vars_sp);
           }
         } else {
