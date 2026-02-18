@@ -13,7 +13,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/triangle_solve.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 

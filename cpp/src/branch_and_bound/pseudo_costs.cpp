@@ -14,7 +14,7 @@
 
 #include <cuopt/linear_programming/solve.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <omp.h>
 

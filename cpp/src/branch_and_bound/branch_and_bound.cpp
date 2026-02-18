@@ -22,7 +22,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <utilities/hashing.hpp>
 
 #include <omp.h>
@@ -1317,7 +1317,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
   if (original_lp_.objective_is_integral) {
-    lp_settings.cut_off = std::ceil(upper_bound_ - settings_.integer_tol) - 1 + settings_.dual_tol;
+    lp_settings.cut_off = std::ceil(upper_bound_ - settings_.integer_tol) + settings_.dual_tol;
   } else {
     lp_settings.cut_off = upper_bound_ + settings_.dual_tol;
   }
@@ -1426,7 +1426,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     // - The lower bound of the parent is lower or equal to its children
     worker->lower_bound = lower_bound;
 
-    if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+    if (lower_bound > upper_bound) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree_.update(node_ptr, node_status_t::FATHOMED);
       worker->recompute_basis  = true;
@@ -1536,7 +1536,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     f_t rel_gap         = user_relative_gap(original_lp_, upper_bound, lower_bound);
     worker->lower_bound = lower_bound;
 
-    if (node_ptr->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+    if (node_ptr->lower_bound > upper_bound) {
       worker->recompute_basis  = true;
       worker->recompute_bounds = true;
       continue;
@@ -2471,8 +2471,30 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lower_bound    = deterministic_compute_lower_bound();
     solver_status_ = deterministic_global_termination_status_;
   } else {
-    lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
-                                                          : search_tree_.root.lower_bound;
+    if (node_queue_.best_first_queue_size() > 0) {
+      // We need to clear the queue and use the info in the search tree for the lower bound
+      while (node_queue_.best_first_queue_size() > 0) {
+        std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue_.pop_best_first();
+
+        if (!start_node.has_value()) { continue; }
+        if (upper_bound_ < start_node.value()->lower_bound) {
+          // This node was put on the heap earlier but its lower bound is now greater than the
+          // current upper bound
+          search_tree_.graphviz_node(
+            settings_.log, start_node.value(), "cutoff", start_node.value()->lower_bound);
+          search_tree_.update(start_node.value(), node_status_t::FATHOMED);
+          continue;
+        } else {
+          node_queue_.push(
+            start_node.value());  // Needed to ensure we don't lose the correct lower bound
+          break;
+        }
+      }
+      lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
+                                                            : search_tree_.root.lower_bound;
+    } else {
+      lower_bound = search_tree_.root.lower_bound;
+    }
   }
   set_final_solution(solution, lower_bound);
   return solver_status_;
@@ -2781,7 +2803,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
 
       f_t upper_bound = worker.local_upper_bound;
       f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node->lower_bound);
-      if (node->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+      if (node->lower_bound > upper_bound) {
         worker.current_node = nullptr;
         worker.record_fathomed(node, node->lower_bound);
         search_tree.update(node, node_status_t::FATHOMED);
@@ -3570,8 +3592,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     // Prune check using snapshot upper bound
     f_t rel_gap = user_relative_gap(original_lp_, worker.local_upper_bound, node_ptr->lower_bound);
-    if (node_ptr->lower_bound > worker.local_upper_bound ||
-        rel_gap < settings_.relative_mip_gap_tol) {
+    if (node_ptr->lower_bound > worker.local_upper_bound) {
       worker.recompute_bounds_and_basis = true;
       continue;
     }

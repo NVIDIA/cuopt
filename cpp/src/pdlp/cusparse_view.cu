@@ -13,8 +13,8 @@
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/utils.cuh>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 
 #include <cuda_runtime.h>

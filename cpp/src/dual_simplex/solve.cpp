@@ -26,7 +26,7 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cstdio>
 #include <cstdlib>

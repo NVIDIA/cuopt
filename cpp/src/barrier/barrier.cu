@@ -36,7 +36,7 @@
 #include <numeric>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/linalg/dot.cuh>
 
 #include <thrust/iterator/permutation_iterator.h>
