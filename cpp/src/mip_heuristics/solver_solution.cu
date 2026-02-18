@@ -11,7 +11,7 @@
 
 #include <limits>
 #include <math_optimization/solution_writer.hpp>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/util/cudart_utils.hpp>
 #include <vector>
 

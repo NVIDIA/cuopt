@@ -13,8 +13,6 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-using cuopt::ins_vector;
-
 template <typename i_t, typename f_t>
 sparse_vector_t<i_t, f_t>::sparse_vector_t(const csc_matrix_t<i_t, f_t>& A, i_t col)
 {
@@ -70,17 +68,12 @@ void sparse_vector_t<i_t, f_t>::from_dense(const std::vector<f_t>& in)
   n = in.size();
   i.reserve(n);
   x.reserve(n);
-  auto& i_vec = i.underlying();
-  auto& x_vec = x.underlying();
   for (i_t k = 0; k < n; ++k) {
     if (in[k] != 0) {
-      i_vec.push_back(k);
-      x_vec.push_back(in[k]);
+      i.push_back(k);
+      x.push_back(in[k]);
     }
   }
-  const size_t nz = i_vec.size();
-  i.byte_stores += nz * sizeof(i_t);
-  x.byte_stores += nz * sizeof(f_t);
 }
 
 template <typename i_t, typename f_t>
@@ -92,23 +85,12 @@ void sparse_vector_t<i_t, f_t>::to_csc(csc_matrix_t<i_t, f_t>& A) const
   A.col_start.resize(2);
   A.col_start[0] = 0;
   A.col_start[1] = i.size();
-  A.i            = i.underlying();
-  A.x            = x.underlying();
+  A.i            = i;
+  A.x            = x;
 }
 
 template <typename i_t, typename f_t>
 void sparse_vector_t<i_t, f_t>::to_dense(std::vector<f_t>& x_dense) const
-{
-  x_dense.clear();
-  x_dense.resize(n, 0.0);
-  const i_t nz = i.size();
-  for (i_t k = 0; k < nz; ++k) {
-    x_dense[i[k]] = x[k];
-  }
-}
-
-template <typename i_t, typename f_t>
-void sparse_vector_t<i_t, f_t>::to_dense(ins_vector<f_t>& x_dense) const
 {
   x_dense.clear();
   x_dense.resize(n, 0.0);
@@ -129,28 +111,11 @@ void sparse_vector_t<i_t, f_t>::scatter(std::vector<f_t>& x_dense) const
 }
 
 template <typename i_t, typename f_t>
-void sparse_vector_t<i_t, f_t>::scatter(ins_vector<f_t>& x_dense) const
-{
-  // Assumes x_dense is already cleared
-  auto& sv_i   = i.underlying();
-  auto& sv_x   = x.underlying();
-  auto& dense  = x_dense.underlying();
-  const i_t nz = sv_i.size();
-  for (i_t k = 0; k < nz; ++k) {
-    dense[sv_i[k]] += sv_x[k];
-  }
-  i.byte_loads += nz * sizeof(i_t);
-  x.byte_loads += nz * sizeof(f_t);
-  x_dense.byte_loads += nz * sizeof(f_t);
-  x_dense.byte_stores += nz * sizeof(f_t);
-}
-
-template <typename i_t, typename f_t>
 void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p)
 {
   assert(p.size() == n);
   i_t nz = i.size();
-  ins_vector<i_t> i_perm(nz);
+  std::vector<i_t> i_perm(nz);
   for (i_t k = 0; k < nz; ++k) {
     i_perm[k] = p[i[k]];
   }
@@ -166,7 +131,7 @@ void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p
   i_t nz = i.size();
   y.n    = n;
   y.x    = x;
-  ins_vector<i_t> i_perm(nz);
+  std::vector<i_t> i_perm(nz);
   for (i_t k = 0; k < nz; ++k) {
     i_perm[k] = p[i[k]];
   }
@@ -232,8 +197,8 @@ void sparse_vector_t<i_t, f_t>::sort()
   } else {
     // Use a n log n sort
     const i_t nz = i.size();
-    ins_vector<i_t> i_sorted(nz);
-    ins_vector<f_t> x_sorted(nz);
+    std::vector<i_t> i_sorted(nz);
+    std::vector<f_t> x_sorted(nz);
     std::vector<i_t> perm(nz);
     for (i_t k = 0; k < nz; ++k) {
       perm[k] = k;

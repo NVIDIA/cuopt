@@ -16,8 +16,8 @@
 #include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
 
-#include <raft/common/nvtx.hpp>
 #include <raft/core/handle.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <rmm/device_buffer.hpp>
 

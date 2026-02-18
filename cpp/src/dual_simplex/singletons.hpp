@@ -27,26 +27,29 @@ struct row_col_graph_t {
   typename std::vector<i_t>::const_iterator Yi;
 };
 
-template <typename i_t>
+template <typename i_t, typename f_t>
 i_t order_singletons(std::queue<i_t>& singleton_queue,
                      i_t& singletons_found,
-                     row_col_graph_t<i_t>& G);
+                     row_col_graph_t<i_t>& G,
+                     f_t& work_estimate);
 
 // \param [in,out]  workspace - size m
 template <typename i_t, typename f_t>
 void create_row_representationon(const csc_matrix_t<i_t, f_t>& A,
                                  std::vector<i_t>& row_start,
                                  std::vector<i_t>& col_index,
-                                 std::vector<i_t>& workspace);
+                                 std::vector<i_t>& workspace,
+                                 f_t& work_estimate);
 // Complete the permuation
-template <typename i_t, typename f_t>
-i_t complete_permutationn(i_t singletons, std::vector<i_t>& Xdeg, std::vector<i_t>& Xperm);
+template <typename i_t>
+i_t complete_permutation(i_t singletons, std::vector<i_t>& Xdeg, std::vector<i_t>& Xperm);
 
-template <typename i_t, typename f_t, typename VectorI>
+template <typename i_t, typename f_t>
 i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
                     i_t& row_singletons,
-                    VectorI& row_perm,
+                    std::vector<i_t>& row_perm,
                     i_t& col_singleton,
-                    VectorI& col_perm);
+                    std::vector<i_t>& col_perm,
+                    f_t& work_estimate);
 
 }  // namespace cuopt::linear_programming::dual_simplex

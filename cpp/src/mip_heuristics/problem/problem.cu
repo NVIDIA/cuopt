@@ -2090,9 +2090,9 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.x         = ins_vector<f_t>(cuopt::host_copy(coefficients, stream));
-  csr_A.j         = ins_vector<i_t>(cuopt::host_copy(variables, stream));
-  csr_A.row_start = ins_vector<i_t>(cuopt::host_copy(offsets, stream));
+  csr_A.x         = std::vector<f_t>(cuopt::host_copy(coefficients, stream));
+  csr_A.j         = std::vector<i_t>(cuopt::host_copy(variables, stream));
+  csr_A.row_start = std::vector<i_t>(cuopt::host_copy(offsets, stream));
 
   csr_A.to_compressed_col(user_problem.A);
 

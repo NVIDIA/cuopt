@@ -20,8 +20,8 @@
 #endif
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
 #include <raft/core/device_span.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
 #include <raft/linalg/eltwise.cuh>
