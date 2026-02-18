@@ -58,11 +58,11 @@ void ping_pong_graph_t<i_t>::start_capture(i_t total_pdlp_iterations)
 #ifndef CUPDLP_DEBUG_MODE
   if (!is_legacy_batch_mode_) {
     if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(
+      RAFT_CUDA_TRY_NO_THROW(
         cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
       capture_even_active_ = true;
     } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(
+      RAFT_CUDA_TRY_NO_THROW(
         cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
       capture_odd_active_ = true;
     }
@@ -76,15 +76,15 @@ void ping_pong_graph_t<i_t>::end_capture(i_t total_pdlp_iterations)
 #ifndef CUPDLP_DEBUG_MODE
   if (!is_legacy_batch_mode_) {
     if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &even_graph));
+      RAFT_CUDA_TRY_NO_THROW(cudaStreamEndCapture(stream_view_.value(), &even_graph));
       capture_even_active_ = false;
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&even_instance, even_graph));
+      RAFT_CUDA_TRY_NO_THROW(cudaGraphInstantiate(&even_instance, even_graph));
       even_initialized = true;
       RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(even_graph));
     } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(cudaStreamEndCapture(stream_view_.value(), &odd_graph));
+      RAFT_CUDA_TRY_NO_THROW(cudaStreamEndCapture(stream_view_.value(), &odd_graph));
       capture_odd_active_ = false;
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&odd_instance, odd_graph));
+      RAFT_CUDA_TRY_NO_THROW(cudaGraphInstantiate(&odd_instance, odd_graph));
       odd_initialized = true;
       RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(odd_graph));
     }
@@ -98,9 +98,9 @@ void ping_pong_graph_t<i_t>::launch(i_t total_pdlp_iterations)
 #ifndef CUPDLP_DEBUG_MODE
   if (!is_legacy_batch_mode_) {
     if (total_pdlp_iterations % 2 == 0 && even_initialized) {
-      RAFT_CUDA_TRY(cudaGraphLaunch(even_instance, stream_view_.value()));
+      RAFT_CUDA_TRY_NO_THROW(cudaGraphLaunch(even_instance, stream_view_.value()));
     } else if (total_pdlp_iterations % 2 == 1 && odd_initialized) {
-      RAFT_CUDA_TRY(cudaGraphLaunch(odd_instance, stream_view_.value()));
+      RAFT_CUDA_TRY_NO_THROW(cudaGraphLaunch(odd_instance, stream_view_.value()));
     }
   }
 #endif

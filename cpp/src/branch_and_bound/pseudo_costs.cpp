@@ -335,8 +335,9 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     }
 
     const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
+    const raft::handle_t batch_pdlp_handle;
     const auto solutions =
-      batch_pdlp_solve(original_problem.handle_ptr, mps_model, fractional, fraction_values);
+      batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
     // Find max iteration on how many are done accross the batch

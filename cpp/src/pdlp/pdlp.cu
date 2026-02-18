@@ -1440,9 +1440,6 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
     norm_squared_delta_primal * primal_weight + norm_squared_delta_dual / primal_weight;
   const f_t computed_interaction = f_t(2.0) * interaction * step_size;
 
-  //printf("movement %lf\n", movement);
-  //printf("computed_interaction %lf\n", computed_interaction);
-
   cuopt_assert(
     movement + computed_interaction >= f_t(0.0),
     "Movement + computed interaction must be >= 0");

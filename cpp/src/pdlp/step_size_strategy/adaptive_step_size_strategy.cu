@@ -28,13 +28,9 @@
 
 #include <cub/cub.cuh>
 
-#include <thrust/logical.h>
-
 #include <limits>
 
 namespace cuopt::linear_programming::detail {
-
-constexpr int parallel_stream_computation = 2;
 
 template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
@@ -47,10 +43,6 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
-    stream_pool_(parallel_stream_computation),
-    dot_delta_X_(cudaEventDisableTiming),
-    dot_delta_Y_(cudaEventDisableTiming),
-    deltas_are_done_(cudaEventDisableTiming),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_(primal_size),
@@ -351,26 +343,6 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
 }
 
 template <typename i_t, typename f_t>
-__global__ void validate_interaction_and_movement_outputs(
-  raft::device_span<const f_t> norm_squared_delta_primal,
-  raft::device_span<const f_t> norm_squared_delta_dual,
-  raft::device_span<const f_t> interaction)
-{
-  const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= norm_squared_delta_primal.size()) { return; }
-  cuopt_assert(!isnan(norm_squared_delta_primal[idx]),
-               "norm_squared_delta_primal is NaN after reduction");
-  cuopt_assert(!isnan(norm_squared_delta_dual[idx]),
-               "norm_squared_delta_dual is NaN after reduction");
-  cuopt_assert(!isnan(interaction[idx]),
-               "interaction is NaN after reduction");
-  cuopt_assert(norm_squared_delta_primal[idx] >= f_t(0.0),
-               "norm_squared_delta_primal must be >= 0 after reduction");
-  cuopt_assert(norm_squared_delta_dual[idx] >= f_t(0.0),
-               "norm_squared_delta_dual must be >= 0 after reduction");
-}
-
-template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   rmm::device_uvector<f_t>& tmp_primal,
   cusparse_view_t<i_t, f_t>& cusparse_view,
@@ -393,18 +365,13 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
 
     Deltas x & y were computed during pdhg step
 
-    We will compute in parallel (parallel cuda graph):
+    We will compute:
     ||(x' - x)||
     ||(y' - y)||
     (y' - y)_t . A @ (x' - x)
 
     And finally merge the results
   */
-
-  // We need to make sure both dot products happens after previous operations (next_primal/dual)
-  // Thus, we add another node in the main stream before starting the SpMVs
-
-  if (!batch_mode_) deltas_are_done_.record(stream_view_.value());
 
   // primal_dual_interaction computation => we purposly diverge from the paper (delta_y . (A @ x' -
   // A@x)) to save one SpMV
@@ -475,8 +442,6 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     //               2 + (0.5 /
     //               solver_state.primal_weight) *
     //               norm(delta_dual) ^ 2;
-    // All dot products run on stream_view_ to avoid concurrent cuBLAS workspace access
-    // (cuBLAS uses a single internal workspace shared across all streams for the same handle)
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                       current_saddle_point_state.get_primal_size(),
@@ -529,13 +494,6 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
       climber_strategies_.size(),
       dual_size_,
       stream_view_.value());
-
-    validate_interaction_and_movement_outputs<i_t, f_t>
-      <<<1, climber_strategies_.size(), 0, stream_view_>>>(
-        make_span(norm_squared_delta_primal_),
-        make_span(norm_squared_delta_dual_),
-        make_span(interaction_));
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
 }
 

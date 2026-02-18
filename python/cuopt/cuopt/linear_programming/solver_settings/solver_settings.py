@@ -207,44 +207,6 @@ class SolverSettings:
         """
         self.pdlp_warm_start_data = pdlp_warm_start_data
 
-    def set_mip_batch_pdlp_strong_branching(self, enable):
-        """
-        Note: Only supported for MILP
-
-        Toggle batch PDLP strong branching in the MIP solver.
-
-        Parameters
-        ----------
-        enable : bool
-            If True, enable batch PDLP strong branching (value 1).
-            If False, disable it (value 0).
-
-        Examples
-        --------
-        >>> settings.set_mip_batch_pdlp_strong_branching(True)
-        """
-        self.set_parameter(
-            "mip_batch_pdlp_strong_branching", 1 if enable else 0
-        )
-
-    def get_mip_batch_pdlp_strong_branching(self):
-        """
-        Note: Only supported for MILP
-
-        Get the current value of the batch PDLP strong branching setting.
-
-        Returns
-        -------
-        bool
-            True if batch PDLP strong branching is enabled, False otherwise.
-
-        Examples
-        --------
-        >>> settings.get_mip_batch_pdlp_strong_branching()
-        False
-        """
-        return bool(self.get_parameter("mip_batch_pdlp_strong_branching"))
-
     def set_mip_callback(self, callback, user_data):
         """
         Note: Only supported for MILP
