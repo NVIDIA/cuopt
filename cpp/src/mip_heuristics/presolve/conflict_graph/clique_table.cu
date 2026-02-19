@@ -229,20 +229,30 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table)
     }
   }
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
-    const auto& addtl_clique = clique_table.addtl_cliques[addtl_c];
+    const auto& addtl_clique   = clique_table.addtl_cliques[addtl_c];
+    const auto base_clique_idx = static_cast<size_t>(addtl_clique.clique_idx);
+    cuopt_assert(base_clique_idx < to_delete.size(),
+                 "Additional clique points to invalid base clique index");
+    // Remove additional cliques whose base clique is scheduled for deletion.
+    if (to_delete[base_clique_idx]) {
+      clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
+      addtl_c--;
+      num_removed_addtl++;
+      continue;
+    }
     i_t size_of_clique =
-      clique_table.first[addtl_clique.clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
+      clique_table.first[base_clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
     if (size_of_clique < clique_table.min_clique_size) {
       // the items from first clique are already added to the adjlist
       // only add the items that are coming from the new var in the additional clique
       for (size_t i = addtl_clique.start_pos_on_clique;
-           i < clique_table.first[addtl_clique.clique_idx].size();
+           i < clique_table.first[base_clique_idx].size();
            i++) {
         // insert conflicts both way
-        clique_table.adj_list_small_cliques[clique_table.first[addtl_clique.clique_idx][i]].insert(
+        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
           addtl_clique.vertex_idx);
         clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
-          clique_table.first[addtl_clique.clique_idx][i]);
+          clique_table.first[base_clique_idx][i]);
       }
       clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
       addtl_c--;

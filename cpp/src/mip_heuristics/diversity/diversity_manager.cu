@@ -221,6 +221,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
       // do the resizing no-matter what, bounds presolve might not change the bounds but initial
       // trivial presolve might have
       ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
       ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
         *problem_ptr, ls.constraint_prop.bounds_update);
     }
