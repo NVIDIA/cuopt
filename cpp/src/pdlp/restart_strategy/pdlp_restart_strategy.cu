@@ -2008,465 +2008,466 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                    "Incorrect primal reverse iterator");
       index_start_primal = thrust::raw_pointer_cast(&*highest_negInf_primal) - threshold_.data() +
                            1;  // + 1 to go after last negInf
-      if (lowest_inf != end) {
+      testing_range_low_.set_value_async(index_start_primal, stream_view_);
+    } else  // No negInf found, start is 0
+      testing_range_low_.set_value_async(index_start_primal, stream_view_);
+    if (lowest_inf != end) {
+      cuopt_assert(device_to_host_value(thrust::raw_pointer_cast(&*lowest_inf)) ==
                      std::numeric_limits<f_t>::infinity(),
                    "Incorrect primal iterator");
-                     index_end_primal =
-                       thrust::raw_pointer_cast(lowest_inf) -
-                       threshold_
-                         .data();  // no - 1 to go before the first inf because end is not included
-                     testing_range_high_.set_value_async(index_end_primal, stream_view_);
-      } else  // No inf found, end is primal_size_h_
-        testing_range_high_.set_value_async(index_end_primal, stream_view_);
-      cuopt_assert(index_start_primal <= index_end_primal,
-                   "Start should be strictly smaller than end");
+      index_end_primal =
+        thrust::raw_pointer_cast(lowest_inf) -
+        threshold_.data();  // no - 1 to go before the first inf because end is not included
+      testing_range_high_.set_value_async(index_end_primal, stream_view_);
+    } else  // No inf found, end is primal_size_h_
+      testing_range_high_.set_value_async(index_end_primal, stream_view_);
+    cuopt_assert(index_start_primal <= index_end_primal,
+                 "Start should be strictly smaller than end");
 
-      cuopt_assert(!thrust::any_of(handle_ptr_->get_thrust_policy(),
-                                   threshold_.data() + index_start_primal,
-                                   threshold_.data() + index_end_primal,
-                                   is_nan_or_inf<f_t>()),
-                   "Threshold vector should not contain inf or NaN values");
+    cuopt_assert(!thrust::any_of(handle_ptr_->get_thrust_policy(),
+                                 threshold_.data() + index_start_primal,
+                                 threshold_.data() + index_end_primal,
+                                 is_nan_or_inf<f_t>()),
+                 "Threshold vector should not contain inf or NaN values");
 
-      // Init parameters for live kernel
-      // Has to do this to pass lvalues (and not rvalue) to void* kernel_args
-      auto restart_view        = this->view();
-      auto op_view             = problem_ptr->view();
-      i_t* testing_range_low   = testing_range_low_.data();
-      i_t* testing_range_high  = testing_range_high_.data();
-      f_t* test_radius_squared = test_radius_squared_.data();
-      f_t* low_radius_squared  = low_radius_squared_.data();
-      f_t* high_radius_squared = high_radius_squared_.data();
-      f_t* distance_traveled   = duality_gap.distance_traveled_.data();
+    // Init parameters for live kernel
+    // Has to do this to pass lvalues (and not rvalue) to void* kernel_args
+    auto restart_view        = this->view();
+    auto op_view             = problem_ptr->view();
+    i_t* testing_range_low   = testing_range_low_.data();
+    i_t* testing_range_high  = testing_range_high_.data();
+    f_t* test_radius_squared = test_radius_squared_.data();
+    f_t* low_radius_squared  = low_radius_squared_.data();
+    f_t* high_radius_squared = high_radius_squared_.data();
+    f_t* distance_traveled   = duality_gap.distance_traveled_.data();
 
-      void* kernel_args[] = {
-        &restart_view,
-        &op_view,
-        &testing_range_low,
-        &testing_range_high,
-        &test_radius_squared,
-        &low_radius_squared,
-        &high_radius_squared,
-        &distance_traveled,
-      };
-      constexpr int numThreads = 128;
-      dim3 dimBlock(numThreads, 1, 1);
-      // shared_live_kernel_accumulator_.size() contains deviceProp.multiProcessorCount *
-      // numBlocksPerSm
-      dim3 dimGrid(shared_live_kernel_accumulator_.size(), 1, 1);
-      // Compute the median for the join problem, while loop is inside the live kernel
-      RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-        (void*)solve_bound_constrained_trust_region_kernel<i_t, f_t, numThreads>,
-        dimGrid,
-        dimBlock,
-        kernel_args,
-        0,
-        stream_view_));
+    void* kernel_args[] = {
+      &restart_view,
+      &op_view,
+      &testing_range_low,
+      &testing_range_high,
+      &test_radius_squared,
+      &low_radius_squared,
+      &high_radius_squared,
+      &distance_traveled,
+    };
+    constexpr int numThreads = 128;
+    dim3 dimBlock(numThreads, 1, 1);
+    // shared_live_kernel_accumulator_.size() contains deviceProp.multiProcessorCount *
+    // numBlocksPerSm
+    dim3 dimGrid(shared_live_kernel_accumulator_.size(), 1, 1);
+    // Compute the median for the join problem, while loop is inside the live kernel
+    RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
+      (void*)solve_bound_constrained_trust_region_kernel<i_t, f_t, numThreads>,
+      dimGrid,
+      dimBlock,
+      kernel_args,
+      0,
+      stream_view_));
 
-      // Find max threshold for the join problem
-      const f_t* max_threshold =
-        thrust::max_element(handle_ptr_->get_thrust_policy(),
-                            threshold_.data(),
-                            threshold_.data() + primal_size_h_ + dual_size_h_);
+    // Find max threshold for the join problem
+    const f_t* max_threshold =
+      thrust::max_element(handle_ptr_->get_thrust_policy(),
+                          threshold_.data(),
+                          threshold_.data() + primal_size_h_ + dual_size_h_);
 
-      // we have now determined the test_threshold that should minimize the objective value of the
-      // solution.
+    // we have now determined the test_threshold that should minimize the objective value of the
+    // solution.
 
-      //  if no component got fixed by their upper bound we can pick the maximum threshold to be the
-      //  target_threshold which was computed before the loop in the direction_and_threshold_kernel
-      // Otherwise use the test_threshold determined in the loop
-      // {
-      target_threshold_determination_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(
-        this->view(), duality_gap.distance_traveled_.data(), max_threshold, max_threshold);
-      RAFT_CUDA_TRY(cudaPeekAtLastError());
-      // }
-
-      // Compute x (the solution which is defined by moving each component test_threshold *
-      // direction[component]) clamp on upper and lower bounds.
-      // Used unsorted_direction_full_ as the other one got sorted
-      // {
-      raft::linalg::binaryOp(duality_gap.primal_solution_tr_.data(),
-                             duality_gap.primal_solution_.data(),
-                             unsorted_direction_full_.data(),
-                             primal_size_h_,
-                             a_add_scalar_times_b<f_t>(target_threshold_.data()),
-                             stream_view_);
-      raft::linalg::binaryOp(duality_gap.dual_solution_tr_.data(),
-                             duality_gap.dual_solution_.data(),
-                             unsorted_direction_full_.data() + primal_size_h_,
-                             dual_size_h_,
-                             a_add_scalar_times_b<f_t>(target_threshold_.data()),
-                             stream_view_);
-      // project by max(min(x[i], upperbound[i]),lowerbound[i]) for primal part
-      using f_t2 = typename type_2<f_t>::type;
-      cub::DeviceTransform::Transform(cuda::std::make_tuple(duality_gap.primal_solution_tr_.data(),
-                                                            problem_ptr->variable_bounds.data()),
-                                      duality_gap.primal_solution_tr_.data(),
-                                      primal_size_h_,
-                                      clamp<f_t, f_t2>(),
-                                      stream_view_.value());
-
-      // project by max(min(y[i], upperbound[i]),lowerbound[i])
-      raft::linalg::ternaryOp(duality_gap.dual_solution_tr_.data(),
-                              duality_gap.dual_solution_tr_.data(),
-                              transformed_constraint_lower_bounds_.data(),
-                              transformed_constraint_upper_bounds_.data(),
-                              dual_size_h_,
-                              constraint_clamp<f_t>(),
-                              stream_view_);
-      // }
-    }
-
-    // Compute the current lower bound for the objective value using the primal solution_tr and
-    // upper bound for the objective value using the dual solution_tr
+    //  if no component got fixed by their upper bound we can pick the maximum threshold to be the
+    //  target_threshold which was computed before the loop in the direction_and_threshold_kernel
+    // Otherwise use the test_threshold determined in the loop
     // {
-    // -> compute 'lower bound' for saddle point (langrangian + dot(primal_tr - primal_solution,
-    // primal_gradient))
-    compute_bound(duality_gap.primal_solution_tr_,
-                  duality_gap.primal_solution_,
-                  duality_gap.primal_gradient_,
-                  duality_gap.lagrangian_value_,
-                  primal_size_h_,
-                  primal_stride,
-                  tmp_primal,
-                  duality_gap.lower_bound_value_);
+    target_threshold_determination_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(
+      this->view(), duality_gap.distance_traveled_.data(), max_threshold, max_threshold);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+    // }
 
-    // compute 'upper bound' using dual
-    compute_bound(duality_gap.dual_solution_tr_,
-                  duality_gap.dual_solution_,
-                  duality_gap.dual_gradient_,
-                  duality_gap.lagrangian_value_,
-                  dual_size_h_,
-                  dual_stride,
-                  tmp_dual,
-                  duality_gap.upper_bound_value_);
+    // Compute x (the solution which is defined by moving each component test_threshold *
+    // direction[component]) clamp on upper and lower bounds.
+    // Used unsorted_direction_full_ as the other one got sorted
+    // {
+    raft::linalg::binaryOp(duality_gap.primal_solution_tr_.data(),
+                           duality_gap.primal_solution_.data(),
+                           unsorted_direction_full_.data(),
+                           primal_size_h_,
+                           a_add_scalar_times_b<f_t>(target_threshold_.data()),
+                           stream_view_);
+    raft::linalg::binaryOp(duality_gap.dual_solution_tr_.data(),
+                           duality_gap.dual_solution_.data(),
+                           unsorted_direction_full_.data() + primal_size_h_,
+                           dual_size_h_,
+                           a_add_scalar_times_b<f_t>(target_threshold_.data()),
+                           stream_view_);
+    // project by max(min(x[i], upperbound[i]),lowerbound[i]) for primal part
+    using f_t2 = typename type_2<f_t>::type;
+    cub::DeviceTransform::Transform(cuda::std::make_tuple(duality_gap.primal_solution_tr_.data(),
+                                                          problem_ptr->variable_bounds.data()),
+                                    duality_gap.primal_solution_tr_.data(),
+                                    primal_size_h_,
+                                    clamp<f_t, f_t2>(),
+                                    stream_view_.value());
 
+    // project by max(min(y[i], upperbound[i]),lowerbound[i])
+    raft::linalg::ternaryOp(duality_gap.dual_solution_tr_.data(),
+                            duality_gap.dual_solution_tr_.data(),
+                            transformed_constraint_lower_bounds_.data(),
+                            transformed_constraint_upper_bounds_.data(),
+                            dual_size_h_,
+                            constraint_clamp<f_t>(),
+                            stream_view_);
     // }
   }
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::compute_distance_traveled_from_last_restart(
-    localized_duality_gap_container_t<i_t, f_t> & duality_gap,
-    rmm::device_uvector<f_t> & primal_weight,
-    rmm::device_uvector<f_t> & tmp_primal,
-    rmm::device_uvector<f_t> & tmp_dual)
-  {
-    raft::common::nvtx::range fun_scope("compute_distance_traveled_from_last_restart");
-    // norm(
-    //     new_primal_solution - last_restart.primal_solution,
-    //   )^2
+  // Compute the current lower bound for the objective value using the primal solution_tr and
+  // upper bound for the objective value using the dual solution_tr
+  // {
+  // -> compute 'lower bound' for saddle point (langrangian + dot(primal_tr - primal_solution,
+  // primal_gradient))
+  compute_bound(duality_gap.primal_solution_tr_,
+                duality_gap.primal_solution_,
+                duality_gap.primal_gradient_,
+                duality_gap.lagrangian_value_,
+                primal_size_h_,
+                primal_stride,
+                tmp_primal,
+                duality_gap.lower_bound_value_);
 
-    // Julia / Paper use a weighted norm using primal weight for primal / dual distance
-    // We simply use L2 norm of diff
-    distance_squared_moved_from_last_restart_period(duality_gap.primal_solution_,
-                                                    last_restart_duality_gap_.primal_solution_,
-                                                    tmp_primal,
-                                                    primal_size_h_,
-                                                    primal_stride,
-                                                    duality_gap.primal_distance_traveled_);
+  // compute 'upper bound' using dual
+  compute_bound(duality_gap.dual_solution_tr_,
+                duality_gap.dual_solution_,
+                duality_gap.dual_gradient_,
+                duality_gap.lagrangian_value_,
+                dual_size_h_,
+                dual_stride,
+                tmp_dual,
+                duality_gap.upper_bound_value_);
 
-    // compute similarly for dual
-    distance_squared_moved_from_last_restart_period(duality_gap.dual_solution_,
-                                                    last_restart_duality_gap_.dual_solution_,
-                                                    tmp_dual,
-                                                    dual_size_h_,
-                                                    dual_stride,
-                                                    duality_gap.dual_distance_traveled_);
+  // }
+}
 
-    // distance_traveled = primal_distance * 0.5 * primal_weight
-    // + dual_distance * 0.5 / primal_weight
-    compute_distance_traveled_last_restart_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(
-      duality_gap.view(), primal_weight.data(), duality_gap.distance_traveled_.data());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
-  }
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::compute_distance_traveled_from_last_restart(
+  localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+  rmm::device_uvector<f_t>& primal_weight,
+  rmm::device_uvector<f_t>& tmp_primal,
+  rmm::device_uvector<f_t>& tmp_dual)
+{
+  raft::common::nvtx::range fun_scope("compute_distance_traveled_from_last_restart");
+  // norm(
+  //     new_primal_solution - last_restart.primal_solution,
+  //   )^2
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::compute_primal_gradient(
-    localized_duality_gap_container_t<i_t, f_t> & duality_gap,
-    cusparse_view_t<i_t, f_t> & cusparse_view)
-  {
-    raft::common::nvtx::range fun_scope("compute_primal_gradient");
+  // Julia / Paper use a weighted norm using primal weight for primal / dual distance
+  // We simply use L2 norm of diff
+  distance_squared_moved_from_last_restart_period(duality_gap.primal_solution_,
+                                                  last_restart_duality_gap_.primal_solution_,
+                                                  tmp_primal,
+                                                  primal_size_h_,
+                                                  primal_stride,
+                                                  duality_gap.primal_distance_traveled_);
+
+  // compute similarly for dual
+  distance_squared_moved_from_last_restart_period(duality_gap.dual_solution_,
+                                                  last_restart_duality_gap_.dual_solution_,
+                                                  tmp_dual,
+                                                  dual_size_h_,
+                                                  dual_stride,
+                                                  duality_gap.dual_distance_traveled_);
+
+  // distance_traveled = primal_distance * 0.5 * primal_weight
+  // + dual_distance * 0.5 / primal_weight
+  compute_distance_traveled_last_restart_kernel<i_t, f_t><<<1, 1, 0, stream_view_>>>(
+    duality_gap.view(), primal_weight.data(), duality_gap.distance_traveled_.data());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::compute_primal_gradient(
+  localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+  cusparse_view_t<i_t, f_t>& cusparse_view)
+{
+  raft::common::nvtx::range fun_scope("compute_primal_gradient");
 #ifdef PDLP_DEBUG_MODE
-    std::cout << "    Compute primal gradient:" << std::endl;
+  std::cout << "    Compute primal gradient:" << std::endl;
 #endif
 
-    // for QP add problem.objective_matrix * primal_solution as well
-    // c - A^T*y (copy c to primal_gradient for correct writing of result)
-    raft::copy(duality_gap.primal_gradient_.data(),
-               problem_ptr->objective_coefficients.data(),
-               primal_size_h_,
-               stream_view_);
+  // for QP add problem.objective_matrix * primal_solution as well
+  // c - A^T*y (copy c to primal_gradient for correct writing of result)
+  raft::copy(duality_gap.primal_gradient_.data(),
+             problem_ptr->objective_coefficients.data(),
+             primal_size_h_,
+             stream_view_);
 
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_neg_1_.data(),
-                                         cusparse_view.A_T,
-                                         cusparse_view.dual_solution,
-                                         reusable_device_scalar_value_1_.data(),
-                                         cusparse_view.primal_gradient,
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view.buffer_transpose.data(),
-                                         stream_view_));
-  }
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_neg_1_.data(),
+                                                       cusparse_view.A_T,
+                                                       cusparse_view.dual_solution,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view.primal_gradient,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view.buffer_transpose.data(),
+                                                       stream_view_));
+}
 
-  template <typename i_t, typename f_t>
-  __global__ void compute_subgradient_kernel(
-    const typename pdlp_restart_strategy_t<i_t, f_t>::view_t restart_strategy_view,
-    const typename problem_t<i_t, f_t>::view_t op_problem_view,
-    const typename localized_duality_gap_container_t<i_t, f_t>::view_t duality_gap_view,
-    f_t* subgradient)
-  {
-    i_t id = threadIdx.x + blockIdx.x * blockDim.x;
-    if (id >= duality_gap_view.dual_size) { return; }
+template <typename i_t, typename f_t>
+__global__ void compute_subgradient_kernel(
+  const typename pdlp_restart_strategy_t<i_t, f_t>::view_t restart_strategy_view,
+  const typename problem_t<i_t, f_t>::view_t op_problem_view,
+  const typename localized_duality_gap_container_t<i_t, f_t>::view_t duality_gap_view,
+  f_t* subgradient)
+{
+  i_t id = threadIdx.x + blockIdx.x * blockDim.x;
+  if (id >= duality_gap_view.dual_size) { return; }
 
-    f_t lower          = op_problem_view.constraint_lower_bounds[id];
-    f_t upper          = op_problem_view.constraint_upper_bounds[id];
-    f_t primal_product = duality_gap_view.dual_gradient[id];
-    f_t dual_solution  = duality_gap_view.dual_solution[id];
+  f_t lower          = op_problem_view.constraint_lower_bounds[id];
+  f_t upper          = op_problem_view.constraint_upper_bounds[id];
+  f_t primal_product = duality_gap_view.dual_gradient[id];
+  f_t dual_solution  = duality_gap_view.dual_solution[id];
 
-    f_t subgradient_coefficient;
+  f_t subgradient_coefficient;
 
-    if (dual_solution < f_t(0)) {
-      subgradient_coefficient = upper;
-    } else if (dual_solution > f_t(0)) {
+  if (dual_solution < f_t(0)) {
+    subgradient_coefficient = upper;
+  } else if (dual_solution > f_t(0)) {
+    subgradient_coefficient = lower;
+  } else if (!isfinite(upper) && !isfinite(lower)) {
+    subgradient_coefficient = f_t(0);
+  } else if (!isfinite(upper) && isfinite(lower)) {
+    subgradient_coefficient = lower;
+  } else if (isfinite(upper) && !isfinite(lower)) {
+    subgradient_coefficient = upper;
+  } else {
+    if (primal_product < lower) {
       subgradient_coefficient = lower;
-    } else if (!isfinite(upper) && !isfinite(lower)) {
-      subgradient_coefficient = f_t(0);
-    } else if (!isfinite(upper) && isfinite(lower)) {
-      subgradient_coefficient = lower;
-    } else if (isfinite(upper) && !isfinite(lower)) {
+    } else if (primal_product > upper) {
       subgradient_coefficient = upper;
     } else {
-      if (primal_product < lower) {
-        subgradient_coefficient = lower;
-      } else if (primal_product > upper) {
-        subgradient_coefficient = upper;
-      } else {
-        subgradient_coefficient = primal_product;
-      }
+      subgradient_coefficient = primal_product;
     }
-
-    subgradient[id] = subgradient_coefficient;
   }
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::compute_dual_gradient(
-    localized_duality_gap_container_t<i_t, f_t> & duality_gap,
-    cusparse_view_t<i_t, f_t> & cusparse_view,
-    rmm::device_uvector<f_t> & tmp_dual)
-  {
-    raft::common::nvtx::range fun_scope("compute_dual_gradient");
+  subgradient[id] = subgradient_coefficient;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::compute_dual_gradient(
+  localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+  cusparse_view_t<i_t, f_t>& cusparse_view,
+  rmm::device_uvector<f_t>& tmp_dual)
+{
+  raft::common::nvtx::range fun_scope("compute_dual_gradient");
 #ifdef PDLP_DEBUG_MODE
-    std::cout << "    Compute dual gradient:" << std::endl;
+  std::cout << "    Compute dual gradient:" << std::endl;
 #endif
 
-    // b - A*x
-    // is changed with the introduction of constraint upper and lower bounds
+  // b - A*x
+  // is changed with the introduction of constraint upper and lower bounds
 
-    // gradient constains primal_product
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_1_.data(),
-                                         cusparse_view.A,
-                                         cusparse_view.primal_solution,
-                                         reusable_device_scalar_value_0_.data(),
-                                         cusparse_view.dual_gradient,
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view.buffer_non_transpose.data(),
-                                         stream_view_));
+  // gradient constains primal_product
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view.A,
+                                       cusparse_view.primal_solution,
+                                       reusable_device_scalar_value_0_.data(),
+                                       cusparse_view.dual_gradient,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view.buffer_non_transpose.data(),
+                                       stream_view_));
 
-    // tmp_dual will contain the subgradient
-    i_t number_of_blocks = dual_size_h_ / block_size;
-    if (dual_size_h_ % block_size) number_of_blocks++;
-    i_t number_of_threads = std::min(dual_size_h_, block_size);
-    compute_subgradient_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
-      this->view(), problem_ptr->view(), duality_gap.view(), tmp_dual.data());
+  // tmp_dual will contain the subgradient
+  i_t number_of_blocks = dual_size_h_ / block_size;
+  if (dual_size_h_ % block_size) number_of_blocks++;
+  i_t number_of_threads = std::min(dual_size_h_, block_size);
+  compute_subgradient_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
+    this->view(), problem_ptr->view(), duality_gap.view(), tmp_dual.data());
 
-    // dual gradient = subgradient - primal_product (tmp_dual-dual_gradient)
-    raft::linalg::eltwiseSub(duality_gap.dual_gradient_.data(),
-                             tmp_dual.data(),
-                             duality_gap.dual_gradient_.data(),
-                             dual_size_h_,
-                             stream_view_);
-  }
+  // dual gradient = subgradient - primal_product (tmp_dual-dual_gradient)
+  raft::linalg::eltwiseSub(duality_gap.dual_gradient_.data(),
+                           tmp_dual.data(),
+                           duality_gap.dual_gradient_.data(),
+                           dual_size_h_,
+                           stream_view_);
+}
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::compute_lagrangian_value(
-    localized_duality_gap_container_t<i_t, f_t> & duality_gap,
-    cusparse_view_t<i_t, f_t> & cusparse_view,
-    rmm::device_uvector<f_t> & tmp_primal,
-    rmm::device_uvector<f_t> & tmp_dual)
-  {
-    raft::common::nvtx::range fun_scope("compute_lagrangian_value");
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::compute_lagrangian_value(
+  localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+  cusparse_view_t<i_t, f_t>& cusparse_view,
+  rmm::device_uvector<f_t>& tmp_primal,
+  rmm::device_uvector<f_t>& tmp_dual)
+{
+  raft::common::nvtx::range fun_scope("compute_lagrangian_value");
 #ifdef PDLP_DEBUG_MODE
-    std::cout << "    Compute lagrangian value:" << std::endl;
+  std::cout << "    Compute lagrangian value:" << std::endl;
 #endif
-    // if QP
-    //  0.5 * dot(primal_solution, problem.objective_matrix * primal_solution) +
-    //  dot(primal_solution, problem.objective_vector) -
-    //  dot(primal_solution, problem.constraint_matrix' * dual_solution) +
-    //  dot(dual_solution, dual_gradient+primal_product) +
-    //  problem.objective_constant
+  // if QP
+  //  0.5 * dot(primal_solution, problem.objective_matrix * primal_solution) +
+  //  dot(primal_solution, problem.objective_vector) -
+  //  dot(primal_solution, problem.constraint_matrix' * dual_solution) +
+  //  dot(dual_solution, dual_gradient+primal_product) +
+  //  problem.objective_constant
 
-    // when lp first term is irrelevant
+  // when lp first term is irrelevant
 
-    // second term
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                    primal_size_h_,
-                                                    duality_gap.primal_solution_.data(),
-                                                    primal_stride,
-                                                    problem_ptr->objective_coefficients.data(),
-                                                    primal_stride,
-                                                    reusable_device_scalar_1_.data(),
-                                                    stream_view_));
+  // second term
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  primal_size_h_,
+                                                  duality_gap.primal_solution_.data(),
+                                                  primal_stride,
+                                                  problem_ptr->objective_coefficients.data(),
+                                                  primal_stride,
+                                                  reusable_device_scalar_1_.data(),
+                                                  stream_view_));
 
-    // third term, let beta be 0 to not add what is in tmp_primal, compute it and compute dot
-    RAFT_CUSPARSE_TRY(
-      raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                         reusable_device_scalar_value_1_.data(),
-                                         cusparse_view.A_T,
-                                         cusparse_view.dual_solution,
-                                         reusable_device_scalar_value_0_.data(),
-                                         cusparse_view.tmp_primal,
-                                         CUSPARSE_SPMV_CSR_ALG2,
-                                         (f_t*)cusparse_view.buffer_transpose.data(),
-                                         stream_view_));
+  // third term, let beta be 0 to not add what is in tmp_primal, compute it and compute dot
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view.A_T,
+                                                       cusparse_view.dual_solution,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       cusparse_view.tmp_primal,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view.buffer_transpose.data(),
+                                                       stream_view_));
 
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                    primal_size_h_,
-                                                    duality_gap.primal_solution_.data(),
-                                                    primal_stride,
-                                                    tmp_primal.data(),
-                                                    primal_stride,
-                                                    reusable_device_scalar_2_.data(),
-                                                    stream_view_));
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  primal_size_h_,
+                                                  duality_gap.primal_solution_.data(),
+                                                  primal_stride,
+                                                  tmp_primal.data(),
+                                                  primal_stride,
+                                                  reusable_device_scalar_2_.data(),
+                                                  stream_view_));
 
-    // fourth term //tmp_dual still contains subgradient from the dual_gradient computation
-    reusable_device_scalar_3_.set_value_to_zero_async(stream_view_);
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                    dual_size_h_,
-                                                    duality_gap.dual_solution_.data(),
-                                                    dual_stride,
-                                                    tmp_dual.data(),
-                                                    dual_stride,
-                                                    reusable_device_scalar_3_.data(),
-                                                    stream_view_));
+  // fourth term //tmp_dual still contains subgradient from the dual_gradient computation
+  reusable_device_scalar_3_.set_value_to_zero_async(stream_view_);
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  dual_size_h_,
+                                                  duality_gap.dual_solution_.data(),
+                                                  dual_stride,
+                                                  tmp_dual.data(),
+                                                  dual_stride,
+                                                  reusable_device_scalar_3_.data(),
+                                                  stream_view_));
 
-    // subtract third term from second up
-    raft::linalg::eltwiseSub(reusable_device_scalar_1_.data(),
-                             reusable_device_scalar_1_.data(),
-                             reusable_device_scalar_2_.data(),
-                             1,
-                             stream_view_);
-    raft::linalg::eltwiseAdd(duality_gap.lagrangian_value_.data(),
-                             reusable_device_scalar_1_.data(),
-                             reusable_device_scalar_3_.data(),
-                             1,
-                             stream_view_);
-  }
+  // subtract third term from second up
+  raft::linalg::eltwiseSub(reusable_device_scalar_1_.data(),
+                           reusable_device_scalar_1_.data(),
+                           reusable_device_scalar_2_.data(),
+                           1,
+                           stream_view_);
+  raft::linalg::eltwiseAdd(duality_gap.lagrangian_value_.data(),
+                           reusable_device_scalar_1_.data(),
+                           reusable_device_scalar_3_.data(),
+                           1,
+                           stream_view_);
+}
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::reset_internal()
-  {
-    candidate_is_avg_.set_value_to_zero_async(stream_view_);
-    restart_triggered_.set_value_to_zero_async(stream_view_);
-  }
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::reset_internal()
+{
+  candidate_is_avg_.set_value_to_zero_async(stream_view_);
+  restart_triggered_.set_value_to_zero_async(stream_view_);
+}
 
-  template <typename i_t, typename f_t>
-  typename pdlp_restart_strategy_t<i_t, f_t>::view_t pdlp_restart_strategy_t<i_t, f_t>::view()
-  {
-    pdlp_restart_strategy_t<i_t, f_t>::view_t v{};
-    v.primal_size                         = primal_size_h_;
-    v.dual_size                           = dual_size_h_;
-    v.transformed_constraint_lower_bounds = raft::device_span<f_t>{
-      transformed_constraint_lower_bounds_.data(), transformed_constraint_lower_bounds_.size()};
-    v.transformed_constraint_upper_bounds = raft::device_span<f_t>{
-      transformed_constraint_upper_bounds_.data(), transformed_constraint_upper_bounds_.size()};
-    v.last_restart_length = last_restart_length_;
+template <typename i_t, typename f_t>
+typename pdlp_restart_strategy_t<i_t, f_t>::view_t pdlp_restart_strategy_t<i_t, f_t>::view()
+{
+  pdlp_restart_strategy_t<i_t, f_t>::view_t v{};
+  v.primal_size                         = primal_size_h_;
+  v.dual_size                           = dual_size_h_;
+  v.transformed_constraint_lower_bounds = raft::device_span<f_t>{
+    transformed_constraint_lower_bounds_.data(), transformed_constraint_lower_bounds_.size()};
+  v.transformed_constraint_upper_bounds = raft::device_span<f_t>{
+    transformed_constraint_upper_bounds_.data(), transformed_constraint_upper_bounds_.size()};
+  v.last_restart_length = last_restart_length_;
 
-    v.weights = raft::device_span<f_t>{weights_.data(), weights_.size()};
+  v.weights = raft::device_span<f_t>{weights_.data(), weights_.size()};
 
-    v.candidate_is_avg  = candidate_is_avg_.data();
-    v.restart_triggered = restart_triggered_.data();
+  v.candidate_is_avg  = candidate_is_avg_.data();
+  v.restart_triggered = restart_triggered_.data();
 
-    v.gap_reduction_ratio_last_trial = gap_reduction_ratio_last_trial_.data();
+  v.gap_reduction_ratio_last_trial = gap_reduction_ratio_last_trial_.data();
 
-    v.center_point     = raft::device_span<f_t>{center_point_.data(), center_point_.size()};
-    v.objective_vector = raft::device_span<f_t>{objective_vector_.data(), objective_vector_.size()};
-    v.direction_full   = raft::device_span<f_t>{direction_full_.data(), direction_full_.size()};
-    v.threshold        = raft::device_span<f_t>{threshold_.data(), threshold_.size()};
-    v.lower_bound      = raft::device_span<f_t>{lower_bound_.data(), lower_bound_.size()};
-    v.upper_bound      = raft::device_span<f_t>{upper_bound_.data(), upper_bound_.size()};
-    v.test_point       = raft::device_span<f_t>{test_point_.data(), test_point_.size()};
+  v.center_point     = raft::device_span<f_t>{center_point_.data(), center_point_.size()};
+  v.objective_vector = raft::device_span<f_t>{objective_vector_.data(), objective_vector_.size()};
+  v.direction_full   = raft::device_span<f_t>{direction_full_.data(), direction_full_.size()};
+  v.threshold        = raft::device_span<f_t>{threshold_.data(), threshold_.size()};
+  v.lower_bound      = raft::device_span<f_t>{lower_bound_.data(), lower_bound_.size()};
+  v.upper_bound      = raft::device_span<f_t>{upper_bound_.data(), upper_bound_.size()};
+  v.test_point       = raft::device_span<f_t>{test_point_.data(), test_point_.size()};
 
-    v.target_threshold    = target_threshold_.data();
-    v.low_radius_squared  = low_radius_squared_.data();
-    v.high_radius_squared = high_radius_squared_.data();
-    v.test_radius_squared = test_radius_squared_.data();
+  v.target_threshold    = target_threshold_.data();
+  v.low_radius_squared  = low_radius_squared_.data();
+  v.high_radius_squared = high_radius_squared_.data();
+  v.test_radius_squared = test_radius_squared_.data();
 
-    v.testing_range_low  = testing_range_low_.data();
-    v.testing_range_high = testing_range_high_.data();
+  v.testing_range_low  = testing_range_low_.data();
+  v.testing_range_high = testing_range_high_.data();
 
-    v.shared_live_kernel_accumulator = raft::device_span<f_t>{
-      shared_live_kernel_accumulator_.data(), shared_live_kernel_accumulator_.size()};
+  v.shared_live_kernel_accumulator = raft::device_span<f_t>{shared_live_kernel_accumulator_.data(),
+                                                            shared_live_kernel_accumulator_.size()};
 
-    v.hyper_params = hyper_params_;
+  v.hyper_params = hyper_params_;
 
-    return v;
-  }
+  return v;
+}
 
-  template <typename i_t, typename f_t>
-  typename pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart_view_t
-  pdlp_restart_strategy_t<i_t, f_t>::make_cupdlpx_restart_view(
-    const rmm::device_uvector<f_t>& primal_distance,
-    const rmm::device_uvector<f_t>& dual_distance,
-    const convergence_information_t<i_t, f_t>& current_convergence_information,
-    const rmm::device_uvector<f_t>& step_size,
-    rmm::device_uvector<f_t>& primal_weight,
-    rmm::device_uvector<f_t>& best_primal_weight,
-    rmm::device_uvector<f_t>& primal_step_size,
-    rmm::device_uvector<f_t>& dual_step_size)
-  {
-    cupdlpx_restart_view_t v{};
-    v.primal_distance    = make_span(primal_distance);
-    v.dual_distance      = make_span(dual_distance);
-    v.l2_dual_residual   = make_span(current_convergence_information.get_l2_dual_residual());
-    v.l2_primal_residual = make_span(current_convergence_information.get_l2_primal_residual());
-    v.l2_norm_primal_linear_objective =
-      current_convergence_information.get_relative_dual_tolerance_factor();
-    v.l2_norm_primal_right_hand_side =
-      current_convergence_information.get_relative_primal_tolerance_factor();
-    v.step_size                     = make_span(step_size);
-    v.primal_weight                 = make_span(primal_weight);
-    v.primal_weight_error_sum       = make_span(primal_weight_error_sum_);
-    v.primal_weight_last_error      = make_span(primal_weight_last_error_);
-    v.best_primal_weight            = make_span(best_primal_weight);
-    v.new_primal_step_size          = make_span(primal_step_size);
-    v.new_dual_step_size            = make_span(dual_step_size);
-    v.best_primal_dual_residual_gap = make_span(best_primal_dual_residual_gap_);
-    v.hyper_params                  = hyper_params_;
-    return v;
-  }
+template <typename i_t, typename f_t>
+typename pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart_view_t
+pdlp_restart_strategy_t<i_t, f_t>::make_cupdlpx_restart_view(
+  const rmm::device_uvector<f_t>& primal_distance,
+  const rmm::device_uvector<f_t>& dual_distance,
+  const convergence_information_t<i_t, f_t>& current_convergence_information,
+  const rmm::device_uvector<f_t>& step_size,
+  rmm::device_uvector<f_t>& primal_weight,
+  rmm::device_uvector<f_t>& best_primal_weight,
+  rmm::device_uvector<f_t>& primal_step_size,
+  rmm::device_uvector<f_t>& dual_step_size)
+{
+  cupdlpx_restart_view_t v{};
+  v.primal_distance    = make_span(primal_distance);
+  v.dual_distance      = make_span(dual_distance);
+  v.l2_dual_residual   = make_span(current_convergence_information.get_l2_dual_residual());
+  v.l2_primal_residual = make_span(current_convergence_information.get_l2_primal_residual());
+  v.l2_norm_primal_linear_objective =
+    current_convergence_information.get_relative_dual_tolerance_factor();
+  v.l2_norm_primal_right_hand_side =
+    current_convergence_information.get_relative_primal_tolerance_factor();
+  v.step_size                     = make_span(step_size);
+  v.primal_weight                 = make_span(primal_weight);
+  v.primal_weight_error_sum       = make_span(primal_weight_error_sum_);
+  v.primal_weight_last_error      = make_span(primal_weight_last_error_);
+  v.best_primal_weight            = make_span(best_primal_weight);
+  v.new_primal_step_size          = make_span(primal_step_size);
+  v.new_dual_step_size            = make_span(dual_step_size);
+  v.best_primal_dual_residual_gap = make_span(best_primal_dual_residual_gap_);
+  v.hyper_params                  = hyper_params_;
+  return v;
+}
 
-  template <typename i_t, typename f_t>
-  i_t pdlp_restart_strategy_t<i_t, f_t>::get_iterations_since_last_restart() const
-  {
-    return weighted_average_solution_.get_iterations_since_last_restart();
-  }
+template <typename i_t, typename f_t>
+i_t pdlp_restart_strategy_t<i_t, f_t>::get_iterations_since_last_restart() const
+{
+  return weighted_average_solution_.get_iterations_since_last_restart();
+}
 
-  template <typename i_t, typename f_t>
-  void pdlp_restart_strategy_t<i_t, f_t>::set_last_restart_was_average(bool value)
-  {
-    last_restart_was_average_ = value;
-  }
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::set_last_restart_was_average(bool value)
+{
+  last_restart_was_average_ = value;
+}
 
-  template <typename i_t, typename f_t>
-  bool pdlp_restart_strategy_t<i_t, f_t>::get_last_restart_was_average() const
-  {
-    return last_restart_was_average_;
-  }
+template <typename i_t, typename f_t>
+bool pdlp_restart_strategy_t<i_t, f_t>::get_last_restart_was_average() const
+{
+  return last_restart_was_average_;
+}
 
 #define INSTANTIATE(F_TYPE)                                                                     \
   template class pdlp_restart_strategy_t<int, F_TYPE>;                                          \
@@ -2523,11 +2524,11 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
     F_TYPE* primal_product);
 
 #if MIP_INSTANTIATE_FLOAT
-  INSTANTIATE(float)
+INSTANTIATE(float)
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-  INSTANTIATE(double)
+INSTANTIATE(double)
 #endif
 
 }  // namespace cuopt::linear_programming::detail
