@@ -253,16 +253,6 @@ include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
-rapids_cpm_find(
-  argparse 3.2.0
-  GLOBAL_TARGETS argparse::argparse
-  CPM_ARGS
-  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
-  GIT_TAG v3.2
-  GIT_SHALLOW TRUE
-  OPTIONS "ARGPARSE_INSTALL TRUE"
-)
-
 find_package(CUDSS REQUIRED)
 
 if(BUILD_TESTS)
@@ -494,6 +484,16 @@ endif()
 
 
 if(NOT BUILD_LP_ONLY)
+rapids_cpm_find(
+  argparse 3.2.0
+  GLOBAL_TARGETS argparse::argparse
+  CPM_ARGS
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG v3.2
+  GIT_SHALLOW TRUE
+  OPTIONS "ARGPARSE_INSTALL TRUE"
+)
+
 add_executable(cuopt_cli cuopt_cli.cpp)
 
 set_target_properties(cuopt_cli
