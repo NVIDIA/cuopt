@@ -253,6 +253,15 @@ include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
+rapids_cpm_find(
+  argparse 3.2.0
+  CPM_ARGS
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG v3.2
+  GIT_SHALLOW TRUE
+  OPTIONS "ARGPARSE_INSTALL TRUE"
+)
+
 find_package(CUDSS REQUIRED)
 
 if(BUILD_TESTS)
@@ -515,6 +524,7 @@ target_link_libraries(cuopt_cli
   ${CUDSS_LIBRARIES}
   TBB::tbb
   PRIVATE
+  argparse
 )
   # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
 if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
