@@ -491,7 +491,6 @@ rapids_cpm_find(
   GIT_REPOSITORY https://github.com/p-ranav/argparse.git
   GIT_TAG v3.2
   GIT_SHALLOW TRUE
-  OPTIONS "ARGPARSE_INSTALL TRUE"
 )
 
 add_executable(cuopt_cli cuopt_cli.cpp)
