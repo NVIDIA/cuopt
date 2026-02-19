@@ -71,9 +71,9 @@ static void parse_arguments(argparse::ArgumentParser& program)
       "modes.");
 
   program.add_argument("--presolver")
-  .help("Presolver to use. Possible values: None, Papilo, PSLP, Default")
-  .default_value("Default")
-  .choices("None", "Papilo", "PSLP", "Default");
+    .help("Presolver to use. Possible values: None, Papilo, PSLP, Default")
+    .default_value("Default")
+    .choices("None", "Papilo", "PSLP", "Default");
 
   program.add_argument("--solution-path").help("Path where solution file will be generated");
 }
