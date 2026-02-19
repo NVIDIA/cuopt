@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -19,7 +19,6 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_PDLP_SOLVER_MODE,
-    CUOPT_PRESOLVE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
@@ -27,6 +26,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_SOLUTION_FILE,
     CUOPT_TIME_LIMIT,
     CUOPT_USER_PROBLEM_FILE,
+    CUOPT_PRESOLVE,
 )
 from cuopt.linear_programming.solver.solver_wrapper import (
     ErrorStatus,
@@ -66,6 +66,7 @@ def test_solver():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     # FIXME: Stable3 infinite-loops on this sample trivial problem
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
 
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"
@@ -414,6 +415,7 @@ def test_parse_var_names():
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
     solution = solver.Solve(data_model_obj, settings)
 
     expected_dict = {
@@ -502,6 +504,7 @@ def test_warm_start():
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_optimality_tolerance(1e-3)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
 
     # Solving from scratch until 1e-3
     solution = solver.Solve(data_model_obj, settings)
@@ -533,6 +536,7 @@ def test_warm_start_other_problem():
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
     settings.set_optimality_tolerance(1e-1)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
     solution = solver.Solve(data_model_obj, settings)
 
     file_path = (
@@ -578,7 +582,6 @@ def test_dual_simplex():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
-    settings.set_parameter(CUOPT_PRESOLVE, True)
     settings.set_parameter(CUOPT_DUAL_POSTSOLVE, False)
 
     solution = solver.Solve(data_model_obj, settings)
@@ -613,6 +616,7 @@ def test_barrier():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.Barrier)
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
 
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"

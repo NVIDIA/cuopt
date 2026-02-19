@@ -102,6 +102,8 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
 
+  size_t nnz_processed = 0;
+
   if (!bounds_changed.empty()) {
     std::fill(constraint_changed.begin(), constraint_changed.end(), false);
     for (i_t j = 0; j < n; ++j) {
@@ -127,6 +129,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       if (!constraint_changed[i]) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
+      nnz_processed += (row_end - row_start);
 
       f_t min_a = 0.0;
       f_t max_a = 0.0;
@@ -162,6 +165,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
           cnst_ub,
           min_a,
           max_a);
+        last_nnz_processed = nnz_processed;
         return false;
       }
 
@@ -181,6 +185,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
 
       const i_t col_start = A.col_start[k];
       const i_t col_end   = A.col_start[k + 1];
+      nnz_processed += (col_end - col_start);
       for (i_t p = col_start; p < col_end; ++p) {
         const i_t i = A.i[p];
 
@@ -213,6 +218,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       if (new_lb > new_ub + settings.primal_tol) {
         settings.log.debug(
           "Iter:: %d, Infeasible variable after update %d, %e > %e\n", iter, k, new_lb, new_ub);
+        last_nnz_processed = nnz_processed;
         return false;
       }
       if (new_lb != old_lb || new_ub != old_ub) {
@@ -280,6 +286,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   lower_bounds = lower;
   upper_bounds = upper;
 
+  last_nnz_processed = nnz_processed;
   return true;
 }
 

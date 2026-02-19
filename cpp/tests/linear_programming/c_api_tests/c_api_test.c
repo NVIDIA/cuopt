@@ -1457,3 +1457,296 @@ DONE:
   cuOptDestroySolution(&solution);
   return status;
 }
+
+cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method, cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr, cuopt_float_t* dual_variables, cuopt_float_t* reduced_costs, cuopt_float_t *dual_obj_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings = NULL;
+  cuOptSolution solution = NULL;
+
+  /* Solve the following problem
+   maximize 4*x1 + x2 + 5*x3 + 3*x4
+   subject to x1 - x2 - x3 + 3*x4 <= 1
+              5*x1 + x2 + 3*x3 + 8*x4 <= 55
+             -x1 + 2*x2 + 3*x3 -5*x4 <= 3
+             x1, x2, x3, x4 >= 0
+  */
+
+  cuopt_int_t num_variables = 4;
+  cuopt_int_t num_constraints = 3;
+  cuopt_int_t nnz = 12;
+  cuopt_int_t row_offsets[] = {0, 4, 8, 12};
+  cuopt_int_t column_indices[] = {0, 1, 2, 3,
+                                  0, 1, 2, 3,
+                                  0, 1, 2, 3};
+  cuopt_float_t values[] = {1.0, -1.0, -1.0,  3.0,
+                            5.0,  1.0,  3.0,  8.0,
+                           -1.0,  2.0,  3.0, -5.0};
+  cuopt_float_t rhs[] = {1.0, 55.0, 3.0};
+  char constraint_sense[] = {CUOPT_LESS_THAN, CUOPT_LESS_THAN, CUOPT_LESS_THAN};
+  cuopt_float_t var_lower_bounds[] = {0.0, 0.0, 0.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+  cuopt_float_t objective_coefficients[] = {4.0, 1.0, 5.0, 3.0};
+
+  cuopt_float_t time;
+  cuopt_int_t i, j;
+
+  cuopt_int_t status = cuOptCreateProblem(num_constraints,
+                                          num_variables,
+                                          CUOPT_MAXIMIZE,
+                                          0.0,
+                                          objective_coefficients,
+                                          row_offsets,
+                                          column_indices,
+                                          values,
+                                          constraint_sense,
+                                          rhs,
+                                          var_lower_bounds,
+                                          var_upper_bounds,
+                                          variable_types,
+                                          &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem\n");
+    goto DONE;
+  }
+
+  status = check_problem(problem,
+                         num_constraints,
+                         num_variables,
+                         nnz,
+                         CUOPT_MAXIMIZE,
+                         0.0,
+                         objective_coefficients,
+                         row_offsets,
+                         column_indices,
+                         values,
+                         constraint_sense,
+                         rhs,
+                         var_lower_bounds,
+                         var_upper_bounds,
+                         variable_types);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error checking problem\n");
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  };
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, method);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting parameter\n");
+    goto DONE;
+  }
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem\n");
+    goto DONE;
+  }
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time\n");
+    goto DONE;
+  }
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status\n");
+    goto DONE;
+  }
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value\n");
+    goto DONE;
+  }
+  printf("Solve finished with termination status %s (%d) in %f seconds\n",
+         termination_status_to_string(*termination_status_ptr),
+         *termination_status_ptr,
+         time);
+  printf("Objective value: %f\n", *objective_ptr);
+
+
+  /* Get and print solution variables */
+  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nSolution: \n");
+  for (j = 0; j < num_variables; j++) {
+    printf("x%d = %f\n", j + 1, solution_values[j]);
+  }
+  free(solution_values);
+
+  status = cuOptGetDualSolution(solution, dual_variables);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting dual solution\n");
+    goto DONE;
+  }
+  for (i = 0; i < num_constraints; i++) {
+    printf("y%d = %f\n", i + 1, dual_variables[i]);
+  }
+  status = cuOptGetReducedCosts(solution, reduced_costs);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting reduced costs\n");
+    goto DONE;
+  }
+  for (j = 0; j < num_variables; j++) {
+    printf("z%d = %f\n", j + 1, reduced_costs[j]);
+  }
+
+  *dual_obj_ptr = 0.0;
+  for (i = 0; i < num_constraints; i++) {
+    *dual_obj_ptr += dual_variables[i] * rhs[i];
+  }
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+cuopt_int_t test_deterministic_bb(const char* filename,
+                                  cuopt_int_t num_runs,
+                                  cuopt_int_t num_threads,
+                                  cuopt_float_t time_limit,
+                                  cuopt_float_t work_limit)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuopt_float_t first_objective    = 0.0;
+  cuopt_int_t first_status         = -1;
+  cuopt_int_t status;
+  cuopt_int_t run;
+
+  printf("Testing deterministic B&B: %s with %d threads, %d runs\n", filename, num_threads, num_runs);
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_MIP_DETERMINISM_MODE, CUOPT_MODE_DETERMINISTIC);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting determinism mode: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_NUM_CPU_THREADS, num_threads);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting num threads: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, time_limit);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting time limit: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetFloatParameter(settings, CUOPT_WORK_LIMIT, work_limit);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting work limit: %d\n", status);
+    goto DONE;
+  }
+
+  int seed = rand();
+  printf("Seed: %d\n", seed);
+
+  for (run = 0; run < num_runs; run++) {
+    cuOptSolution solution = NULL;
+    cuopt_float_t objective;
+    cuopt_int_t termination_status;
+
+    status = cuOptSetIntegerParameter(settings, CUOPT_RANDOM_SEED, seed);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error setting seed: %d\n", status);
+      goto DONE;
+    }
+
+    status = cuOptSolve(problem, settings, &solution);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error solving problem on run %d: %d\n", run, status);
+      cuOptDestroySolution(&solution);
+      goto DONE;
+    }
+
+    status = cuOptGetObjectiveValue(solution, &objective);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error getting objective value on run %d: %d\n", run, status);
+      cuOptDestroySolution(&solution);
+      goto DONE;
+    }
+
+    status = cuOptGetTerminationStatus(solution, &termination_status);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error getting termination status on run %d: %d\n", run, status);
+      cuOptDestroySolution(&solution);
+      goto DONE;
+    }
+
+    if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL &&
+        termination_status != CUOPT_TERIMINATION_STATUS_TIME_LIMIT &&
+        termination_status != CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND) {
+      printf("Run %d: status=%s (%d), unexpected termination status\n",
+             run,
+             termination_status_to_string(termination_status),
+             termination_status);
+      status = CUOPT_VALIDATION_ERROR;
+      cuOptDestroySolution(&solution);
+      goto DONE;
+    }
+
+    printf("Run %d: status=%s (%d), objective=%f\n",
+           run,
+           termination_status_to_string(termination_status),
+           termination_status,
+           objective);
+
+    if (run == 0) {
+      first_objective = objective;
+      first_status    = termination_status;
+    } else {
+      if (first_status != termination_status) {
+        printf("Determinism failure: run %d termination status %d differs from run 0 status %d\n",
+               run,
+               termination_status,
+               first_status);
+        status = CUOPT_VALIDATION_ERROR;
+        cuOptDestroySolution(&solution);
+        goto DONE;
+      }
+      if (first_objective != objective) {
+        printf("Determinism failure: run %d objective %f differs from run 0 objective %f\n",
+               run,
+               objective,
+               first_objective);
+        status = CUOPT_VALIDATION_ERROR;
+        cuOptDestroySolution(&solution);
+        goto DONE;
+      }
+    }
+    cuOptDestroySolution(&solution);
+  }
+
+  printf("Deterministic B&B test PASSED: all %d runs produced identical results\n", num_runs);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  return status;
+}

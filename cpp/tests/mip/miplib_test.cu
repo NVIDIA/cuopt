@@ -1,13 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
+#include "branch_and_bound/branch_and_bound.hpp"
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
-#include "dual_simplex/branch_and_bound.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"
 

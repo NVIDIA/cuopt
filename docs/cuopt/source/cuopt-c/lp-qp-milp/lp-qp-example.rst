@@ -143,9 +143,6 @@ You should see the following output:
 Simple Quadratic Programming Example
 ------------------------------------
 
-.. note::
-   The QP solver is currently in beta.
-
 This example demonstrates how to use the cuOpt C API for quadratic programming.
 
 The example code is available at ``examples/cuopt-c/lp/simple_qp_example.c`` (:download:`download <examples/simple_qp_example.c>`):

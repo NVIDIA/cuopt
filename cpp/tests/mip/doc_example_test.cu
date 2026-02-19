@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -125,7 +125,7 @@ TEST(docs, user_problem_file)
 
   settings.time_limit        = test_time_limit;
   settings.user_problem_file = user_problem_path;
-  settings.presolve          = false;
+  settings.presolver         = cuopt::linear_programming::presolver_t::None;
   EXPECT_EQ(solve_mip(&handle_, problem, settings).get_termination_status(),
             mip_termination_status_t::Optimal);
 

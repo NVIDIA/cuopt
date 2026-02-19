@@ -29,6 +29,23 @@ sparse_vector_t<i_t, f_t>::sparse_vector_t(const csc_matrix_t<i_t, f_t>& A, i_t 
 }
 
 template <typename i_t, typename f_t>
+void sparse_vector_t<i_t, f_t>::from_csc_column(const csc_matrix_t<i_t, f_t>& A, i_t col)
+{
+  const i_t col_start = A.col_start[col];
+  const i_t col_end   = A.col_start[col + 1];
+  n                   = A.m;
+  const i_t nz        = col_end - col_start;
+  i.clear();
+  x.clear();
+  i.reserve(nz);
+  x.reserve(nz);
+  for (i_t k = col_start; k < col_end; ++k) {
+    i.push_back(A.i[k]);
+    x.push_back(A.x[k]);
+  }
+}
+
+template <typename i_t, typename f_t>
 sparse_vector_t<i_t, f_t>::sparse_vector_t(const csr_matrix_t<i_t, f_t>& A, i_t row)
 {
   const i_t row_start = A.row_start[row];
@@ -102,7 +119,7 @@ void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p
   for (i_t k = 0; k < nz; ++k) {
     i_perm[k] = p[i[k]];
   }
-  i = i_perm;
+  i = std::move(i_perm);
 }
 
 template <typename i_t, typename f_t>
@@ -118,7 +135,7 @@ void sparse_vector_t<i_t, f_t>::inverse_permute_vector(const std::vector<i_t>& p
   for (i_t k = 0; k < nz; ++k) {
     i_perm[k] = p[i[k]];
   }
-  y.i = i_perm;
+  y.i = std::move(i_perm);
 }
 
 template <typename i_t, typename f_t>
@@ -186,15 +203,15 @@ void sparse_vector_t<i_t, f_t>::sort()
     for (i_t k = 0; k < nz; ++k) {
       perm[k] = k;
     }
-    std::vector<i_t>& iunsorted = i;
+    auto& iunsorted = i;
     std::sort(
       perm.begin(), perm.end(), [&iunsorted](i_t a, i_t b) { return iunsorted[a] < iunsorted[b]; });
     for (i_t k = 0; k < nz; ++k) {
       i_sorted[k] = i[perm[k]];
       x_sorted[k] = x[perm[k]];
     }
-    i = i_sorted;
-    x = x_sorted;
+    i = std::move(i_sorted);
+    x = std::move(x_sorted);
   }
 
   // Check

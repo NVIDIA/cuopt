@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -41,6 +41,7 @@ struct lp_problem_t {
   std::vector<f_t> upper;
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
+  bool objective_is_integral{false};
 };
 
 template <typename i_t, typename f_t>

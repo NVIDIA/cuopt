@@ -8,11 +8,11 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
-#include <linear_programming/utils.cuh>
-#include <mip/presolve/third_party_presolve.hpp>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -37,8 +37,14 @@ TEST(problem, find_implied_integers)
   auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
   auto presolver      = std::make_unique<detail::third_party_presolve_t<int, double>>();
-  auto result         = presolver->apply(
-    op_problem, cuopt::linear_programming::problem_category_t::MIP, false, 1e-6, 1e-12, 20, 1);
+  auto result         = presolver->apply(op_problem,
+                                 cuopt::linear_programming::problem_category_t::MIP,
+                                 cuopt::linear_programming::presolver_t::Papilo,
+                                 false,
+                                 1e-6,
+                                 1e-12,
+                                 20,
+                                 1);
   ASSERT_TRUE(result.has_value());
 
   auto problem = detail::problem_t<int, double>(result->reduced_problem);

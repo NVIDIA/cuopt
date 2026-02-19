@@ -5,9 +5,6 @@
 Quadratic Programming Matrix Example
 ====================================
 
-.. note::
-   The QP solver is currently in beta.
-
 This example demonstrates how to formulate and solve a
 Quadratic Programming (QP) problem represented in a matrix format
 using the cuOpt Python API.

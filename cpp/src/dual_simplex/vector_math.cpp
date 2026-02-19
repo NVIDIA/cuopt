@@ -1,11 +1,12 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
-#include <dual_simplex/pinned_host_allocator.hpp>
+#include <barrier/pinned_host_allocator.hpp>
+
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/vector_math.hpp>
 
@@ -56,6 +57,7 @@ f_t dot(const std::vector<f_t>& x, const std::vector<f_t>& y)
   return dot;
 }
 
+// Work = 3*min(nz_x, nz_y)
 template <typename i_t, typename f_t>
 f_t sparse_dot(
   i_t const* xind, f_t const* xval, i_t nx, i_t const* yind, i_t ny, f_t const* y_scatter_val)
@@ -122,7 +124,8 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   return dot;
 }
 
-// x = b(p)
+// Computes x = P*b or x=b(p) in MATLAB.
+// Work is 3*n
 template <typename i_t, typename f_t>
 i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x)
 {
@@ -135,7 +138,8 @@ i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::ve
   return 0;
 }
 
-// x(p) = b
+// Computes x = P'*b or x(p) = b in MATLAB.
+// Work is 3 * n
 template <typename i_t, typename f_t>
 i_t inverse_permute_vector(const std::vector<i_t>& p,
                            const std::vector<f_t>& b,
@@ -150,6 +154,8 @@ i_t inverse_permute_vector(const std::vector<i_t>& p,
   return 0;
 }
 
+// Computes pinv from p. Or pinv(p) = 1:n in MATLAB
+// Work is 2*n
 template <typename i_t>
 i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv)
 {
@@ -198,12 +204,11 @@ template double sparse_dot<int, double>(
 template int permute_vector<int, double>(const std::vector<int>& p,
                                          const std::vector<double>& b,
                                          std::vector<double>& x);
-
 template int inverse_permute_vector<int, double>(const std::vector<int>& p,
                                                  const std::vector<double>& b,
                                                  std::vector<double>& x);
-
 template int inverse_permutation<int>(const std::vector<int>& p, std::vector<int>& pinv);
+
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

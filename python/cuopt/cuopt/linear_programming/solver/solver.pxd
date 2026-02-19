@@ -62,6 +62,8 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
 
         string get_parameter_as_string(const string& name) except +
 
+        vector[string] get_parameter_names() except +
+
         # LP settings
         void set_initial_pdlp_primal_solution(
             const f_t* initial_primal_solution,

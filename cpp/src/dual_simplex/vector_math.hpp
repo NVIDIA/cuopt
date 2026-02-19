@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <vector>
 
@@ -58,7 +59,6 @@ f_t sparse_dot(i_t* xind, f_t* xval, i_t nx, i_t* yind, f_t* yval, i_t ny);
 // Computes x = P*b or x=b(p) in MATLAB.
 template <typename i_t, typename f_t>
 i_t permute_vector(const std::vector<i_t>& p, const std::vector<f_t>& b, std::vector<f_t>& x);
-
 // Computes x = P'*b or x(p) = b in MATLAB.
 template <typename i_t, typename f_t>
 i_t inverse_permute_vector(const std::vector<i_t>& p,

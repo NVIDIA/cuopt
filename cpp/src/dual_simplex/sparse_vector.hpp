@@ -18,7 +18,7 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class sparse_vector_t {
  public:
-  sparse_vector_t() : n(0), i({}), x({}) {}
+  sparse_vector_t() : n(0), i(), x() {}
   // Construct a sparse vector of dimension n with nz nonzero coefficients
   sparse_vector_t(i_t n, i_t nz) : n(n), i(nz), x(nz) {}
   // Construct a sparse vector from a dense vector.
@@ -50,6 +50,15 @@ class sparse_vector_t {
   f_t norm2_squared() const;
   void negate();
   f_t find_coefficient(i_t index) const;
+
+  void clear()
+  {
+    i.clear();
+    x.clear();
+  }
+
+  // Reset from a column of a CSC matrix
+  void from_csc_column(const csc_matrix_t<i_t, f_t>& A, i_t col);
 
   void squeeze(sparse_vector_t<i_t, f_t>& y) const;
 

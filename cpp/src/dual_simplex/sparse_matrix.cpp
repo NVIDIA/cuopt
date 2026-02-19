@@ -168,6 +168,7 @@ void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
   this->n++;
 }
 
+// Work = 4*x.i.size()
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
 {
@@ -190,6 +191,7 @@ void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
   this->n++;
 }
 
+// Work is 5*x_nz
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
 {
@@ -209,6 +211,7 @@ void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
   this->n++;
 }
 
+// Work = 6*nz + 2*n
 template <typename i_t, typename f_t>
 i_t csc_matrix_t<i_t, f_t>::transpose(csc_matrix_t<i_t, f_t>& AT) const
 {
@@ -977,12 +980,9 @@ template double sparse_dot<int, double>(const std::vector<int>& xind,
                                         const csc_matrix_t<int, double>& Y,
                                         int y_col);
 
-template int matrix_vector_multiply<int, double, std::allocator<double>, std::allocator<double>>(
-  const csc_matrix_t<int, double>& A,
-  double alpha,
-  const std::vector<double, std::allocator<double>>& x,
-  double beta,
-  std::vector<double, std::allocator<double>>& y);
+// NOTE: matrix_vector_multiply is now templated on VectorX and VectorY.
+// Since it's defined inline in the header, no explicit instantiation is needed here.
+
 template int
 matrix_transpose_vector_multiply<int, double, std::allocator<double>, std::allocator<double>>(
   const csc_matrix_t<int, double>& A,

@@ -319,7 +319,7 @@ class InitialSolution(StrictModel):
     )
 
 
-class Tolerances(StrictModel):
+class Tolerances(BaseModel):
     optimality: float = Field(
         default=None,
         description="absolute and relative tolerance on the primal feasibility, dual feasibility, and gap",  # noqa
@@ -374,7 +374,7 @@ class Tolerances(StrictModel):
     )
 
 
-class SolverConfig(StrictModel):
+class SolverConfig(BaseModel):
     tolerances: Optional[Tolerances] = Field(
         default=Tolerances(),
         description="Note: Not supported for MILP."
@@ -450,6 +450,11 @@ class SolverConfig(StrictModel):
         description="Set True to run heuristics only, False to run "
         "heuristics and branch and bound for MILP",
     )
+    mip_batch_pdlp_strong_branching: Optional[int] = Field(
+        default=0,
+        description="Set 1 to enable batch PDLP strong branching "
+        "in the MIP solver, 0 to disable.",
+    )
     num_cpu_threads: Optional[int] = Field(
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa
@@ -500,11 +505,11 @@ class SolverConfig(StrictModel):
         default=False,
         description="Set True to use crossover, False to not use crossover.",
     )
-    presolve: Optional[bool] = Field(
+    presolve: Optional[int] = Field(
         default=None,
-        description="Set True to enable presolve, False to disable presolve. "
-        "Presolve can reduce problem size and improve solve time. "
-        "Default is True for MIP problems and False for LP problems.",
+        description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "  # noqa
+        "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
+        "Default is 1 for MIP problems and 2 for LP problems.",
     )
     dual_postsolve: Optional[bool] = Field(
         default=None,

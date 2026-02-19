@@ -177,8 +177,8 @@ class csr_matrix_t {
   i_t m;                       // number of rows
   i_t n;                       // number of cols
   std::vector<i_t> row_start;  // row pointers (size m + 1)
-  std::vector<i_t> j;          // column inidices, size nz_max
-  std::vector<f_t> x;          // numerical valuse, size nz_max
+  std::vector<i_t> j;          // column indices, size nz_max
+  std::vector<f_t> x;          // numerical values, size nz_max
 
   static_assert(std::is_signed_v<i_t>);
 };
@@ -270,12 +270,9 @@ i_t matrix_transpose_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
 }
 
 // y <- alpha*A*x + beta*y
-template <typename i_t, typename f_t, typename AllocatorA, typename AllocatorB>
-i_t matrix_vector_multiply(const csc_matrix_t<i_t, f_t>& A,
-                           f_t alpha,
-                           const std::vector<f_t, AllocatorA>& x,
-                           f_t beta,
-                           std::vector<f_t, AllocatorB>& y)
+template <typename i_t, typename f_t, typename VectorX, typename VectorY>
+i_t matrix_vector_multiply(
+  const csc_matrix_t<i_t, f_t>& A, f_t alpha, const VectorX& x, f_t beta, VectorY& y)
 {
   // y <- alpha*A*x + beta*y
   i_t m = A.m;

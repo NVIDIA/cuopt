@@ -1,0 +1,414 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+#pragma once
+
+#include <pdlp/cusparse_view.hpp>
+#include <pdlp/pdhg.hpp>
+#include <pdlp/pdlp_climber_strategy.hpp>
+#include <pdlp/restart_strategy/localized_duality_gap_container.hpp>
+#include <pdlp/restart_strategy/weighted_average_solution.hpp>
+#include <pdlp/saddle_point.hpp>
+#include <pdlp/swap_and_resize_helper.cuh>
+#include <pdlp/termination_strategy/convergence_information.hpp>
+
+#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+
+#include <mip_heuristics/problem/problem.cuh>
+
+#include <raft/core/handle.hpp>
+
+#include <rmm/cuda_stream_view.hpp>
+#include <rmm/device_buffer.hpp>
+#include <rmm/device_scalar.hpp>
+#include <rmm/device_uvector.hpp>
+
+#include <raft/core/device_span.hpp>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+class pdlp_restart_strategy_t {
+ public:
+  /**
+   * @brief A device-side view of the `pdlp_restart_strategy_t` structure with the RAII stuffs
+   *        stripped out, to make it easy to work inside kernels
+   *
+   * @note It is assumed that the pointers are NOT owned by this class, but rather
+   *       by the encompassing `pdlp_restart_strategy_t` class via RAII abstractions like
+   *       `rmm::device_uvector`
+   */
+  struct view_t {
+    i_t primal_size;
+    i_t dual_size;
+    i_t size_of_saddle_point_problem;
+    i_t n_blocks_needed;
+    i_t n_threads_needed_full_blocks;
+    i_t n_potential_items_in_last_block;
+
+    i_t primal_aligned_size;
+    i_t dual_aligned_size;
+
+    i_t last_restart_length;
+
+    raft::device_span<f_t> weights;
+
+    i_t* candidate_is_avg;
+    i_t* restart_triggered;
+
+    f_t* gap_reduction_ratio_last_trial;
+
+    raft::device_span<f_t> center_point;
+    raft::device_span<f_t> objective_vector;
+    raft::device_span<f_t> direction_full;
+    raft::device_span<f_t> threshold;
+    raft::device_span<f_t> lower_bound;
+    raft::device_span<f_t> upper_bound;
+    raft::device_span<f_t> test_point;
+    raft::device_span<f_t> transformed_constraint_lower_bounds;
+    raft::device_span<f_t> transformed_constraint_upper_bounds;
+
+    f_t* target_threshold;
+    f_t* low_radius_squared;
+    f_t* high_radius_squared;
+    f_t* test_threshold;
+    f_t* test_radius_squared;
+
+    i_t* testing_range_low;
+    i_t* testing_range_high;
+
+    raft::device_span<f_t> shared_live_kernel_accumulator;
+    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+  };
+
+  struct cupdlpx_restart_view_t {
+    raft::device_span<const f_t> primal_distance;
+    raft::device_span<const f_t> dual_distance;
+    raft::device_span<const f_t> l2_dual_residual;
+    raft::device_span<const f_t> l2_primal_residual;
+    f_t l2_norm_primal_linear_objective;
+    f_t l2_norm_primal_right_hand_side;
+    raft::device_span<const f_t> step_size;
+    raft::device_span<f_t> primal_weight;
+    raft::device_span<f_t> primal_weight_error_sum;
+    raft::device_span<f_t> primal_weight_last_error;
+    raft::device_span<f_t> best_primal_weight;
+    raft::device_span<f_t> new_primal_step_size;
+    raft::device_span<f_t> new_dual_step_size;
+    raft::device_span<f_t> best_primal_dual_residual_gap;
+    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+  };
+
+  enum class restart_strategy_t {
+    NO_RESTART           = 0,
+    KKT_RESTART          = 1,
+    TRUST_REGION_RESTART = 2,
+    CUPDLPX_RESTART      = 3,
+  };
+
+  void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_context(i_t new_size);
+
+  pdlp_restart_strategy_t(raft::handle_t const* handle_ptr,
+                          problem_t<i_t, f_t>& op_problem,
+                          const cusparse_view_t<i_t, f_t>& cusparse_view,
+                          const i_t primal_size,
+                          const i_t dual_size,
+                          bool is_legacy_batch_mode,
+                          const std::vector<pdlp_climber_strategy_t>& climber_strategies_,
+                          const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+
+  // Compute kkt score on passed argument using the container tmp_kkt score and stream view
+  f_t compute_kkt_score(const rmm::device_uvector<f_t>& l2_primal_residual,
+                        const rmm::device_uvector<f_t>& l2_dual_residual,
+                        const rmm::device_uvector<f_t>& gap,
+                        const rmm::device_uvector<f_t>& primal_weight);
+
+  void increment_iteration_since_last_restart();
+
+  void update_distance(pdhg_solver_t<i_t, f_t>& pdhg_solver,
+                       rmm::device_uvector<f_t>& primal_weight,
+                       rmm::device_uvector<f_t>& primal_step_size,
+                       rmm::device_uvector<f_t>& dual_step_size,
+                       const rmm::device_uvector<f_t>& step_size);
+
+  void add_current_solution_to_average_solution(const f_t* primal_solution,
+                                                const f_t* dual_solution,
+                                                const rmm::device_uvector<f_t>& weight,
+                                                i_t total_pdlp_iterations);
+
+  void get_average_solutions(rmm::device_uvector<f_t>& avg_primal,
+                             rmm::device_uvector<f_t>& avg_dual);
+
+  void compute_restart(
+    pdhg_solver_t<i_t, f_t>& pdhg_solver,
+    rmm::device_uvector<f_t>& primal_solution_avg,
+    rmm::device_uvector<f_t>& dual_solution_avg,
+    const i_t total_number_of_iterations,
+    rmm::device_uvector<f_t>& primal_step_size,  // Updated if new primal weight
+    rmm::device_uvector<f_t>& dual_step_size,    // Updated if new primal weight
+    rmm::device_uvector<f_t>& primal_weight,
+    const rmm::device_uvector<f_t>& step_size,  // To update primal/dual step size
+    const convergence_information_t<i_t, f_t>& current_convergence_information,
+    const convergence_information_t<i_t, f_t>& average_convergence_information,
+    [[maybe_unused]] rmm::device_uvector<f_t>& best_primal_weight,
+    std::vector<int>& has_restarted);
+
+  /**
+   * @brief Gets the device-side view (with raw pointers), for ease of access
+   *        inside cuda kernels
+   */
+  view_t view();
+
+  i_t get_iterations_since_last_restart() const;
+
+  void set_last_restart_was_average(bool value);
+  bool get_last_restart_was_average() const;
+
+  i_t should_do_artificial_restart(i_t total_number_of_iterations) const;
+
+  cupdlpx_restart_view_t make_cupdlpx_restart_view(
+    const rmm::device_uvector<f_t>& primal_distance,
+    const rmm::device_uvector<f_t>& dual_distance,
+    const convergence_information_t<i_t, f_t>& current_convergence_information,
+    const rmm::device_uvector<f_t>& step_size,
+    rmm::device_uvector<f_t>& primal_weight,
+    rmm::device_uvector<f_t>& best_primal_weight,
+    rmm::device_uvector<f_t>& primal_step_size,
+    rmm::device_uvector<f_t>& dual_step_size);
+
+ private:
+  void run_cupdlpx_restart(
+    const convergence_information_t<i_t, f_t>& current_convergence_information,
+    pdhg_solver_t<i_t, f_t>& pdhg_solver,
+    i_t total_number_of_iterations,
+    rmm::device_uvector<f_t>& primal_weight,
+    const rmm::device_uvector<f_t>& step_size,
+    rmm::device_uvector<f_t>& primal_step_size,
+    rmm::device_uvector<f_t>& dual_step_size,
+    rmm::device_uvector<f_t>& best_primal_weight,
+    std::vector<int>& has_restarted);
+  void should_cupdlpx_restart(i_t total_number_of_iterations, std::vector<int>& has_restarted);
+  void cupdlpx_restart(const convergence_information_t<i_t, f_t>& current_convergence_information,
+                       pdhg_solver_t<i_t, f_t>& pdhg_solver,
+                       rmm::device_uvector<f_t>& primal_weight,
+                       const rmm::device_uvector<f_t>& step_size,
+                       rmm::device_uvector<f_t>& primal_step_size,
+                       rmm::device_uvector<f_t>& dual_step_size,
+                       rmm::device_uvector<f_t>& best_primal_weight,
+                       const std::vector<int>& should_restart);
+
+  bool run_trust_region_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
+                                rmm::device_uvector<f_t>& primal_solution_avg,
+                                rmm::device_uvector<f_t>& dual_solution_avg,
+                                const i_t total_number_of_iterations,
+                                rmm::device_uvector<f_t>& primal_step_size,
+                                rmm::device_uvector<f_t>& dual_step_size,
+                                rmm::device_uvector<f_t>& primal_weight,
+                                const rmm::device_uvector<f_t>& step_size);
+  bool run_kkt_restart(pdhg_solver_t<i_t, f_t>& pdhg_solver,
+                       rmm::device_uvector<f_t>& primal_solution_avg,
+                       rmm::device_uvector<f_t>& dual_solution_avg,
+                       const convergence_information_t<i_t, f_t>& current_convergence_information,
+                       const convergence_information_t<i_t, f_t>& average_convergence_information,
+                       rmm::device_uvector<f_t>& primal_step_size,
+                       rmm::device_uvector<f_t>& dual_step_size,
+                       rmm::device_uvector<f_t>& primal_weight,
+                       const rmm::device_uvector<f_t>& step_size,
+                       i_t total_number_of_iterations);
+  bool kkt_restart_conditions(f_t candidate_kkt_score, i_t total_number_of_iterations);
+  bool kkt_decay(f_t candidate_kkt_score);
+  void compute_localized_duality_gaps(saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+                                      rmm::device_uvector<f_t>& primal_solution_avg,
+                                      rmm::device_uvector<f_t>& dual_solution_avg,
+                                      rmm::device_uvector<f_t>& primal_weight,
+                                      rmm::device_uvector<f_t>& tmp_primal,
+                                      rmm::device_uvector<f_t>& tmp_dual);
+
+  void distance_squared_moved_from_last_restart_period(const rmm::device_uvector<f_t>& new_solution,
+                                                       const rmm::device_uvector<f_t>& old_solution,
+                                                       rmm::device_uvector<f_t>& tmp,
+                                                       i_t size_of_solutions_h,
+                                                       i_t stride,
+                                                       rmm::device_uvector<f_t>& distance_moved);
+
+  void compute_primal_gradient(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                               cusparse_view_t<i_t, f_t>& cusparse_view);
+
+  void compute_dual_gradient(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                             cusparse_view_t<i_t, f_t>& cusparse_view,
+                             rmm::device_uvector<f_t>& tmp_dual);
+
+  void compute_lagrangian_value(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                                cusparse_view_t<i_t, f_t>& cusparse_view,
+                                rmm::device_uvector<f_t>& tmp_primal,
+                                rmm::device_uvector<f_t>& tmp_dual);
+
+  i_t pick_restart_candidate();
+
+  void should_do_adaptive_restart_normalized_duality_gap(
+    localized_duality_gap_container_t<i_t, f_t>& candidate_duality_gap,
+    rmm::device_uvector<f_t>& tmp_primal,
+    rmm::device_uvector<f_t>& tmp_dual,
+    rmm::device_uvector<f_t>& primal_weight,
+    i_t& restart);
+
+  void bound_optimal_objective(cusparse_view_t<i_t, f_t>& existing_cusparse_view,
+                               localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                               rmm::device_uvector<f_t>& tmp_primal,
+                               rmm::device_uvector<f_t>& tmp_dual);
+
+  void compute_bound(const rmm::device_uvector<f_t>& solution_tr,
+                     const rmm::device_uvector<f_t>& solution,
+                     const rmm::device_uvector<f_t>& gradient,
+                     const rmm::device_scalar<f_t>& lagrangian,
+                     const i_t size,
+                     const i_t stride,
+                     rmm::device_uvector<f_t>& tmp,
+                     rmm::device_scalar<f_t>& bound);
+
+  /*
+   * Updates from last restart the three distances:
+   * - duality_gap.primal_distance_traveled
+   * - duality_gap.dual_distance_traveled
+   * - duality_gap.distance_traveled
+   */
+  void compute_distance_traveled_from_last_restart(
+    localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+    rmm::device_uvector<f_t>& primal_weight,
+    rmm::device_uvector<f_t>& tmp_primal,
+    rmm::device_uvector<f_t>& tmp_dual);
+
+  void solve_bound_constrained_trust_region(
+    localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+    rmm::device_uvector<f_t>& tmp_primal,
+    rmm::device_uvector<f_t>& tmp_dual);
+
+  void update_last_restart_information(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                                       rmm::device_uvector<f_t>& primal_weight);
+
+  void reset_internal();
+
+  void compute_new_primal_weight(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
+                                 rmm::device_uvector<f_t>& primal_weight,
+                                 const rmm::device_uvector<f_t>& step_size,
+                                 rmm::device_uvector<f_t>& primal_step_size,
+                                 rmm::device_uvector<f_t>& dual_step_size);
+
+  raft::handle_t const* handle_ptr_{nullptr};
+  rmm::cuda_stream_view stream_view_;
+
+ public:
+  const bool batch_mode_{false};
+
+  weighted_average_solution_t<i_t, f_t> weighted_average_solution_;
+
+  i_t primal_size_h_;
+  i_t dual_size_h_;
+
+  problem_t<i_t, f_t>* problem_ptr;
+
+  rmm::device_scalar<f_t> primal_norm_weight_;
+  rmm::device_scalar<f_t> dual_norm_weight_;
+  // 1D vector of size primal + dual size, combining primal_norm_weight on the first part and
+  // dual_norm_weight on the second part It's mandatory as trust_bound_region is done on a sorted
+  // merge problem in which primal and dual are mixed together It is then impossible to
+  // differenciate primal from dual and thus choose the correct weight
+  rmm::device_uvector<f_t> weights_;
+
+  rmm::device_scalar<i_t> candidate_is_avg_;
+  rmm::device_scalar<i_t> restart_triggered_;
+
+  localized_duality_gap_container_t<i_t, f_t> avg_duality_gap_;
+  localized_duality_gap_container_t<i_t, f_t> current_duality_gap_;
+  localized_duality_gap_container_t<i_t, f_t> last_restart_duality_gap_;
+  localized_duality_gap_container_t<i_t, f_t>* candidate_duality_gap_;
+
+  cusparse_view_t<i_t, f_t> avg_duality_gap_cusparse_view_;
+  cusparse_view_t<i_t, f_t> current_duality_gap_cusparse_view_;
+  cusparse_view_t<i_t, f_t> last_restart_duality_gap_cusparse_view_;
+
+  rmm::device_scalar<f_t> gap_reduction_ratio_last_trial_;
+  i_t last_restart_length_;
+
+  // All mainly used in bound_objective
+  // {
+  rmm::device_uvector<f_t> center_point_;
+  rmm::device_uvector<f_t> objective_vector_;
+  // direction_full_ is sorted following threshold to ease test_radius computation
+  // But an unsorted direction is necessary to compute solution_tr_
+  rmm::device_uvector<f_t> unsorted_direction_full_;
+  rmm::device_uvector<f_t> direction_full_;
+  rmm::device_uvector<f_t> threshold_;
+  rmm::device_uvector<f_t> lower_bound_;
+  rmm::device_uvector<f_t> upper_bound_;
+  rmm::device_uvector<f_t> test_point_;
+  rmm::device_uvector<f_t> transformed_constraint_lower_bounds_;
+  rmm::device_uvector<f_t> transformed_constraint_upper_bounds_;
+  rmm::device_uvector<f_t> shared_live_kernel_accumulator_;
+
+  rmm::device_scalar<f_t> target_threshold_;
+  rmm::device_scalar<f_t> low_radius_squared_;
+  rmm::device_scalar<f_t> high_radius_squared_;
+  rmm::device_scalar<f_t> test_threshold_;
+  rmm::device_scalar<f_t> test_radius_squared_;
+
+  rmm::device_scalar<i_t> testing_range_low_;
+  rmm::device_scalar<i_t> testing_range_high_;
+  //}
+
+  const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
+  const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
+  const rmm::device_scalar<i_t> reusable_device_scalar_value_0_i_t_;
+  const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
+  rmm::device_buffer dot_product_storage;
+  size_t dot_product_bytes{0};
+
+  // Used to store temporarily on the device the kkt scores before host retrival
+  rmm::device_scalar<f_t> tmp_kkt_score_;
+  rmm::device_scalar<f_t> reusable_device_scalar_1_;
+  rmm::device_scalar<f_t> reusable_device_scalar_2_;
+  rmm::device_scalar<f_t> reusable_device_scalar_3_;
+
+  f_t last_candidate_kkt_score = f_t(0.0);
+  f_t last_restart_kkt_score   = f_t(0.0);
+
+  bool last_restart_was_average_ = false;
+
+  // Needed for cuPDLP+ restart
+  thrust::universal_host_pinned_vector<f_t> fixed_point_error_;
+  std::vector<f_t> initial_fixed_point_error_;
+  std::vector<f_t> last_trial_fixed_point_error_;
+  thrust::universal_host_pinned_vector<f_t> primal_weight_error_sum_;
+  thrust::universal_host_pinned_vector<f_t> primal_weight_last_error_;
+  thrust::universal_host_pinned_vector<f_t> best_primal_dual_residual_gap_;
+
+  const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
+  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+};
+
+template <typename i_t, typename f_t>
+bool is_trust_region_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+{
+  return hyper_params.restart_strategy ==
+         static_cast<int>(
+           pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::TRUST_REGION_RESTART);
+}
+
+template <typename i_t, typename f_t>
+bool is_kkt_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+{
+  return hyper_params.restart_strategy ==
+         static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::KKT_RESTART);
+}
+
+template <typename i_t, typename f_t>
+bool is_cupdlpx_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+{
+  return hyper_params.restart_strategy ==
+         static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::CUPDLPX_RESTART);
+}
+
+}  // namespace cuopt::linear_programming::detail

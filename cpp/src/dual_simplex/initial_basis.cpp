@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,8 @@
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/singletons.hpp>
 #include <dual_simplex/tic_toc.hpp>
+
+#include <raft/core/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -24,6 +26,7 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
                             std::vector<variable_status_t>& vstatus,
                             std::vector<i_t>& dependent_rows)
 {
+  raft::common::nvtx::range scope("DualSimplex::initial_basis");
   i_t m  = problem.num_rows;
   i_t n  = problem.num_cols;
   i_t nz = problem.A.col_start[n];
@@ -76,7 +79,8 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
     i_t row_singletons;
     i_t col_singletons;
     std::vector<i_t> row_perm(N);
-    find_singletons(C, row_singletons, row_perm, col_singletons, q);
+    f_t work_estimate = 0;
+    find_singletons(C, row_singletons, row_perm, col_singletons, q, work_estimate);
     std::vector<i_t> row_perm_inv(N);
     inverse_permutation(row_perm, row_perm_inv);
 

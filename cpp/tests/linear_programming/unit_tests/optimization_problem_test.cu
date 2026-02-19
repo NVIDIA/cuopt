@@ -1,15 +1,15 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <utilities/common_utils.hpp>
 
-#include <linear_programming/utilities/problem_checking.cuh>
-#include <mip/problem/problem.cuh>
+#include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
