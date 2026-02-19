@@ -344,8 +344,9 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     if (batch_remaining_time <= 0.0) { return; }
     pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
     pdlp_settings.time_limit = batch_remaining_time;
-    const auto solutions     = batch_pdlp_solve(
-      original_problem.handle_ptr, mps_model, fractional, fraction_values, pdlp_settings);
+    const raft::handle_t batch_pdlp_handle;
+    const auto solutions =
+      batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
     // Find max iteration on how many are done accross the batch

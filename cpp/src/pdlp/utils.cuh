@@ -604,15 +604,15 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
                         f_t* result,
                         raft::handle_t const* handle_ptr)
 {
-  const f_t neutral = f_t(0.0);
-  thrust::device_ptr<f_t> result_ptr(result);
+  auto stream   = handle_ptr->get_stream();
+  auto abs_iter = thrust::make_transform_iterator(input_vector.data(), abs_t<f_t>{});
+  auto n        = input_vector.size();
 
-  *result_ptr = thrust::transform_reduce(handle_ptr->get_thrust_policy(),
-                                         input_vector.data(),
-                                         input_vector.data() + input_vector.size(),
-                                         abs_t<f_t>{},
-                                         neutral,
-                                         thrust::maximum<f_t>());
+  void* d_temp      = nullptr;
+  size_t temp_bytes = 0;
+  cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream);
+  rmm::device_buffer temp_buf(temp_bytes, stream);
+  cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
 }
 
 template <typename f_t>
