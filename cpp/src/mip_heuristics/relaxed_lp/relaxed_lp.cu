@@ -15,8 +15,8 @@
 
 #include <pdlp/pdlp.cuh>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/linalg/binary_op.cuh>
 
 #include <thrust/tabulate.h>

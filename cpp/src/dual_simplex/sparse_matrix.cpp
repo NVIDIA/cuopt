@@ -8,11 +8,8 @@
 // #include <dual_simplex/dense_vector.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/sparse_vector.hpp>
-#include <utilities/memory_instrumentation.hpp>
 
 #include <dual_simplex/types.hpp>
-
-using cuopt::ins_vector;
 
 // #include <thrust/for_each.h>
 // #include <thrust/iterator/counting_iterator.h>
@@ -37,8 +34,8 @@ void csc_matrix_t<i_t, f_t>::reallocate(i_t new_nz)
   this->nz_max = new_nz;
 }
 
-template <typename i_t, typename OutputVector>
-void cumulative_sum(std::vector<i_t>& inout, OutputVector& output)
+template <typename i_t>
+void cumulative_sum(std::vector<i_t>& inout, std::vector<i_t>& output)
 {
   i_t n = inout.size();
   assert(output.size() == n + 1);
@@ -171,6 +168,7 @@ void csc_matrix_t<i_t, f_t>::append_column(const std::vector<f_t>& x)
   this->n++;
 }
 
+// Work = 4*x.i.size()
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
 {
@@ -193,6 +191,7 @@ void csc_matrix_t<i_t, f_t>::append_column(const sparse_vector_t<i_t, f_t>& x)
   this->n++;
 }
 
+// Work is 5*x_nz
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
 {
@@ -212,6 +211,7 @@ void csc_matrix_t<i_t, f_t>::append_column(i_t x_nz, i_t* i, f_t* x)
   this->n++;
 }
 
+// Work = 6*nz + 2*n
 template <typename i_t, typename f_t>
 i_t csc_matrix_t<i_t, f_t>::transpose(csc_matrix_t<i_t, f_t>& AT) const
 {
@@ -664,8 +664,8 @@ std::pair<i_t, i_t> csr_matrix_t<i_t, f_t>::get_constraint_range(i_t cstr_idx) c
 }
 
 // x <- x + alpha * A(:, j)
-template <typename i_t, typename f_t, typename VectorF>
-void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, VectorF& x)
+template <typename i_t, typename f_t>
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x)
 {
   const i_t col_start = A.col_start[j];
   const i_t col_end   = A.col_start[j + 1];
@@ -687,15 +687,19 @@ void csr_matrix_t<i_t, f_t>::insert_row(const std::vector<i_t>& vars,
   this->nz_max += vars.size();
   const i_t old_size = this->j.size();
   this->j.resize(this->j.size() + vars.size());
-  std::copy(vars.data(), vars.data() + vars.size(), this->j.underlying().data() + old_size);
+  std::copy(vars.data(), vars.data() + vars.size(), this->j.data() + old_size);
   this->x.resize(this->x.size() + coeffs.size());
-  std::copy(coeffs.data(), coeffs.data() + coeffs.size(), this->x.underlying().data() + old_size);
+  std::copy(coeffs.data(), coeffs.data() + coeffs.size(), this->x.data() + old_size);
 }
 
 // x <- x + alpha * A(:, j)
-template <typename i_t, typename f_t, typename VectorF, typename VectorI>
-void scatter_dense(
-  const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, VectorF& x, VectorI& mark, VectorI& indices)
+template <typename i_t, typename f_t>
+void scatter_dense(const csc_matrix_t<i_t, f_t>& A,
+                   i_t j,
+                   f_t alpha,
+                   std::vector<f_t>& x,
+                   std::vector<i_t>& mark,
+                   std::vector<i_t>& indices)
 {
   const i_t col_start = A.col_start[j];
   const i_t col_end   = A.col_start[j + 1];
@@ -955,10 +959,7 @@ template class csc_matrix_t<int, double>;
 
 template class csr_matrix_t<int, double>;
 
-template void cumulative_sum<int, std::vector<int>>(std::vector<int>& inout,
-                                                    std::vector<int>& output);
-template void cumulative_sum<int, ins_vector<int>>(std::vector<int>& inout,
-                                                   ins_vector<int>& output);
+template void cumulative_sum<int>(std::vector<int>& inout, std::vector<int>& output);
 
 template int coo_to_csc<int, double>(const std::vector<int>& Ai,
                                      const std::vector<int>& Aj,
@@ -974,31 +975,17 @@ template int scatter<int, double>(const csc_matrix_t<int, double>& A,
                                   csc_matrix_t<int, double>& C,
                                   int nz);
 
-template void scatter_dense<int, double, std::vector<double>>(const csc_matrix_t<int, double>& A,
-                                                              int j,
-                                                              double alpha,
-                                                              std::vector<double>& x);
+template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
+                                         int j,
+                                         double alpha,
+                                         std::vector<double>& x);
 
-template void scatter_dense<int, double, std::vector<double>, std::vector<int>>(
-  const csc_matrix_t<int, double>& A,
-  int j,
-  double alpha,
-  std::vector<double>& x,
-  std::vector<int>& mark,
-  std::vector<int>& indices);
-
-template void scatter_dense<int, double, ins_vector<double>>(const csc_matrix_t<int, double>& A,
-                                                             int j,
-                                                             double alpha,
-                                                             ins_vector<double>& x);
-
-template void scatter_dense<int, double, ins_vector<double>, ins_vector<int>>(
-  const csc_matrix_t<int, double>& A,
-  int j,
-  double alpha,
-  ins_vector<double>& x,
-  ins_vector<int>& mark,
-  ins_vector<int>& indices);
+template void scatter_dense<int, double>(const csc_matrix_t<int, double>& A,
+                                         int j,
+                                         double alpha,
+                                         std::vector<double>& x,
+                                         std::vector<int>& mark,
+                                         std::vector<int>& indices);
 
 template int multiply<int, double>(const csc_matrix_t<int, double>& A,
                                    const csc_matrix_t<int, double>& B,

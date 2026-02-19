@@ -26,7 +26,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 namespace cuopt::linear_programming::detail {
 
