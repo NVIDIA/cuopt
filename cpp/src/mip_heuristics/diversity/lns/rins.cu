@@ -67,8 +67,12 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
     // opportunistic early test w/ atomic to avoid having to take the lock
     if (!rins_thread->cpu_thread_done) return;
     std::lock_guard<std::mutex> lock(rins_mutex);
-    if (rins_thread->cpu_thread_done && dm.population.current_size() > 0 &&
-        dm.population.is_feasible()) {
+    bool population_ready = false;
+    if (rins_thread->cpu_thread_done) {
+      std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
+      population_ready = dm.population.current_size() > 0 && dm.population.is_feasible();
+    }
+    if (population_ready) {
       lp_optimal_solution = solution;
       rins_thread->start_cpu_solver();
     }
@@ -99,8 +103,6 @@ void rins_t<i_t, f_t>::run_rins()
 {
   if (total_calls == 0) RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
 
-  if (!dm.population.is_feasible()) return;
-
   cuopt_assert(lp_optimal_solution.size() == problem_copy->n_variables, "Assignment size mismatch");
   cuopt_assert(problem_copy->handle_ptr == &rins_handle, "Handle mismatch");
   // Do not make assertions based on problem_ptr. The original problem may have been modified within
@@ -111,13 +113,14 @@ void rins_t<i_t, f_t>::run_rins()
   //              "Problem size mismatch");
   // cuopt_assert(problem_copy->n_binary_vars == problem_ptr->n_binary_vars, "Problem size
   // mismatch");
-  cuopt_assert(dm.population.current_size() > 0, "No solutions in population");
 
   solution_t<i_t, f_t> best_sol(*problem_copy);
   rins_handle.sync_stream();
   // copy the best from the population into a solution_t in the RINS stream
   {
     std::lock_guard<std::recursive_mutex> lock(dm.population.write_mutex);
+    if (!dm.population.is_feasible()) return;
+    cuopt_assert(dm.population.current_size() > 0, "No solutions in population");
     auto& best_feasible_ref = dm.population.best_feasible();
     cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
                  "Assignment size mismatch");
