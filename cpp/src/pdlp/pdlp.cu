@@ -1192,8 +1192,10 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
     return x == 0 ? std::numeric_limits<f_t>::max() : abs(x);
   };
 
+  cuopt_assert(vec.size() > 0, "Vector must not be empty");
+
   auto stream = vec.stream();
-  auto n      = static_cast<int>(vec.size());
+  size_t n      = vec.size();
 
   rmm::device_scalar<f_t> d_smallest(stream);
   rmm::device_scalar<f_t> d_largest(stream);
@@ -1203,23 +1205,23 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
   auto abs_iter    = thrust::make_transform_iterator(vec.cbegin(), abs_op);
 
   void* d_temp   = nullptr;
-  size_t bytes_1 = 0, bytes_2 = 0, bytes_3 = 1;
-  cub::DeviceReduce::Reduce(
-    d_temp, bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream);
-  cub::DeviceReduce::Reduce(
-    d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream);
-  cub::DeviceReduce::Reduce(
-    d_temp, bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream);
+  size_t bytes_1 = 0, bytes_2 = 0, bytes_3 = 0;
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    d_temp, bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    d_temp, bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream));
 
   size_t max_bytes = std::max({bytes_1, bytes_2, bytes_3});
   rmm::device_buffer temp_buf(max_bytes, stream);
 
-  cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream);
-  cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream);
-  cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream);
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
+    temp_buf.data(), bytes_3, abs_iter, d_sum.data(), n, cuda::std::plus<>{}, f_t(0), stream));
 
   smallest = d_smallest.value(stream);
   largest  = d_largest.value(stream);
@@ -1444,7 +1446,8 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
     movement + computed_interaction >= f_t(0.0),
     "Movement + computed interaction must be >= 0");
 
-  *fixed_point_error = cuda::std::sqrt(movement + computed_interaction);
+  // Clamp to 0 to avoid NaN
+  *fixed_point_error = cuda::std::sqrt(cuda::std::max(f_t(0.0), movement + computed_interaction));
 
 #ifdef CUPDLP_DEBUG_MODE
   printf("movement %lf\n", movement);

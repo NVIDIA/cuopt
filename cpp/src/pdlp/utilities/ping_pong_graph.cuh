@@ -31,7 +31,6 @@ class ping_pong_graph_t {
   bool is_initialized(i_t total_pdlp_iterations);
 
  private:
-  void cancel_active_capture();
 
   cudaGraph_t even_graph;
   cudaGraph_t odd_graph;
