@@ -160,6 +160,7 @@ template <typename i_t, typename f_t>
 i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                     const simplex_solver_settings_t<i_t, f_t>& settings,
                     const std::vector<i_t>& basic_list,
+                    f_t start_time,
                     csc_matrix_t<i_t, f_t>& L,
                     csc_matrix_t<i_t, f_t>& U,
                     std::vector<i_t>& p,
@@ -383,15 +384,16 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                                  settings,
                                  settings.threshold_partial_pivoting_tol,
                                  identity,
+                                 start_time,
                                  S_col_perm,
                                  SL,
                                  SU,
                                  S_perm_inv,
                                  work_estimate);
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-          settings.log.printf("Concurrent halt\n");
           return CONCURRENT_HALT_RETURN;
         }
+        if (Srank < 0) { return Srank; }
         if (Srank != Sdim) {
           // Get the rank deficient columns
           deficient.clear();
@@ -618,7 +620,14 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   q.resize(m);
   work_estimate += m;
   f_t fact_start = tic();
-  rank = right_looking_lu(A, settings, medium_tol, basic_list, q, L, U, pinv, work_estimate);
+  rank =
+    right_looking_lu(A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
+  if (rank < 0) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return CONCURRENT_HALT_RETURN;
+    }
+    return rank;
+  }
   inverse_permutation(pinv, p);
   work_estimate += 3 * pinv.size();
 
@@ -638,7 +647,6 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
     work_estimate += 3 * (m - rank);
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-    settings.log.printf("Concurrent halt\n");
     return CONCURRENT_HALT_RETURN;
   }
   if (verbose) {
@@ -938,6 +946,7 @@ template void get_basis_from_vstatus<int>(int m,
 template int factorize_basis<int>(const csc_matrix_t<int, double>& A,
                                   const simplex_solver_settings_t<int, double>& settings,
                                   const std::vector<int>& basis_list,
+                                  double start_time,
                                   csc_matrix_t<int, double>& L,
                                   csc_matrix_t<int, double>& U,
                                   std::vector<int>& p,

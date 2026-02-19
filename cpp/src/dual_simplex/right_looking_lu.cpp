@@ -625,6 +625,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      f_t tol,
                      const std::vector<i_t>& column_list,
+                     f_t start_time,
                      std::vector<i_t>& q,
                      csc_matrix_t<i_t, f_t>& L,
                      csc_matrix_t<i_t, f_t>& U,
@@ -693,7 +694,10 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return -1; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return CONCURRENT_HALT_RETURN;
+    }
+    if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
     // Find pivot that satisfies
     // abs(pivot) >= abstol,
     // abs(pivot) >= threshold_tol * max abs[pivot column]
@@ -1196,11 +1200,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
         toc(factorization_start_time));
       last_print = tic();
     }
-    if (toc(factorization_start_time) > settings.time_limit) {
-      settings.log.printf("Right-looking LU factorization time exceeded\n");
-      return -1;
-    }
-
+    if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Concurrent halt\n");
       return CONCURRENT_HALT_RETURN;
@@ -1235,6 +1235,7 @@ template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
                                            const simplex_solver_settings_t<int, double>& settings,
                                            double tol,
                                            const std::vector<int>& column_list,
+                                           double start_time,
                                            std::vector<int>& q,
                                            csc_matrix_t<int, double>& L,
                                            csc_matrix_t<int, double>& U,
