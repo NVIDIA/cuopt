@@ -32,7 +32,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
 
     target_link_libraries(c_api_tester
         PRIVATE
-        ${CUOPT_PRIVATE_CUDA_LIBS}
+        CUDA::cudart
     )
 
     add_executable(C_API_TEST "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests/c_api_tests.cpp")
