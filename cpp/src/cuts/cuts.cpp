@@ -2746,7 +2746,7 @@ void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
       fprintf(fid, "%.17g\n", solution[j]);
       seed = hash_combine_f(seed, solution[j]);
     }
-    printf("Solution hash: %20x\n", seed);
+    printf("Solution hash: %20lx\n", seed);
     fclose(fid);
   }
 }
