@@ -19,7 +19,7 @@ namespace cuopt::linear_programming::detail {
 // No additional checks for safe usage (calling launch() before initializing the graph) use with
 // caution Binary part is because in pdlp we swap pointers instead of copying vectors to accept a
 // valid pdhg step So every odd pdlp step it's one graph, every even step it's another graph
-  template <typename i_t>
+template <typename i_t>
 class ping_pong_graph_t {
  public:
   ping_pong_graph_t(rmm::cuda_stream_view stream_view, bool is_legacy_batch_mode = false);
@@ -31,7 +31,6 @@ class ping_pong_graph_t {
   bool is_initialized(i_t total_pdlp_iterations);
 
  private:
-
   cudaGraph_t even_graph;
   cudaGraph_t odd_graph;
   cudaGraphExec_t even_instance;

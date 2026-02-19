@@ -405,18 +405,18 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     void* d_temp_storage      = nullptr;
     size_t temp_storage_bytes = 0;
     RAFT_CUDA_TRY(cub::DeviceReduce::Max(d_temp_storage,
-                              temp_storage_bytes,
-                              transform_iter,
-                              linf_primal_residual_.data(),
-                              primal_residual_.size(),
-                              stream_view_));
+                                         temp_storage_bytes,
+                                         transform_iter,
+                                         linf_primal_residual_.data(),
+                                         primal_residual_.size(),
+                                         stream_view_));
     rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
     RAFT_CUDA_TRY(cub::DeviceReduce::Max(temp_buf.data(),
-                              temp_storage_bytes,
-                              transform_iter,
-                              linf_primal_residual_.data(),
-                              primal_residual_.size(),
-                              stream_view_));
+                                         temp_storage_bytes,
+                                         transform_iter,
+                                         linf_primal_residual_.data(),
+                                         primal_residual_.size(),
+                                         stream_view_));
   }
 
   compute_dual_residual(op_problem_cusparse_view_,
@@ -465,18 +465,18 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       void* d_temp_storage      = nullptr;
       size_t temp_storage_bytes = 0;
       cub::DeviceReduce::Max(d_temp_storage,
-                                temp_storage_bytes,
-                                transform_iter,
-                                linf_dual_residual_.data(),
-                                dual_residual_.size(),
-                                stream_view_);
+                             temp_storage_bytes,
+                             transform_iter,
+                             linf_dual_residual_.data(),
+                             dual_residual_.size(),
+                             stream_view_);
       rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
       cub::DeviceReduce::Max(temp_buf.data(),
-                                temp_storage_bytes,
-                                transform_iter,
-                                linf_dual_residual_.data(),
-                                dual_residual_.size(),
-                                stream_view_);
+                             temp_storage_bytes,
+                             transform_iter,
+                             linf_dual_residual_.data(),
+                             dual_residual_.size(),
+                             stream_view_);
     }
   }
 

@@ -608,13 +608,11 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
   auto abs_iter = thrust::make_transform_iterator(input_vector.data(), abs_t<f_t>{});
   auto n        = input_vector.size();
 
-  void* d_temp          = nullptr;
-  size_t temp_bytes     = 0;
-  cub::DeviceReduce::Max(
-    d_temp, temp_bytes, abs_iter, result, n, stream);
+  void* d_temp      = nullptr;
+  size_t temp_bytes = 0;
+  cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream);
   rmm::device_buffer temp_buf(temp_bytes, stream);
-  cub::DeviceReduce::Max(
-    temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
+  cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
 }
 
 template <typename f_t>

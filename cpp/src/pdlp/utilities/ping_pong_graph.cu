@@ -37,12 +37,10 @@ void ping_pong_graph_t<i_t>::start_capture(i_t total_pdlp_iterations)
 #ifndef CUPDLP_DEBUG_MODE
   if (!is_legacy_batch_mode_) {
     if (total_pdlp_iterations % 2 == 0 && !even_initialized) {
-      RAFT_CUDA_TRY(
-        cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
       capture_even_active_ = true;
     } else if (total_pdlp_iterations % 2 == 1 && !odd_initialized) {
-      RAFT_CUDA_TRY(
-        cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(stream_view_.value(), cudaStreamCaptureModeThreadLocal));
       capture_odd_active_ = true;
     }
   }

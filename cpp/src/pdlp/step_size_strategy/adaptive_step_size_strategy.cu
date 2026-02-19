@@ -137,11 +137,12 @@ void adaptive_step_size_strategy_t<i_t, f_t>::swap_context(
   const auto [grid_size, block_size] =
     kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
   adaptive_step_size_swap_device_vectors_kernel<i_t, f_t>
-    <<<grid_size, block_size, 0, stream_view_.value()>>>(thrust::raw_pointer_cast(swap_pairs.data()),
-                                                 static_cast<i_t>(swap_pairs.size()),
-                                                 make_span(interaction_),
-                                                 make_span(norm_squared_delta_primal_),
-                                                 make_span(norm_squared_delta_dual_));
+    <<<grid_size, block_size, 0, stream_view_.value()>>>(
+      thrust::raw_pointer_cast(swap_pairs.data()),
+      static_cast<i_t>(swap_pairs.size()),
+      make_span(interaction_),
+      make_span(norm_squared_delta_primal_),
+      make_span(norm_squared_delta_dual_));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -332,9 +333,9 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
     // Compute n_lim, n_next and decide if step size is valid
     compute_step_sizes_from_movement_and_interaction<i_t, f_t>
       <<<1, 1, 0, stream_view_.value()>>>(this->view(),
-                                  primal_step_size.data(),
-                                  dual_step_size.data(),
-                                  pdhg_solver.get_d_total_pdhg_iterations().data());
+                                          primal_step_size.data(),
+                                          dual_step_size.data(),
+                                          pdhg_solver.get_d_total_pdhg_iterations().data());
     graph.end_capture(total_pdlp_iterations);
   }
   graph.launch(total_pdlp_iterations);

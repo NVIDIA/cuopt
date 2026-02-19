@@ -34,8 +34,8 @@
 #include <cub/cub.cuh>
 
 #include <thrust/count.h>
-#include <thrust/logical.h>
 #include <thrust/extrema.h>
+#include <thrust/logical.h>
 
 #include <cmath>
 #include <optional>
@@ -1188,14 +1188,13 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
                           f_t& avg)
 {
   auto abs_op      = [] __host__ __device__(f_t x) { return abs(x); };
-  auto min_nonzero = [] __host__ __device__(f_t x) -> f_t {
-    return x == 0 ? std::numeric_limits<f_t>::max() : abs(x);
-  };
+  auto min_nonzero = [] __host__ __device__(f_t x)
+    -> f_t { return x == 0 ? std::numeric_limits<f_t>::max() : abs(x); };
 
   cuopt_assert(vec.size() > 0, "Vector must not be empty");
 
   auto stream = vec.stream();
-  size_t n      = vec.size();
+  size_t n    = vec.size();
 
   rmm::device_scalar<f_t> d_smallest(stream);
   rmm::device_scalar<f_t> d_largest(stream);
@@ -1206,8 +1205,14 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
 
   void* d_temp   = nullptr;
   size_t bytes_1 = 0, bytes_2 = 0, bytes_3 = 0;
-  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    d_temp, bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(d_temp,
+                                          bytes_1,
+                                          min_nz_iter,
+                                          d_smallest.data(),
+                                          n,
+                                          cuda::minimum<>{},
+                                          std::numeric_limits<f_t>::max(),
+                                          stream));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
     d_temp, bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
@@ -1216,8 +1221,14 @@ static void compute_stats(const rmm::device_uvector<f_t>& vec,
   size_t max_bytes = std::max({bytes_1, bytes_2, bytes_3});
   rmm::device_buffer temp_buf(max_bytes, stream);
 
-  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
-    temp_buf.data(), bytes_1, min_nz_iter, d_smallest.data(), n, cuda::minimum<>{}, std::numeric_limits<f_t>::max(), stream));
+  RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(temp_buf.data(),
+                                          bytes_1,
+                                          min_nz_iter,
+                                          d_smallest.data(),
+                                          n,
+                                          cuda::minimum<>{},
+                                          std::numeric_limits<f_t>::max(),
+                                          stream));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
     temp_buf.data(), bytes_2, abs_iter, d_largest.data(), n, cuda::maximum<>{}, f_t(0), stream));
   RAFT_CUDA_TRY(cub::DeviceReduce::Reduce(
@@ -1442,9 +1453,8 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
     norm_squared_delta_primal * primal_weight + norm_squared_delta_dual / primal_weight;
   const f_t computed_interaction = f_t(2.0) * interaction * step_size;
 
-  cuopt_assert(
-    movement + computed_interaction >= f_t(0.0),
-    "Movement + computed interaction must be >= 0");
+  cuopt_assert(movement + computed_interaction >= f_t(0.0),
+               "Movement + computed interaction must be >= 0");
 
   // Clamp to 0 to avoid NaN
   *fixed_point_error = cuda::std::sqrt(cuda::std::max(f_t(0.0), movement + computed_interaction));
@@ -1828,7 +1838,6 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   // potential_next_dual_solution
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
-
   // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
                                            (void*)pdhg_solver_.get_reflected_dual().data()));
@@ -1852,7 +1861,6 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     RAFT_CUDA_TRY(cudaStreamSynchronize(
       stream_view_));  // To make sure all the data is written from device to host
     RAFT_CUDA_TRY(cudaPeekAtLastError());
-
 
 #ifdef CUPDLP_DEBUG_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
