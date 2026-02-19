@@ -13,7 +13,7 @@
 
 #include <utilities/seed_generator.cuh>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <chrono>
 #include <iomanip>

@@ -17,9 +17,9 @@
 
 #include <utilities/unique_pinned_ptr.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/cusparse_macros.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/core/operators.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>

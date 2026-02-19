@@ -9,7 +9,7 @@
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/triangle_solve.hpp>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cmath>
 #include <limits>

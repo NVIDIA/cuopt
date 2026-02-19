@@ -20,8 +20,8 @@
 #endif
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
 #include <raft/core/device_span.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
 #include <raft/linalg/eltwise.cuh>
@@ -1991,28 +1991,24 @@ void pdlp_restart_strategy_t<i_t, f_t>::solve_bound_constrained_trust_region(
                                    threshold_.end(),
                                    std::numeric_limits<f_t>::infinity());
     // Easier / Cleaner than to do reverse iterator arithmetic
-    f_t* start                 = threshold_.data();
-    f_t* end                   = threshold_.data() + primal_size_h_ + dual_size_h_;
-    using rev_iter_t           = thrust::reverse_iterator<thrust::device_ptr<f_t>>;
-    auto highest_negInf_primal = thrust::find(handle_ptr_->get_thrust_policy(),
-                                              rev_iter_t(thrust::device_ptr<f_t>(end)),
-                                              rev_iter_t(thrust::device_ptr<f_t>(start)),
-                                              -std::numeric_limits<f_t>::infinity());
+    f_t* start = threshold_.data();
+    f_t* end   = threshold_.data() + primal_size_h_ + dual_size_h_;
+    auto highest_negInf_primal =
+      thrust::find(handle_ptr_->get_thrust_policy(),
+                   cuda::std::reverse_iterator(thrust::device_ptr<f_t>(end)),
+                   cuda::std::reverse_iterator(thrust::device_ptr<f_t>(start)),
+                   -std::numeric_limits<f_t>::infinity());
 
     // Set ranges accordingly
     i_t index_start_primal = 0;
     i_t index_end_primal   = primal_size_h_ + dual_size_h_;
-    if (highest_negInf_primal != rev_iter_t(thrust::device_ptr<f_t>(start))) {
+    if (highest_negInf_primal != cuda::std::reverse_iterator(thrust::device_ptr<f_t>(start))) {
       cuopt_assert(device_to_host_value(thrust::raw_pointer_cast(&*highest_negInf_primal)) ==
                      -std::numeric_limits<f_t>::infinity(),
                    "Incorrect primal reverse iterator");
       index_start_primal = thrust::raw_pointer_cast(&*highest_negInf_primal) - threshold_.data() +
                            1;  // + 1 to go after last negInf
-      testing_range_low_.set_value_async(index_start_primal, stream_view_);
-    } else  // No negInf found, start is 0
-      testing_range_low_.set_value_async(index_start_primal, stream_view_);
     if (lowest_inf != end) {
-      cuopt_assert(device_to_host_value(thrust::raw_pointer_cast(&*lowest_inf)) ==
                      std::numeric_limits<f_t>::infinity(),
                    "Incorrect primal iterator");
       index_end_primal =

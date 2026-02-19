@@ -15,7 +15,7 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/utils.cuh>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/eltwise.cuh>
 #include <raft/util/cuda_utils.cuh>

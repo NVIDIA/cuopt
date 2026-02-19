@@ -21,7 +21,7 @@
 #include <utilities/version_info.hpp>
 #include <utilities/work_limit_context.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 // #define PHASE2_NVTX_RANGES
 

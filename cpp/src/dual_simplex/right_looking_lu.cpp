@@ -9,7 +9,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <utilities/memory_instrumentation.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>
