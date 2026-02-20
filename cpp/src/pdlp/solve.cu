@@ -727,13 +727,13 @@ static size_t batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>
   total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
 
   // Data for the solution
-  total_memory += problem.get_n_variables() * max_batch_size * sizeof(f_t);
-  total_memory += problem.get_n_constraints() * max_batch_size * sizeof(f_t);
-  total_memory += problem.get_n_variables() * max_batch_size * sizeof(f_t);
+  total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
+  total_memory += problem.get_n_constraints() * trial_batch_size * sizeof(f_t);
+  total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
 
-  // Add a 50% overhead to make sure we have enough memory considering other parts of the solver may
-  // allocate at the same time
-  total_memory *= 1.5;
+  // Add a 70% overhead to make sure we have enough memory considering other parts of the solver may
+  // need memory later while the batch PDLP is running
+  total_memory *= 1.7;
 
   // Data from saddle point state
   return total_memory;
@@ -815,9 +815,10 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     }
   }
 
-  rmm::device_uvector<f_t> full_primal_solution(problem.get_n_variables() * max_batch_size, stream);
-  rmm::device_uvector<f_t> full_dual_solution(problem.get_n_constraints() * max_batch_size, stream);
-  rmm::device_uvector<f_t> full_reduced_cost(problem.get_n_variables() * max_batch_size, stream);
+  // We don't use the solutions vectors for now
+  rmm::device_uvector<f_t> full_primal_solution(0, stream);
+  rmm::device_uvector<f_t> full_dual_solution(0, stream);
+  rmm::device_uvector<f_t> full_reduced_cost(0, stream);
 
   std::vector<
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
@@ -848,20 +849,6 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
       original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
 
     auto sol = solve_lp(problem, batch_settings);
-
-    // Copy results
-    raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
-               sol.get_primal_solution().data(),
-               problem.get_n_variables() * current_batch_size,
-               stream);
-    raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
-               sol.get_dual_solution().data(),
-               problem.get_n_constraints() * current_batch_size,
-               stream);
-    raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
-               sol.get_reduced_cost().data(),
-               problem.get_n_variables() * current_batch_size,
-               stream);
 
     auto info = sol.get_additional_termination_informations();
     full_info.insert(full_info.end(), info.begin(), info.end());

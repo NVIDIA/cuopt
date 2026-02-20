@@ -402,10 +402,13 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       fraction_values.push_back(original_root_soln_x[j]);
     }
 
+    f_t elapsed_time = toc(start_time);
+    pdlp_settings.time_limit = std::max(0.0, settings.time_limit - elapsed_time);
+
     const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
     const raft::handle_t batch_pdlp_handle;
     const auto solutions =
-      batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values);
+      batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
     // Find max iteration on how many are done accross the batch

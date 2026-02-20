@@ -446,7 +446,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for concurrent limit
-  if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+  if (settings_.concurrent_halt != nullptr && settings_.concurrent_halt->load() == 1) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;
@@ -2295,8 +2295,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     if (is_major_iteration || artificial_restart_check_main_loop || error_occured ||
         is_conditional_major) {
       if (verbose) {
-        std::cout << "-------------------------------" << std::endl;
-        std::cout << internal_solver_iterations_ << std::endl;
+          std::cout << "-------------------------------" << std::endl;
+          std::cout << internal_solver_iterations_ << std::endl;
         raft::print_device_vector("step_size", step_size_.data(), step_size_.size(), std::cout);
         raft::print_device_vector(
           "primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
