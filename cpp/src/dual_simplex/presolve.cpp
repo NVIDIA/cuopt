@@ -1163,7 +1163,9 @@ void crush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
                            const std::vector<i_t>& new_slacks,
                            std::vector<f_t>& solution)
 {
-  solution.resize(problem.num_cols, 0.0);
+  // Re-crush can be called with a reused output vector; make sure all entries,
+  // including previously added slacks, are reset before writing new values.
+  solution.assign(problem.num_cols, 0.0);
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     solution[j] = user_solution[j];
   }
@@ -1202,7 +1204,8 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
                                       const std::vector<i_t>& new_slacks,
                                       std::vector<f_t>& solution)
 {
-  solution.resize(problem.num_cols, 0.0);
+  // Re-crush can be called with a reused output vector; clear stale entries first.
+  solution.assign(problem.num_cols, 0.0);
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     solution[j] = user_solution[j];
   }

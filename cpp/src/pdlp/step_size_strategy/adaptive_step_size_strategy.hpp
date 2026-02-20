@@ -91,15 +91,6 @@ class adaptive_step_size_strategy_t {
  private:
   const bool batch_mode_;
 
-  // Stream pool to run different step size computation in parallel
-  // Because we already have the main stream, we just need 2 extra streams from this
-  rmm::cuda_stream_pool stream_pool_;
-
-  // Events to record when dot product of both delta_x and y are done and when to start them
-  event_handler_t deltas_are_done_;
-  event_handler_t dot_delta_X_;
-  event_handler_t dot_delta_Y_;
-
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
