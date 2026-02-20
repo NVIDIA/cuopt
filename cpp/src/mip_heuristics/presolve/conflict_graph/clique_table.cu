@@ -297,7 +297,9 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
   }
 
   for (const auto& addtl_clique_idx : var_clique_map_addtl[var_idx]) {
-    adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin(),
+    adj_set.insert(addtl_cliques[addtl_clique_idx].vertex_idx);
+    adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin() +
+                     addtl_cliques[addtl_clique_idx].start_pos_on_clique,
                    first[addtl_cliques[addtl_clique_idx].clique_idx].end());
   }
 
@@ -343,6 +345,19 @@ bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2)
     if (addtl.vertex_idx == var_idx2) { return true; }
     if (addtl.start_pos_on_clique < static_cast<i_t>(clique.size())) {
       if (std::find(clique.begin() + addtl.start_pos_on_clique, clique.end(), var_idx2) !=
+          clique.end()) {
+        return true;
+      }
+    }
+  }
+
+  // var_clique_map_addtl is keyed by addtl.vertex_idx, so also check the reverse direction.
+  for (const auto& addtl_idx : var_clique_map_addtl[var_idx2]) {
+    const auto& addtl  = addtl_cliques[addtl_idx];
+    const auto& clique = first[addtl.clique_idx];
+    if (addtl.vertex_idx == var_idx1) { return true; }
+    if (addtl.start_pos_on_clique < static_cast<i_t>(clique.size())) {
+      if (std::find(clique.begin() + addtl.start_pos_on_clique, clique.end(), var_idx1) !=
           clique.end()) {
         return true;
       }
