@@ -2263,13 +2263,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   bool warm_start_was_given =
     settings_.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size() != 0;
 
-  // In batch mode, before running the solver, we need to transpose the primal and dual solution to
-  // row format
-  if (batch_mode_)
-    transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
-                                 pdhg_solver_.get_potential_next_dual_solution(),
-                                 pdhg_solver_.get_dual_slack());
-
   if (!inside_mip_) {
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
@@ -2332,13 +2325,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-#ifdef CUPDLP_DEBUG_MODE
-      print("before scale slack", pdhg_solver_.get_dual_slack());
-      print("before scale potential next primal",
-            pdhg_solver_.get_potential_next_primal_solution());
-      print("before scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
-#endif
-
       // In case of batch mode, primal and dual matrices are in row format
       // We need to transpose them to column format before doing any checks
       if (batch_mode_) {
@@ -2353,6 +2339,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         transpose_primal_dual_back_to_col(
           pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
       }
+
+#ifdef CUPDLP_DEBUG_MODE
+      print("before scale slack", pdhg_solver_.get_dual_slack());
+      print("before scale potential next primal",
+            pdhg_solver_.get_potential_next_primal_solution());
+      print("before scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
+#endif
 
       // We go back to the unscaled problem here. It ensures that we do not terminate 'too early'
       // because of the error margin being evaluated on the scaled problem

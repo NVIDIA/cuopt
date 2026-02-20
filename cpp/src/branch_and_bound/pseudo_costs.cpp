@@ -14,7 +14,9 @@
 
 #include <cuopt/linear_programming/solve.hpp>
 
-#include <raft/core/nvtx.hpp>
+#include <utilities/copy_helpers.hpp>
+
+#include <raft/common/nvtx.hpp>
 
 #include <omp.h>
 
@@ -276,9 +278,11 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
     } else if (user_problem.row_sense[i] == 'G') {
       constraint_lower[i] = user_problem.rhs[i];
       constraint_upper[i] = std::numeric_limits<f_t>::infinity();
-    } else {
+    } else if (user_problem.row_sense[i] == 'E') {
       constraint_lower[i] = user_problem.rhs[i];
       constraint_upper[i] = user_problem.rhs[i];
+    } else {
+      throw std::runtime_error("Invalid row sense: " + std::string(1, user_problem.row_sense[i]));
     }
   }
 
@@ -354,7 +358,9 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
                       f_t start_time,
                       const std::vector<variable_type_t>& var_types,
-                      const std::vector<f_t> root_soln,
+                      const std::vector<f_t>& root_soln,
+                      const std::vector<f_t>& root_soln_y,
+                      const std::vector<f_t>& root_soln_z,
                       const std::vector<i_t>& fractional,
                       f_t root_obj,
                       const std::vector<variable_status_t>& root_vstatus,
@@ -397,6 +403,10 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
 
     std::vector<f_t> fraction_values;
 
+    std::vector<f_t> original_root_soln_y, original_root_soln_z;
+    uncrush_dual_solution(
+      original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y, original_root_soln_z);
+
     for (i_t k = 0; k < fractional.size(); k++) {
       const i_t j = fractional[k];
       fraction_values.push_back(original_root_soln_x[j]);
@@ -404,9 +414,19 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
 
     f_t elapsed_time = toc(start_time);
     pdlp_settings.time_limit = std::max(0.0, settings.time_limit - elapsed_time);
-
+    
     const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
     const raft::handle_t batch_pdlp_handle;
+
+
+    constexpr bool dual_simplex_primal_dual = false;
+    if (dual_simplex_primal_dual) {
+      pdlp_settings.set_initial_primal_solution(
+        original_root_soln_x.data(), original_root_soln_x.size(), batch_pdlp_handle.get_stream());
+      pdlp_settings.set_initial_dual_solution(
+        original_root_soln_y.data(), original_root_soln_y.size(), batch_pdlp_handle.get_stream());
+    }
+
     const auto solutions =
       batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
@@ -929,7 +949,9 @@ template void strong_branching<int, double>(const user_problem_t<int, double>& o
                                             const simplex_solver_settings_t<int, double>& settings,
                                             double start_time,
                                             const std::vector<variable_type_t>& var_types,
-                                            const std::vector<double> root_soln,
+                                            const std::vector<double>& root_soln,
+                                            const std::vector<double>& root_soln_y,
+                                            const std::vector<double>& root_soln_z,
                                             const std::vector<int>& fractional,
                                             double root_obj,
                                             const std::vector<variable_status_t>& root_vstatus,

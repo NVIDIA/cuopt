@@ -2357,6 +2357,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                exploration_stats_.start_time,
                                var_types_,
                                root_relax_soln_.x,
+                               root_relax_soln_.y,
+                               root_relax_soln_.z,
                                fractional,
                                root_objective_,
                                root_vstatus_,
