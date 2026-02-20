@@ -213,6 +213,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
     find_initial_cliques(host_problem, context.settings.tolerances, presolve_timer);
     problem_ptr->set_constraints_from_host_user_problem(host_problem);
+    cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host lower bound size mismatch");
+    cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host upper bound size mismatch");
+    std::vector<i_t> all_var_indices(problem_ptr->n_variables);
+    std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+    problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
     trivial_presolve(*problem_ptr, remap_cache_ids);
   }
   // May overconstrain if Papilo presolve has been run before
