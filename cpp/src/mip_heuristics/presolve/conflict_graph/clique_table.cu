@@ -235,6 +235,17 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table)
                  "Additional clique points to invalid base clique index");
     // Remove additional cliques whose base clique is scheduled for deletion.
     if (to_delete[base_clique_idx]) {
+      // Materialize conflicts represented by:
+      //   addtl_clique.vertex_idx + first[base_clique_idx][start_pos_on_clique:]
+      // before deleting both the additional and base clique entries.
+      for (size_t i = addtl_clique.start_pos_on_clique;
+           i < clique_table.first[base_clique_idx].size();
+           i++) {
+        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
+          addtl_clique.vertex_idx);
+        clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
+          clique_table.first[base_clique_idx][i]);
+      }
       clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
       addtl_c--;
       num_removed_addtl++;
@@ -286,6 +297,8 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table)
                    (size_t)clique_table.min_clique_size,
                  "A small clique remained after removing small cliques");
   }
+  // Clique removals/edge materialization can change degrees; force recompute on next query.
+  std::fill(clique_table.var_degrees.begin(), clique_table.var_degrees.end(), -1);
 }
 
 template <typename i_t, typename f_t>
@@ -301,6 +314,17 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
     adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin() +
                      addtl_cliques[addtl_clique_idx].start_pos_on_clique,
                    first[addtl_cliques[addtl_clique_idx].clique_idx].end());
+  }
+  // Memory-neutral reverse lookup for additional cliques:
+  // if var_idx is in first[clique_idx][start_pos_on_clique:], it is adjacent to vertex_idx.
+  for (const auto& addtl : addtl_cliques) {
+    if (addtl.vertex_idx == var_idx) { continue; }
+    const auto& clique = first[addtl.clique_idx];
+    size_t start_pos   = static_cast<size_t>(addtl.start_pos_on_clique);
+    if (start_pos < clique.size() &&
+        std::find(clique.begin() + start_pos, clique.end(), var_idx) != clique.end()) {
+      adj_set.insert(addtl.vertex_idx);
+    }
   }
 
   for (const auto& adj_vertex : adj_list_small_cliques[var_idx]) {
@@ -471,6 +495,9 @@ bool extend_clique(const std::vector<i_t>& clique,
       cuopt_assert(n_of_complement_conflicts == 1, "There can only be one complement conflict");
       // Keep the discovered extension in the clique table for downstream dominance checks.
       clique_table.first.push_back(new_clique);
+      for (const auto& var_idx : new_clique) {
+        clique_table.var_degrees[var_idx] = -1;
+      }
       // fix all other variables other than complementing var
       for (size_t i = 0; i < new_clique.size(); i++) {
         if (new_clique[i] % clique_table.n_variables != complement_conflict_var) {
@@ -494,6 +521,9 @@ bool extend_clique(const std::vector<i_t>& clique,
       // Keep the discovered extension in the clique table even when row insertion is skipped by
       // row/nnz budgets.
       clique_table.first.push_back(new_clique);
+      for (const auto& var_idx : new_clique) {
+        clique_table.var_degrees[var_idx] = -1;
+      }
 #if DEBUG_KNAPSACK_CONSTRAINTS
       CUOPT_LOG_DEBUG("Extended clique: %lu from %lu", new_clique.size(), clique.size());
 #endif
