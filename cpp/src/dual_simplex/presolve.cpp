@@ -445,6 +445,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
 
   i_t pivots = right_looking_lu_row_permutation_only(C, settings, 1e-13, tic(), q, pinv);
   if (pivots == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+  if (pivots == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
   if (pivots < m) {
     settings.log.printf("Found %d dependent rows\n", m - pivots);
     const i_t num_dependent = m - pivots;
@@ -569,15 +570,16 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
   }
 
   // Copy info from user_problem to problem
-  problem.num_rows     = user_problem.num_rows;
-  problem.num_cols     = user_problem.num_cols;
-  problem.A            = user_problem.A;
-  problem.objective    = user_problem.objective;
-  problem.obj_scale    = user_problem.obj_scale;
-  problem.obj_constant = user_problem.obj_constant;
-  problem.rhs          = user_problem.rhs;
-  problem.lower        = user_problem.lower;
-  problem.upper        = user_problem.upper;
+  problem.num_rows              = user_problem.num_rows;
+  problem.num_cols              = user_problem.num_cols;
+  problem.A                     = user_problem.A;
+  problem.objective             = user_problem.objective;
+  problem.obj_scale             = user_problem.obj_scale;
+  problem.obj_constant          = user_problem.obj_constant;
+  problem.objective_is_integral = user_problem.objective_is_integral;
+  problem.rhs                   = user_problem.rhs;
+  problem.lower                 = user_problem.lower;
+  problem.upper                 = user_problem.upper;
 
   // Make a copy of row_sense so we can modify it
   std::vector<char> row_sense = user_problem.row_sense;
@@ -1100,6 +1102,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     f_t dependent_row_start    = tic();
     const i_t independent_rows = find_dependent_rows(problem, settings, dependent_rows, infeasible);
     if (independent_rows == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+    if (independent_rows == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
     if (infeasible != kOk) {
       settings.log.printf("Found problem infeasible in presolve\n");
       return -1;
@@ -1160,7 +1163,9 @@ void crush_primal_solution(const user_problem_t<i_t, f_t>& user_problem,
                            const std::vector<i_t>& new_slacks,
                            std::vector<f_t>& solution)
 {
-  solution.resize(problem.num_cols, 0.0);
+  // Re-crush can be called with a reused output vector; make sure all entries,
+  // including previously added slacks, are reset before writing new values.
+  solution.assign(problem.num_cols, 0.0);
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     solution[j] = user_solution[j];
   }
@@ -1199,7 +1204,8 @@ void crush_primal_solution_with_slack(const user_problem_t<i_t, f_t>& user_probl
                                       const std::vector<i_t>& new_slacks,
                                       std::vector<f_t>& solution)
 {
-  solution.resize(problem.num_cols, 0.0);
+  // Re-crush can be called with a reused output vector; clear stale entries first.
+  solution.assign(problem.num_cols, 0.0);
   for (i_t j = 0; j < user_problem.num_cols; j++) {
     solution[j] = user_solution[j];
   }

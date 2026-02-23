@@ -215,6 +215,13 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     find_initial_cliques(
       host_problem, context.settings.tolerances, clique_table_ptr, presolve_timer);
     problem_ptr->set_constraints_from_host_user_problem(host_problem);
+    cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host lower bound size mismatch");
+    cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host upper bound size mismatch");
+    std::vector<i_t> all_var_indices(problem_ptr->n_variables);
+    std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+    problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
     trivial_presolve(*problem_ptr, remap_cache_ids);
     if (clique_table_ptr != nullptr) { problem_ptr->clique_table = std::move(clique_table); }
   }
@@ -224,6 +231,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
       // do the resizing no-matter what, bounds presolve might not change the bounds but initial
       // trivial presolve might have
       ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
       ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
         *problem_ptr, ls.constraint_prop.bounds_update);
     }

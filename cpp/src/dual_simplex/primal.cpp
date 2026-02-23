@@ -264,6 +264,7 @@ primal::status_t primal_phase2(i_t phase,
   assert(lp.lower.size() == n);
   assert(lp.upper.size() == n);
   assert(lp.rhs.size() == m);
+  f_t work_estimate = 0;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
   std::vector<i_t> superbasic_list;
@@ -294,10 +295,25 @@ primal::status_t primal_phase2(i_t phase,
   std::vector<i_t> q(m);
   std::vector<i_t> deficient;
   std::vector<i_t> slacks_needed;
-  i_t rank =
-    factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+  i_t rank = factorize_basis(lp.A,
+                             settings,
+                             basic_list,
+                             start_time,
+                             L,
+                             U,
+                             p,
+                             pinv,
+                             q,
+                             deficient,
+                             slacks_needed,
+                             work_estimate);
   if (rank == CONCURRENT_HALT_RETURN) {
     return primal::status_t::CONCURRENT_LIMIT;
+  } else if (rank == TIME_LIMIT_RETURN) {
+    return primal::status_t::TIME_LIMIT;
+  } else if (rank < 0) {
+    return toc(start_time) > settings.time_limit ? primal::status_t::TIME_LIMIT
+                                                 : primal::status_t::NUMERICAL;
   } else if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -309,13 +325,28 @@ primal::status_t primal_phase2(i_t phase,
                  basic_list,
                  nonbasic_list,
                  superbasic_list,
-                 vstatus);
-    rank = factorize_basis(lp.A, settings, basic_list, L, U, p, pinv, q, deficient, slacks_needed);
+                 vstatus,
+                 work_estimate);
+    rank = factorize_basis(lp.A,
+                           settings,
+                           basic_list,
+                           start_time,
+                           L,
+                           U,
+                           p,
+                           pinv,
+                           q,
+                           deficient,
+                           slacks_needed,
+                           work_estimate);
     if (rank == CONCURRENT_HALT_RETURN) {
       return primal::status_t::CONCURRENT_LIMIT;
-    } else if (rank == -1) {
+    } else if (rank == TIME_LIMIT_RETURN) {
+      return primal::status_t::TIME_LIMIT;
+    } else if (rank < 0) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
-      return primal::status_t::NUMERICAL;
+      return toc(start_time) > settings.time_limit ? primal::status_t::TIME_LIMIT
+                                                   : primal::status_t::NUMERICAL;
     } else {
       settings.log.debug("Basis repaired\n");
     }

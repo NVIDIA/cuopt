@@ -32,10 +32,10 @@
 
 #include <mps_parser/mps_data_model.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <raft/common/nvtx.hpp>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/core/handle.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cuda_profiler_api.h>
 
@@ -286,7 +286,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       if (presolve_result->implied_integer_indices.size() > 0) {
         CUOPT_LOG_INFO("%d implied integers", presolve_result->implied_integer_indices.size());
       }
-      if (problem.is_objective_integral()) { CUOPT_LOG_INFO("Objective function is integral"); }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
     }
     if (settings.user_problem_file != "") {

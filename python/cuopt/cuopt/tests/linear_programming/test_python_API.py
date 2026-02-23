@@ -30,6 +30,7 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ELIMINATE_DENSE_COLUMNS,
     CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
+    CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING,
     CUOPT_MIP_CUT_PASSES,
     CUOPT_METHOD,
     CUOPT_ORDERING,
@@ -997,3 +998,35 @@ def test_cuts():
     assert problem.Status.name == "Optimal"
     assert problem.ObjValue == pytest.approx(-126, abs=1e-3)
     assert problem.SolutionStats.num_nodes == 0
+
+
+def test_batch_pdlp_strong_branching():
+    # Minimize - 86*y1 - 4*y2 - 40*y3
+    # subject to 774*y1 + 76*y2 + 42*y3 <= 875
+    #            67*y1 + 27*y2 + 53*y3 <= 875
+    #            y1, y2, y3 in {0, 1}
+
+    problem = Problem()
+    y1 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y1")
+    y2 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y2")
+    y3 = problem.addVariable(lb=0, ub=1, vtype=INTEGER, name="y3")
+
+    problem.addConstraint(774 * y1 + 76 * y2 + 42 * y3 <= 875)
+    problem.addConstraint(67 * y1 + 27 * y2 + 53 * y3 <= 875)
+
+    problem.setObjective(-86 * y1 - 4 * y2 - 40 * y3)
+
+    settings = SolverSettings()
+    settings.set_parameter(CUOPT_PRESOLVE, 0)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 10)
+    settings.set_parameter(CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, 0)
+
+    problem.solve(settings)
+    assert problem.Status.name == "Optimal"
+    assert problem.ObjValue == pytest.approx(-126, abs=1e-3)
+
+    settings.set_parameter(CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, 1)
+
+    problem.solve(settings)
+    assert problem.Status.name == "Optimal"
+    assert problem.ObjValue == pytest.approx(-126, abs=1e-3)

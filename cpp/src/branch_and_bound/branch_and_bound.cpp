@@ -22,7 +22,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 #include <utilities/hashing.hpp>
 
 #include <omp.h>
@@ -491,7 +491,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
   if (is_feasible) { report_heuristic(obj); }
   if (attempt_repair) {
     mutex_repair_.lock();
-    repair_queue_.push_back(crushed_solution);
+    repair_queue_.push_back(solution);
     mutex_repair_.unlock();
   }
 }
@@ -524,9 +524,11 @@ void branch_and_bound_t<i_t, f_t>::queue_external_solution_deterministic(
   mutex_original_lp_.unlock();
 
   if (!is_feasible) {
-    // Queue for repair
+    // Queue the uncrushed solution for repair; it will be crushed at
+    // consumption time so that the crush reflects the current LP state
+    // (which may have gained slack columns from cuts added after this point).
     mutex_repair_.lock();
-    repair_queue_.push_back(crushed_solution);
+    repair_queue_.push_back(solution);
     mutex_repair_.unlock();
     return;
   }
@@ -615,11 +617,14 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 
   if (to_repair.size() > 0) {
     settings_.log.debug("Attempting to repair %ld injected solutions\n", to_repair.size());
-    for (const std::vector<f_t>& potential_solution : to_repair) {
+    for (const std::vector<f_t>& uncrushed_solution : to_repair) {
+      std::vector<f_t> crushed_solution;
+      crush_primal_solution<i_t, f_t>(
+        original_problem_, original_lp_, uncrushed_solution, new_slacks_, crushed_solution);
       std::vector<f_t> repaired_solution;
       f_t repaired_obj;
       bool is_feasible =
-        repair_solution(edge_norms_, potential_solution, repaired_obj, repaired_solution);
+        repair_solution(edge_norms_, crushed_solution, repaired_obj, repaired_solution);
       if (is_feasible) {
         mutex_upper_.lock();
 
@@ -1197,6 +1202,9 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
     policy.graphviz(search_tree, node_ptr, "lower bound", leaf_obj);
     policy.update_pseudo_costs(node_ptr, leaf_obj);
     node_ptr->lower_bound = leaf_obj;
+    if (original_lp_.objective_is_integral) {
+      node_ptr->lower_bound = std::ceil(leaf_obj - settings_.integer_tol);
+    }
     policy.on_optimal_callback(leaf_solution.x, leaf_obj);
 
     if (num_frac == 0) {
@@ -1310,7 +1318,11 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.set_log(false);
-  lp_settings.cut_off       = upper_bound_ + settings_.dual_tol;
+  if (original_lp_.objective_is_integral) {
+    lp_settings.cut_off = std::ceil(upper_bound_ - settings_.integer_tol) + settings_.dual_tol;
+  } else {
+    lp_settings.cut_off = upper_bound_ + settings_.dual_tol;
+  }
   lp_settings.inside_mip    = 2;
   lp_settings.time_limit    = settings_.time_limit - toc(exploration_stats_.start_time);
   lp_settings.scale_columns = false;
@@ -1416,7 +1428,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     // - The lower bound of the parent is lower or equal to its children
     worker->lower_bound = lower_bound;
 
-    if (lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+    if (lower_bound > upper_bound) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree_.update(node_ptr, node_status_t::FATHOMED);
       worker->recompute_basis  = true;
@@ -1526,7 +1538,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     f_t rel_gap         = user_relative_gap(original_lp_, upper_bound, lower_bound);
     worker->lower_bound = lower_bound;
 
-    if (node_ptr->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+    if (node_ptr->lower_bound > upper_bound) {
       worker->recompute_basis  = true;
       worker->recompute_bounds = true;
       continue;
@@ -1876,6 +1888,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                         root_crossover_settings,
                                                         original_lp_.lower,
                                                         original_lp_.upper,
+                                                        exploration_stats_.start_time,
                                                         basic_list,
                                                         nonbasic_list,
                                                         crossover_vstatus_);
@@ -1993,9 +2006,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
-    }
+    // FIXME: rarely dual simplex detects infeasible whereas it is feasible.
+    // to add a small safety net, check if there is a primal solution already.
+    // Uncomment this if the issue with cost266-UUE is resolved
+    // if (settings.heuristic_preemption_callback != nullptr) {
+    //   settings.heuristic_preemption_callback();
+    // }
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
@@ -2081,19 +2097,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t last_upper_bound     = std::numeric_limits<f_t>::infinity();
   f_t last_objective       = root_objective_;
   f_t root_relax_objective = root_objective_;
-  auto stop_for_time_limit = [&]() -> bool {
-    const f_t elapsed = toc(exploration_stats_.start_time);
-    if (elapsed > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
-      set_final_solution(solution, root_objective_);
-      return true;
-    }
-    return false;
-  };
 
   i_t cut_pool_size = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
-    if (stop_for_time_limit()) { return solver_status_; }
     if (num_fractional == 0) {
       set_solution_at_root(solution, cut_info);
       return mip_status_t::OPTIMAL;
@@ -2122,8 +2128,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            root_relax_soln_.x,
                                                            root_relax_soln_.z,
                                                            basic_list,
-                                                           nonbasic_list,
-                                                           exploration_stats_.start_time);
+                                                           nonbasic_list);
       if (!problem_feasible) {
         if (settings_.heuristic_preemption_callback != nullptr) {
           settings_.heuristic_preemption_callback();
@@ -2136,19 +2141,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
       }
       // Score the cuts
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t score_start_time = tic();
-      cut_pool.score_cuts(root_relax_soln_.x, exploration_stats_.start_time);
-      if (stop_for_time_limit()) { return solver_status_; }
+      cut_pool.score_cuts(root_relax_soln_.x);
       f_t score_time = toc(score_start_time);
       if (score_time > 1.0) { settings_.log.debug("Cut scoring time %.2f seconds\n", score_time); }
       // Get the best cuts from the cut pool
       csr_matrix_t<i_t, f_t> cuts_to_add(0, original_lp_.num_cols, 0);
       std::vector<f_t> cut_rhs;
       std::vector<cut_type_t> cut_types;
-      i_t num_cuts =
-        cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types, exploration_stats_.start_time);
-      if (stop_for_time_limit()) { return solver_status_; }
+      i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
       if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
@@ -2181,7 +2182,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         cuts_to_add.m + original_lp_.num_rows);
       lp_settings.log.log = false;
 
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t add_cuts_start_time = tic();
       mutex_original_lp_.lock();
       i_t add_cuts_status = add_cuts(settings_,
@@ -2194,20 +2194,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                      basic_list,
                                      nonbasic_list,
                                      root_vstatus_,
-                                     edge_norms_,
-                                     exploration_stats_.start_time);
+                                     edge_norms_);
       var_types_.resize(original_lp_.num_cols, variable_type_t::CONTINUOUS);
       mutex_original_lp_.unlock();
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t add_cuts_time = toc(add_cuts_start_time);
       if (add_cuts_time > 1.0) {
         settings_.log.debug("Add cuts time %.2f seconds\n", add_cuts_time);
       }
-      if (add_cuts_status == -2) {
-        solver_status_ = mip_status_t::TIME_LIMIT;
-        set_final_solution(solution, root_objective_);
-        return solver_status_;
-      } else if (add_cuts_status != 0) {
+      if (add_cuts_status != 0) {
         settings_.log.printf("Failed to add cuts\n");
         return mip_status_t::NUMERICAL;
       }
@@ -2234,7 +2228,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #endif
       original_lp_.A.to_compressed_row(Arow_);
 
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t node_presolve_start_time = tic();
       bounds_strengthening_t<i_t, f_t> node_presolve(original_lp_, Arow_, row_sense, var_types_);
       std::vector<f_t> new_lower = original_lp_.lower;
@@ -2245,7 +2238,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       original_lp_.lower = new_lower;
       original_lp_.upper = new_upper;
       mutex_original_lp_.unlock();
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t node_presolve_time = toc(node_presolve_start_time);
       if (node_presolve_time > 1.0) {
         settings_.log.debug("Node presolve time %.2f seconds\n", node_presolve_time);
@@ -2258,9 +2250,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t iter                    = 0;
       bool initialize_basis       = false;
       lp_settings.concurrent_halt = NULL;
-      if (stop_for_time_limit()) { return solver_status_; }
-      f_t dual_phase2_start_time = tic();
-      dual::status_t cut_status  = dual_phase2_with_advanced_basis(2,
+      f_t dual_phase2_start_time  = tic();
+      dual::status_t cut_status   = dual_phase2_with_advanced_basis(2,
                                                                   0,
                                                                   initialize_basis,
                                                                   exploration_stats_.start_time,
@@ -2279,7 +2270,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (dual_phase2_time > 1.0) {
         settings_.log.debug("Dual phase2 time %.2f seconds\n", dual_phase2_time);
       }
-      if (stop_for_time_limit()) { return solver_status_; }
       if (cut_status == dual::status_t::TIME_LIMIT) {
         solver_status_ = mip_status_t::TIME_LIMIT;
         set_final_solution(solution, root_objective_);
@@ -2287,7 +2277,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 
       if (cut_status != dual::status_t::OPTIMAL) {
-        if (stop_for_time_limit()) { return solver_status_; }
         settings_.log.printf("Numerical issue at root node. Resolving from scratch\n");
         lp_status_t scratch_status =
           solve_linear_program_with_advanced_basis(original_lp_,
@@ -2299,11 +2288,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                    nonbasic_list,
                                                    root_vstatus_,
                                                    edge_norms_);
-        if (stop_for_time_limit() || scratch_status == lp_status_t::TIME_LIMIT) {
-          solver_status_ = mip_status_t::TIME_LIMIT;
-          set_final_solution(solution, root_objective_);
-          return solver_status_;
-        }
         if (scratch_status == lp_status_t::OPTIMAL) {
           // We recovered
           cut_status = convert_lp_status_to_dual_status(scratch_status);
@@ -2315,26 +2299,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         }
       }
 
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t remove_cuts_start_time = tic();
       mutex_original_lp_.lock();
-      i_t remove_cuts_status = remove_cuts(original_lp_,
-                                           settings_,
-                                           Arow_,
-                                           new_slacks_,
-                                           original_rows,
-                                           var_types_,
-                                           root_vstatus_,
-                                           edge_norms_,
-                                           root_relax_soln_.x,
-                                           root_relax_soln_.y,
-                                           root_relax_soln_.z,
-                                           basic_list,
-                                           nonbasic_list,
-                                           basis_update,
-                                           exploration_stats_.start_time);
+      remove_cuts(original_lp_,
+                  settings_,
+                  exploration_stats_.start_time,
+                  Arow_,
+                  new_slacks_,
+                  original_rows,
+                  var_types_,
+                  root_vstatus_,
+                  edge_norms_,
+                  root_relax_soln_.x,
+                  root_relax_soln_.y,
+                  root_relax_soln_.z,
+                  basic_list,
+                  nonbasic_list,
+                  basis_update);
       mutex_original_lp_.unlock();
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t remove_cuts_time = toc(remove_cuts_start_time);
       if (remove_cuts_time > 1.0) {
         settings_.log.debug("Remove cuts time %.2f seconds\n", remove_cuts_time);
@@ -2386,7 +2368,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
-  if (toc(exploration_stats_.start_time) < settings_.time_limit) {
+  {
     raft::common::nvtx::range scope_sb("BB::strong_branching");
     strong_branching<i_t, f_t>(original_problem_,
                                original_lp_,
@@ -2508,8 +2490,30 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lower_bound    = deterministic_compute_lower_bound();
     solver_status_ = deterministic_global_termination_status_;
   } else {
-    lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
-                                                          : search_tree_.root.lower_bound;
+    if (node_queue_.best_first_queue_size() > 0) {
+      // We need to clear the queue and use the info in the search tree for the lower bound
+      while (node_queue_.best_first_queue_size() > 0) {
+        std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue_.pop_best_first();
+
+        if (!start_node.has_value()) { continue; }
+        if (upper_bound_ < start_node.value()->lower_bound) {
+          // This node was put on the heap earlier but its lower bound is now greater than the
+          // current upper bound
+          search_tree_.graphviz_node(
+            settings_.log, start_node.value(), "cutoff", start_node.value()->lower_bound);
+          search_tree_.update(start_node.value(), node_status_t::FATHOMED);
+          continue;
+        } else {
+          node_queue_.push(
+            start_node.value());  // Needed to ensure we don't lose the correct lower bound
+          break;
+        }
+      }
+      lower_bound = node_queue_.best_first_queue_size() > 0 ? node_queue_.get_lower_bound()
+                                                            : search_tree_.root.lower_bound;
+    } else {
+      lower_bound = search_tree_.root.lower_bound;
+    }
   }
   set_final_solution(solution, lower_bound);
   return solver_status_;
@@ -2818,7 +2822,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
 
       f_t upper_bound = worker.local_upper_bound;
       f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node->lower_bound);
-      if (node->lower_bound > upper_bound || rel_gap < settings_.relative_mip_gap_tol) {
+      if (node->lower_bound > upper_bound) {
         worker.current_node = nullptr;
         worker.record_fathomed(node, node->lower_bound);
         search_tree.update(node, node_status_t::FATHOMED);
@@ -3207,11 +3211,14 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
     if (to_repair.size() > 0) {
       settings_.log.debug("Deterministic sync: Attempting to repair %ld injected solutions\n",
                           to_repair.size());
-      for (const std::vector<f_t>& potential_solution : to_repair) {
+      for (const std::vector<f_t>& uncrushed_solution : to_repair) {
+        std::vector<f_t> crushed_solution;
+        crush_primal_solution<i_t, f_t>(
+          original_problem_, original_lp_, uncrushed_solution, new_slacks_, crushed_solution);
         std::vector<f_t> repaired_solution;
         f_t repaired_obj;
         bool success =
-          repair_solution(edge_norms_, potential_solution, repaired_obj, repaired_solution);
+          repair_solution(edge_norms_, crushed_solution, repaired_obj, repaired_solution);
         if (success) {
           // Queue repaired solution with work unit timestamp (...workstamp?)
           mutex_heuristic_queue_.lock();
@@ -3604,8 +3611,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     // Prune check using snapshot upper bound
     f_t rel_gap = user_relative_gap(original_lp_, worker.local_upper_bound, node_ptr->lower_bound);
-    if (node_ptr->lower_bound > worker.local_upper_bound ||
-        rel_gap < settings_.relative_mip_gap_tol) {
+    if (node_ptr->lower_bound > worker.local_upper_bound) {
       worker.recompute_bounds_and_basis = true;
       continue;
     }

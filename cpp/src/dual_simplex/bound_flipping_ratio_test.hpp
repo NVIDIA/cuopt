@@ -54,6 +54,7 @@ class bound_flipping_ratio_test_t {
   }
 
   i_t compute_step_length(f_t& step_length, i_t& nonbasic_entering);
+  f_t work_estimate() const { return work_estimate_; }
 
  private:
   i_t compute_breakpoints(std::vector<i_t>& indices, std::vector<f_t>& ratios);
@@ -98,6 +99,8 @@ class bound_flipping_ratio_test_t {
 
   i_t n_;
   i_t m_;
+
+  f_t work_estimate_;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

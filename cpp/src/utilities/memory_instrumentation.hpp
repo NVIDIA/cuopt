@@ -495,32 +495,11 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   // Constructors
-  memop_instrumentation_wrapper_t() : array_()
-  {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = array_.data();
-    } else {
-      data_ptr = nullptr;
-    }
-  }
+  memop_instrumentation_wrapper_t() : array_() {}
 
   // Copy/move from underlying type
-  memop_instrumentation_wrapper_t(const T& arr) : array_(arr)
-  {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = const_cast<value_type*>(array_.data());
-    } else {
-      data_ptr = nullptr;
-    }
-  }
-  memop_instrumentation_wrapper_t(T&& arr) : array_(std::move(arr))
-  {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = array_.data();
-    } else {
-      data_ptr = nullptr;
-    }
-  }
+  memop_instrumentation_wrapper_t(const T& arr) : array_(arr) {}
+  memop_instrumentation_wrapper_t(T&& arr) : array_(std::move(arr)) {}
 
   // Forwarding constructor for underlying container initialization
   // Only enabled for types that aren't the wrapper itself or the underlying type
@@ -533,31 +512,16 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   explicit memop_instrumentation_wrapper_t(Arg&& arg, Args&&... args)
     : array_(std::forward<Arg>(arg), std::forward<Args>(args)...)
   {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = array_.data();
-    } else {
-      data_ptr = nullptr;
-    }
   }
 
   memop_instrumentation_wrapper_t(const memop_instrumentation_wrapper_t& other)
     : memory_instrumentation_base_t(), array_(other.array_)
   {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = array_.data();
-    } else {
-      data_ptr = nullptr;
-    }
   }
 
   memop_instrumentation_wrapper_t(memop_instrumentation_wrapper_t&& other) noexcept
     : memory_instrumentation_base_t(), array_(std::move(other.array_))
   {
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      data_ptr = array_.data();
-    } else {
-      data_ptr = nullptr;
-    }
   }
 
   memop_instrumentation_wrapper_t& operator=(const memop_instrumentation_wrapper_t& other)
@@ -565,11 +529,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     if (this != &other) {
       reset_counters();
       array_ = other.array_;
-      if constexpr (type_traits_utils::has_data<T>::value) {
-        data_ptr = array_.data();
-      } else {
-        data_ptr = nullptr;
-      }
     }
     return *this;
   }
@@ -579,11 +538,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     if (this != &other) {
       reset_counters();
       array_ = std::move(other.array_);
-      if constexpr (type_traits_utils::has_data<T>::value) {
-        data_ptr = array_.data();
-      } else {
-        data_ptr = nullptr;
-      }
     }
     return *this;
   }
@@ -593,15 +547,10 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     return element_proxy_t(underlying()[index], *this);
   }
 
-  HDI value_type operator[](size_type index) const
+  value_type operator[](size_type index) const
   {
     this->template record_load<value_type>();
-    // really ugly hack because otherwise nvcc complains about vector operator[] being __host__ only
-    if constexpr (type_traits_utils::has_data<T>::value) {
-      return data_ptr[index];
-    } else {
-      return underlying()[index];
-    }
+    return underlying()[index];
   }
 
   template <typename U = T>
@@ -674,21 +623,18 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   std::enable_if_t<type_traits_utils::has_reserve<U>::value> reserve(size_type new_cap)
   {
     underlying().reserve(new_cap);
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
   std::enable_if_t<type_traits_utils::has_shrink_to_fit<U>::value> shrink_to_fit()
   {
     underlying().shrink_to_fit();
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
   std::enable_if_t<type_traits_utils::has_clear<U>::value> clear() noexcept
   {
     underlying().clear();
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -698,7 +644,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     // hot loops shouldn't be doing such operations anyway
     this->template record_store<value_type>();
     underlying().push_back(value);
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -706,7 +651,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   {
     this->template record_store<value_type>();
     underlying().push_back(std::move(value));
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T, typename... Args>
@@ -714,7 +658,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   {
     this->template record_store<value_type>();
     underlying().emplace_back(std::forward<Args>(args)...);
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -722,7 +665,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
   {
     this->template record_load<value_type>();  // Reading the element before removal
     underlying().pop_back();
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -733,7 +675,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     if (count > old_size) {
       this->byte_stores += (count - old_size) * type_size;  // New elements initialized
     }
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -743,7 +684,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
     size_type old_size = underlying().size();
     underlying().resize(count, value);
     if (count > old_size) { this->byte_stores += (count - old_size) * type_size; }
-    if constexpr (type_traits_utils::has_data<T>::value) { data_ptr = underlying().data(); }
   }
 
   template <typename U = T>
@@ -769,7 +709,6 @@ struct memop_instrumentation_wrapper_t : public memory_instrumentation_base_t {
 
  private:
   T array_;
-  value_type* data_ptr{nullptr};
 };
 
 #else  // !CUOPT_ENABLE_MEMORY_INSTRUMENTATION

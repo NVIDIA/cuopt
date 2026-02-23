@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
 #include <limits>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
@@ -189,8 +190,11 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
       }
       // greater than part: convert it to less than
       knapsack_constraint_t<i_t, f_t> knapsack_constraint2;
-      knapsack_constraint2.cstr_idx = A.m + added_constraints++;
-      knapsack_constraint2.rhs      = -problem.rhs[i];
+      // Mark synthetic rows from equality splitting with negative ids so they never alias real row
+      // indices (including rows appended later by clique extension).
+      knapsack_constraint2.cstr_idx = -(added_constraints + 1);
+      added_constraints++;
+      knapsack_constraint2.rhs = -problem.rhs[i];
       for (i_t j = constraint_range.first; j < constraint_range.second; j++) {
         knapsack_constraint2.entries.push_back({A.j[j], -A.x[j]});
       }
@@ -230,20 +234,41 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   }
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
     if (timer.check_time_limit()) { return; }
-    const auto& addtl_clique = clique_table.addtl_cliques[addtl_c];
+    const auto& addtl_clique   = clique_table.addtl_cliques[addtl_c];
+    const auto base_clique_idx = static_cast<size_t>(addtl_clique.clique_idx);
+    cuopt_assert(base_clique_idx < to_delete.size(),
+                 "Additional clique points to invalid base clique index");
+    // Remove additional cliques whose base clique is scheduled for deletion.
+    if (to_delete[base_clique_idx]) {
+      // Materialize conflicts represented by:
+      //   addtl_clique.vertex_idx + first[base_clique_idx][start_pos_on_clique:]
+      // before deleting both the additional and base clique entries.
+      for (size_t i = addtl_clique.start_pos_on_clique;
+           i < clique_table.first[base_clique_idx].size();
+           i++) {
+        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
+          addtl_clique.vertex_idx);
+        clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
+          clique_table.first[base_clique_idx][i]);
+      }
+      clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
+      addtl_c--;
+      num_removed_addtl++;
+      continue;
+    }
     i_t size_of_clique =
-      clique_table.first[addtl_clique.clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
+      clique_table.first[base_clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
     if (size_of_clique < clique_table.min_clique_size) {
       // the items from first clique are already added to the adjlist
       // only add the items that are coming from the new var in the additional clique
       for (size_t i = addtl_clique.start_pos_on_clique;
-           i < clique_table.first[addtl_clique.clique_idx].size();
+           i < clique_table.first[base_clique_idx].size();
            i++) {
         // insert conflicts both way
-        clique_table.adj_list_small_cliques[clique_table.first[addtl_clique.clique_idx][i]].insert(
+        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
           addtl_clique.vertex_idx);
         clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
-          clique_table.first[addtl_clique.clique_idx][i]);
+          clique_table.first[base_clique_idx][i]);
       }
       clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
       addtl_c--;
@@ -277,6 +302,8 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
                    (size_t)clique_table.min_clique_size,
                  "A small clique remained after removing small cliques");
   }
+  // Clique removals/edge materialization can change degrees; force recompute on next query.
+  std::fill(clique_table.var_degrees.begin(), clique_table.var_degrees.end(), -1);
 }
 
 template <typename i_t, typename f_t>
@@ -288,8 +315,21 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
   }
 
   for (const auto& addtl_clique_idx : var_clique_map_addtl[var_idx]) {
-    adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin(),
+    adj_set.insert(addtl_cliques[addtl_clique_idx].vertex_idx);
+    adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin() +
+                     addtl_cliques[addtl_clique_idx].start_pos_on_clique,
                    first[addtl_cliques[addtl_clique_idx].clique_idx].end());
+  }
+  // Memory-neutral reverse lookup for additional cliques:
+  // if var_idx is in first[clique_idx][start_pos_on_clique:], it is adjacent to vertex_idx.
+  for (const auto& addtl : addtl_cliques) {
+    if (addtl.vertex_idx == var_idx) { continue; }
+    const auto& clique = first[addtl.clique_idx];
+    size_t start_pos   = static_cast<size_t>(addtl.start_pos_on_clique);
+    if (start_pos < clique.size() &&
+        std::find(clique.begin() + start_pos, clique.end(), var_idx) != clique.end()) {
+      adj_set.insert(addtl.vertex_idx);
+    }
   }
 
   for (const auto& adj_vertex : adj_list_small_cliques[var_idx]) {
@@ -340,6 +380,19 @@ bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2)
     }
   }
 
+  // var_clique_map_addtl is keyed by addtl.vertex_idx, so also check the reverse direction.
+  for (const auto& addtl_idx : var_clique_map_addtl[var_idx2]) {
+    const auto& addtl  = addtl_cliques[addtl_idx];
+    const auto& clique = first[addtl.clique_idx];
+    if (addtl.vertex_idx == var_idx1) { return true; }
+    if (addtl.start_pos_on_clique < static_cast<i_t>(clique.size())) {
+      if (std::find(clique.begin() + addtl.start_pos_on_clique, clique.end(), var_idx1) !=
+          clique.end()) {
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 
@@ -372,7 +425,10 @@ void insert_clique_into_problem(const std::vector<i_t>& clique,
   // Move constants to the right, so rhs must decrease by rhs_offset.
   f_t rhs = coeff_scale - rhs_offset;
   // insert the new clique into the problem as a new constraint
-  A.insert_row(new_vars, new_coeffs);
+  dual_simplex::sparse_vector_t<i_t, f_t> new_row(A.n, new_vars.size());
+  new_row.i = std::move(new_vars);
+  new_row.x = std::move(new_coeffs);
+  A.append_row(new_row);
   problem.row_sense.push_back('L');
   problem.rhs.push_back(rhs);
 }
@@ -382,8 +438,13 @@ bool extend_clique(const std::vector<i_t>& clique,
                    clique_table_t<i_t, f_t>& clique_table,
                    dual_simplex::user_problem_t<i_t, f_t>& problem,
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
-                   f_t coeff_scale)
+                   f_t coeff_scale,
+                   i_t min_extension_gain,
+                   i_t remaining_rows_budget,
+                   i_t remaining_nnz_budget,
+                   i_t& inserted_row_nnz)
 {
+  inserted_row_nnz        = 0;
   i_t smallest_degree     = std::numeric_limits<i_t>::max();
   i_t smallest_degree_var = -1;
   // find smallest degree vertex in the current set packing constraint
@@ -440,6 +501,11 @@ bool extend_clique(const std::vector<i_t>& clique,
                       n_of_complement_conflicts,
                       complement_conflict_var);
       cuopt_assert(n_of_complement_conflicts == 1, "There can only be one complement conflict");
+      // Keep the discovered extension in the clique table for downstream dominance checks.
+      clique_table.first.push_back(new_clique);
+      for (const auto& var_idx : new_clique) {
+        clique_table.var_degrees[var_idx] = -1;
+      }
       // fix all other variables other than complementing var
       for (size_t i = 0; i < new_clique.size(); i++) {
         if (new_clique[i] % clique_table.n_variables != complement_conflict_var) {
@@ -458,14 +524,26 @@ bool extend_clique(const std::vector<i_t>& clique,
           }
         }
       }
-      return false;
+      return true;
     } else {
+      // Keep the discovered extension in the clique table even when row insertion is skipped by
+      // row/nnz budgets.
       clique_table.first.push_back(new_clique);
+      for (const auto& var_idx : new_clique) {
+        clique_table.var_degrees[var_idx] = -1;
+      }
 #if DEBUG_KNAPSACK_CONSTRAINTS
       CUOPT_LOG_DEBUG("Extended clique: %lu from %lu", new_clique.size(), clique.size());
 #endif
+      i_t extension_gain = static_cast<i_t>(new_clique.size() - clique.size());
+      if (extension_gain < min_extension_gain) { return true; }
+      if (remaining_rows_budget <= 0 ||
+          remaining_nnz_budget < static_cast<i_t>(new_clique.size())) {
+        return true;
+      }
       // insert the new clique into the problem as a new constraint
       insert_clique_into_problem(new_clique, problem, A, coeff_scale);
+      inserted_row_nnz = static_cast<i_t>(new_clique.size());
     }
   }
   return new_clique.size() > clique.size();
@@ -481,19 +559,100 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
                    cuopt::timer_t& timer)
 {
-  i_t n_extended_cliques = 0;
-  // we try extending cliques on set packing constraints
-  for (const auto& knapsack_constraint : knapsack_constraints) {
+  constexpr i_t min_extension_gain       = 2;
+  constexpr i_t extension_yield_window   = 64;
+  constexpr i_t min_successes_per_window = 1;
+
+  i_t base_rows      = A.m;
+  i_t base_nnz       = A.row_start[A.m];
+  i_t max_added_rows = std::max<i_t>(8, base_rows / 50);
+  i_t max_added_nnz  = std::max<i_t>(8 * clique_table.max_clique_size_for_extension, base_nnz / 50);
+
+  i_t added_rows       = 0;
+  i_t added_nnz        = 0;
+  i_t window_attempts  = 0;
+  i_t window_successes = 0;
+
+  CUOPT_LOG_DEBUG("Clique extension heuristics: min_gain=%d row_budget=%d nnz_budget=%d",
+                  min_extension_gain,
+                  max_added_rows,
+                  max_added_nnz);
+  struct extension_candidate_t {
+    i_t knapsack_idx;
+    i_t estimated_gain;
+    i_t clique_size;
+  };
+  std::vector<extension_candidate_t> extension_worklist;
+  extension_worklist.reserve(knapsack_constraints.size());
+  for (i_t knapsack_idx = 0; knapsack_idx < static_cast<i_t>(knapsack_constraints.size());
+       knapsack_idx++) {
     if (timer.check_time_limit()) { break; }
+    const auto& knapsack_constraint = knapsack_constraints[knapsack_idx];
     if (!knapsack_constraint.is_set_packing) { continue; }
-    if (knapsack_constraint.entries.size() < (size_t)clique_table.max_clique_size_for_extension) {
-      std::vector<i_t> clique;
-      for (const auto& entry : knapsack_constraint.entries) {
-        clique.push_back(entry.col);
+    i_t clique_size = static_cast<i_t>(knapsack_constraint.entries.size());
+    if (clique_size >= clique_table.max_clique_size_for_extension) { continue; }
+    i_t smallest_degree = std::numeric_limits<i_t>::max();
+    for (const auto& entry : knapsack_constraint.entries) {
+      smallest_degree = std::min(smallest_degree, clique_table.get_degree_of_var(entry.col));
+    }
+    // The smallest-degree vertex upper-bounds how many new literals can be added.
+    i_t estimated_gain = std::max<i_t>(0, smallest_degree - (clique_size - 1));
+    if (estimated_gain < min_extension_gain) { continue; }
+    extension_worklist.push_back({knapsack_idx, estimated_gain, clique_size});
+  }
+  std::stable_sort(extension_worklist.begin(),
+                   extension_worklist.end(),
+                   [](const extension_candidate_t& a, const extension_candidate_t& b) {
+                     if (a.estimated_gain != b.estimated_gain) {
+                       return a.estimated_gain > b.estimated_gain;
+                     }
+                     if (a.clique_size != b.clique_size) { return a.clique_size < b.clique_size; }
+                     return a.knapsack_idx < b.knapsack_idx;
+                   });
+  CUOPT_LOG_DEBUG("Clique extension candidates after scoring: %zu", extension_worklist.size());
+
+  i_t n_extended_cliques = 0;
+  // Try highest estimated gain candidates first so budget is spent on promising rows.
+  for (const auto& candidate : extension_worklist) {
+    if (timer.check_time_limit()) { break; }
+    if (added_rows >= max_added_rows || added_nnz >= max_added_nnz) {
+      CUOPT_LOG_DEBUG(
+        "Stopping clique extension: budget reached (rows=%d nnz=%d)", added_rows, added_nnz);
+      break;
+    }
+    window_attempts++;
+    const auto& knapsack_constraint = knapsack_constraints[candidate.knapsack_idx];
+    std::vector<i_t> clique;
+    for (const auto& entry : knapsack_constraint.entries) {
+      clique.push_back(entry.col);
+    }
+    i_t inserted_row_nnz = 0;
+    f_t coeff_scale      = knapsack_constraint.entries[0].val;
+    bool extended_clique = extend_clique(clique,
+                                         clique_table,
+                                         problem,
+                                         A,
+                                         coeff_scale,
+                                         min_extension_gain,
+                                         max_added_rows - added_rows,
+                                         max_added_nnz - added_nnz,
+                                         inserted_row_nnz);
+    if (extended_clique) {
+      n_extended_cliques++;
+      window_successes++;
+      if (inserted_row_nnz > 0) {
+        added_rows++;
+        added_nnz += inserted_row_nnz;
       }
-      f_t coeff_scale      = knapsack_constraint.entries[0].val;
-      bool extended_clique = extend_clique(clique, clique_table, problem, A, coeff_scale);
-      if (extended_clique) { n_extended_cliques++; }
+    }
+    if (window_attempts >= extension_yield_window) {
+      if (window_successes < min_successes_per_window) {
+        CUOPT_LOG_DEBUG(
+          "Stopping clique extension: low yield (%d/%d)", window_successes, window_attempts);
+        break;
+      }
+      window_attempts  = 0;
+      window_successes = 0;
     }
   }
   // problem.A.check_matrix();
@@ -657,10 +816,10 @@ void remove_dominated_cliques(
         }
       }
     };
-    auto find_window_start = [&](long long signature) {
-      auto it = std::lower_bound(
-        sp_sigs.begin(), sp_sigs.end(), signature, [](const auto& a, long long value) {
-          return a.signature < value;
+    auto find_window_end = [&](long long signature) {
+      auto it = std::upper_bound(
+        sp_sigs.begin(), sp_sigs.end(), signature, [](long long value, const auto& a) {
+          return value < a.signature;
         });
       return static_cast<size_t>(std::distance(sp_sigs.begin(), it));
     };
@@ -683,10 +842,12 @@ void remove_dominated_cliques(
       for (auto v : curr_clique_vars) {
         signature += static_cast<long long>(v);
       }
-      size_t start = find_window_start(signature);
-      size_t end   = std::min(sp_sigs.size(), start + dominance_window);
-      for (size_t idx = start; idx < end; idx++) {
-        const auto& sp      = sp_sigs[idx];
+      // Subsets must have signature <= current clique signature. Scan only that side.
+      size_t end   = find_window_end(signature);
+      size_t start = (end > dominance_window) ? (end - dominance_window) : 0;
+      for (size_t idx = end; idx > start; idx--) {
+        size_t cand_idx     = idx - 1;
+        const auto& sp      = sp_sigs[cand_idx];
         const auto& vars_sp = cstr_vars[sp.knapsack_idx];
         if (vars_sp.size() > curr_clique_vars.size()) { continue; }
         cuopt_assert(std::is_sorted(vars_sp.begin(), vars_sp.end()),
@@ -699,21 +860,20 @@ void remove_dominated_cliques(
           continue;
         }
         if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
-          CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
-                          clique_idx,
-                          sp.row_idx);
           // note that we never deleter set partitioning constraints but it fixes some other
           // variables
           if (vars_sp.size() != curr_clique_vars.size()) {
+            CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
+                            clique_idx,
+                            sp.row_idx);
             fix_difference(curr_clique_vars, vars_sp);
           }
-        } else {
-          // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
-          // removed from A.
-          if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
-          if (removal_marker[sp.row_idx]) { continue; }
-          removal_marker[sp.row_idx] = true;
         }
+        // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
+        // removed from A.
+        if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
+        if (removal_marker[sp.row_idx]) { continue; }
+        removal_marker[sp.row_idx] = true;
       }
       if ((i % 128) == 0) {
         CUOPT_LOG_TRACE("Processed extended clique %d/%d", i + 1, n_extended_cliques);
@@ -826,6 +986,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           cuopt::timer_t& timer)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
+#ifdef DEBUG_CLIQUE_TABLE
   double t_fill   = 0.;
   double t_coeff  = 0.;
   double t_sort   = 0.;
@@ -834,17 +995,24 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double t_maps   = 0.;
   double t_extend = 0.;
   double t_remove = 0.;
+#endif
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
   std::unordered_set<i_t> set_packing_constraints;
   dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
+#ifdef DEBUG_CLIQUE_TABLE
   t_fill = stage_timer.elapsed_time();
+#endif
   make_coeff_positive_knapsack_constraint(
     problem, knapsack_constraints, set_packing_constraints, tolerances);
+#ifdef DEBUG_CLIQUE_TABLE
   t_coeff = stage_timer.elapsed_time();
+#endif
   sort_csr_by_constraint_coefficients(knapsack_constraints);
+#ifdef DEBUG_CLIQUE_TABLE
   t_sort = stage_timer.elapsed_time();
+#endif
   // print_knapsack_constraints(knapsack_constraints);
   // TODO think about getting min_clique_size according to some problem property
   clique_config_t clique_config;
@@ -866,7 +1034,9 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr);
   }
   if (timer.check_time_limit()) { return; }
+#ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();
+#endif
   CUOPT_LOG_DEBUG("Number of cliques: %d, additional cliques: %d",
                   clique_table_ptr->first.size(),
                   clique_table_ptr->addtl_cliques.size());
@@ -874,13 +1044,18 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   // remove small cliques and add them to adj_list
   remove_small_cliques(*clique_table_ptr, timer);
   t_small = stage_timer.elapsed_time();
+#endif
   // fill var clique maps
   fill_var_clique_maps(*clique_table_ptr);
+#ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
+#endif
   if (clique_table_out != nullptr) { *clique_table_out = std::move(clique_table_shared); }
   i_t n_extended_cliques =
     extend_cliques(knapsack_constraints, *clique_table_ptr, problem, A, timer);
+#ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
+#endif
   remove_dominated_cliques(problem,
                            A,
                            *clique_table_ptr,
@@ -888,6 +1063,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                            knapsack_constraints,
                            n_extended_cliques,
                            timer);
+#ifdef DEBUG_CLIQUE_TABLE
   t_remove = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(
     "Clique table timing (s): fill=%.6f coeff=%.6f sort=%.6f find=%.6f small=%.6f maps=%.6f "
@@ -901,7 +1077,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     t_extend - t_maps,
     t_remove - t_extend,
     t_remove);
-  // exit(0);
+#endif
 }
 
 #define INSTANTIATE(F_TYPE)                                               \

@@ -16,8 +16,8 @@
 
 #include <cuopt/error.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/linalg/transpose.cuh>
 
 #include <dlfcn.h>
@@ -159,9 +159,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   A_indices_ = device_copy(indices, handle_ptr->get_stream());
   A_data_    = device_copy(data, handle_ptr->get_stream());
 
-  A_T_offsets_ = device_copy(A.col_start.underlying(), handle_ptr->get_stream());
-  A_T_indices_ = device_copy(A.i.underlying(), handle_ptr->get_stream());
-  A_T_data_    = device_copy(A.x.underlying(), handle_ptr->get_stream());
+  A_T_offsets_ = device_copy(A.col_start, handle_ptr->get_stream());
+  A_T_indices_ = device_copy(A.i, handle_ptr->get_stream());
+  A_T_data_    = device_copy(A.x, handle_ptr->get_stream());
 
   cusparseCreateCsr(&A_,
                     rows,

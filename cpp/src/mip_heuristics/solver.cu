@@ -18,8 +18,8 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
 #include <future>
@@ -112,7 +112,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   f_t time_limit             = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
                                  ? std::numeric_limits<f_t>::infinity()
                                  : timer_.remaining_time();
-  double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+  double presolve_time_limit = std::min(0.04 * time_limit, 60.0);
   presolve_time_limit        = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
                                  ? std::numeric_limits<f_t>::infinity()
                                  : presolve_time_limit;

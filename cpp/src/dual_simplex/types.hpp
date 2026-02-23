@@ -21,5 +21,7 @@ constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 
 // We return this constant to signal that a concurrent halt has occurred
 #define CONCURRENT_HALT_RETURN -2
+// We return this constant to signal that a time limit has occurred
+#define TIME_LIMIT_RETURN -3
 
 }  // namespace cuopt::linear_programming::dual_simplex

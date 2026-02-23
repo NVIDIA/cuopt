@@ -11,7 +11,7 @@
 
 #include <utilities/event_handler.cuh>
 
-#include <raft/sparse/detail/cusparse_macros.h>
+#include <raft/core/cusparse_macros.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
