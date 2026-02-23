@@ -375,6 +375,52 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
 
 }  // namespace
 
+std::vector<std::vector<int>> find_maximal_cliques_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& weights,
+  double min_weight,
+  int max_calls,
+  double time_limit)
+{
+  const size_t n_vertices = adjacency_list.size();
+  if (n_vertices == 0) { return {}; }
+  cuopt_assert(weights.size() == n_vertices, "Weights size mismatch in clique test helper");
+  cuopt_assert(max_calls > 0, "max_calls must be positive in clique test helper");
+
+  const size_t words = bitset_words(n_vertices);
+  std::vector<std::vector<uint64_t>> adj_bitset(n_vertices, std::vector<uint64_t>(words, 0));
+  for (size_t v = 0; v < n_vertices; ++v) {
+    for (const auto& nbr : adjacency_list[v]) {
+      cuopt_assert(nbr >= 0 && static_cast<size_t>(nbr) < n_vertices,
+                   "Neighbor index out of range in clique test helper");
+      bitset_set(adj_bitset[v], static_cast<size_t>(nbr));
+    }
+  }
+
+  double work_estimate           = 0.0;
+  const double max_work_estimate = std::numeric_limits<double>::infinity();
+  const double start_time        = tic();
+
+  bk_bitset_context_t<int, double> ctx{adj_bitset,
+                                       weights,
+                                       min_weight,
+                                       max_calls,
+                                       start_time,
+                                       time_limit,
+                                       words,
+                                       &work_estimate,
+                                       max_work_estimate};
+
+  std::vector<int> R;
+  std::vector<uint64_t> P(words, 0);
+  std::vector<uint64_t> X(words, 0);
+  for (size_t idx = 0; idx < n_vertices; ++idx) {
+    bitset_set(P, idx);
+  }
+  bron_kerbosch<int, double>(ctx, R, P, X, 0.0);
+  return ctx.cliques;
+}
+
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
                                    const sparse_vector_t<i_t, f_t>& cut,

@@ -127,6 +127,15 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
                                         const std::vector<f_t>& cut_rhs,
                                         const std::vector<f_t>& saved_solution);
 
+// Test-only helper to run the production maximal-clique algorithm used by clique cuts.
+// adjacency_list must contain local vertex indices in [0, n_vertices).
+std::vector<std::vector<int>> find_maximal_cliques_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& weights,
+  double min_weight,
+  int max_calls,
+  double time_limit);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
