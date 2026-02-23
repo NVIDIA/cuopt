@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
 #include <limits>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
@@ -420,7 +421,10 @@ void insert_clique_into_problem(const std::vector<i_t>& clique,
   // Move constants to the right, so rhs must decrease by rhs_offset.
   f_t rhs = coeff_scale - rhs_offset;
   // insert the new clique into the problem as a new constraint
-  A.insert_row(new_vars, new_coeffs);
+  dual_simplex::sparse_vector_t<i_t, f_t> new_row(A.n, new_vars.size());
+  new_row.i = std::move(new_vars);
+  new_row.x = std::move(new_coeffs);
+  A.append_row(new_row);
   problem.row_sense.push_back('L');
   problem.rhs.push_back(rhs);
 }

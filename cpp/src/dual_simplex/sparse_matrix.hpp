@@ -175,9 +175,6 @@ class csr_matrix_t {
 
   // get constraint range
   std::pair<i_t, i_t> get_constraint_range(i_t cstr_idx) const;
-
-  // insert a constraint into the matrix
-  void insert_row(const std::vector<i_t>& vars, const std::vector<f_t>& coeffs);
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
   i_t n;                       // number of cols
