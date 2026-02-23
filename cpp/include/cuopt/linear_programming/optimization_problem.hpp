@@ -350,6 +350,69 @@ class optimization_problem_t {
    */
   void set_row_names(const std::vector<std::string>& row_names);
 
+  // ============================================================================
+  // Move-based setters (zero-copy, transfers ownership)
+  // ============================================================================
+
+  /**
+   * @brief Move constraint matrix data without copying (transfers ownership).
+   * @note This is a zero-copy operation that just moves device pointers.
+   * @param[in] A_values rvalue reference to constraint matrix values
+   * @param[in] A_indices rvalue reference to constraint matrix column indices
+   * @param[in] A_offsets rvalue reference to constraint matrix row offsets
+   */
+  void set_csr_constraint_matrix_move(rmm::device_uvector<f_t>&& A_values,
+                                      rmm::device_uvector<i_t>&& A_indices,
+                                      rmm::device_uvector<i_t>&& A_offsets);
+
+  /**
+   * @brief Move constraint bounds without copying (transfers ownership).
+   * @param[in] b rvalue reference to constraint bounds vector
+   */
+  void set_constraint_bounds_move(rmm::device_uvector<f_t>&& b);
+
+  /**
+   * @brief Move objective coefficients without copying (transfers ownership).
+   * @param[in] c rvalue reference to objective coefficients vector
+   */
+  void set_objective_coefficients_move(rmm::device_uvector<f_t>&& c);
+
+  /**
+   * @brief Move variable lower bounds without copying (transfers ownership).
+   * @param[in] variable_lower_bounds rvalue reference to lower bounds vector
+   */
+  void set_variable_lower_bounds_move(rmm::device_uvector<f_t>&& variable_lower_bounds);
+
+  /**
+   * @brief Move variable upper bounds without copying (transfers ownership).
+   * @param[in] variable_upper_bounds rvalue reference to upper bounds vector
+   */
+  void set_variable_upper_bounds_move(rmm::device_uvector<f_t>&& variable_upper_bounds);
+
+  /**
+   * @brief Move variable types without copying (transfers ownership).
+   * @param[in] variable_types rvalue reference to variable types vector
+   */
+  void set_variable_types_move(rmm::device_uvector<var_t>&& variable_types);
+
+  /**
+   * @brief Move constraint lower bounds without copying (transfers ownership).
+   * @param[in] constraint_lower_bounds rvalue reference to lower bounds vector
+   */
+  void set_constraint_lower_bounds_move(rmm::device_uvector<f_t>&& constraint_lower_bounds);
+
+  /**
+   * @brief Move constraint upper bounds without copying (transfers ownership).
+   * @param[in] constraint_upper_bounds rvalue reference to upper bounds vector
+   */
+  void set_constraint_upper_bounds_move(rmm::device_uvector<f_t>&& constraint_upper_bounds);
+
+  /**
+   * @brief Move row types without copying (transfers ownership).
+   * @param[in] row_types rvalue reference to row types vector
+   */
+  void set_row_types_move(rmm::device_uvector<char>&& row_types);
+
   /**
    * @brief Write the problem to an MPS formatted file
    *

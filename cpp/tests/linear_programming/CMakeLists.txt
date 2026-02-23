@@ -7,6 +7,7 @@ ConfigureTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
 )# ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
 ConfigureTest(PDLP_TEST
