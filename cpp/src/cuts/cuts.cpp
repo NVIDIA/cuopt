@@ -923,7 +923,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const std::vector<f_t>& xstar,
                                                const std::vector<f_t>& reduced_costs,
                                                const std::vector<i_t>& basic_list,
-                                               const std::vector<i_t>& nonbasic_list)
+                                               const std::vector<i_t>& nonbasic_list,
+                                               f_t start_time)
 {
   // Generate Gomory and CG Cuts
   if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {

@@ -254,7 +254,8 @@ class cut_generation_t {
                      const std::vector<f_t>& xstar,
                      const std::vector<f_t>& reduced_costs,
                      const std::vector<i_t>& basic_list,
-                     const std::vector<i_t>& nonbasic_list);
+                     const std::vector<i_t>& nonbasic_list,
+                     f_t start_time);
 
  private:
   // Generate all mixed integer gomory cuts

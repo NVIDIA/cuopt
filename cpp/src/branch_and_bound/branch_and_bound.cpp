@@ -2117,7 +2117,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #endif
 
       // Generate cuts and add them to the cut pool
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t cut_start_time    = tic();
       bool problem_feasible = cut_generation.generate_cuts(original_lp_,
                                                            settings_,
@@ -2128,14 +2127,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            root_relax_soln_.x,
                                                            root_relax_soln_.z,
                                                            basic_list,
-                                                           nonbasic_list);
+                                                           nonbasic_list,
+                                                           exploration_stats_.start_time);
       if (!problem_feasible) {
         if (settings_.heuristic_preemption_callback != nullptr) {
           settings_.heuristic_preemption_callback();
         }
         return mip_status_t::INFEASIBLE;
       }
-      if (stop_for_time_limit()) { return solver_status_; }
       f_t cut_generation_time = toc(cut_start_time);
       if (cut_generation_time > 1.0) {
         settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);

@@ -1043,6 +1043,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   // print_clique_table(clique_table);
   // remove small cliques and add them to adj_list
   remove_small_cliques(*clique_table_ptr, timer);
+#ifdef DEBUG_CLIQUE_TABLE
   t_small = stage_timer.elapsed_time();
 #endif
   // fill var clique maps
