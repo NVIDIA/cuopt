@@ -411,6 +411,12 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
+    // Fail safe in case the batch PDLP failed and produced no solutions
+    if (solutions.get_additional_termination_informations().size() != fractional.size() * 2) {
+      settings.log.printf("Batch PDLP failed and produced no solutions\n");
+      return;
+    }
+
     // Find max iteration on how many are done accross the batch
     i_t max_iterations = 0;
     i_t amount_done    = 0;

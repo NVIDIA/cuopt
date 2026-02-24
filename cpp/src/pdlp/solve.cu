@@ -678,17 +678,17 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
   return sol;
 }
 
+// Compute in double as some cases overflow when using size_t
 template <typename i_t, typename f_t>
-static size_t batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>& problem,
-                                          int trial_batch_size,
-                                          int max_batch_size)
+static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>& problem,
+                                          double trial_batch_size)
 {
-  size_t total_memory = 0;
+  double total_memory = 0.0;
   // In PDLP we store the scaled version of the problem which contains all of those
   total_memory += problem.get_constraint_matrix_indices().size() * sizeof(i_t);
   total_memory += problem.get_constraint_matrix_offsets().size() * sizeof(i_t);
   total_memory += problem.get_constraint_matrix_values().size() * sizeof(f_t);
-  total_memory *= 2;  // To account for the A_t matrix
+  total_memory *= 2.0;  // To account for the A_t matrix
   total_memory += problem.get_objective_coefficients().size() * sizeof(f_t);
   total_memory += problem.get_constraint_bounds().size() * sizeof(f_t);
   total_memory += problem.get_variable_lower_bounds().size() * sizeof(f_t);
@@ -759,32 +759,46 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   f_t initial_primal_weight = std::numeric_limits<f_t>::signaling_NaN();
 
   cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
-  const int max_batch_size  = settings.new_bounds.size();
-  int memory_max_batch_size = max_batch_size;
+  const size_t max_batch_size  = settings.new_bounds.size();
+  size_t memory_max_batch_size = max_batch_size;
 
   // Check if we don't hit the limit using max_batch_size
-  const size_t memory_estimate =
-    batch_pdlp_memory_estimator(problem, max_batch_size, max_batch_size);
-  size_t free_mem, total_mem;
-  RAFT_CUDA_TRY(cudaMemGetInfo(&free_mem, &total_mem));
+  const double memory_estimate = batch_pdlp_memory_estimator(problem, max_batch_size);
+  size_t st_free_mem, st_total_mem;
+  RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
+  const double free_mem = static_cast<double>(st_free_mem);
+  const double total_mem = static_cast<double>(st_total_mem);
+
+  #ifdef BATCH_VERBOSE_MODE
+  std::cout << "Memory estimate: " << memory_estimate << std::endl;
+  std::cout << "Free memory: " << free_mem << std::endl;
+  std::cout << "Total memory: " << total_mem << std::endl;
+  #endif
 
   if (memory_estimate > free_mem) {
     use_optimal_batch_size = true;
     // Decrement batch size iteratively until we find a batch size that fits
     while (memory_max_batch_size > 1) {
-      const size_t memory_estimate =
-        batch_pdlp_memory_estimator(problem, memory_max_batch_size, max_batch_size);
+      const double memory_estimate =
+        batch_pdlp_memory_estimator(problem, memory_max_batch_size);
       if (memory_estimate <= free_mem) { break; }
+      #ifdef BATCH_VERBOSE_MODE
+      std::cout << "Memory estimate: " << memory_estimate << std::endl;
+      std::cout << "Memory max batch size: " << memory_max_batch_size << std::endl;
+      std::cout << "Free memory: " << free_mem << std::endl;
+      std::cout << "Total memory: " << total_mem << std::endl;
+      std::cout << "--------------------------------" << std::endl;
+      #endif
       memory_max_batch_size--;
     }
-    const size_t min_estimate =
-      batch_pdlp_memory_estimator(problem, memory_max_batch_size, max_batch_size);
+    const double min_estimate =
+      batch_pdlp_memory_estimator(problem, memory_max_batch_size);
     cuopt_expects(min_estimate <= free_mem,
                   error_type_t::OutOfMemoryError,
                   "Insufficient GPU memory for batch PDLP (min batch size still too large)");
   }
 
-  int optimal_batch_size = use_optimal_batch_size
+  size_t optimal_batch_size = use_optimal_batch_size
                              ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
                              : max_batch_size;
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
@@ -842,8 +856,8 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   }
   if (primal_weight_init) { batch_settings.set_initial_primal_weight(initial_primal_weight); }
 
-  for (int i = 0; i < max_batch_size; i += optimal_batch_size) {
-    const int current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
+  for (size_t i = 0; i < max_batch_size; i += optimal_batch_size) {
+    const size_t current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
     // Only take the new bounds from [i, i + current_batch_size)
     batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
       original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
