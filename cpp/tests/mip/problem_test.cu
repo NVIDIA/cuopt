@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -201,6 +202,95 @@ TEST(problem, run_small_tests)
   std::vector<std::pair<int, int>> cnst_var_vals = {{30, 150}, {40, 200}, {50, 300}};
   for (const auto& val : cnst_var_vals) {
     test_equal_val_bounds<int, double>(val.first, val.second);
+  }
+}
+
+namespace ds = cuopt::linear_programming::dual_simplex;
+
+template <typename i_t, typename f_t>
+void test_roundtrip_equivalence(i_t n_cnst, i_t n_var)
+{
+  raft::handle_t handle;
+  auto op_problem = create_problem<i_t, f_t>(&handle, n_cnst, n_var);
+  dtl::problem_t<i_t, f_t> problem(op_problem);
+  problem.preprocess_problem();
+
+  auto stream = handle.get_stream();
+
+  const auto n_constraints_before = problem.n_constraints;
+  const auto n_variables_before   = problem.n_variables;
+  const auto nnz_before           = problem.nnz;
+
+  auto coefficients_before         = cuopt::host_copy(problem.coefficients, stream);
+  auto variables_before            = cuopt::host_copy(problem.variables, stream);
+  auto offsets_before              = cuopt::host_copy(problem.offsets, stream);
+  auto constraint_lower_before     = cuopt::host_copy(problem.constraint_lower_bounds, stream);
+  auto constraint_upper_before     = cuopt::host_copy(problem.constraint_upper_bounds, stream);
+  auto variable_bounds_before      = cuopt::host_copy(problem.variable_bounds, stream);
+  auto objective_before            = cuopt::host_copy(problem.objective_coefficients, stream);
+  auto reverse_coefficients_before = cuopt::host_copy(problem.reverse_coefficients, stream);
+  auto reverse_constraints_before  = cuopt::host_copy(problem.reverse_constraints, stream);
+  auto reverse_offsets_before      = cuopt::host_copy(problem.reverse_offsets, stream);
+
+  ds::user_problem_t<i_t, f_t> host_problem(problem.handle_ptr);
+  problem.get_host_user_problem(host_problem);
+
+  problem.set_constraints_from_host_user_problem(host_problem);
+  ASSERT_EQ(host_problem.lower.size(), static_cast<size_t>(problem.n_variables));
+  ASSERT_EQ(host_problem.upper.size(), static_cast<size_t>(problem.n_variables));
+  std::vector<i_t> all_var_indices(problem.n_variables);
+  std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+  problem.update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
+
+  EXPECT_EQ(problem.n_constraints, n_constraints_before);
+  EXPECT_EQ(problem.n_variables, n_variables_before);
+  EXPECT_EQ(problem.nnz, nnz_before);
+
+  auto coefficients_after         = cuopt::host_copy(problem.coefficients, stream);
+  auto variables_after            = cuopt::host_copy(problem.variables, stream);
+  auto offsets_after              = cuopt::host_copy(problem.offsets, stream);
+  auto constraint_lower_after     = cuopt::host_copy(problem.constraint_lower_bounds, stream);
+  auto constraint_upper_after     = cuopt::host_copy(problem.constraint_upper_bounds, stream);
+  auto variable_bounds_after      = cuopt::host_copy(problem.variable_bounds, stream);
+  auto objective_after            = cuopt::host_copy(problem.objective_coefficients, stream);
+  auto reverse_coefficients_after = cuopt::host_copy(problem.reverse_coefficients, stream);
+  auto reverse_constraints_after  = cuopt::host_copy(problem.reverse_constraints, stream);
+  auto reverse_offsets_after      = cuopt::host_copy(problem.reverse_offsets, stream);
+
+  EXPECT_EQ(coefficients_before, coefficients_after) << "CSR coefficients differ";
+  EXPECT_EQ(variables_before, variables_after) << "CSR column indices differ";
+  EXPECT_EQ(offsets_before, offsets_after) << "CSR row offsets differ";
+  EXPECT_EQ(objective_before, objective_after) << "objective coefficients differ";
+  EXPECT_EQ(reverse_constraints_before, reverse_constraints_after) << "reverse constraints differ";
+  EXPECT_EQ(reverse_offsets_before, reverse_offsets_after) << "reverse offsets differ";
+  EXPECT_EQ(reverse_coefficients_before, reverse_coefficients_after)
+    << "reverse coefficients differ";
+
+  ASSERT_EQ(constraint_lower_before.size(), constraint_lower_after.size());
+  for (size_t i = 0; i < constraint_lower_before.size(); ++i) {
+    EXPECT_NEAR(constraint_lower_before[i], constraint_lower_after[i], 1e-10)
+      << "constraint_lower_bounds[" << i << "]";
+  }
+  ASSERT_EQ(constraint_upper_before.size(), constraint_upper_after.size());
+  for (size_t i = 0; i < constraint_upper_before.size(); ++i) {
+    EXPECT_NEAR(constraint_upper_before[i], constraint_upper_after[i], 1e-10)
+      << "constraint_upper_bounds[" << i << "]";
+  }
+
+  ASSERT_EQ(variable_bounds_before.size(), variable_bounds_after.size());
+  for (size_t i = 0; i < variable_bounds_before.size(); ++i) {
+    EXPECT_DOUBLE_EQ(variable_bounds_before[i].x, variable_bounds_after[i].x)
+      << "variable_bounds[" << i << "].lower";
+    EXPECT_DOUBLE_EQ(variable_bounds_before[i].y, variable_bounds_after[i].y)
+      << "variable_bounds[" << i << "].upper";
+  }
+}
+
+TEST(problem, get_set_host_user_problem_roundtrip_preserves_problem)
+{
+  std::vector<std::pair<int, int>> cnst_var_vals = {{5, 20}, {20, 80}, {40, 200}};
+  for (const auto& [nc, nv] : cnst_var_vals) {
+    test_roundtrip_equivalence<int, double>(nc, nv);
   }
 }
 
