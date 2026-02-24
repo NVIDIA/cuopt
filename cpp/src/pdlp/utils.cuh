@@ -25,6 +25,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/transform_reduce.h>
+#include <thrust/tuple.h>
 
 namespace cuopt::linear_programming::detail {
 

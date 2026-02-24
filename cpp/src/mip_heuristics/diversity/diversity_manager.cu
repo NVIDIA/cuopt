@@ -205,9 +205,10 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     if (problem_is_infeasible) { return false; }
   }
   const bool remap_cache_ids = true;
-  trivial_presolve(*problem_ptr, remap_cache_ids);
+  if (!presolve_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  if (!context.settings.heuristics_only && !problem_ptr->empty) {
+  if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
+      !problem_ptr->empty) {
     dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
     problem_ptr->get_host_user_problem(host_problem);
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
