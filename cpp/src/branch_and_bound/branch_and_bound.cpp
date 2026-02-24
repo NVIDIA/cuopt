@@ -1947,6 +1947,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
+
+  variable_bounds_t<i_t, f_t> variable_bounds(original_lp_, settings_, var_types_, Arow_, new_slacks_);
+
   if (guess_.size() != 0) {
     raft::common::nvtx::range scope_guess("BB::check_initial_guess");
     std::vector<f_t> crushed_guess;
@@ -2117,8 +2120,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                    var_types_,
                                    basis_update,
                                    root_relax_soln_.x,
+                                   root_relax_soln_.y,
                                    basic_list,
-                                   nonbasic_list);
+                                   nonbasic_list,
+                                   variable_bounds);
       f_t cut_generation_time = toc(cut_start_time);
       if (cut_generation_time > 1.0) {
         settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
@@ -2133,7 +2138,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       std::vector<f_t> cut_rhs;
       std::vector<cut_type_t> cut_types;
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
-      if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
       cut_pool.print_cutpool_types();
@@ -2179,6 +2183,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                      root_vstatus_,
                                      edge_norms_);
       var_types_.resize(original_lp_.num_cols, variable_type_t::CONTINUOUS);
+      variable_bounds.resize(original_lp_.num_cols);
       mutex_original_lp_.unlock();
       f_t add_cuts_time = toc(add_cuts_start_time);
       if (add_cuts_time > 1.0) {
@@ -2327,8 +2332,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t change_in_objective = root_objective_ - last_objective;
       const f_t factor        = settings_.cut_change_threshold;
       const f_t min_objective = 1e-3;
-      if (change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
-        settings_.log.debug(
+      if (0 && change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
+        settings_.log.printf(
           "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
           change_in_objective,
           root_relax_objective);
