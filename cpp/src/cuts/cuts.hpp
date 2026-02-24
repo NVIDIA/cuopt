@@ -92,6 +92,19 @@ f_t fractional_part(f_t a)
   return a - std::floor(a);
 }
 
+template <typename f_t>
+bool add_work_estimate(f_t accesses,
+                       f_t* work_estimate,
+                       f_t max_work_estimate,
+                       bool* work_limit_reached = nullptr)
+{
+  if (work_estimate == nullptr) { return false; }
+  *work_estimate += accesses;
+  const bool over_work_limit = *work_estimate > max_work_estimate;
+  if (over_work_limit && work_limit_reached != nullptr) { *work_limit_reached = true; }
+  return over_work_limit;
+}
+
 // Computes a permutation of a score vector that puts the highest scores first
 template <typename i_t, typename f_t>
 void best_score_first_permutation(std::vector<f_t>& scores, std::vector<i_t>& permutation)
