@@ -1947,8 +1947,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
-
-  variable_bounds_t<i_t, f_t> variable_bounds(original_lp_, settings_, var_types_, Arow_, new_slacks_);
+  variable_bounds_t<i_t, f_t> variable_bounds(
+    original_lp_, settings_, var_types_, Arow_, new_slacks_);
 
   if (guess_.size() != 0) {
     raft::common::nvtx::range scope_guess("BB::check_initial_guess");
@@ -2332,7 +2332,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t change_in_objective = root_objective_ - last_objective;
       const f_t factor        = settings_.cut_change_threshold;
       const f_t min_objective = 1e-3;
-      if (0 && change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
+      if (0 &&
+          change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
         settings_.log.printf(
           "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
           change_in_objective,

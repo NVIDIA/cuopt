@@ -320,16 +320,15 @@ class tableau_equality_t {
 
 template <typename i_t, typename f_t>
 class scratch_pad_t {
-  public:
-  scratch_pad_t(i_t num_vars)
-    : workspace_(num_vars, 0.0),
-      mark_(num_vars, 0)
+ public:
+  scratch_pad_t(i_t num_vars) : workspace_(num_vars, 0.0), mark_(num_vars, 0)
   {
     indices_.reserve(num_vars);
   }
 
   // O(1) to add a value to the pad
-  void add_to_pad(i_t j, f_t value) {
+  void add_to_pad(i_t j, f_t value)
+  {
     workspace_[j] += value;
     if (!mark_[j]) {
       mark_[j] = 1;
@@ -338,23 +337,25 @@ class scratch_pad_t {
   }
 
   // O(nz) to clear the pad
-  void clear_pad() {
+  void clear_pad()
+  {
     for (i_t j : indices_) {
       workspace_[j] = 0.0;
-      mark_[j] = 0;
+      mark_[j]      = 0;
     }
     indices_.clear();
   }
 
   // O(nz) to get the pad
-  void get_pad(std::vector<i_t>& indices, std::vector<f_t>& values) {
+  void get_pad(std::vector<i_t>& indices, std::vector<f_t>& values)
+  {
     indices.reserve(indices_.size());
     values.reserve(indices_.size());
     indices.clear();
     values.clear();
     const i_t nz = indices_.size();
     for (i_t k = 0; k < nz; k++) {
-      const i_t j = indices_[k];
+      const i_t j   = indices_[k];
       const f_t val = workspace_[j];
       if (val != 0.0) {
         indices.push_back(j);
@@ -400,21 +401,26 @@ class variable_bounds_t {
   f_t lower_activity(f_t lower_bound, f_t upper_bound, f_t coefficient)
   {
     return (coefficient > 0.0 ? lower_bound : upper_bound) * coefficient;
-   }
+  }
 
-   f_t upper_activity(f_t lower_bound, f_t upper_bound, f_t coefficient)
-   {
-     return (coefficient > 0.0 ? upper_bound : lower_bound) * coefficient;
-   }
+  f_t upper_activity(f_t lower_bound, f_t upper_bound, f_t coefficient)
+  {
+    return (coefficient > 0.0 ? upper_bound : lower_bound) * coefficient;
+  }
 
-   // Returns the lower activity adjusted for the number of lower inf variables
-   // adjusted_lower_activity = { activity - lower_activity_i - lower_activity_j, if num_lower_inf = 0
-   //                           { activity - lower_activity_i                   , if num_lower_inf = 1, lower_activity_j = -inf
-   //                           { activity - lower_activity_j                   , if num_lower_inf = 1, lower_activity_i != -inf
-   //                           { activity                                      , if num_lower_inf = 2, lower_activity_i = lower_activity_j = -inf
-   //                           { -inf                                          , if num_lower_inf > 2
-   f_t adjusted_lower_activity(f_t activity, i_t num_lower_inf, f_t lower_activity_i, f_t lower_activity_j)
-   {
+  // Returns the lower activity adjusted for the number of lower inf variables
+  // adjusted_lower_activity = { activity - lower_activity_i - lower_activity_j, if num_lower_inf =
+  // 0
+  //                           { activity - lower_activity_i                   , if num_lower_inf =
+  //                           1, lower_activity_j = -inf { activity - lower_activity_j , if
+  //                           num_lower_inf = 1, lower_activity_i != -inf { activity , if
+  //                           num_lower_inf = 2, lower_activity_i = lower_activity_j = -inf { -inf
+  //                           , if num_lower_inf > 2
+  f_t adjusted_lower_activity(f_t activity,
+                              i_t num_lower_inf,
+                              f_t lower_activity_i,
+                              f_t lower_activity_j)
+  {
     if (num_lower_inf == 0) {
       return activity - lower_activity_i - lower_activity_j;
     } else if (num_lower_inf == 1 && lower_activity_j == -inf) {
@@ -426,17 +432,22 @@ class variable_bounds_t {
     } else {
       return -inf;
     }
-   }
+  }
 
-   // Returns the upper activity adjusted for the number of upper inf variables
-   // adjusted_upper_activity = { activity - upper_activity_i - upper_activity_j, if num_upper_inf = 0
-   //                           { activity - upper_activity_i                   , if num_upper_inf = 1, upper_activity_j = inf
-   //                           { activity - upper_activity_j                   , if num_upper_inf = 1, upper_activity_i != inf
-   //                           { activity                                      , if num_upper_inf = 2, upper_activity_i = upper_activity_j = inf
-   //                           { inf                                           , if num_upper_inf > 2
-   f_t adjusted_upper_activity(f_t activity, i_t num_upper_inf, f_t upper_activity_i, f_t upper_activity_j)
-   {
-     if (num_upper_inf == 0) {
+  // Returns the upper activity adjusted for the number of upper inf variables
+  // adjusted_upper_activity = { activity - upper_activity_i - upper_activity_j, if num_upper_inf =
+  // 0
+  //                           { activity - upper_activity_i                   , if num_upper_inf =
+  //                           1, upper_activity_j = inf { activity - upper_activity_j , if
+  //                           num_upper_inf = 1, upper_activity_i != inf { activity , if
+  //                           num_upper_inf = 2, upper_activity_i = upper_activity_j = inf { inf ,
+  //                           if num_upper_inf > 2
+  f_t adjusted_upper_activity(f_t activity,
+                              i_t num_upper_inf,
+                              f_t upper_activity_i,
+                              f_t upper_activity_j)
+  {
+    if (num_upper_inf == 0) {
       return activity - upper_activity_i - upper_activity_j;
     } else if (num_upper_inf == 1 && upper_activity_j == inf) {
       return activity - upper_activity_i;
@@ -447,19 +458,18 @@ class variable_bounds_t {
     } else {
       return inf;
     }
-   }
+  }
 
-   std::vector<f_t> upper_activities_;
-   std::vector<i_t> num_pos_inf_;
-   std::vector<f_t> lower_activities_;
-   std::vector<i_t> num_neg_inf_;
+  std::vector<f_t> upper_activities_;
+  std::vector<i_t> num_pos_inf_;
+  std::vector<f_t> lower_activities_;
+  std::vector<i_t> num_neg_inf_;
 
-   std::vector<i_t> upper_inf_variables_;
-   std::vector<i_t> lower_inf_variables_;
+  std::vector<i_t> upper_inf_variables_;
+  std::vector<i_t> lower_inf_variables_;
 
-   std::vector<i_t> slack_map_;
+  std::vector<i_t> slack_map_;
 };
-
 
 template <typename i_t, typename f_t>
 class complemented_mixed_integer_rounding_cut_t {
@@ -483,10 +493,9 @@ class complemented_mixed_integer_rounding_cut_t {
   // + sum_{j in U} d_j w_j >= delta,
   // where v_j = x_j - l_j for j in L
   // and   w_j = u_j - x_j for j in U
-  void transform_inequality(
-    const variable_bounds_t<i_t, f_t>& variable_bounds,
-    const std::vector<variable_type_t>& var_type,
-    sparse_vector_t<i_t, f_t>& inequality,
+  void transform_inequality(const variable_bounds_t<i_t, f_t>& variable_bounds,
+                            const std::vector<variable_type_t>& var_type,
+                            sparse_vector_t<i_t, f_t>& inequality,
                             f_t& inequality_rhs);
 
   // Converts an inequality of the form:
@@ -507,13 +516,11 @@ class complemented_mixed_integer_rounding_cut_t {
                                                   sparse_vector_t<i_t, f_t>& cut,
                                                   f_t& cut_rhs);
 
-
   f_t compute_violation(const sparse_vector_t<i_t, f_t>& cut,
                         f_t cut_rhs,
                         const std::vector<f_t>& xstar);
 
   f_t new_upper(i_t j) const { return transformed_upper_[j]; }
-
 
  private:
   std::vector<i_t> is_slack_;
