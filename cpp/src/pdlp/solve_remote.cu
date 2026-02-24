@@ -23,6 +23,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
+  init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO(
     "solve_lp_remote (CPU problem) stub called - returning dummy solution for testing");
 
@@ -79,6 +80,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO(
     "solve_mip_remote (CPU problem) stub called - returning dummy solution for testing");
 
@@ -200,6 +202,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
+  init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO("solve_lp_remote (GPU problem) - converting to CPU for remote execution");
 
   auto cpu_problem = gpu_problem_to_cpu(gpu_problem);
@@ -217,6 +220,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO("solve_mip_remote (GPU problem) - converting to CPU for remote execution");
 
   auto cpu_problem = gpu_problem_to_cpu(gpu_problem);
