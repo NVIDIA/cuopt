@@ -427,6 +427,7 @@ void insert_clique_into_problem(const std::vector<i_t>& clique,
   A.append_row(new_row);
   problem.row_sense.push_back('L');
   problem.rhs.push_back(rhs);
+  problem.row_names.push_back("Clique" + std::to_string(problem.row_names.size()));
 }
 
 template <typename i_t, typename f_t>
