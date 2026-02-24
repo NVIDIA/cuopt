@@ -173,6 +173,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
+  context.problem_ptr->recompute_objective_integrality();
+  if (context.problem_ptr->is_objective_integral()) {
+    CUOPT_LOG_INFO("Objective function is integral, scale %g",
+                   context.problem_ptr->presolve_data.objective_scaling_factor);
+  }
+  branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
@@ -182,7 +188,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (run_bb) {
     // Convert the presolved problem to dual_simplex::user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
-    context.problem_ptr->set_constraints_from_host_user_problem(branch_and_bound_problem);
     // Resize the solution now that we know the number of columns/variables
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
 
