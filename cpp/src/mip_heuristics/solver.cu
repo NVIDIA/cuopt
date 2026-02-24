@@ -134,6 +134,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     return sol;
   }
 
+  if (timer_.check_time_limit()) {
+    CUOPT_LOG_INFO("Time limit reached after presolve");
+    solution_t<i_t, f_t> sol(*context.problem_ptr);
+    context.stats.total_solve_time = timer_.elapsed_time();
+    context.problem_ptr->post_process_solution(sol);
+    return sol;
+  }
+
   // if the problem was reduced to a LP: run concurrent LP
   if (run_presolve && context.problem_ptr->n_integer_vars == 0) {
     CUOPT_LOG_INFO("Problem reduced to a LP, running concurrent LP");
@@ -284,6 +292,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                 std::placeholders::_4,
                 std::placeholders::_5,
                 std::placeholders::_6);
+
+    if (timer_.check_time_limit()) {
+      CUOPT_LOG_INFO("Time limit reached during B&B setup");
+      solution_t<i_t, f_t> sol(*context.problem_ptr);
+      context.stats.total_solve_time = timer_.elapsed_time();
+      context.problem_ptr->post_process_solution(sol);
+      return sol;
+    }
 
     // Fork a thread for branch and bound
     // std::async and std::future allow us to get the return value of bb::solve()
