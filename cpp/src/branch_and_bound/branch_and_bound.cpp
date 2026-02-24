@@ -43,9 +43,6 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-#define CHECK_CUTS_AGAINST_SAVED_SOLUTION 1
-#define PRINT_FRACTIONAL_INFO             1
-
 namespace {
 
 template <typename f_t>

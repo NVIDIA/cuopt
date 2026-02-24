@@ -23,10 +23,8 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-#ifndef DEBUG_CLIQUE_CUTS
 #define DEBUG_CLIQUE_CUTS 0
-#endif
-#define CHECK_WORKSPACE 1
+#define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
 
