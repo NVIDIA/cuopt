@@ -43,6 +43,9 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+#define CHECK_CUTS_AGAINST_SAVED_SOLUTION 1
+#define PRINT_FRACTIONAL_INFO             1
+
 namespace {
 
 template <typename f_t>
@@ -2363,7 +2366,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
   }
-
+  exit(0);
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);

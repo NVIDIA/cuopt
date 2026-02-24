@@ -23,9 +23,14 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
+#ifndef DEBUG_CLIQUE_CUTS
+#define DEBUG_CLIQUE_CUTS 0
+#endif
+#define CHECK_WORKSPACE 1
+
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
 
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
 #define CLIQUE_CUTS_DEBUG(...)                    \
   do {                                            \
     std::fprintf(stderr, "[DEBUG_CLIQUE_CUTS] "); \
@@ -163,6 +168,7 @@ struct bk_bitset_context_t {
   f_t max_work_estimate;
   i_t num_calls{0};
   bool work_limit_reached{false};
+  bool call_limit_reached{false};
   std::vector<std::vector<i_t>> cliques;
 
   bool add_work(f_t accesses)
@@ -176,6 +182,8 @@ struct bk_bitset_context_t {
     if (work_estimate == nullptr) { return false; }
     return *work_estimate > max_work_estimate;
   }
+
+  bool over_call_limit() const { return call_limit_reached || num_calls >= max_calls; }
 };
 
 inline size_t bitset_words(size_t n) { return (n + 63) / 64; }
@@ -221,11 +229,14 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
                    std::vector<uint64_t>& X,  // already in the clique
                    f_t weight_R)
 {
-  if (ctx.over_work_limit()) { return; }
+  if (ctx.over_work_limit() || ctx.over_call_limit()) { return; }
   if (toc(ctx.start_time) >= ctx.time_limit) { return; }
   ctx.num_calls++;
   // stop the recursion, for perf reasons
-  if (ctx.num_calls > ctx.max_calls) { return; }
+  if (ctx.num_calls > ctx.max_calls) {
+    ctx.call_limit_reached = true;
+    return;
+  }
   // Coarse recursive cost: touch call state + frontiers + weight bookkeeping
   if (ctx.add_work(static_cast<f_t>(6 * ctx.words + R.size() + 4))) { return; }
 
@@ -307,6 +318,10 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
 
   // note that candidates will include pivot if it is in P
   for (auto v : candidates) {
+    if (ctx.over_call_limit()) {
+      ctx.call_limit_reached = true;
+      return;
+    }
     if (toc(ctx.start_time) >= ctx.time_limit) { return; }
     R.push_back(v);
     std::vector<uint64_t> P_next(ctx.words, 0);
@@ -317,6 +332,10 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     }
     bron_kerbosch(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
     if (ctx.over_work_limit()) { return; }
+    if (ctx.over_call_limit()) {
+      ctx.call_limit_reached = true;
+      return;
+    }
     R.pop_back();
     bitset_clear(P, static_cast<size_t>(v));
     bitset_set(X, static_cast<size_t>(v));
@@ -337,7 +356,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
 {
   if (toc(start_time) >= time_limit) { return; }
   if (clique_vertices.empty()) { return; }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
   const size_t initial_clique_vertices = clique_vertices.size();
 #endif
   CLIQUE_CUTS_DEBUG("extend_clique_vertices start size=%lld",
@@ -420,7 +439,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
       clique_members.insert(candidate);
     }
   }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
   CLIQUE_CUTS_DEBUG("extend_clique_vertices done start=%lld final=%lld added=%lld",
                     static_cast<long long>(initial_clique_vertices),
                     static_cast<long long>(clique_vertices.size()),
@@ -1154,9 +1173,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   const f_t bound_tol     = settings.primal_tol;
   const f_t min_weight    = 1.0 + min_violation;
   // TODO this can be problem dependent
-  const i_t max_calls         = 1000000;
+  const i_t max_calls         = 100000;
   f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 2e11;
+  const f_t max_work_estimate = 1e8;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
@@ -1276,18 +1295,21 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   if (work_estimate > max_work_estimate) { return true; }
   bron_kerbosch<i_t, f_t>(ctx, R, P, X, 0.0);
   CLIQUE_CUTS_DEBUG(
-    "generate_clique_cuts maximal cliques found=%lld bk_calls=%lld work=%g work_limit=%d",
+    "generate_clique_cuts maximal cliques found=%lld bk_calls=%lld work=%g work_limit=%d "
+    "call_limit=%d",
     static_cast<long long>(ctx.cliques.size()),
     static_cast<long long>(ctx.num_calls),
     static_cast<double>(work_estimate),
-    ctx.over_work_limit() ? 1 : 0);
+    ctx.over_work_limit() ? 1 : 0,
+    ctx.over_call_limit() ? 1 : 0);
+  if (ctx.over_call_limit()) { return true; }
   if (ctx.over_work_limit()) { return true; }
   if (toc(start_time) >= settings.time_limit) { return true; }
   if (work_estimate > max_work_estimate) { return true; }
 
   sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
   f_t cut_rhs = 0.0;
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
   size_t candidate_cliques = 0;
   size_t added_cuts        = 0;
   size_t rejected_cliques  = 0;
@@ -1295,7 +1317,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
 #endif
   for (auto& clique_local : ctx.cliques) {
     if (toc(start_time) >= settings.time_limit) { return true; }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
     candidate_cliques++;
 #endif
     std::vector<i_t> clique_vertices;
@@ -1305,7 +1327,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     }
     work_estimate += 3.0 * static_cast<f_t>(clique_local.size()) + 1.0;
     if (work_estimate > max_work_estimate) { return true; }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
     const size_t size_before_extension = clique_vertices.size();
 #endif
     extend_clique_vertices<i_t, f_t>(clique_vertices,
@@ -1318,7 +1340,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                                      settings.time_limit,
                                      &work_estimate,
                                      max_work_estimate);
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
     extension_gain += clique_vertices.size() - size_before_extension;
 #endif
     if (work_estimate > max_work_estimate) { return true; }
@@ -1345,7 +1367,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     }
     if (build_status == clique_cut_build_status_t::CUT_ADDED) {
       cut_pool_.add_cut(cut_type_t::CLIQUE, cut, cut_rhs);
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
       added_cuts++;
       CLIQUE_CUTS_DEBUG("generate_clique_cuts added cut nz=%lld rhs=%g clique_size=%lld",
                         static_cast<long long>(cut.i.size()),
@@ -1353,13 +1375,13 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                         static_cast<long long>(clique_vertices.size()));
 #endif
     }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
     else {
       rejected_cliques++;
     }
 #endif
   }
-#ifdef DEBUG_CLIQUE_CUTS
+#if DEBUG_CLIQUE_CUTS
   CLIQUE_CUTS_DEBUG(
     "generate_clique_cuts done candidate_cliques=%lld added=%lld rejected=%lld extension_gain=%lld "
     "final_work=%g",
