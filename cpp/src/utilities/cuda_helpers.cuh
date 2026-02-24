@@ -10,6 +10,7 @@
 #include <utilities/macros.cuh>
 
 #include <thrust/host_vector.h>
+#include <thrust/tuple.h>
 #include <mutex>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
