@@ -201,18 +201,20 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
       compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
     if (problem_is_infeasible) { return false; }
   }
-  const bool remap_cache_ids = true;
-  trivial_presolve(*problem_ptr, remap_cache_ids);
-  if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  // May overconstrain if Papilo presolve has been run before
-  if (context.settings.presolver == presolver_t::None) {
-    if (!problem_ptr->empty) {
-      // do the resizing no-matter what, bounds presolve might not change the bounds but initial
-      // trivial presolve might have
-      ls.constraint_prop.bounds_update.resize(*problem_ptr);
-      ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-        *problem_ptr, ls.constraint_prop.bounds_update);
-      if (!check_bounds_sanity(*problem_ptr)) { return false; }
+  if (!presolve_timer.check_time_limit()) {
+    const bool remap_cache_ids = true;
+    trivial_presolve(*problem_ptr, remap_cache_ids);
+    if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
+    // May overconstrain if Papilo presolve has been run before
+    if (context.settings.presolver == presolver_t::None) {
+      if (!problem_ptr->empty) {
+        // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+        // trivial presolve might have
+        ls.constraint_prop.bounds_update.resize(*problem_ptr);
+        ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+          *problem_ptr, ls.constraint_prop.bounds_update);
+        if (!check_bounds_sanity(*problem_ptr)) { return false; }
+      }
     }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
