@@ -18,22 +18,19 @@
 #include <raft/core/handle.hpp>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 namespace cuopt {
 namespace cython {
 
 // Type definitions moved to cython_types.hpp to avoid circular dependencies
-// The types linear_programming_ret_t, cpu_linear_programming_ret_t, mip_ret_t, cpu_mip_ret_t
-// are now defined in cython_types.hpp
+// The types linear_programming_ret_t and mip_ret_t are defined in cython_types.hpp.
+// Each holds a std::variant internally to support both GPU and CPU solution data.
 
-// Aggregate for call_solve() return type
-// Uses std::variant to hold either GPU or CPU solution structs
 struct solver_ret_t {
   linear_programming::problem_category_t problem_type;
-  std::variant<linear_programming_ret_t, cpu_linear_programming_ret_t> lp_ret;
-  std::variant<mip_ret_t, cpu_mip_ret_t> mip_ret;
+  linear_programming_ret_t lp_ret;
+  mip_ret_t mip_ret;
 };
 
 // Wrapper functions to expose the API to Cython.

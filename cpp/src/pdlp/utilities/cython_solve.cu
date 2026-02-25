@@ -123,20 +123,21 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.problem_type = linear_programming::problem_category_t::LP;
 
       // The solve's local stream is destroyed when this function returns, so reassociate
-      // all returned device_uvectors with a long-lived stream for safe deallocation later.
-      auto& lp = std::get<linear_programming_ret_t>(response.lp_ret);
-      lp.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      lp.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-      lp.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
-      lp.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      lp.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
-      lp.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
-      lp.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
-      lp.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
-      lp.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
-      lp.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
-      lp.last_restart_duality_gap_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
-      lp.last_restart_duality_gap_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      // all returned device_buffers with a long-lived stream for safe deallocation later.
+      auto& gpu_sols =
+        std::get<linear_programming_ret_t::gpu_solutions_t>(response.lp_ret.solutions_);
+      gpu_sols.primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.reduced_cost_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.current_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.current_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.initial_primal_average_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.initial_dual_average_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.current_ATY_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.sum_primal_solutions_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.last_restart_duality_gap_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
+      gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
 
     } else {
       // MIP solve
@@ -148,8 +149,8 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.problem_type = linear_programming::problem_category_t::MIP;
 
       // Same stream reassociation as the LP path above.
-      auto& mip = std::get<mip_ret_t>(response.mip_ret);
-      mip.solution_->set_stream(rmm::cuda_stream_per_thread);
+      auto& gpu_sol = std::get<gpu_buffer>(response.mip_ret.solution_);
+      gpu_sol->set_stream(rmm::cuda_stream_per_thread);
     }
 
     // Reset warmstart data streams in solver_settings (skip in batch mode to avoid data race

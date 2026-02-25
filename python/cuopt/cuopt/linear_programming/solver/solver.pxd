@@ -121,20 +121,12 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "
         PrimalFeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalFeasible" # noqa
 
 
-cdef extern from "<variant>" namespace "std":
-    # Declare std::variant support
-    cdef cppclass variant[T1, T2]:
-        variant() except +
-        variant(T1&) except +
-        variant(T2&) except +
-
-cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
-    # GPU-backed LP solution struct (device memory)
-    cdef cppclass linear_programming_ret_t:
+cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace "cuopt::cython": # noqa
+    # Inner struct types for LP solution vectors (GPU backend)
+    cdef cppclass lp_gpu_solutions_t "cuopt::cython::linear_programming_ret_t::gpu_solutions_t": # noqa
         unique_ptr[device_buffer] primal_solution_
         unique_ptr[device_buffer] dual_solution_
         unique_ptr[device_buffer] reduced_cost_
-        # PDLP warm start data
         unique_ptr[device_buffer] current_primal_solution_
         unique_ptr[device_buffer] current_dual_solution_
         unique_ptr[device_buffer] initial_primal_average_
@@ -144,33 +136,12 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         unique_ptr[device_buffer] sum_dual_solutions_
         unique_ptr[device_buffer] last_restart_duality_gap_primal_solution_
         unique_ptr[device_buffer] last_restart_duality_gap_dual_solution_
-        double initial_primal_weight_
-        double initial_step_size_
-        int total_pdlp_iterations_
-        int total_pdhg_iterations_
-        double last_candidate_kkt_score_
-        double last_restart_kkt_score_
-        double sum_solution_weight_
-        int iterations_since_last_restart_
-        # /PDLP warm start data
-        pdlp_termination_status_t termination_status_
-        error_type_t error_status_
-        string error_message_
-        double l2_primal_residual_
-        double l2_dual_residual_
-        double primal_objective_
-        double dual_objective_
-        double gap_
-        int nb_iterations_
-        double solve_time_
-        bool solved_by_pdlp_
 
-    # CPU-backed LP solution struct (host memory)
-    cdef cppclass cpu_linear_programming_ret_t:
+    # Inner struct types for LP solution vectors (CPU backend)
+    cdef cppclass lp_cpu_solutions_t "cuopt::cython::linear_programming_ret_t::cpu_solutions_t": # noqa
         vector[double] primal_solution_
         vector[double] dual_solution_
         vector[double] reduced_cost_
-        # PDLP warm start data
         vector[double] current_primal_solution_
         vector[double] current_dual_solution_
         vector[double] initial_primal_average_
@@ -180,6 +151,11 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         vector[double] sum_dual_solutions_
         vector[double] last_restart_duality_gap_primal_solution_
         vector[double] last_restart_duality_gap_dual_solution_
+
+cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
+    # Unified LP solution struct — solutions_ variant accessed via helpers
+    cdef cppclass linear_programming_ret_t:
+        # PDLP warm start scalars
         double initial_primal_weight_
         double initial_step_size_
         int total_pdlp_iterations_
@@ -188,7 +164,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         double last_restart_kkt_score_
         double sum_solution_weight_
         int iterations_since_last_restart_
-        # /PDLP warm start data
+        # Termination metadata
         pdlp_termination_status_t termination_status_
         error_type_t error_status_
         string error_message_
@@ -200,10 +176,10 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         int nb_iterations_
         double solve_time_
         bool solved_by_pdlp_
+        bool is_gpu()
 
-    # GPU-backed MIP solution struct (device memory)
+    # Unified MIP solution struct — solution_ variant accessed via helpers
     cdef cppclass mip_ret_t:
-        unique_ptr[device_buffer] solution_
         mip_termination_status_t termination_status_
         error_type_t error_status_
         string error_message_
@@ -217,29 +193,12 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         double max_variable_bound_violation_
         int nodes_
         int simplex_iterations_
+        bool is_gpu()
 
-    # CPU-backed MIP solution struct (host memory)
-    cdef cppclass cpu_mip_ret_t:
-        vector[double] solution_
-        mip_termination_status_t termination_status_
-        error_type_t error_status_
-        string error_message_
-        double objective_
-        double mip_gap_
-        double solution_bound_
-        double total_solve_time_
-        double presolve_time_
-        double max_constraint_violation_
-        double max_int_violation_
-        double max_variable_bound_violation_
-        int nodes_
-        int simplex_iterations_
-
-    # Main return struct using variants
     cdef cppclass solver_ret_t:
         problem_category_t problem_type
-        variant[linear_programming_ret_t, cpu_linear_programming_ret_t] lp_ret
-        variant[mip_ret_t, cpu_mip_ret_t] mip_ret
+        linear_programming_ret_t lp_ret
+        mip_ret_t mip_ret
 
     cdef unique_ptr[solver_ret_t] call_solve(
         data_model_view_t[int, double]* data_model,
@@ -251,39 +210,32 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         solver_settings_t[int, double]* solver_settings,
     ) except +
 
-# Variant helper functions - Cython doesn't directly support variant access
-# so we need C++ helper functions
+# Variant helper functions — Cython can't call std::get directly, so we use
+# inline C++ helpers to extract the GPU/CPU alternatives from inner variants.
 cdef extern from *:
     """
     #include <variant>
     #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 
-    // Check which alternative is active
-    inline bool holds_linear_programming_ret_t(const std::variant<cuopt::cython::linear_programming_ret_t, cuopt::cython::cpu_linear_programming_ret_t>& v) {
-        return std::holds_alternative<cuopt::cython::linear_programming_ret_t>(v);
+    // MIP: extract GPU (unique_ptr<device_buffer>) or CPU (vector<double>) solution
+    inline std::unique_ptr<rmm::device_buffer>& get_gpu_mip_solution(cuopt::cython::mip_ret_t& m) {
+        return std::get<cuopt::cython::gpu_buffer>(m.solution_);
     }
-    inline bool holds_mip_ret_t(const std::variant<cuopt::cython::mip_ret_t, cuopt::cython::cpu_mip_ret_t>& v) {
-        return std::holds_alternative<cuopt::cython::mip_ret_t>(v);
+    inline std::vector<double>& get_cpu_mip_solution(cuopt::cython::mip_ret_t& m) {
+        return std::get<cuopt::cython::cpu_buffer>(m.solution_);
     }
 
-    // Get references to the active alternative
-    inline cuopt::cython::linear_programming_ret_t& get_linear_programming_ret_t(std::variant<cuopt::cython::linear_programming_ret_t, cuopt::cython::cpu_linear_programming_ret_t>& v) {
-        return std::get<cuopt::cython::linear_programming_ret_t>(v);
+    // LP: extract GPU (gpu_solutions_t) or CPU (cpu_solutions_t) solution struct
+    inline cuopt::cython::linear_programming_ret_t::gpu_solutions_t&
+    get_gpu_lp_solutions(cuopt::cython::linear_programming_ret_t& lp) {
+        return std::get<cuopt::cython::linear_programming_ret_t::gpu_solutions_t>(lp.solutions_);
     }
-    inline cuopt::cython::cpu_linear_programming_ret_t& get_cpu_linear_programming_ret_t(std::variant<cuopt::cython::linear_programming_ret_t, cuopt::cython::cpu_linear_programming_ret_t>& v) {
-        return std::get<cuopt::cython::cpu_linear_programming_ret_t>(v);
-    }
-    inline cuopt::cython::mip_ret_t& get_mip_ret_t(std::variant<cuopt::cython::mip_ret_t, cuopt::cython::cpu_mip_ret_t>& v) {
-        return std::get<cuopt::cython::mip_ret_t>(v);
-    }
-    inline cuopt::cython::cpu_mip_ret_t& get_cpu_mip_ret_t(std::variant<cuopt::cython::mip_ret_t, cuopt::cython::cpu_mip_ret_t>& v) {
-        return std::get<cuopt::cython::cpu_mip_ret_t>(v);
+    inline cuopt::cython::linear_programming_ret_t::cpu_solutions_t&
+    get_cpu_lp_solutions(cuopt::cython::linear_programming_ret_t& lp) {
+        return std::get<cuopt::cython::linear_programming_ret_t::cpu_solutions_t>(lp.solutions_);
     }
     """
-    # Declare helper functions for Cython to use
-    cdef bool holds_linear_programming_ret_t(variant[linear_programming_ret_t, cpu_linear_programming_ret_t]& v)
-    cdef bool holds_mip_ret_t(variant[mip_ret_t, cpu_mip_ret_t]& v)
-    cdef linear_programming_ret_t& get_linear_programming_ret_t(variant[linear_programming_ret_t, cpu_linear_programming_ret_t]& v)
-    cdef cpu_linear_programming_ret_t& get_cpu_linear_programming_ret_t(variant[linear_programming_ret_t, cpu_linear_programming_ret_t]& v)
-    cdef mip_ret_t& get_mip_ret_t(variant[mip_ret_t, cpu_mip_ret_t]& v)
-    cdef cpu_mip_ret_t& get_cpu_mip_ret_t(variant[mip_ret_t, cpu_mip_ret_t]& v)
+    cdef unique_ptr[device_buffer]& get_gpu_mip_solution(mip_ret_t& m)
+    cdef vector[double]& get_cpu_mip_solution(mip_ret_t& m)
+    cdef lp_gpu_solutions_t& get_gpu_lp_solutions(linear_programming_ret_t& lp)
+    cdef lp_cpu_solutions_t& get_cpu_lp_solutions(linear_programming_ret_t& lp)
