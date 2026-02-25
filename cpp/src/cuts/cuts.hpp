@@ -465,9 +465,6 @@ class variable_bounds_t {
   std::vector<f_t> lower_activities_;
   std::vector<i_t> num_neg_inf_;
 
-  std::vector<i_t> upper_inf_variables_;
-  std::vector<i_t> lower_inf_variables_;
-
   std::vector<i_t> slack_map_;
 };
 

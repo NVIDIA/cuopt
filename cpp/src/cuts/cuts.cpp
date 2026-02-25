@@ -692,6 +692,10 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   std::vector<i_t> aggregated_rows;
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
 
+  // Transform the relaxation solution
+  std::vector<f_t> transformed_xstar;
+  complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
+
   const i_t max_cuts = std::min(lp.num_rows, 100000);
   f_t work_estimate  = 0.0;
   for (i_t h = 0; h < max_cuts; h++) {
@@ -762,11 +766,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       work_estimate += inequality.i.size();
     }
     // We should now have: inequality'*x >= inequality_rhs
-
-    // Transform the relaxation solution
-    std::vector<f_t> transformed_xstar;
-    complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
-    work_estimate += transformed_xstar.size();
 
     for (i_t k = 0; k < inequality.i.size(); k++) {
       const i_t j = inequality.i[k];
@@ -1423,8 +1422,6 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     lower_offsets(lp.num_cols + 1, 0),
     upper_activities_(lp.num_rows, 0.0),
     lower_activities_(lp.num_rows, 0.0),
-    upper_inf_variables_(lp.num_rows, 0),
-    lower_inf_variables_(lp.num_rows, 0),
     num_pos_inf_(lp.num_rows, 0),
     num_neg_inf_(lp.num_rows, 0)
 {
@@ -1449,17 +1446,6 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   // The constraints are in the form:
   // sum_j a_j x_j + sigma * slack = beta
 
-#define TO_SET(j)   ((j) + 1)
-#define FROM_SET(j) ((j) - 1)
-  // Following problem 3.7 from Direct Method for Sparse Linear Systems by Tim Davis
-  // We define a set s of integer variables
-  // with the opterations s = 0 clears the set
-  // s = s ^ j (the exclusive or operation) removes j from the set if j is in the set
-  //     or adds j to the set otherwise
-  // j = s, gets the element in the set, if the set has exactly one element
-  // To distinguish between the empty set and the set that contains 0 we add 1 to
-  // all elements as they enter the set. And substract 1 from elements as they leave the set.
-
   std::vector<i_t> num_integer_in_row(lp.num_rows, 0);
   // Compute the upper activities of the constraints
   for (i_t i = 0; i < lp.num_rows; i++) {
@@ -1467,7 +1453,6 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t row_end     = Arow.row_start[i + 1];
     const i_t slack_index = slack_map_[i];
     f_t activity          = 0.0;
-    f_t sigma             = 0.0;
     for (i_t p = row_start; p < row_end; p++) {
       const i_t j = Arow.j[p];
       if (j == slack_index) { continue; }
@@ -1480,14 +1465,12 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
           activity += aj * uj;
         } else {
           num_pos_inf_[i]++;
-          upper_inf_variables_[i] = upper_inf_variables_[i] ^ TO_SET(j);
         }
       } else {  // a_j < 0.0
         if (lj > -inf) {
           activity += aj * lj;
         } else {
           num_pos_inf_[i]++;
-          upper_inf_variables_[i] = upper_inf_variables_[i] ^ TO_SET(j);
         }
       }
 
@@ -1514,14 +1497,12 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
           activity += aj * lj;
         } else {
           num_neg_inf_[i]++;
-          lower_inf_variables_[i] = lower_inf_variables_[i] ^ TO_SET(j);
         }
       } else {  // a_j < 0.0
         if (uj < inf) {
           activity += aj * uj;
         } else {
           num_neg_inf_[i]++;
-          lower_inf_variables_[i] = lower_inf_variables_[i] ^ TO_SET(j);
         }
       }
     }
@@ -1596,7 +1577,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
           const f_t upper_activity_j = upper_activity(lp.lower[j], lp.upper[j], a_ij);
 
           for (i_t q = row_start; q < row_end; q++) {
-            const i_t l = Arow.j[p];
+            const i_t l = Arow.j[q];
             if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
@@ -1668,6 +1649,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               lower_variables.push_back(l);
               lower_weights.push_back(-a_il / a_ij);
               lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
+              lower_edges++;
             }
           }
         }

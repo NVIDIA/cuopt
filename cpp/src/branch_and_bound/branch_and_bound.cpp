@@ -2304,6 +2304,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                   basic_list,
                   nonbasic_list,
                   basis_update);
+      variable_bounds.resize(original_lp_.num_cols);
       mutex_original_lp_.unlock();
       f_t remove_cuts_time = toc(remove_cuts_start_time);
       if (remove_cuts_time > 1.0) {
