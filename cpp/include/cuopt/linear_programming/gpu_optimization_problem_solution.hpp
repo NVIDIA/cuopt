@@ -57,7 +57,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_primal_solution_host() const override
   {
-    auto stream = rmm::cuda_stream_per_thread;
+    auto stream = solution_.get_primal_solution().stream();
     std::vector<f_t> result(solution_.get_primal_solution().size());
     raft::copy(result.data(),
                solution_.get_primal_solution().data(),
@@ -69,7 +69,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_dual_solution_host() const override
   {
-    auto stream = rmm::cuda_stream_per_thread;
+    auto stream = solution_.get_dual_solution().stream();
     std::vector<f_t> result(solution_.get_dual_solution().size());
     raft::copy(result.data(),
                solution_.get_dual_solution().data(),
@@ -81,9 +81,9 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_reduced_cost_host() const override
   {
-    auto stream = rmm::cuda_stream_per_thread;
     auto& reduced_cost =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_reduced_cost();
+    auto stream = reduced_cost.stream();
     std::vector<f_t> result(reduced_cost.size());
     raft::copy(result.data(), reduced_cost.data(), reduced_cost.size(), stream);
     stream.synchronize();
@@ -146,12 +146,13 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.current_primal_solution_.size() == 0) return {};
+    auto stream = ws.current_primal_solution_.stream();
     std::vector<f_t> result(ws.current_primal_solution_.size());
     raft::copy(result.data(),
                ws.current_primal_solution_.data(),
                ws.current_primal_solution_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+               stream);
+    stream.synchronize();
     return result;
   }
 
@@ -160,12 +161,11 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.current_dual_solution_.size() == 0) return {};
+    auto stream = ws.current_dual_solution_.stream();
     std::vector<f_t> result(ws.current_dual_solution_.size());
-    raft::copy(result.data(),
-               ws.current_dual_solution_.data(),
-               ws.current_dual_solution_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(
+      result.data(), ws.current_dual_solution_.data(), ws.current_dual_solution_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -174,12 +174,11 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.initial_primal_average_.size() == 0) return {};
+    auto stream = ws.initial_primal_average_.stream();
     std::vector<f_t> result(ws.initial_primal_average_.size());
-    raft::copy(result.data(),
-               ws.initial_primal_average_.data(),
-               ws.initial_primal_average_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(
+      result.data(), ws.initial_primal_average_.data(), ws.initial_primal_average_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -188,12 +187,11 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.initial_dual_average_.size() == 0) return {};
+    auto stream = ws.initial_dual_average_.stream();
     std::vector<f_t> result(ws.initial_dual_average_.size());
-    raft::copy(result.data(),
-               ws.initial_dual_average_.data(),
-               ws.initial_dual_average_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(
+      result.data(), ws.initial_dual_average_.data(), ws.initial_dual_average_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -202,10 +200,10 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.current_ATY_.size() == 0) return {};
+    auto stream = ws.current_ATY_.stream();
     std::vector<f_t> result(ws.current_ATY_.size());
-    raft::copy(
-      result.data(), ws.current_ATY_.data(), ws.current_ATY_.size(), rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(result.data(), ws.current_ATY_.data(), ws.current_ATY_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -214,12 +212,11 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.sum_primal_solutions_.size() == 0) return {};
+    auto stream = ws.sum_primal_solutions_.stream();
     std::vector<f_t> result(ws.sum_primal_solutions_.size());
-    raft::copy(result.data(),
-               ws.sum_primal_solutions_.data(),
-               ws.sum_primal_solutions_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(
+      result.data(), ws.sum_primal_solutions_.data(), ws.sum_primal_solutions_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -228,12 +225,10 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.sum_dual_solutions_.size() == 0) return {};
+    auto stream = ws.sum_dual_solutions_.stream();
     std::vector<f_t> result(ws.sum_dual_solutions_.size());
-    raft::copy(result.data(),
-               ws.sum_dual_solutions_.data(),
-               ws.sum_dual_solutions_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+    raft::copy(result.data(), ws.sum_dual_solutions_.data(), ws.sum_dual_solutions_.size(), stream);
+    stream.synchronize();
     return result;
   }
 
@@ -242,12 +237,13 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (ws.last_restart_duality_gap_primal_solution_.size() == 0) return {};
+    auto stream = ws.last_restart_duality_gap_primal_solution_.stream();
     std::vector<f_t> result(ws.last_restart_duality_gap_primal_solution_.size());
     raft::copy(result.data(),
                ws.last_restart_duality_gap_primal_solution_.data(),
                ws.last_restart_duality_gap_primal_solution_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+               stream);
+    stream.synchronize();
     return result;
   }
 
@@ -256,12 +252,13 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     auto& ws =
       const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_).get_pdlp_warm_start_data();
     if (!ws.is_populated()) return {};
+    auto stream = ws.last_restart_duality_gap_dual_solution_.stream();
     std::vector<f_t> result(ws.last_restart_duality_gap_dual_solution_.size());
     raft::copy(result.data(),
                ws.last_restart_duality_gap_dual_solution_.data(),
                ws.last_restart_duality_gap_dual_solution_.size(),
-               rmm::cuda_stream_per_thread);
-    rmm::cuda_stream_per_thread.synchronize();
+               stream);
+    stream.synchronize();
     return result;
   }
 
@@ -334,7 +331,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     if (has_warm_start_data()) {
       auto& gpu_ws = const_cast<optimization_problem_solution_t<i_t, f_t>&>(solution_)
                        .get_pdlp_warm_start_data();
-      auto cpu_ws = convert_to_cpu_warmstart(gpu_ws, rmm::cuda_stream_per_thread);
+      auto cpu_ws = convert_to_cpu_warmstart(gpu_ws, gpu_ws.current_primal_solution_.stream());
 
       return std::make_unique<cpu_lp_solution_t<i_t, f_t>>(std::move(primal_host),
                                                            std::move(dual_host),
@@ -409,7 +406,7 @@ class gpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
 
   std::vector<f_t> get_solution_host() const override
   {
-    auto stream = rmm::cuda_stream_per_thread;
+    auto stream = solution_.get_solution().stream();
     std::vector<f_t> result(solution_.get_solution().size());
     raft::copy(
       result.data(), solution_.get_solution().data(), solution_.get_solution().size(), stream);

@@ -201,9 +201,9 @@ void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* p
             cpu_pdlp_warm_start_data_t<i_t, f_t>(solver_settings->get_pdlp_warm_start_data_view());
         } else {
           // GPU warmstart data (device_uvectors) → CPU backend: convert D2H
-          cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_warmstart = convert_to_cpu_warmstart(
-            solver_settings->get_pdlp_settings().get_pdlp_warm_start_data(),
-            rmm::cuda_stream_per_thread);
+          auto& gpu_ws = solver_settings->get_pdlp_settings().get_pdlp_warm_start_data();
+          cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_warmstart =
+            convert_to_cpu_warmstart(gpu_ws, gpu_ws.current_primal_solution_.stream());
           solver_settings->get_pdlp_settings().get_cpu_pdlp_warm_start_data() =
             std::move(cpu_warmstart);
         }
