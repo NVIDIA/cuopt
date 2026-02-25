@@ -209,10 +209,11 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
       !problem_ptr->empty) {
+    timer_t clique_timer(15.);
     dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
     problem_ptr->get_host_user_problem(host_problem);
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
-    find_initial_cliques(host_problem, context.settings.tolerances, presolve_timer);
+    find_initial_cliques(host_problem, context.settings.tolerances, clique_timer);
     problem_ptr->set_constraints_from_host_user_problem(host_problem);
     cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
                  "host lower bound size mismatch");
