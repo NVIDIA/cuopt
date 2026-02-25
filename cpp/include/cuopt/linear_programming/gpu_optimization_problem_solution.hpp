@@ -366,15 +366,15 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
    * @brief Convert to GPU-backed linear_programming_ret_t struct for Python/Cython
    * Moves device_uvector data into device_buffer wrappers with zero-copy.
    */
-  cuopt::cython::linear_programming_ret_t to_linear_programming_ret_t() &&;
+  cuopt::cython::linear_programming_ret_t to_linear_programming_ret_t();
 
   /**
    * @brief Polymorphic conversion to Python return type (interface override)
    * Populates the gpu_solutions_t variant inside linear_programming_ret_t.
    */
-  cuopt::cython::linear_programming_ret_t to_python_lp_ret() && override
+  cuopt::cython::linear_programming_ret_t to_python_lp_ret() override
   {
-    return std::move(*this).to_linear_programming_ret_t();
+    return to_linear_programming_ret_t();
   }
 
  private:
@@ -476,16 +476,13 @@ class gpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
    * @brief Convert to GPU-backed mip_ret_t struct for Python/Cython
    * Moves device_uvector data into device_buffer wrappers with zero-copy.
    */
-  cuopt::cython::mip_ret_t to_mip_ret_t() &&;
+  cuopt::cython::mip_ret_t to_mip_ret_t();
 
   /**
    * @brief Polymorphic conversion to Python return type (interface override)
    * Populates the gpu_buffer variant inside mip_ret_t.
    */
-  cuopt::cython::mip_ret_t to_python_mip_ret() && override
-  {
-    return std::move(*this).to_mip_ret_t();
-  }
+  cuopt::cython::mip_ret_t to_python_mip_ret() override { return to_mip_ret_t(); }
 
  private:
   mip_solution_t<i_t, f_t> solution_;

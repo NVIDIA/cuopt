@@ -1458,8 +1458,12 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 {
   // Check if remote execution is enabled
   if (is_remote_execution_enabled()) {
+    cuopt_expects(!is_batch_mode,
+                  error_type_t::ValidationError,
+                  "Batch mode with remote execution is not supported via this entry point. "
+                  "Use solve_batch_remote() instead.");
     CUOPT_LOG_INFO("Remote LP solve requested");
-    return problem_interface->solve_lp_remote(settings);
+    return problem_interface->solve_lp_remote(settings, problem_checking, use_pdlp_solver_mode);
   } else {
     // Local execution - convert to optimization_problem_t and call original solve_lp
     CUOPT_LOG_INFO("Local LP solve");

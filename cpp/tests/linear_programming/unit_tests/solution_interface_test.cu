@@ -449,7 +449,7 @@ TEST_F(SolutionInterfaceTest, cpu_mip_solution_to_gpu)
 TEST_F(SolutionInterfaceTest, gpu_lp_solution_to_python_ret)
 {
   auto sol        = make_gpu_lp_solution();
-  auto python_ret = std::move(sol).to_python_lp_ret();
+  auto python_ret = sol.to_python_lp_ret();
 
   EXPECT_TRUE(python_ret.is_gpu());
   EXPECT_NEAR(python_ret.primal_objective_, -42.0, 1e-9);
@@ -458,7 +458,7 @@ TEST_F(SolutionInterfaceTest, gpu_lp_solution_to_python_ret)
 TEST_F(SolutionInterfaceTest, cpu_lp_solution_to_python_ret)
 {
   auto cpu_sol    = make_cpu_lp_solution(/*with_warmstart=*/false);
-  auto python_ret = std::move(*cpu_sol).to_python_lp_ret();
+  auto python_ret = cpu_sol->to_python_lp_ret();
 
   EXPECT_FALSE(python_ret.is_gpu());
   EXPECT_NEAR(python_ret.primal_objective_, -42.0, 1e-9);
@@ -467,7 +467,7 @@ TEST_F(SolutionInterfaceTest, cpu_lp_solution_to_python_ret)
 TEST_F(SolutionInterfaceTest, gpu_mip_solution_to_python_ret)
 {
   auto sol        = make_gpu_mip_solution();
-  auto python_ret = std::move(sol).to_python_mip_ret();
+  auto python_ret = sol.to_python_mip_ret();
 
   EXPECT_TRUE(python_ret.is_gpu());
   EXPECT_NEAR(python_ret.objective_, -99.0, 1e-9);
@@ -476,7 +476,7 @@ TEST_F(SolutionInterfaceTest, gpu_mip_solution_to_python_ret)
 TEST_F(SolutionInterfaceTest, cpu_mip_solution_to_python_ret)
 {
   auto cpu_sol    = make_cpu_mip_solution();
-  auto python_ret = std::move(*cpu_sol).to_python_mip_ret();
+  auto python_ret = cpu_sol->to_python_mip_ret();
 
   EXPECT_FALSE(python_ret.is_gpu());
   EXPECT_NEAR(python_ret.objective_, -99.0, 1e-9);

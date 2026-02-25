@@ -24,8 +24,7 @@ namespace cuopt::linear_programming {
 // ===========================
 
 template <typename i_t, typename f_t>
-cuopt::cython::linear_programming_ret_t
-gpu_lp_solution_t<i_t, f_t>::to_linear_programming_ret_t() &&
+cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_programming_ret_t()
 {
   using gpu_solutions_t = cuopt::cython::linear_programming_ret_t::gpu_solutions_t;
   cuopt::cython::linear_programming_ret_t ret;
@@ -107,7 +106,7 @@ gpu_lp_solution_t<i_t, f_t>::to_linear_programming_ret_t() &&
 // ===========================
 
 template <typename i_t, typename f_t>
-cuopt::cython::mip_ret_t gpu_mip_solution_t<i_t, f_t>::to_mip_ret_t() &&
+cuopt::cython::mip_ret_t gpu_mip_solution_t<i_t, f_t>::to_mip_ret_t()
 {
   cuopt::cython::mip_ret_t ret;
 
@@ -137,7 +136,7 @@ cuopt::cython::mip_ret_t gpu_mip_solution_t<i_t, f_t>::to_mip_ret_t() &&
 
 template <typename i_t, typename f_t>
 cuopt::cython::linear_programming_ret_t
-cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t() &&
+cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t()
 {
   using cpu_solutions_t = cuopt::cython::linear_programming_ret_t::cpu_solutions_t;
   cuopt::cython::linear_programming_ret_t ret;
@@ -192,7 +191,7 @@ cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t() &&
 // ===========================
 
 template <typename i_t, typename f_t>
-cuopt::cython::mip_ret_t cpu_mip_solution_t<i_t, f_t>::to_cpu_mip_ret_t() &&
+cuopt::cython::mip_ret_t cpu_mip_solution_t<i_t, f_t>::to_cpu_mip_ret_t()
 {
   cuopt::cython::mip_ret_t ret;
 
@@ -217,10 +216,10 @@ cuopt::cython::mip_ret_t cpu_mip_solution_t<i_t, f_t>::to_cpu_mip_ret_t() &&
 
 // Explicit template instantiations
 template cuopt::cython::linear_programming_ret_t
-gpu_lp_solution_t<int, double>::to_linear_programming_ret_t() &&;
-template cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t() &&;
+gpu_lp_solution_t<int, double>::to_linear_programming_ret_t();
+template cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t();
 template cuopt::cython::linear_programming_ret_t
-cpu_lp_solution_t<int, double>::to_cpu_linear_programming_ret_t() &&;
-template cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t() &&;
+cpu_lp_solution_t<int, double>::to_cpu_linear_programming_ret_t();
+template cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
 
 }  // namespace cuopt::linear_programming

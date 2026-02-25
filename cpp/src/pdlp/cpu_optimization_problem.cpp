@@ -912,9 +912,12 @@ bool cpu_optimization_problem_t<i_t, f_t>::is_equivalent(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>>
 cpu_optimization_problem_t<i_t, f_t>::solve_lp_remote(
-  pdlp_solver_settings_t<i_t, f_t> const& settings) const
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode) const
 {
-  return ::cuopt::linear_programming::solve_lp_remote(*this, settings);
+  return ::cuopt::linear_programming::solve_lp_remote(
+    *this, settings, problem_checking, use_pdlp_solver_mode);
 }
 
 template <typename i_t, typename f_t>

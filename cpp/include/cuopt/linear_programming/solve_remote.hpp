@@ -37,7 +37,9 @@ struct mip_solver_settings_t;
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings);
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking     = true,
+  bool use_pdlp_solver_mode = true);
 
 /**
  * @brief Solve LP problem remotely (GPU backend)
@@ -45,7 +47,9 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings);
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking     = true,
+  bool use_pdlp_solver_mode = true);
 
 /**
  * @brief Solve MIP problem remotely (CPU backend)

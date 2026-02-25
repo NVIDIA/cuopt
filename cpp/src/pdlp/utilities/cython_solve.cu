@@ -119,7 +119,7 @@ std::unique_ptr<solver_ret_t> call_solve(
         std::unique_ptr<linear_programming::lp_solution_interface_t<int, double>>(
           call_solve_lp(&gpu_problem, solver_settings->get_pdlp_settings(), is_batch_mode));
 
-      response.lp_ret       = std::move(*lp_solution_ptr).to_python_lp_ret();
+      response.lp_ret       = lp_solution_ptr->to_python_lp_ret();
       response.problem_type = linear_programming::problem_category_t::LP;
 
       // The solve's local stream is destroyed when this function returns, so reassociate
@@ -145,7 +145,7 @@ std::unique_ptr<solver_ret_t> call_solve(
         std::unique_ptr<linear_programming::mip_solution_interface_t<int, double>>(
           call_solve_mip(&gpu_problem, solver_settings->get_mip_settings()));
 
-      response.mip_ret      = std::move(*mip_solution_ptr).to_python_mip_ret();
+      response.mip_ret      = mip_solution_ptr->to_python_mip_ret();
       response.problem_type = linear_programming::problem_category_t::MIP;
 
       // Same stream reassociation as the LP path above.
@@ -184,7 +184,7 @@ std::unique_ptr<solver_ret_t> call_solve(
         std::unique_ptr<linear_programming::lp_solution_interface_t<int, double>>(
           call_solve_lp(&cpu_problem, solver_settings->get_pdlp_settings(), is_batch_mode));
 
-      response.lp_ret       = std::move(*lp_solution_ptr).to_python_lp_ret();
+      response.lp_ret       = lp_solution_ptr->to_python_lp_ret();
       response.problem_type = linear_programming::problem_category_t::LP;
 
     } else {
@@ -192,7 +192,7 @@ std::unique_ptr<solver_ret_t> call_solve(
         std::unique_ptr<linear_programming::mip_solution_interface_t<int, double>>(
           call_solve_mip(&cpu_problem, solver_settings->get_mip_settings()));
 
-      response.mip_ret      = std::move(*mip_solution_ptr).to_python_mip_ret();
+      response.mip_ret      = mip_solution_ptr->to_python_mip_ret();
       response.problem_type = linear_programming::problem_category_t::MIP;
     }
   }
@@ -236,11 +236,27 @@ static int compute_max_thread(
   return res;
 }
 
+std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
+  std::vector<cuopt::mps_parser::data_model_view_t<int, double>*> data_models,
+  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
+{
+  cuopt_expects(
+    false,
+    error_type_t::RuntimeError,
+    "Remote batch solve is not yet implemented. "
+    "Please use local batch solve or solve problems individually via remote execution.");
+  return {};
+}
+
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   std::vector<cuopt::mps_parser::data_model_view_t<int, double>*> data_models,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call batch solve");
+
+  if (cuopt::linear_programming::is_remote_execution_enabled()) {
+    return solve_batch_remote(data_models, solver_settings);
+  }
 
   const std::size_t size = data_models.size();
 

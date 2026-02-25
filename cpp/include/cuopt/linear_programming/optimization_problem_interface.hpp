@@ -349,7 +349,9 @@ class optimization_problem_interface_t {
    * @return Pointer to solution interface
    */
   virtual std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings) const = 0;
+    pdlp_solver_settings_t<i_t, f_t> const& settings,
+    bool problem_checking     = true,
+    bool use_pdlp_solver_mode = true) const = 0;
 
   /**
    * @brief Solve MIP problem using remote execution (polymorphic)
@@ -561,7 +563,9 @@ class gpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
 
   // Remote execution (polymorphic dispatch)
   std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings) const override;
+    pdlp_solver_settings_t<i_t, f_t> const& settings,
+    bool problem_checking     = true,
+    bool use_pdlp_solver_mode = true) const override;
 
   std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
     mip_solver_settings_t<i_t, f_t> const& settings) const override;
@@ -752,7 +756,9 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
 
   // Remote execution (polymorphic dispatch)
   std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings) const override;
+    pdlp_solver_settings_t<i_t, f_t> const& settings,
+    bool problem_checking     = true,
+    bool use_pdlp_solver_mode = true) const override;
 
   std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
     mip_solver_settings_t<i_t, f_t> const& settings) const override;

@@ -21,7 +21,9 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode)
 {
   init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO(
@@ -200,7 +202,9 @@ cpu_optimization_problem_t<i_t, f_t> gpu_problem_to_cpu(
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode)
 {
   init_logger_t log(settings.log_file, settings.log_to_console);
   CUOPT_LOG_INFO("solve_lp_remote (GPU problem) - converting to CPU for remote execution");
@@ -208,7 +212,8 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   auto cpu_problem = gpu_problem_to_cpu(gpu_problem);
 
   // Call CPU remote solver (returns unique_ptr<lp_solution_interface_t>)
-  auto cpu_solution_interface = solve_lp_remote(cpu_problem, settings);
+  auto cpu_solution_interface =
+    solve_lp_remote(cpu_problem, settings, problem_checking, use_pdlp_solver_mode);
 
   // Convert CPU solution back to GPU solution (since we started with a GPU problem)
   auto gpu_solution = cpu_solution_interface->to_gpu_solution(rmm::cuda_stream_per_thread);
@@ -235,13 +240,19 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
 
 // Explicit template instantiations for remote execution stubs
 template std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
-  cpu_optimization_problem_t<int, double> const&, pdlp_solver_settings_t<int, double> const&);
+  cpu_optimization_problem_t<int, double> const&,
+  pdlp_solver_settings_t<int, double> const&,
+  bool,
+  bool);
 
 template std::unique_ptr<mip_solution_interface_t<int, double>> solve_mip_remote(
   cpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
 
 template std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
-  gpu_optimization_problem_t<int, double> const&, pdlp_solver_settings_t<int, double> const&);
+  gpu_optimization_problem_t<int, double> const&,
+  pdlp_solver_settings_t<int, double> const&,
+  bool,
+  bool);
 
 template std::unique_ptr<mip_solution_interface_t<int, double>> solve_mip_remote(
   gpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
