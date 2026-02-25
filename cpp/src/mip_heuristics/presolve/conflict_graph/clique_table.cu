@@ -833,12 +833,13 @@ void remove_dominated_cliques(
                             sp.row_idx);
             fix_difference(curr_clique_vars, vars_sp);
           }
+        } else {
+          // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
+          // removed from A.
+          if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
+          if (removal_marker[sp.row_idx]) { continue; }
+          removal_marker[sp.row_idx] = true;
         }
-        // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
-        // removed from A.
-        if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
-        if (removal_marker[sp.row_idx]) { continue; }
-        removal_marker[sp.row_idx] = true;
       }
       if ((i % 128) == 0) {
         CUOPT_LOG_TRACE("Processed extended clique %d/%d", i + 1, n_extended_cliques);
