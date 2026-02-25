@@ -175,7 +175,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
 }
 
 template <typename i_t, typename f_t>
-bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
+bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
   raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("Running presolve!");
@@ -196,8 +196,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     // Run probing cache before trivial presolve to discover variable implications
     const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
     const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache =
-      std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
+    f_t time_for_probing_cache            = std::min(max_time_on_probing, time_limit * 0.8);
     timer_t probing_timer{time_for_probing_cache};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
@@ -205,7 +204,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
     if (problem_is_infeasible) { return false; }
   }
   const bool remap_cache_ids = true;
-  if (!presolve_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+  if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
       !problem_ptr->empty) {

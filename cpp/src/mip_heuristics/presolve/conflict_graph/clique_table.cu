@@ -416,7 +416,6 @@ void insert_clique_into_problem(const std::vector<i_t>& clique,
     new_vars.push_back(var_idx);
     new_coeffs.push_back(coeff);
   }
-  // For complemented literals (1 - x), expansion contributes a constant term on the left:
   //   coeff_scale * (1 - x) = coeff_scale - coeff_scale * x
   // Move constants to the right, so rhs must decrease by rhs_offset.
   f_t rhs = coeff_scale - rhs_offset;
