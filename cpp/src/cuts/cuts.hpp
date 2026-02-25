@@ -377,7 +377,7 @@ class variable_bounds_t {
                     const simplex_solver_settings_t<i_t, f_t>& settings,
                     const std::vector<variable_type_t>& var_types,
                     const csr_matrix_t<i_t, f_t>& Arow,
-                    std::vector<i_t>& new_slacks);
+                    const std::vector<i_t>& new_slacks);
 
   std::vector<i_t> upper_offsets;
   std::vector<i_t> upper_variables;
@@ -519,54 +519,6 @@ class complemented_mixed_integer_rounding_cut_t {
 
   f_t new_upper(i_t j) const { return transformed_upper_[j]; }
 
- private:
-  std::vector<i_t> is_slack_;
-  std::vector<i_t> slack_rows_;
-
-  std::vector<i_t> lb_variable_;
-  std::vector<f_t> lb_star_;
-  std::vector<i_t> ub_variable_;
-  std::vector<f_t> ub_star_;
-
-  std::vector<i_t> bound_changed_;
-  std::vector<f_t> transformed_upper_;
-
-  scratch_pad_t<i_t, f_t> scratch_pad_;
-};
-
-template <typename i_t, typename f_t>
-class mixed_integer_rounding_cut_t {
- public:
-  mixed_integer_rounding_cut_t(const lp_problem_t<i_t, f_t>& lp,
-                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                               const std::vector<i_t>& new_slacks,
-                               const std::vector<f_t>& xstar);
-
-  // Convert an inequality of the form: sum_j a_j x_j >= beta
-  // with l_j <= x_j <= u_j into the form:
-  // sum_{j not in L union U} d_j x_j + sum_{j in L} d_j v_j
-  // + sum_{j in U} d_j w_j >= delta,
-  // where v_j = x_j - l_j for j in L
-  // and   w_j = u_j - x_j for j in U
-  void to_nonnegative(const lp_problem_t<i_t, f_t>& lp,
-                      sparse_vector_t<i_t, f_t>& inequality,
-                      f_t& rhs);
-
-  void relaxation_to_nonnegative(const lp_problem_t<i_t, f_t>& lp,
-                                 const std::vector<f_t>& xstar,
-                                 std::vector<f_t>& xstar_nonnegative);
-
-  // Convert an inequality of the form:
-  // sum_{j not in L union U} d_j x_j + sum_{j in L} d_j v_j
-  // + sum_{j in U} d_j w_j >= delta
-  // where v_j = x_j - l_j for j in L
-  // and   w_j = u_j - x_j for j in U
-  // back to an inequality on the original variables
-  // sum_j a_j x_j >= beta
-  void to_original(const lp_problem_t<i_t, f_t>& lp,
-                   sparse_vector_t<i_t, f_t>& inequality,
-                   f_t& rhs);
-
   // Given a cut of the form sum_j d_j x_j >= beta
   // with l_j <= x_j <= u_j, try to remove coefficients d_j
   // with | d_j | < epsilon
@@ -574,34 +526,6 @@ class mixed_integer_rounding_cut_t {
                                  const std::vector<f_t>& upper_bounds,
                                  sparse_vector_t<i_t, f_t>& cut,
                                  f_t& cut_rhs);
-
-  // Given an inequality sum_j a_j x_j >= beta, x_j >= 0, x_j in Z, j in I
-  // generate an MIR cut of the form sum_j d_j x_j >= delta
-  i_t generate_cut_nonnegative(const sparse_vector_t<i_t, f_t>& a,
-                               f_t beta,
-                               const std::vector<variable_type_t>& var_types,
-                               sparse_vector_t<i_t, f_t>& cut,
-                               f_t& cut_rhs);
-
-  // Given an inequality sum_j a_j x_j >= beta, x_j >= 0, x_j in Z, j in I
-  // generate an MIR cut of the form sum_j d_j x_j >= delta
-  void generate_cut_nonnegative_maintain_indicies(const sparse_vector_t<i_t, f_t>& a,
-                                                  f_t beta,
-                                                  const std::vector<variable_type_t>& var_types,
-                                                  sparse_vector_t<i_t, f_t>& cut,
-                                                  f_t& cut_rhs);
-
-  f_t compute_violation(const sparse_vector_t<i_t, f_t>& cut,
-                        f_t cut_rhs,
-                        const std::vector<f_t>& xstar);
-
-  i_t generate_cut(const sparse_vector_t<i_t, f_t>& a,
-                   f_t beta,
-                   const std::vector<f_t>& upper_bounds,
-                   const std::vector<f_t>& lower_bounds,
-                   const std::vector<variable_type_t>& var_types,
-                   sparse_vector_t<i_t, f_t>& cut,
-                   f_t& cut_rhs);
 
   void substitute_slacks(const lp_problem_t<i_t, f_t>& lp,
                          csr_matrix_t<i_t, f_t>& Arow,
@@ -618,21 +542,19 @@ class mixed_integer_rounding_cut_t {
                     sparse_vector_t<i_t, f_t>& inequality,
                     f_t& inequality_rhs);
 
-  f_t new_upper(i_t j) const { return new_upper_[j]; }
-
  private:
-  i_t num_vars_;
-  const simplex_solver_settings_t<i_t, f_t>& settings_;
-  std::vector<f_t> x_workspace_;
-  std::vector<i_t> x_mark_;
-  std::vector<i_t> has_lower_;
-  std::vector<i_t> has_upper_;
   std::vector<i_t> is_slack_;
   std::vector<i_t> slack_rows_;
-  std::vector<i_t> indices_;
-  std::vector<i_t> bound_info_;
-  std::vector<f_t> new_upper_;
-  bool needs_complement_;
+
+  std::vector<i_t> lb_variable_;
+  std::vector<f_t> lb_star_;
+  std::vector<i_t> ub_variable_;
+  std::vector<f_t> ub_star_;
+
+  std::vector<i_t> bound_changed_;
+  std::vector<f_t> transformed_upper_;
+
+  scratch_pad_t<i_t, f_t> scratch_pad_;
 };
 
 template <typename i_t, typename f_t>
