@@ -314,6 +314,9 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
   pc.strong_branch_up.assign(fractional.size(), 0);
   pc.num_strong_branches_completed = 0;
 
+  const f_t elapsed_time = toc(start_time);
+  if (elapsed_time > settings.time_limit) { return; }
+
   if (settings.mip_batch_pdlp_strong_branching) {
     settings.log.printf("Batch PDLP strong branching enabled\n");
 
@@ -334,9 +337,16 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       fraction_values.push_back(original_root_soln_x[j]);
     }
 
-    const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
+    const auto mps_model         = simplex_problem_to_mps_data_model(original_problem);
+    const f_t batch_elapsed_time = toc(start_time);
+    const f_t batch_remaining_time =
+      std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+    if (batch_remaining_time <= 0.0) { return; }
+    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+    pdlp_settings.time_limit = batch_remaining_time;
+    const raft::handle_t batch_pdlp_handle;
     const auto solutions =
-      batch_pdlp_solve(original_problem.handle_ptr, mps_model, fractional, fraction_values);
+      batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);
 
     // Find max iteration on how many are done accross the batch

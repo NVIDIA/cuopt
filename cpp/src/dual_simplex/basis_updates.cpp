@@ -2343,6 +2343,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<f_t>& lower,
   const std::vector<f_t>& upper,
+  f_t start_time,
   std::vector<i_t>& basic_list,
   std::vector<i_t>& nonbasic_list,
   std::vector<variable_status_t>& vstatus)
@@ -2360,6 +2361,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   i_t status = factorize_basis(A,
                                settings,
                                basic_list,
+                               start_time,
                                L0_,
                                U0_,
                                row_permutation_,
@@ -2369,6 +2371,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                                slacks_needed,
                                work_estimate_);
   if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+  if (status == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
   if (status == -1) {
     settings.log.debug("Initial factorization failed\n");
     basis_repair(A,
@@ -2403,6 +2406,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
     status = factorize_basis(A,
                              settings,
                              basic_list,
+                             start_time,
                              L0_,
                              U0_,
                              row_permutation_,
@@ -2412,6 +2416,7 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
                              slacks_needed,
                              work_estimate_);
     if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+    if (status == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
     if (status == -1) {
 #ifdef CHECK_L_FACTOR
       if (L0_.check_matrix() == -1) { settings.log.printf("Bad L after basis repair\n"); }

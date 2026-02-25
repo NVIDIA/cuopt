@@ -2501,20 +2501,21 @@ i_t add_cuts(const simplex_solver_settings_t<i_t, f_t>& settings,
 }
 
 template <typename i_t, typename f_t>
-void remove_cuts(lp_problem_t<i_t, f_t>& lp,
-                 const simplex_solver_settings_t<i_t, f_t>& settings,
-                 csr_matrix_t<i_t, f_t>& Arow,
-                 std::vector<i_t>& new_slacks,
-                 i_t original_rows,
-                 std::vector<variable_type_t>& var_types,
-                 std::vector<variable_status_t>& vstatus,
-                 std::vector<f_t>& edge_norms,
-                 std::vector<f_t>& x,
-                 std::vector<f_t>& y,
-                 std::vector<f_t>& z,
-                 std::vector<i_t>& basic_list,
-                 std::vector<i_t>& nonbasic_list,
-                 basis_update_mpf_t<i_t, f_t>& basis_update)
+i_t remove_cuts(lp_problem_t<i_t, f_t>& lp,
+                const simplex_solver_settings_t<i_t, f_t>& settings,
+                f_t start_time,
+                csr_matrix_t<i_t, f_t>& Arow,
+                std::vector<i_t>& new_slacks,
+                i_t original_rows,
+                std::vector<variable_type_t>& var_types,
+                std::vector<variable_status_t>& vstatus,
+                std::vector<f_t>& edge_norms,
+                std::vector<f_t>& x,
+                std::vector<f_t>& y,
+                std::vector<f_t>& z,
+                std::vector<i_t>& basic_list,
+                std::vector<i_t>& nonbasic_list,
+                basis_update_mpf_t<i_t, f_t>& basis_update)
 {
   std::vector<i_t> cuts_to_remove;
   cuts_to_remove.reserve(lp.num_rows - original_rows);
@@ -2644,9 +2645,13 @@ void remove_cuts(lp_problem_t<i_t, f_t>& lp,
                        lp.A.col_start[lp.A.n]);
 
     basis_update.resize(lp.num_rows);
-    basis_update.refactor_basis(
-      lp.A, settings, lp.lower, lp.upper, basic_list, nonbasic_list, vstatus);
+    i_t refactor_status = basis_update.refactor_basis(
+      lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+    if (refactor_status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
+    if (refactor_status == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
   }
+
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2793,20 +2798,21 @@ template int add_cuts(const simplex_solver_settings_t<int, double>& settings,
                       std::vector<variable_status_t>& vstatus,
                       std::vector<double>& edge_norms);
 
-template void remove_cuts<int, double>(lp_problem_t<int, double>& lp,
-                                       const simplex_solver_settings_t<int, double>& settings,
-                                       csr_matrix_t<int, double>& Arow,
-                                       std::vector<int>& new_slacks,
-                                       int original_rows,
-                                       std::vector<variable_type_t>& var_types,
-                                       std::vector<variable_status_t>& vstatus,
-                                       std::vector<double>& edge_norms,
-                                       std::vector<double>& x,
-                                       std::vector<double>& y,
-                                       std::vector<double>& z,
-                                       std::vector<int>& basic_list,
-                                       std::vector<int>& nonbasic_list,
-                                       basis_update_mpf_t<int, double>& basis_update);
+template int remove_cuts<int, double>(lp_problem_t<int, double>& lp,
+                                      const simplex_solver_settings_t<int, double>& settings,
+                                      double start_time,
+                                      csr_matrix_t<int, double>& Arow,
+                                      std::vector<int>& new_slacks,
+                                      int original_rows,
+                                      std::vector<variable_type_t>& var_types,
+                                      std::vector<variable_status_t>& vstatus,
+                                      std::vector<double>& edge_norms,
+                                      std::vector<double>& x,
+                                      std::vector<double>& y,
+                                      std::vector<double>& z,
+                                      std::vector<int>& basic_list,
+                                      std::vector<int>& nonbasic_list,
+                                      basis_update_mpf_t<int, double>& basis_update);
 
 template void read_saved_solution_for_cut_verification<int, double>(
   const lp_problem_t<int, double>& lp,

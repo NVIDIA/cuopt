@@ -153,6 +153,13 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
   detail::trivial_presolve(scaled_problem);
 
   detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, scaling, timer);
+  if (timer.check_time_limit()) {
+    CUOPT_LOG_INFO("Time limit reached before main solve");
+    detail::solution_t<i_t, f_t> sol(problem);
+    auto stats             = solver.get_solver_stats();
+    stats.total_solve_time = timer.elapsed_time();
+    return sol.get_solution(false, stats, false);
+  }
   auto scaled_sol                 = solver.run_solver();
   bool is_feasible_before_scaling = scaled_sol.get_feasible();
   scaled_sol.problem_ptr          = &problem;

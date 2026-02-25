@@ -166,7 +166,6 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
 TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
 {
   const raft::handle_t handle_{};
-  constexpr double tolerance = 1e-5;
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
   auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
@@ -351,7 +350,6 @@ TEST(pslp_presolve, postsolve_reduced_costs)
 TEST(pslp_presolve, postsolve_multiple_problems)
 {
   const raft::handle_t handle_{};
-  constexpr double tolerance = 1e-4;
 
   std::vector<std::pair<std::string, double>> instances{
     {"afiro_original", -464.75314},

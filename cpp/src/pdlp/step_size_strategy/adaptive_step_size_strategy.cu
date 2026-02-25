@@ -32,8 +32,6 @@
 
 namespace cuopt::linear_programming::detail {
 
-constexpr int parallel_stream_computation = 2;
-
 template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   raft::handle_t const* handle_ptr,
@@ -45,10 +43,6 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
-    stream_pool_(parallel_stream_computation),
-    dot_delta_X_(cudaEventDisableTiming),
-    dot_delta_Y_(cudaEventDisableTiming),
-    deltas_are_done_(cudaEventDisableTiming),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_(primal_size),
@@ -80,7 +74,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
       interaction_.data(),
       climber_strategies_.size(),
       primal_size_,
-      stream_view_));
+      stream_view_.value()));
     dot_product_bytes = std::max(dot_product_bytes, byte_needed);
 
     RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(
@@ -90,7 +84,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
       norm_squared_delta_primal_.data(),
       climber_strategies_.size(),
       primal_size_,
-      stream_view_));
+      stream_view_.value()));
     dot_product_bytes = std::max(dot_product_bytes, byte_needed);
 
     RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(
@@ -100,10 +94,10 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
       norm_squared_delta_dual_.data(),
       climber_strategies_.size(),
       dual_size_,
-      stream_view_));
+      stream_view_.value()));
     dot_product_bytes = std::max(dot_product_bytes, byte_needed);
 
-    dot_product_storage.resize(dot_product_bytes, stream_view_);
+    dot_product_storage.resize(dot_product_bytes, stream_view_.value());
   }
 }
 
@@ -143,11 +137,12 @@ void adaptive_step_size_strategy_t<i_t, f_t>::swap_context(
   const auto [grid_size, block_size] =
     kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
   adaptive_step_size_swap_device_vectors_kernel<i_t, f_t>
-    <<<grid_size, block_size, 0, stream_view_>>>(thrust::raw_pointer_cast(swap_pairs.data()),
-                                                 static_cast<i_t>(swap_pairs.size()),
-                                                 make_span(interaction_),
-                                                 make_span(norm_squared_delta_primal_),
-                                                 make_span(norm_squared_delta_dual_));
+    <<<grid_size, block_size, 0, stream_view_.value()>>>(
+      thrust::raw_pointer_cast(swap_pairs.data()),
+      static_cast<i_t>(swap_pairs.size()),
+      make_span(interaction_),
+      make_span(norm_squared_delta_primal_),
+      make_span(norm_squared_delta_dual_));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -159,9 +154,9 @@ void adaptive_step_size_strategy_t<i_t, f_t>::resize_context(i_t new_size)
   cuopt_assert(new_size > 0, "New size must be greater than 0");
   cuopt_assert(new_size < batch_size, "New size must be less than batch size");
 
-  interaction_.resize(new_size, stream_view_);
-  norm_squared_delta_primal_.resize(new_size, stream_view_);
-  norm_squared_delta_dual_.resize(new_size, stream_view_);
+  interaction_.resize(new_size, stream_view_.value());
+  norm_squared_delta_primal_.resize(new_size, stream_view_.value());
+  norm_squared_delta_dual_.resize(new_size, stream_view_.value());
 }
 
 template <typename i_t, typename f_t>
@@ -276,19 +271,19 @@ i_t adaptive_step_size_strategy_t<i_t, f_t>::get_valid_step_size() const
 template <typename i_t, typename f_t>
 f_t adaptive_step_size_strategy_t<i_t, f_t>::get_interaction(i_t i) const
 {
-  return interaction_.element(i, stream_view_);
+  return interaction_.element(i, stream_view_.value());
 }
 
 template <typename i_t, typename f_t>
 f_t adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_primal(i_t i) const
 {
-  return norm_squared_delta_primal_.element(i, stream_view_);
+  return norm_squared_delta_primal_.element(i, stream_view_.value());
 }
 
 template <typename i_t, typename f_t>
 f_t adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual(i_t i) const
 {
-  return norm_squared_delta_dual_.element(i, stream_view_);
+  return norm_squared_delta_dual_.element(i, stream_view_.value());
 }
 
 template <typename i_t, typename f_t>
@@ -337,15 +332,15 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
                                      pdhg_solver.get_saddle_point_state());
     // Compute n_lim, n_next and decide if step size is valid
     compute_step_sizes_from_movement_and_interaction<i_t, f_t>
-      <<<1, 1, 0, stream_view_>>>(this->view(),
-                                  primal_step_size.data(),
-                                  dual_step_size.data(),
-                                  pdhg_solver.get_d_total_pdhg_iterations().data());
+      <<<1, 1, 0, stream_view_.value()>>>(this->view(),
+                                          primal_step_size.data(),
+                                          dual_step_size.data(),
+                                          pdhg_solver.get_d_total_pdhg_iterations().data());
     graph.end_capture(total_pdlp_iterations);
   }
   graph.launch(total_pdlp_iterations);
   // Steam sync so that next call can see modification made to host var valid_step_size
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_.value()));
 }
 
 template <typename i_t, typename f_t>
@@ -371,18 +366,13 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
 
     Deltas x & y were computed during pdhg step
 
-    We will compute in parallel (parallel cuda graph):
+    We will compute:
     ||(x' - x)||
     ||(y' - y)||
     (y' - y)_t . A @ (x' - x)
 
     And finally merge the results
   */
-
-  // We need to make sure both dot products happens after previous operations (next_primal/dual)
-  // Thus, we add another node in the main stream before starting the SpMVs
-
-  if (!batch_mode_) deltas_are_done_.record(stream_view_);
 
   // primal_dual_interaction computation => we purposly diverge from the paper (delta_y . (A @ x' -
   // A@x)) to save one SpMV
@@ -406,7 +396,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                          cusparse_view.next_AtY,
                                          CUSPARSE_SPMV_CSR_ALG2,
                                          (f_t*)cusparse_view.buffer_transpose.data(),
-                                         stream_view_));
+                                         stream_view_.value()));
   } else {
     // TODO later batch mode: handle if not all restart
     RAFT_CUSPARSE_TRY(
@@ -420,7 +410,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                          cusparse_view.batch_next_AtYs,
                                          CUSPARSE_SPMM_CSR_ALG3,
                                          (f_t*)cusparse_view.buffer_transpose_batch.data(),
-                                         stream_view_));
+                                         stream_view_.value()));
   }
 
   // Compute Ay' - Ay = next_Aty - current_Aty
@@ -443,7 +433,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                       current_saddle_point_state.get_delta_primal().data(),
                                       primal_stride,
                                       interaction_.data(),
-                                      stream_view_));
+                                      stream_view_.value()));
 
     // Compute movement
     //  compute euclidean norm squared which is
@@ -453,7 +443,6 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
     //               2 + (0.5 /
     //               solver_state.primal_weight) *
     //               norm(delta_dual) ^ 2;
-    deltas_are_done_.stream_wait(stream_pool_.get_stream(0));
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                       current_saddle_point_state.get_primal_size(),
@@ -462,10 +451,8 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                       current_saddle_point_state.get_delta_primal().data(),
                                       primal_stride,
                                       norm_squared_delta_primal_.data(),
-                                      stream_pool_.get_stream(0)));
-    dot_delta_X_.record(stream_pool_.get_stream(0));
+                                      stream_view_.value()));
 
-    deltas_are_done_.stream_wait(stream_pool_.get_stream(1));
     RAFT_CUBLAS_TRY(
       raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
                                       current_saddle_point_state.get_dual_size(),
@@ -474,12 +461,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                       current_saddle_point_state.get_delta_dual().data(),
                                       dual_stride,
                                       norm_squared_delta_dual_.data(),
-                                      stream_pool_.get_stream(1)));
-    dot_delta_Y_.record(stream_pool_.get_stream(1));
-
-    // Wait on main stream for both dot to be done before launching the next kernel
-    dot_delta_X_.stream_wait(stream_view_);
-    dot_delta_Y_.stream_wait(stream_view_);
+                                      stream_view_.value()));
   } else {
     // TODO later batch mode: remove this once you want to do per climber restart
     cub::DeviceSegmentedReduce::Sum(
@@ -492,7 +474,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
       interaction_.data(),
       climber_strategies_.size(),
       primal_size_,
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceSegmentedReduce::Sum(
       dot_product_storage.data(),
@@ -502,7 +484,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
       norm_squared_delta_primal_.data(),
       climber_strategies_.size(),
       primal_size_,
-      stream_view_);
+      stream_view_.value());
 
     cub::DeviceSegmentedReduce::Sum(
       dot_product_storage.data(),
@@ -512,7 +494,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
       norm_squared_delta_dual_.data(),
       climber_strategies_.size(),
       dual_size_,
-      stream_view_);
+      stream_view_.value());
   }
 }
 

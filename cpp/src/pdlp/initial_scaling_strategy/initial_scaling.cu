@@ -545,7 +545,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
 #ifdef CUPDLP_DEBUG_MODE
   print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
   print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
-  std::vector<f_t2> variable_bounds = host_copy(op_problem_scaled_.variable_bounds);
+  std::vector<f_t2> variable_bounds = host_copy(op_problem_scaled_.variable_bounds, stream_view_);
   std::vector<f_t> lower_bounds;
   std::vector<f_t> upper_bounds;
   for (const auto& variable_bound : variable_bounds) {
