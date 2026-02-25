@@ -102,11 +102,6 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
   std::vector<bool> variable_changed(n, false);
   std::vector<bool> constraint_changed_next(m, false);
 
-  auto& A_i    = A.i.underlying();
-  auto& A_x    = A.x.underlying();
-  auto& Arow_j = Arow.j.underlying();
-  auto& Arow_x = Arow.x.underlying();
-
   size_t nnz_processed = 0;
 
   if (!bounds_changed.empty()) {
@@ -116,7 +111,7 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
         const i_t col_start = A.col_start[j];
         const i_t col_end   = A.col_start[j + 1];
         for (i_t p = col_start; p < col_end; ++p) {
-          const i_t i           = A_i[p];
+          const i_t i           = A.i[p];
           constraint_changed[i] = true;
         }
       }
@@ -139,8 +134,8 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       f_t min_a = 0.0;
       f_t max_a = 0.0;
       for (i_t p = row_start; p < row_end; ++p) {
-        const i_t j    = Arow_j[p];
-        const f_t a_ij = Arow_x[p];
+        const i_t j    = Arow.j[p];
+        const f_t a_ij = Arow.x[p];
 
         variable_changed[j] = true;
         if (a_ij > 0) {
@@ -192,10 +187,10 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
       const i_t col_end   = A.col_start[k + 1];
       nnz_processed += (col_end - col_start);
       for (i_t p = col_start; p < col_end; ++p) {
-        const i_t i = A_i[p];
+        const i_t i = A.i[p];
 
         if (!constraint_changed[i]) { continue; }
-        const f_t a_ik = A_x[p];
+        const f_t a_ik = A.x[p];
 
         f_t delta_min_act = delta_min_activity[i];
         f_t delta_max_act = delta_max_activity[i];

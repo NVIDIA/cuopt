@@ -11,8 +11,8 @@
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <mps_parser/parser.hpp>
 
-#include <raft/sparse/detail/cusparse_macros.h>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/core/handle.hpp>
 
 #include <argparse/argparse.hpp>
@@ -83,6 +83,15 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .implicit_value(true);
 }
 
+static cuopt::linear_programming::presolver_t string_to_presolver(const std::string& presolver)
+{
+  if (presolver == "None") return cuopt::linear_programming::presolver_t::None;
+  if (presolver == "Papilo") return cuopt::linear_programming::presolver_t::Papilo;
+  if (presolver == "PSLP") return cuopt::linear_programming::presolver_t::PSLP;
+  if (presolver == "Default") return cuopt::linear_programming::presolver_t::Default;
+  return cuopt::linear_programming::presolver_t::Default;
+}
+
 static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   const std::string& mode)
 {
@@ -96,15 +105,6 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   else if (mode == "Stable3")
     return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
   return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
-}
-
-static cuopt::linear_programming::presolver_t string_to_presolver(const std::string& presolver)
-{
-  if (presolver == "None") return cuopt::linear_programming::presolver_t::None;
-  if (presolver == "Papilo") return cuopt::linear_programming::presolver_t::Papilo;
-  if (presolver == "PSLP") return cuopt::linear_programming::presolver_t::PSLP;
-  if (presolver == "Default") return cuopt::linear_programming::presolver_t::Default;
-  return cuopt::linear_programming::presolver_t::Default;
 }
 
 template <typename f_t>

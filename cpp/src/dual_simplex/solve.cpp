@@ -7,9 +7,11 @@
 
 #include <dual_simplex/solve.hpp>
 
-#include <dual_simplex/barrier.hpp>
+#include <barrier/barrier.hpp>
+
+#include <branch_and_bound/branch_and_bound.hpp>
+
 #include <dual_simplex/basis_solves.hpp>
-#include <dual_simplex/branch_and_bound.hpp>
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
@@ -24,7 +26,7 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -152,6 +154,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
     ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   }
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   constexpr bool write_out_matlab = false;
@@ -347,6 +350,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   // Apply columns scaling to the presolve LP

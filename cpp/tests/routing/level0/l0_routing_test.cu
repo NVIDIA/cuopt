@@ -11,8 +11,6 @@
 #include <routing/utilities/data_model.hpp>
 #include <routing/utilities/retail_params.hpp>
 
-#include <raft/random/rng.cuh>
-
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/sequence.h>
 #include <cuda/std/functional>

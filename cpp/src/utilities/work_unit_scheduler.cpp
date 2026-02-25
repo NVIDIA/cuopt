@@ -25,7 +25,7 @@
 
 #include <omp.h>
 
-#include <mip/logger.hpp>
+#include <mip_heuristics/logger.hpp>
 
 namespace cuopt {
 

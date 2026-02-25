@@ -513,3 +513,13 @@ Set this value to 0 to disable reliability branching.
 Set this value to k > 0, to enable reliability branching. A variable will be considered reliable if it has been branched on k times.
 
 .. note:: The default value is ``-1`` (automatic).
+
+Batch PDLP Strong Branching
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING`` controls whether to use batched PDLP over Dual Simplex during strong branching at the root.
+When enabled, the solver evaluates multiple branching candidates simultaneously in a single batched PDLP solve rather than solving them in parallel using Dual Simplex. This can significantly reduce the time spent in strong branching if Dual Simplex is struggling.
+Set this value to 0 to disable batched PDLP strong branching.
+Set this value to 1 to enable batched PDLP strong branching.
+
+.. note:: The default value is ``0`` (disabled). This setting is ignored if the problem is not a MIP problem.

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -315,12 +315,19 @@ def spinup_wait():
 @pytest.fixture(scope="session")
 def cuoptproc(request):
     global cuoptmain
-    env = {
-        "CUOPT_SERVER_IP": "0.0.0.0",
-        "CUOPT_SERVER_PORT": "5555",
-        "CUOPT_SERVER_LOG_LEVEL": "debug",
-    }
-    cuoptmain = Popen([python_path, server_script, server_module], env=env)
+    cuoptmain = Popen(
+        [
+            python_path,
+            server_script,
+            server_module,
+            "-i",
+            "0.0.0.0",
+            "-p",
+            "5555",
+            "-l",
+            "debug",
+        ]
+    )
     spinup_wait()
 
     def shutdown():

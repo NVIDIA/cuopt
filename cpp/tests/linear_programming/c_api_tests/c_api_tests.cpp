@@ -11,7 +11,7 @@
 #include <iostream>
 
 #include <cuopt/linear_programming/cuopt_c.h>
-#include <linear_programming/cuopt_c_internal.hpp>
+#include <pdlp/cuopt_c_internal.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>

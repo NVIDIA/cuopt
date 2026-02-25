@@ -1,6 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import shutil
 
 import pexpect
@@ -18,11 +19,14 @@ python_path = shutil.which("python")
 def test_server_health(args):
     env = None
     if args == "env":
-        env = {
-            "CUOPT_SERVER_IP": "127.0.0.1",
-            "CUOPT_SERVER_PORT": "5001",
-            "CUOPT_SERVER_LOG_LEVEL": "error",
-        }
+        env = os.environ.copy()
+        env.update(
+            {
+                "CUOPT_SERVER_IP": "127.0.0.1",
+                "CUOPT_SERVER_PORT": "5001",
+                "CUOPT_SERVER_LOG_LEVEL": "error",
+            }
+        )
         url = (
             "http://"
             + env["CUOPT_SERVER_IP"]

@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming {

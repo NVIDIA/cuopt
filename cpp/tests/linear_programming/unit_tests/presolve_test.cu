@@ -9,10 +9,10 @@
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <linear_programming/utils.cuh>
-#include <mip/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utils.cuh>
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -166,7 +166,6 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
 TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
 {
   const raft::handle_t handle_{};
-  constexpr double tolerance = 1e-5;
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
   auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
@@ -351,7 +350,6 @@ TEST(pslp_presolve, postsolve_reduced_costs)
 TEST(pslp_presolve, postsolve_multiple_problems)
 {
   const raft::handle_t handle_{};
-  constexpr double tolerance = 1e-4;
 
   std::vector<std::pair<std::string, double>> instances{
     {"afiro_original", -464.75314},
