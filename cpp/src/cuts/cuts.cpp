@@ -861,7 +861,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           if (var_types[j] == variable_type_t::INTEGER) {
             num_integers++;
             const f_t x_j             = transformed_xstar[j];
-            const f_t new_upper_j     = mir.new_upper(j);
+            const f_t new_upper_j     = complemented_mir.new_upper(j);
             const f_t dist_upper      = new_upper_j - x_j;
             const f_t dist_lower      = x_j;
             const bool between_bounds = x_j > 0.0 && (new_upper_j == inf || dist_upper > 0.0);
@@ -1784,7 +1784,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       // 0 <= v_j <= ub_star_j - lb_star_j
       transformed_upper_[j] = ub_star_[j] - lb_star_[j];
       transformed_xstar[j]  = xstar_j - lb_star_[j];
-      bound_changed_[j]     = lb_star_[j] == lj ? 0 : -1;
+      bound_changed_[j]     = (lb_star_[j] == 0.0) ? 0 : -1;
     } else if (ub_star_[j] < inf) {
       // Use the upper bound
       // lb_star_j <= x_j <= ub_star_j
@@ -1794,7 +1794,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       // 0 <= w_j <= ub_star_j - lb_star_j
       transformed_upper_[j] = ub_star_[j] - lb_star_[j];
       transformed_xstar[j]  = ub_star_[j] - xstar_j;
-      bound_changed_[j]     = ub_star_[j] == uj ? 0 : 1;
+      bound_changed_[j]     = 1;
     }
   }
 
