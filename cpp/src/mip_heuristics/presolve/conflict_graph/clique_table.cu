@@ -871,8 +871,15 @@ void remove_dominated_cliques(
       return removal_marker[n++];
     });
   problem.rhs.erase(new_end_rhs, problem.rhs.end());
+  n                      = 0;
+  auto new_end_row_names = std::remove_if(
+    problem.row_names.begin(),
+    problem.row_names.end(),
+    [&removal_marker, &n](const std::string&) mutable { return removal_marker[n++]; });
+  problem.row_names.erase(new_end_row_names, problem.row_names.end());
   CUOPT_LOG_DEBUG("Number of removed constraints by clique covering: %d", n_of_removed_constraints);
   cuopt_assert(problem.rhs.size() == problem.row_sense.size(), "rhs and row sense size mismatch");
+  cuopt_assert(problem.row_names.size() == problem.rhs.size(), "row names and rhs size mismatch");
   cuopt_assert(problem.A.m == problem.rhs.size(), "matrix and num rows mismatch after removal");
   // Renumber the ranged row indices in problem.range_rows to ensure consistency after constraint
   // removals. Create a mapping from old indices to new indices.
@@ -903,6 +910,7 @@ void remove_dominated_cliques(
     problem.range_rows  = std::move(new_range_rows);
     problem.range_value = std::move(new_range_values);
   }
+  problem.num_range_rows = static_cast<i_t>(problem.range_rows.size());
 }
 
 template <typename i_t, typename f_t>
