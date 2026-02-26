@@ -11,7 +11,7 @@
 // FOR COMPILE TIME, WE SHOULD KEEP THE INCLUDES ON THIS HEADER MINIMAL
 
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include "host_helper.cuh"
 
 #include <utilities/macros.cuh>

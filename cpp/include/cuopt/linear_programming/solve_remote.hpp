@@ -19,7 +19,7 @@ template <typename i_t, typename f_t>
 class cpu_optimization_problem_t;
 
 template <typename i_t, typename f_t>
-class gpu_optimization_problem_t;
+class optimization_problem_t;
 
 template <typename i_t, typename f_t>
 struct pdlp_solver_settings_t;
@@ -46,7 +46,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-  gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
+  optimization_problem_t<i_t, f_t> const& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking     = true,
   bool use_pdlp_solver_mode = true);
@@ -64,7 +64,6 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
  */
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
-  gpu_optimization_problem_t<i_t, f_t> const& gpu_problem,
-  mip_solver_settings_t<i_t, f_t> const& settings);
+  optimization_problem_t<i_t, f_t> const& problem, mip_solver_settings_t<i_t, f_t> const& settings);
 
 }  // namespace cuopt::linear_programming

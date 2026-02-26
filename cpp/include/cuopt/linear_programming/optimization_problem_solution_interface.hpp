@@ -34,7 +34,7 @@ class mip_solution_t;
  * @brief Abstract interface for optimization problem solutions (LP and MIP)
  *
  * This interface allows for CPU or GPU-backed solution storage.
- * - gpu_optimization_problem_solution_t: Uses rmm::device_uvector (GPU memory)
+ * - optimization_problem_solution_t: Uses rmm::device_uvector (GPU memory)
  * - cpu_optimization_problem_solution_t: Uses std::vector (CPU/host memory)
  *
  * @tparam i_t Integer type for indices

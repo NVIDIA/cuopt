@@ -8,8 +8,8 @@
 #include <cuopt/linear_programming/cuopt_c.h>
 
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>

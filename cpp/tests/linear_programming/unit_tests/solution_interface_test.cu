@@ -15,10 +15,11 @@
  * the MPS-parser-to-problem pipeline and legitimately needs a real file.
  */
 
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mps_parser/parser.hpp>
@@ -297,24 +298,25 @@ TEST_F(SolutionInterfaceTest, termination_status_int_values)
 TEST_F(SolutionInterfaceTest, gpu_problem_to_optimization_problem)
 {
   raft::handle_t handle;
-  auto problem = std::make_unique<gpu_optimization_problem_t<int, double>>(&handle);
+  auto problem = std::make_unique<optimization_problem_t<int, double>>(&handle);
   populate_tiny_problem(problem.get());
 
   EXPECT_EQ(problem->get_n_variables(), kNVars);
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
+  // GPU problem's to_optimization_problem() returns nullptr (already a GPU problem)
   auto concrete = problem->to_optimization_problem();
-  EXPECT_EQ(concrete.get_n_variables(), kNVars);
-  EXPECT_EQ(concrete.get_n_constraints(), kNCons);
+  EXPECT_EQ(concrete, nullptr);
 
-  auto obj = cuopt::host_copy(concrete.get_objective_coefficients(), handle.get_stream());
+  // Verify the data is still accessible directly on the problem
+  auto obj = cuopt::host_copy(problem->get_objective_coefficients(), handle.get_stream());
   ASSERT_EQ(static_cast<int>(obj.size()), kNVars);
   for (int i = 0; i < kNVars; ++i) {
     EXPECT_NEAR(obj[i], kObj[i], 1e-9);
   }
 
-  auto lb = cuopt::host_copy(concrete.get_variable_lower_bounds(), handle.get_stream());
-  auto ub = cuopt::host_copy(concrete.get_variable_upper_bounds(), handle.get_stream());
+  auto lb = cuopt::host_copy(problem->get_variable_lower_bounds(), handle.get_stream());
+  auto ub = cuopt::host_copy(problem->get_variable_upper_bounds(), handle.get_stream());
   ASSERT_EQ(static_cast<int>(lb.size()), kNVars);
   ASSERT_EQ(static_cast<int>(ub.size()), kNVars);
   for (int i = 0; i < kNVars; ++i) {
@@ -322,7 +324,7 @@ TEST_F(SolutionInterfaceTest, gpu_problem_to_optimization_problem)
     EXPECT_NEAR(ub[i], kVarUb[i], 1e-9);
   }
 
-  auto vals = cuopt::host_copy(concrete.get_constraint_matrix_values(), handle.get_stream());
+  auto vals = cuopt::host_copy(problem->get_constraint_matrix_values(), handle.get_stream());
   ASSERT_EQ(static_cast<int>(vals.size()), kNnz);
   for (int i = 0; i < kNnz; ++i) {
     EXPECT_NEAR(vals[i], kCsrVal[i], 1e-9);
@@ -339,23 +341,24 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
   EXPECT_EQ(problem->get_n_constraints(), kNCons);
 
   auto concrete = problem->to_optimization_problem();
-  EXPECT_EQ(concrete.get_n_variables(), kNVars);
-  EXPECT_EQ(concrete.get_n_constraints(), kNCons);
+  ASSERT_NE(concrete, nullptr);
+  EXPECT_EQ(concrete->get_n_variables(), kNVars);
+  EXPECT_EQ(concrete->get_n_constraints(), kNCons);
 
-  auto obj = cuopt::host_copy(concrete.get_objective_coefficients(), handle.get_stream());
+  auto obj = cuopt::host_copy(concrete->get_objective_coefficients(), handle.get_stream());
   ASSERT_EQ(static_cast<int>(obj.size()), kNVars);
   for (int i = 0; i < kNVars; ++i) {
     EXPECT_NEAR(obj[i], kObj[i], 1e-9);
   }
 
-  auto lb = cuopt::host_copy(concrete.get_variable_lower_bounds(), handle.get_stream());
-  auto ub = cuopt::host_copy(concrete.get_variable_upper_bounds(), handle.get_stream());
+  auto lb = cuopt::host_copy(concrete->get_variable_lower_bounds(), handle.get_stream());
+  auto ub = cuopt::host_copy(concrete->get_variable_upper_bounds(), handle.get_stream());
   for (int i = 0; i < kNVars; ++i) {
     EXPECT_NEAR(lb[i], kVarLb[i], 1e-9);
     EXPECT_NEAR(ub[i], kVarUb[i], 1e-9);
   }
 
-  auto vals = cuopt::host_copy(concrete.get_constraint_matrix_values(), handle.get_stream());
+  auto vals = cuopt::host_copy(concrete->get_constraint_matrix_values(), handle.get_stream());
   ASSERT_EQ(static_cast<int>(vals.size()), kNnz);
   for (int i = 0; i < kNnz; ++i) {
     EXPECT_NEAR(vals[i], kCsrVal[i], 1e-9);
@@ -446,7 +449,7 @@ TEST_F(SolutionInterfaceTest, cpu_mip_solution_to_gpu)
   EXPECT_NEAR(host_sol[2], 1.0, 1e-9);
 }
 
-TEST_F(SolutionInterfaceTest, gpu_lp_solution_to_python_ret)
+TEST_F(SolutionInterfaceTest, lp_solution_to_python_ret)
 {
   auto sol        = make_gpu_lp_solution();
   auto python_ret = sol.to_python_lp_ret();
@@ -464,7 +467,7 @@ TEST_F(SolutionInterfaceTest, cpu_lp_solution_to_python_ret)
   EXPECT_NEAR(python_ret.primal_objective_, -42.0, 1e-9);
 }
 
-TEST_F(SolutionInterfaceTest, gpu_mip_solution_to_python_ret)
+TEST_F(SolutionInterfaceTest, mip_solution_to_python_ret)
 {
   auto sol        = make_gpu_mip_solution();
   auto python_ret = sol.to_python_mip_ret();
@@ -521,7 +524,7 @@ TEST_F(SolutionInterfaceTest, cpu_warmstart_to_gpu)
 TEST_F(SolutionInterfaceTest, gpu_problem_copy_to_host_methods)
 {
   raft::handle_t handle;
-  auto problem = std::make_unique<gpu_optimization_problem_t<int, double>>(&handle);
+  auto problem = std::make_unique<optimization_problem_t<int, double>>(&handle);
   populate_tiny_problem(problem.get());
 
   std::vector<double> obj(kNVars);
