@@ -24,6 +24,10 @@
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utilities/sort_csr.cuh>
 
+#include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -44,6 +48,8 @@
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
+
+#include <rmm/cuda_stream.hpp>
 
 #include <thread>  // For std::thread
 
@@ -1345,6 +1351,9 @@ template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr, const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
 {
+  cuopt_expects(handle_ptr != nullptr,
+                error_type_t::ValidationError,
+                "handle_ptr must not be null for GPU-backed problem construction");
   cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
   op_problem.set_maximize(data_model.get_sense());
 
@@ -1435,6 +1444,72 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }
 
+// ============================================================================
+// Interface-based solve overloads with remote execution support
+// ============================================================================
+
+template <typename i_t, typename f_t>
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
+  optimization_problem_interface_t<i_t, f_t>* problem_interface,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode,
+  bool is_batch_mode)
+{
+  // Check if remote execution is enabled
+  if (is_remote_execution_enabled()) {
+    cuopt_expects(!is_batch_mode,
+                  error_type_t::ValidationError,
+                  "Batch mode with remote execution is not supported via this entry point. "
+                  "Use solve_batch_remote() instead.");
+    CUOPT_LOG_INFO("Remote LP solve requested");
+    return problem_interface->solve_lp_remote(settings, problem_checking, use_pdlp_solver_mode);
+  } else {
+    // Local execution - convert to optimization_problem_t and call original solve_lp
+    CUOPT_LOG_INFO("Local LP solve");
+
+    // Check if this is a CPU problem (test mode: CUOPT_USE_CPU_MEM_FOR_LOCAL=true)
+    auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+    if (cpu_prob != nullptr) {
+      CUOPT_LOG_INFO("Test mode: Converting CPU problem to GPU for local solve");
+
+      // Create CUDA resources for the conversion
+      rmm::cuda_stream stream;
+      raft::handle_t handle(stream);
+
+      // Temporarily set the handle on the CPU problem so it can create GPU resources
+      cpu_prob->set_handle(&handle);
+
+      // Convert CPU problem to GPU problem
+      auto op_problem = cpu_prob->to_optimization_problem();
+
+      // Clear the handle to avoid dangling pointer after this scope
+      cpu_prob->set_handle(nullptr);
+
+      // Synchronize before solving to ensure conversion is complete
+      stream.synchronize();
+
+      // Solve on GPU
+      auto gpu_solution = solve_lp<i_t, f_t>(
+        op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+
+      // Ensure all GPU work from the solve is complete before to_cpu_solution() D2H copies.
+      stream.synchronize();
+
+      CUOPT_LOG_INFO("Test mode: Converting GPU solution back to CPU solution");
+      gpu_lp_solution_t<i_t, f_t> gpu_sol_interface(std::move(gpu_solution));
+      return gpu_sol_interface.to_cpu_solution();
+    }
+
+    auto op_problem   = problem_interface->to_optimization_problem();
+    auto gpu_solution = solve_lp<i_t, f_t>(
+      op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+
+    // Wrap GPU solution in interface and return
+    return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
+  }
+}
+
 #define INSTANTIATE(F_TYPE)                                                            \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp(                      \
     optimization_problem_t<int, F_TYPE>& op_problem,                                   \
@@ -1449,6 +1524,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     bool problem_checking,                                                             \
     bool use_pdlp_solver_mode);                                                        \
+                                                                                       \
+  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(             \
+    optimization_problem_interface_t<int, F_TYPE>*,                                    \
+    pdlp_solver_settings_t<int, F_TYPE> const&,                                        \
+    bool,                                                                              \
+    bool,                                                                              \
+    bool);                                                                             \
                                                                                        \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(          \
     detail::problem_t<int, F_TYPE>& problem,                                           \

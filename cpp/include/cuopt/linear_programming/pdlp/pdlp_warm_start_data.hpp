@@ -70,6 +70,9 @@ struct pdlp_warm_start_data_t {
   pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
   pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) = default;
 
+  // Check if warmstart data is populated (same sentinel check as release/26.02)
+  bool is_populated() const { return last_restart_duality_gap_dual_solution_.size() > 0; }
+
  private:
   // Check sizes through assertion
   void check_sizes();
