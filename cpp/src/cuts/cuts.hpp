@@ -534,13 +534,17 @@ class complemented_mixed_integer_rounding_cut_t {
 
   // Combine the pivot row with the inequality to eliminate the variable j
   // The new inequality is returned in inequality and inequality_rhs
-  void combine_rows(const lp_problem_t<i_t, f_t>& lp,
-                    csr_matrix_t<i_t, f_t>& Arow,
-                    i_t j,
-                    const sparse_vector_t<i_t, f_t>& pivot_row,
-                    f_t pivot_row_rhs,
-                    sparse_vector_t<i_t, f_t>& inequality,
-                    f_t& inequality_rhs);
+  // The multiplier for the pivot row is returned
+  f_t combine_rows(const lp_problem_t<i_t, f_t>& lp,
+                   csr_matrix_t<i_t, f_t>& Arow,
+                   i_t j,
+                   const sparse_vector_t<i_t, f_t>& pivot_row,
+                   f_t pivot_row_rhs,
+                   sparse_vector_t<i_t, f_t>& inequality,
+                   f_t& inequality_rhs);
+
+  const f_t get_lb_star(i_t j) const { return lb_star_[j]; }
+  const f_t get_ub_star(i_t j) const { return ub_star_[j]; }
 
  private:
   std::vector<i_t> is_slack_;

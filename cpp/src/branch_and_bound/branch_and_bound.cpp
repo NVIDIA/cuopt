@@ -2138,6 +2138,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       std::vector<f_t> cut_rhs;
       std::vector<cut_type_t> cut_types;
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
+      if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
       cut_pool.print_cutpool_types();
