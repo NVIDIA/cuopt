@@ -33,6 +33,27 @@ enum cut_type_t : int8_t {
 };
 
 template <typename i_t, typename f_t>
+struct inequality_t {
+  inequality_t() : vector(), rhs(0.0) {}
+  inequality_t(i_t num_cols) : vector(num_cols, 0), rhs(0.0) {}
+  inequality_t(csr_matrix_t<i_t, f_t>& A, i_t row, f_t rhs_value) : vector(A, row), rhs(rhs_value) {}
+  sparse_vector_t<i_t, f_t> vector;
+  f_t rhs;
+
+  void push_back(i_t j, f_t x) { vector.i.push_back(j); vector.x.push_back(x); }
+  void clear() { vector.i.clear(); vector.x.clear(); }
+  void reserve(size_t n) { vector.i.reserve(n); vector.x.reserve(n); }
+  size_t size() const { return vector.i.size(); }
+  i_t index(i_t k) const { return vector.i[k]; }
+  f_t coeff(i_t k) const { return vector.x[k]; }
+  void negate() { vector.negate(); rhs *= -1.0; }
+  void sort() { vector.sort(); }
+  void squeeze(inequality_t<i_t, f_t>& out) const { vector.squeeze(out.vector); out.rhs = rhs; }
+  void scale(f_t factor) { vector.scale(factor); rhs *= factor; }
+  void print() const { for (i_t k = 0; k < size(); k++) { printf("%d %g ", index(k), coeff(k)); } printf("\nrhs %g\n", rhs); }
+};
+
+template <typename i_t, typename f_t>
 struct cut_info_t {
   bool has_cuts() const
   {
@@ -134,7 +155,7 @@ class cut_pool_t {
   // Add a cut in the form: cut'*x >= rhs.
   // We expect that the cut is violated by the current relaxation xstar
   // cut'*xstart < rhs
-  void add_cut(cut_type_t cut_type, const sparse_vector_t<i_t, f_t>& cut, f_t rhs);
+  void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
   void score_cuts(std::vector<f_t>& x_relax);
 
@@ -189,8 +210,7 @@ class knapsack_generation_t {
                              const std::vector<variable_type_t>& var_types,
                              const std::vector<f_t>& xstar,
                              i_t knapsack_row,
-                             sparse_vector_t<i_t, f_t>& cut,
-                             f_t& cut_rhs);
+                             inequality_t<i_t, f_t>& cut);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
@@ -280,45 +300,6 @@ class cut_generation_t {
 };
 
 template <typename i_t, typename f_t>
-class tableau_equality_t {
- public:
-  tableau_equality_t(const lp_problem_t<i_t, f_t>& lp,
-                     basis_update_mpf_t<i_t, f_t>& basis_update,
-                     const std::vector<i_t>& nonbasic_list)
-    : b_bar_(lp.num_rows, 0.0),
-      nonbasic_mark_(lp.num_cols, 0),
-      x_workspace_(lp.num_cols, 0.0),
-      x_mark_(lp.num_cols, 0),
-      c_workspace_(lp.num_cols, 0.0)
-  {
-    basis_update.b_solve(lp.rhs, b_bar_);
-    for (i_t j : nonbasic_list) {
-      nonbasic_mark_[j] = 1;
-    }
-  }
-
-  // Generates the base inequalities: C*x == d that will be turned into cuts
-  i_t generate_base_equality(const lp_problem_t<i_t, f_t>& lp,
-                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                             csr_matrix_t<i_t, f_t>& Arow,
-                             const std::vector<variable_type_t>& var_types,
-                             basis_update_mpf_t<i_t, f_t>& basis_update,
-                             const std::vector<f_t>& xstar,
-                             const std::vector<i_t>& basic_list,
-                             const std::vector<i_t>& nonbasic_list,
-                             i_t i,
-                             sparse_vector_t<i_t, f_t>& inequality,
-                             f_t& inequality_rhs);
-
- private:
-  std::vector<f_t> b_bar_;
-  std::vector<i_t> nonbasic_mark_;
-  std::vector<f_t> x_workspace_;
-  std::vector<i_t> x_mark_;
-  std::vector<f_t> c_workspace_;
-};
-
-template <typename i_t, typename f_t>
 class scratch_pad_t {
  public:
   scratch_pad_t(i_t num_vars) : workspace_(num_vars, 0.0), mark_(num_vars, 0)
@@ -369,6 +350,46 @@ class scratch_pad_t {
   std::vector<i_t> mark_;
   std::vector<i_t> indices_;
 };
+
+template <typename i_t, typename f_t>
+class tableau_equality_t {
+ public:
+  tableau_equality_t(const lp_problem_t<i_t, f_t>& lp,
+                     basis_update_mpf_t<i_t, f_t>& basis_update,
+                     const std::vector<i_t>& nonbasic_list)
+    : b_bar_(lp.num_rows, 0.0),
+      nonbasic_mark_(lp.num_cols, 0),
+      x_workspace_(lp.num_cols, 0.0),
+      x_mark_(lp.num_cols, 0),
+      c_workspace_(lp.num_cols, 0.0)
+  {
+    basis_update.b_solve(lp.rhs, b_bar_);
+    for (i_t j : nonbasic_list) {
+      nonbasic_mark_[j] = 1;
+    }
+  }
+
+  // Generates the base inequalities: C*x == d that will be turned into cuts
+  i_t generate_base_equality(const lp_problem_t<i_t, f_t>& lp,
+                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                             csr_matrix_t<i_t, f_t>& Arow,
+                             const std::vector<variable_type_t>& var_types,
+                             basis_update_mpf_t<i_t, f_t>& basis_update,
+                             const std::vector<f_t>& xstar,
+                             const std::vector<i_t>& basic_list,
+                             const std::vector<i_t>& nonbasic_list,
+                             i_t i,
+                             inequality_t<i_t, f_t>& inequality);
+
+ private:
+  std::vector<f_t> b_bar_;
+  std::vector<i_t> nonbasic_mark_;
+  std::vector<f_t> x_workspace_;
+  std::vector<i_t> x_mark_;
+  std::vector<f_t> c_workspace_;
+};
+
+
 
 template <typename i_t, typename f_t>
 class variable_bounds_t {
@@ -475,6 +496,14 @@ class complemented_mixed_integer_rounding_cut_t {
                                             const simplex_solver_settings_t<i_t, f_t>& settings,
                                             const std::vector<i_t>& new_slacks);
 
+
+  void compute_initial_scores_for_rows(const lp_problem_t<i_t, f_t>& lp,
+                                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                                       const csr_matrix_t<i_t, f_t>& Arow,
+                                       const std::vector<f_t>& xstar,
+                                       const std::vector<f_t>& ystar,
+                                       std::vector<f_t>& score);
+
   // Perform bound substitution for the continuous variables using simple bounds
   // and variable bounds. And bound substitution for the integer variables
   // using simple bounds.
@@ -492,8 +521,7 @@ class complemented_mixed_integer_rounding_cut_t {
   // and   w_j = u_j - x_j for j in U
   void transform_inequality(const variable_bounds_t<i_t, f_t>& variable_bounds,
                             const std::vector<variable_type_t>& var_type,
-                            sparse_vector_t<i_t, f_t>& inequality,
-                            f_t& inequality_rhs);
+                            inequality_t<i_t, f_t>& inequality);
 
   // Converts an inequality of the form:
   // sum_{j not in L union U} d_j x_j + sum_{j in L} d_j v_j
@@ -504,17 +532,13 @@ class complemented_mixed_integer_rounding_cut_t {
   // with l_j <= x_j <= u_j
   void untransform_inequality(const variable_bounds_t<i_t, f_t>& variable_bounds,
                               const std::vector<variable_type_t>& var_type,
-                              sparse_vector_t<i_t, f_t>& inequality,
-                              f_t& inequality_rhs);
+                              inequality_t<i_t, f_t>& inequality);
 
-  void generate_cut_nonnegative_maintain_indicies(const sparse_vector_t<i_t, f_t>& a,
-                                                  f_t beta,
+  void generate_cut_nonnegative_maintain_indicies(const inequality_t<i_t, f_t>& inequality,
                                                   const std::vector<variable_type_t>& var_types,
-                                                  sparse_vector_t<i_t, f_t>& cut,
-                                                  f_t& cut_rhs);
+                                                  inequality_t<i_t, f_t>& cut);
 
-  f_t compute_violation(const sparse_vector_t<i_t, f_t>& cut,
-                        f_t cut_rhs,
+  f_t compute_violation(const inequality_t<i_t, f_t>& cut,
                         const std::vector<f_t>& xstar);
 
   f_t new_upper(i_t j) const { return transformed_upper_[j]; }
@@ -524,13 +548,11 @@ class complemented_mixed_integer_rounding_cut_t {
   // with | d_j | < epsilon
   void remove_small_coefficients(const std::vector<f_t>& lower_bounds,
                                  const std::vector<f_t>& upper_bounds,
-                                 sparse_vector_t<i_t, f_t>& cut,
-                                 f_t& cut_rhs);
+                                 inequality_t<i_t, f_t>& cut);
 
   void substitute_slacks(const lp_problem_t<i_t, f_t>& lp,
                          csr_matrix_t<i_t, f_t>& Arow,
-                         sparse_vector_t<i_t, f_t>& cut,
-                         f_t& cut_rhs);
+                         inequality_t<i_t, f_t>& cut);
 
   // Combine the pivot row with the inequality to eliminate the variable j
   // The new inequality is returned in inequality and inequality_rhs
@@ -538,17 +560,31 @@ class complemented_mixed_integer_rounding_cut_t {
   f_t combine_rows(const lp_problem_t<i_t, f_t>& lp,
                    csr_matrix_t<i_t, f_t>& Arow,
                    i_t j,
-                   const sparse_vector_t<i_t, f_t>& pivot_row,
-                   f_t pivot_row_rhs,
-                   sparse_vector_t<i_t, f_t>& inequality,
-                   f_t& inequality_rhs);
+                   const inequality_t<i_t, f_t>& pivot_row,
+                   inequality_t<i_t, f_t>& inequality);
 
   const f_t get_lb_star(i_t j) const { return lb_star_[j]; }
   const f_t get_ub_star(i_t j) const { return ub_star_[j]; }
 
+  const i_t slack_rows(i_t j) const { return slack_rows_[j]; }
+  const i_t slack_cols(i_t i) const { return slack_cols_[i]; }
+
+  bool scale_and_generate_mir_cut(const std::vector<variable_type_t>& var_types,
+                                  const std::vector<f_t>& transformed_xstar,
+                                  const inequality_t<i_t, f_t>& inequality,
+                                  f_t divisor,
+                                  std::vector<inequality_t<i_t, f_t>>& cuts,
+                                  std::vector<f_t>& violations);
+
+  bool check_violation_and_add_cut(const inequality_t<i_t, f_t>& inequality,
+                                   const std::vector<f_t>& xstar,
+                                   std::vector<inequality_t<i_t, f_t>>& cuts,
+                                   std::vector<f_t>& violations);
+
  private:
   std::vector<i_t> is_slack_;
-  std::vector<i_t> slack_rows_;
+  std::vector<i_t> slack_rows_; // slack_rows_[j] = i, if variable j is slack for row i, -1 is sentinal value
+  std::vector<i_t> slack_cols_; // slack_cols_[i] = j, if variable j is slack for row i  -1 is sentinal value
 
   std::vector<i_t> lb_variable_;
   std::vector<f_t> lb_star_;
@@ -571,37 +607,30 @@ class strong_cg_cut_t {
   i_t generate_strong_cg_cut(const lp_problem_t<i_t, f_t>& lp,
                              const simplex_solver_settings_t<i_t, f_t>& settings,
                              const std::vector<variable_type_t>& var_types,
-                             const sparse_vector_t<i_t, f_t>& inequality,
-                             const f_t inequality_rhs,
+                             const inequality_t<i_t, f_t>& inequality,
                              const std::vector<f_t>& xstar,
-                             sparse_vector_t<i_t, f_t>& cut,
-                             f_t& cut_rhs);
+                             inequality_t<i_t, f_t>& cut);
 
   i_t remove_continuous_variables_integers_nonnegative(
     const lp_problem_t<i_t, f_t>& lp,
     const simplex_solver_settings_t<i_t, f_t>& settings,
     const std::vector<variable_type_t>& var_types,
-    sparse_vector_t<i_t, f_t>& inequality,
-    f_t& inequality_rhs);
+    inequality_t<i_t, f_t>& inequality);
 
   void to_original_integer_variables(const lp_problem_t<i_t, f_t>& lp,
-                                     sparse_vector_t<i_t, f_t>& cut,
-                                     f_t& cut_rhs);
+                                     inequality_t<i_t, f_t>& cut);
 
   i_t generate_strong_cg_cut_integer_only(const simplex_solver_settings_t<i_t, f_t>& settings,
                                           const std::vector<variable_type_t>& var_types,
-                                          const sparse_vector_t<i_t, f_t>& inequality,
-                                          f_t inequality_rhs,
-                                          sparse_vector_t<i_t, f_t>& cut,
-                                          f_t& cut_rhs);
+                                          const inequality_t<i_t, f_t>& inequality,
+                                          inequality_t<i_t, f_t>& cut);
 
  private:
   i_t generate_strong_cg_cut_helper(const std::vector<i_t>& indicies,
                                     const std::vector<f_t>& coefficients,
                                     f_t rhs,
                                     const std::vector<variable_type_t>& var_types,
-                                    sparse_vector_t<i_t, f_t>& cut,
-                                    f_t& cut_rhs);
+                                    inequality_t<i_t, f_t>& cut);
 
   std::vector<i_t> transformed_variables_;
 };
