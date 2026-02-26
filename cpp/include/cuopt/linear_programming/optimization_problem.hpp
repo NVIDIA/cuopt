@@ -122,17 +122,72 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   // Setters
   // ============================================================================
 
+  /**
+   * @brief Set the sense of optimization to maximize.
+   * @note Setting before calling the solver is optional, default is false (minimize).
+   * @param[in] maximize true means to maximize the objective function, else minimize.
+   */
   void set_maximize(bool maximize) override;
+
+  /**
+   * @brief Set the constraint matrix (A) in CSR format.
+   * @note Setting before calling the solver is mandatory.
+   * Data is copied to GPU memory on the stream of the RAFT handle passed to the problem.
+   * @param[in] A_values Values of the CSR representation (device or host pointer)
+   * @param size_values Size of the A_values array
+   * @param[in] A_indices Indices of the CSR representation (device or host pointer)
+   * @param size_indices Size of the A_indices array
+   * @param[in] A_offsets Offsets of the CSR representation (device or host pointer)
+   * @param size_offsets Size of the A_offsets array
+   */
   void set_csr_constraint_matrix(const f_t* A_values,
                                  i_t size_values,
                                  const i_t* A_indices,
                                  i_t size_indices,
                                  const i_t* A_offsets,
                                  i_t size_offsets) override;
+
+  /**
+   * @brief Set the constraint bounds (b / right-hand side) array.
+   * @note Setting before calling the solver is mandatory.
+   * @param[in] b Device or host memory pointer to a floating point array of size size.
+   * @param size Size of the b array.
+   */
   void set_constraint_bounds(const f_t* b, i_t size) override;
+
+  /**
+   * @brief Set the objective coefficients (c) array.
+   * @note Setting before calling the solver is mandatory.
+   * @param[in] c Device or host memory pointer to a floating point array of size size.
+   * @param size Size of the c array.
+   */
   void set_objective_coefficients(const f_t* c, i_t size) override;
+
+  /**
+   * @brief Set the scaling factor of the objective function (scaling_factor * objective_value).
+   * @note Setting before calling the solver is optional, default value is 1.
+   * @param objective_scaling_factor Objective scaling factor value.
+   */
   void set_objective_scaling_factor(f_t objective_scaling_factor) override;
+
+  /**
+   * @brief Set the offset of the objective function (objective_offset + objective_value).
+   * @note Setting before calling the solver is optional, default value is 0.
+   * @param objective_offset Objective offset value.
+   */
   void set_objective_offset(f_t objective_offset) override;
+
+  /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format.
+   * @note Used for quadratic programming: objective is x^T * Q * x + c^T * x
+   * @param[in] Q_values Values of the CSR representation
+   * @param size_values Size of the Q_values array
+   * @param[in] Q_indices Indices of the CSR representation
+   * @param size_indices Size of the Q_indices array
+   * @param[in] Q_offsets Offsets of the CSR representation
+   * @param size_offsets Size of the Q_offsets array
+   * @param validate_positive_semi_definite Whether to validate PSD property
+   */
   void set_quadratic_objective_matrix(const f_t* Q_values,
                                       i_t size_values,
                                       const i_t* Q_indices,
@@ -140,80 +195,29 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
                                       const i_t* Q_offsets,
                                       i_t size_offsets,
                                       bool validate_positive_semi_definite = false) override;
+
+  /** @copydoc optimization_problem_interface_t::set_variable_lower_bounds */
   void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_upper_bounds */
   void set_variable_upper_bounds(const f_t* variable_upper_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_types */
   void set_variable_types(const var_t* variable_types, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_problem_category */
   void set_problem_category(const problem_category_t& category) override;
+  /** @copydoc optimization_problem_interface_t::set_constraint_lower_bounds */
   void set_constraint_lower_bounds(const f_t* constraint_lower_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_constraint_upper_bounds */
   void set_constraint_upper_bounds(const f_t* constraint_upper_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_row_types */
   void set_row_types(const char* row_types, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_objective_name */
   void set_objective_name(const std::string& objective_name) override;
+  /** @copydoc optimization_problem_interface_t::set_problem_name */
   void set_problem_name(const std::string& problem_name) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_names */
   void set_variable_names(const std::vector<std::string>& variable_names) override;
+  /** @copydoc optimization_problem_interface_t::set_row_names */
   void set_row_names(const std::vector<std::string>& row_names) override;
-
-  // ============================================================================
-  // Move-based setters (zero-copy, transfers ownership)
-  // ============================================================================
-
-  /**
-   * @brief Move constraint matrix data without copying (transfers ownership).
-   * @note This is a zero-copy operation that just moves device pointers.
-   * @param[in] A_values rvalue reference to constraint matrix values
-   * @param[in] A_indices rvalue reference to constraint matrix column indices
-   * @param[in] A_offsets rvalue reference to constraint matrix row offsets
-   */
-  void set_csr_constraint_matrix_move(rmm::device_uvector<f_t>&& A_values,
-                                      rmm::device_uvector<i_t>&& A_indices,
-                                      rmm::device_uvector<i_t>&& A_offsets);
-
-  /**
-   * @brief Move constraint bounds without copying (transfers ownership).
-   * @param[in] b rvalue reference to constraint bounds vector
-   */
-  void set_constraint_bounds_move(rmm::device_uvector<f_t>&& b);
-
-  /**
-   * @brief Move objective coefficients without copying (transfers ownership).
-   * @param[in] c rvalue reference to objective coefficients vector
-   */
-  void set_objective_coefficients_move(rmm::device_uvector<f_t>&& c);
-
-  /**
-   * @brief Move variable lower bounds without copying (transfers ownership).
-   * @param[in] variable_lower_bounds rvalue reference to lower bounds vector
-   */
-  void set_variable_lower_bounds_move(rmm::device_uvector<f_t>&& variable_lower_bounds);
-
-  /**
-   * @brief Move variable upper bounds without copying (transfers ownership).
-   * @param[in] variable_upper_bounds rvalue reference to upper bounds vector
-   */
-  void set_variable_upper_bounds_move(rmm::device_uvector<f_t>&& variable_upper_bounds);
-
-  /**
-   * @brief Move variable types without copying (transfers ownership).
-   * @param[in] variable_types rvalue reference to variable types vector
-   */
-  void set_variable_types_move(rmm::device_uvector<var_t>&& variable_types);
-
-  /**
-   * @brief Move constraint lower bounds without copying (transfers ownership).
-   * @param[in] constraint_lower_bounds rvalue reference to lower bounds vector
-   */
-  void set_constraint_lower_bounds_move(rmm::device_uvector<f_t>&& constraint_lower_bounds);
-
-  /**
-   * @brief Move constraint upper bounds without copying (transfers ownership).
-   * @param[in] constraint_upper_bounds rvalue reference to upper bounds vector
-   */
-  void set_constraint_upper_bounds_move(rmm::device_uvector<f_t>&& constraint_upper_bounds);
-
-  /**
-   * @brief Move row types without copying (transfers ownership).
-   * @param[in] row_types rvalue reference to row types vector
-   */
-  void set_row_types_move(rmm::device_uvector<char>&& row_types);
 
   // ============================================================================
   // Device getters
@@ -305,18 +309,6 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   bool is_equivalent(const optimization_problem_interface_t<i_t, f_t>& other) const override;
 
   // ============================================================================
-  // Remote Execution (Polymorphic Dispatch)
-  // ============================================================================
-
-  std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings,
-    bool problem_checking     = true,
-    bool use_pdlp_solver_mode = true) const override;
-
-  std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
-    mip_solver_settings_t<i_t, f_t> const& settings) const override;
-
-  // ============================================================================
   // Conversion
   // ============================================================================
 
@@ -324,14 +316,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
    * @brief Returns nullptr since this is already a GPU problem.
    * @return nullptr
    */
-  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem() override;
-
-  /**
-   * @brief Creates a new CPU problem by copying data from GPU to host memory.
-   * @return unique_ptr to new cpu_optimization_problem_t with copied data
-   */
-  std::unique_ptr<cpu_optimization_problem_t<i_t, f_t>> to_cpu_optimization_problem()
-    const override;
+  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
+    raft::handle_t const* handle_ptr = nullptr) override;
 
   // ============================================================================
   // C API support: Copy to host (polymorphic)

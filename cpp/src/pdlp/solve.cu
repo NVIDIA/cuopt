@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/solve_remote.hpp>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -1202,8 +1203,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
     }
 
-    // Declare result in the same scope as problem so that result->reduced_problem
-    // (pointed to by problem.original_problem_ptr) remains valid through the solve.
+    // Declare result at outer scope so that result->reduced_problem (which may be
+    // referenced by problem.original_problem_ptr) remains alive through the solve.
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> result;
 
     if (run_presolve) {
@@ -1467,14 +1468,8 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   rmm::cuda_stream stream;
   raft::handle_t handle(stream);
 
-  // Temporarily set the handle on the CPU problem so it can create GPU resources
-  cpu_problem.set_handle(&handle);
-
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem();
-
-  // Clear the handle to avoid dangling pointer after this scope
-  cpu_problem.set_handle(nullptr);
+  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -1504,14 +1499,22 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
-  // Check if remote execution is enabled
+  cuopt_expects(problem_interface != nullptr,
+                error_type_t::ValidationError,
+                "problem_interface cannot be null");
+
+  // Check if remote execution is enabled (always uses CPU backend)
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
                   "Batch mode with remote execution is not supported via this entry point. "
                   "Use solve_batch_remote() instead.");
+    auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+    cuopt_expects(cpu_prob != nullptr,
+                  error_type_t::ValidationError,
+                  "Remote execution requires CPU memory backend");
     CUOPT_LOG_INFO("Remote LP solve requested");
-    return problem_interface->solve_lp_remote(settings, problem_checking, use_pdlp_solver_mode);
+    return solve_lp_remote(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode);
   }
 
   // Local execution - dispatch to appropriate overload based on problem type
@@ -1522,9 +1525,12 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   }
 
   // GPU problem: call GPU solver directly
-  auto& gpu_prob = static_cast<optimization_problem_t<i_t, f_t>&>(*problem_interface);
+  auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);
+  cuopt_expects(gpu_prob != nullptr,
+                error_type_t::ValidationError,
+                "problem_interface must be either a CPU or GPU optimization problem");
   auto gpu_solution =
-    solve_lp<i_t, f_t>(gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+    solve_lp<i_t, f_t>(*gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 

@@ -173,8 +173,8 @@ std::unique_ptr<solver_ret_t> call_solve(
     }
 
   } else {
-    // CPU memory backend: No CUDA resources needed at problem-creation time
-    auto cpu_problem = cuopt::linear_programming::cpu_optimization_problem_t<int, double>(nullptr);
+    // CPU memory backend: pure data container, no CUDA resources needed
+    auto cpu_problem = cuopt::linear_programming::cpu_optimization_problem_t<int, double>();
     cuopt::linear_programming::populate_from_data_model_view(
       &cpu_problem, data_model, solver_settings, nullptr);
 

@@ -39,7 +39,7 @@ struct problem_and_stream_view_t {
       gpu_problem     = gp.release();
       cpu_problem     = nullptr;
     } else {
-      cpu_problem = new cpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>(nullptr);
+      cpu_problem = new cpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>();
       gpu_problem = nullptr;
     }
   }

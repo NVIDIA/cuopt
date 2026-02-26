@@ -277,8 +277,8 @@ TEST(optimization_problem_t, test_check_problem_validity)
   // Test that n_vars is now set
   EXPECT_EQ(op_problem_.get_n_variables(), 1);
 
-  // Test that n_constraints is not set
-  EXPECT_EQ(op_problem_.get_n_constraints(), 0);
+  // n_constraints is now derived from CSR offsets (size_offsets - 1)
+  EXPECT_EQ(op_problem_.get_n_constraints(), 1);
 
   // Set row type
   char row_type_host[] = {'E'};
@@ -288,7 +288,6 @@ TEST(optimization_problem_t, test_check_problem_validity)
   EXPECT_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_)),
                cuopt::logic_error);
 
-  // Test that n_constraints is now set
   EXPECT_EQ(op_problem_.get_n_constraints(), 1);
 
   // Set b

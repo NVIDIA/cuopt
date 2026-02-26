@@ -16,10 +16,10 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
-#include <raft/common/nvtx.hpp>
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
 #include <raft/core/device_mdspan.hpp>
+#include <raft/core/nvtx.hpp>
 #include <raft/core/operators.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
@@ -51,7 +51,7 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
   : handle_ptr_(handle_ptr),
-    stream_view_(handle_ptr->get_stream()),
+    stream_view_(handle_ptr != nullptr ? handle_ptr->get_stream() : rmm::cuda_stream_view{}),
     A_(0, stream_view_),
     A_indices_(0, stream_view_),
     A_offsets_(0, stream_view_),
@@ -133,6 +133,7 @@ void optimization_problem_t<i_t, f_t>::set_csr_constraint_matrix(const f_t* A_va
   cuopt_expects(A_offsets != nullptr, error_type_t::ValidationError, "A_offsets cannot be null");
   A_offsets_.resize(size_offsets, stream_view_);
   raft::copy(A_offsets_.data(), A_offsets, size_offsets, stream_view_);
+  n_constraints_ = size_offsets == 0 ? 0 : size_offsets - 1;
 }
 
 template <typename i_t, typename f_t>
@@ -183,9 +184,9 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
     cuopt_expects(Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
   }
 
-  if (size_offsets != 0) {
-    cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
-  }
+  cuopt_expects(
+    size_offsets >= 1, error_type_t::ValidationError, "Q_offsets must have at least 1 element");
+  cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
 
   // Replace Q with Q + Q^T
   i_t qn    = size_offsets - 1;  // Number of variables
@@ -312,11 +313,12 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
                                    variable_types_.begin(),
                                    variable_types_.end(),
                                    [] __device__(auto val) { return val == var_t::INTEGER; });
-  // By default it is LP
   if (n_integer == size) {
     problem_category_ = problem_category_t::IP;
   } else if (n_integer > 0) {
     problem_category_ = problem_category_t::MIP;
+  } else {
+    problem_category_ = problem_category_t::LP;
   }
 }
 
@@ -386,94 +388,6 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_row_names(const std::vector<std::string>& row_names)
 {
   row_names_ = row_names;
-}
-
-// ============================================================================
-// Move-based setters (zero-copy, transfers ownership)
-// ============================================================================
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_csr_constraint_matrix_move(
-  rmm::device_uvector<f_t>&& A_values,
-  rmm::device_uvector<i_t>&& A_indices,
-  rmm::device_uvector<i_t>&& A_offsets)
-{
-  A_             = std::move(A_values);
-  A_indices_     = std::move(A_indices);
-  A_offsets_     = std::move(A_offsets);
-  n_constraints_ = A_offsets_.size() - 1;
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_constraint_bounds_move(rmm::device_uvector<f_t>&& b)
-{
-  b_             = std::move(b);
-  n_constraints_ = b_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_objective_coefficients_move(rmm::device_uvector<f_t>&& c)
-{
-  c_      = std::move(c);
-  n_vars_ = c_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_variable_lower_bounds_move(
-  rmm::device_uvector<f_t>&& variable_lower_bounds)
-{
-  variable_lower_bounds_ = std::move(variable_lower_bounds);
-  n_vars_                = variable_lower_bounds_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_variable_upper_bounds_move(
-  rmm::device_uvector<f_t>&& variable_upper_bounds)
-{
-  variable_upper_bounds_ = std::move(variable_upper_bounds);
-  n_vars_                = variable_upper_bounds_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_variable_types_move(
-  rmm::device_uvector<var_t>&& variable_types)
-{
-  variable_types_ = std::move(variable_types);
-  i_t size        = variable_types_.size();
-  i_t n_integer   = thrust::count_if(handle_ptr_->get_thrust_policy(),
-                                   variable_types_.begin(),
-                                   variable_types_.end(),
-                                   [] __device__(auto val) { return val == var_t::INTEGER; });
-  if (n_integer == size) {
-    problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
-    problem_category_ = problem_category_t::MIP;
-  } else {
-    problem_category_ = problem_category_t::LP;
-  }
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_constraint_lower_bounds_move(
-  rmm::device_uvector<f_t>&& constraint_lower_bounds)
-{
-  constraint_lower_bounds_ = std::move(constraint_lower_bounds);
-  n_constraints_           = constraint_lower_bounds_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_constraint_upper_bounds_move(
-  rmm::device_uvector<f_t>&& constraint_upper_bounds)
-{
-  constraint_upper_bounds_ = std::move(constraint_upper_bounds);
-  n_constraints_           = constraint_upper_bounds_.size();
-}
-
-template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_row_types_move(rmm::device_uvector<char>&& row_types)
-{
-  row_types_     = std::move(row_types);
-  n_constraints_ = row_types_.size();
 }
 
 // ==============================================================================
@@ -652,7 +566,7 @@ bool optimization_problem_t<i_t, f_t>::get_sense() const
 template <typename i_t, typename f_t>
 bool optimization_problem_t<i_t, f_t>::empty() const
 {
-  return n_vars_ == 0 && n_constraints_ == 0;
+  return n_vars_ == 0 || n_constraints_ == 0;
 }
 
 template <typename i_t, typename f_t>
@@ -721,83 +635,10 @@ raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const n
 
 template <typename i_t, typename f_t>
 std::unique_ptr<optimization_problem_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::to_optimization_problem()
+optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* /*handle_ptr*/)
 {
   // Already a GPU problem, return nullptr
   return nullptr;
-}
-
-template <typename i_t, typename f_t>
-std::unique_ptr<cpu_optimization_problem_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::to_cpu_optimization_problem() const
-{
-  // Create CPU problem (no CUDA resources needed for CPU-only operations)
-  auto cpu_problem = std::make_unique<cpu_optimization_problem_t<i_t, f_t>>(nullptr);
-
-  // Copy scalar properties
-  cpu_problem->set_maximize(get_sense());
-  cpu_problem->set_objective_offset(get_objective_offset());
-  cpu_problem->set_problem_category(get_problem_category());
-
-  // Copy names
-  cpu_problem->set_problem_name(get_problem_name());
-  cpu_problem->set_objective_name(get_objective_name());
-  cpu_problem->set_variable_names(get_variable_names());
-  cpu_problem->set_row_names(get_row_names());
-
-  // Copy objective coefficients
-  auto obj_coeffs = get_objective_coefficients_host();
-  if (!obj_coeffs.empty()) {
-    cpu_problem->set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
-  }
-
-  // Copy constraint matrix (CSR format)
-  auto matrix_values  = get_constraint_matrix_values_host();
-  auto matrix_indices = get_constraint_matrix_indices_host();
-  auto matrix_offsets = get_constraint_matrix_offsets_host();
-  if (!matrix_values.empty()) {
-    cpu_problem->set_csr_constraint_matrix(matrix_values.data(),
-                                           matrix_values.size(),
-                                           matrix_indices.data(),
-                                           matrix_indices.size(),
-                                           matrix_offsets.data(),
-                                           matrix_offsets.size());
-  }
-
-  // Copy constraint bounds
-  auto constraint_lb = get_constraint_lower_bounds_host();
-  auto constraint_ub = get_constraint_upper_bounds_host();
-  if (!constraint_lb.empty()) {
-    cpu_problem->set_constraint_lower_bounds(constraint_lb.data(), constraint_lb.size());
-  }
-  if (!constraint_ub.empty()) {
-    cpu_problem->set_constraint_upper_bounds(constraint_ub.data(), constraint_ub.size());
-  }
-
-  // Copy variable bounds
-  auto var_lb = get_variable_lower_bounds_host();
-  auto var_ub = get_variable_upper_bounds_host();
-  if (!var_lb.empty()) { cpu_problem->set_variable_lower_bounds(var_lb.data(), var_lb.size()); }
-  if (!var_ub.empty()) { cpu_problem->set_variable_upper_bounds(var_ub.data(), var_ub.size()); }
-
-  // Copy variable types
-  auto var_types = get_variable_types_host();
-  if (!var_types.empty()) { cpu_problem->set_variable_types(var_types.data(), var_types.size()); }
-
-  // Copy quadratic objective if present
-  if (has_quadratic_objective()) {
-    auto quad_offsets = get_quadratic_objective_offsets();
-    auto quad_indices = get_quadratic_objective_indices();
-    auto quad_values  = get_quadratic_objective_values();
-    cpu_problem->set_quadratic_objective_matrix(quad_values.data(),
-                                                quad_values.size(),
-                                                quad_indices.data(),
-                                                quad_indices.size(),
-                                                quad_offsets.data(),
-                                                quad_offsets.size());
-  }
-
-  return cpu_problem;
 }
 
 // ==============================================================================
@@ -970,8 +811,9 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   auto constraint_upper_bounds   = cuopt::host_copy(get_constraint_upper_bounds(), stream);
   auto row_types                 = cuopt::host_copy(get_row_types(), stream);
 
-  // Set constraint matrix in CSR format
-  if (get_nnz() != 0) {
+  // Set constraint matrix in CSR format (guard on offsets, not nnz, to preserve
+  // zero-nnz but structurally valid matrices)
+  if (!constraint_matrix_offsets.empty()) {
     data_model_view.set_csr_constraint_matrix(constraint_matrix_values.data(),
                                               constraint_matrix_values.size(),
                                               constraint_matrix_indices.data(),
@@ -1256,8 +1098,14 @@ bool optimization_problem_t<i_t, f_t>::is_equivalent(
   if (problem_category_ != other.problem_category_) { return false; }
   if (A_.size() != other.A_.size()) { return false; }
 
-  if (var_names_.empty() || other.var_names_.empty()) { return false; }
-  if (row_names_.empty() || other.row_names_.empty()) { return false; }
+  if (var_names_.size() != static_cast<size_t>(n_vars_) ||
+      other.var_names_.size() != static_cast<size_t>(other.n_vars_)) {
+    return false;
+  }
+  if (row_names_.size() != static_cast<size_t>(n_constraints_) ||
+      other.row_names_.size() != static_cast<size_t>(other.n_constraints_)) {
+    return false;
+  }
 
   // Build variable permutation: var_perm[i] = index j in other where var_names_[i] ==
   // other.var_names_[j]
@@ -1546,28 +1394,6 @@ bool optimization_problem_t<i_t, f_t>::is_equivalent(
 }
 
 // ==============================================================================
-// Remote Execution (Polymorphic Dispatch)
-// ==============================================================================
-
-template <typename i_t, typename f_t>
-std::unique_ptr<lp_solution_interface_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::solve_lp_remote(pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                                  bool problem_checking,
-                                                  bool use_pdlp_solver_mode) const
-{
-  return ::cuopt::linear_programming::solve_lp_remote(
-    *this, settings, problem_checking, use_pdlp_solver_mode);
-}
-
-template <typename i_t, typename f_t>
-std::unique_ptr<mip_solution_interface_t<i_t, f_t>>
-optimization_problem_t<i_t, f_t>::solve_mip_remote(
-  mip_solver_settings_t<i_t, f_t> const& settings) const
-{
-  return ::cuopt::linear_programming::solve_mip_remote(*this, settings);
-}
-
-// ==============================================================================
 // C API Support: Copy to Host (GPU Implementation)
 // ==============================================================================
 
@@ -1575,9 +1401,9 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_objective_coefficients_to_host(f_t* output,
                                                                            i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(c_.size()),
+  cuopt_expects(output != nullptr && size >= 0 && size <= static_cast<i_t>(c_.size()),
                 error_type_t::ValidationError,
-                "copy_objective_coefficients_to_host: null output or size exceeds buffer");
+                "copy_objective_coefficients_to_host: null output or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(output, c_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
 
@@ -1585,15 +1411,17 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_constraint_matrix_to_host(
   f_t* values, i_t* indices, i_t* offsets, i_t num_values, i_t num_indices, i_t num_offsets) const
 {
-  cuopt_expects(values != nullptr && num_values <= static_cast<i_t>(A_.size()),
+  cuopt_expects(values != nullptr && num_values >= 0 && num_values <= static_cast<i_t>(A_.size()),
                 error_type_t::ValidationError,
-                "copy_constraint_matrix_to_host: null values or size exceeds buffer");
-  cuopt_expects(indices != nullptr && num_indices <= static_cast<i_t>(A_indices_.size()),
-                error_type_t::ValidationError,
-                "copy_constraint_matrix_to_host: null indices or size exceeds buffer");
-  cuopt_expects(offsets != nullptr && num_offsets <= static_cast<i_t>(A_offsets_.size()),
-                error_type_t::ValidationError,
-                "copy_constraint_matrix_to_host: null offsets or size exceeds buffer");
+                "copy_constraint_matrix_to_host: null values or invalid size");
+  cuopt_expects(
+    indices != nullptr && num_indices >= 0 && num_indices <= static_cast<i_t>(A_indices_.size()),
+    error_type_t::ValidationError,
+    "copy_constraint_matrix_to_host: null indices or invalid size");
+  cuopt_expects(
+    offsets != nullptr && num_offsets >= 0 && num_offsets <= static_cast<i_t>(A_offsets_.size()),
+    error_type_t::ValidationError,
+    "copy_constraint_matrix_to_host: null offsets or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(values, A_.data(), num_values * sizeof(f_t), cudaMemcpyDeviceToHost));
   RAFT_CUDA_TRY(
     cudaMemcpy(indices, A_indices_.data(), num_indices * sizeof(i_t), cudaMemcpyDeviceToHost));
@@ -1604,18 +1432,18 @@ void optimization_problem_t<i_t, f_t>::copy_constraint_matrix_to_host(
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_row_types_to_host(char* output, i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(row_types_.size()),
+  cuopt_expects(output != nullptr && size >= 0 && size <= static_cast<i_t>(row_types_.size()),
                 error_type_t::ValidationError,
-                "copy_row_types_to_host: null output or size exceeds buffer");
+                "copy_row_types_to_host: null output or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(output, row_types_.data(), size * sizeof(char), cudaMemcpyDeviceToHost));
 }
 
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_constraint_bounds_to_host(f_t* output, i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(b_.size()),
+  cuopt_expects(output != nullptr && size >= 0 && size <= static_cast<i_t>(b_.size()),
                 error_type_t::ValidationError,
-                "copy_constraint_bounds_to_host: null output or size exceeds buffer");
+                "copy_constraint_bounds_to_host: null output or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(output, b_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
 
@@ -1623,9 +1451,10 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_constraint_lower_bounds_to_host(f_t* output,
                                                                             i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(constraint_lower_bounds_.size()),
-                error_type_t::ValidationError,
-                "copy_constraint_lower_bounds_to_host: null output or size exceeds buffer");
+  cuopt_expects(
+    output != nullptr && size >= 0 && size <= static_cast<i_t>(constraint_lower_bounds_.size()),
+    error_type_t::ValidationError,
+    "copy_constraint_lower_bounds_to_host: null output or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(
     output, constraint_lower_bounds_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
@@ -1634,9 +1463,10 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_constraint_upper_bounds_to_host(f_t* output,
                                                                             i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(constraint_upper_bounds_.size()),
-                error_type_t::ValidationError,
-                "copy_constraint_upper_bounds_to_host: null output or size exceeds buffer");
+  cuopt_expects(
+    output != nullptr && size >= 0 && size <= static_cast<i_t>(constraint_upper_bounds_.size()),
+    error_type_t::ValidationError,
+    "copy_constraint_upper_bounds_to_host: null output or invalid size");
   RAFT_CUDA_TRY(cudaMemcpy(
     output, constraint_upper_bounds_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
@@ -1645,9 +1475,10 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_variable_lower_bounds_to_host(f_t* output,
                                                                           i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(variable_lower_bounds_.size()),
-                error_type_t::ValidationError,
-                "copy_variable_lower_bounds_to_host: null output or size exceeds buffer");
+  cuopt_expects(
+    output != nullptr && size >= 0 && size <= static_cast<i_t>(variable_lower_bounds_.size()),
+    error_type_t::ValidationError,
+    "copy_variable_lower_bounds_to_host: null output or invalid size");
   RAFT_CUDA_TRY(
     cudaMemcpy(output, variable_lower_bounds_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
@@ -1656,9 +1487,10 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_variable_upper_bounds_to_host(f_t* output,
                                                                           i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(variable_upper_bounds_.size()),
-                error_type_t::ValidationError,
-                "copy_variable_upper_bounds_to_host: null output or size exceeds buffer");
+  cuopt_expects(
+    output != nullptr && size >= 0 && size <= static_cast<i_t>(variable_upper_bounds_.size()),
+    error_type_t::ValidationError,
+    "copy_variable_upper_bounds_to_host: null output or invalid size");
   RAFT_CUDA_TRY(
     cudaMemcpy(output, variable_upper_bounds_.data(), size * sizeof(f_t), cudaMemcpyDeviceToHost));
 }
@@ -1666,9 +1498,9 @@ void optimization_problem_t<i_t, f_t>::copy_variable_upper_bounds_to_host(f_t* o
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::copy_variable_types_to_host(var_t* output, i_t size) const
 {
-  cuopt_expects(output != nullptr && size <= static_cast<i_t>(variable_types_.size()),
+  cuopt_expects(output != nullptr && size >= 0 && size <= static_cast<i_t>(variable_types_.size()),
                 error_type_t::ValidationError,
-                "copy_variable_types_to_host: null output or size exceeds buffer");
+                "copy_variable_types_to_host: null output or invalid size");
   RAFT_CUDA_TRY(
     cudaMemcpy(output, variable_types_.data(), size * sizeof(var_t), cudaMemcpyDeviceToHost));
 }

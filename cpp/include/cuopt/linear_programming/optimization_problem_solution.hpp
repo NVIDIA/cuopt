@@ -311,12 +311,6 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       .iterations_since_last_restart_;
   }
 
-  optimization_problem_solution_t<i_t, f_t> to_gpu_solution(rmm::cuda_stream_view) override
-  {
-    throw cuopt::logic_error("to_gpu_solution called on already GPU-backed solution",
-                             error_type_t::ValidationError);
-  }
-
   /**
    * @brief Convert GPU solution to CPU solution
    * Copies data from device to host for test mode or CPU-only environments.
@@ -442,12 +436,6 @@ class gpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
   i_t get_num_nodes() const override { return solution_.get_num_nodes(); }
 
   i_t get_num_simplex_iterations() const override { return solution_.get_num_simplex_iterations(); }
-
-  mip_solution_t<i_t, f_t> to_gpu_solution(rmm::cuda_stream_view) override
-  {
-    throw cuopt::logic_error("to_gpu_solution called on already GPU-backed MIP solution",
-                             error_type_t::ValidationError);
-  }
 
   /**
    * @brief Convert GPU MIP solution to CPU MIP solution

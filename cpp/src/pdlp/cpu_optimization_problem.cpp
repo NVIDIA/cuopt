@@ -28,8 +28,7 @@ namespace cuopt::linear_programming {
 // ==============================================================================
 
 template <typename i_t, typename f_t>
-cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t(raft::handle_t const* handle_ptr)
-  : handle_ptr_(handle_ptr)
+cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t()
 {
   CUOPT_LOG_DEBUG("cpu_optimization_problem_t constructor: Using CPU backend");
 }
@@ -570,16 +569,16 @@ std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host
 
 template <typename i_t, typename f_t>
 std::unique_ptr<optimization_problem_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem()
+cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* handle_ptr)
 {
-  if (handle_ptr_ == nullptr) {
+  if (handle_ptr == nullptr) {
     throw std::runtime_error(
       "cpu_optimization_problem_t::to_optimization_problem(): "
       "handle_ptr is null. A RAFT handle with CUDA resources is required to convert "
       "a CPU-backed problem to a GPU-backed optimization_problem_t.");
   }
 
-  auto gpu_problem = std::make_unique<optimization_problem_t<i_t, f_t>>(handle_ptr_);
+  auto gpu_problem = std::make_unique<optimization_problem_t<i_t, f_t>>(handle_ptr);
 
   // Set scalar values
   gpu_problem->set_maximize(maximize_);
@@ -650,13 +649,6 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem()
   if (!row_types_.empty()) { gpu_problem->set_row_types(row_types_.data(), row_types_.size()); }
 
   return gpu_problem;
-}
-
-template <typename i_t, typename f_t>
-std::unique_ptr<cpu_optimization_problem_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::to_cpu_optimization_problem() const
-{
-  return nullptr;
 }
 
 // ==============================================================================
@@ -914,29 +906,6 @@ bool cpu_optimization_problem_t<i_t, f_t>::is_equivalent(
   }
 
   return true;
-}
-
-// ==============================================================================
-// Remote Execution (Polymorphic Dispatch)
-// ==============================================================================
-
-template <typename i_t, typename f_t>
-std::unique_ptr<lp_solution_interface_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::solve_lp_remote(
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool problem_checking,
-  bool use_pdlp_solver_mode) const
-{
-  return ::cuopt::linear_programming::solve_lp_remote(
-    *this, settings, problem_checking, use_pdlp_solver_mode);
-}
-
-template <typename i_t, typename f_t>
-std::unique_ptr<mip_solution_interface_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::solve_mip_remote(
-  mip_solver_settings_t<i_t, f_t> const& settings) const
-{
-  return ::cuopt::linear_programming::solve_mip_remote(*this, settings);
 }
 
 // ==============================================================================

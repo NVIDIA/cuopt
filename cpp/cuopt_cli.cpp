@@ -138,7 +138,7 @@ int run_single_file(const std::string& file_path,
         handle_ptr.get());
   } else {
     problem_interface =
-      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>(nullptr);
+      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
   }
 
   // Populate the problem from MPS data model

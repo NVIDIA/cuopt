@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -393,14 +394,8 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   rmm::cuda_stream stream;
   raft::handle_t handle(stream);
 
-  // Temporarily set the handle on the CPU problem so it can create GPU resources
-  cpu_problem.set_handle(&handle);
-
   // Convert CPU problem to GPU problem
-  auto gpu_problem = cpu_problem.to_optimization_problem();
-
-  // Clear the handle to avoid dangling pointer after this scope
-  cpu_problem.set_handle(nullptr);
+  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
 
   // Synchronize before solving to ensure conversion is complete
   stream.synchronize();
@@ -426,11 +421,19 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   optimization_problem_interface_t<i_t, f_t>* problem_interface,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
+  cuopt_expects(problem_interface != nullptr,
+                error_type_t::ValidationError,
+                "problem_interface cannot be null");
+
   try {
-    // Check if remote execution is enabled
+    // Check if remote execution is enabled (always uses CPU backend)
     if (is_remote_execution_enabled()) {
+      auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+      cuopt_expects(cpu_prob != nullptr,
+                    error_type_t::ValidationError,
+                    "Remote execution requires CPU memory backend");
       CUOPT_LOG_INFO("Remote MIP solve requested");
-      return problem_interface->solve_mip_remote(settings);
+      return solve_mip_remote(*cpu_prob, settings);
     }
 
     // Local execution - dispatch to appropriate overload based on problem type
@@ -441,8 +444,11 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
     }
 
     // GPU problem: call GPU solver directly
-    auto& gpu_prob    = static_cast<optimization_problem_t<i_t, f_t>&>(*problem_interface);
-    auto gpu_solution = solve_mip<i_t, f_t>(gpu_prob, settings);
+    auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);
+    cuopt_expects(gpu_prob != nullptr,
+                  error_type_t::ValidationError,
+                  "problem_interface must be either a CPU or GPU optimization problem");
+    auto gpu_solution = solve_mip<i_t, f_t>(*gpu_prob, settings);
     return std::make_unique<gpu_mip_solution_t<i_t, f_t>>(std::move(gpu_solution));
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_mip (interface): %s", e.what());

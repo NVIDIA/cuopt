@@ -25,7 +25,8 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 template <typename i_t, typename f_t>
 class optimization_problem_t;
-
+template <typename i_t, typename f_t>
+class cpu_optimization_problem_t;
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t;
 template <typename i_t, typename f_t>
@@ -34,10 +35,6 @@ template <typename i_t, typename f_t>
 class lp_solution_interface_t;
 template <typename i_t, typename f_t>
 class mip_solution_interface_t;
-template <typename i_t, typename f_t>
-class optimization_problem_t;
-template <typename i_t, typename f_t>
-class cpu_optimization_problem_t;
 
 /**
  * @brief Interface for optimization problem implementations that can store data
@@ -338,32 +335,6 @@ class optimization_problem_interface_t {
   virtual bool is_equivalent(const optimization_problem_interface_t<i_t, f_t>& other) const = 0;
 
   // ============================================================================
-  // Remote Execution (Polymorphic Dispatch)
-  // ============================================================================
-
-  /**
-   * @brief Solve LP problem using remote execution (polymorphic)
-   * This method dispatches to the appropriate solve_lp_remote overload based on
-   * the concrete type (GPU or CPU).
-   * @param[in] settings PDLP solver settings
-   * @return Pointer to solution interface
-   */
-  virtual std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings,
-    bool problem_checking     = true,
-    bool use_pdlp_solver_mode = true) const = 0;
-
-  /**
-   * @brief Solve MIP problem using remote execution (polymorphic)
-   * This method dispatches to the appropriate solve_mip_remote overload based on
-   * the concrete type (GPU or CPU).
-   * @param[in] settings MIP solver settings
-   * @return Pointer to solution interface
-   */
-  virtual std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
-    mip_solver_settings_t<i_t, f_t> const& settings) const = 0;
-
-  // ============================================================================
   // C API Support: Copy to Host (Polymorphic)
   // ============================================================================
 
@@ -452,24 +423,15 @@ class optimization_problem_interface_t {
    * For cpu_optimization_problem_t: creates new GPU problem, copies data, returns owned pointer.
    *
    * Usage pattern:
-   *   auto temp = problem_interface->to_optimization_problem();
+   *   auto temp = problem_interface->to_optimization_problem(&handle);
    *   optimization_problem_t& op = temp ? *temp : static_cast<optimization_problem_t&>(*this);
    *
+   * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
+   *                   Required for CPU->GPU conversion. Ignored for GPU problems.
    * @return unique_ptr to new GPU problem, or nullptr if already a GPU problem
    */
-  virtual std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem() = 0;
-
-  /**
-   * @brief Convert to a CPU-backed cpu_optimization_problem_t.
-   *
-   * For cpu_optimization_problem_t (CPU): returns nullptr (already is one).
-   * For optimization_problem_t: creates new CPU problem, copies data from GPU, returns owned
-   * pointer.
-   *
-   * @return unique_ptr to new CPU problem, or nullptr if already a CPU problem
-   */
-  virtual std::unique_ptr<cpu_optimization_problem_t<i_t, f_t>> to_cpu_optimization_problem()
-    const = 0;
+  virtual std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
+    raft::handle_t const* handle_ptr = nullptr) = 0;
 };
 
 }  // namespace cuopt::linear_programming

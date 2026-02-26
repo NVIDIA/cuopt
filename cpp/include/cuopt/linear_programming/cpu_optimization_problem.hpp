@@ -35,13 +35,13 @@ class mip_solution_interface_t;
  * @brief CPU-based implementation of optimization_problem_interface_t.
  *
  * This implementation stores all data in CPU memory using std::vector.
- * It only implements host getters (returning std::vector references).
+ * It only implements host getters (returning std::vector by value).
  * Device getters throw exceptions as GPU memory access is not supported.
  */
 template <typename i_t, typename f_t>
 class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, f_t> {
  public:
-  explicit cpu_optimization_problem_t(raft::handle_t const* handle_ptr = nullptr);
+  cpu_optimization_problem_t();
 
   // Setters
   void set_maximize(bool maximize) override;
@@ -127,36 +127,15 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<var_t> get_variable_types_host() const override;
 
   /**
-   * @brief Set the CUDA handle for GPU operations
-   *
-   * This is used in test mode when a CPU problem needs to be converted to GPU
-   * for local solving. The handle must be set before calling to_optimization_problem().
-   *
-   * @param handle_ptr Pointer to the RAFT handle with CUDA resources
-   */
-  void set_handle(raft::handle_t const* handle_ptr) { handle_ptr_ = handle_ptr; }
-
-  /**
-   * @brief Get the CUDA handle pointer
-   * @return Pointer to the RAFT handle, or nullptr if not set
-   */
-  raft::handle_t const* get_handle_ptr() const { return handle_ptr_; }
-
-  /**
    * @brief Convert this CPU optimization problem to an optimization_problem_t
    *        by copying CPU data to GPU (requires GPU memory transfer).
    *
+   * @param handle_ptr RAFT handle with CUDA resources for GPU memory allocation.
    * @return unique_ptr to new optimization_problem_t with all data copied to GPU
    * @throws std::runtime_error if handle_ptr is null
    */
-  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem() override;
-
-  /**
-   * @brief Returns nullptr since this is already a CPU problem.
-   * @return nullptr
-   */
-  std::unique_ptr<cpu_optimization_problem_t<i_t, f_t>> to_cpu_optimization_problem()
-    const override;
+  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
+    raft::handle_t const* handle_ptr = nullptr) override;
 
   /**
    * @brief Write the optimization problem to an MPS file.
@@ -170,15 +149,6 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
    * @return true if the problems are equivalent (up to permutation of variables/constraints)
    */
   bool is_equivalent(const optimization_problem_interface_t<i_t, f_t>& other) const override;
-
-  // Remote execution (polymorphic dispatch)
-  std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
-    pdlp_solver_settings_t<i_t, f_t> const& settings,
-    bool problem_checking     = true,
-    bool use_pdlp_solver_mode = true) const override;
-
-  std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
-    mip_solver_settings_t<i_t, f_t> const& settings) const override;
 
   // C API support: Copy to host (polymorphic)
   void copy_objective_coefficients_to_host(f_t* output, i_t size) const override;
@@ -197,8 +167,6 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void copy_variable_types_to_host(var_t* output, i_t size) const override;
 
  private:
-  raft::handle_t const* handle_ptr_{nullptr};
-
   problem_category_t problem_category_ = problem_category_t::LP;
   bool maximize_{false};
   i_t n_vars_{0};
