@@ -36,21 +36,53 @@ template <typename i_t, typename f_t>
 struct inequality_t {
   inequality_t() : vector(), rhs(0.0) {}
   inequality_t(i_t num_cols) : vector(num_cols, 0), rhs(0.0) {}
-  inequality_t(csr_matrix_t<i_t, f_t>& A, i_t row, f_t rhs_value) : vector(A, row), rhs(rhs_value) {}
+  inequality_t(csr_matrix_t<i_t, f_t>& A, i_t row, f_t rhs_value) : vector(A, row), rhs(rhs_value)
+  {
+  }
   sparse_vector_t<i_t, f_t> vector;
   f_t rhs;
 
-  void push_back(i_t j, f_t x) { vector.i.push_back(j); vector.x.push_back(x); }
-  void clear() { vector.i.clear(); vector.x.clear(); }
-  void reserve(size_t n) { vector.i.reserve(n); vector.x.reserve(n); }
+  void push_back(i_t j, f_t x)
+  {
+    vector.i.push_back(j);
+    vector.x.push_back(x);
+  }
+  void clear()
+  {
+    vector.i.clear();
+    vector.x.clear();
+  }
+  void reserve(size_t n)
+  {
+    vector.i.reserve(n);
+    vector.x.reserve(n);
+  }
   size_t size() const { return vector.i.size(); }
   i_t index(i_t k) const { return vector.i[k]; }
   f_t coeff(i_t k) const { return vector.x[k]; }
-  void negate() { vector.negate(); rhs *= -1.0; }
+  void negate()
+  {
+    vector.negate();
+    rhs *= -1.0;
+  }
   void sort() { vector.sort(); }
-  void squeeze(inequality_t<i_t, f_t>& out) const { vector.squeeze(out.vector); out.rhs = rhs; }
-  void scale(f_t factor) { vector.scale(factor); rhs *= factor; }
-  void print() const { for (i_t k = 0; k < size(); k++) { printf("%d %g ", index(k), coeff(k)); } printf("\nrhs %g\n", rhs); }
+  void squeeze(inequality_t<i_t, f_t>& out) const
+  {
+    vector.squeeze(out.vector);
+    out.rhs = rhs;
+  }
+  void scale(f_t factor)
+  {
+    vector.scale(factor);
+    rhs *= factor;
+  }
+  void print() const
+  {
+    for (i_t k = 0; k < size(); k++) {
+      printf("%d %g ", index(k), coeff(k));
+    }
+    printf("\nrhs %g\n", rhs);
+  }
 };
 
 template <typename i_t, typename f_t>
@@ -389,8 +421,6 @@ class tableau_equality_t {
   std::vector<f_t> c_workspace_;
 };
 
-
-
 template <typename i_t, typename f_t>
 class variable_bounds_t {
  public:
@@ -496,7 +526,6 @@ class complemented_mixed_integer_rounding_cut_t {
                                             const simplex_solver_settings_t<i_t, f_t>& settings,
                                             const std::vector<i_t>& new_slacks);
 
-
   void compute_initial_scores_for_rows(const lp_problem_t<i_t, f_t>& lp,
                                        const simplex_solver_settings_t<i_t, f_t>& settings,
                                        const csr_matrix_t<i_t, f_t>& Arow,
@@ -538,8 +567,7 @@ class complemented_mixed_integer_rounding_cut_t {
                                                   const std::vector<variable_type_t>& var_types,
                                                   inequality_t<i_t, f_t>& cut);
 
-  f_t compute_violation(const inequality_t<i_t, f_t>& cut,
-                        const std::vector<f_t>& xstar);
+  f_t compute_violation(const inequality_t<i_t, f_t>& cut, const std::vector<f_t>& xstar);
 
   f_t new_upper(i_t j) const { return transformed_upper_[j]; }
 
@@ -583,8 +611,10 @@ class complemented_mixed_integer_rounding_cut_t {
 
  private:
   std::vector<i_t> is_slack_;
-  std::vector<i_t> slack_rows_; // slack_rows_[j] = i, if variable j is slack for row i, -1 is sentinal value
-  std::vector<i_t> slack_cols_; // slack_cols_[i] = j, if variable j is slack for row i  -1 is sentinal value
+  std::vector<i_t>
+    slack_rows_;  // slack_rows_[j] = i, if variable j is slack for row i, -1 is sentinal value
+  std::vector<i_t>
+    slack_cols_;  // slack_cols_[i] = j, if variable j is slack for row i  -1 is sentinal value
 
   std::vector<i_t> lb_variable_;
   std::vector<f_t> lb_star_;
@@ -617,8 +647,7 @@ class strong_cg_cut_t {
     const std::vector<variable_type_t>& var_types,
     inequality_t<i_t, f_t>& inequality);
 
-  void to_original_integer_variables(const lp_problem_t<i_t, f_t>& lp,
-                                     inequality_t<i_t, f_t>& cut);
+  void to_original_integer_variables(const lp_problem_t<i_t, f_t>& lp, inequality_t<i_t, f_t>& cut);
 
   i_t generate_strong_cg_cut_integer_only(const simplex_solver_settings_t<i_t, f_t>& settings,
                                           const std::vector<variable_type_t>& var_types,

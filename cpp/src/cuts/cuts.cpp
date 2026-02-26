@@ -17,8 +17,7 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
-                                   const inequality_t<i_t, f_t>& cut)
+void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
 {
   // TODO: Need to deduplicate cuts and only add if the cut is not already in the pool
 
@@ -353,9 +352,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
   for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
     const i_t j = knapsack_inequality.i[k];
     if (!is_slack_[j]) {
-      if (solution[h] == 0.0) {
-        cut.push_back(j, -1.0);
-      }
+      if (solution[h] == 0.0) { cut.push_back(j, -1.0); }
       h++;
     }
   }
@@ -642,7 +639,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
   const i_t max_cuts = std::min(lp.num_rows, 100000);
   f_t work_estimate  = 0.0;
-  i_t num_cuts = 0;
+  i_t num_cuts       = 0;
   while (num_cuts < max_cuts && !score_queue.empty()) {
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
@@ -652,7 +649,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     if (max_score != scores[i]) { continue; }
 
     // Add the current row to the aggregated set
-    aggregated_mark[i]  = 1;
+    aggregated_mark[i] = 1;
     aggregated_rows.push_back(i);
 
     const i_t row_nz      = Arow.row_length(i);
@@ -761,7 +758,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
           const i_t j = transformed_inequality.index(k);
           if (var_types[j] == variable_type_t::INTEGER) {
             const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
-            max_coeff = std::max(max_coeff, abs_aj);
+            max_coeff        = std::max(max_coeff, abs_aj);
           }
         }
         work_estimate += transformed_inequality.size();
@@ -873,8 +870,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             // becomes
             // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
             // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
-            const f_t b_j                = complemented_mir.new_upper(j);
-            const f_t a_j                = complemented_inequality.coeff(k);
+            const f_t b_j                       = complemented_mir.new_upper(j);
+            const f_t a_j                       = complemented_inequality.coeff(k);
             complemented_inequality.vector.x[k] = -a_j;
             complemented_inequality.rhs -= a_j * b_j;
             complemented_indices.push_back(k);
@@ -898,17 +895,15 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
                 // Or
                 // sum_{k != j} d_k x_k  - d_j x_j >= alpha - d_j b_j
 
-                const f_t b_j  = complemented_mir.new_upper(j);
-                const f_t d_j  = cut_delta.coeff(l);
+                const f_t b_j         = complemented_mir.new_upper(j);
+                const f_t d_j         = cut_delta.coeff(l);
                 cut_delta.vector.x[l] = -d_j;
                 cut_delta.rhs -= d_j * b_j;
               }
               work_estimate += 5 * complemented_indices.size();
 
-              found_cut = complemented_mir.check_violation_and_add_cut(cut_delta,
-                                                                       transformed_xstar,
-                                                                       transformed_cuts,
-                                                                       transformed_violations);
+              found_cut = complemented_mir.check_violation_and_add_cut(
+                cut_delta, transformed_xstar, transformed_cuts, transformed_violations);
               work_estimate += 5 * complemented_inequality.size();
 
               if (found_cut) { break; }
@@ -922,14 +917,12 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       if (!transformed_violations.empty()) {
         std::vector<i_t> indices(transformed_violations.size());
         std::iota(indices.begin(), indices.end(), 0);
-        const i_t best_index = *std::max_element(
-            indices.begin(), indices.end(),
-            [&](i_t i, i_t j) {
-              return transformed_violations[i] < transformed_violations[j];
-            });
+        const i_t best_index = *std::max_element(indices.begin(), indices.end(), [&](i_t i, i_t j) {
+          return transformed_violations[i] < transformed_violations[j];
+        });
         work_estimate += transformed_violations.size();
-        f_t max_viol         = transformed_violations[best_index];
-        cut = transformed_cuts[best_index];
+        f_t max_viol = transformed_violations[best_index];
+        cut          = transformed_cuts[best_index];
 
         if (max_viol > 1e-6) {
           // TODO: Divide by 1/2*violation, 1/4*violation, 1/8*violation
@@ -944,9 +937,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       }
 
       if (add_cut) {
-        if (settings.mir_cuts != 0) {
-          cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_ROUNDING, cut);
-        }
+        if (settings.mir_cuts != 0) { cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_ROUNDING, cut); }
         break;
       } else {
         // Perform aggregation to try and find a cut
@@ -991,26 +982,22 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               const i_t i   = lp.A.i[q];
               const f_t val = lp.A.x[q];
               // Can't use rows that have already been aggregated
-              if (std::abs(val) > threshold && !aggregated_mark[i]) {
-                potential_rows.push_back(i);
-              }
+              if (std::abs(val) > threshold && !aggregated_mark[i]) { potential_rows.push_back(i); }
               if (potential_rows.size() >= max_potential_rows) { break; }
             }
             work_estimate += 5 * (col_end - col_start);
 
             if (!potential_rows.empty()) {
-              const i_t pivot_row = *std::max_element(
-                  potential_rows.begin(), potential_rows.end(),
-                  [&](i_t a, i_t b) { return scores[a] < scores[b]; });
+              const i_t pivot_row =
+                *std::max_element(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
+                  return scores[a] < scores[b];
+                });
               work_estimate += potential_rows.size();
 
               inequality_t<i_t, f_t> pivot_row_inequality(Arow, pivot_row, lp.rhs[pivot_row]);
               work_estimate += pivot_row_inequality.size();
-              complemented_mir.combine_rows(lp,
-                                            Arow,
-                                            max_off_bound_var,
-                                            pivot_row_inequality,
-                                            inequality);
+              complemented_mir.combine_rows(
+                lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
               aggregated_rows.push_back(pivot_row);
               aggregated_mark[pivot_row] = 1;
               work_estimate += inequality.size() + pivot_row_inequality.size();
@@ -1077,16 +1064,8 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
     if (var_types[j] != variable_type_t::INTEGER) { continue; }
     const f_t x_j = xstar[j];
     if (std::abs(x_j - std::round(x_j)) < settings.integer_tol) { continue; }
-    i_t tableau_status = tableau.generate_base_equality(lp,
-                                                        settings,
-                                                        Arow,
-                                                        var_types,
-                                                        basis_update,
-                                                        xstar,
-                                                        basic_list,
-                                                        nonbasic_list,
-                                                        i,
-                                                        inequality);
+    i_t tableau_status = tableau.generate_base_equality(
+      lp, settings, Arow, var_types, basis_update, xstar, basic_list, nonbasic_list, i, inequality);
     if (tableau_status == 0) {
       // Generate a CG cut
       const bool generate_cg_cut = settings.strong_chvatal_gomory_cuts != 0;
@@ -1107,8 +1086,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
 
       // Transform the inequality
       inequality_t<i_t, f_t> transformed_inequality = inequality;
-      complemented_mir.transform_inequality(
-        variable_bounds, var_types, transformed_inequality);
+      complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
 
       // Generate a MIR cut from the transformed inequality
       inequality_t<i_t, f_t> cut_A(lp.num_cols);
@@ -1327,7 +1305,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
 #endif
 
   inequality.vector = a_bar;
-  inequality.rhs = b_bar_[i];
+  inequality.rhs    = b_bar_[i];
 
   return 0;
 }
@@ -1645,11 +1623,10 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_initial_scores
   const std::vector<f_t>& ystar,
   std::vector<f_t>& scores)
 {
-  const bool verbose = false;
+  const bool verbose  = false;
   const i_t n         = lp.num_cols;
   const f_t obj_norm  = vector_norm2<i_t, f_t>(lp.objective);
   const f_t obj_denom = std::max(1.0, obj_norm);
-
 
   // Compute initial scores for all rows
   scores.resize(lp.num_rows, 0.0);
@@ -1678,16 +1655,18 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_initial_scores
     const f_t slack_weight = 0.001;
 
     scores[i] = nz_weight * (1.0 - density) + dual_weight * std::max(dual / obj_denom, 0.0001) +
-               slack_weight * (1.0 - slack_value / slack_denom);
+                slack_weight * (1.0 - slack_value / slack_denom);
 
     if (verbose) {
-      settings.log.printf(
-        "Scores[%d] = %e density %.2f dual %e slack %e\n", i, scores[i], density, dual, slack_value);
+      settings.log.printf("Scores[%d] = %e density %.2f dual %e slack %e\n",
+                          i,
+                          scores[i],
+                          density,
+                          dual,
+                          slack_value);
     }
   }
 }
-
-
 
 template <typename i_t, typename f_t>
 bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::check_violation_and_add_cut(
@@ -1715,12 +1694,9 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::scale_and_generate_mir
   std::vector<f_t>& violations)
 {
   inequality_t<i_t, f_t> scaled_inequality = inequality;
-  if (divisor != 1.0) {
-    scaled_inequality.scale(1.0 / divisor);
-  }
+  if (divisor != 1.0) { scaled_inequality.scale(1.0 / divisor); }
   inequality_t<i_t, f_t> cut_delta(inequality.vector.n);
-  generate_cut_nonnegative_maintain_indicies(
-    scaled_inequality, var_types, cut_delta);
+  generate_cut_nonnegative_maintain_indicies(scaled_inequality, var_types, cut_delta);
   return check_violation_and_add_cut(cut_delta, transformed_xstar, cuts, violations);
 }
 
@@ -2115,9 +2091,9 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::
 
   auto h = [](f_t q) -> f_t { return std::max(q, 0.0); };
 
-  cut.vector = inequality.vector;
+  cut.vector     = inequality.vector;
   const f_t beta = inequality.rhs;
-  cut.rhs = (beta - std::floor(beta)) * std::ceil(beta);
+  cut.rhs        = (beta - std::floor(beta)) * std::ceil(beta);
 
   for (i_t k = 0; k < inequality.size(); k++) {
     const i_t j = inequality.index(k);
@@ -2152,9 +2128,7 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_violation(
 
 template <typename i_t, typename f_t>
 void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
-  const lp_problem_t<i_t, f_t>& lp,
-  csr_matrix_t<i_t, f_t>& Arow,
-  inequality_t<i_t, f_t>& cut)
+  const lp_problem_t<i_t, f_t>& lp, csr_matrix_t<i_t, f_t>& Arow, inequality_t<i_t, f_t>& cut)
 {
   // Remove slacks from the cut
   // So that the cut is only over the original variables
