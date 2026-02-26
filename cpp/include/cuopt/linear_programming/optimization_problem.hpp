@@ -104,6 +104,8 @@ class optimization_problem_t {
 
   optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
+  optimization_problem_t(optimization_problem_t<i_t, f_t>&&)            = default;
+  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) = default;
 
   /**
    * @brief Check if this optimization problem is equivalent to another.

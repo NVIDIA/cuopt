@@ -1201,6 +1201,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
     }
 
+    // Declare result at outer scope so that result->reduced_problem (which may be
+    // referenced by problem.original_problem_ptr) remains alive through the solve.
+    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> result;
+
     if (run_presolve) {
       detail::sort_csr(op_problem);
       // allocate no more than 10% of the time limit to presolve.
@@ -1208,14 +1212,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       // But no less than 1 second, to avoid early timeout triggering known crashes
       const double presolve_time_limit =
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
-      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
-      auto result = presolver->apply(op_problem,
-                                     cuopt::linear_programming::problem_category_t::LP,
-                                     settings.presolver,
-                                     settings.dual_postsolve,
-                                     settings.tolerances.absolute_primal_tolerance,
-                                     settings.tolerances.relative_primal_tolerance,
-                                     presolve_time_limit);
+      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      result    = presolver->apply(op_problem,
+                                cuopt::linear_programming::problem_category_t::LP,
+                                settings.presolver,
+                                settings.dual_postsolve,
+                                settings.tolerances.absolute_primal_tolerance,
+                                settings.tolerances.relative_primal_tolerance,
+                                presolve_time_limit);
       if (!result.has_value()) {
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
