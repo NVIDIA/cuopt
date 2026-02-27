@@ -179,10 +179,17 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
-  // early exit to avoid taking the population lock
-  if (!solutions_in_external_queue_.load()) { return; }
-
-  auto new_sol_vector = get_external_solutions();
+  std::vector<solution_t<i_t, f_t>> new_sol_vector;
+  {
+    // do the mutex here, otherwise it is a race condition.
+    // preemption will be set right after the solutions_in_external_queue_ is set in BB
+    // but if we don't acquire the mutex here, the writes to solutions_in_external_queue_
+    // is not visible. Early return then finishes the heuristics and returns no solution.
+    std::lock_guard<std::mutex> lock(solution_mutex);
+    // early exit to avoid the function(even though it will do nothing)
+    if (!solutions_in_external_queue_.load()) { return; }
+    new_sol_vector = get_external_solutions();
+  }
   add_solutions_from_vec(std::move(new_sol_vector));
 }
 
@@ -198,7 +205,6 @@ void population_t<i_t, f_t>::preempt_heuristic_solver()
 template <typename i_t, typename f_t>
 std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions()
 {
-  std::lock_guard<std::mutex> lock(solution_mutex);
   std::vector<solution_t<i_t, f_t>> return_vector;
   i_t counter                     = 0;
   f_t new_best_feasible_objective = best_feasible_objective;
