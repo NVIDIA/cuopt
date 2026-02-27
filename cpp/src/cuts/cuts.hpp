@@ -563,12 +563,11 @@ class complemented_mixed_integer_rounding_cut_t {
                               const std::vector<variable_type_t>& var_type,
                               inequality_t<i_t, f_t>& inequality);
 
-
   bool cut_generation_heuristic(const inequality_t<i_t, f_t>& transformed_inequality,
-                                       const std::vector<variable_type_t>& var_types,
-                                       const std::vector<f_t>& transformed_xstar,
-                                       inequality_t<i_t, f_t>& transformed_cut,
-                                       f_t& work_estimate);
+                                const std::vector<variable_type_t>& var_types,
+                                const std::vector<f_t>& transformed_xstar,
+                                inequality_t<i_t, f_t>& transformed_cut,
+                                f_t& work_estimate);
 
   void scale_uncomplement_and_generate_cut(const std::vector<variable_type_t>& var_types,
                                            const std::vector<f_t>& transformed_xstar,

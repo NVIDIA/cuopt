@@ -1496,21 +1496,19 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   deltas_to_try.push_back(1.0);
   work_estimate += transformed_inequality.size();
   i_t num_integers = 0;
-  f_t max_coeff = 0.0;
+  f_t max_coeff    = 0.0;
   for (i_t k = 0; k < transformed_inequality.size(); k++) {
-    const i_t j = transformed_inequality.index(k);
+    const i_t j      = transformed_inequality.index(k);
     const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
     if (var_types[j] == variable_type_t::INTEGER) {
       num_integers++;
-      max_coeff = std::max(max_coeff, abs_aj);
+      max_coeff                 = std::max(max_coeff, abs_aj);
       const f_t x_j             = transformed_xstar[j];
       const f_t new_upper_j     = new_upper(j);
       const f_t dist_upper      = new_upper_j - x_j;
       const f_t dist_lower      = x_j;
       const bool between_bounds = x_j > 1e-6 && (new_upper_j == inf || dist_upper > 0.0);
-      if (between_bounds) {
-        deltas_to_try.push_back(abs_aj);
-      }
+      if (between_bounds) { deltas_to_try.push_back(abs_aj); }
     }
   }
   if (max_coeff > 1e-6 && max_coeff != 1.0) {
@@ -1539,17 +1537,15 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
 
   std::vector<i_t> perm(integer_indices.size());
   best_score_first_permutation(distance_from_midpoint, perm);
-  work_estimate += integer_indices.size() > 0
-                     ? integer_indices.size() * std::log2(integer_indices.size())
-                     : 0;
-
+  work_estimate +=
+    integer_indices.size() > 0 ? integer_indices.size() * std::log2(integer_indices.size()) : 0;
 
   bool cut_found = false;
 
   inequality_t<i_t, f_t> complemented_inequality = transformed_inequality;
   work_estimate += 4 * transformed_inequality.size();
 
-  f_t delta = 0.0;
+  f_t delta          = 0.0;
   f_t best_violation = 0.0;
 
   // First try without any complementation
@@ -1567,7 +1563,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
     work_estimate += 4 * transformed_cut.size();
     if (best_violation > 1e-6) {
       cut_found = true;
-      delta = tmp_delta;
+      delta     = tmp_delta;
       break;
     }
   }
@@ -1608,7 +1604,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
         work_estimate += 4 * transformed_cut.size();
         if (best_violation > 1e-6) {
           cut_found = true;
-          delta = tmp_delta;
+          delta     = tmp_delta;
           break;
         }
       }
@@ -1618,7 +1614,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   if (!cut_found) { return false; }
 
   // We have found a cut. Now try to improve the violation by scaling the cut by 1/2, 1/4, 1/8, etc.
-  std::vector<f_t> scaled_deltas_to_try = { delta/2.0, delta/4.0, delta/8.0 };
+  std::vector<f_t> scaled_deltas_to_try = {delta / 2.0, delta / 4.0, delta / 8.0};
   for (const f_t tmp_delta : scaled_deltas_to_try) {
     inequality_t<i_t, f_t> tmp_cut_delta;
     scale_uncomplement_and_generate_cut(var_types,
@@ -1633,9 +1629,9 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
     f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
     work_estimate += 4 * tmp_cut_delta.size();
     if (violation > best_violation) {
-      best_violation = violation;
+      best_violation  = violation;
       transformed_cut = tmp_cut_delta;
-      delta = tmp_delta;
+      delta           = tmp_delta;
     }
   }
 
@@ -1680,9 +1676,9 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
     f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
     work_estimate += 4 * tmp_cut_delta.size();
     if (violation > best_violation) {
-      best_violation = violation;
+      best_violation            = violation;
       best_complemented_indices = complemented_indices;
-      transformed_cut = tmp_cut_delta;
+      transformed_cut           = tmp_cut_delta;
     }
   }
 
