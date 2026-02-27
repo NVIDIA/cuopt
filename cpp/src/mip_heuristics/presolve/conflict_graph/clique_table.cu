@@ -557,7 +557,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    cuopt::timer_t& timer)
 {
   constexpr i_t min_extension_gain       = 2;
-  constexpr i_t extension_yield_window   = 128;
+  constexpr i_t extension_yield_window   = 64;
   constexpr i_t min_successes_per_window = 1;
 
   i_t base_rows      = A.m;
@@ -583,9 +583,8 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
   std::vector<clique_sig_t> sp_sigs;
   sp_sigs.reserve(set_packing_constraints.size());
   for (const auto knapsack_idx : set_packing_constraints) {
-    if (knapsack_idx < 0 || knapsack_idx >= static_cast<i_t>(knapsack_constraints.size())) {
-      continue;
-    }
+    cuopt_assert(knapsack_idx >= 0 && knapsack_idx < static_cast<i_t>(knapsack_constraints.size()),
+                 "Invalid set packing constraint index");
     const auto& vars = knapsack_constraints[knapsack_idx].entries;
     cstr_vars[knapsack_idx].reserve(vars.size());
     for (const auto& entry : vars) {
@@ -686,14 +685,13 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
           continue;
         }
         i_t original_row_idx = knapsack_constraints[sp.knapsack_idx].cstr_idx;
-        if (original_row_idx < 0 ||
-            original_row_idx >= static_cast<i_t>(original_to_current_row_idx.size())) {
-          continue;
-        }
+        if (original_row_idx < 0) { continue; }
+        cuopt_assert(original_row_idx < static_cast<i_t>(original_to_current_row_idx.size()),
+                     "Invalid original row index in knapsack constraint");
         i_t current_row_idx = original_to_current_row_idx[original_row_idx];
-        if (current_row_idx < 0 || current_row_idx >= static_cast<i_t>(problem.row_sense.size())) {
-          continue;
-        }
+        if (current_row_idx < 0) { continue; }
+        cuopt_assert(current_row_idx < static_cast<i_t>(problem.row_sense.size()),
+                     "Invalid current row index in row mapping");
         rows_to_remove.push_back(current_row_idx);
       }
       if (rows_to_remove.empty()) { return; }
@@ -711,10 +709,10 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       }
       std::vector<i_t> removal_marker(problem.row_sense.size(), 0);
       for (auto row_idx : rows_to_remove) {
-        if (row_idx >= 0 && row_idx < static_cast<i_t>(removal_marker.size())) {
-          CUOPT_LOG_DEBUG("Removing dominated row %d", row_idx);
-          removal_marker[row_idx] = true;
-        }
+        cuopt_assert(row_idx >= 0 && row_idx < static_cast<i_t>(removal_marker.size()),
+                     "Invalid dominated row index");
+        CUOPT_LOG_DEBUG("Removing dominated row %d", row_idx);
+        removal_marker[row_idx] = true;
       }
       dual_simplex::csr_matrix_t<i_t, f_t> A_removed(0, 0, 0);
       A.remove_rows(removal_marker, A_removed);
@@ -759,8 +757,9 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
         std::vector<f_t> new_range_values;
         for (size_t i = 0; i < problem.range_rows.size(); ++i) {
           i_t old_row = problem.range_rows[i];
-          if (old_row >= 0 && old_row < static_cast<i_t>(removal_marker.size()) &&
-              !removal_marker[old_row]) {
+          cuopt_assert(old_row >= 0 && old_row < static_cast<i_t>(removal_marker.size()),
+                       "Invalid row index in range_rows");
+          if (!removal_marker[old_row]) {
             i_t new_row = old_to_new_indices[old_row];
             cuopt_assert(new_row != -1, "Invalid new row index for ranged row renumbering");
             new_range_rows.push_back(new_row);
