@@ -2698,7 +2698,7 @@ void read_saved_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
       for (i_t j = 0; j < lp.num_cols; ++j) {
         seed = hash_combine_f(seed, saved_solution[j]);
       }
-      settings.log.printf("Saved solution hash: %20x\n", seed);
+      settings.log.printf("Saved solution hash: %20zx\n", seed);
 
       // Compute || A * x - b ||_inf
       std::vector<f_t> residual = lp.rhs;
@@ -2751,7 +2751,7 @@ void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
       fprintf(fid, "%.17g\n", solution[j]);
       seed = hash_combine_f(seed, solution[j]);
     }
-    printf("Solution hash: %20x\n", seed);
+    printf("Solution hash: %20zx\n", seed);
     fclose(fid);
   }
 }

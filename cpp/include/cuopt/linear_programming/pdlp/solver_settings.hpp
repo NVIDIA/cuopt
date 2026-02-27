@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -179,6 +180,20 @@ class pdlp_solver_settings_t {
   const pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data() const noexcept;
   pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data();
   const pdlp_warm_start_data_view_t<i_t, f_t>& get_pdlp_warm_start_data_view() const noexcept;
+
+  /**
+   * @brief Get the CPU-backed PDLP warm start data (for remote execution)
+   * @return Const reference to cpu_pdlp_warm_start_data_t
+   * @note Used when the solver runs on a CPU-only host via remote execution.
+   *       The data is std::vector-backed rather than device_uvector-backed.
+   */
+  const cpu_pdlp_warm_start_data_t<i_t, f_t>& get_cpu_pdlp_warm_start_data() const noexcept;
+
+  /**
+   * @brief Get mutable CPU-backed PDLP warm start data (for remote execution)
+   * @return Mutable reference to cpu_pdlp_warm_start_data_t
+   */
+  cpu_pdlp_warm_start_data_t<i_t, f_t>& get_cpu_pdlp_warm_start_data() noexcept;
   // TODO batch mode: tmp
   std::optional<f_t> get_initial_step_size() const;
   // TODO batch mode: tmp
@@ -253,10 +268,12 @@ class pdlp_solver_settings_t {
   /** Initial primal weight */
   // TODO batch mode: tmp
   std::optional<f_t> initial_primal_weight_;
-  // For the C++ interface
+  /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
-  // For the Cython interface
+  /** Warm start data as spans over external memory, used by Cython/Python interface */
   pdlp_warm_start_data_view_t<i_t, f_t> pdlp_warm_start_data_view_;
+  /** CPU-backed warm start data (std::vector), used for remote execution on CPU-only hosts */
+  cpu_pdlp_warm_start_data_t<i_t, f_t> cpu_pdlp_warm_start_data_;
 
   friend class solver_settings_t<i_t, f_t>;
 };

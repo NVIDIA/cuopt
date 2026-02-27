@@ -613,6 +613,10 @@ void optimization_problem_t<i_t, f_t>::set_row_names(const std::vector<std::stri
   row_names_ = row_names;
 }
 
+// ============================================================================
+// Getters
+// ============================================================================
+
 template <typename i_t, typename f_t>
 i_t optimization_problem_t<i_t, f_t>::get_n_variables() const
 {
@@ -634,15 +638,12 @@ i_t optimization_problem_t<i_t, f_t>::get_nnz() const
 template <typename i_t, typename f_t>
 i_t optimization_problem_t<i_t, f_t>::get_n_integers() const
 {
-  i_t n_integers = 0;
-  if (get_n_variables() != 0) {
-    auto enum_variable_types = cuopt::host_copy(get_variable_types(), handle_ptr_->get_stream());
+  if (variable_types_.size() == 0) return 0;
 
-    for (size_t i = 0; i < enum_variable_types.size(); ++i) {
-      if (enum_variable_types[i] == var_t::INTEGER) { n_integers++; }
-    }
-  }
-  return n_integers;
+  return thrust::count(rmm::exec_policy(handle_ptr_->get_stream()),
+                       variable_types_.begin(),
+                       variable_types_.end(),
+                       var_t::INTEGER);
 }
 
 template <typename i_t, typename f_t>

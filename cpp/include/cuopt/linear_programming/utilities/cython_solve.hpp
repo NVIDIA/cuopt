@@ -1,17 +1,18 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/linear_programming/utilities/cython_types.hpp>
+
 #include <memory>
 #include <mps_parser/data_model_view.hpp>
 #include <raft/core/handle.hpp>
@@ -22,80 +23,43 @@
 namespace cuopt {
 namespace cython {
 
-// aggregate for call_solve() return type
-// to be exposed to cython:
-struct linear_programming_ret_t {
-  std::unique_ptr<rmm::device_buffer> primal_solution_;
-  std::unique_ptr<rmm::device_buffer> dual_solution_;
-  std::unique_ptr<rmm::device_buffer> reduced_cost_;
-  /* -- PDLP Warm Start Data -- */
-  std::unique_ptr<rmm::device_buffer> current_primal_solution_;
-  std::unique_ptr<rmm::device_buffer> current_dual_solution_;
-  std::unique_ptr<rmm::device_buffer> initial_primal_average_;
-  std::unique_ptr<rmm::device_buffer> initial_dual_average_;
-  std::unique_ptr<rmm::device_buffer> current_ATY_;
-  std::unique_ptr<rmm::device_buffer> sum_primal_solutions_;
-  std::unique_ptr<rmm::device_buffer> sum_dual_solutions_;
-  std::unique_ptr<rmm::device_buffer> last_restart_duality_gap_primal_solution_;
-  std::unique_ptr<rmm::device_buffer> last_restart_duality_gap_dual_solution_;
-  double initial_primal_weight_;
-  double initial_step_size_;
-  int total_pdlp_iterations_;
-  int total_pdhg_iterations_;
-  double last_candidate_kkt_score_;
-  double last_restart_kkt_score_;
-  double sum_solution_weight_;
-  int iterations_since_last_restart_;
-  /* -- /PDLP Warm Start Data -- */
-
-  linear_programming::pdlp_termination_status_t termination_status_;
-  error_type_t error_status_;
-  std::string error_message_;
-
-  /*Termination stats*/
-  double l2_primal_residual_;
-  double l2_dual_residual_;
-  double primal_objective_;
-  double dual_objective_;
-  double gap_;
-  int nb_iterations_;
-  double solve_time_;
-  bool solved_by_pdlp_;
-};
-
-struct mip_ret_t {
-  std::unique_ptr<rmm::device_buffer> solution_;
-
-  linear_programming::mip_termination_status_t termination_status_;
-  error_type_t error_status_;
-  std::string error_message_;
-
-  /*Termination stats*/
-  double objective_;
-  double mip_gap_;
-  double solution_bound_;
-  double total_solve_time_;
-  double presolve_time_;
-  double max_constraint_violation_;
-  double max_int_violation_;
-  double max_variable_bound_violation_;
-  int nodes_;
-  int simplex_iterations_;
-};
+// Type definitions moved to cython_types.hpp to avoid circular dependencies
+// The types linear_programming_ret_t and mip_ret_t are defined in cython_types.hpp.
+// Each holds a std::variant internally to support both GPU and CPU solution data.
 
 struct solver_ret_t {
   linear_programming::problem_category_t problem_type;
   linear_programming_ret_t lp_ret;
   mip_ret_t mip_ret;
-  // possibly add dual simplex return structure
 };
 
-// Wrapper for solve to expose the API to cython.
+// Wrapper functions to expose the API to Cython.
+//
+// Ownership convention:
+//   call_solve_lp / call_solve_mip  -- return raw pointers; caller does NOT own them.
+//     The returned pointers are backed by objects inside the solver_ret_t returned by call_solve.
+//   call_solve / call_batch_solve   -- return unique_ptr<solver_ret_t>; caller owns the result.
+//     The solver_ret_t holds the solution objects and must outlive any raw pointers obtained above.
 
+linear_programming::lp_solution_interface_t<int, double>* call_solve_lp(
+  linear_programming::optimization_problem_interface_t<int, double>* problem_interface,
+  linear_programming::pdlp_solver_settings_t<int, double>& solver_settings,
+  bool is_batch_mode = false);
+
+// Call solve_mip and return solution interface pointer
+linear_programming::mip_solution_interface_t<int, double>* call_solve_mip(
+  linear_programming::optimization_problem_interface_t<int, double>* problem_interface,
+  linear_programming::mip_solver_settings_t<int, double>& solver_settings);
+
+// Main solve entry point from Python
 std::unique_ptr<solver_ret_t> call_solve(cuopt::mps_parser::data_model_view_t<int, double>*,
                                          linear_programming::solver_settings_t<int, double>*,
                                          unsigned int flags = cudaStreamNonBlocking,
                                          bool is_batch_mode = false);
+
+std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
+  std::vector<cuopt::mps_parser::data_model_view_t<int, double>*>,
+  linear_programming::solver_settings_t<int, double>*);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   std::vector<cuopt::mps_parser::data_model_view_t<int, double>*>,
