@@ -42,7 +42,7 @@ void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
   }
 }
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template void solution_writer_t::write_solution_to_sol_file<float>(
   const std::string& filename,
   const std::string& status,

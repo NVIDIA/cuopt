@@ -1568,7 +1568,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

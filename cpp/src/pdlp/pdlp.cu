@@ -2971,7 +2971,7 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
   return current_termination_strategy_;
 }
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_t<int, float>;
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<float>(

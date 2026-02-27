@@ -933,7 +933,7 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   return dot;
 }
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 // Minimal float instantiation for LP usage
 template class csc_matrix_t<int, float>;
 template class csr_matrix_t<int, float>;

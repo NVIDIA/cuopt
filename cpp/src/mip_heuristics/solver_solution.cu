@@ -234,7 +234,7 @@ void mip_solution_t<i_t, f_t>::log_summary() const
   CUOPT_LOG_INFO("Total Solve Time: %f", get_total_solve_time());
 }
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class mip_solution_t<int, float>;
 #endif
 

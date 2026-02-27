@@ -115,7 +115,7 @@ template pdlp_warm_start_data_t<int, double> convert_to_gpu_warmstart(
   const cpu_pdlp_warm_start_data_t<int, double>&, rmm::cuda_stream_view);
 #endif
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template cpu_pdlp_warm_start_data_t<int, float> convert_to_cpu_warmstart(
   const pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
 

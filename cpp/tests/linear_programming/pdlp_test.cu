@@ -47,7 +47,7 @@
 namespace cuopt::linear_programming::test {
 
 constexpr double afiro_primal_objective = -464.0;
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 constexpr float afiro_primal_objective_f32 = -464.0f;
 #endif
 // Accept a 1% error
@@ -1927,7 +1927,7 @@ TEST(pdlp_class, some_climber_hit_iteration_limit)
   }
 }
 
-#if PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 TEST(pdlp_class, run_float32)
 {
   const raft::handle_t handle_{};
