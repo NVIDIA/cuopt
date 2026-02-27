@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, debugging, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
+description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
 ---
 
 # cuOpt User Rules
@@ -13,7 +13,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 **Always clarify ambiguous requirements before implementing:**
 
-- What interface? (Python API / REST Server / C API / CLI)
+- What **language/interface**? (**Python** API / **C** API / REST Server / CLI)
 - What problem type? (Routing / LP / MILP / QP)
 - What constraints matter? (time windows, capacities, etc.)
 - What output format? (solution values, routes, visualization)
@@ -95,17 +95,16 @@ Is this correct?"
 
 ## 6. Read Examples First
 
-Before generating code, **read the canonical example** for that problem type:
+Before generating code, **read the canonical example** for that problem type and **language** (Python vs C):
 
-| Problem | Example Location |
-|---------|------------------|
-| Routing | `docs/cuopt/source/cuopt-python/routing/examples/` |
-| LP/MILP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/` |
-| QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` |
-| Server | `docs/cuopt/source/cuopt_spec.yaml` (OpenAPI) |
-| C API | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
+| Problem | Python | C |
+|---------|--------|---|
+| Routing | `docs/cuopt/source/cuopt-python/routing/examples/` | — (no C API) |
+| LP/MILP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/` | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
+| QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
+| Server | `docs/cuopt/source/cuopt_spec.yaml` (OpenAPI) | — |
 
-**Don't invent API patterns.** Copy from examples.
+**Don't invent API patterns.** Copy from examples. For C, use the skill’s `resources/c_api_examples.md` when available. With the flat layout, use the api skill for the user's language (e.g. cuopt-lp-milp-api-python or cuopt-lp-milp-api-c); each has resources/examples.md or equivalent.
 
 ---
 
@@ -129,16 +128,16 @@ Provide diagnostic code snippets when helpful.
    - "Do you have cuOpt installed? If so, which interface?"
    - "What environment are you using? (local GPU, cloud, Docker, server, etc.)"
 
-2. **Different packages for different interfaces:**
+2. **Different packages by language/interface:**
 
-   | Interface | Package | Check |
-   |-----------|---------|-------|
-   | Python API | `cuopt` (pip/conda) | `import cuopt` |
-   | C API | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
+   | Language / Interface | Package | Check |
+   |----------------------|---------|-------|
+   | **Python** | `cuopt` (pip/conda) | `import cuopt` |
+   | **C** | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
    | REST Server | `cuopt-server` or Docker | `curl /cuopt/health` |
    | CLI | `cuopt` package includes CLI | `cuopt_cli --help` |
 
-   **Note:** `libcuopt` (C library) installed via conda is NOT available through Python import — they are separate packages.
+   **Note:** `libcuopt` (C library) is separate from the Python package — C and Python use different installs.
 
 3. **If not installed, ask how they want to access:**
    - "Would you like help installing cuOpt, or do you have access another way?"
