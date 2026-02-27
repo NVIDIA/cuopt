@@ -1,11 +1,11 @@
 ---
 name: cuopt-qp-api-cli
-description: QP with cuOpt — CLI (e.g. cuopt_cli with QP-capable input). Use with cuopt-qp-common for concepts. Use when the user is solving QP from the command line.
+description: QP with cuOpt — CLI (e.g. cuopt_cli with QP-capable input). Use with cuopt-qp-formulation for concepts. Use when the user is solving QP from the command line.
 ---
 
 # cuOpt QP — CLI
 
-**Concepts:** Read `cuopt-qp-common/SKILL.md` for when QP applies and the **minimize-only** rule.
+**Concepts:** Read `cuopt-qp-formulation/SKILL.md` for when QP applies and the **minimize-only** rule.
 
 This skill is **CLI only** for QP. For Python or C, use `cuopt-qp-api-python` or `cuopt-qp-api-c`.
 
@@ -33,4 +33,4 @@ CLI is included with the Python package (`cuopt`). Install via pip or conda (see
 
 ## Escalate
 
-See `cuopt-qp-common` for when to use cuopt-lp-milp-common or cuopt-developer.
+See `cuopt-qp-formulation` for when to use cuopt-lp-milp-formulation or cuopt-developer.

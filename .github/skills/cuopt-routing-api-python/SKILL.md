@@ -1,11 +1,11 @@
 ---
 name: cuopt-routing-api-python
-description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use with cuopt-routing-common for concepts. Use when the user is building or solving routing in Python.
+description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use with cuopt-routing-formulation for concepts. Use when the user is building or solving routing in Python.
 ---
 
 # cuOpt Routing — Python API
 
-**Concepts:** Read `cuopt-routing-common/SKILL.md` for problem types, when to use, when to escalate.
+**Concepts:** Read `cuopt-routing-formulation/SKILL.md` for problem types and formulation.
 
 This skill is **Python only**. Routing has no C API in cuOpt.
 
@@ -96,4 +96,4 @@ ss.set_error_logging_mode(True)
 
 ## Escalate
 
-See `cuopt-routing-common` for when to use cuopt-developer.
+See `cuopt-routing-formulation` for when to use cuopt-developer.

@@ -1,9 +1,9 @@
 ---
-name: cuopt-routing-common
-description: Vehicle routing (VRP, TSP, PDP) with cuOpt — problem types and data requirements only. Domain concepts; no API or interface guidance.
+name: cuopt-routing-formulation
+description: Vehicle routing (VRP, TSP, PDP) with cuOpt — problem types and data requirements. Domain concepts; no API or interface. Use before coding with cuopt-routing-api-python.
 ---
 
-# cuOpt Routing (common)
+# cuOpt Routing Formulation
 
 Domain concepts for vehicle routing. No API or interface details here.
 

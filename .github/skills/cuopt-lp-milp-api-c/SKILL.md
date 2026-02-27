@@ -1,11 +1,11 @@
 ---
 name: cuopt-lp-milp-api-c
-description: LP and MILP with cuOpt — C API only. Use with cuopt-lp-milp-common for concepts. Use when the user is embedding LP/MILP in C/C++.
+description: LP and MILP with cuOpt — C API only. Use with cuopt-lp-milp-formulation for concepts. Use when the user is embedding LP/MILP in C/C++.
 ---
 
 # cuOpt LP/MILP — C API
 
-**Concepts:** Read `cuopt-lp-milp-common/SKILL.md` for problem type, when to use, when to escalate.
+**Concepts:** Read `cuopt-lp-milp-formulation/SKILL.md` for problem type and formulation.
 
 This skill is **C only**. For Python, use `cuopt-lp-milp-api-python`.
 
@@ -46,4 +46,4 @@ For **CLI** (MPS files), use `cuopt-lp-milp-api-cli`.
 
 ## Escalate
 
-See `cuopt-lp-milp-common` for when to use cuopt-qp-common or cuopt-developer.
+See `cuopt-lp-milp-formulation` for when to use cuopt-qp-formulation or cuopt-developer.

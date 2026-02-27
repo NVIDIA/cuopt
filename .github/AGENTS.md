@@ -16,9 +16,9 @@ Choose which skills to load from the index;
 - `skills/cuopt-developer/` — Contributing (own rules)
 
 ### Common (concepts only; no API code)
-- `skills/cuopt-lp-milp-common/` — LP/MILP: when to use, escalate
-- `skills/cuopt-routing-common/` — Routing: VRP, TSP, PDP
-- `skills/cuopt-qp-common/` — QP: minimize-only, escalate
+- `skills/cuopt-lp-milp-formulation/` — LP/MILP: concepts + problem parsing (parameters, constraints, decisions, objective)
+- `skills/cuopt-routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
+- `skills/cuopt-qp-formulation/` — QP: minimize-only, escalate (beta)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
 ### API (implementation; one interface per skill)

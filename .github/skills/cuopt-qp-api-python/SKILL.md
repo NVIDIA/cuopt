@@ -1,11 +1,11 @@
 ---
 name: cuopt-qp-api-python
-description: Quadratic Programming (QP) with cuOpt — Python API only (beta). Use with cuopt-qp-common for concepts. Use when the user is building or solving QP in Python.
+description: Quadratic Programming (QP) with cuOpt — Python API only (beta). Use with cuopt-qp-formulation for concepts. Use when the user is building or solving QP in Python.
 ---
 
 # cuOpt QP — Python API (beta)
 
-**Concepts:** Read `cuopt-qp-common/SKILL.md` for when QP applies, minimize-only, when to escalate.
+**Concepts:** Read `cuopt-qp-formulation/SKILL.md` for when QP applies, minimize-only, when to escalate.
 
 This skill is **Python only**. For C, use `cuopt-qp-api-c`. **QP is beta.**
 
@@ -55,4 +55,4 @@ if problem.Status.name in ["Optimal", "PrimalFeasible"]:
 
 ## Escalate
 
-See `cuopt-qp-common` for when to use cuopt-lp-milp-common or cuopt-developer.
+See `cuopt-qp-formulation` for when to use cuopt-lp-milp-formulation or cuopt-developer.

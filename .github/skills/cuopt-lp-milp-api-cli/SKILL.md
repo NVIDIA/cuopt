@@ -1,11 +1,11 @@
 ---
 name: cuopt-lp-milp-api-cli
-description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use with cuopt-lp-milp-common for concepts. Use when the user is solving from MPS via command line.
+description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use with cuopt-lp-milp-formulation for concepts. Use when the user is solving from MPS via command line.
 ---
 
 # cuOpt LP/MILP — CLI
 
-**Concepts:** Read `cuopt-lp-milp-common/SKILL.md` for problem type and formulation.
+**Concepts:** Read `cuopt-lp-milp-formulation/SKILL.md` for problem type and formulation.
 
 This skill is **CLI only**. For Python or C, use `cuopt-lp-milp-api-python` or `cuopt-lp-milp-api-c`.
 
