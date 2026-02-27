@@ -2535,10 +2535,11 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);
 
-    if (ft.refactor_basis(lp.A, settings, lp.lower, lp.upper, basic_list, nonbasic_list, vstatus) >
-        0) {
-      return dual::status_t::NUMERICAL;
-    }
+    i_t refactor_status = ft.refactor_basis(
+      lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+    if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
+    if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
+    if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
 
     if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
   }
@@ -3406,15 +3407,24 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
         bool should_recompute_x = false;
-        if (ft.refactor_basis(
-              lp.A, settings, lp.lower, lp.upper, basic_list, nonbasic_list, vstatus) > 0) {
+        i_t refactor_status     = ft.refactor_basis(
+          lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+        if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
+        if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
+        if (refactor_status > 0) {
           should_recompute_x = true;
           settings.log.printf("Failed to factorize basis. Iteration %d\n", iter);
           if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-          i_t count = 0;
-          i_t deficient_size;
-          while ((deficient_size = ft.refactor_basis(
-                    lp.A, settings, lp.lower, lp.upper, basic_list, nonbasic_list, vstatus)) > 0) {
+          i_t count          = 0;
+          i_t deficient_size = 0;
+          while (true) {
+            deficient_size = ft.refactor_basis(
+              lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+            if (deficient_size == CONCURRENT_HALT_RETURN) {
+              return dual::status_t::CONCURRENT_LIMIT;
+            }
+            if (deficient_size == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
+            if (deficient_size <= 0) { break; }
             settings.log.printf("Failed to repair basis. Iteration %d. %d deficient columns.\n",
                                 iter,
                                 static_cast<int>(deficient_size));
@@ -3425,6 +3435,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
             count++;
             if (count > 10) { return dual::status_t::NUMERICAL; }
           }
+          if (deficient_size < 0) { return dual::status_t::NUMERICAL; }
 
           settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
         }

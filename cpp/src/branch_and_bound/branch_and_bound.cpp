@@ -1886,6 +1886,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                         root_crossover_settings,
                                                         original_lp_.lower,
                                                         original_lp_.upper,
+                                                        exploration_stats_.start_time,
                                                         basic_list,
                                                         nonbasic_list,
                                                         crossover_vstatus_);
@@ -2285,6 +2286,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       mutex_original_lp_.lock();
       remove_cuts(original_lp_,
                   settings_,
+                  exploration_stats_.start_time,
                   Arow_,
                   new_slacks_,
                   original_rows,

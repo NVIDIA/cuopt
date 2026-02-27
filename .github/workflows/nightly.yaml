@@ -17,7 +17,7 @@ jobs:
       matrix:
         cuopt_branch:
           - "main"
-          - "release/26.02"
+          - "release/26.04"
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Pipeline

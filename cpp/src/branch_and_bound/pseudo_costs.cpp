@@ -151,9 +151,6 @@ void strong_branch_helper(i_t start,
     child_problem.upper[j] = original_lp.upper[j];
 
     if (toc(start_time) > settings.time_limit || *concurrent_halt == 1) {
-      if (*concurrent_halt == 1) {
-        std::cout << "Concurrent halt reached in Dual Simplex" << std::endl;
-      }
       break; 
     }
   }
@@ -390,8 +387,6 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     settings.log.printf("Racing batch PDLP and Dual Simplex for strong branching\n");
 
     f_t start_batch = tic();
-    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-    pdlp_settings.concurrent_halt = &concurrent_halt;
 
     // Use original_problem to create the BatchLP problem
     csr_matrix_t<i_t, f_t> A_row(original_problem.A.m, original_problem.A.n, 0);
@@ -412,13 +407,18 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       fraction_values.push_back(original_root_soln_x[j]);
     }
 
-    f_t elapsed_time = toc(start_time);
-    pdlp_settings.time_limit = std::max(0.0, settings.time_limit - elapsed_time);
-    
-    const auto mps_model = simplex_problem_to_mps_data_model(original_problem);
+    const auto mps_model         = simplex_problem_to_mps_data_model(original_problem);
+
+    const f_t batch_elapsed_time = toc(start_time);
+    const f_t batch_remaining_time =
+      std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+    if (batch_remaining_time <= 0.0) { return; }
+
+    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+    pdlp_settings.concurrent_halt = &concurrent_halt;
+
+    pdlp_settings.time_limit = batch_remaining_time;
     const raft::handle_t batch_pdlp_handle;
-
-
     constexpr bool dual_simplex_primal_dual = false;
     if (dual_simplex_primal_dual) {
       pdlp_settings.set_initial_primal_solution(
@@ -426,7 +426,6 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
       pdlp_settings.set_initial_dual_solution(
         original_root_soln_y.data(), original_root_soln_y.size(), batch_pdlp_handle.get_stream());
     }
-
     const auto solutions =
       batch_pdlp_solve(&batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
     f_t batch_pdlp_strong_branching_time = toc(start_batch);

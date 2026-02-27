@@ -52,6 +52,9 @@ cpp/doxygen/xml
 token_cache.json
 version_cache.json
 
+# Clang compilation database
+compile_commands.json
+
 # Local Server Error Log
 error_log.txt
 
