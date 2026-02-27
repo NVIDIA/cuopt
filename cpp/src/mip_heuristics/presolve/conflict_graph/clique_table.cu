@@ -679,7 +679,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
         if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
         if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
           if (vars_sp.size() != curr_clique_vars.size()) {
-            fix_difference(curr_clique_vars, vars_sp);
+            // fix_difference(curr_clique_vars, vars_sp);
           }
           continue;
         }
