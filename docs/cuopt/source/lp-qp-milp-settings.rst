@@ -198,6 +198,7 @@ FP32 Precision
 ``CUOPT_PDLP_FP32`` controls whether PDLP should run in FP32 (float) precision instead of FP64 (double).
 FP32 uses half the memory of FP64 and allows PDHG iterations to be on average twice as fast,
 but it may require more iterations to converge due to reduced numerical accuracy.
+For an alternative that maintains FP64 accuracy while improving performance, see :ref:`Mixed Precision SpMV`.
 FP32 mode is only supported with the PDLP method (not concurrent) and without crossover.
 
 .. note:: The default precision is FP64 (double).
