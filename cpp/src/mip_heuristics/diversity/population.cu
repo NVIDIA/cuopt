@@ -179,9 +179,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
-  // early exit to avoid taking the population lock
-  if (!solutions_in_external_queue_.load()) { return; }
-
+  // don't do early exit checks here. mutex needs to be acquired to prevent race conditions
   auto new_sol_vector = get_external_solutions();
   add_solutions_from_vec(std::move(new_sol_vector));
 }
