@@ -1947,6 +1947,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
+  settings_.log.printf("Reduced cost strengthening enabled: %d\n",
+                       settings_.reduced_cost_strengthening);
+
   variable_bounds_t<i_t, f_t> variable_bounds(
     original_lp_, settings_, var_types_, Arow_, new_slacks_);
 
