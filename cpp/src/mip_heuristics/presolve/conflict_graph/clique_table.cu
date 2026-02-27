@@ -537,9 +537,9 @@ bool extend_clique(const std::vector<i_t>& clique,
           remaining_nnz_budget < static_cast<i_t>(new_clique.size())) {
         return true;
       }
-      // insert the new clique into the problem as a new constraint
-      insert_clique_into_problem(new_clique, problem, A, coeff_scale);
-      inserted_row_nnz = static_cast<i_t>(new_clique.size());
+      // Row insertion is now deferred until dominance is confirmed against model rows.
+      // This keeps extension and replacement sequential: detect dominance first, then replace.
+      inserted_row_nnz = 0;
     }
   }
   return new_clique.size() > clique.size();
@@ -550,13 +550,14 @@ bool extend_clique(const std::vector<i_t>& clique,
 // TODO: consider a heuristic on how much of the cliques derived from knapsacks to include here
 template <typename i_t, typename f_t>
 i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
+                   const std::unordered_set<i_t>& set_packing_constraints,
                    clique_table_t<i_t, f_t>& clique_table,
                    dual_simplex::user_problem_t<i_t, f_t>& problem,
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
                    cuopt::timer_t& timer)
 {
   constexpr i_t min_extension_gain       = 2;
-  constexpr i_t extension_yield_window   = 64;
+  constexpr i_t extension_yield_window   = 128;
   constexpr i_t min_successes_per_window = 1;
 
   i_t base_rows      = A.m;
@@ -573,6 +574,217 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                   min_extension_gain,
                   max_added_rows,
                   max_added_nnz);
+  std::vector<std::vector<i_t>> cstr_vars(knapsack_constraints.size());
+  struct clique_sig_t {
+    i_t knapsack_idx;
+    i_t size;
+    long long signature;
+  };
+  std::vector<clique_sig_t> sp_sigs;
+  sp_sigs.reserve(set_packing_constraints.size());
+  for (const auto knapsack_idx : set_packing_constraints) {
+    if (knapsack_idx < 0 || knapsack_idx >= static_cast<i_t>(knapsack_constraints.size())) {
+      continue;
+    }
+    const auto& vars = knapsack_constraints[knapsack_idx].entries;
+    cstr_vars[knapsack_idx].reserve(vars.size());
+    for (const auto& entry : vars) {
+      cstr_vars[knapsack_idx].push_back(entry.col);
+    }
+    std::sort(cstr_vars[knapsack_idx].begin(), cstr_vars[knapsack_idx].end());
+    cstr_vars[knapsack_idx].erase(
+      std::unique(cstr_vars[knapsack_idx].begin(), cstr_vars[knapsack_idx].end()),
+      cstr_vars[knapsack_idx].end());
+    long long signature = 0;
+    for (auto v : cstr_vars[knapsack_idx]) {
+      signature += static_cast<long long>(v);
+    }
+    sp_sigs.push_back({knapsack_idx, static_cast<i_t>(cstr_vars[knapsack_idx].size()), signature});
+  }
+  std::sort(sp_sigs.begin(), sp_sigs.end(), [](const auto& a, const auto& b) {
+    if (a.signature != b.signature) { return a.signature < b.signature; }
+    return a.size < b.size;
+  });
+  std::vector<i_t> original_to_current_row_idx(problem.row_sense.size(), -1);
+  for (i_t row_idx = 0; row_idx < static_cast<i_t>(original_to_current_row_idx.size()); row_idx++) {
+    original_to_current_row_idx[row_idx] = row_idx;
+  }
+  auto is_subset = [](const std::vector<i_t>& a, const std::vector<i_t>& b) {
+    size_t i = 0;
+    size_t j = 0;
+    while (i < a.size() && j < b.size()) {
+      if (a[i] == b[j]) {
+        i++;
+        j++;
+      } else if (a[i] > b[j]) {
+        j++;
+      } else {
+        return false;
+      }
+    }
+    return i == a.size();
+  };
+  auto fix_difference = [&](const std::vector<i_t>& superset, const std::vector<i_t>& subset) {
+    cuopt_assert(std::is_sorted(subset.begin(), subset.end()),
+                 "subset vector passed to fix_difference is not sorted");
+    for (auto var_idx : superset) {
+      if (std::binary_search(subset.begin(), subset.end(), var_idx)) { continue; }
+      if (var_idx >= problem.num_cols) {
+        i_t orig_idx = var_idx - problem.num_cols;
+        CUOPT_LOG_DEBUG("Fixing variable %d", orig_idx);
+        cuopt_assert(problem.lower[orig_idx] != 0 || problem.upper[orig_idx] != 0,
+                     "Variable is fixed to other side");
+        problem.lower[orig_idx] = 1;
+        problem.upper[orig_idx] = 1;
+      } else {
+        CUOPT_LOG_DEBUG("Fixing variable %d", var_idx);
+        cuopt_assert(problem.lower[var_idx] != 1 || problem.upper[var_idx] != 1,
+                     "Variable is fixed to other side");
+        problem.lower[var_idx] = 0;
+        problem.upper[var_idx] = 0;
+      }
+    }
+  };
+  auto remove_dominated_cliques_in_problem_for_single_extended_clique =
+    [&](const std::vector<i_t>& curr_clique,
+        f_t coeff_scale,
+        i_t remaining_rows_budget,
+        i_t remaining_nnz_budget,
+        i_t& inserted_row_nnz) {
+      inserted_row_nnz = 0;
+      if (curr_clique.empty() || sp_sigs.empty()) { return; }
+      std::vector<i_t> curr_clique_vars(curr_clique.begin(), curr_clique.end());
+      std::sort(curr_clique_vars.begin(), curr_clique_vars.end());
+      curr_clique_vars.erase(std::unique(curr_clique_vars.begin(), curr_clique_vars.end()),
+                             curr_clique_vars.end());
+      long long signature = 0;
+      for (auto v : curr_clique_vars) {
+        signature += static_cast<long long>(v);
+      }
+      constexpr size_t dominance_window = 100;
+      auto end_it                       = std::upper_bound(
+        sp_sigs.begin(), sp_sigs.end(), signature, [](long long value, const auto& a) {
+          return value < a.signature;
+        });
+      size_t end   = static_cast<size_t>(std::distance(sp_sigs.begin(), end_it));
+      size_t start = (end > dominance_window) ? (end - dominance_window) : 0;
+      std::vector<i_t> rows_to_remove;
+      for (size_t idx = end; idx > start; idx--) {
+        if (timer.check_time_limit()) { break; }
+        const auto& sp      = sp_sigs[idx - 1];
+        const auto& vars_sp = cstr_vars[sp.knapsack_idx];
+        if (vars_sp.size() > curr_clique_vars.size()) { continue; }
+        cuopt_assert(std::is_sorted(vars_sp.begin(), vars_sp.end()),
+                     "vars_sp vector passed to is_subset is not sorted");
+        if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
+        if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
+          if (vars_sp.size() != curr_clique_vars.size()) {
+            fix_difference(curr_clique_vars, vars_sp);
+          }
+          continue;
+        }
+        i_t original_row_idx = knapsack_constraints[sp.knapsack_idx].cstr_idx;
+        if (original_row_idx < 0 ||
+            original_row_idx >= static_cast<i_t>(original_to_current_row_idx.size())) {
+          continue;
+        }
+        i_t current_row_idx = original_to_current_row_idx[original_row_idx];
+        if (current_row_idx < 0 || current_row_idx >= static_cast<i_t>(problem.row_sense.size())) {
+          continue;
+        }
+        rows_to_remove.push_back(current_row_idx);
+      }
+      if (rows_to_remove.empty()) { return; }
+      std::sort(rows_to_remove.begin(), rows_to_remove.end());
+      rows_to_remove.erase(std::unique(rows_to_remove.begin(), rows_to_remove.end()),
+                           rows_to_remove.end());
+      if (remaining_rows_budget <= 0 ||
+          remaining_nnz_budget < static_cast<i_t>(curr_clique_vars.size())) {
+        return;
+      }
+      // Replace dominated rows with this stronger clique row.
+      insert_clique_into_problem(curr_clique_vars, problem, A, coeff_scale);
+      inserted_row_nnz = static_cast<i_t>(curr_clique_vars.size());
+      std::vector<i_t> removal_marker(problem.row_sense.size(), 0);
+      for (auto row_idx : rows_to_remove) {
+        if (row_idx >= 0 && row_idx < static_cast<i_t>(removal_marker.size())) {
+          CUOPT_LOG_DEBUG("Removing dominated row %d", row_idx);
+          removal_marker[row_idx] = true;
+        }
+      }
+      dual_simplex::csr_matrix_t<i_t, f_t> A_removed(0, 0, 0);
+      A.remove_rows(removal_marker, A_removed);
+      A                = std::move(A_removed);
+      problem.num_rows = A.m;
+      i_t n            = 0;
+      auto new_end     = std::remove_if(
+        problem.row_sense.begin(), problem.row_sense.end(), [&removal_marker, &n](char) mutable {
+          return removal_marker[n++];
+        });
+      problem.row_sense.erase(new_end, problem.row_sense.end());
+      n = 0;
+      auto new_end_rhs =
+        std::remove_if(problem.rhs.begin(), problem.rhs.end(), [&removal_marker, &n](f_t) mutable {
+          return removal_marker[n++];
+        });
+      problem.rhs.erase(new_end_rhs, problem.rhs.end());
+      n                      = 0;
+      auto new_end_row_names = std::remove_if(
+        problem.row_names.begin(),
+        problem.row_names.end(),
+        [&removal_marker, &n](const std::string&) mutable { return removal_marker[n++]; });
+      problem.row_names.erase(new_end_row_names, problem.row_names.end());
+      cuopt_assert(problem.rhs.size() == problem.row_sense.size(),
+                   "rhs and row sense size mismatch");
+      cuopt_assert(problem.row_names.size() == problem.rhs.size(),
+                   "row names and rhs size mismatch");
+      cuopt_assert(problem.num_rows == static_cast<i_t>(problem.rhs.size()),
+                   "matrix and num rows mismatch after removal");
+      if (!problem.range_rows.empty()) {
+        std::vector<i_t> old_to_new_indices;
+        old_to_new_indices.reserve(removal_marker.size());
+        i_t new_idx = 0;
+        for (size_t i = 0; i < removal_marker.size(); ++i) {
+          if (!removal_marker[i]) {
+            old_to_new_indices.push_back(new_idx++);
+          } else {
+            old_to_new_indices.push_back(-1);
+          }
+        }
+        std::vector<i_t> new_range_rows;
+        std::vector<f_t> new_range_values;
+        for (size_t i = 0; i < problem.range_rows.size(); ++i) {
+          i_t old_row = problem.range_rows[i];
+          if (old_row >= 0 && old_row < static_cast<i_t>(removal_marker.size()) &&
+              !removal_marker[old_row]) {
+            i_t new_row = old_to_new_indices[old_row];
+            cuopt_assert(new_row != -1, "Invalid new row index for ranged row renumbering");
+            new_range_rows.push_back(new_row);
+            new_range_values.push_back(problem.range_value[i]);
+          }
+        }
+        problem.range_rows  = std::move(new_range_rows);
+        problem.range_value = std::move(new_range_values);
+      }
+      problem.num_range_rows = static_cast<i_t>(problem.range_rows.size());
+      std::vector<i_t> removed_prefix(removal_marker.size() + 1, 0);
+      for (size_t row_idx = 0; row_idx < removal_marker.size(); row_idx++) {
+        removed_prefix[row_idx + 1] =
+          removed_prefix[row_idx] + static_cast<i_t>(removal_marker[row_idx]);
+      }
+      for (i_t row_idx = 0; row_idx < static_cast<i_t>(original_to_current_row_idx.size());
+           row_idx++) {
+        i_t current_row_idx = original_to_current_row_idx[row_idx];
+        if (current_row_idx < 0) { continue; }
+        cuopt_assert(current_row_idx < static_cast<i_t>(removal_marker.size()),
+                     "Row index map is out of bounds");
+        if (removal_marker[current_row_idx]) {
+          original_to_current_row_idx[row_idx] = -1;
+        } else {
+          original_to_current_row_idx[row_idx] = current_row_idx - removed_prefix[current_row_idx];
+        }
+      }
+    };
   struct extension_candidate_t {
     i_t knapsack_idx;
     i_t estimated_gain;
@@ -635,10 +847,16 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                                          inserted_row_nnz);
     if (extended_clique) {
       n_extended_cliques++;
-      window_successes++;
-      if (inserted_row_nnz > 0) {
+      i_t replacement_row_nnz = 0;
+      remove_dominated_cliques_in_problem_for_single_extended_clique(clique_table.first.back(),
+                                                                     coeff_scale,
+                                                                     max_added_rows - added_rows,
+                                                                     max_added_nnz - added_nnz,
+                                                                     replacement_row_nnz);
+      if (replacement_row_nnz > 0) {
+        window_successes++;
         added_rows++;
-        added_nnz += inserted_row_nnz;
+        added_nnz += replacement_row_nnz;
       }
     }
     if (window_attempts >= extension_yield_window) {
@@ -651,9 +869,9 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       window_successes = 0;
     }
   }
-  // problem.A.check_matrix();
   // copy modified matrix back to problem
   A.to_compressed_col(problem.A);
+  CUOPT_LOG_DEBUG("Number of extended cliques: %d", n_extended_cliques);
   return n_extended_cliques;
 }
 
@@ -671,246 +889,6 @@ void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table)
     const auto& addtl_clique = clique_table.addtl_cliques[addtl_c];
     clique_table.var_clique_map_addtl[addtl_clique.vertex_idx].insert(addtl_c);
   }
-}
-
-// we want to remove constraints that are covered by extended cliques
-// for set partitioning constraints, we will keep the constraint on original problem but fix
-// extended vars to zero For a set partitioning constraint: v1+v2+...+vk = 1 and discovered:
-// v1+v2+...+vk  + vl1+vl2 +...+vli <= 1
-// Then substituting the first to the second you have:
-// 1  + vl1+vl2 +...+vli <= 1
-// Which is simply:
-// vl1+vl2 +...+vli <= 0
-// so we can fix them
-template <typename i_t, typename f_t>
-void remove_dominated_cliques(
-  dual_simplex::user_problem_t<i_t, f_t>& problem,
-  dual_simplex::csr_matrix_t<i_t, f_t>& A,
-  clique_table_t<i_t, f_t>& clique_table,
-  std::unordered_set<i_t>& set_packing_constraints,
-  const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
-  i_t n_extended_cliques,
-  cuopt::timer_t& timer)
-{
-  // TODO check if we need to add the dominance for the table itself
-  i_t extended_clique_start_idx = clique_table.first.size() - n_extended_cliques;
-  CUOPT_LOG_DEBUG("Number of extended cliques: %d", n_extended_cliques);
-  std::vector<i_t> removal_marker(problem.row_sense.size(), 0);
-  std::vector<std::vector<i_t>> cstr_vars(knapsack_constraints.size());
-  bool time_limit_reached = timer.check_time_limit();
-  for (const auto knapsack_idx : set_packing_constraints) {
-    if (timer.check_time_limit()) {
-      time_limit_reached = true;
-      break;
-    }
-    cuopt_assert(knapsack_constraints[knapsack_idx].is_set_packing,
-                 "Set packing constraint is not a set packing constraint");
-    const auto& vars = knapsack_constraints[knapsack_idx].entries;
-    cstr_vars[knapsack_idx].reserve(vars.size());
-    for (const auto& entry : vars) {
-      cstr_vars[knapsack_idx].push_back(entry.col);
-    }
-    std::sort(cstr_vars[knapsack_idx].begin(), cstr_vars[knapsack_idx].end());
-  }
-  if (!time_limit_reached) {
-    CUOPT_LOG_DEBUG("Constraint variable lists built: %zu", set_packing_constraints.size());
-    constexpr size_t dominance_window = 100;
-    struct clique_sig_t {
-      i_t knapsack_idx;
-      i_t row_idx;
-      i_t size;
-      long long signature;
-    };
-    std::vector<clique_sig_t> sp_sigs;
-    sp_sigs.reserve(set_packing_constraints.size());
-    CUOPT_LOG_DEBUG("Building set packing signatures");
-    for (const auto knapsack_idx : set_packing_constraints) {
-      if (timer.check_time_limit()) {
-        time_limit_reached = true;
-        break;
-      }
-      const auto& vars = cstr_vars[knapsack_idx];
-      if (vars.empty()) { continue; }
-      long long signature = 0;
-      for (auto v : vars) {
-        signature += static_cast<long long>(v);
-      }
-      sp_sigs.push_back({knapsack_idx,
-                         knapsack_constraints[knapsack_idx].cstr_idx,
-                         static_cast<i_t>(vars.size()),
-                         signature});
-    }
-    CUOPT_LOG_DEBUG("Sorting signatures: %zu", sp_sigs.size());
-    std::sort(sp_sigs.begin(), sp_sigs.end(), [](const auto& a, const auto& b) {
-      if (a.signature != b.signature) { return a.signature < b.signature; }
-      return a.size < b.size;
-    });
-    auto is_subset = [](const std::vector<i_t>& a, const std::vector<i_t>& b) {
-      size_t i = 0;
-      size_t j = 0;
-      while (i < a.size() && j < b.size()) {
-        if (a[i] == b[j]) {
-          i++;
-          j++;
-        } else if (a[i] > b[j]) {
-          j++;
-        } else {
-          return false;
-        }
-      }
-      return i == a.size();
-    };
-    auto fix_difference = [&](const std::vector<i_t>& superset, const std::vector<i_t>& subset) {
-      cuopt_assert(std::is_sorted(subset.begin(), subset.end()),
-                   "subset vector passed to fix_difference is not sorted");
-      for (auto var_idx : superset) {
-        if (std::binary_search(subset.begin(), subset.end(), var_idx)) { continue; }
-        if (var_idx >= problem.num_cols) {
-          i_t orig_idx = var_idx - problem.num_cols;
-          CUOPT_LOG_DEBUG("Fixing variable %d", orig_idx);
-          cuopt_assert(problem.lower[orig_idx] != 0 || problem.upper[orig_idx] != 0,
-                       "Variable is fixed to other side");
-          problem.lower[orig_idx] = 1;
-          problem.upper[orig_idx] = 1;
-        } else {
-          CUOPT_LOG_DEBUG("Fixing variable %d", var_idx);
-          cuopt_assert(problem.lower[var_idx] != 1 || problem.upper[var_idx] != 1,
-                       "Variable is fixed to other side");
-          problem.lower[var_idx] = 0;
-          problem.upper[var_idx] = 0;
-        }
-      }
-    };
-    auto find_window_end = [&](long long signature) {
-      auto it = std::upper_bound(
-        sp_sigs.begin(), sp_sigs.end(), signature, [](long long value, const auto& a) {
-          return value < a.signature;
-        });
-      return static_cast<size_t>(std::distance(sp_sigs.begin(), it));
-    };
-    CUOPT_LOG_DEBUG("Scanning extended cliques for dominance");
-    for (i_t i = 0; i < n_extended_cliques; i++) {
-      // Break here so that the discovered dominance is applied
-      if (timer.check_time_limit()) {
-        time_limit_reached = true;
-        break;
-      }
-      i_t clique_idx          = extended_clique_start_idx + i;
-      const auto& curr_clique = clique_table.first[clique_idx];
-      if (curr_clique.empty()) { continue; }
-      std::vector<i_t> curr_clique_vars(curr_clique.begin(), curr_clique.end());
-      std::sort(curr_clique_vars.begin(), curr_clique_vars.end());
-      cuopt_assert(
-        std::unique(curr_clique_vars.begin(), curr_clique_vars.end()) == curr_clique_vars.end(),
-        "Clique variables are not unique");
-      long long signature = 0;
-      for (auto v : curr_clique_vars) {
-        signature += static_cast<long long>(v);
-      }
-      // Subsets must have signature <= current clique signature. Scan only that side.
-      size_t end   = find_window_end(signature);
-      size_t start = (end > dominance_window) ? (end - dominance_window) : 0;
-      for (size_t idx = end; idx > start; idx--) {
-        size_t cand_idx     = idx - 1;
-        const auto& sp      = sp_sigs[cand_idx];
-        const auto& vars_sp = cstr_vars[sp.knapsack_idx];
-        if (vars_sp.size() > curr_clique_vars.size()) { continue; }
-        cuopt_assert(std::is_sorted(vars_sp.begin(), vars_sp.end()),
-                     "vars_sp vector passed to is_subset is not sorted");
-        if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
-        // If this is a real model row and it is already marked for removal, it must not drive
-        // additional fixings/removals.
-        if (sp.row_idx >= 0 && sp.row_idx < static_cast<i_t>(removal_marker.size()) &&
-            removal_marker[sp.row_idx]) {
-          continue;
-        }
-        if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
-          // note that we never deleter set partitioning constraints but it fixes some other
-          // variables
-          if (vars_sp.size() != curr_clique_vars.size()) {
-            CUOPT_LOG_DEBUG("Fixing difference between clique %d and set packing constraint %d",
-                            clique_idx,
-                            sp.row_idx);
-            fix_difference(curr_clique_vars, vars_sp);
-          }
-        } else {
-          // knapsack cstr_idx may refer to virtual rows; only real model row indices can be
-          // removed from A.
-          if (sp.row_idx < 0 || sp.row_idx >= static_cast<i_t>(removal_marker.size())) { continue; }
-          if (removal_marker[sp.row_idx]) { continue; }
-          removal_marker[sp.row_idx] = true;
-        }
-      }
-      if ((i % 128) == 0) {
-        CUOPT_LOG_TRACE("Processed extended clique %d/%d", i + 1, n_extended_cliques);
-      }
-    }
-    CUOPT_LOG_DEBUG("Dominance scan complete");
-  }
-  // TODO if more row removal is needed somewher else(e.g another presolve), standardize this
-  dual_simplex::csr_matrix_t<i_t, f_t> A_removed(0, 0, 0);
-  CUOPT_LOG_DEBUG("Removing dominated rows");
-  A.remove_rows(removal_marker, A_removed);
-  CUOPT_LOG_DEBUG("Rows removed, updating problem");
-  A_removed.to_compressed_col(problem.A);
-  problem.num_rows = A_removed.m;
-  cuopt_assert(problem.rhs.size() == problem.row_sense.size(), "rhs and row sense size mismatch");
-  i_t n = 0;
-  // Remove problem.row_sense entries for which removal_marker is true, using remove_if
-  auto new_end = std::remove_if(
-    problem.row_sense.begin(), problem.row_sense.end(), [&removal_marker, &n](char) mutable {
-      return removal_marker[n++];
-    });
-  // Compute count before erase invalidates the iterator
-  size_t n_of_removed_constraints = std::distance(new_end, problem.row_sense.end());
-  problem.row_sense.erase(new_end, problem.row_sense.end());
-  n = 0;
-  // Remove problem.rhs entries for which removal_marker is true, using remove_if
-  auto new_end_rhs =
-    std::remove_if(problem.rhs.begin(), problem.rhs.end(), [&removal_marker, &n](f_t) mutable {
-      return removal_marker[n++];
-    });
-  problem.rhs.erase(new_end_rhs, problem.rhs.end());
-  n                      = 0;
-  auto new_end_row_names = std::remove_if(
-    problem.row_names.begin(),
-    problem.row_names.end(),
-    [&removal_marker, &n](const std::string&) mutable { return removal_marker[n++]; });
-  problem.row_names.erase(new_end_row_names, problem.row_names.end());
-  CUOPT_LOG_DEBUG("Number of removed constraints by clique covering: %d", n_of_removed_constraints);
-  cuopt_assert(problem.rhs.size() == problem.row_sense.size(), "rhs and row sense size mismatch");
-  cuopt_assert(problem.row_names.size() == problem.rhs.size(), "row names and rhs size mismatch");
-  cuopt_assert(problem.A.m == problem.rhs.size(), "matrix and num rows mismatch after removal");
-  // Renumber the ranged row indices in problem.range_rows to ensure consistency after constraint
-  // removals. Create a mapping from old indices to new indices.
-  if (!problem.range_rows.empty()) {
-    std::vector<i_t> old_to_new_indices;
-    old_to_new_indices.reserve(removal_marker.size());
-    i_t new_idx = 0;
-    for (size_t i = 0; i < removal_marker.size(); ++i) {
-      if (!removal_marker[i]) {
-        old_to_new_indices.push_back(new_idx++);
-      } else {
-        old_to_new_indices.push_back(-1);  // removed constraint
-      }
-    }
-    // Remove entries from range_rows and range_value where the underlying row has been removed.
-    std::vector<i_t> new_range_rows;
-    std::vector<f_t> new_range_values;
-    for (size_t i = 0; i < problem.range_rows.size(); ++i) {
-      i_t old_row = problem.range_rows[i];
-      if (old_row >= 0 && old_row < (i_t)removal_marker.size() && !removal_marker[old_row]) {
-        i_t new_row = old_to_new_indices[old_row];
-        cuopt_assert(new_row != -1, "Invalid new row index for ranged row renumbering");
-        new_range_rows.push_back(new_row);
-        new_range_values.push_back(problem.range_value[i]);
-      }
-      // else: the ranged row was removed, so we skip it
-    }
-    problem.range_rows  = std::move(new_range_rows);
-    problem.range_value = std::move(new_range_values);
-  }
-  problem.num_range_rows = static_cast<i_t>(problem.range_rows.size());
 }
 
 template <typename i_t, typename f_t>
@@ -1015,19 +993,10 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
 #ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
 #endif
-  i_t n_extended_cliques = extend_cliques(knapsack_constraints, clique_table, problem, A, timer);
+  extend_cliques(knapsack_constraints, set_packing_constraints, clique_table, problem, A, timer);
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
-#endif
-  remove_dominated_cliques(problem,
-                           A,
-                           clique_table,
-                           set_packing_constraints,
-                           knapsack_constraints,
-                           n_extended_cliques,
-                           timer);
-#ifdef DEBUG_CLIQUE_TABLE
-  t_remove = stage_timer.elapsed_time();
+  t_remove = t_extend;
   CUOPT_LOG_DEBUG(
     "Clique table timing (s): fill=%.6f coeff=%.6f sort=%.6f find=%.6f small=%.6f maps=%.6f "
     "extend=%.6f remove=%.6f total=%.6f",
