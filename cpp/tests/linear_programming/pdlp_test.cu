@@ -22,7 +22,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
-#include <mip/mip_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -75,6 +75,41 @@ TEST(pdlp_class, run_double)
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+}
+
+TEST(pdlp_class, mixed_precision_spmv)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto settings_mixed   = pdlp_solver_settings_t<int, double>{};
+  settings_mixed.method = cuopt::linear_programming::method_t::PDLP;
+  settings_mixed.mixed_precision_spmv = true;
+
+  optimization_problem_solution_t<int, double> solution_mixed =
+    solve_lp(&handle_, op_problem, settings_mixed);
+  EXPECT_EQ((int)solution_mixed.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    afiro_primal_objective,
+    solution_mixed.get_additional_termination_information().primal_objective));
+
+  auto settings_full   = pdlp_solver_settings_t<int, double>{};
+  settings_full.method = cuopt::linear_programming::method_t::PDLP;
+  settings_full.mixed_precision_spmv = false;
+
+  optimization_problem_solution_t<int, double> solution_full =
+    solve_lp(&handle_, op_problem, settings_full);
+  EXPECT_EQ((int)solution_full.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    afiro_primal_objective,
+    solution_full.get_additional_termination_information().primal_objective));
+
+  EXPECT_NEAR(solution_mixed.get_additional_termination_information().primal_objective,
+              solution_full.get_additional_termination_information().primal_objective,
+              1e-2);
 }
 
 TEST(pdlp_class, run_double_very_low_accuracy)

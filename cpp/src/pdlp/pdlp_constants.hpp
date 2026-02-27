@@ -71,11 +71,4 @@ template <>
 inline constexpr double safe_guard_for_extreme_values_in_primal_weight_computation<double> =
   1.0e-10;
 
-// Mixed precision SpMV configuration for PDLP Stable3 mode
-// When enabled, the constraint matrix A (and its transpose) are stored in FP32
-// while vectors and compute types remain in FP64 during PDHG iterations.
-// This is NOT used during convergence checking which stays in full FP64.
-// This only applies when f_t = double (FP64 mode).
-inline constexpr bool enable_mixed_precision_spmv = true;
-
 }  // namespace cuopt::linear_programming::detail

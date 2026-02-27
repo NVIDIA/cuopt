@@ -90,7 +90,8 @@ class cusparse_view_t {
                   rmm::device_uvector<f_t>& _potential_next_dual_solution,
                   rmm::device_uvector<f_t>& _reflected_primal_solution,
                   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                  bool enable_mixed_precision_spmv);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
                   const problem_t<i_t, f_t>& op_problem,
@@ -196,7 +197,7 @@ class cusparse_view_t {
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
 
   // Mixed precision SpMV support (FP32 matrix with FP64 vectors/compute)
-  // Only used when enable_mixed_precision_spmv is true and f_t = double
+  // Only used when mixed_precision_enabled_ is true and f_t = double
   rmm::device_uvector<float> A_float_;           // FP32 copy of A values
   rmm::device_uvector<float> A_T_float_;         // FP32 copy of A_T values
   cusparseSpMatDescr_t A_mixed_{nullptr};        // FP32 matrix descriptor for A
@@ -210,7 +211,6 @@ class cusparse_view_t {
 };
 
 // Mixed precision SpMV: FP32 matrix with FP64 vectors and FP64 compute type
-// This is used for PDHG iterations when enable_mixed_precision_spmv is true
 void mixed_precision_spmv(cusparseHandle_t handle,
                           cusparseOperation_t opA,
                           const double* alpha,

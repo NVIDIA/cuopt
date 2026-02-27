@@ -192,6 +192,30 @@ Per Constraint Residual
 
 .. note:: The default value is false.
 
+FP32 Precision
+^^^^^^^^^^^^^^
+
+``CUOPT_PDLP_FP32`` controls whether PDLP should run in FP32 (float) precision instead of FP64 (double).
+FP32 uses half the memory of FP64 and allows PDHG iterations to be on average twice as fast,
+but it may require more iterations to converge due to reduced numerical accuracy.
+FP32 mode is only supported with the PDLP method (not concurrent) and without crossover.
+
+.. note:: The default precision is FP64 (double).
+
+Mixed Precision SpMV
+^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIXED_PRECISION_SPMV`` controls whether PDLP should use mixed precision sparse matrix-vector
+products (SpMV) during PDHG iterations. When enabled, the constraint matrix and its transpose are stored
+in FP32 while vectors and the compute type remain in FP64. This allows SpMV operations to be faster
+thanks to reduced memory bandwidth requirements, while maintaining FP64 accuracy in the accumulation.
+This will make PDHG iterations faster while limiting the potential negative impact on convergence
+(compared to running in FP32 mode). Convergence checking and restart logic always use the full FP64
+matrix, so this mode does not reduce memory usage since both the FP32 and FP64 copies of the matrix
+are kept in memory. Mixed precision SpMV only applies in FP64 mode and has no effect when running in FP32.
+
+.. note:: The default value is false.
+
 Barrier Solver Settings
 ^^^^^^^^^^^^^^^^^^^^^^^^
 

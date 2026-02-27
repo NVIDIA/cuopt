@@ -239,6 +239,15 @@ class pdlp_solver_settings_t {
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
+  /**
+   * @brief Enable mixed precision SpMV during PDHG iterations (FP64 mode only).
+   *
+   * When true, the constraint matrix A and its transpose are stored in FP32 while
+   * vectors and compute type remain in FP64, reducing memory bandwidth during SpMV.
+   * Convergence checking and restarts always use the full FP64 matrix, so this does
+   * not reduce overall memory usage.  Has no effect in FP32 mode.
+   */
+  bool mixed_precision_spmv{false};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};

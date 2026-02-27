@@ -21,10 +21,8 @@
 #include <cuda_runtime_api.h>
 #include <dlfcn.h>
 
-#include <thrust/transform.h>
-#include <thrust/execution_policy.h>
+#include <cub/cub.cuh>
 
-// Functor for double-to-float conversion on GPU
 struct double_to_float_functor {
   __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }
 };
@@ -285,7 +283,8 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   rmm::device_uvector<f_t>& _potential_next_dual_solution,
   rmm::device_uvector<f_t>& _reflected_primal_solution,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  bool enable_mixed_precision_spmv)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     A{},
@@ -597,60 +596,79 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   }
 #endif
 
-  // Initialize mixed precision SpMV support
-  // Only when f_t = double and enable_mixed_precision_spmv is true
-  if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
-    mixed_precision_enabled_ = true;
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (enable_mixed_precision_spmv) {
+      mixed_precision_enabled_ = true;
 
-    // Create FP32 copies of A and A_T matrix values
-    A_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
-    A_T_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
+      A_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
+      A_T_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
 
-    // Convert A values from double to float
-    thrust::transform(thrust::cuda::par.on(handle_ptr->get_stream()),
-                      op_problem_scaled.coefficients.data(),
-                      op_problem_scaled.coefficients.data() + op_problem_scaled.nnz,
-                      A_float_.data(),
-                      double_to_float_functor{});
+      cub::DeviceTransform::Transform(op_problem_scaled.coefficients.data(),
+                                      A_float_.data(),
+                                      op_problem_scaled.nnz,
+                                      double_to_float_functor{},
+                                      handle_ptr->get_stream().value());
 
-    // Convert A_T values from double to float
-    thrust::transform(thrust::cuda::par.on(handle_ptr->get_stream()),
-                      A_T_.data(),
-                      A_T_.data() + op_problem_scaled.nnz,
-                      A_T_float_.data(),
-                      double_to_float_functor{});
+      cub::DeviceTransform::Transform(A_T_.data(),
+                                      A_T_float_.data(),
+                                      op_problem_scaled.nnz,
+                                      double_to_float_functor{},
+                                      handle_ptr->get_stream().value());
 
-    // Create FP32 matrix descriptors for mixed precision SpMV
-    RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_mixed_,
-                                        op_problem_scaled.n_constraints,
-                                        op_problem_scaled.n_variables,
-                                        op_problem_scaled.nnz,
-                                        const_cast<i_t*>(op_problem_scaled.offsets.data()),
-                                        const_cast<i_t*>(op_problem_scaled.variables.data()),
-                                        A_float_.data(),
-                                        CUSPARSE_INDEX_32I,
-                                        CUSPARSE_INDEX_32I,
-                                        CUSPARSE_INDEX_BASE_ZERO,
-                                        CUDA_R_32F));
+      RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_mixed_,
+                                          op_problem_scaled.n_constraints,
+                                          op_problem_scaled.n_variables,
+                                          op_problem_scaled.nnz,
+                                          const_cast<i_t*>(op_problem_scaled.offsets.data()),
+                                          const_cast<i_t*>(op_problem_scaled.variables.data()),
+                                          A_float_.data(),
+                                          CUSPARSE_INDEX_32I,
+                                          CUSPARSE_INDEX_32I,
+                                          CUSPARSE_INDEX_BASE_ZERO,
+                                          CUDA_R_32F));
 
-    RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_T_mixed_,
-                                        op_problem_scaled.n_variables,
-                                        op_problem_scaled.n_constraints,
-                                        op_problem_scaled.nnz,
-                                        const_cast<i_t*>(A_T_offsets_.data()),
-                                        const_cast<i_t*>(A_T_indices_.data()),
-                                        A_T_float_.data(),
-                                        CUSPARSE_INDEX_32I,
-                                        CUSPARSE_INDEX_32I,
-                                        CUSPARSE_INDEX_BASE_ZERO,
-                                        CUDA_R_32F));
+      RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_T_mixed_,
+                                          op_problem_scaled.n_variables,
+                                          op_problem_scaled.n_constraints,
+                                          op_problem_scaled.nnz,
+                                          const_cast<i_t*>(A_T_offsets_.data()),
+                                          const_cast<i_t*>(A_T_indices_.data()),
+                                          A_T_float_.data(),
+                                          CUSPARSE_INDEX_32I,
+                                          CUSPARSE_INDEX_32I,
+                                          CUSPARSE_INDEX_BASE_ZERO,
+                                          CUDA_R_32F));
 
-    // Compute buffer sizes for mixed precision SpMV
-    const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
-    const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
+      const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
 
-    size_t buffer_size_non_transpose_mixed =
-      mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+      size_t buffer_size_non_transpose_mixed =
+        mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        alpha_d.data(),
+                                        A_mixed_,
+                                        c,
+                                        beta_d.data(),
+                                        dual_solution,
+                                        CUSPARSE_SPMV_CSR_ALG2,
+                                        handle_ptr->get_stream());
+      buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed,
+                                         handle_ptr->get_stream());
+
+      size_t buffer_size_transpose_mixed =
+        mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                        alpha_d.data(),
+                                        A_T_mixed_,
+                                        dual_solution,
+                                        beta_d.data(),
+                                        c,
+                                        CUSPARSE_SPMV_CSR_ALG2,
+                                        handle_ptr->get_stream());
+      buffer_transpose_mixed_.resize(buffer_size_transpose_mixed, handle_ptr->get_stream());
+
+#if CUDA_VER_12_4_UP
+      mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
                                       alpha_d.data(),
                                       A_mixed_,
@@ -658,11 +676,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       beta_d.data(),
                                       dual_solution,
                                       CUSPARSE_SPMV_CSR_ALG2,
+                                      buffer_non_transpose_mixed_.data(),
                                       handle_ptr->get_stream());
-    buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed, handle_ptr->get_stream());
 
-    size_t buffer_size_transpose_mixed =
-      mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
+      mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
                                       alpha_d.data(),
                                       A_T_mixed_,
@@ -670,33 +687,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       beta_d.data(),
                                       c,
                                       CUSPARSE_SPMV_CSR_ALG2,
+                                      buffer_transpose_mixed_.data(),
                                       handle_ptr->get_stream());
-    buffer_transpose_mixed_.resize(buffer_size_transpose_mixed, handle_ptr->get_stream());
-
-#if CUDA_VER_12_4_UP
-    // Preprocess mixed precision SpMV
-    mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
-                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                    alpha_d.data(),
-                                    A_mixed_,
-                                    c,
-                                    beta_d.data(),
-                                    dual_solution,
-                                    CUSPARSE_SPMV_CSR_ALG2,
-                                    buffer_non_transpose_mixed_.data(),
-                                    handle_ptr->get_stream());
-
-    mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
-                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                    alpha_d.data(),
-                                    A_T_mixed_,
-                                    dual_solution,
-                                    beta_d.data(),
-                                    c,
-                                    CUSPARSE_SPMV_CSR_ALG2,
-                                    buffer_transpose_mixed_.data(),
-                                    handle_ptr->get_stream());
 #endif
+    }
   }
 }
 
@@ -1080,22 +1074,20 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
 {
-  if constexpr (std::is_same_v<f_t, double> && enable_mixed_precision_spmv) {
+  if constexpr (std::is_same_v<f_t, double>) {
     if (!mixed_precision_enabled_) { return; }
 
-    // The A_ and A_T_ references point to the scaled matrix data
-    // Update the FP32 copies with the scaled values
-    thrust::transform(thrust::cuda::par.on(handle_ptr_->get_stream()),
-                      A_.data(),
-                      A_.data() + A_.size(),
-                      A_float_.data(),
-                      double_to_float_functor{});
+    cub::DeviceTransform::Transform(A_.data(),
+                                    A_float_.data(),
+                                    A_.size(),
+                                    double_to_float_functor{},
+                                    handle_ptr_->get_stream().value());
 
-    thrust::transform(thrust::cuda::par.on(handle_ptr_->get_stream()),
-                      A_T_.data(),
-                      A_T_.data() + A_T_.size(),
-                      A_T_float_.data(),
-                      double_to_float_functor{});
+    cub::DeviceTransform::Transform(A_T_.data(),
+                                    A_T_float_.data(),
+                                    A_T_.size(),
+                                    double_to_float_functor{},
+                                    handle_ptr_->get_stream().value());
 
     handle_ptr_->get_stream().synchronize();
   }

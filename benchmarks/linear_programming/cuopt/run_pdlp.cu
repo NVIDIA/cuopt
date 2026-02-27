@@ -78,7 +78,12 @@ static void parse_arguments(argparse::ArgumentParser& program)
   program.add_argument("--solution-path").help("Path where solution file will be generated");
 
   program.add_argument("--pdlp-fp32")
-    .help("Use FP32 (float) precision instead of FP64 (double). Only PDLP method without presolve and crossover is supported.")
+    .help("Use FP32 (float) precision instead of FP64 (double). Only supported for PDLP method without crossover.")
+    .default_value(false)
+    .implicit_value(true);
+
+  program.add_argument("--mixed-precision-spmv")
+    .help("Enable mixed precision SpMV (FP32 matrix, FP64 vectors) during PDHG iterations. Only supported for PDLP method in FP64.")
     .default_value(false)
     .implicit_value(true);
 }
@@ -122,6 +127,8 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> create_solver
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
   settings.crossover = program.get<int>("--crossover");
   settings.presolver  = string_to_presolver(program.get<std::string>("--presolver"));
+  settings.mixed_precision_spmv =
+    program.get<bool>("--mixed-precision-spmv");
 
   return settings;
 }
