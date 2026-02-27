@@ -9,14 +9,14 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 1. Ask Before Assuming
+## Ask Before Assuming
 
 **Always clarify ambiguous requirements before implementing:**
 
-- What **language/interface**? (**Python** API / **C** API / REST Server / CLI)
-- What problem type? (Routing / LP / MILP / QP)
-- What constraints matter? (time windows, capacities, etc.)
-- What output format? (solution values, routes, visualization)
+- What **language/interface**?
+- What problem type?
+- What constraints matter? 
+- What output format?
 
 **Skip asking only if:**
 - User explicitly stated the requirement
@@ -24,7 +24,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 2. Handle Incomplete Questions
+## Handle Incomplete Questions
 
 **If a question seems partial or incomplete, ask follow-up questions:**
 
@@ -42,7 +42,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 3. Clarify Data Requirements
+## Clarify Data Requirements
 
 **Before generating examples, ask about data:**
 
@@ -69,7 +69,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 4. MUST Verify Understanding
+## MUST Verify Understanding
 
 **Before writing substantial code, you MUST confirm your understanding:**
 
@@ -84,7 +84,7 @@ Is this correct?"
 
 ---
 
-## 5. Follow Requirements Exactly
+## Follow Requirements Exactly
 
 - Use the **exact** variable names, formats, and structures the user specifies
 - Don't add features the user didn't ask for
@@ -93,22 +93,7 @@ Is this correct?"
 
 ---
 
-## 6. Read Examples First
-
-Before generating code, **read the canonical example** for that problem type and **language** (Python vs C):
-
-| Problem | Python | C |
-|---------|--------|---|
-| Routing | `docs/cuopt/source/cuopt-python/routing/examples/` | — (no C API) |
-| LP/MILP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/` | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
-| QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
-| Server | `docs/cuopt/source/cuopt_spec.yaml` (OpenAPI) | — |
-
-**Don't invent API patterns.** Copy from examples. For C, use the skill’s `resources/c_api_examples.md` when available. Use the API skill that matches the user's language (Python, C, or CLI); each has resources or examples in that skill.
-
----
-
-## 7. Check Results
+## Check Results
 
 After providing a solution, guide the user to verify:
 
@@ -120,7 +105,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 8. Check Environment First
+## Check Environment First
 
 **Before writing code or suggesting installation, verify the user's setup:**
 
@@ -166,7 +151,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 9. Ask Before Running
+## Ask Before Running
 
 **Do not execute commands or code without explicit permission:**
 
@@ -183,7 +168,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 10. No Privileged Operations
+## No Privileged Operations
 
 **Never do these without explicit user request AND confirmation:**
 
