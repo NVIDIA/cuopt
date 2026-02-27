@@ -93,6 +93,7 @@ ss.set_error_logging_mode(True)
 
 - [examples.md](resources/examples.md) — VRP, PDP, multi-depot
 - [server_examples.md](resources/server_examples.md) — REST client (curl, Python)
+- **Reference models:** This skill's `assets/` — [vrp_basic](assets/vrp_basic/), [pdp_basic](assets/pdp_basic/). See [assets/README.md](assets/README.md).
 
 ## Escalate
 

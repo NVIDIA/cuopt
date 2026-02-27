@@ -41,6 +41,7 @@ cuOptGetObjectiveValue(solution, &obj_value);
 ## Examples
 
 - [examples.md](resources/examples.md) — LP/MILP with build instructions
+- **Reference code:** This skill's `assets/` — [lp_basic](assets/lp_basic/) (LP), [milp_basic](assets/milp_basic/) (MILP). See [assets/README.md](assets/README.md) for build commands.
 
 For **CLI** (MPS files), use `cuopt-lp-milp-api-cli`.
 

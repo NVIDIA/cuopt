@@ -51,6 +51,7 @@ Integer variables: use `'MARKER' 'INTORG'` before and `'MARKER' 'INTEND'` after 
 ## Examples
 
 - [examples.md](resources/examples.md) — LP and MILP MPS examples, format reference, troubleshooting
+- **Sample MPS files:** This skill's `assets/` — [lp_simple](assets/lp_simple/), [lp_production](assets/lp_production/), [milp_facility](assets/milp_facility/). See [assets/README.md](assets/README.md).
 
 ## Getting the CLI
 

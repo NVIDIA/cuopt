@@ -27,6 +27,8 @@ cuopt_cli problem.mps --time-limit 60
 
 Check `cuopt_cli --help` and the repository documentation (e.g. `docs/cuopt/source/cuopt-cli/`) for QP file format and any QP-specific flags.
 
+**Reference:** This skill's [assets/README.md](assets/README.md) — pointers to LP/MILP CLI samples and options.
+
 ## Getting the CLI
 
 CLI is included with the Python package (`cuopt`). Install via pip or conda (see `cuopt-installation-api-python`); then run `cuopt_cli --help` to verify.

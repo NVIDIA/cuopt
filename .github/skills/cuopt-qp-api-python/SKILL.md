@@ -52,6 +52,7 @@ if problem.Status.name in ["Optimal", "PrimalFeasible"]:
 ## Examples
 
 - [examples.md](resources/examples.md) — portfolio, least squares, maximization workaround
+- **Reference models:** This skill's `assets/` — [portfolio](assets/portfolio/), [least_squares](assets/least_squares/), [maximization_workaround](assets/maximization_workaround/). See [assets/README.md](assets/README.md).
 
 ## Escalate
 
