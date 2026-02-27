@@ -1,6 +1,6 @@
 ---
 name: cuopt-qp-formulation
-description: Quadratic Programming (QP) with cuOpt — problem form and constraints. Domain concepts; no API or interface. QP is beta. Use before coding with cuopt-qp-api-python/c/cli.
+description: Quadratic Programming (QP) with cuOpt — problem form and constraints. Domain concepts; no API or interface. QP is beta.
 ---
 
 # cuOpt QP Formulation

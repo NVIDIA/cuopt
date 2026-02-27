@@ -1,16 +1,16 @@
 ---
 name: cuopt-installation-developer
-description: Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt. For contribution rules and PRs, use cuopt-developer after setup.
+description: Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt.
 ---
 
 # cuOpt Installation — Developer
 
-Set up an environment to **build cuOpt from source** and run tests. For contribution behavior and PRs, use **cuopt-developer** after the build works.
+Set up an environment to **build cuOpt from source** and run tests. For contribution behavior and PRs, see the developer skill after the build works.
 
 ## When to use this skill
 
 - User wants to *build* cuOpt (clone, build deps, build, tests).  
-- Not for *using* cuOpt (pip/conda) — use `cuopt-installation-api-python` or `cuopt-installation-api-c` instead.
+- Not for *using* cuOpt (pip/conda) — use the user installation skill instead.
 
 ## Required questions (environment)
 

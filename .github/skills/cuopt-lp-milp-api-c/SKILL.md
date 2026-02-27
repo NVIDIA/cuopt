@@ -1,13 +1,13 @@
 ---
 name: cuopt-lp-milp-api-c
-description: LP and MILP with cuOpt — C API only. Use with cuopt-lp-milp-formulation for concepts. Use when the user is embedding LP/MILP in C/C++.
+description: LP and MILP with cuOpt — C API only. Use when the user is embedding LP/MILP in C/C++.
 ---
 
 # cuOpt LP/MILP — C API
 
-**Concepts:** Read `cuopt-lp-milp-formulation/SKILL.md` for problem type and formulation.
+Confirm problem type and formulation (variables, objective, constraints, variable types) before coding.
 
-This skill is **C only**. For Python, use `cuopt-lp-milp-api-python`.
+This skill is **C only**.
 
 ## Quick Reference: C API
 
@@ -43,8 +43,8 @@ cuOptGetObjectiveValue(solution, &obj_value);
 - [examples.md](resources/examples.md) — LP/MILP with build instructions
 - **Reference code:** This skill's `assets/` — [lp_basic](assets/lp_basic/) (LP), [milp_basic](assets/milp_basic/) (MILP). See [assets/README.md](assets/README.md) for build commands.
 
-For **CLI** (MPS files), use `cuopt-lp-milp-api-cli`.
+For **CLI** (MPS files), see the LP/MILP CLI skill.
 
 ## Escalate
 
-See `cuopt-lp-milp-formulation` for when to use cuopt-qp-formulation or cuopt-developer.
+If the problem is quadratic (squared or cross terms in the objective), use QP. For contribution or build-from-source, see the developer skill.

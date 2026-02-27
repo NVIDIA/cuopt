@@ -9,7 +9,7 @@ Model and solve linear and mixed-integer linear programs using NVIDIA cuOpt's GP
 
 ## Before You Start
 
-Use the summary from **cuopt-lp-milp-formulation** (parameters, constraints, decisions, objective) if available; otherwise ask for decision variables, objective, and constraints. Then confirm **variable types** (see below) and **interface** (Python API recommended).
+Use a formulation summary (parameters, constraints, decisions, objective) if available; otherwise ask for decision variables, objective, and constraints. Then confirm **variable types** (see below) and **interface** (Python API recommended).
 
 ## Choosing LP vs MILP
 

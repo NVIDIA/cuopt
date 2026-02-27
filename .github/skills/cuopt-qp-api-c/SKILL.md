@@ -1,18 +1,18 @@
 ---
 name: cuopt-qp-api-c
-description: Quadratic Programming (QP) with cuOpt — C API. Use with cuopt-qp-formulation for concepts. Use when the user is embedding QP in C/C++.
+description: Quadratic Programming (QP) with cuOpt — C API. Use when the user is embedding QP in C/C++.
 ---
 
 # cuOpt QP — C API
 
-**Concepts:** Read `cuopt-qp-formulation/SKILL.md` for when QP applies, minimize-only, when to escalate.
+Confirm the objective has squared or cross terms (QP); if purely linear, use LP/MILP. QP must be minimization.
 
-This skill is **C only**. For Python (beta), use `cuopt-qp-api-python`.
+This skill is **C only**.
 
-QP uses the same cuOpt C library as LP/MILP; the API extends to quadratic objectives. See LP/MILP C API docs and build instructions in `cuopt-lp-milp-api-c` for the base setup; then use the QP-specific creation/solve calls from the cuOpt C headers.
+QP uses the same cuOpt C library as LP/MILP; the API extends to quadratic objectives. Use the same include/lib paths and build pattern as for LP/MILP C (see this skill's assets/README.md); then use the QP-specific creation/solve calls from the cuOpt C headers.
 
-**Reference:** This skill's [assets/README.md](assets/README.md) — build pattern and pointers to LP/MILP C examples and repo QP docs.
+**Reference:** This skill's [assets/README.md](assets/README.md) — build pattern and repo QP C API docs.
 
 ## Escalate
 
-See `cuopt-qp-formulation` for when to use cuopt-lp-milp-formulation or cuopt-developer.
+If the problem is linear, use LP/MILP. For contribution or build-from-source, see the developer skill.

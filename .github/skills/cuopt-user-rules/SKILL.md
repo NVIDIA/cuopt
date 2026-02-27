@@ -104,7 +104,7 @@ Before generating code, **read the canonical example** for that problem type and
 | QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
 | Server | `docs/cuopt/source/cuopt_spec.yaml` (OpenAPI) | — |
 
-**Don't invent API patterns.** Copy from examples. For C, use the skill’s `resources/c_api_examples.md` when available. With the flat layout, use the api skill for the user's language (e.g. cuopt-lp-milp-api-python or cuopt-lp-milp-api-c); each has resources/examples.md or equivalent.
+**Don't invent API patterns.** Copy from examples. For C, use the skill’s `resources/c_api_examples.md` when available. Use the API skill that matches the user's language (Python, C, or CLI); each has resources or examples in that skill.
 
 ---
 

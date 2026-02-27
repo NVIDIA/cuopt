@@ -1,6 +1,6 @@
 ---
 name: cuopt-routing-formulation
-description: Vehicle routing (VRP, TSP, PDP) with cuOpt — problem types and data requirements. Domain concepts; no API or interface. Use before coding with cuopt-routing-api-python.
+description: Vehicle routing (VRP, TSP, PDP) with cuOpt — problem types and data requirements. Domain concepts; no API or interface.
 ---
 
 # cuOpt Routing Formulation

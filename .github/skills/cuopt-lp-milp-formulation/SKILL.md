@@ -1,11 +1,11 @@
 ---
 name: cuopt-lp-milp-formulation
-description: LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements (parameters, constraints, decisions, objective). Use before coding with cuopt-lp-milp-api-python/c/cli.
+description: LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements (parameters, constraints, decisions, objective).
 ---
 
 # cuOpt LP/MILP Formulation
 
-Concepts and workflow for going from a problem description to a clear formulation. No API code here — use the API skills to implement.
+Concepts and workflow for going from a problem description to a clear formulation. No API code here.
 
 ## What is LP / MILP
 

@@ -1,13 +1,13 @@
 ---
 name: cuopt-lp-milp-api-cli
-description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use with cuopt-lp-milp-formulation for concepts. Use when the user is solving from MPS via command line.
+description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving from MPS via command line.
 ---
 
 # cuOpt LP/MILP — CLI
 
-**Concepts:** Read `cuopt-lp-milp-formulation/SKILL.md` for problem type and formulation.
+Confirm problem type and formulation (variables, objective, constraints, variable types) before coding.
 
-This skill is **CLI only**. For Python or C, use `cuopt-lp-milp-api-python` or `cuopt-lp-milp-api-c`.
+This skill is **CLI only** (MPS input).
 
 ## Basic usage
 
@@ -55,4 +55,4 @@ Integer variables: use `'MARKER' 'INTORG'` before and `'MARKER' 'INTEND'` after 
 
 ## Getting the CLI
 
-CLI is included with the Python package (`cuopt`). Install via pip or conda (see `cuopt-installation-common` + `cuopt-installation-api-python`); then run `cuopt_cli --help` to verify.
+CLI is included with the Python package (`cuopt`). Install via pip or conda; then run `cuopt_cli --help` to verify.

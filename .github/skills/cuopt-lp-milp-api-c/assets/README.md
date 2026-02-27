@@ -1,6 +1,6 @@
 # Assets — reference C examples
 
-LP/MILP C API reference implementations. Use as reference when building new applications; do not edit in place. Build requires cuOpt installed (see `cuopt-installation-api-c`).
+LP/MILP C API reference implementations. Use as reference when building new applications; do not edit in place. Build requires cuOpt installed (include and lib paths set).
 
 | Example | Type | Description |
 |---------|------|-------------|

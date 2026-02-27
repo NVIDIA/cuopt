@@ -1,11 +1,9 @@
 ---
 name: cuopt-server-api-python
-description: cuOpt REST server — start server, endpoints, Python/curl client examples. Use with cuopt-server-common for capabilities and workflow. Use when the user is deploying or calling the REST API.
+description: cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API.
 ---
 
 # cuOpt Server — Deploy and client (Python/curl)
-
-**Concepts:** Read `cuopt-server-common/SKILL.md` for capabilities, workflow, when to escalate.
 
 This skill covers **starting the server** and **client examples** (curl, Python). Server has no separate C API (clients can be any language).
 
@@ -71,4 +69,4 @@ Use `travel_time_matrix_data` (not transit_time_matrix_data). Capacities: `[[50,
 
 ## Escalate
 
-See `cuopt-server-common` for when to use cuopt-developer.
+For contribution or build-from-source, see the developer skill.
