@@ -1978,49 +1978,49 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           climber_strategies_.size(),
-                           primal_size_h_,
-                           reusable_device_scalar_value_1_.data(),
-                           primal_to_transpose.data(),
-                           primal_size_h_,
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           climber_strategies_.size(),
-                           primal_transposed.data(),
-                           climber_strategies_.size()));
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               climber_strategies_.size(),
+                               primal_size_h_,
+                               reusable_device_scalar_value_1_.data(),
+                               primal_to_transpose.data(),
+                               primal_size_h_,
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               climber_strategies_.size(),
+                               primal_transposed.data(),
+                               climber_strategies_.size()));
 
   if (!is_dual_slack_empty) {
     CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                             CUBLAS_OP_T,
-                             CUBLAS_OP_N,
-                             climber_strategies_.size(),
-                             primal_size_h_,
-                             reusable_device_scalar_value_1_.data(),
-                             dual_slack_to_transpose.data(),
-                             primal_size_h_,
-                             reusable_device_scalar_value_0_.data(),
-                             nullptr,
-                             climber_strategies_.size(),
-                             dual_slack_transposed.data(),
-                             climber_strategies_.size()));
+                                 CUBLAS_OP_T,
+                                 CUBLAS_OP_N,
+                                 climber_strategies_.size(),
+                                 primal_size_h_,
+                                 reusable_device_scalar_value_1_.data(),
+                                 dual_slack_to_transpose.data(),
+                                 primal_size_h_,
+                                 reusable_device_scalar_value_0_.data(),
+                                 nullptr,
+                                 climber_strategies_.size(),
+                                 dual_slack_transposed.data(),
+                                 climber_strategies_.size()));
   }
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           climber_strategies_.size(),
-                           dual_size_h_,
-                           reusable_device_scalar_value_1_.data(),
-                           dual_to_transpose.data(),
-                           dual_size_h_,
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           climber_strategies_.size(),
-                           dual_transposed.data(),
-                           climber_strategies_.size()));
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               climber_strategies_.size(),
+                               dual_size_h_,
+                               reusable_device_scalar_value_1_.data(),
+                               dual_to_transpose.data(),
+                               dual_size_h_,
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               climber_strategies_.size(),
+                               dual_transposed.data(),
+                               climber_strategies_.size()));
 
   // Copy that holds the tranpose to the original vector
   raft::copy(primal_to_transpose.data(),
@@ -2055,50 +2055,50 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t> dual_slack_transposed(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
-    RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           primal_size_h_,
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_1_.data(),
-                           primal_to_transpose.data(),
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           primal_size_h_,
-                           primal_transposed.data(),
-                           primal_size_h_));
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               primal_size_h_,
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_1_.data(),
+                               primal_to_transpose.data(),
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               primal_size_h_,
+                               primal_transposed.data(),
+                               primal_size_h_));
 
   if (!is_dual_slack_empty) {
     CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                             CUBLAS_OP_T,
-                             CUBLAS_OP_N,
-                             primal_size_h_,
-                             climber_strategies_.size(),
-                             reusable_device_scalar_value_1_.data(),
-                             dual_slack_to_transpose.data(),
-                             climber_strategies_.size(),
-                             reusable_device_scalar_value_0_.data(),
-                             nullptr,
-                             primal_size_h_,
-                             dual_slack_transposed.data(),
-                             primal_size_h_));
+                                 CUBLAS_OP_T,
+                                 CUBLAS_OP_N,
+                                 primal_size_h_,
+                                 climber_strategies_.size(),
+                                 reusable_device_scalar_value_1_.data(),
+                                 dual_slack_to_transpose.data(),
+                                 climber_strategies_.size(),
+                                 reusable_device_scalar_value_0_.data(),
+                                 nullptr,
+                                 primal_size_h_,
+                                 dual_slack_transposed.data(),
+                                 primal_size_h_));
   }
 
   CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           dual_size_h_,
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_1_.data(),
-                           dual_to_transpose.data(),
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           dual_size_h_,
-                           dual_transposed.data(),
-                           dual_size_h_));
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               dual_size_h_,
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_1_.data(),
+                               dual_to_transpose.data(),
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               dual_size_h_,
+                               dual_transposed.data(),
+                               dual_size_h_));
 
   // Copy that holds the tranpose to the original vector
   raft::copy(primal_to_transpose.data(),

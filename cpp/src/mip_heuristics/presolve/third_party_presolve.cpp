@@ -371,14 +371,14 @@ optimization_problem_t<i_t, f_t> build_optimization_problem_from_pslp(
     op_problem.set_csr_constraint_matrix(
       reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
 
-      std::vector<f_t> h_obj_coeffs(n_cols);
-      std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
-      if (maximize) {
-        for (size_t i = 0; i < n_cols; ++i) {
-          h_obj_coeffs[i] = -h_obj_coeffs[i];
-        }
+    std::vector<f_t> h_obj_coeffs(n_cols);
+    std::copy(reduced_prob->c, reduced_prob->c + n_cols, h_obj_coeffs.begin());
+    if (maximize) {
+      for (size_t i = 0; i < n_cols; ++i) {
+        h_obj_coeffs[i] = -h_obj_coeffs[i];
       }
-      op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
+    }
+    op_problem.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
     op_problem.set_constraint_lower_bounds(reduced_prob->lhs, n_rows);
     op_problem.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
     op_problem.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
@@ -498,8 +498,8 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
   i_t nnz = constraint_matrix.getNnz();
   assert(offsets[nrows] == nnz);
 
-  const int* cols     = constraint_matrix.getConstraintMatrix().getColumns();
-  const f_t* coeffs   = constraint_matrix.getConstraintMatrix().getValues();
+  const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
+  const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
 
   op_problem.set_csr_constraint_matrix(
     &(coeffs[start]), nnz, &(cols[start]), nnz, offsets.data(), nrows + 1);
@@ -566,8 +566,7 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    presolver.addPresolveMethod(
-      uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
   }
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
@@ -773,8 +772,7 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   std::vector<f_t> dual_sol_vec_h(dual_solution.size());
   raft::copy(dual_sol_vec_h.data(), dual_solution.data(), dual_solution.size(), stream_view);
   std::vector<f_t> reduced_costs_vec_h(reduced_costs.size());
-  raft::copy(
-    reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+  raft::copy(reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
 
   papilo::Solution<f_t> reduced_sol(primal_sol_vec_h);
   if (dual_postsolve) {

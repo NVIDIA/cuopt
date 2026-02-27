@@ -78,12 +78,16 @@ static void parse_arguments(argparse::ArgumentParser& program)
   program.add_argument("--solution-path").help("Path where solution file will be generated");
 
   program.add_argument("--pdlp-fp32")
-    .help("Use FP32 (float) precision instead of FP64 (double). Only supported for PDLP method without crossover.")
+    .help(
+      "Use FP32 (float) precision instead of FP64 (double). Only supported for PDLP method without "
+      "crossover.")
     .default_value(false)
     .implicit_value(true);
 
   program.add_argument("--mixed-precision-spmv")
-    .help("Enable mixed precision SpMV (FP32 matrix, FP64 vectors) during PDHG iterations. Only supported for PDLP method in FP64.")
+    .help(
+      "Enable mixed precision SpMV (FP32 matrix, FP64 vectors) during PDHG iterations. Only "
+      "supported for PDLP method in FP64.")
     .default_value(false)
     .implicit_value(true);
 }
@@ -121,14 +125,14 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, f_t> create_solver
 
   settings.time_limit      = static_cast<f_t>(program.get<double>("--time-limit"));
   settings.iteration_limit = program.get<int>("--iteration-limit");
-  settings.set_optimality_tolerance(static_cast<f_t>(program.get<double>("--optimality-tolerance")));
+  settings.set_optimality_tolerance(
+    static_cast<f_t>(program.get<double>("--optimality-tolerance")));
   settings.pdlp_solver_mode =
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
-  settings.crossover = program.get<int>("--crossover");
-  settings.presolver  = string_to_presolver(program.get<std::string>("--presolver"));
-  settings.mixed_precision_spmv =
-    program.get<bool>("--mixed-precision-spmv");
+  settings.crossover            = program.get<int>("--crossover");
+  settings.presolver            = string_to_presolver(program.get<std::string>("--presolver"));
+  settings.mixed_precision_spmv = program.get<bool>("--mixed-precision-spmv");
 
   return settings;
 }

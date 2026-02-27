@@ -198,10 +198,10 @@ class cusparse_view_t {
 
   // Mixed precision SpMV support (FP32 matrix with FP64 vectors/compute)
   // Only used when mixed_precision_enabled_ is true and f_t = double
-  rmm::device_uvector<float> A_float_;           // FP32 copy of A values
-  rmm::device_uvector<float> A_T_float_;         // FP32 copy of A_T values
-  cusparseSpMatDescr_t A_mixed_{nullptr};        // FP32 matrix descriptor for A
-  cusparseSpMatDescr_t A_T_mixed_{nullptr};      // FP32 matrix descriptor for A_T
+  rmm::device_uvector<float> A_float_;                       // FP32 copy of A values
+  rmm::device_uvector<float> A_T_float_;                     // FP32 copy of A_T values
+  cusparseSpMatDescr_t A_mixed_{nullptr};                    // FP32 matrix descriptor for A
+  cusparseSpMatDescr_t A_T_mixed_{nullptr};                  // FP32 matrix descriptor for A_T
   rmm::device_uvector<uint8_t> buffer_non_transpose_mixed_;  // SpMV buffer for mixed precision A
   rmm::device_uvector<uint8_t> buffer_transpose_mixed_;      // SpMV buffer for mixed precision A_T
   bool mixed_precision_enabled_{false};

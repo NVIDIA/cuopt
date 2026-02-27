@@ -20,9 +20,9 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mps_parser/parser.hpp>
-#include <mip_heuristics/mip_constants.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -85,8 +85,8 @@ TEST(pdlp_class, mixed_precision_spmv)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  auto settings_mixed   = pdlp_solver_settings_t<int, double>{};
-  settings_mixed.method = cuopt::linear_programming::method_t::PDLP;
+  auto settings_mixed                 = pdlp_solver_settings_t<int, double>{};
+  settings_mixed.method               = cuopt::linear_programming::method_t::PDLP;
   settings_mixed.mixed_precision_spmv = true;
 
   optimization_problem_solution_t<int, double> solution_mixed =
@@ -96,8 +96,8 @@ TEST(pdlp_class, mixed_precision_spmv)
     afiro_primal_objective,
     solution_mixed.get_additional_termination_information().primal_objective));
 
-  auto settings_full   = pdlp_solver_settings_t<int, double>{};
-  settings_full.method = cuopt::linear_programming::method_t::PDLP;
+  auto settings_full                 = pdlp_solver_settings_t<int, double>{};
+  settings_full.method               = cuopt::linear_programming::method_t::PDLP;
   settings_full.mixed_precision_spmv = false;
 
   optimization_problem_solution_t<int, double> solution_full =
@@ -1943,9 +1943,9 @@ TEST(pdlp_class, run_float32)
     solve_lp(&handle_, op_problem, solver_settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
 
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective_f32,
-    solution.get_additional_termination_information().primal_objective));
+  EXPECT_FALSE(
+    is_incorrect_objective(afiro_primal_objective_f32,
+                           solution.get_additional_termination_information().primal_objective));
 }
 
 TEST(pdlp_class, float32_dual_simplex_throws_validation_error)
@@ -2011,9 +2011,9 @@ TEST(pdlp_class, float32_papilo_presolve_works)
   optimization_problem_solution_t<int, float> solution =
     solve_lp(&handle_, op_problem, solver_settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective_f32,
-    solution.get_additional_termination_information().primal_objective));
+  EXPECT_FALSE(
+    is_incorrect_objective(afiro_primal_objective_f32,
+                           solution.get_additional_termination_information().primal_objective));
 }
 
 TEST(pdlp_class, float32_pslp_presolve_works)
@@ -2031,9 +2031,9 @@ TEST(pdlp_class, float32_pslp_presolve_works)
   optimization_problem_solution_t<int, float> solution =
     solve_lp(&handle_, op_problem, solver_settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(is_incorrect_objective(
-    afiro_primal_objective_f32,
-    solution.get_additional_termination_information().primal_objective));
+  EXPECT_FALSE(
+    is_incorrect_objective(afiro_primal_objective_f32,
+                           solution.get_additional_termination_information().primal_objective));
 }
 
 TEST(pdlp_class, float32_crossover_throws_validation_error)
@@ -2044,8 +2044,8 @@ TEST(pdlp_class, float32_crossover_throws_validation_error)
   cuopt::mps_parser::mps_data_model_t<int, float> op_problem =
     cuopt::mps_parser::parse_mps<int, float>(path, true);
 
-  auto solver_settings    = pdlp_solver_settings_t<int, float>{};
-  solver_settings.method  = cuopt::linear_programming::method_t::PDLP;
+  auto solver_settings      = pdlp_solver_settings_t<int, float>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
   solver_settings.crossover = true;
 
   optimization_problem_solution_t<int, float> solution =

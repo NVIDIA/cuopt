@@ -652,8 +652,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                         dual_solution,
                                         CUSPARSE_SPMV_CSR_ALG2,
                                         handle_ptr->get_stream());
-      buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed,
-                                         handle_ptr->get_stream());
+      buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed, handle_ptr->get_stream());
 
       size_t buffer_size_transpose_mixed =
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
