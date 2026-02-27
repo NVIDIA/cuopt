@@ -669,6 +669,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       size_t end   = static_cast<size_t>(std::distance(sp_sigs.begin(), end_it));
       size_t start = (end > dominance_window) ? (end - dominance_window) : 0;
       std::vector<i_t> rows_to_remove;
+      bool covering_clique_implied_by_partitioning = false;
       for (size_t idx = end; idx > start; idx--) {
         if (timer.check_time_limit()) { break; }
         const auto& sp      = sp_sigs[idx - 1];
@@ -679,7 +680,8 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
         if (!is_subset(vars_sp, curr_clique_vars)) { continue; }
         if (knapsack_constraints[sp.knapsack_idx].is_set_partitioning) {
           if (vars_sp.size() != curr_clique_vars.size()) {
-            // fix_difference(curr_clique_vars, vars_sp);
+            fix_difference(curr_clique_vars, vars_sp);
+            covering_clique_implied_by_partitioning = true;
           }
           continue;
         }
@@ -698,13 +700,15 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       std::sort(rows_to_remove.begin(), rows_to_remove.end());
       rows_to_remove.erase(std::unique(rows_to_remove.begin(), rows_to_remove.end()),
                            rows_to_remove.end());
-      if (remaining_rows_budget <= 0 ||
-          remaining_nnz_budget < static_cast<i_t>(curr_clique_vars.size())) {
-        return;
+      if (!covering_clique_implied_by_partitioning) {
+        if (remaining_rows_budget <= 0 ||
+            remaining_nnz_budget < static_cast<i_t>(curr_clique_vars.size())) {
+          return;
+        }
+        // Replace dominated rows with this stronger clique row.
+        insert_clique_into_problem(curr_clique_vars, problem, A, coeff_scale);
+        inserted_row_nnz = static_cast<i_t>(curr_clique_vars.size());
       }
-      // Replace dominated rows with this stronger clique row.
-      insert_clique_into_problem(curr_clique_vars, problem, A, coeff_scale);
-      inserted_row_nnz = static_cast<i_t>(curr_clique_vars.size());
       std::vector<i_t> removal_marker(problem.row_sense.size(), 0);
       for (auto row_idx : rows_to_remove) {
         if (row_idx >= 0 && row_idx < static_cast<i_t>(removal_marker.size())) {
