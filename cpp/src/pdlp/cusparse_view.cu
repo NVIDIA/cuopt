@@ -597,47 +597,37 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 
   if constexpr (std::is_same_v<f_t, double>) {
-    if (enable_mixed_precision_spmv) {
+    if (enable_mixed_precision_spmv && !batch_mode_) {
       mixed_precision_enabled_ = true;
 
       A_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
       A_T_float_.resize(op_problem_scaled.nnz, handle_ptr->get_stream());
 
-      cub::DeviceTransform::Transform(op_problem_scaled.coefficients.data(),
-                                      A_float_.data(),
-                                      op_problem_scaled.nnz,
-                                      double_to_float_functor{},
-                                      handle_ptr->get_stream().value());
+      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(op_problem_scaled.coefficients.data(),
+                                                    A_float_.data(),
+                                                    op_problem_scaled.nnz,
+                                                    double_to_float_functor{},
+                                                    handle_ptr->get_stream().value()));
 
-      cub::DeviceTransform::Transform(A_T_.data(),
-                                      A_T_float_.data(),
-                                      op_problem_scaled.nnz,
-                                      double_to_float_functor{},
-                                      handle_ptr->get_stream().value());
+      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(A_T_.data(),
+                                                    A_T_float_.data(),
+                                                    op_problem_scaled.nnz,
+                                                    double_to_float_functor{},
+                                                    handle_ptr->get_stream().value()));
 
-      RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_mixed_,
-                                          op_problem_scaled.n_constraints,
-                                          op_problem_scaled.n_variables,
-                                          op_problem_scaled.nnz,
-                                          const_cast<i_t*>(op_problem_scaled.offsets.data()),
-                                          const_cast<i_t*>(op_problem_scaled.variables.data()),
-                                          A_float_.data(),
-                                          CUSPARSE_INDEX_32I,
-                                          CUSPARSE_INDEX_32I,
-                                          CUSPARSE_INDEX_BASE_ZERO,
-                                          CUDA_R_32F));
+      A_mixed_.create(op_problem_scaled.n_constraints,
+                      op_problem_scaled.n_variables,
+                      op_problem_scaled.nnz,
+                      const_cast<i_t*>(op_problem_scaled.offsets.data()),
+                      const_cast<i_t*>(op_problem_scaled.variables.data()),
+                      A_float_.data());
 
-      RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_T_mixed_,
-                                          op_problem_scaled.n_variables,
-                                          op_problem_scaled.n_constraints,
-                                          op_problem_scaled.nnz,
-                                          const_cast<i_t*>(A_T_offsets_.data()),
-                                          const_cast<i_t*>(A_T_indices_.data()),
-                                          A_T_float_.data(),
-                                          CUSPARSE_INDEX_32I,
-                                          CUSPARSE_INDEX_32I,
-                                          CUSPARSE_INDEX_BASE_ZERO,
-                                          CUDA_R_32F));
+      A_T_mixed_.create(op_problem_scaled.n_variables,
+                        op_problem_scaled.n_constraints,
+                        op_problem_scaled.nnz,
+                        const_cast<i_t*>(A_T_offsets_.data()),
+                        const_cast<i_t*>(A_T_indices_.data()),
+                        A_T_float_.data());
 
       const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
       const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
@@ -1076,17 +1066,17 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
   if constexpr (std::is_same_v<f_t, double>) {
     if (!mixed_precision_enabled_) { return; }
 
-    cub::DeviceTransform::Transform(A_.data(),
-                                    A_float_.data(),
-                                    A_.size(),
-                                    double_to_float_functor{},
-                                    handle_ptr_->get_stream().value());
+    RAFT_CUDA_TRY(cub::DeviceTransform::Transform(A_.data(),
+                                                  A_float_.data(),
+                                                  A_.size(),
+                                                  double_to_float_functor{},
+                                                  handle_ptr_->get_stream().value()));
 
-    cub::DeviceTransform::Transform(A_T_.data(),
-                                    A_T_float_.data(),
-                                    A_T_.size(),
-                                    double_to_float_functor{},
-                                    handle_ptr_->get_stream().value());
+    RAFT_CUDA_TRY(cub::DeviceTransform::Transform(A_T_.data(),
+                                                  A_T_float_.data(),
+                                                  A_T_.size(),
+                                                  double_to_float_functor{},
+                                                  handle_ptr_->get_stream().value()));
 
     handle_ptr_->get_stream().synchronize();
   }

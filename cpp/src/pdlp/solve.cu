@@ -583,6 +583,21 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                    const timer_t& timer,
                                                    bool is_batch_mode)
 {
+  if constexpr (!std::is_same_v<f_t, double>) {
+    cuopt_expects(!settings.crossover,
+                  error_type_t::ValidationError,
+                  "PDLP with crossover is not supported for float precision. Set crossover=false "
+                  "or use double precision.");
+    cuopt_expects(!is_batch_mode,
+                  error_type_t::ValidationError,
+                  "PDLP batch mode is not supported for float precision. Use double precision.");
+  }
+  cuopt_expects(
+    !is_batch_mode || !settings.mixed_precision_spmv,
+    error_type_t::ValidationError,
+    "Mixed-precision SpMV is not supported in batch mode. Set mixed_precision_spmv=false "
+    "or disable batch mode.");
+
   auto start_solver = std::chrono::high_resolution_clock::now();
   timer_t timer_pdlp(timer.remaining_time());
   auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
@@ -604,12 +619,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                sol.get_solve_time());
   }
 
-  if constexpr (!std::is_same_v<f_t, double>) {
-    cuopt_expects(!settings.crossover,
-                  error_type_t::ValidationError,
-                  "PDLP with crossover is not supported for float precision. Set crossover=false "
-                  "or use double precision.");
-  } else {
+  if constexpr (std::is_same_v<f_t, double>) {
     const bool do_crossover = settings.crossover;
     i_t crossover_info      = 0;
     if (do_crossover && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
