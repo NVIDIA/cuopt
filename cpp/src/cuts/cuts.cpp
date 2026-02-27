@@ -723,7 +723,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       }
     }
 
-    inequality_t<i_t, f_t> cut(lp.num_cols);
     bool add_cut             = false;
     i_t num_aggregated       = 0;
     const i_t max_aggregated = 6;
@@ -737,203 +736,19 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
       complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
       work_estimate += transformed_inequality.size();
 
-      std::vector<inequality_t<i_t, f_t>> transformed_cuts;
-      std::vector<f_t> transformed_violations;
+      inequality_t<i_t, f_t> cut;
+      bool cut_found = complemented_mir.cut_generation_heuristic(
+        transformed_inequality, var_types, transformed_xstar, cut, work_estimate);
+      // Note cut is in the transformed variables
 
-      //  Generate cut for delta = 1
-      {
-        complemented_mir.scale_and_generate_mir_cut(var_types,
-                                                    transformed_xstar,
-                                                    transformed_inequality,
-                                                    1.0,
-                                                    transformed_cuts,
-                                                    transformed_violations);
-        work_estimate += 5 * transformed_inequality.size();
-      }
-
-      // Generate a cut for delta = max { |a_j|, j in I}
-      {
-        f_t max_coeff = 0.0;
-        for (i_t k = 0; k < transformed_inequality.size(); k++) {
-          const i_t j = transformed_inequality.index(k);
-          if (var_types[j] == variable_type_t::INTEGER) {
-            const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
-            max_coeff        = std::max(max_coeff, abs_aj);
-          }
-        }
-        work_estimate += transformed_inequality.size();
-
-        if (max_coeff > 1e-6 && max_coeff != 1.0) {
-          complemented_mir.scale_and_generate_mir_cut(var_types,
-                                                      transformed_xstar,
-                                                      transformed_inequality,
-                                                      max_coeff,
-                                                      transformed_cuts,
-                                                      transformed_violations);
-          work_estimate += 5 * transformed_inequality.size();
-
-          // Also try with max_coeff + 1
-          complemented_mir.scale_and_generate_mir_cut(var_types,
-                                                      transformed_xstar,
-                                                      transformed_inequality,
-                                                      max_coeff + 1.0,
-                                                      transformed_cuts,
-                                                      transformed_violations);
-          work_estimate += 5 * transformed_inequality.size();
-        }
-      }
-
-      // Generate cuts for delta in { |a_j| : j in I, 0 < x_j < new_upper_j }
-      // and by successively complementing bounded integer variables
-      {
-        std::vector<f_t> deltas_to_try;
-        deltas_to_try.reserve(transformed_inequality.size());
-        work_estimate += transformed_inequality.size();
-        i_t num_integers = 0;
-        for (i_t k = 0; k < transformed_inequality.size(); k++) {
-          const i_t j = transformed_inequality.index(k);
-          if (var_types[j] == variable_type_t::INTEGER) {
-            num_integers++;
-            const f_t x_j             = transformed_xstar[j];
-            const f_t new_upper_j     = complemented_mir.new_upper(j);
-            const f_t dist_upper      = new_upper_j - x_j;
-            const f_t dist_lower      = x_j;
-            const bool between_bounds = x_j > 0.0 && (new_upper_j == inf || dist_upper > 0.0);
-            if (between_bounds) {
-              const f_t delta = std::abs(transformed_inequality.coeff(k));
-              if (delta == 0.0) {
-                printf("delta is 0.0 for j %d k %d\n", j, k);
-                exit(1);
-              }
-              deltas_to_try.push_back(delta);
-            }
-          }
-        }
-        work_estimate +=
-          2 * transformed_inequality.size() + 2 * num_integers + deltas_to_try.size();
-
-        bool found_cut = false;
-        for (const f_t delta : deltas_to_try) {
-          found_cut = complemented_mir.scale_and_generate_mir_cut(var_types,
-                                                                  transformed_xstar,
-                                                                  transformed_inequality,
-                                                                  delta,
-                                                                  transformed_cuts,
-                                                                  transformed_violations);
-          work_estimate += 5 * transformed_inequality.size();
-
-          if (found_cut) { break; }
-        }
-
-        if (!found_cut) {
-          std::vector<f_t> distance_from_midpoint;
-          std::vector<i_t> integer_indices;
-          distance_from_midpoint.reserve(num_integers);
-          integer_indices.reserve(num_integers);
-
-          for (i_t k = 0; k < transformed_inequality.size(); k++) {
-            const i_t j = transformed_inequality.index(k);
-            if (var_types[j] == variable_type_t::INTEGER && complemented_mir.new_upper(j) < inf) {
-              const f_t x_j         = transformed_xstar[j];
-              const f_t new_upper_j = complemented_mir.new_upper(j);
-              if (x_j > 1e-6 && new_upper_j < inf) {
-                const f_t midpoint_j = new_upper_j / 2.0;
-                distance_from_midpoint.push_back(midpoint_j - x_j);
-                integer_indices.push_back(k);
-              }
-            }
-          }
-          work_estimate += 3 * transformed_inequality.size() + 4 * distance_from_midpoint.size();
-
-          std::vector<i_t> perm(integer_indices.size());
-          best_score_first_permutation(distance_from_midpoint, perm);
-          work_estimate += integer_indices.size() > 0
-                             ? integer_indices.size() * std::log2(integer_indices.size())
-                             : 0;
-
-          std::vector<i_t> complemented_indices;
-          complemented_indices.reserve(integer_indices.size());
-
-          inequality_t<i_t, f_t> complemented_inequality = transformed_inequality;
-          work_estimate += 4 * transformed_inequality.size();
-
-          for (const i_t idx : perm) {
-            const i_t k = integer_indices[idx];
-            const i_t j = complemented_inequality.index(k);
-            // We have an integer variable x_j <= b_j
-            // We create a new variable xbar_j such that
-            // x_j + xbar_j = b_j
-            // x_j = b_j - xbar_j, xbar_j = b_j - x_j
-            //
-            // The inequality
-            // sum_{k != j} a_k x_k + a_j x_j >= beta
-            // becomes
-            // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
-            // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
-            const f_t b_j                       = complemented_mir.new_upper(j);
-            const f_t a_j                       = complemented_inequality.coeff(k);
-            complemented_inequality.vector.x[k] = -a_j;
-            complemented_inequality.rhs -= a_j * b_j;
-            complemented_indices.push_back(k);
-
-            for (const f_t delta : deltas_to_try) {
-              inequality_t scaled_inequality = complemented_inequality;
-              scaled_inequality.scale(1.0 / delta);
-              inequality_t<i_t, f_t> cut_delta;
-              complemented_mir.generate_cut_nonnegative_maintain_indicies(
-                scaled_inequality, var_types, cut_delta);
-
-              // Now we need to transform the complemented variables back
-              for (i_t h = 0; h < complemented_indices.size(); h++) {
-                const i_t l = complemented_indices[h];
-                const i_t j = complemented_inequality.index(l);
-                // Our cut is of the form
-                // sum_{k != j} d_k x_k  + d_j xbar_j >= alpha
-                // we have that xbar_j = b_j - x_j
-                // So
-                // sum_{k != j} d_k x_k  + d_j (b_j - x_j) >= alpha
-                // Or
-                // sum_{k != j} d_k x_k  - d_j x_j >= alpha - d_j b_j
-
-                const f_t b_j         = complemented_mir.new_upper(j);
-                const f_t d_j         = cut_delta.coeff(l);
-                cut_delta.vector.x[l] = -d_j;
-                cut_delta.rhs -= d_j * b_j;
-              }
-              work_estimate += 5 * complemented_indices.size();
-
-              found_cut = complemented_mir.check_violation_and_add_cut(
-                cut_delta, transformed_xstar, transformed_cuts, transformed_violations);
-              work_estimate += 5 * complemented_inequality.size();
-
-              if (found_cut) { break; }
-            }
-
-            if (found_cut) { break; }
-          }
-        }
-      }
-
-      if (!transformed_violations.empty()) {
-        std::vector<i_t> indices(transformed_violations.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        const i_t best_index = *std::max_element(indices.begin(), indices.end(), [&](i_t i, i_t j) {
-          return transformed_violations[i] < transformed_violations[j];
-        });
-        work_estimate += transformed_violations.size();
-        f_t max_viol = transformed_violations[best_index];
-        cut          = transformed_cuts[best_index];
-
-        if (max_viol > 1e-6) {
-          // TODO: Divide by 1/2*violation, 1/4*violation, 1/8*violation
-          // Transform back to the original variables
-          complemented_mir.untransform_inequality(variable_bounds, var_types, cut);
-          complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
-          complemented_mir.substitute_slacks(lp, Arow, cut);
-          f_t viol = complemented_mir.compute_violation(cut, xstar);
-          work_estimate += 10 * cut.size();
-          if (viol > 1e-6) { add_cut = true; }
-        }
+      if (cut_found) {
+        // Transform back to the original variables
+        complemented_mir.untransform_inequality(variable_bounds, var_types, cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
+        complemented_mir.substitute_slacks(lp, Arow, cut);
+        f_t viol = complemented_mir.compute_violation(cut, xstar);
+        work_estimate += 10 * cut.size();
+        if (viol > 1e-6) { add_cut = true; }
       }
 
       if (add_cut) {
@@ -1669,35 +1484,244 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_initial_scores
 }
 
 template <typename i_t, typename f_t>
-bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::check_violation_and_add_cut(
-  const inequality_t<i_t, f_t>& inequality,
-  const std::vector<f_t>& xstar,
-  std::vector<inequality_t<i_t, f_t>>& cuts,
-  std::vector<f_t>& violations)
+bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heuristic(
+  const inequality_t<i_t, f_t>& transformed_inequality,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& transformed_xstar,
+  inequality_t<i_t, f_t>& transformed_cut,
+  f_t& work_estimate)
 {
-  f_t violation = compute_violation(inequality, xstar);
-  if (violation > 1e-6) {
-    cuts.push_back(inequality);
-    violations.push_back(violation);
-    return true;
+  std::vector<f_t> deltas_to_try;
+  deltas_to_try.reserve(transformed_inequality.size());
+  deltas_to_try.push_back(1.0);
+  work_estimate += transformed_inequality.size();
+  i_t num_integers = 0;
+  f_t max_coeff = 0.0;
+  for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    const i_t j = transformed_inequality.index(k);
+    const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
+    if (var_types[j] == variable_type_t::INTEGER) {
+      num_integers++;
+      max_coeff = std::max(max_coeff, abs_aj);
+      const f_t x_j             = transformed_xstar[j];
+      const f_t new_upper_j     = new_upper(j);
+      const f_t dist_upper      = new_upper_j - x_j;
+      const f_t dist_lower      = x_j;
+      const bool between_bounds = x_j > 1e-6 && (new_upper_j == inf || dist_upper > 0.0);
+      if (between_bounds) {
+        deltas_to_try.push_back(abs_aj);
+      }
+    }
   }
-  return false;
+  if (max_coeff > 1e-6 && max_coeff != 1.0) {
+    deltas_to_try.push_back(max_coeff);
+    deltas_to_try.push_back(max_coeff + 1.0);
+  }
+
+  std::vector<i_t> complemented_indices;
+  complemented_indices.reserve(num_integers);
+  std::vector<f_t> distance_from_midpoint;
+  distance_from_midpoint.reserve(num_integers);
+  std::vector<i_t> integer_indices;
+  integer_indices.reserve(num_integers);
+  for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    const i_t j = transformed_inequality.index(k);
+    if (var_types[j] == variable_type_t::INTEGER && new_upper(j) < inf) {
+      const f_t x_j         = transformed_xstar[j];
+      const f_t new_upper_j = new_upper(j);
+      if (x_j > 1e-6 && new_upper_j < inf) {
+        const f_t midpoint_j = new_upper_j / 2.0;
+        distance_from_midpoint.push_back(midpoint_j - x_j);
+        integer_indices.push_back(k);
+      }
+    }
+  }
+
+  std::vector<i_t> perm(integer_indices.size());
+  best_score_first_permutation(distance_from_midpoint, perm);
+  work_estimate += integer_indices.size() > 0
+                     ? integer_indices.size() * std::log2(integer_indices.size())
+                     : 0;
+
+
+  bool cut_found = false;
+
+  inequality_t<i_t, f_t> complemented_inequality = transformed_inequality;
+  work_estimate += 4 * transformed_inequality.size();
+
+  f_t delta = 0.0;
+  f_t best_violation = 0.0;
+
+  // First try without any complementation
+  for (const f_t tmp_delta : deltas_to_try) {
+    scale_uncomplement_and_generate_cut(var_types,
+                                        transformed_xstar,
+                                        complemented_indices,
+                                        complemented_inequality,
+                                        tmp_delta,
+                                        transformed_cut,
+                                        work_estimate);
+
+    // Check if the cut is violated
+    best_violation = compute_violation(transformed_cut, transformed_xstar);
+    work_estimate += 4 * transformed_cut.size();
+    if (best_violation > 1e-6) {
+      cut_found = true;
+      delta = tmp_delta;
+      break;
+    }
+  }
+
+  if (!cut_found) {
+    // Complement an integer variable
+    for (const i_t idx : perm) {
+      const i_t l = integer_indices[idx];
+      const i_t j = complemented_inequality.index(l);
+      // We have an integer variable x_j <= b_j
+      // We create a new variable xbar_j such that
+      // x_j + xbar_j = b_j
+      // x_j = b_j - xbar_j, xbar_j = b_j - x_j
+      //
+      // The inequality
+      // sum_{k != j} a_k x_k + a_j x_j >= beta
+      // becomes
+      // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
+      // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
+      const f_t b_j = new_upper(j);
+      const f_t a_j = complemented_inequality.coeff(l);
+
+      complemented_inequality.vector.x[l] = -a_j;
+      complemented_inequality.rhs -= a_j * b_j;
+      complemented_indices.push_back(l);
+
+      for (const f_t tmp_delta : deltas_to_try) {
+        scale_uncomplement_and_generate_cut(var_types,
+                                            transformed_xstar,
+                                            complemented_indices,
+                                            complemented_inequality,
+                                            tmp_delta,
+                                            transformed_cut,
+                                            work_estimate);
+
+        // Check if the cut is violated
+        best_violation = compute_violation(transformed_cut, transformed_xstar);
+        work_estimate += 4 * transformed_cut.size();
+        if (best_violation > 1e-6) {
+          cut_found = true;
+          delta = tmp_delta;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!cut_found) { return false; }
+
+  // We have found a cut. Now try to improve the violation by scaling the cut by 1/2, 1/4, 1/8, etc.
+  std::vector<f_t> scaled_deltas_to_try = { delta/2.0, delta/4.0, delta/8.0 };
+  for (const f_t tmp_delta : scaled_deltas_to_try) {
+    inequality_t<i_t, f_t> tmp_cut_delta;
+    scale_uncomplement_and_generate_cut(var_types,
+                                        transformed_xstar,
+                                        complemented_indices,
+                                        complemented_inequality,
+                                        tmp_delta,
+                                        tmp_cut_delta,
+                                        work_estimate);
+
+    // Check if the cut is violated
+    f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
+    work_estimate += 4 * tmp_cut_delta.size();
+    if (violation > best_violation) {
+      best_violation = violation;
+      transformed_cut = tmp_cut_delta;
+      delta = tmp_delta;
+    }
+  }
+
+  std::vector<i_t> best_complemented_indices = complemented_indices;
+  work_estimate += 2 * best_complemented_indices.size();
+
+  // Try to improve the violation by complementing integer variables
+  complemented_inequality = transformed_inequality;
+  work_estimate += 4 * transformed_inequality.size();
+  complemented_indices.clear();
+  for (const i_t idx : perm) {
+    const i_t l = integer_indices[idx];
+    const i_t j = complemented_inequality.index(l);
+    // We have an integer variable x_j <= b_j
+    // We create a new variable xbar_j such that
+    // x_j + xbar_j = b_j
+    // x_j = b_j - xbar_j, xbar_j = b_j - x_j
+    //
+    // The inequality
+    // sum_{k != j} a_k x_k + a_j x_j >= beta
+    // becomes
+    // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
+    // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
+    const f_t b_j = new_upper(j);
+    const f_t a_j = complemented_inequality.coeff(l);
+
+    complemented_inequality.vector.x[l] = -a_j;
+    complemented_inequality.rhs -= a_j * b_j;
+    complemented_indices.push_back(l);
+
+    inequality_t<i_t, f_t> tmp_cut_delta;
+
+    scale_uncomplement_and_generate_cut(var_types,
+                                        transformed_xstar,
+                                        complemented_indices,
+                                        complemented_inequality,
+                                        delta,
+                                        tmp_cut_delta,
+                                        work_estimate);
+
+    // Check if the cut is violated
+    f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
+    work_estimate += 4 * tmp_cut_delta.size();
+    if (violation > best_violation) {
+      best_violation = violation;
+      best_complemented_indices = complemented_indices;
+      transformed_cut = tmp_cut_delta;
+    }
+  }
+
+  return best_violation > 1e-6;
 }
 
 template <typename i_t, typename f_t>
-bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::scale_and_generate_mir_cut(
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::scale_uncomplement_and_generate_cut(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& transformed_xstar,
-  const inequality_t<i_t, f_t>& inequality,
-  f_t divisor,
-  std::vector<inequality_t<i_t, f_t>>& cuts,
-  std::vector<f_t>& violations)
+  const std::vector<i_t>& complemented_indices,
+  const inequality_t<i_t, f_t>& complemented_inequality,
+  f_t delta,
+  inequality_t<i_t, f_t>& cut_delta,
+  f_t& work_estimate)
 {
-  inequality_t<i_t, f_t> scaled_inequality = inequality;
-  if (divisor != 1.0) { scaled_inequality.scale(1.0 / divisor); }
-  inequality_t<i_t, f_t> cut_delta(inequality.vector.n);
+  inequality_t scaled_inequality = complemented_inequality;
+  if (delta != 1.0) { scaled_inequality.scale(1.0 / delta); }
   generate_cut_nonnegative_maintain_indicies(scaled_inequality, var_types, cut_delta);
-  return check_violation_and_add_cut(cut_delta, transformed_xstar, cuts, violations);
+  work_estimate += 4 * scaled_inequality.size();
+
+  // Now we need to transform the complemented variables back
+  for (i_t h = 0; h < complemented_indices.size(); h++) {
+    const i_t l = complemented_indices[h];
+    const i_t j = complemented_inequality.index(l);
+    // Our cut is of the form
+    // sum_{k != j} d_k x_k  + d_j xbar_j >= alpha
+    // we have that xbar_j = b_j - x_j
+    // So
+    // sum_{k != j} d_k x_k  + d_j (b_j - x_j) >= alpha
+    // Or
+    // sum_{k != j} d_k x_k  - d_j x_j >= alpha - d_j b_j
+
+    const f_t b_j         = new_upper(j);
+    const f_t d_j         = cut_delta.coeff(l);
+    cut_delta.vector.x[l] = -d_j;
+    cut_delta.rhs -= d_j * b_j;
+  }
+  work_estimate += 5 * complemented_indices.size();
 }
 
 template <typename i_t, typename f_t>

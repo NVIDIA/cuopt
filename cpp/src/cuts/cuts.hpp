@@ -563,6 +563,22 @@ class complemented_mixed_integer_rounding_cut_t {
                               const std::vector<variable_type_t>& var_type,
                               inequality_t<i_t, f_t>& inequality);
 
+
+  bool cut_generation_heuristic(const inequality_t<i_t, f_t>& transformed_inequality,
+                                       const std::vector<variable_type_t>& var_types,
+                                       const std::vector<f_t>& transformed_xstar,
+                                       inequality_t<i_t, f_t>& transformed_cut,
+                                       f_t& work_estimate);
+
+  void scale_uncomplement_and_generate_cut(const std::vector<variable_type_t>& var_types,
+                                           const std::vector<f_t>& transformed_xstar,
+                                           const std::vector<i_t>& complemented_indices,
+                                           const inequality_t<i_t, f_t>& complemented_inequality,
+                                           f_t delta,
+                                           inequality_t<i_t, f_t>& cut_delta,
+                                           f_t& work_estimate);
+
+  // This routine takes an inequality and generates the MIR cut
   void generate_cut_nonnegative_maintain_indicies(const inequality_t<i_t, f_t>& inequality,
                                                   const std::vector<variable_type_t>& var_types,
                                                   inequality_t<i_t, f_t>& cut);
@@ -602,12 +618,15 @@ class complemented_mixed_integer_rounding_cut_t {
                                   const inequality_t<i_t, f_t>& inequality,
                                   f_t divisor,
                                   std::vector<inequality_t<i_t, f_t>>& cuts,
-                                  std::vector<f_t>& violations);
+                                  std::vector<f_t>& violations,
+                                  std::vector<f_t>& deltas);
 
   bool check_violation_and_add_cut(const inequality_t<i_t, f_t>& inequality,
                                    const std::vector<f_t>& xstar,
+                                   f_t divisor,
                                    std::vector<inequality_t<i_t, f_t>>& cuts,
-                                   std::vector<f_t>& violations);
+                                   std::vector<f_t>& violations,
+                                   std::vector<f_t>& deltas);
 
  private:
   std::vector<i_t> is_slack_;
