@@ -209,7 +209,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
       !problem_ptr->empty) {
-    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 2);
+    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
     timer_t clique_timer(time_limit_for_clique_table);
     dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
     problem_ptr->get_host_user_problem(host_problem);

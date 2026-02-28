@@ -660,7 +660,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       for (auto v : curr_clique_vars) {
         signature += static_cast<long long>(v);
       }
-      constexpr size_t dominance_window = 100;
+      constexpr size_t dominance_window = 20000;
       auto end_it                       = std::upper_bound(
         sp_sigs.begin(), sp_sigs.end(), signature, [](long long value, const auto& a) {
           return value < a.signature;
