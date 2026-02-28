@@ -557,13 +557,15 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    cuopt::timer_t& timer)
 {
   constexpr i_t min_extension_gain       = 2;
-  constexpr i_t extension_yield_window   = 64;
+  constexpr i_t extension_yield_window   = 1024;
   constexpr i_t min_successes_per_window = 1;
 
   i_t base_rows      = A.m;
   i_t base_nnz       = A.row_start[A.m];
   i_t max_added_rows = std::max<i_t>(8, base_rows / 50);
   i_t max_added_nnz  = std::max<i_t>(8 * clique_table.max_clique_size_for_extension, base_nnz / 50);
+  max_added_rows     = 1024;
+  max_added_nnz      = std::numeric_limits<i_t>::max();
 
   i_t added_rows       = 0;
   i_t added_nnz        = 0;
