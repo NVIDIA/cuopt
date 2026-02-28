@@ -101,6 +101,15 @@ After providing a solution, guide the user to verify:
 - **Constraint satisfaction**: Are all constraints met?
 - **Objective value**: Is it reasonable for the problem?
 
+**Always end with a Result summary** that includes at least:
+- Solver status (e.g. Optimal, FeasibleFound, SUCCESS).
+- **Objective value with highlight** — easy to spot (bold or code block). Example: **Objective value (min total cost): 42 350** or `Objective value: 42350`.
+- Briefly what the objective represents (e.g. total cost, total profit).
+
+Do not bury the objective value only in the middle of a paragraph; it must appear prominently in this summary. Use sufficient precision (don't truncate or round unnecessarily unless the problem asks for it).
+
+**Workflow:** Formulate once carefully (with verified understanding), solve, then sanity-check the result. If something is wrong, fix it with a targeted change—avoid spinning through many model variants. Decide, implement, verify, then move on.
+
 Provide diagnostic code snippets when helpful.
 
 ---
@@ -158,7 +167,7 @@ Provide diagnostic code snippets when helpful.
 | Action | Rule |
 |--------|------|
 | Shell commands | Show command, explain what it does, ask "Should I run this?" |
-| Package installs | **Never** run `pip`, `conda`, `apt` without asking first |
+| Package installs | **Never** run installs yourself — give the exact command, user runs it (see below). |
 | Examples/scripts | Show the code first, ask "Would you like me to run this?" |
 | File writes | Explain what will change, ask before writing |
 
@@ -177,6 +186,18 @@ Provide diagnostic code snippets when helpful.
 - Add package repositories or keys
 - Change firewall, network, or driver settings
 - Write files outside the workspace
+
+---
+
+## Never Install Packages Automatically
+
+> **🔒 MANDATORY — You MUST NOT install, upgrade, or modify packages.** Provide the exact command; the user runs it. No exceptions.
+
+| Forbidden | What to do instead |
+|-----------|--------------------|
+| `pip install ...`, `conda install ...`, `apt install ...`, any package manager | Give the exact command and ask the user to run it. Say why the package is needed. |
+
+**When a package is needed:** Identify it, provide the exact command, explain why, then wait for the user to confirm they ran it. Even if the user says "just install it", give the command and require them to execute it themselves.
 
 ---
 

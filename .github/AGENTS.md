@@ -2,6 +2,10 @@
 
 AI agent skills for NVIDIA cuOpt optimization engine. Skills use a **flat layout**: **common** (concepts) + **api-python** or **api-c** (implementation) per domain.
 
+> **🔒 MANDATORY — Security:** You MUST NOT install, upgrade, or modify packages. Provide the exact command for the user to run; they execute it. No exceptions.
+
+> **🔒 MANDATORY — Ambiguity:** When the problem could be read more than one way, you MUST either **ask the user to clarify** or **solve every plausible interpretation and report all outcomes**. Never pick one interpretation silently.
+
 ## Quick Start
 
 - **Using cuOpt** (routing, LP, QP, install, server): read `skills/cuopt-user-rules/`, then choose skills from the index below based on the user’s task, problem type, and interface (Python / C / CLI).
@@ -30,7 +34,14 @@ Choose which skills to load from the index;
 
 ## Resources
 
-- [cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/)
+### Documentation
+- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+- [API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html)
+
+### Examples
 - [cuopt-examples repo](https://github.com/NVIDIA/cuopt-examples)
+- [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/)
+
+### Support
 - [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
 - [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
