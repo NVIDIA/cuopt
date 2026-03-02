@@ -23,19 +23,11 @@ export INCLUDE_PATH="${CONDA_PREFIX}/include"
 export LIB_PATH="${CONDA_PREFIX}/lib"
 export LD_LIBRARY_PATH="${LIB_PATH}:${LD_LIBRARY_PATH}"
 
-# Build (from this assets/ directory)
-gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o lp_basic/lp_simple       lp_basic/lp_simple.c -lcuopt
-gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o lp_duals/lp_duals         lp_duals/lp_duals.c -lcuopt
-gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o milp_basic/milp_simple   milp_basic/milp_simple.c -lcuopt
-gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o milp_production_planning/milp_production milp_production_planning/milp_production.c -lcuopt
-gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o mps_solver/mps_solver     mps_solver/mps_solver.c -lcuopt
-
-# Run
+# Build and run (from this assets/ directory) — example: lp_basic
+gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o lp_basic/lp_simple lp_basic/lp_simple.c -lcuopt
 ./lp_basic/lp_simple
-./lp_duals/lp_duals
-./milp_basic/milp_simple
-./milp_production_planning/milp_production
-./mps_solver/mps_solver mps_solver/data/sample.mps
 ```
+
+For the other examples, use the same pattern (e.g. `lp_duals/lp_duals.c` → `lp_duals/lp_duals`). `mps_solver` takes an MPS file path: `./mps_solver mps_solver/data/sample.mps`.
 
 Without conda, set `INCLUDE_PATH` and `LIB_PATH` to your cuOpt include and lib directories, then use the same `gcc` and `LD_LIBRARY_PATH` as above. Each subdirectory README has a one-line build/run for that example.
