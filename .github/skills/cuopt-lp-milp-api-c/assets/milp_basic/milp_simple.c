@@ -45,10 +45,26 @@ int main(void) {
         return 1;
     }
 
-    cuOptCreateSolverSettings(&settings);
-    cuOptSetFloatParameter(settings, CUOPT_MIP_ABSOLUTE_TOLERANCE, 0.0001);
-    cuOptSetFloatParameter(settings, CUOPT_MIP_RELATIVE_GAP, 0.01);
-    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 120.0);
+    status = cuOptCreateSolverSettings(&settings);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating solver settings: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_MIP_ABSOLUTE_TOLERANCE, 0.0001);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting MIP absolute tolerance: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_MIP_RELATIVE_GAP, 0.01);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting MIP relative gap: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 120.0);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting time limit: %d\n", status);
+        goto cleanup;
+    }
 
     status = cuOptSolve(problem, settings, &solution);
     if (status != CUOPT_SUCCESS) {
@@ -58,12 +74,21 @@ int main(void) {
 
     if (solution != NULL) {
         cuopt_float_t objective_value;
-        cuOptGetObjectiveValue(solution, &objective_value);
+        status = cuOptGetObjectiveValue(solution, &objective_value);
+        if (status != CUOPT_SUCCESS) {
+            printf("Error getting objective value: %d\n", status);
+            goto cleanup;
+        }
         printf("Objective: %f\n", objective_value);
 
         cuopt_float_t *sol = malloc((size_t)num_variables * sizeof(cuopt_float_t));
         if (sol) {
-            cuOptGetPrimalSolution(solution, sol);
+            status = cuOptGetPrimalSolution(solution, sol);
+            if (status != CUOPT_SUCCESS) {
+                printf("Error getting primal solution: %d\n", status);
+                free(sol);
+                goto cleanup;
+            }
             printf("x1 (integer) = %f, x2 (continuous) = %f\n", sol[0], sol[1]);
             free(sol);
         }

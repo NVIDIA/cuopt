@@ -17,7 +17,7 @@ print("DataModel created - GPU access OK")
 import cudf
 cost_matrix = cudf.DataFrame([[0,1,2],[1,0,1],[2,1,0]], dtype="float32")
 dm.add_cost_matrix(cost_matrix)
-dm.set_order_locations(cudf.Series([1, 2]))
+dm.set_order_locations(cudf.Series([1, 2], dtype="int32"))
 
 solution = routing.Solve(dm, routing.SolverSettings())
 print(f"Solve status: {solution.get_status()}")

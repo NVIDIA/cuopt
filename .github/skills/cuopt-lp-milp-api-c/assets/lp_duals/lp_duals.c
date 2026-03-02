@@ -1,9 +1,4 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
-/*
  * LP with dual values and reduced costs (C API).
  * Problem: Minimize 3x + 2y + 5z subject to x + y + z = 4, 2x + y + z = 5, x,y,z >= 0.
  */
@@ -45,9 +40,21 @@ int main(void) {
         return 1;
     }
 
-    cuOptCreateSolverSettings(&settings);
-    cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
-    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0);
+    status = cuOptCreateSolverSettings(&settings);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating solver settings: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting primal tolerance: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting time limit: %d\n", status);
+        goto cleanup;
+    }
 
     status = cuOptSolve(problem, settings, &solution);
     if (status != CUOPT_SUCCESS) {
@@ -56,12 +63,21 @@ int main(void) {
     }
 
     cuopt_float_t objective_value;
-    cuOptGetObjectiveValue(solution, &objective_value);
+    status = cuOptGetObjectiveValue(solution, &objective_value);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error getting objective value: %d\n", status);
+        goto cleanup;
+    }
     printf("Objective: %f\n", objective_value);
 
     cuopt_float_t *primal = malloc((size_t)num_variables * sizeof(cuopt_float_t));
     if (primal) {
-        cuOptGetPrimalSolution(solution, primal);
+        status = cuOptGetPrimalSolution(solution, primal);
+        if (status != CUOPT_SUCCESS) {
+            printf("Error getting primal solution: %d\n", status);
+            free(primal);
+            goto cleanup;
+        }
         printf("x = %f, y = %f, z = %f\n", primal[0], primal[1], primal[2]);
         free(primal);
     }

@@ -1,9 +1,4 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
-/*
  * Production planning MILP (C API): two products, resource limits, maximize profit.
  * Variables: Product_A (x1), Product_B (x2), both integer, lb 10 and 15.
  * Constraints: 2*x1+x2 <= 100 (machine), x1+3*x2 <= 120 (labor), 4*x1+2*x2 <= 200 (material).
@@ -47,9 +42,21 @@ int main(void) {
         return 1;
     }
 
-    cuOptCreateSolverSettings(&settings);
-    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 30.0);
-    cuOptSetFloatParameter(settings, CUOPT_MIP_RELATIVE_GAP, 0.01);
+    status = cuOptCreateSolverSettings(&settings);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating solver settings: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 30.0);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting time limit: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_MIP_RELATIVE_GAP, 0.01);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting MIP relative gap: %d\n", status);
+        goto cleanup;
+    }
 
     status = cuOptSolve(problem, settings, &solution);
     if (status != CUOPT_SUCCESS) {
@@ -58,13 +65,22 @@ int main(void) {
     }
 
     cuopt_float_t objective_value;
-    cuOptGetObjectiveValue(solution, &objective_value);
+    status = cuOptGetObjectiveValue(solution, &objective_value);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error getting objective value: %d\n", status);
+        goto cleanup;
+    }
     /* We minimized -profit, so total profit = -objective_value */
     printf("Total profit: %f\n", -objective_value);
 
     cuopt_float_t *sol = malloc((size_t)num_variables * sizeof(cuopt_float_t));
     if (sol) {
-        cuOptGetPrimalSolution(solution, sol);
+        status = cuOptGetPrimalSolution(solution, sol);
+        if (status != CUOPT_SUCCESS) {
+            printf("Error getting primal solution: %d\n", status);
+            free(sol);
+            goto cleanup;
+        }
         printf("Product_A: %f, Product_B: %f\n", sol[0], sol[1]);
         free(sol);
     }

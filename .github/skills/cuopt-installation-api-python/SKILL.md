@@ -14,10 +14,16 @@ Install cuOpt to *use* it from Python. Standalone skill (no separate common).
 
 ## pip (Python)
 
-```bash
-pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu13   # or cuopt-cu12
-pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==26.2.*'
-```
+**Choose one** — do not run both. The second install would override the first and can cause CUDA/package mismatch.
+
+- **CUDA 13.x:**
+  ```bash
+  pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu13
+  ```
+- **CUDA 12.x:**
+  ```bash
+  pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==26.2.*'
+  ```
 
 ## pip: Server + Client
 

@@ -29,6 +29,7 @@ problem = Problem("Portfolio")
 x1 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_a")
 x2 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_b")
 x3 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_c")
+r1, r2, r3 = 0.12, 0.08, 0.05  # expected returns (12%, 8%, 5%)
 problem.setObjective(
     0.04*x1*x1 + 0.02*x2*x2 + 0.01*x3*x3 + 0.02*x1*x2 + 0.01*x1*x3 + 0.016*x2*x3,
     sense=MINIMIZE

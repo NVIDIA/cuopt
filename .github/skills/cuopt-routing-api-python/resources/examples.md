@@ -28,7 +28,7 @@ cost_matrix = cudf.DataFrame([
 transit_time_matrix = cost_matrix.copy(deep=True)
 
 # Order data (customers 1-5)
-order_locations = cudf.Series([1, 2, 3, 4, 5])  # Location indices for orders
+order_locations = cudf.Series([1, 2, 3, 4, 5], dtype="int32")  # Location indices for orders
 
 # Demand at each customer (single capacity dimension)
 demand = cudf.Series([20, 30, 25, 15, 35], dtype="int32")
@@ -130,7 +130,7 @@ n_fleet = 2
 n_orders = 4  # 2 pickup-delivery pairs = 4 orders
 
 # Orders: pickup at loc 1 -> deliver at loc 2, pickup at loc 3 -> deliver at loc 4
-order_locations = cudf.Series([1, 2, 3, 4])
+order_locations = cudf.Series([1, 2, 3, 4], dtype="int32")
 
 # Pickup and delivery pairs (indices into order array)
 # Order 0 (pickup) pairs with Order 1 (delivery)
@@ -191,7 +191,7 @@ cost_matrix = cudf.DataFrame([
 
 dm = routing.DataModel(n_locations=4, n_fleet=1, n_orders=3)
 dm.add_cost_matrix(cost_matrix)
-dm.set_order_locations(cudf.Series([1, 2, 3]))
+dm.set_order_locations(cudf.Series([1, 2, 3], dtype="int32"))
 
 solution = routing.Solve(dm, routing.SolverSettings())
 
@@ -219,7 +219,7 @@ n_fleet = 2
 
 dm = routing.DataModel(n_locations=6, n_fleet=n_fleet, n_orders=4)
 dm.add_cost_matrix(cost_matrix)
-dm.set_order_locations(cudf.Series([2, 3, 4, 5]))
+dm.set_order_locations(cudf.Series([2, 3, 4, 5], dtype="int32"))
 
 # Vehicle 0 starts/ends at depot 0, Vehicle 1 at depot 1
 dm.set_vehicle_locations(

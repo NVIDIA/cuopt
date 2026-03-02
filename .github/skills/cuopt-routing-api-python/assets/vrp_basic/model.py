@@ -20,7 +20,7 @@ cost_matrix = cudf.DataFrame(
 
 dm = routing.DataModel(n_locations=4, n_fleet=1, n_orders=3)
 dm.add_cost_matrix(cost_matrix)
-dm.set_order_locations(cudf.Series([1, 2, 3]))
+dm.set_order_locations(cudf.Series([1, 2, 3], dtype="int32"))
 
 solution = routing.Solve(dm, routing.SolverSettings())
 

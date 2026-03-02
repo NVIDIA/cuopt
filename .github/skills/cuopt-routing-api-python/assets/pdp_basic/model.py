@@ -23,7 +23,7 @@ transit_time_matrix = cost_matrix.copy(deep=True)
 n_fleet = 2
 n_orders = 4
 
-order_locations = cudf.Series([1, 2, 3, 4])
+order_locations = cudf.Series([1, 2, 3, 4], dtype="int32")
 pickup_indices = cudf.Series([0, 2])
 delivery_indices = cudf.Series([1, 3])
 demand = cudf.Series([10, -10, 15, -15], dtype="int32")

@@ -14,6 +14,7 @@ Default benchmark: air05.mps (airline crew scheduling from MIPLIB)
 import os
 import gzip
 import urllib.request
+from typing import Optional
 
 from cuopt.linear_programming.problem import Problem
 from cuopt.linear_programming.solver_settings import SolverSettings
@@ -80,9 +81,9 @@ def solve_mps(
     problem = Problem.readMPS(filepath)
 
     print(f"Loaded MPS file: {filepath}")
-    print(f"Variables: {problem.NumVariables}")
-    print(f"Constraints: {problem.NumConstraints}")
-    print(f"Is MIP: {problem.IsMIP}")
+    print(f"Variables: {problem.NumVariables()}")
+    print(f"Constraints: {problem.NumConstraints()}")
+    print(f"Is MIP: {problem.IsMIP()}")
 
     # Solver settings
     settings = SolverSettings()
@@ -102,9 +103,9 @@ def solve_mps(
         solution = {
             "status": status,
             "objective": problem.ObjValue,
-            "num_variables": problem.NumVariables,
-            "num_constraints": problem.NumConstraints,
-            "is_mip": problem.IsMIP,
+            "num_variables": problem.NumVariables(),
+            "num_constraints": problem.NumConstraints(),
+            "is_mip": problem.IsMIP(),
             "mip_gap": mip_gap,
         }
 
@@ -126,7 +127,11 @@ def solve_mps(
         return problem, None
 
 
-def compare_gaps(filepath: str, time_limit: float = 120.0) -> dict:
+def compare_gaps(
+    filepath: str,
+    time_limit: float = 120.0,
+    known_optimal: Optional[float] = None,
+) -> dict:
     """
     Compare solutions at different MIP gap tolerances.
 
@@ -136,6 +141,9 @@ def compare_gaps(filepath: str, time_limit: float = 120.0) -> dict:
         Path to the MPS file
     time_limit : float
         Solver time limit per run
+    known_optimal : float, optional
+        Known optimal objective value. If provided, results include
+        "gap_to_optimal" (percent above optimal). Omit for generic MPS files.
 
     Returns
     -------
@@ -158,10 +166,11 @@ def compare_gaps(filepath: str, time_limit: float = 120.0) -> dict:
             results[gap] = {
                 "objective": solution["objective"],
                 "status": solution["status"],
-                "gap_to_optimal": (solution["objective"] - AIR05_OPTIMAL)
-                / AIR05_OPTIMAL
-                * 100,
             }
+            if known_optimal is not None:
+                results[gap]["gap_to_optimal"] = (
+                    (solution["objective"] - known_optimal) / known_optimal * 100
+                )
         else:
             results[gap] = {"objective": None, "status": "No solution"}
 
@@ -184,6 +193,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compare", action="store_true", help="Compare 1% vs 0.1% gap"
     )
+    parser.add_argument(
+        "--known-optimal",
+        type=float,
+        default=None,
+        help="Known optimal objective value (enables gap-to-optimal reporting)",
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -200,29 +215,40 @@ if __name__ == "__main__":
         # Download air05.mps if not present
         mps_file = download_air05(data_dir)
 
+    # Use known optimal only when explicitly set or when using default air05
+    known_optimal = args.known_optimal
+    if known_optimal is None and mps_file.endswith("air05.mps"):
+        known_optimal = AIR05_OPTIMAL
+
     if args.compare:
         # Compare different gap tolerances
         print(f"\nComparing MIP gap tolerances on: {mps_file}")
-        print(f"Best known optimal: {AIR05_OPTIMAL}")
+        if known_optimal is not None:
+            print(f"Best known optimal: {known_optimal}")
 
-        results = compare_gaps(mps_file, time_limit=args.time_limit)
+        results = compare_gaps(
+            mps_file, time_limit=args.time_limit, known_optimal=known_optimal
+        )
 
         print()
         print("=" * 60)
         print("COMPARISON SUMMARY")
         print("=" * 60)
-        print(f"Best known optimal: {AIR05_OPTIMAL}")
+        if known_optimal is not None:
+            print(f"Best known optimal: {known_optimal}")
         print()
-        print(
-            f"{'Gap Tolerance':<15} {'Objective':<15} {'Gap to Optimal':<15}"
-        )
-        print("-" * 45)
+        header = f"{'Gap Tolerance':<15} {'Objective':<15}"
+        if known_optimal is not None:
+            header += f" {'Gap to Optimal':<15}"
+        print(header)
+        print("-" * (45 if known_optimal is None else 60))
 
         for gap, result in sorted(results.items()):
-            if result["objective"]:
-                print(
-                    f"{gap * 100:.1f}%{'':<12} {result['objective']:<15.0f} {result['gap_to_optimal']:.2f}%"
-                )
+            if result["objective"] is not None:
+                line = f"{gap * 100:.1f}%{'':<12} {result['objective']:<15.0f}"
+                if known_optimal is not None:
+                    line += f" {result['gap_to_optimal']:.2f}%"
+                print(line)
             else:
                 print(f"{gap * 100:.1f}%{'':<12} {'No solution':<15}")
     else:
@@ -246,9 +272,10 @@ if __name__ == "__main__":
             print("=" * 60)
             print(f"Status: {solution['status']}")
             print(f"Objective Value: {solution['objective']:.0f}")
-            print(f"Best Known Optimal: {AIR05_OPTIMAL}")
-            print(
-                f"Gap to Optimal: {(solution['objective'] - AIR05_OPTIMAL) / AIR05_OPTIMAL * 100:.2f}%"
-            )
+            if known_optimal is not None:
+                print(f"Best Known Optimal: {known_optimal}")
+                print(
+                    f"Gap to Optimal: {(solution['objective'] - known_optimal) / known_optimal * 100:.2f}%"
+                )
         else:
             print("\nNo feasible solution found.")

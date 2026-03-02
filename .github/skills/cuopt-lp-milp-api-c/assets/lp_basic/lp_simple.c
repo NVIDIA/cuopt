@@ -45,9 +45,21 @@ int main(void) {
         return 1;
     }
 
-    cuOptCreateSolverSettings(&settings);
-    cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
-    cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0);
+    status = cuOptCreateSolverSettings(&settings);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error creating solver settings: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting primal tolerance: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 60.0);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error setting time limit: %d\n", status);
+        goto cleanup;
+    }
 
     status = cuOptSolve(problem, settings, &solution);
     if (status != CUOPT_SUCCESS) {
@@ -57,9 +69,21 @@ int main(void) {
 
     cuopt_float_t time, objective_value;
     cuopt_int_t termination_status;
-    cuOptGetSolveTime(solution, &time);
-    cuOptGetTerminationStatus(solution, &termination_status);
-    cuOptGetObjectiveValue(solution, &objective_value);
+    status = cuOptGetSolveTime(solution, &time);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error getting solve time: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptGetTerminationStatus(solution, &termination_status);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error getting termination status: %d\n", status);
+        goto cleanup;
+    }
+    status = cuOptGetObjectiveValue(solution, &objective_value);
+    if (status != CUOPT_SUCCESS) {
+        printf("Error getting objective value: %d\n", status);
+        goto cleanup;
+    }
 
     printf("Status: %d\n", termination_status);
     printf("Time: %f s\n", time);
@@ -67,7 +91,12 @@ int main(void) {
 
     cuopt_float_t *sol = malloc((size_t)num_variables * sizeof(cuopt_float_t));
     if (sol) {
-        cuOptGetPrimalSolution(solution, sol);
+        status = cuOptGetPrimalSolution(solution, sol);
+        if (status != CUOPT_SUCCESS) {
+            printf("Error getting primal solution: %d\n", status);
+            free(sol);
+            goto cleanup;
+        }
         printf("x1 = %f, x2 = %f\n", sol[0], sol[1]);
         free(sol);
     }
