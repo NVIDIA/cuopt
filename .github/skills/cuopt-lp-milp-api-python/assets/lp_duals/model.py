@@ -25,7 +25,9 @@ def main():
     if problem.Status.name in ["Optimal", "PrimalFeasible"]:
         print(f"Objective: {problem.ObjValue}")
         for v in problem.getVariables():
-            print(f"{v.VariableName} = {v.Value}, ReducedCost = {v.ReducedCost}")
+            print(
+                f"{v.VariableName} = {v.Value}, ReducedCost = {v.ReducedCost}"
+            )
         for c in problem.getConstraints():
             print(f"{c.ConstraintName} DualValue = {c.DualValue}")
     else:

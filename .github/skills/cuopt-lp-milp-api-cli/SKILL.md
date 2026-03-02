@@ -39,11 +39,11 @@ cuopt_cli problem.mps --presolve --iteration-limit 10000 --method 1
 
 ## MPS format (required sections, in order)
 
-1. **NAME** — problem name  
-2. **ROWS** — N (objective), L/G/E (constraints)  
-3. **COLUMNS** — variable names, row names, coefficients  
-4. **RHS** — right-hand side values  
-5. **BOUNDS** (optional) — LO, UP, FX, BV, LI, UI  
+1. **NAME** — problem name
+2. **ROWS** — N (objective), L/G/E (constraints)
+3. **COLUMNS** — variable names, row names, coefficients
+4. **RHS** — right-hand side values
+5. **BOUNDS** (optional) — LO, UP, FX, BV, LI, UI
 6. **ENDATA**
 
 Integer variables: use `'MARKER' 'INTORG'` before and `'MARKER' 'INTEND'` after the integer columns.

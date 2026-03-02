@@ -4,15 +4,19 @@
 """
 Minimal VRP: 4 locations, 1 vehicle, 3 orders. Cost matrix only.
 """
+
 import cudf
 from cuopt import routing
 
-cost_matrix = cudf.DataFrame([
-    [0, 10, 15, 20],
-    [10, 0, 12, 18],
-    [15, 12, 0, 10],
-    [20, 18, 10, 0],
-], dtype="float32")
+cost_matrix = cudf.DataFrame(
+    [
+        [0, 10, 15, 20],
+        [10, 0, 12, 18],
+        [15, 12, 0, 10],
+        [20, 18, 10, 0],
+    ],
+    dtype="float32",
+)
 
 dm = routing.DataModel(n_locations=4, n_fleet=1, n_orders=3)
 dm.add_cost_matrix(cost_matrix)

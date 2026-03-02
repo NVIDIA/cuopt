@@ -18,7 +18,7 @@ An airline crew scheduling problem from the MIPLIB benchmark library.
 
 **Source**: https://miplib.zib.de/instance_details_air05.html
 
-**Problem**: Given flight legs and possible crew pairings, find the minimum-cost 
+**Problem**: Given flight legs and possible crew pairings, find the minimum-cost
 set of pairings that covers all flight legs (set covering problem).
 
 ## MPS File Format

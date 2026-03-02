@@ -15,7 +15,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 - What **language/interface**?
 - What problem type?
-- What constraints matter? 
+- What constraints matter?
 - What output format?
 
 **Skip asking only if:**

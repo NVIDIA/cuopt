@@ -1,4 +1,9 @@
 /*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Simple MILP (C API): same as LP but x1 is integer
  */
 #include <cuopt/linear_programming/cuopt_c.h>

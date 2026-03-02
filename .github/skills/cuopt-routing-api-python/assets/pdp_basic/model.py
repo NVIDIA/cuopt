@@ -4,16 +4,20 @@
 """
 PDP: 2 pickup-delivery pairs, 2 vehicles. Pickup before delivery; capacity dimension.
 """
+
 import cudf
 from cuopt import routing
 
-cost_matrix = cudf.DataFrame([
-    [0, 10, 20, 30, 40],
-    [10, 0, 15, 25, 35],
-    [20, 15, 0, 10, 20],
-    [30, 25, 10, 0, 15],
-    [40, 35, 20, 15, 0],
-], dtype="float32")
+cost_matrix = cudf.DataFrame(
+    [
+        [0, 10, 20, 30, 40],
+        [10, 0, 15, 25, 35],
+        [20, 15, 0, 10, 20],
+        [30, 25, 10, 0, 15],
+        [40, 35, 20, 15, 0],
+    ],
+    dtype="float32",
+)
 
 transit_time_matrix = cost_matrix.copy(deep=True)
 n_fleet = 2

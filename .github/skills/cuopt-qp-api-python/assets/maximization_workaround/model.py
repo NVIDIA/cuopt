@@ -4,6 +4,7 @@
 """
 Maximize -x² + 4x (max at x=2) by minimizing x² - 4x; then report -objective.
 """
+
 from cuopt.linear_programming.problem import Problem, CONTINUOUS, MINIMIZE
 
 problem = Problem("MaxWorkaround")

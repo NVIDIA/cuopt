@@ -9,7 +9,7 @@ Set up an environment to **build cuOpt from source** and run tests. For contribu
 
 ## When to use this skill
 
-- User wants to *build* cuOpt (clone, build deps, build, tests).  
+- User wants to *build* cuOpt (clone, build deps, build, tests).
 - Not for *using* cuOpt (pip/conda) — use the user installation skill instead.
 
 ## Required questions (environment)

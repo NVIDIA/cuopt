@@ -1,4 +1,9 @@
 /*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Simple LP (C API): minimize -0.2*x1 + 0.1*x2
  * subject to 3*x1 + 4*x2 <= 5.4, 2.7*x1 + 10.1*x2 <= 4.9, x1,x2 >= 0
  */

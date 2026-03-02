@@ -4,6 +4,7 @@
 """
 Least squares: minimize (x-3)² + (y-4)². Solution should be x=3, y=4.
 """
+
 from cuopt.linear_programming.problem import Problem, CONTINUOUS, MINIMIZE
 from cuopt.linear_programming.solver_settings import SolverSettings
 
