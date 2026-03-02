@@ -2102,16 +2102,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   auto report_cut_gap_closure_metric = [&]() {
     const auto cut_configuration = classify_cut_configuration(settings_);
     if (settings_.max_cut_passes <= 0 || cut_configuration == cut_configuration_t::NONE) {
-      settings_.log.debug("Cut gap closure skipped: max_cut_passes=%d cut_configuration=%s\n",
-                          settings_.max_cut_passes,
-                          cut_configuration_name(cut_configuration));
+      settings_.log.printf("Cut gap closure skipped: max_cut_passes=%d cut_configuration=%s\n",
+                           settings_.max_cut_passes,
+                           cut_configuration_name(cut_configuration));
       return;
     }
+    const std::string& instance_name_for_lookup = original_problem_.problem_name;
     const std::string normalized_problem_name =
-      ::cuopt::linear_programming::detail::normalize_problem_name(original_problem_.problem_name);
+      ::cuopt::linear_programming::detail::normalize_problem_name(instance_name_for_lookup);
     const auto objective_reference =
       ::cuopt::linear_programming::detail::lookup_known_objective_reference(
-        original_problem_.problem_name);
+        instance_name_for_lookup);
     if (!objective_reference.has_value()) {
       settings_.log.printf(
         "Cut gap closure skipped: no objective reference for instance raw='%s' normalized='%s'\n",
@@ -2130,7 +2131,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       "Cut gap closure [%s] instance=%s known_%s=%.16e root_before=%.16e root_after=%.16e "
       "gap_before=%.16e gap_after=%.16e gap_closed=%.16e gap_closed_ratio=%.2f%%\n",
       cut_configuration_name(cut_configuration),
-      original_problem_.problem_name.c_str(),
+      instance_name_for_lookup.c_str(),
       ::cuopt::linear_programming::detail::objective_reference_status_name(
         objective_reference->status),
       static_cast<double>(objective_reference->objective_value),

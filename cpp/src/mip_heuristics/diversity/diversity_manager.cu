@@ -8,6 +8,7 @@
 #include "cuda_profiler_api.h"
 #include "diversity_manager.cuh"
 
+#include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
@@ -24,6 +25,17 @@
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
+
+const char* env_cut_configuration_name(env_cut_configuration_t config)
+{
+  switch (config) {
+    case env_cut_configuration_t::WITHOUT_CLIQUE: return "cuts_without_clique";
+    case env_cut_configuration_t::WITH_CLIQUE: return "cuts_with_clique";
+    case env_cut_configuration_t::CLIQUE_ONLY: return "clique_only";
+    case env_cut_configuration_t::NONE: return "default";
+    default: return "unknown";
+  }
+}
 
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
@@ -79,9 +91,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     ls_hash_map(*context.problem_ptr)
 {
-  // Read configuration ID from environment variable
-  int max_config = -1;
-  // Read max configuration value from environment variable
+  int max_config             = -1;
   const char* env_max_config = std::getenv("CUOPT_MAX_CONFIG");
   if (env_max_config != nullptr) {
     try {
@@ -91,18 +101,68 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
       CUOPT_LOG_WARN("Failed to parse CUOPT_MAX_CONFIG environment variable: %s", e.what());
     }
   }
-  if (max_config > 1) {
-    [[maybe_unused]] int config_id = -1;  // Default value
-    const char* env_config_id      = std::getenv("CUOPT_CONFIG_ID");
-    if (env_config_id != nullptr) {
-      try {
-        config_id = std::stoi(env_config_id);
-        CUOPT_LOG_INFO("Using configuration ID from environment: %d", config_id);
-      } catch (const std::exception& e) {
-        CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID environment variable: %s", e.what());
-      }
-    }
+
+  const char* env_config_id_raw = std::getenv("CUOPT_CONFIG_ID");
+  if (env_config_id_raw == nullptr) { return; }
+
+  try {
+    env_config_id = std::stoi(env_config_id_raw);
+  } catch (const std::exception& e) {
+    CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID environment variable: %s", e.what());
+    return;
   }
+
+  if (max_config > 0 && env_config_id >= max_config) {
+    CUOPT_LOG_WARN(
+      "CUOPT_CONFIG_ID=%d is outside [0, %d). Ignoring cut override.", env_config_id, max_config);
+    return;
+  }
+
+  switch (env_config_id) {
+    case 0: env_cut_configuration = env_cut_configuration_t::WITHOUT_CLIQUE; break;
+    case 1: env_cut_configuration = env_cut_configuration_t::WITH_CLIQUE; break;
+    case 2: env_cut_configuration = env_cut_configuration_t::CLIQUE_ONLY; break;
+    default:
+      CUOPT_LOG_WARN(
+        "Unsupported CUOPT_CONFIG_ID=%d for cut configuration. "
+        "Expected 0 (without clique), 1 (with clique), or 2 (clique only).",
+        env_config_id);
+      env_cut_configuration = env_cut_configuration_t::NONE;
+      return;
+  }
+
+  CUOPT_LOG_INFO("Using cut configuration from CUOPT_CONFIG_ID=%d (%s)",
+                 env_config_id,
+                 env_cut_configuration_name(env_cut_configuration));
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::apply_cut_configuration_from_env(
+  dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings) const
+{
+  if (env_cut_configuration == env_cut_configuration_t::NONE) { return; }
+  switch (env_cut_configuration) {
+    case env_cut_configuration_t::WITHOUT_CLIQUE: settings.clique_cuts = 0; break;
+    case env_cut_configuration_t::WITH_CLIQUE: settings.clique_cuts = 1; break;
+    case env_cut_configuration_t::CLIQUE_ONLY:
+      settings.clique_cuts                = 1;
+      settings.mixed_integer_gomory_cuts  = 0;
+      settings.mir_cuts                   = 0;
+      settings.knapsack_cuts              = 0;
+      settings.strong_chvatal_gomory_cuts = 0;
+      break;
+    default: break;
+  }
+  settings.log.printf(
+    "Applied cut configuration from CUOPT_CONFIG_ID=%d (%s): mir=%d gomory=%d knapsack=%d "
+    "strong_cg=%d clique=%d\n",
+    env_config_id,
+    env_cut_configuration_name(env_cut_configuration),
+    settings.mir_cuts,
+    settings.mixed_integer_gomory_cuts,
+    settings.knapsack_cuts,
+    settings.strong_chvatal_gomory_cuts,
+    settings.clique_cuts);
 }
 
 // this function is to specialize the local search with config from diversity manager
