@@ -169,7 +169,9 @@ def compare_gaps(
             }
             if known_optimal is not None:
                 results[gap]["gap_to_optimal"] = (
-                    (solution["objective"] - known_optimal) / known_optimal * 100
+                    (solution["objective"] - known_optimal)
+                    / known_optimal
+                    * 100
                 )
         else:
             results[gap] = {"objective": None, "status": "No solution"}

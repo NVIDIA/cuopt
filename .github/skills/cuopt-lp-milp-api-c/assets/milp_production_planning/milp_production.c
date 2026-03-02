@@ -1,4 +1,9 @@
 /*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Production planning MILP (C API): two products, resource limits, maximize profit.
  * Variables: Product_A (x1), Product_B (x2), both integer, lb 10 and 15.
  * Constraints: 2*x1+x2 <= 100 (machine), x1+3*x2 <= 120 (labor), 4*x1+2*x2 <= 200 (material).
