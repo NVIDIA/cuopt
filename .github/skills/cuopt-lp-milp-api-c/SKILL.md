@@ -41,10 +41,16 @@ cuOptGetObjectiveValue(solution, &obj_value);
 ## Examples
 
 - [examples.md](resources/examples.md) — LP/MILP with build instructions
-- **Reference code:** This skill's `assets/` — [lp_basic](assets/lp_basic/) (LP), [milp_basic](assets/milp_basic/) (MILP). See [assets/README.md](assets/README.md) for build commands.
+- [assets/README.md](assets/README.md) — Build commands for all reference code below
+- [lp_basic](assets/lp_basic/) — Simple LP: create problem, solve, get solution
+- [lp_duals](assets/lp_duals/) — Dual values and reduced costs
+- [lp_warmstart](assets/lp_warmstart/) — PDLP warmstart (see README)
+- [milp_basic](assets/milp_basic/) — Simple MILP with integer variable
+- [milp_production_planning](assets/milp_production_planning/) — Production planning with resource constraints
+- [mps_solver](assets/mps_solver/) — Solve from MPS file via `cuOptReadProblem`
 
-For **CLI** (MPS files), see the LP/MILP CLI skill.
+For **CLI** (MPS files), use `cuopt_cli` and product docs.
 
 ## Escalate
 
-If the problem is quadratic (squared or cross terms in the objective), use QP. For contribution or build-from-source, see the developer skill.
+If the problem is quadratic (squared or cross terms in the objective), use QP. For contribution or build-from-source, use product or repo documentation.
