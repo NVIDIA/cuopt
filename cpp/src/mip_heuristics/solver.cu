@@ -115,8 +115,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
   presolve_time_limit        = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
                                  ? std::numeric_limits<f_t>::infinity()
-                                 : time_limit;
-  bool presolve_success      = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
+                                 : presolve_time_limit;
+  bool presolve_success      = run_presolve ? dm.run_presolve(time_limit, timer_) : true;
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);

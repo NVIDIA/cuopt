@@ -257,7 +257,8 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     // Run probing cache before trivial presolve to discover variable implications
     const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
     const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache            = std::min(max_time_on_probing, time_limit * 0.8);
+    f_t time_for_probing_cache =
+      std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
     timer_t probing_timer{time_for_probing_cache};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
@@ -267,25 +268,27 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const bool remap_cache_ids = true;
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
-  //     !problem_ptr->empty) {
-  //   dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
-  //   problem_ptr->get_host_user_problem(host_problem);
-  //   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
-  //   auto clique_table_ptr = context.settings.clique_cuts != 0 ? &clique_table : nullptr;
-  //   find_initial_cliques(
-  //     host_problem, context.settings.tolerances, clique_table_ptr, presolve_timer);
-  //   problem_ptr->set_constraints_from_host_user_problem(host_problem);
-  //   cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
-  //                "host lower bound size mismatch");
-  //   cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
-  //                "host upper bound size mismatch");
-  //   std::vector<i_t> all_var_indices(problem_ptr->n_variables);
-  //   std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
-  //   problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
-  //   trivial_presolve(*problem_ptr, remap_cache_ids);
-  //   if (clique_table_ptr != nullptr) { problem_ptr->clique_table = std::move(clique_table); }
-  // }
+  if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
+      !problem_ptr->empty) {
+    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
+    timer_t clique_timer(time_limit_for_clique_table);
+    dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+    problem_ptr->get_host_user_problem(host_problem);
+    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+    auto clique_table_ptr = context.settings.clique_cuts != 0 ? &clique_table : nullptr;
+    find_initial_cliques(
+      host_problem, context.settings.tolerances, clique_table_ptr, presolve_timer);
+    problem_ptr->set_constraints_from_host_user_problem(host_problem);
+    cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host lower bound size mismatch");
+    cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
+                 "host upper bound size mismatch");
+    std::vector<i_t> all_var_indices(problem_ptr->n_variables);
+    std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+    problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
+    trivial_presolve(*problem_ptr, remap_cache_ids);
+    if (clique_table_ptr != nullptr) { problem_ptr->clique_table = std::move(clique_table); }
+  }
   // May overconstrain if Papilo presolve has been run before
   if (context.settings.presolver == presolver_t::None) {
     if (!problem_ptr->empty) {
