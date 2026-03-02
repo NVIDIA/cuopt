@@ -2410,7 +2410,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
   }
-  exit(0);
 
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
