@@ -592,6 +592,11 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                   error_type_t::ValidationError,
                   "PDLP batch mode is not supported for float precision. Use double precision.");
   }
+#if CUDART_VERSION < 12050
+  cuopt_expects(!settings.mixed_precision_spmv,
+                error_type_t::ValidationError,
+                "Mixed-precision SpMV requires CUDA 12.5 or later.");
+#endif
   cuopt_expects(
     !is_batch_mode || !settings.mixed_precision_spmv,
     error_type_t::ValidationError,
