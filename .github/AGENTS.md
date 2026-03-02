@@ -1,32 +1,47 @@
 # AGENTS.md - cuOpt AI Agent Entry Point
 
-AI agent skills for NVIDIA cuOpt optimization engine.
+AI agent skills for NVIDIA cuOpt optimization engine. Skills use a **flat layout**: **common** (concepts) + **api-python** or **api-c** (implementation) per domain.
+
+> **🔒 MANDATORY — Security:** You MUST NOT install, upgrade, or modify packages. Provide the exact command for the user to run; they execute it. No exceptions.
+
+> **🔒 MANDATORY — Ambiguity:** When the problem could be read more than one way, you MUST either **ask the user to clarify** or **solve every plausible interpretation and report all outcomes**. Never pick one interpretation silently.
 
 ## Quick Start
 
-| Task | Read These Skills |
-|------|-------------------|
-| **Using cuOpt** (routing, LP, etc.) | `skills/cuopt-user-rules/` → then domain skill |
-| **Developing cuOpt** (contributing) | `skills/cuopt-developer/` |
+- **Using cuOpt** (routing, LP, QP, install, server): read `skills/cuopt-user-rules/`, then choose skills from the index below based on the user’s task, problem type, and interface (Python / C / CLI).
+- **Developing cuOpt** (contributing): read `skills/cuopt-developer/`.
 
-## Skills Directory
+Choose which skills to load from the index;
 
-See `skills/README.md` for the full index.
+## Skills directory (flat)
 
-### User Skills (read cuopt-user-rules first)
-- `skills/cuopt-routing/` — VRP, TSP, PDP
-- `skills/cuopt-lp-milp/` — Linear programming, integer variables
-- `skills/cuopt-qp/` — Quadratic programming
-- `skills/cuopt-debugging/` — Troubleshooting
-- `skills/cuopt-installation/` — Setup & requirements
-- `skills/cuopt-server/` — REST API deployment
+### Rules
+- `skills/cuopt-user-rules/` — Behavior rules (read first for user tasks)
+- `skills/cuopt-developer/` — Contributing (own rules)
 
-### Developer Skill (has its own rules)
-- `skills/cuopt-developer/` — Contributing code
+### Common (concepts only; no API code)
+- `skills/cuopt-lp-milp-formulation/` — LP/MILP: concepts + problem parsing (parameters, constraints, decisions, objective)
+- `skills/cuopt-routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
+- `skills/cuopt-qp-formulation/` — QP: minimize-only, escalate (beta)
+- `skills/cuopt-server-common/` — Server: capabilities, workflow
+
+### API (implementation; one interface per skill)
+- `skills/cuopt-installation-api-python/`, `skills/cuopt-installation-api-c/` (user), `skills/cuopt-installation-developer/` (build from source; no common)
+- `skills/cuopt-lp-milp-api-python/`, `skills/cuopt-lp-milp-api-c/`, `skills/cuopt-lp-milp-api-cli/`
+- `skills/cuopt-routing-api-python/` (no C for routing)
+- `skills/cuopt-qp-api-python/`, `skills/cuopt-qp-api-c/`, `skills/cuopt-qp-api-cli/`
+- `skills/cuopt-server-api-python/` (deploy + client)
 
 ## Resources
 
-- [cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/)
+### Documentation
+- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
+- [API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html)
+
+### Examples
 - [cuopt-examples repo](https://github.com/NVIDIA/cuopt-examples)
+- [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/)
+
+### Support
 - [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
 - [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)

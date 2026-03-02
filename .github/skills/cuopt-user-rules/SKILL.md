@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, debugging, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
+description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
 ---
 
 # cuOpt User Rules
@@ -9,14 +9,14 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 1. Ask Before Assuming
+## Ask Before Assuming
 
 **Always clarify ambiguous requirements before implementing:**
 
-- What interface? (Python API / REST Server / C API / CLI)
-- What problem type? (Routing / LP / MILP / QP)
-- What constraints matter? (time windows, capacities, etc.)
-- What output format? (solution values, routes, visualization)
+- What **language/interface**?
+- What problem type?
+- What constraints matter? 
+- What output format?
 
 **Skip asking only if:**
 - User explicitly stated the requirement
@@ -24,7 +24,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 2. Handle Incomplete Questions
+## Handle Incomplete Questions
 
 **If a question seems partial or incomplete, ask follow-up questions:**
 
@@ -42,7 +42,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 3. Clarify Data Requirements
+## Clarify Data Requirements
 
 **Before generating examples, ask about data:**
 
@@ -69,7 +69,7 @@ description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before 
 
 ---
 
-## 4. MUST Verify Understanding
+## MUST Verify Understanding
 
 **Before writing substantial code, you MUST confirm your understanding:**
 
@@ -84,7 +84,7 @@ Is this correct?"
 
 ---
 
-## 5. Follow Requirements Exactly
+## Follow Requirements Exactly
 
 - Use the **exact** variable names, formats, and structures the user specifies
 - Don't add features the user didn't ask for
@@ -93,23 +93,7 @@ Is this correct?"
 
 ---
 
-## 6. Read Examples First
-
-Before generating code, **read the canonical example** for that problem type:
-
-| Problem | Example Location |
-|---------|------------------|
-| Routing | `docs/cuopt/source/cuopt-python/routing/examples/` |
-| LP/MILP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/` |
-| QP | `docs/cuopt/source/cuopt-python/lp-qp-milp/examples/simple_qp_example.py` |
-| Server | `docs/cuopt/source/cuopt_spec.yaml` (OpenAPI) |
-| C API | `docs/cuopt/source/cuopt-c/lp-qp-milp/examples/` |
-
-**Don't invent API patterns.** Copy from examples.
-
----
-
-## 7. Check Results
+## Check Results
 
 After providing a solution, guide the user to verify:
 
@@ -117,11 +101,20 @@ After providing a solution, guide the user to verify:
 - **Constraint satisfaction**: Are all constraints met?
 - **Objective value**: Is it reasonable for the problem?
 
+**Always end with a Result summary** that includes at least:
+- Solver status (e.g. Optimal, FeasibleFound, SUCCESS).
+- **Objective value with highlight** — easy to spot (bold or code block). Example: **Objective value (min total cost): 42 350** or `Objective value: 42350`.
+- Briefly what the objective represents (e.g. total cost, total profit).
+
+Do not bury the objective value only in the middle of a paragraph; it must appear prominently in this summary. Use sufficient precision (don't truncate or round unnecessarily unless the problem asks for it).
+
+**Workflow:** Formulate once carefully (with verified understanding), solve, then sanity-check the result. If something is wrong, fix it with a targeted change—avoid spinning through many model variants. Decide, implement, verify, then move on.
+
 Provide diagnostic code snippets when helpful.
 
 ---
 
-## 8. Check Environment First
+## Check Environment First
 
 **Before writing code or suggesting installation, verify the user's setup:**
 
@@ -129,16 +122,16 @@ Provide diagnostic code snippets when helpful.
    - "Do you have cuOpt installed? If so, which interface?"
    - "What environment are you using? (local GPU, cloud, Docker, server, etc.)"
 
-2. **Different packages for different interfaces:**
+2. **Different packages by language/interface:**
 
-   | Interface | Package | Check |
-   |-----------|---------|-------|
-   | Python API | `cuopt` (pip/conda) | `import cuopt` |
-   | C API | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
+   | Language / Interface | Package | Check |
+   |----------------------|---------|-------|
+   | **Python** | `cuopt` (pip/conda) | `import cuopt` |
+   | **C** | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
    | REST Server | `cuopt-server` or Docker | `curl /cuopt/health` |
    | CLI | `cuopt` package includes CLI | `cuopt_cli --help` |
 
-   **Note:** `libcuopt` (C library) installed via conda is NOT available through Python import — they are separate packages.
+   **Note:** `libcuopt` (C library) is separate from the Python package — C and Python use different installs.
 
 3. **If not installed, ask how they want to access:**
    - "Would you like help installing cuOpt, or do you have access another way?"
@@ -167,14 +160,14 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 9. Ask Before Running
+## Ask Before Running
 
 **Do not execute commands or code without explicit permission:**
 
 | Action | Rule |
 |--------|------|
 | Shell commands | Show command, explain what it does, ask "Should I run this?" |
-| Package installs | **Never** run `pip`, `conda`, `apt` without asking first |
+| Package installs | **Never** run installs yourself — give the exact command, user runs it (see below). |
 | Examples/scripts | Show the code first, ask "Would you like me to run this?" |
 | File writes | Explain what will change, ask before writing |
 
@@ -184,7 +177,7 @@ Provide diagnostic code snippets when helpful.
 
 ---
 
-## 10. No Privileged Operations
+## No Privileged Operations
 
 **Never do these without explicit user request AND confirmation:**
 
@@ -193,6 +186,18 @@ Provide diagnostic code snippets when helpful.
 - Add package repositories or keys
 - Change firewall, network, or driver settings
 - Write files outside the workspace
+
+---
+
+## Never Install Packages Automatically
+
+> **🔒 MANDATORY — You MUST NOT install, upgrade, or modify packages.** Provide the exact command; the user runs it. No exceptions.
+
+| Forbidden | What to do instead |
+|-----------|--------------------|
+| `pip install ...`, `conda install ...`, `apt install ...`, any package manager | Give the exact command and ask the user to run it. Say why the package is needed. |
+
+**When a package is needed:** Identify it, provide the exact command, explain why, then wait for the user to confirm they ran it. Even if the user says "just install it", give the command and require them to execute it themselves.
 
 ---
 
