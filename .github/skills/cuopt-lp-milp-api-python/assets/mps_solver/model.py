@@ -81,9 +81,9 @@ def solve_mps(
     problem = Problem.readMPS(filepath)
 
     print(f"Loaded MPS file: {filepath}")
-    print(f"Variables: {problem.NumVariables()}")
-    print(f"Constraints: {problem.NumConstraints()}")
-    print(f"Is MIP: {problem.IsMIP()}")
+    print(f"Variables: {problem.NumVariables}")
+    print(f"Constraints: {problem.NumConstraints}")
+    print(f"Is MIP: {problem.IsMIP}")
 
     # Solver settings
     settings = SolverSettings()
@@ -103,9 +103,9 @@ def solve_mps(
         solution = {
             "status": status,
             "objective": problem.ObjValue,
-            "num_variables": problem.NumVariables(),
-            "num_constraints": problem.NumConstraints(),
-            "is_mip": problem.IsMIP(),
+            "num_variables": problem.NumVariables,
+            "num_constraints": problem.NumConstraints,
+            "is_mip": problem.IsMIP,
             "mip_gap": mip_gap,
         }
 
