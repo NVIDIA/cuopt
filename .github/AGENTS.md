@@ -6,30 +6,30 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills use a **flat layout
 
 > **🔒 MANDATORY — Ambiguity:** When the problem could be read more than one way, you MUST either **ask the user to clarify** or **solve every plausible interpretation and report all outcomes**. Never pick one interpretation silently.
 
-## Quick Start
-
-- **Using cuOpt** (routing, LP, QP, install, server): read `skills/cuopt-user-rules/`, then choose skills from the index below based on the user’s task, problem type, and interface (Python / C / CLI).
-- **Developing cuOpt** (contributing): read `skills/cuopt-developer/`.
-
-Choose which skills to load from the index;
-
 ## Skills directory (flat)
 
 ### Rules
-- `skills/cuopt-user-rules/` — Behavior rules (read first for user tasks)
-- `skills/cuopt-developer/` — Contributing (own rules)
+- `skills/cuopt-user-rules/` — User-facing behavior and conventions; read first when helping users with cuOpt (routing, LP, MILP, QP, install, server). Choose skills from the index below by task, problem type, and interface (Python / C / CLI).
+- `skills/cuopt-developer/` — Contributing and development; use when the user is building from source, contributing code, or working on cuOpt internals.
 
 ### Common (concepts only; no API code)
+- `skills/cuopt-installation-common/` — Install: system and environment requirements (concepts only; no install commands or interface)
 - `skills/cuopt-lp-milp-formulation/` — LP/MILP: concepts + problem parsing (parameters, constraints, decisions, objective)
 - `skills/cuopt-routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
 - `skills/cuopt-qp-formulation/` — QP: minimize-only, escalate (beta)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
 ### API (implementation; one interface per skill)
-- `skills/cuopt-installation-api-python/`, `skills/cuopt-installation-api-c/` (user), `skills/cuopt-installation-developer/` (build from source; no common)
-- `skills/cuopt-lp-milp-api-python/`, `skills/cuopt-lp-milp-api-c/`, `skills/cuopt-lp-milp-api-cli/`
-- `skills/cuopt-routing-api-python/` (no C for routing)
-- `skills/cuopt-qp-api-python/`, `skills/cuopt-qp-api-c/`, `skills/cuopt-qp-api-cli/`
+- `skills/cuopt-installation-api-python/`
+- `skills/cuopt-installation-api-c/`
+- `skills/cuopt-installation-developer/` (build from source)
+- `skills/cuopt-lp-milp-api-python/`
+- `skills/cuopt-lp-milp-api-c/`
+- `skills/cuopt-lp-milp-api-cli/`
+- `skills/cuopt-routing-api-python/`
+- `skills/cuopt-qp-api-python/`
+- `skills/cuopt-qp-api-c/`
+- `skills/cuopt-qp-api-cli/`
 - `skills/cuopt-server-api-python/` (deploy + client)
 
 ## Resources
