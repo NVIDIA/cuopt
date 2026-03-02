@@ -11,7 +11,7 @@
  */
 
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 

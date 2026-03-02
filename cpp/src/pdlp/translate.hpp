@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
