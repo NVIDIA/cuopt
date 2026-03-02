@@ -183,6 +183,10 @@ int run_single_file(std::string file_path,
     CUOPT_LOG_ERROR("Parsing MPS failed exiting!");
     return -1;
   }
+  // Use the benchmark filename for downstream instance-level reporting.
+  // This keeps per-instance metrics aligned with the run list even if the MPS NAME card differs.
+  mps_data_model.set_problem_name(base_filename);
+
   if (initial_solution_dir.has_value()) {
     auto initial_solutions = read_solution_from_dir(
       initial_solution_dir.value(), base_filename, mps_data_model.get_variable_names());

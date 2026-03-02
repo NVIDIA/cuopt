@@ -21,6 +21,17 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+const char* cut_configuration_name(cut_configuration_t cut_configuration)
+{
+  switch (cut_configuration) {
+    case cut_configuration_t::WITHOUT_CLIQUE: return "cuts_without_clique";
+    case cut_configuration_t::WITH_CLIQUE: return "cuts_with_clique";
+    case cut_configuration_t::CLIQUE_ONLY: return "clique_only";
+    case cut_configuration_t::NONE: return "no_cuts_enabled";
+    default: return "unknown";
+  }
+}
+
 namespace {
 
 #define DEBUG_CLIQUE_CUTS 0

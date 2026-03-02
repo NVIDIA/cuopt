@@ -21,6 +21,7 @@
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <utilities/hashing.hpp>
@@ -2098,6 +2099,49 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t last_objective       = root_objective_;
   f_t root_relax_objective = root_objective_;
 
+  auto report_cut_gap_closure_metric = [&]() {
+    const auto cut_configuration = classify_cut_configuration(settings_);
+    if (settings_.max_cut_passes <= 0 || cut_configuration == cut_configuration_t::NONE) {
+      settings_.log.debug("Cut gap closure skipped: max_cut_passes=%d cut_configuration=%s\n",
+                          settings_.max_cut_passes,
+                          cut_configuration_name(cut_configuration));
+      return;
+    }
+    const std::string normalized_problem_name =
+      ::cuopt::linear_programming::detail::normalize_problem_name(original_problem_.problem_name);
+    const auto objective_reference =
+      ::cuopt::linear_programming::detail::lookup_known_objective_reference(
+        original_problem_.problem_name);
+    if (!objective_reference.has_value()) {
+      settings_.log.printf(
+        "Cut gap closure skipped: no objective reference for instance raw='%s' normalized='%s'\n",
+        original_problem_.problem_name.c_str(),
+        normalized_problem_name.c_str());
+      return;
+    }
+    const f_t user_objective_before_cuts =
+      compute_user_objective(original_lp_, root_relax_objective);
+    const f_t user_objective_after_cuts = compute_user_objective(original_lp_, root_objective_);
+    const auto gap_closure =
+      compute_cut_gap_closure(static_cast<f_t>(objective_reference->objective_value),
+                              user_objective_before_cuts,
+                              user_objective_after_cuts);
+    settings_.log.printf(
+      "Cut gap closure [%s] instance=%s known_%s=%.16e root_before=%.16e root_after=%.16e "
+      "gap_before=%.16e gap_after=%.16e gap_closed=%.16e gap_closed_ratio=%.2f%%\n",
+      cut_configuration_name(cut_configuration),
+      original_problem_.problem_name.c_str(),
+      ::cuopt::linear_programming::detail::objective_reference_status_name(
+        objective_reference->status),
+      static_cast<double>(objective_reference->objective_value),
+      static_cast<double>(user_objective_before_cuts),
+      static_cast<double>(user_objective_after_cuts),
+      static_cast<double>(gap_closure.initial_gap),
+      static_cast<double>(gap_closure.final_gap),
+      static_cast<double>(gap_closure.gap_closed),
+      static_cast<double>(gap_closure.gap_closed_ratio * 100.0));
+  };
+
   i_t cut_pool_size = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
@@ -2335,6 +2379,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
       f_t abs_gap = upper_bound_.load() - root_objective_;
       if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
+        report_cut_gap_closure_metric();
         set_solution_at_root(solution, cut_info);
         set_final_solution(solution, root_objective_);
         return mip_status_t::OPTIMAL;
@@ -2354,6 +2399,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
+  report_cut_gap_closure_metric();
   print_cut_info(settings_, cut_info);
 
   if (cut_info.has_cuts()) {
@@ -2363,6 +2409,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
   }
+  exit(0);
+
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);

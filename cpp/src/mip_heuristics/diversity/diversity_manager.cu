@@ -8,6 +8,7 @@
 #include "cuda_profiler_api.h"
 #include "diversity_manager.cuh"
 
+#include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
@@ -333,6 +334,32 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   CUOPT_LOG_DEBUG("Determinism mode: %s",
                   context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC ? "deterministic"
                                                                                 : "opportunistic");
+
+  if (problem_ptr->original_problem_ptr != nullptr) {
+    const auto problem_name = problem_ptr->original_problem_ptr->get_problem_name();
+    const auto normalized_problem_name =
+      ::cuopt::linear_programming::detail::normalize_problem_name(problem_name);
+    CUOPT_LOG_DEBUG("Objective reference lookup raw='%s' normalized='%s'",
+                    problem_name.c_str(),
+                    normalized_problem_name.c_str());
+    if (!problem_name.empty()) {
+      const auto objective_reference =
+        ::cuopt::linear_programming::detail::lookup_known_objective_reference(problem_name);
+      if (objective_reference.has_value()) {
+        CUOPT_LOG_INFO("Known objective reference for %s: %.17g (%s)",
+                       problem_name.c_str(),
+                       objective_reference->objective_value,
+                       ::cuopt::linear_programming::detail::objective_reference_status_name(
+                         objective_reference->status));
+      } else {
+        CUOPT_LOG_DEBUG("No objective reference mapping found for %s", problem_name.c_str());
+      }
+    } else {
+      CUOPT_LOG_DEBUG("Skipping objective reference lookup because problem_name is empty");
+    }
+  } else {
+    CUOPT_LOG_DEBUG("Skipping objective reference lookup because original_problem_ptr is null");
+  }
 
   // to automatically compute the solving time on scope exit
   auto timer_raii_guard =

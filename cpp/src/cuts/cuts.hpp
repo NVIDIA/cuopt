@@ -39,6 +39,49 @@ enum cut_type_t : int8_t {
   MAX_CUT_TYPE           = 5
 };
 
+enum class cut_configuration_t : int8_t {
+  NONE           = 0,
+  WITHOUT_CLIQUE = 1,
+  WITH_CLIQUE    = 2,
+  CLIQUE_ONLY    = 3,
+};
+
+template <typename i_t, typename f_t>
+cut_configuration_t classify_cut_configuration(const simplex_solver_settings_t<i_t, f_t>& settings)
+{
+  const bool clique_enabled     = settings.clique_cuts != 0;
+  const bool non_clique_enabled = settings.mixed_integer_gomory_cuts != 0 ||
+                                  settings.strong_chvatal_gomory_cuts != 0 ||
+                                  settings.knapsack_cuts != 0 || settings.mir_cuts != 0;
+  if (clique_enabled && non_clique_enabled) { return cut_configuration_t::WITH_CLIQUE; }
+  if (clique_enabled) { return cut_configuration_t::CLIQUE_ONLY; }
+  if (non_clique_enabled) { return cut_configuration_t::WITHOUT_CLIQUE; }
+  return cut_configuration_t::NONE;
+}
+
+const char* cut_configuration_name(cut_configuration_t cut_configuration);
+
+template <typename f_t>
+struct cut_gap_closure_t {
+  f_t initial_gap{0.0};
+  f_t final_gap{0.0};
+  f_t gap_closed{0.0};
+  f_t gap_closed_ratio{0.0};
+};
+
+template <typename f_t>
+cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
+                                               f_t objective_before_cuts,
+                                               f_t objective_after_cuts)
+{
+  const f_t initial_gap      = std::abs(objective_reference - objective_before_cuts);
+  const f_t final_gap        = std::abs(objective_reference - objective_after_cuts);
+  const f_t gap_closed       = initial_gap - final_gap;
+  constexpr f_t eps          = static_cast<f_t>(1e-12);
+  const f_t gap_closed_ratio = initial_gap > eps ? gap_closed / initial_gap : static_cast<f_t>(0.0);
+  return {initial_gap, final_gap, gap_closed, gap_closed_ratio};
+}
+
 template <typename i_t, typename f_t>
 struct cut_info_t {
   bool has_cuts() const
