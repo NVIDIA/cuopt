@@ -48,10 +48,17 @@ cuopt_cli problem.mps --presolve --iteration-limit 10000 --method 1
 
 Integer variables: use `'MARKER' 'INTORG'` before and `'MARKER' 'INTEND'` after the integer columns.
 
+## Troubleshooting
+
+- **Failed to parse MPS** — Check ENDATA, section order (NAME, ROWS, COLUMNS, RHS, [BOUNDS], ENDATA), integer markers.
+- **Infeasible** — Check constraint directions (L/G/E) and RHS values.
+
 ## Examples
 
-- [examples.md](resources/examples.md) — LP and MILP MPS examples, format reference, troubleshooting
-- **Sample MPS files:** This skill's `assets/` — [lp_simple](assets/lp_simple/), [lp_production](assets/lp_production/), [milp_facility](assets/milp_facility/). See [assets/README.md](assets/README.md).
+- [assets/README.md](assets/README.md) — Build/run for sample MPS files
+- [lp_simple](assets/lp_simple/) — Minimal LP (PROD_X, PROD_Y, two constraints)
+- [lp_production](assets/lp_production/) — Production planning: chairs + tables, wood/labor
+- [milp_facility](assets/milp_facility/) — Facility location with binary open/close
 
 ## Getting the CLI
 
