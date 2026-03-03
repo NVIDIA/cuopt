@@ -9,6 +9,7 @@
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming {
@@ -108,6 +109,14 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
 }
 
 // Explicit template instantiations for remote execution stubs
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+template std::unique_ptr<lp_solution_interface_t<int, float>> solve_lp_remote(
+  cpu_optimization_problem_t<int, float> const&,
+  pdlp_solver_settings_t<int, float> const&,
+  bool,
+  bool);
+#endif
+
 template std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
   cpu_optimization_problem_t<int, double> const&,
   pdlp_solver_settings_t<int, double> const&,
