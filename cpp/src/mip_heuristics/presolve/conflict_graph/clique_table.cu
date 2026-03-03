@@ -656,6 +656,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
         i_t remaining_rows_budget,
         i_t remaining_nnz_budget,
         i_t& inserted_row_nnz) {
+      return;
       inserted_row_nnz = 0;
       if (curr_clique.empty() || sp_sigs.empty()) { return; }
       std::vector<i_t> curr_clique_vars(curr_clique.begin(), curr_clique.end());
