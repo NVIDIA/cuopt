@@ -79,7 +79,7 @@ struct inequality_t {
   void print() const
   {
     for (i_t k = 0; k < size(); k++) {
-      printf("%d %g ", index(k), coeff(k));
+      printf("%g x%d ", coeff(k), index(k));
     }
     printf("\nrhs %g\n", rhs);
   }
@@ -384,6 +384,25 @@ class scratch_pad_t {
 };
 
 template <typename i_t, typename f_t>
+class mixed_integer_gomory_cut_t {
+ public:
+  mixed_integer_gomory_cut_t() {}
+
+  bool rational_coefficients(const std::vector<variable_type_t>& var_types,
+                             const inequality_t<i_t, f_t>& input_inequality,
+                             inequality_t<i_t, f_t>& rational_inequality);
+
+ private:
+  bool rational_approximation(f_t x,
+                              int64_t max_denominator,
+                              int64_t& numerator,
+                              int64_t& denominator);
+
+  int64_t gcd(const std::vector<int64_t>& integers);
+  int64_t lcm(const std::vector<int64_t>& integers);
+};
+
+template <typename i_t, typename f_t>
 class tableau_equality_t {
  public:
   tableau_equality_t(const lp_problem_t<i_t, f_t>& lp,
@@ -569,7 +588,7 @@ class complemented_mixed_integer_rounding_cut_t {
                                 inequality_t<i_t, f_t>& transformed_cut,
                                 f_t& work_estimate);
 
-  void scale_uncomplement_and_generate_cut(const std::vector<variable_type_t>& var_types,
+  bool scale_uncomplement_and_generate_cut(const std::vector<variable_type_t>& var_types,
                                            const std::vector<f_t>& transformed_xstar,
                                            const std::vector<i_t>& complemented_indices,
                                            const inequality_t<i_t, f_t>& complemented_inequality,
@@ -578,7 +597,7 @@ class complemented_mixed_integer_rounding_cut_t {
                                            f_t& work_estimate);
 
   // This routine takes an inequality and generates the MIR cut
-  void generate_cut_nonnegative_maintain_indicies(const inequality_t<i_t, f_t>& inequality,
+  bool generate_cut_nonnegative_maintain_indicies(const inequality_t<i_t, f_t>& inequality,
                                                   const std::vector<variable_type_t>& var_types,
                                                   inequality_t<i_t, f_t>& cut);
 
