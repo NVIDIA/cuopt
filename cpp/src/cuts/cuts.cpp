@@ -110,6 +110,8 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     // that's why compelements have 1 as coeff and normal vars have -1
     if (complement) {
       if (seen_original.count(var_idx) > 0) {
+        // FIXME: this is temporary, fix all the vars of all other vars in the clique
+        return clique_cut_build_status_t::NO_CUT;
         CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
                           static_cast<long long>(var_idx));
         return clique_cut_build_status_t::INFEASIBLE;
@@ -121,6 +123,8 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
       cut.x.push_back(1.0);
     } else {
       if (seen_complement.count(var_idx) > 0) {
+        // FIXME: this is temporary, fix all the vars of all other vars in the clique
+        return clique_cut_build_status_t::NO_CUT;
         CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
                           static_cast<long long>(var_idx));
         return clique_cut_build_status_t::INFEASIBLE;
@@ -253,7 +257,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   if (!bitset_any(P) && !bitset_any(X)) {
     // if the weight is enough, add and exit
     if (weight_R >= ctx.min_weight) {
-      if (ctx.add_work(static_cast<f_t>(R.size()))) { return; }
+      ctx.add_work(static_cast<f_t>(R.size()));
       ctx.cliques.push_back(R);
     }
     return;
@@ -269,11 +273,9 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   // pivoting rule according to the highest degree vertex
   // TODO try other pivoting strategies, we can also implement some online learning like MAB
   for (size_t w = 0; w < ctx.words; ++w) {
-    if (toc(ctx.start_time) >= ctx.time_limit) { return; }
     // union of P and X
     uint64_t word = P[w] | X[w];
     while (word) {
-      if (toc(ctx.start_time) >= ctx.time_limit) { return; }
       pivot_vertices_examined++;
       // least significant set bit idnex
       const int bit = __builtin_ctzll(word);
@@ -297,20 +299,15 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     }
   }
   // Coarse cost of pivot scan: for each visited vertex, scan one adjacency row over all words.
-  if (ctx.add_work(static_cast<f_t>(pivot_vertices_examined) *
-                   static_cast<f_t>(2 * ctx.words + 4))) {
-    return;
-  }
+  ctx.add_work(static_cast<f_t>(pivot_vertices_examined) * static_cast<f_t>(2 * ctx.words + 4));
 
   std::vector<i_t> candidates;
   candidates.reserve(ctx.weights.size());
   cuopt_assert(pivot >= 0, "Pivot must be valid when P or X is non-empty");
   for (size_t w = 0; w < ctx.words; ++w) {
-    if (toc(ctx.start_time) >= ctx.time_limit) { return; }
     // P / N(pivot)
     uint64_t word = P[w] & ~ctx.adj[pivot][w];
     while (word) {
-      if (toc(ctx.start_time) >= ctx.time_limit) { return; }
       const int bit = __builtin_ctzll(word);
       const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
       word &= (word - 1);
@@ -319,12 +316,9 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   }
   const i_t num_candidates = static_cast<i_t>(candidates.size());
   // Coarse cost of candidate extraction from P \ N(pivot)
-  if (ctx.add_work(static_cast<f_t>(ctx.words + 3 * num_candidates))) { return; }
+  ctx.add_work(static_cast<f_t>(ctx.words + 3 * num_candidates));
   // Coarse cost for all branch setups in this recursion frame.
-  if (ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(4 * ctx.words + 8))) {
-    return;
-  }
-
+  ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(4 * ctx.words + 8));
   // note that candidates will include pivot if it is in P
   for (auto v : candidates) {
     if (ctx.over_call_limit()) {
@@ -332,6 +326,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       return;
     }
     if (toc(ctx.start_time) >= ctx.time_limit) { return; }
+
     R.push_back(v);
     std::vector<uint64_t> P_next(ctx.words, 0);
     std::vector<uint64_t> X_next(ctx.words, 0);
@@ -339,6 +334,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       P_next[k] = P[k] & ctx.adj[v][k];
       X_next[k] = X[k] & ctx.adj[v][k];
     }
+
     bron_kerbosch(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
     if (ctx.over_work_limit()) { return; }
     if (ctx.over_call_limit()) {
@@ -423,7 +419,8 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   // if it is disturbed too much, the cut might become non-binding
   auto reduced_cost = [&](i_t vertex_idx) -> f_t {
     i_t var_idx = vertex_idx % num_vars;
-    if (var_idx < 0 || var_idx >= static_cast<i_t>(reduced_costs.size())) { return 0.0; }
+    cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
+                 "Variable index out of range");
     f_t rc = reduced_costs[var_idx];
     if (!std::isfinite(rc)) { rc = 0.0; }
     return vertex_idx >= num_vars ? -rc : rc;
@@ -434,10 +431,8 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   });
 
   for (const auto candidate : candidates) {
-    if (toc(start_time) >= time_limit) { return; }
     bool add = true;
     for (const auto v : clique_vertices) {
-      if (toc(start_time) >= time_limit) { return; }
       if (!graph.check_adjacency(candidate, v)) {
         add = false;
         break;
@@ -1143,7 +1138,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   if (clique_table_ == nullptr) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts building clique table");
     ::cuopt::linear_programming::detail::clique_config_t clique_config;
-    clique_config.min_clique_size = 1;
+    clique_config.min_clique_size = 2;
     clique_table_ = std::make_shared<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>>(
       2 * num_vars, clique_config.min_clique_size, clique_config.max_clique_size_for_extension);
 
@@ -1184,7 +1179,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   // TODO this can be problem dependent
   const i_t max_calls         = 100000;
   f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 2e9;
+  const f_t max_work_estimate = 1e8;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
@@ -1196,7 +1191,6 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
 
   // create the sub graph induced by fractional binary variables
   for (i_t j = 0; j < num_vars; ++j) {
-    if (toc(start_time) >= settings.time_limit) { return true; }
     if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
     const f_t lower_bound = user_problem_.lower[j];
     const f_t upper_bound = user_problem_.upper[j];
@@ -1236,10 +1230,11 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     if (toc(start_time) >= settings.time_limit) { return true; }
     i_t vertex_idx = vertices[idx];
-    auto adj_set   = clique_table_->get_adj_set_of_var(vertex_idx);
+    // returns the complement as well
+    auto adj_set = clique_table_->get_adj_set_of_var(vertex_idx);
     total_adj_entries += adj_set.size();
     auto& adj = adj_local[idx];
-    adj.reserve(adj_set.size() + 1);
+    adj.reserve(adj_set.size());
     for (const auto neighbor : adj_set) {
       if (toc(start_time) >= settings.time_limit) { return true; }
       cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Neighbor out of range");
@@ -1255,6 +1250,11 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       adj_check.reserve(adj.size());
       for (const auto neighbor : adj) {
         cuopt_assert(adj_check.insert(neighbor).second, "Duplicate neighbor in adjacency list");
+        // Make sure no complementing variable is present in the adjacency list
+        // Given convention: if variable is j, its complement is j + num_vars (and vice versa)
+        i_t complement = (neighbor >= num_vars) ? (neighbor - num_vars) : (neighbor + num_vars);
+        cuopt_assert(adj_check.find(complement) == adj_check.end(),
+                     "Adjacency list contains complementing variable");
       }
     }
 #endif
@@ -1270,13 +1270,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   std::vector<std::vector<uint64_t>> adj_bitset(vertices.size(), std::vector<uint64_t>(words, 0));
   size_t local_adj_entries = 0;
   for (size_t v = 0; v < adj_local.size(); ++v) {
-    if (toc(start_time) >= settings.time_limit) { return true; }
     local_adj_entries += adj_local[v].size();
     for (const auto neighbor : adj_local[v]) {
-      if (toc(start_time) >= settings.time_limit) { return true; }
-      if (neighbor >= 0 && static_cast<size_t>(neighbor) < vertices.size()) {
-        bitset_set(adj_bitset[v], static_cast<size_t>(neighbor));
-      }
+      bitset_set(adj_bitset[v], static_cast<size_t>(neighbor));
     }
   }
   work_estimate += static_cast<f_t>(adj_local.size()) + 3.0 * static_cast<f_t>(local_adj_entries);
