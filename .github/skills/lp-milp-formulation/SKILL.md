@@ -124,4 +124,4 @@ When the user gives **problem text**, classify every sentence and then summarize
 
 Result: Parameters = 3 factories, 500 units target. Constraints = produce exactly 500 (implicit from "plans to produce"). Decisions = production allocation across factories, overtime amounts. Objective = minimize cost.
 
-**Implicit-objective example:** "Try to determine the monthly production plan" with workshop hour costs (80/20 yuan), inspection/sales costs (30/50 per unit), and no stated "minimize/maximize" → **Objective is implicit: minimize total cost** (workshop + inspection/sales + any overtime). Always state it: "The objective is to minimize total cost."
+**Implicit-objective example:** A problem that asks to "determine the production plan" (or similar) and gives cost components (e.g. workshop, inspection, sales) but does not state "minimize" or "maximize" → **Objective is implicit: minimize total cost**. Always state it explicitly: "The objective is to minimize total cost."

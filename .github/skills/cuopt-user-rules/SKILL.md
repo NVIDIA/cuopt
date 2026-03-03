@@ -103,7 +103,7 @@ After providing a solution, guide the user to verify:
 
 **Always end with a Result summary** that includes at least:
 - Solver status (e.g. Optimal, FeasibleFound, SUCCESS).
-- **Objective value with highlight** — easy to spot (bold or code block). Example: **Objective value (min total cost): 42 350** or `Objective value: 42350`.
+- **Objective value with highlight** — easy to spot (bold or code block). Example: **Objective value (min total cost):** &lt;value&gt; or `Objective value: <value>`.
 - Briefly what the objective represents (e.g. total cost, total profit).
 
 Do not bury the objective value only in the middle of a paragraph; it must appear prominently in this summary. Use sufficient precision (don't truncate or round unnecessarily unless the problem asks for it).
