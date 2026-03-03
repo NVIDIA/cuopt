@@ -62,10 +62,17 @@ Use `travel_time_matrix_data` (not transit_time_matrix_data). Capacities: `[[50,
 
 **Validation errors:** Check field names against OpenAPI (`/cuopt.yaml`). Common mistakes: `transit_time_matrix_data` → `travel_time_matrix_data`; capacities per dimension `[[50, 50]]` not per vehicle `[[50], [50]]`. Capture `reqId` and response body for failed requests.
 
-## Examples
+## Runnable assets
 
-- [routing_examples.md](resources/routing_examples.md) — VRP/PDP via REST
-- [lp_milp_examples.md](resources/lp_milp_examples.md) — LP/MILP via REST
+Run from each asset directory (server must be running; scripts exit 0 if server unreachable). All use Python `requests`:
+
+- [assets/vrp_simple/](assets/vrp_simple/) — Basic VRP (no time windows)
+- [assets/vrp_basic/](assets/vrp_basic/) — VRP with time windows
+- [assets/pdp_basic/](assets/pdp_basic/) — Pickup and delivery
+- [assets/lp_basic/](assets/lp_basic/) — LP via REST (CSR format)
+- [assets/milp_basic/](assets/milp_basic/) — MILP via REST
+
+See [assets/README.md](assets/README.md) for overview.
 
 ## Escalate
 
