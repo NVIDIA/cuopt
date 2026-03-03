@@ -14,11 +14,11 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <fstream>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <limits>
-#include <iomanip>
-#include <sstream>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -50,8 +50,9 @@ struct lp_problem_t {
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   bool objective_is_integral{false};
 
-  void write_problem(const std::string& path) const {
-    FILE *fid = fopen(path.c_str(), "w");
+  void write_problem(const std::string& path) const
+  {
+    FILE* fid = fopen(path.c_str(), "w");
     if (fid) {
       fwrite(&num_rows, sizeof(i_t), 1, fid);
       fwrite(&num_cols, sizeof(i_t), 1, fid);
@@ -70,8 +71,9 @@ struct lp_problem_t {
     }
   }
 
-  void read_problem(const std::string& path) {
-    FILE *fid = fopen(path.c_str(), "r");
+  void read_problem(const std::string& path)
+  {
+    FILE* fid = fopen(path.c_str(), "r");
     if (fid) {
       fread(&num_rows, sizeof(i_t), 1, fid);
       fread(&num_cols, sizeof(i_t), 1, fid);
@@ -100,7 +102,8 @@ struct lp_problem_t {
     }
   }
 
-  void write_mps(const std::string& path) const {
+  void write_mps(const std::string& path) const
+  {
     std::ofstream mps_file(path);
     if (!mps_file.is_open()) {
       printf("Failed to open file %s\n", path.c_str());
@@ -116,11 +119,11 @@ struct lp_problem_t {
     mps_file << "COLUMNS\n";
     for (i_t j = 0; j < num_cols; j++) {
       const i_t col_start = A.col_start[j];
-      const i_t col_end = A.col_start[j + 1];
+      const i_t col_end   = A.col_start[j + 1];
       mps_file << "    " << "C" << j << " OBJ " << objective[j] << "\n";
       for (i_t k = col_start; k < col_end; k++) {
-        const i_t i = A.i[k];
-        const f_t x = A.x[k];
+        const i_t i          = A.i[k];
+        const f_t x          = A.x[k];
         std::string col_name = "C" + std::to_string(j);
         std::string row_name = "R" + std::to_string(i);
         mps_file << "    " << col_name << " " << row_name << " " << x << "\n";
@@ -133,10 +136,11 @@ struct lp_problem_t {
 
     mps_file << "BOUNDS\n";
     for (i_t j = 0; j < num_cols; j++) {
-      const f_t lb = lower[j];
-      const f_t ub = upper[j];
+      const f_t lb         = lower[j];
+      const f_t ub         = upper[j];
       std::string col_name = "C" + std::to_string(j);
-      if (lb == -std::numeric_limits<f_t>::infinity() && ub == std::numeric_limits<f_t>::infinity()) {
+      if (lb == -std::numeric_limits<f_t>::infinity() &&
+          ub == std::numeric_limits<f_t>::infinity()) {
         mps_file << " FR BOUND1    " << col_name << "\n";
       } else {
         if (lb == -std::numeric_limits<f_t>::infinity()) {

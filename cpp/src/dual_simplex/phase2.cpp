@@ -1787,7 +1787,7 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
       scaled_delta_xB_sparse.negate();
       work_estimate += 2 * scaled_delta_xB_sparse.i.size() + scaled_delta_xB.size();
       scale = -scaled_delta_xB[basic_leaving_index];
-    }  else if (delta_z[entering_index] != 0.0) {
+    } else if (delta_z[entering_index] != 0.0) {
       printf("Using delta_z for entering index %d %e\n", entering_index, delta_z[entering_index]);
       scale = -delta_z[entering_index];
     } else {
@@ -2071,7 +2071,13 @@ void check_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
           break;
         }
       }
-      if (found) { settings.log.printf("Incorrect infeasible index %d/%d infeas %e sq %e\n", j, h, infeas, squared_infeasibilities[j]); }
+      if (found) {
+        settings.log.printf("Incorrect infeasible index %d/%d infeas %e sq %e\n",
+                            j,
+                            h,
+                            infeas,
+                            squared_infeasibilities[j]);
+      }
     }
   }
 }
@@ -3428,7 +3434,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       if (should_refactor) {
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
-        bool should_recompute_x = true; // Need for numerically difficult problems like cbs-cta
+        bool should_recompute_x = true;  // Need for numerically difficult problems like cbs-cta
         i_t refactor_status     = ft.refactor_basis(
           lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
         if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }

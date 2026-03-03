@@ -728,8 +728,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     bool add_cut             = false;
     i_t num_aggregated       = 0;
     const i_t max_aggregated = 6;
-    f_t min_abs_multiplier  = 1.0;
-    f_t max_abs_multiplier  = 1.0;
+    f_t min_abs_multiplier   = 1.0;
+    f_t max_abs_multiplier   = 1.0;
     work_estimate += lp.num_cols;
 
     while (!add_cut && num_aggregated < max_aggregated) {
@@ -817,10 +817,13 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               work_estimate += pivot_row_inequality.size();
               f_t multiplier = complemented_mir.combine_rows(
                 lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
-              if (max_abs_multiplier/std::abs(multiplier) > 10000 ||
-                  std::abs(multiplier)/min_abs_multiplier > 10000) {
-                    printf("Multiplier %e is too large %e %e\n", multiplier, max_abs_multiplier, min_abs_multiplier);
-                  }
+              if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
+                  std::abs(multiplier) / min_abs_multiplier > 10000) {
+                printf("Multiplier %e is too large %e %e\n",
+                       multiplier,
+                       max_abs_multiplier,
+                       min_abs_multiplier);
+              }
               max_abs_multiplier = std::max(max_abs_multiplier, std::abs(multiplier));
               min_abs_multiplier = std::min(min_abs_multiplier, std::abs(multiplier));
               aggregated_rows.push_back(pivot_row);
@@ -925,9 +928,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_A_float);
 
       inequality_t<i_t, f_t> cut_A(lp.num_cols);
-      if (cut_ok) {
-        cut_ok = gomory_cut.rational_coefficients(var_types, cut_A_float, cut_A);
-      }
+      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_A_float, cut_A); }
 
       // See if the inequality is violated by the original relaxation solution
       f_t cut_A_violation = complemented_mir.compute_violation(cut_A, xstar);
@@ -964,9 +965,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_B_float);
 
       inequality_t<i_t, f_t> cut_B(lp.num_cols);
-      if (cut_ok) {
-        cut_ok = gomory_cut.rational_coefficients(var_types, cut_B_float, cut_B);
-      }
+      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_B_float, cut_B); }
 
       bool B_valid        = false;
       f_t cut_B_distance  = 0.0;
@@ -1158,21 +1157,20 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_approximation(f_t x,
                                                                   int64_t& denominator)
 {
   int64_t a, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
-  f_t val = x;
+  f_t val       = x;
   bool negative = false;
 
-  if (x < 0) { negative = true; val = -val; }
+  if (x < 0) {
+    negative = true;
+    val      = -val;
+  }
 
   while (1) {
     a = (int64_t)std::floor(val);
-    if (a < 0 || a > INT64_MAX) {
-      return false;
-    }  // Protect against overflow
+    if (a < 0 || a > INT64_MAX) { return false; }  // Protect against overflow
     int64_t p2 = a * p1 + p0;
     int64_t q2 = a * q1 + q0;
-    if (q2 > max_denominator) {
-      break;
-    }
+    if (q2 > max_denominator) { break; }
     p0 = p1;
     q0 = q1;
     p1 = p2;
@@ -1183,11 +1181,11 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_approximation(f_t x,
     val = 1.0 / rem;
   }
 
-  numerator = negative ? -p1 : p1;
+  numerator   = negative ? -p1 : p1;
   denominator = q1;
 
   f_t approx = static_cast<f_t>(numerator) / static_cast<f_t>(denominator);
-  f_t err = std::abs(approx - x);
+  f_t err    = std::abs(approx - x);
   return err <= 1e-14;
 }
 
@@ -1197,7 +1195,6 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_coefficients(
   const inequality_t<i_t, f_t>& input_inequality,
   inequality_t<i_t, f_t>& rational_inequality)
 {
-
   rational_inequality = input_inequality;
 
   std::vector<int64_t> numerators;
@@ -1218,15 +1215,12 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_coefficients(
     }
   }
 
-  int64_t gcd_numerators = gcd(numerators);
+  int64_t gcd_numerators   = gcd(numerators);
   int64_t lcm_denominators = lcm(denominators);
-
 
   f_t scalar = static_cast<f_t>(lcm_denominators) / static_cast<f_t>(gcd_numerators);
   if (scalar < 0) { return false; }
-  if (std::abs(scalar) > 1000) {
-    return false;
-  }
+  if (std::abs(scalar) > 1000) { return false; }
 
   rational_inequality.scale(scalar);
 
@@ -1249,11 +1243,10 @@ template <typename i_t, typename f_t>
 int64_t mixed_integer_gomory_cut_t<i_t, f_t>::lcm(const std::vector<int64_t>& integers)
 {
   if (integers.empty()) { return 0; }
-  int64_t result = std::reduce(
-      std::next(integers.begin()),
-      integers.end(),
-      integers[0],
-      [](int64_t a, int64_t b) { return std::lcm(a, b); });
+  int64_t result =
+    std::reduce(std::next(integers.begin()), integers.end(), integers[0], [](int64_t a, int64_t b) {
+      return std::lcm(a, b);
+    });
   return result;
 }
 
@@ -1683,12 +1676,12 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   // First try without any complementation
   for (const f_t tmp_delta : deltas_to_try) {
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
-                                        transformed_xstar,
-                                        complemented_indices,
-                                        complemented_inequality,
-                                        tmp_delta,
-                                        transformed_cut,
-                                        work_estimate);
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      tmp_delta,
+                                                      transformed_cut,
+                                                      work_estimate);
     if (!cut_ok) { continue; }
     // Check if the cut is violated
     best_violation = compute_violation(transformed_cut, transformed_xstar);
@@ -1724,12 +1717,12 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
 
       for (const f_t tmp_delta : deltas_to_try) {
         bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
-                                            transformed_xstar,
-                                            complemented_indices,
-                                            complemented_inequality,
-                                            tmp_delta,
-                                            transformed_cut,
-                                            work_estimate);
+                                                          transformed_xstar,
+                                                          complemented_indices,
+                                                          complemented_inequality,
+                                                          tmp_delta,
+                                                          transformed_cut,
+                                                          work_estimate);
         if (!cut_ok) { continue; }
         // Check if the cut is violated
         best_violation = compute_violation(transformed_cut, transformed_xstar);
@@ -1750,12 +1743,12 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
   for (const f_t tmp_delta : scaled_deltas_to_try) {
     inequality_t<i_t, f_t> tmp_cut_delta;
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
-                                        transformed_xstar,
-                                        complemented_indices,
-                                        complemented_inequality,
-                                        tmp_delta,
-                                        tmp_cut_delta,
-                                        work_estimate);
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      tmp_delta,
+                                                      tmp_cut_delta,
+                                                      work_estimate);
     if (!cut_ok) { continue; }
 
     // Check if the cut is violated
@@ -1798,12 +1791,12 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
     inequality_t<i_t, f_t> tmp_cut_delta;
 
     bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
-                                        transformed_xstar,
-                                        complemented_indices,
-                                        complemented_inequality,
-                                        delta,
-                                        tmp_cut_delta,
-                                        work_estimate);
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      delta,
+                                                      tmp_cut_delta,
+                                                      work_estimate);
     if (!cut_ok) { continue; }
     // Check if the cut is violated
     f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
@@ -2246,13 +2239,11 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::
 
   auto h = [](f_t q) -> f_t { return std::max(q, 0.0); };
 
-  cut.vector     = inequality.vector;
-  const f_t beta = inequality.rhs;
+  cut.vector       = inequality.vector;
+  const f_t beta   = inequality.rhs;
   const f_t f_beta = fractional_part(beta);
-  cut.rhs        = f_beta * std::ceil(beta);
-  if (f_beta < 0.05 || f_beta > 0.95) {
-    return false;
-  }
+  cut.rhs          = f_beta * std::ceil(beta);
+  if (f_beta < 0.05 || f_beta > 0.95) { return false; }
 
   for (i_t k = 0; k < inequality.size(); k++) {
     const i_t j = inequality.index(k);

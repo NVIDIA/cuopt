@@ -2292,7 +2292,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           return mip_status_t::NUMERICAL;
         }
       }
-      root_objective_      = compute_objective(original_lp_, root_relax_soln_.x);
+      root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
       f_t remove_cuts_start_time = tic();
       mutex_original_lp_.lock();
