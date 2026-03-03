@@ -26,15 +26,33 @@ def server_ok():
 
 def main():
     if not server_ok():
-        print("Server not running, skipping. Start with: python -m cuopt_server.cuopt_service --ip 0.0.0.0 --port 8000")
+        print(
+            "Server not running, skipping. Start with: python -m cuopt_server.cuopt_service --ip 0.0.0.0 --port 8000"
+        )
         sys.exit(0)
 
     payload = {
         "cost_matrix_data": {
-            "data": {"0": [[0, 10, 20, 30, 40], [10, 0, 15, 25, 35], [20, 15, 0, 10, 20], [30, 25, 10, 0, 15], [40, 35, 20, 15, 0]]}
+            "data": {
+                "0": [
+                    [0, 10, 20, 30, 40],
+                    [10, 0, 15, 25, 35],
+                    [20, 15, 0, 10, 20],
+                    [30, 25, 10, 0, 15],
+                    [40, 35, 20, 15, 0],
+                ]
+            }
         },
         "travel_time_matrix_data": {
-            "data": {"0": [[0, 10, 20, 30, 40], [10, 0, 15, 25, 35], [20, 15, 0, 10, 20], [30, 25, 10, 0, 15], [40, 35, 20, 15, 0]]}
+            "data": {
+                "0": [
+                    [0, 10, 20, 30, 40],
+                    [10, 0, 15, 25, 35],
+                    [20, 15, 0, 10, 20],
+                    [30, 25, 10, 0, 15],
+                    [40, 35, 20, 15, 0],
+                ]
+            }
         },
         "task_data": {
             "task_locations": [1, 2, 3, 4],
@@ -48,13 +66,17 @@ def main():
         "solver_config": {"time_limit": 10},
     }
 
-    response = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
+    response = requests.post(
+        f"{SERVER}/cuopt/request", json=payload, headers=HEADERS
+    )
     response.raise_for_status()
     req_id = response.json()["reqId"]
     print(f"Submitted: {req_id}")
 
     for _ in range(30):
-        response = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
+        response = requests.get(
+            f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS
+        )
         result = response.json()
 
         if "response" in result:

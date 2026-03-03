@@ -26,7 +26,9 @@ def server_ok():
 
 def main():
     if not server_ok():
-        print("Server not running, skipping. Start with: python -m cuopt_server.cuopt_service --ip 0.0.0.0 --port 8000")
+        print(
+            "Server not running, skipping. Start with: python -m cuopt_server.cuopt_service --ip 0.0.0.0 --port 8000"
+        )
         sys.exit(0)
 
     payload = {
@@ -52,13 +54,17 @@ def main():
         },
     }
 
-    response = requests.post(f"{SERVER}/cuopt/request", json=payload, headers=HEADERS)
+    response = requests.post(
+        f"{SERVER}/cuopt/request", json=payload, headers=HEADERS
+    )
     response.raise_for_status()
     req_id = response.json()["reqId"]
     print(f"Submitted: {req_id}")
 
     for _ in range(60):
-        response = requests.get(f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS)
+        response = requests.get(
+            f"{SERVER}/cuopt/solution/{req_id}", headers=HEADERS
+        )
         result = response.json()
 
         if "response" in result:
