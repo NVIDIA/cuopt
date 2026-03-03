@@ -103,6 +103,12 @@ repos:
         entry: python ci/utils/update_doc_versions.py
         language: system
         files: docs/cuopt/source/versions1.json
+      - id: validate-skills
+        name: Validate agent skills
+        entry: ci/utils/validate_skills.sh
+        language: system
+        pass_filenames: false
+        files: ^(skills/|\.claude-plugin/|\.cursor-plugin/|agents/|ci/utils/validate_skills\.sh|gemini-extension\.json)$
 
 
 default_language_version:

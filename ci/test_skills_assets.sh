@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Run all assets under .github/skills (Python, C, CLI) as part of conda Python test.
+# Run all assets under skills/ (Python, C, CLI) as part of conda Python test.
 # Python: run each .py from its directory (server API clients need server on port 8000).
 # C: compile and run each .c with libcuopt.
 # CLI: run cuopt_cli on each sample .mps in API-CLI skill assets.
@@ -18,12 +18,12 @@ else
 fi
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-SKILLS_ASSETS="${REPO_ROOT}/.github/skills"
+SKILLS_ASSETS="${REPO_ROOT}/skills"
 FAILED=()
 SERVER_PID=""
 
 if [[ ! -d "${SKILLS_ASSETS}" ]]; then
-  log "No .github/skills directory found, skipping skills asset tests"
+  log "No skills directory found, skipping skills asset tests"
   exit 0
 fi
 
@@ -58,7 +58,7 @@ trap stop_server EXIT
 start_server
 
 # ---- Python assets ----
-log "Testing Python assets in .github/skills"
+log "Testing Python assets in skills/"
 while IFS= read -r -d '' script; do
   dir=$(dirname "$script")
   name=$(basename "$script")
@@ -78,7 +78,7 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
   LIB_PATH="${CONDA_PREFIX}/lib"
   export LD_LIBRARY_PATH="${LIB_PATH}:${LD_LIBRARY_PATH:-}"
 
-  log "Testing C assets in .github/skills"
+  log "Testing C assets in skills/"
   while IFS= read -r -d '' cfile; do
     dir=$(dirname "$cfile")
     base=$(basename "$cfile" .c)
@@ -106,7 +106,7 @@ else
 fi
 
 # ---- CLI assets (cuopt_cli with sample MPS files) ----
-log "Testing CLI assets in .github/skills"
+log "Testing CLI assets in skills/"
 while IFS= read -r -d '' mps; do
   rel="${mps#"$REPO_ROOT/"}"
   log "Running CLI asset: $rel"
