@@ -83,7 +83,6 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
     dir=$(dirname "$cfile")
     base=$(basename "$cfile" .c)
     rel="${cfile#"$REPO_ROOT/"}"
-    binary="${dir}/${base}"
     log "Building and running C asset: $rel"
     if ! (cd "$dir" && gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt); then
       FAILED+=("$rel (build)")
