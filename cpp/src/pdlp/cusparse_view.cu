@@ -1138,6 +1138,16 @@ void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
+bool is_cusparse_runtime_mixed_precision_supported()
+{
+  int major = 0, minor = 0;
+  auto status = cusparseGetProperty(libraryPropertyType_t::MAJOR_VERSION, &major);
+  if (status != CUSPARSE_STATUS_SUCCESS) return false;
+  status = cusparseGetProperty(libraryPropertyType_t::MINOR_VERSION, &minor);
+  if (status != CUSPARSE_STATUS_SUCCESS) return false;
+  return (major > 12) || (major == 12 && minor >= 5);
+}
+
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class cusparse_sp_mat_descr_wrapper_t<int, float>;
 template class cusparse_dn_vec_descr_wrapper_t<float>;

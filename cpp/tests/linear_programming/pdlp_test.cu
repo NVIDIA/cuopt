@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <mps_parser.hpp>
+#include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
@@ -77,9 +78,25 @@ TEST(pdlp_class, run_double)
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
 }
 
-#if CUDART_VERSION >= 12050
 TEST(pdlp_class, mixed_precision_spmv)
 {
+  using namespace cuopt::linear_programming::detail;
+  if (!is_cusparse_runtime_mixed_precision_supported()) {
+    const raft::handle_t handle_{};
+    auto path = make_path_absolute("linear_programming/afiro_original.mps");
+    cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+      cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+    auto settings                 = pdlp_solver_settings_t<int, double>{};
+    settings.method               = cuopt::linear_programming::method_t::PDLP;
+    settings.mixed_precision_spmv = true;
+
+    optimization_problem_solution_t<int, double> solution =
+      solve_lp(&handle_, op_problem, settings);
+    EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+    return;
+  }
+
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
@@ -112,23 +129,6 @@ TEST(pdlp_class, mixed_precision_spmv)
               solution_full.get_additional_termination_information().primal_objective,
               1e-2);
 }
-#else
-TEST(pdlp_class, mixed_precision_spmv_rejected_before_cuda_12_5)
-{
-  const raft::handle_t handle_{};
-
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
-
-  auto settings                 = pdlp_solver_settings_t<int, double>{};
-  settings.method               = cuopt::linear_programming::method_t::PDLP;
-  settings.mixed_precision_spmv = true;
-
-  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
-  EXPECT_EQ(solution.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
-}
-#endif
 
 TEST(pdlp_class, run_double_very_low_accuracy)
 {

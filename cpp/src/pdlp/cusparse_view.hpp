@@ -262,4 +262,6 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
                                 cudaStream_t stream);
 #endif
 
+bool is_cusparse_runtime_mixed_precision_supported();
+
 }  // namespace cuopt::linear_programming::detail
