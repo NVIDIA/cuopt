@@ -1,9 +1,9 @@
 ---
-name: cuopt-routing-formulation
-description: Vehicle routing (VRP, TSP, PDP) with cuOpt — problem types and data requirements. Domain concepts; no API or interface.
+name: routing-formulation
+description: Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface.
 ---
 
-# cuOpt Routing Formulation
+# Routing Formulation
 
 Domain concepts for vehicle routing. No API or interface details here.
 

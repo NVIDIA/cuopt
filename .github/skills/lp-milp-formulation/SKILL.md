@@ -1,9 +1,9 @@
 ---
-name: cuopt-lp-milp-formulation
+name: lp-milp-formulation
 description: LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements (parameters, constraints, decisions, objective).
 ---
 
-# cuOpt LP/MILP Formulation
+# LP/MILP Formulation
 
 Concepts and workflow for going from a problem description to a clear formulation. No API code here.
 
