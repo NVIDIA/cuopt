@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Run all assets under .github/skills (Python, C, CLI) as part of conda Python test.
+# Python: run each .py from its directory. C: compile and run each .c with libcuopt.
+# CLI: run cuopt_cli on each sample .mps in API-CLI skill assets.
+
+set -euo pipefail
+
+# Use rapids-logger in CI; fall back to echo for local testing
+if command -v rapids-logger &>/dev/null; then
+  log() { rapids-logger "$*"; }
+else
+  log() { echo "[rapids-logger] $*"; }
+fi
+
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+SKILLS_ASSETS="${REPO_ROOT}/.github/skills"
+FAILED=()
+
+if [[ ! -d "${SKILLS_ASSETS}" ]]; then
+  log "No .github/skills directory found, skipping skills asset tests"
+  exit 0
+fi
+
+# ---- Python assets ----
+log "Testing Python assets in .github/skills"
+while IFS= read -r -d '' script; do
+  dir=$(dirname "$script")
+  name=$(basename "$script")
+  rel="${script#"$REPO_ROOT/"}"
+  log "Running Python asset: $rel"
+  if (cd "$dir" && python "$name"); then
+    log "PASS: $rel"
+  else
+    FAILED+=("$rel")
+    log "FAIL: $rel"
+  fi
+done < <(find "${SKILLS_ASSETS}" -path "*/assets/*" -name "*.py" -type f -print0 | sort -z)
+
+# ---- C assets (compile and run; requires CONDA_PREFIX) ----
+if [[ -n "${CONDA_PREFIX:-}" ]]; then
+  INCLUDE_PATH="${CONDA_PREFIX}/include"
+  LIB_PATH="${CONDA_PREFIX}/lib"
+  export LD_LIBRARY_PATH="${LIB_PATH}:${LD_LIBRARY_PATH:-}"
+
+  log "Testing C assets in .github/skills"
+  while IFS= read -r -d '' cfile; do
+    dir=$(dirname "$cfile")
+    base=$(basename "$cfile" .c)
+    rel="${cfile#"$REPO_ROOT/"}"
+    binary="${dir}/${base}"
+    log "Building and running C asset: $rel"
+    if ! (cd "$dir" && gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt); then
+      FAILED+=("$rel (build)")
+      log "FAIL: $rel (build)"
+      continue
+    fi
+    if [[ "$base" == "mps_solver" ]]; then
+      run_cmd=(./"$base" data/sample.mps)
+    else
+      run_cmd=(./"$base")
+    fi
+    if (cd "$dir" && "${run_cmd[@]}"); then
+      log "PASS: $rel"
+    else
+      FAILED+=("$rel")
+      log "FAIL: $rel"
+    fi
+  done < <(find "${SKILLS_ASSETS}" -path "*/assets/*" -name "*.c" -type f -print0 | sort -z)
+else
+  log "CONDA_PREFIX not set, skipping C asset tests"
+fi
+
+# ---- CLI assets (cuopt_cli with sample MPS files) ----
+log "Testing CLI assets in .github/skills"
+while IFS= read -r -d '' mps; do
+  rel="${mps#"$REPO_ROOT/"}"
+  log "Running CLI asset: $rel"
+  if cuopt_cli "$mps" --time-limit 10; then
+    log "PASS: $rel"
+  else
+    FAILED+=("$rel")
+    log "FAIL: $rel"
+  fi
+done < <(find "${SKILLS_ASSETS}" -path "*/cuopt-*-api-cli/assets/*" -name "*.mps" -type f -print0 | sort -z)
+
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+  log "The following skills assets failed:"
+  printf '%s\n' "${FAILED[@]}"
+  exit 1
+fi
+
+log "All skills assets (Python, C, CLI) passed."
+exit 0

@@ -74,5 +74,8 @@ timeout 20m ./ci/run_cuopt_server_pytests.sh \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-server-coverage.xml" \
   --cov-report=term
 
+rapids-logger "Test .github/skills assets (Python, C, CLI)"
+timeout 10m ./ci/test_skills_assets.sh
+
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
