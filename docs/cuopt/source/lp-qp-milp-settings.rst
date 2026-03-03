@@ -203,6 +203,8 @@ FP32 mode is only supported with the PDLP method (not concurrent) and without cr
 
 .. note:: The default precision is FP64 (double).
 
+.. _Mixed Precision SpMV:
+
 Mixed Precision SpMV
 ^^^^^^^^^^^^^^^^^^^^
 
