@@ -20,7 +20,11 @@ class IncumbentCallback(GetSolutionCallback):
 
     def get_solution(self, solution, solution_cost, solution_bound, user_data):
         self.n_callbacks += 1
-        sol = solution.tolist() if hasattr(solution, "tolist") else list(solution)
+        sol = (
+            solution.tolist()
+            if hasattr(solution, "tolist")
+            else list(solution)
+        )
         cost = float(solution_cost[0])
         print(f"Incumbent {self.n_callbacks}: {sol}, cost: {cost:.2f}")
 
