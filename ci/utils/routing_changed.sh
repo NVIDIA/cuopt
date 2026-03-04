@@ -42,7 +42,7 @@ if [[ -z "${MB:-}" ]]; then
     exit 0
 fi
 
-CHANGED=$(git diff --name-only "${MB}...HEAD" 2>/dev/null) || true
+CHANGED=$(git diff --name-only "${MB}...HEAD" 2>/dev/null) || { echo "true"; exit 0; }
 for pat in "${ROUTING_PATTERNS[@]}"; do
     if echo "${CHANGED}" | grep -qE "^${pat}"; then
         echo "true"
