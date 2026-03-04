@@ -253,14 +253,6 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-        # Routing: used for path-based skip of routing tests when unchanged (see ci/utils/routing_changed.sh)
-        routing:
-          - 'python/cuopt/cuopt/routing/**'
-          - 'python/cuopt/cuopt/tests/routing/**'
-          - 'cpp/src/routing/**'
-          - 'cpp/include/cuopt/routing/**'
-          - 'cpp/tests/routing/**'
-          - 'regression/routing*'
   checks:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
