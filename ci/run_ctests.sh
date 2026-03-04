@@ -21,8 +21,14 @@ else
     exit 1
 fi
 
+# Skip ROUTING_* gtests when CUOPT_RUN_ROUTING_TESTS is false (e.g. PRs that don't touch routing)
+RUN_ROUTING_TESTS="${CUOPT_RUN_ROUTING_TESTS:-true}"
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
+    if [[ "${RUN_ROUTING_TESTS}" == "false" ]] && [[ "${test_name}" == ROUTING_* ]]; then
+        echo "Skipping gtest ${test_name} (routing tests not requested)"
+        continue
+    fi
     echo "Running gtest ${test_name}"
     "${gt}" "$@"
 done

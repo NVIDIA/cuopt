@@ -54,6 +54,13 @@ set +e
 # Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
 export OMP_NUM_THREADS=1
 
+# Only in PR workflow: skip routing tests when PR doesn't touch routing code. Other runs (nightly, manual) run all tests.
+if [[ -z "${CUOPT_RUN_ROUTING_TESTS:-}" ]] && [[ "${GITHUB_REF:-}" == refs/heads/pull-request/* ]]; then
+  CI_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+  CUOPT_RUN_ROUTING_TESTS=$(bash "${CI_DIR}/utils/routing_changed.sh")
+  export CUOPT_RUN_ROUTING_TESTS
+fi
+
 rapids-logger "Test cuopt_cli"
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 

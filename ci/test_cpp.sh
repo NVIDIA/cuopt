@@ -48,6 +48,13 @@ EXITCODE=0
 trap "EXITCODE=1" ERR
 set +e
 
+# Only in PR workflow: skip routing tests when PR doesn't touch routing code. Other runs (nightly, manual) run all tests.
+if [[ -z "${CUOPT_RUN_ROUTING_TESTS:-}" ]] && [[ "${GITHUB_REF:-}" == refs/heads/pull-request/* ]]; then
+  CI_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+  CUOPT_RUN_ROUTING_TESTS=$(bash "${CI_DIR}/utils/routing_changed.sh")
+  export CUOPT_RUN_ROUTING_TESTS
+fi
+
 # Run gtests from libcuopt-tests package
 export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
