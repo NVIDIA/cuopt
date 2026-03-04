@@ -435,6 +435,7 @@ bool extend_clique(const std::vector<i_t>& clique,
                    dual_simplex::user_problem_t<i_t, f_t>& problem,
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
                    f_t coeff_scale,
+                   bool modify_problem,
                    i_t min_extension_gain,
                    i_t remaining_rows_budget,
                    i_t remaining_nnz_budget,
@@ -502,21 +503,23 @@ bool extend_clique(const std::vector<i_t>& clique,
       for (const auto& var_idx : new_clique) {
         clique_table.var_degrees[var_idx] = -1;
       }
-      // fix all other variables other than complementing var
-      for (size_t i = 0; i < new_clique.size(); i++) {
-        if (new_clique[i] % clique_table.n_variables != complement_conflict_var) {
-          CUOPT_LOG_DEBUG("Fixing variable %d", new_clique[i]);
-          if (new_clique[i] >= problem.num_cols) {
-            cuopt_assert(problem.lower[new_clique[i] - problem.num_cols] != 0 ||
-                           problem.upper[new_clique[i] - problem.num_cols] != 0,
-                         "Variable is fixed to other side");
-            problem.lower[new_clique[i] - problem.num_cols] = 1;
-            problem.upper[new_clique[i] - problem.num_cols] = 1;
-          } else {
-            cuopt_assert(problem.lower[new_clique[i]] != 1 || problem.upper[new_clique[i]] != 1,
-                         "Variable is fixed to other side");
-            problem.lower[new_clique[i]] = 0;
-            problem.upper[new_clique[i]] = 0;
+      if (modify_problem) {
+        // fix all other variables other than complementing var
+        for (size_t i = 0; i < new_clique.size(); i++) {
+          if (new_clique[i] % clique_table.n_variables != complement_conflict_var) {
+            CUOPT_LOG_DEBUG("Fixing variable %d", new_clique[i]);
+            if (new_clique[i] >= problem.num_cols) {
+              cuopt_assert(problem.lower[new_clique[i] - problem.num_cols] != 0 ||
+                             problem.upper[new_clique[i] - problem.num_cols] != 0,
+                           "Variable is fixed to other side");
+              problem.lower[new_clique[i] - problem.num_cols] = 1;
+              problem.upper[new_clique[i] - problem.num_cols] = 1;
+            } else {
+              cuopt_assert(problem.lower[new_clique[i]] != 1 || problem.upper[new_clique[i]] != 1,
+                           "Variable is fixed to other side");
+              problem.lower[new_clique[i]] = 0;
+              problem.upper[new_clique[i]] = 0;
+            }
           }
         }
       }
@@ -554,6 +557,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    clique_table_t<i_t, f_t>& clique_table,
                    dual_simplex::user_problem_t<i_t, f_t>& problem,
                    dual_simplex::csr_matrix_t<i_t, f_t>& A,
+                   bool modify_problem,
                    cuopt::timer_t& timer)
 {
   constexpr i_t min_extension_gain       = 2;
@@ -624,6 +628,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
     return i == a.size();
   };
   auto fix_difference = [&](const std::vector<i_t>& superset, const std::vector<i_t>& subset) {
+    if (!modify_problem) { return; }
     cuopt_assert(std::is_sorted(subset.begin(), subset.end()),
                  "subset vector passed to fix_difference is not sorted");
     for (auto var_idx : superset) {
@@ -695,6 +700,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
         rows_to_remove.push_back(current_row_idx);
       }
       if (rows_to_remove.empty()) { return; }
+      if (!modify_problem) { return; }
       std::sort(rows_to_remove.begin(), rows_to_remove.end());
       rows_to_remove.erase(std::unique(rows_to_remove.begin(), rows_to_remove.end()),
                            rows_to_remove.end());
@@ -844,6 +850,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                                          problem,
                                          A,
                                          coeff_scale,
+                                         modify_problem,
                                          min_extension_gain,
                                          max_added_rows - added_rows,
                                          max_added_nnz - added_nnz,
@@ -872,8 +879,10 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
       window_successes = 0;
     }
   }
-  // copy modified matrix back to problem
-  A.to_compressed_col(problem.A);
+  if (modify_problem) {
+    // copy modified matrix back to problem
+    A.to_compressed_col(problem.A);
+  }
   CUOPT_LOG_DEBUG("Number of extended cliques: %d", n_extended_cliques);
   return n_extended_cliques;
 }
@@ -937,7 +946,8 @@ void print_clique_table(const clique_table_t<i_t, f_t>& clique_table)
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
-                          cuopt::timer_t& timer)
+                          cuopt::timer_t& timer,
+                          bool modify_problem)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
@@ -996,7 +1006,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
 #ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
 #endif
-  extend_cliques(knapsack_constraints, set_packing_constraints, clique_table, problem, A, timer);
+  extend_cliques(
+    knapsack_constraints, set_packing_constraints, clique_table, problem, A, modify_problem, timer);
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
   t_remove = t_extend;
@@ -1019,7 +1030,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   template void find_initial_cliques<int, F_TYPE>(                        \
     dual_simplex::user_problem_t<int, F_TYPE> & problem,                  \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
-    cuopt::timer_t & timer);
+    cuopt::timer_t & timer,                                               \
+    bool modify_problem);
 
 #if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)

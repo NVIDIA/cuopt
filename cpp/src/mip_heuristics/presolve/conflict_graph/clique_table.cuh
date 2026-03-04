@@ -98,7 +98,8 @@ struct clique_table_t {
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
-                          cuopt::timer_t& timer);
+                          cuopt::timer_t& timer,
+                          bool modify_problem);
 
 }  // namespace cuopt::linear_programming::detail
 
