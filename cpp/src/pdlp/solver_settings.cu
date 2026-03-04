@@ -362,6 +362,20 @@ pdlp_warm_start_data_t<i_t, f_t>& pdlp_solver_settings_t<i_t, f_t>::get_pdlp_war
 }
 
 template <typename i_t, typename f_t>
+const cpu_pdlp_warm_start_data_t<i_t, f_t>&
+pdlp_solver_settings_t<i_t, f_t>::get_cpu_pdlp_warm_start_data() const noexcept
+{
+  return cpu_pdlp_warm_start_data_;
+}
+
+template <typename i_t, typename f_t>
+cpu_pdlp_warm_start_data_t<i_t, f_t>&
+pdlp_solver_settings_t<i_t, f_t>::get_cpu_pdlp_warm_start_data() noexcept
+{
+  return cpu_pdlp_warm_start_data_;
+}
+
+template <typename i_t, typename f_t>
 const pdlp_warm_start_data_view_t<i_t, f_t>&
 pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
 {

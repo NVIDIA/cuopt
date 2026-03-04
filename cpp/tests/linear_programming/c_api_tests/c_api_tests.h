@@ -49,6 +49,14 @@ cuopt_int_t test_deterministic_bb(const char* filename,
                                   cuopt_float_t time_limit,
                                   cuopt_float_t work_limit);
 
+/* Tests for solution interface polymorphism (use inline problems, no file I/O) */
+cuopt_int_t test_lp_solution_mip_methods();
+cuopt_int_t test_mip_solution_lp_methods();
+
+/* CPU-only execution tests (require env vars CUDA_VISIBLE_DEVICES="" and CUOPT_REMOTE_HOST) */
+cuopt_int_t test_cpu_only_execution(const char* filename);
+cuopt_int_t test_cpu_only_mip_execution(const char* filename);
+
 #ifdef __cplusplus
 }
 #endif

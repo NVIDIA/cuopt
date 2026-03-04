@@ -175,7 +175,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     set_initial_dual_solution(dual_sol);
   }
 
-  if (settings_.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size() != 0) {
+  if (settings_.get_pdlp_warm_start_data().is_populated()) {
     cuopt_expects(
       !batch_mode_, error_type_t::ValidationError, "Batch mode not supported for warm start");
     cuopt_expects(settings_.pdlp_solver_mode == pdlp_solver_mode_t::Stable2,
@@ -2261,8 +2261,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
 
-  bool warm_start_was_given =
-    settings_.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution_.size() != 0;
+  bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
   // In batch mode, before running the solver, we need to transpose the primal and dual solution to
   // row format

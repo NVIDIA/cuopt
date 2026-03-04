@@ -95,7 +95,10 @@ repos:
             [.](md|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|
             ^docs/cuopt/source/cuopt-python/routing/routing-example[.]ipynb$|
             ^docs/cuopt/source/versions1[.]json$|
-            ^helmchart/cuopt-server/(Chart[.]yaml|values[.]yaml)$
+            ^helmchart/cuopt-server/(Chart[.]yaml|values[.]yaml)$|
+            ^[.]cursor-plugin/plugin[.]json$|
+            ^[.]claude-plugin/marketplace[.]json$|
+            ^gemini-extension[.]json$
   - repo: local
     hooks:
       - id: update-versions
@@ -103,6 +106,18 @@ repos:
         entry: python ci/utils/update_doc_versions.py
         language: system
         files: docs/cuopt/source/versions1.json
+      - id: sync-skills-version
+        name: Sync skills version from VERSION
+        entry: ci/utils/sync_skills_version.sh
+        language: system
+        pass_filenames: false
+        files: ^(VERSION|\.claude-plugin/marketplace\.json|\.cursor-plugin/plugin\.json|gemini-extension\.json)$
+      - id: validate-skills
+        name: Validate agent skills
+        entry: ci/utils/validate_skills.sh
+        language: system
+        pass_filenames: false
+        files: ^(VERSION|skills/|\.claude-plugin/|\.cursor-plugin/|agents/|ci/utils/validate_skills\.sh|ci/utils/sync_skills_version\.sh|gemini-extension\.json)$
 
 
 default_language_version:
