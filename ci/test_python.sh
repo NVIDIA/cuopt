@@ -35,14 +35,32 @@ mkdir -p "${RAPIDS_TESTS_DIR}" "${RAPIDS_COVERAGE_DIR}"
 
 rapids-print-env
 
+# Detect which test components to run
+source ./ci/detect_test_components.sh
+
 rapids-logger "Download datasets"
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
-./datasets/linear_programming/download_pdlp_test_dataset.sh
-./datasets/mip/download_miplib_test_dataset.sh
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
-./get_test_data.sh
-popd
+
+if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"lp"* ]]; then
+    ./datasets/linear_programming/download_pdlp_test_dataset.sh
+else
+    rapids-logger "Skipping LP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+fi
+
+if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"mip"* ]]; then
+    ./datasets/mip/download_miplib_test_dataset.sh
+else
+    rapids-logger "Skipping MIP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+fi
+
+if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"routing"* ]]; then
+    pushd "${RAPIDS_DATASET_ROOT_DIR}"
+    ./get_test_data.sh
+    popd
+else
+    rapids-logger "Skipping routing dataset downloads (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+fi
 
 rapids-logger "Check GPU usage"
 nvidia-smi
@@ -57,7 +75,7 @@ export OMP_NUM_THREADS=1
 rapids-logger "Test cuopt_cli"
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
-rapids-logger "pytest cuopt"
+rapids-logger "pytest cuopt (components: ${CUOPT_TEST_COMPONENTS})"
 timeout 30m ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-cuopt.xml" \
   --cov-config=.coveragerc \

@@ -4,6 +4,44 @@
 
 set -euo pipefail
 
+# Determine which test binary belongs to which component
+should_run_test() {
+    local test_name="$1"
+    local components="${CUOPT_TEST_COMPONENTS:-all}"
+
+    # If all components should run, return true
+    if [[ "${components}" == "all" ]]; then
+        return 0
+    fi
+
+    # Map test binary names to components
+    case "${test_name}" in
+        ROUTING_*|WAYPOINT_*|VEHICLE_*|OBJECTIVE_*|RETAIL_*)
+            [[ "${components}" == *"routing"* ]] && return 0
+            ;;
+        LP_*|PDLP_*|C_API_*|DUAL_SIMPLEX_*|QP_*)
+            [[ "${components}" == *"lp"* ]] && return 0
+            ;;
+        MIP_*|PROBLEM_*|ELIM_*|STANDARDIZATION_*|MULTI_PROBE_*|INCUMBENT_*|DOC_EXAMPLE_*|CUTS_*|EMPTY_*|DETERMINISM_*)
+            [[ "${components}" == *"mip"* ]] && return 0
+            ;;
+        # UNIT_TEST and PRESOLVE_TEST can belong to LP or MIP
+        UNIT_TEST|PRESOLVE_TEST)
+            [[ "${components}" == *"mip"* || "${components}" == *"lp"* ]] && return 0
+            ;;
+        # CLI_TEST is a general utility test, run if any component is selected
+        CLI_TEST)
+            return 0
+            ;;
+        # Unknown tests: run them to be safe
+        *)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
 # Support customizing the gtests' install location
 # First, try the installed location (CI/conda environments)
 installed_test_location="${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/libcuopt/"
@@ -23,6 +61,11 @@ fi
 
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
-    echo "Running gtest ${test_name}"
-    "${gt}" "$@"
+    if should_run_test "${test_name}"; then
+        echo "Running gtest ${test_name}"
+        "${gt}" "$@"
+    else
+        echo "Skipping gtest ${test_name} (not in CUOPT_TEST_COMPONENTS=${CUOPT_TEST_COMPONENTS:-all})"
+    fi
 done
+
