@@ -72,19 +72,46 @@ while IFS= read -r -d '' script; do
   fi
 done < <(find "${SKILLS_ASSETS}" -path "*/assets/*" -name "*.py" -type f -print0 | sort -z)
 
-# ---- C assets (compile and run; requires CONDA_PREFIX) ----
+# ---- C assets (compile and run; requires CONDA_PREFIX and a C compiler) ----
+CC="${CC:-}"
+if [[ -z "${CC}" ]]; then
+  for c in gcc cc clang; do
+    if command -v "$c" &>/dev/null; then
+      CC="$c"
+      break
+    fi
+  done
+fi
 if [[ -n "${CONDA_PREFIX:-}" ]]; then
+  if [[ -z "${CC}" ]]; then
+    log "No C compiler found; installing c-compiler in conda environment"
+    if command -v mamba &>/dev/null; then
+      mamba install -y -c conda-forge c-compiler
+    else
+      conda install -y -c conda-forge c-compiler
+    fi
+    for c in gcc cc clang; do
+      if command -v "$c" &>/dev/null; then
+        CC="$c"
+        break
+      fi
+    done
+    if [[ -z "${CC}" ]]; then
+      log "C compiler still not found after install. Set CC or install gcc/cc/clang."
+      exit 1
+    fi
+  fi
   INCLUDE_PATH="${CONDA_PREFIX}/include"
   LIB_PATH="${CONDA_PREFIX}/lib"
   export LD_LIBRARY_PATH="${LIB_PATH}:${LD_LIBRARY_PATH:-}"
 
-  log "Testing C assets in skills/"
+  log "Testing C assets in skills (using ${CC})"
   while IFS= read -r -d '' cfile; do
     dir=$(dirname "$cfile")
     base=$(basename "$cfile" .c)
     rel="${cfile#"$REPO_ROOT/"}"
     log "Building and running C asset: $rel"
-    if ! (cd "$dir" && gcc -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt); then
+    if ! (cd "$dir" && "${CC}" -I"${INCLUDE_PATH}" -L"${LIB_PATH}" -o "$base" "$(basename "$cfile")" -lcuopt); then
       FAILED+=("$rel (build)")
       log "FAIL: $rel (build)"
       continue
