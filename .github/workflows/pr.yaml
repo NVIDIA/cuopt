@@ -184,6 +184,10 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
+          - '!ci/utils/validate_skills.sh'
+          - '!agents/**'
         test_python_conda:
           - '**'
           - '!CONTRIBUTING.md'
@@ -218,6 +222,10 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
+          - '!ci/utils/validate_skills.sh'
+          - '!agents/**'
         test_python_wheels:
           - '**'
           - '!CONTRIBUTING.md'
@@ -253,6 +261,10 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
+          - '!ci/utils/validate_skills.sh'
+          - '!agents/**'
   checks:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
