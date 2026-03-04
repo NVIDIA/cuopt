@@ -12,7 +12,22 @@ cd "$REPO_ROOT"
 SKILLS_DIR="skills"
 CLAUDE_MARKETPLACE=".claude-plugin/marketplace.json"
 AGENTS_MD="agents/AGENTS.md"
+VERSION_FILE="VERSION"
 ERRORS=0
+
+# Check skills version matches release version (VERSION file)
+if [[ -f "${VERSION_FILE}" ]]; then
+  RELEASE_VERSION=$(tr -d ' \n\r' < "${VERSION_FILE}")
+  for f in .cursor-plugin/plugin.json gemini-extension.json .claude-plugin/marketplace.json; do
+    if [[ -f "$f" ]]; then
+      FILE_VERSION=$(grep '"version"' "$f" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+      if [[ "${FILE_VERSION}" != "${RELEASE_VERSION}" ]]; then
+        echo "ERROR: $f has version \"${FILE_VERSION}\" but VERSION file has \"${RELEASE_VERSION}\". Run: ./ci/utils/sync_skills_version.sh"
+        ERRORS=$((ERRORS + 1))
+      fi
+    fi
+  done
+fi
 
 echo "Validating skills in $SKILLS_DIR..."
 
@@ -28,6 +43,19 @@ for dir in "$SKILLS_DIR"/*/; do
   if ! grep -q '^name:' "$skill_md" || ! grep -q '^description:' "$skill_md"; then
     echo "ERROR: $name/SKILL.md missing frontmatter (name: or description:)"
     ERRORS=$((ERRORS + 1))
+  fi
+  if [[ -f "${VERSION_FILE}" ]]; then
+    RELEASE_VERSION=$(tr -d ' \n\r' < "${VERSION_FILE}")
+    if grep -q '^version:' "$skill_md" 2>/dev/null; then
+      SKILL_VERSION=$(sed -n 's/^version:[^0-9]*\([0-9][0-9.]*\).*/\1/p' "$skill_md" | head -1)
+      if [[ "${SKILL_VERSION}" != "${RELEASE_VERSION}" ]]; then
+        echo "ERROR: $name/SKILL.md has version \"${SKILL_VERSION}\" but VERSION file has \"${RELEASE_VERSION}\". Run: ./ci/utils/sync_skills_version.sh"
+        ERRORS=$((ERRORS + 1))
+      fi
+    else
+      echo "ERROR: $name/SKILL.md missing version in frontmatter. Run: ./ci/utils/sync_skills_version.sh"
+      ERRORS=$((ERRORS + 1))
+    fi
   fi
 done
 

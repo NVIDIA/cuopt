@@ -103,12 +103,18 @@ repos:
         entry: python ci/utils/update_doc_versions.py
         language: system
         files: docs/cuopt/source/versions1.json
+      - id: sync-skills-version
+        name: Sync skills version from VERSION
+        entry: ci/utils/sync_skills_version.sh
+        language: system
+        pass_filenames: false
+        files: ^(VERSION|\.claude-plugin/marketplace\.json|\.cursor-plugin/plugin\.json|gemini-extension\.json)$
       - id: validate-skills
         name: Validate agent skills
         entry: ci/utils/validate_skills.sh
         language: system
         pass_filenames: false
-        files: ^(skills/|\.claude-plugin/|\.cursor-plugin/|agents/|ci/utils/validate_skills\.sh|gemini-extension\.json)$
+        files: ^(VERSION|skills/|\.claude-plugin/|\.cursor-plugin/|agents/|ci/utils/validate_skills\.sh|ci/utils/sync_skills_version\.sh|gemini-extension\.json)$
 
 
 default_language_version:

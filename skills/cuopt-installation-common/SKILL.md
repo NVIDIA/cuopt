@@ -1,5 +1,6 @@
 ---
 name: cuopt-installation-common
+version: "26.04.00"
 description: Install cuOpt — system and environment requirements only. Domain concepts; no install commands or interface guidance.
 ---
 

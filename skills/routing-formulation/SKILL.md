@@ -1,5 +1,6 @@
 ---
 name: routing-formulation
+version: "26.04.00"
 description: Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface.
 ---
 

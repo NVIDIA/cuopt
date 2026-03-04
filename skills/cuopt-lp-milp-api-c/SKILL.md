@@ -1,5 +1,6 @@
 ---
 name: cuopt-lp-milp-api-c
+version: "26.04.00"
 description: LP and MILP with cuOpt — C API only. Use when the user is embedding LP/MILP in C/C++.
 ---
 
