@@ -34,7 +34,7 @@ class mip_solution_t;
  * @brief Abstract interface for optimization problem solutions (LP and MIP)
  *
  * This interface allows for CPU or GPU-backed solution storage.
- * - gpu_optimization_problem_solution_t: Uses rmm::device_uvector (GPU memory)
+ * - optimization_problem_solution_t: Uses rmm::device_uvector (GPU memory)
  * - cpu_optimization_problem_solution_t: Uses std::vector (CPU/host memory)
  *
  * @tparam i_t Integer type for indices
@@ -330,15 +330,6 @@ class lp_solution_interface_t : public optimization_problem_solution_interface_t
   virtual i_t get_iterations_since_last_restart() const                              = 0;
 
   /**
-   * @brief Convert to optimization_problem_solution_t (GPU-backed)
-   * This is used for remote execution: CPU solution -> GPU solution for return
-   * @param stream_view CUDA stream for device allocations
-   * @return GPU-backed solution
-   */
-  virtual optimization_problem_solution_t<i_t, f_t> to_gpu_solution(
-    rmm::cuda_stream_view stream_view) = 0;
-
-  /**
    * @brief Convert to Python/Cython return type (polymorphic version)
    * This method allows backend-agnostic conversion to Python return structs.
    * GPU solutions populate the gpu_solutions_t variant; CPU solutions populate cpu_solutions_t.
@@ -476,14 +467,6 @@ class mip_solution_interface_t : public optimization_problem_solution_interface_
    * @return Number of simplex iterations
    */
   virtual i_t get_num_simplex_iterations() const = 0;
-
-  /**
-   * @brief Convert to mip_solution_t (GPU-backed)
-   * This is used for remote execution: CPU solution -> GPU solution for return
-   * @param stream_view CUDA stream for device allocations
-   * @return GPU-backed solution
-   */
-  virtual mip_solution_t<i_t, f_t> to_gpu_solution(rmm::cuda_stream_view stream_view) = 0;
 
   /**
    * @brief Convert to Python/Cython return type (polymorphic version)

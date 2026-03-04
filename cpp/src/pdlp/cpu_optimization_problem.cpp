@@ -6,8 +6,9 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -27,8 +28,7 @@ namespace cuopt::linear_programming {
 // ==============================================================================
 
 template <typename i_t, typename f_t>
-cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t(raft::handle_t const* handle_ptr)
-  : handle_ptr_(handle_ptr)
+cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t()
 {
   CUOPT_LOG_DEBUG("cpu_optimization_problem_t constructor: Using CPU backend");
 }
@@ -568,84 +568,87 @@ std::vector<var_t> cpu_optimization_problem_t<i_t, f_t>::get_variable_types_host
 // ==============================================================================
 
 template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem()
+std::unique_ptr<optimization_problem_t<i_t, f_t>>
+cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t const* handle_ptr)
 {
-  if (handle_ptr_ == nullptr) {
+  if (handle_ptr == nullptr) {
     throw std::runtime_error(
       "cpu_optimization_problem_t::to_optimization_problem(): "
       "handle_ptr is null. A RAFT handle with CUDA resources is required to convert "
       "a CPU-backed problem to a GPU-backed optimization_problem_t.");
   }
 
-  optimization_problem_t<i_t, f_t> problem(handle_ptr_);
+  auto gpu_problem = std::make_unique<optimization_problem_t<i_t, f_t>>(handle_ptr);
 
   // Set scalar values
-  problem.set_maximize(maximize_);
-  problem.set_objective_scaling_factor(objective_scaling_factor_);
-  problem.set_objective_offset(objective_offset_);
-  problem.set_problem_category(problem_category_);
+  gpu_problem->set_maximize(maximize_);
+  gpu_problem->set_objective_scaling_factor(objective_scaling_factor_);
+  gpu_problem->set_objective_offset(objective_offset_);
+  gpu_problem->set_problem_category(problem_category_);
 
   // Set string values
-  if (!objective_name_.empty()) problem.set_objective_name(objective_name_);
-  if (!problem_name_.empty()) problem.set_problem_name(problem_name_);
-  if (!var_names_.empty()) problem.set_variable_names(var_names_);
-  if (!row_names_.empty()) problem.set_row_names(row_names_);
+  if (!objective_name_.empty()) gpu_problem->set_objective_name(objective_name_);
+  if (!problem_name_.empty()) gpu_problem->set_problem_name(problem_name_);
+  if (!var_names_.empty()) gpu_problem->set_variable_names(var_names_);
+  if (!row_names_.empty()) gpu_problem->set_row_names(row_names_);
 
   // Set CSR constraint matrix (data will be copied to GPU by optimization_problem_t setters)
   // Use A_offsets_ presence as the guard: a valid CSR can have zero non-zeros but still
   // needs row offsets to define the number of constraints.
   if (!A_offsets_.empty()) {
-    problem.set_csr_constraint_matrix(A_.data(),
-                                      A_.size(),
-                                      A_indices_.data(),
-                                      A_indices_.size(),
-                                      A_offsets_.data(),
-                                      A_offsets_.size());
+    gpu_problem->set_csr_constraint_matrix(A_.data(),
+                                           A_.size(),
+                                           A_indices_.data(),
+                                           A_indices_.size(),
+                                           A_offsets_.data(),
+                                           A_offsets_.size());
   }
 
   // Set constraint bounds
-  if (!b_.empty()) { problem.set_constraint_bounds(b_.data(), b_.size()); }
+  if (!b_.empty()) { gpu_problem->set_constraint_bounds(b_.data(), b_.size()); }
 
   // Set objective coefficients
-  if (!c_.empty()) { problem.set_objective_coefficients(c_.data(), c_.size()); }
+  if (!c_.empty()) { gpu_problem->set_objective_coefficients(c_.data(), c_.size()); }
 
   // Set quadratic objective if present
   if (!Q_values_.empty()) {
-    problem.set_quadratic_objective_matrix(Q_values_.data(),
-                                           Q_values_.size(),
-                                           Q_indices_.data(),
-                                           Q_indices_.size(),
-                                           Q_offsets_.data(),
-                                           Q_offsets_.size());
+    gpu_problem->set_quadratic_objective_matrix(Q_values_.data(),
+                                                Q_values_.size(),
+                                                Q_indices_.data(),
+                                                Q_indices_.size(),
+                                                Q_offsets_.data(),
+                                                Q_offsets_.size());
   }
 
   // Set variable bounds
   if (!variable_lower_bounds_.empty()) {
-    problem.set_variable_lower_bounds(variable_lower_bounds_.data(), variable_lower_bounds_.size());
+    gpu_problem->set_variable_lower_bounds(variable_lower_bounds_.data(),
+                                           variable_lower_bounds_.size());
   }
   if (!variable_upper_bounds_.empty()) {
-    problem.set_variable_upper_bounds(variable_upper_bounds_.data(), variable_upper_bounds_.size());
+    gpu_problem->set_variable_upper_bounds(variable_upper_bounds_.data(),
+                                           variable_upper_bounds_.size());
   }
 
   // Set variable types
   if (!variable_types_.empty()) {
-    problem.set_variable_types(variable_types_.data(), variable_types_.size());
+    gpu_problem->set_variable_types(variable_types_.data(), variable_types_.size());
   }
 
   // Set constraint bounds
   if (!constraint_lower_bounds_.empty()) {
-    problem.set_constraint_lower_bounds(constraint_lower_bounds_.data(),
-                                        constraint_lower_bounds_.size());
+    gpu_problem->set_constraint_lower_bounds(constraint_lower_bounds_.data(),
+                                             constraint_lower_bounds_.size());
   }
   if (!constraint_upper_bounds_.empty()) {
-    problem.set_constraint_upper_bounds(constraint_upper_bounds_.data(),
-                                        constraint_upper_bounds_.size());
+    gpu_problem->set_constraint_upper_bounds(constraint_upper_bounds_.data(),
+                                             constraint_upper_bounds_.size());
   }
 
   // Set row types
-  if (!row_types_.empty()) { problem.set_row_types(row_types_.data(), row_types_.size()); }
+  if (!row_types_.empty()) { gpu_problem->set_row_types(row_types_.data(), row_types_.size()); }
 
-  return problem;
+  return gpu_problem;
 }
 
 // ==============================================================================
@@ -903,29 +906,6 @@ bool cpu_optimization_problem_t<i_t, f_t>::is_equivalent(
   }
 
   return true;
-}
-
-// ==============================================================================
-// Remote Execution (Polymorphic Dispatch)
-// ==============================================================================
-
-template <typename i_t, typename f_t>
-std::unique_ptr<lp_solution_interface_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::solve_lp_remote(
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool problem_checking,
-  bool use_pdlp_solver_mode) const
-{
-  return ::cuopt::linear_programming::solve_lp_remote(
-    *this, settings, problem_checking, use_pdlp_solver_mode);
-}
-
-template <typename i_t, typename f_t>
-std::unique_ptr<mip_solution_interface_t<i_t, f_t>>
-cpu_optimization_problem_t<i_t, f_t>::solve_mip_remote(
-  mip_solver_settings_t<i_t, f_t> const& settings) const
-{
-  return ::cuopt::linear_programming::solve_mip_remote(*this, settings);
 }
 
 // ==============================================================================

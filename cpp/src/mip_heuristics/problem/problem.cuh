@@ -121,6 +121,8 @@ class problem_t {
 
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+  void set_constraints_from_host_user_problem(
+    const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem);
 
   uint32_t get_fingerprint() const;
 

@@ -40,12 +40,6 @@ bool is_remote_execution_enabled();
 execution_mode_t get_execution_mode();
 
 /**
- * @brief Check if GPU memory should be used for remote execution
- * @return true if CUOPT_USE_GPU_MEM_FOR_REMOTE is set to "true" or "1" (case-insensitive)
- */
-bool use_gpu_memory_for_remote();
-
-/**
  * @brief Check if CPU memory should be used for local execution (test mode)
  *
  * This is intended for testing CPU problem/solution structures without remote execution.
@@ -59,8 +53,9 @@ bool use_cpu_memory_for_local();
  * @brief Determine which memory backend to use based on execution mode
  *
  * Logic:
- *   - LOCAL execution -> GPU memory by default, CPU if CUOPT_USE_CPU_MEM_FOR_LOCAL=true (test mode)
- *   - REMOTE execution -> CPU memory by default, GPU if CUOPT_USE_GPU_MEM_FOR_REMOTE=true
+ *   - REMOTE execution -> always CPU memory
+ *   - LOCAL execution  -> GPU memory by default, CPU if CUOPT_USE_CPU_MEM_FOR_LOCAL=true (test
+ * mode)
  *
  * @return memory_backend_t::GPU or memory_backend_t::CPU
  */
