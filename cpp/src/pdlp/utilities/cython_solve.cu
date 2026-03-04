@@ -7,10 +7,10 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
@@ -108,16 +108,16 @@ std::unique_ptr<solver_ret_t> call_solve(
     rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
     const raft::handle_t handle_{stream};
 
-    auto gpu_problem = cuopt::linear_programming::gpu_optimization_problem_t<int, double>(&handle_);
+    auto problem = cuopt::linear_programming::optimization_problem_t<int, double>(&handle_);
     cuopt::linear_programming::populate_from_data_model_view(
-      &gpu_problem, data_model, solver_settings, &handle_);
+      &problem, data_model, solver_settings, &handle_);
 
     // Call appropriate solve function and convert to ret struct
-    if (gpu_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
+    if (problem.get_problem_category() == linear_programming::problem_category_t::LP) {
       // Solve and get solution interface pointer
       auto lp_solution_ptr =
         std::unique_ptr<linear_programming::lp_solution_interface_t<int, double>>(
-          call_solve_lp(&gpu_problem, solver_settings->get_pdlp_settings(), is_batch_mode));
+          call_solve_lp(&problem, solver_settings->get_pdlp_settings(), is_batch_mode));
 
       response.lp_ret       = lp_solution_ptr->to_python_lp_ret();
       response.problem_type = linear_programming::problem_category_t::LP;
@@ -143,7 +143,7 @@ std::unique_ptr<solver_ret_t> call_solve(
       // MIP solve
       auto mip_solution_ptr =
         std::unique_ptr<linear_programming::mip_solution_interface_t<int, double>>(
-          call_solve_mip(&gpu_problem, solver_settings->get_mip_settings()));
+          call_solve_mip(&problem, solver_settings->get_mip_settings()));
 
       response.mip_ret      = mip_solution_ptr->to_python_mip_ret();
       response.problem_type = linear_programming::problem_category_t::MIP;
@@ -173,8 +173,8 @@ std::unique_ptr<solver_ret_t> call_solve(
     }
 
   } else {
-    // CPU memory backend: No CUDA resources needed at problem-creation time
-    auto cpu_problem = cuopt::linear_programming::cpu_optimization_problem_t<int, double>(nullptr);
+    // CPU memory backend: pure data container, no CUDA resources needed
+    auto cpu_problem = cuopt::linear_programming::cpu_optimization_problem_t<int, double>();
     cuopt::linear_programming::populate_from_data_model_view(
       &cpu_problem, data_model, solver_settings, nullptr);
 

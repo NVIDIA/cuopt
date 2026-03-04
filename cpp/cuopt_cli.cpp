@@ -6,9 +6,9 @@
 /* clang-format on */
 
 #include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mps_parser/parser.hpp>
@@ -134,11 +134,11 @@ int run_single_file(const std::string& file_path,
   if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
     handle_ptr = std::make_unique<raft::handle_t>();
     problem_interface =
-      std::make_unique<cuopt::linear_programming::gpu_optimization_problem_t<int, double>>(
+      std::make_unique<cuopt::linear_programming::optimization_problem_t<int, double>>(
         handle_ptr.get());
   } else {
     problem_interface =
-      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>(nullptr);
+      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
   }
 
   // Populate the problem from MPS data model

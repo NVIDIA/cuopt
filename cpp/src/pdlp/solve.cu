@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/solve_remote.hpp>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -25,9 +26,10 @@
 #include <mip_heuristics/utilities/sort_csr.cuh>
 
 #include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/gpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -1201,6 +1203,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
     }
 
+    // Declare result at outer scope so that result->reduced_problem (which may be
+    // referenced by problem.original_problem_ptr) remains alive through the solve.
+    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> result;
+
     if (run_presolve) {
       detail::sort_csr(op_problem);
       // allocate no more than 10% of the time limit to presolve.
@@ -1208,14 +1214,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       // But no less than 1 second, to avoid early timeout triggering known crashes
       const double presolve_time_limit =
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
-      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
-      auto result = presolver->apply(op_problem,
-                                     cuopt::linear_programming::problem_category_t::LP,
-                                     settings.presolver,
-                                     settings.dual_postsolve,
-                                     settings.tolerances.absolute_primal_tolerance,
-                                     settings.tolerances.relative_primal_tolerance,
-                                     presolve_time_limit);
+      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      result    = presolver->apply(op_problem,
+                                cuopt::linear_programming::problem_category_t::LP,
+                                settings.presolver,
+                                settings.dual_postsolve,
+                                settings.tolerances.absolute_primal_tolerance,
+                                settings.tolerances.relative_primal_tolerance,
+                                presolve_time_limit);
       if (!result.has_value()) {
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
@@ -1445,6 +1451,43 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 }
 
 // ============================================================================
+// CPU problem overloads (convert to GPU, solve, convert solution back)
+// ============================================================================
+
+template <typename i_t, typename f_t>
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode,
+  bool is_batch_mode)
+{
+  CUOPT_LOG_INFO("solve_lp (CPU problem) - converting to GPU for local solve");
+
+  // Create CUDA resources for the conversion
+  rmm::cuda_stream stream;
+  raft::handle_t handle(stream);
+
+  // Convert CPU problem to GPU problem
+  auto gpu_problem = cpu_problem.to_optimization_problem(&handle);
+
+  // Synchronize before solving to ensure conversion is complete
+  stream.synchronize();
+
+  // Solve on GPU
+  auto gpu_solution = solve_lp<i_t, f_t>(
+    *gpu_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+
+  // Ensure all GPU work from the solve is complete before D2H copies in to_cpu_solution(),
+  // which uses rmm::cuda_stream_per_thread (a different stream than the solver used).
+  stream.synchronize();
+
+  // Convert GPU solution back to CPU
+  gpu_lp_solution_t<i_t, f_t> gpu_sol_interface(std::move(gpu_solution));
+  return gpu_sol_interface.to_cpu_solution();
+}
+
+// ============================================================================
 // Interface-based solve overloads with remote execution support
 // ============================================================================
 
@@ -1456,58 +1499,39 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
-  // Check if remote execution is enabled
+  cuopt_expects(problem_interface != nullptr,
+                error_type_t::ValidationError,
+                "problem_interface cannot be null");
+
+  // Check if remote execution is enabled (always uses CPU backend)
   if (is_remote_execution_enabled()) {
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
                   "Batch mode with remote execution is not supported via this entry point. "
                   "Use solve_batch_remote() instead.");
-    CUOPT_LOG_INFO("Remote LP solve requested");
-    return problem_interface->solve_lp_remote(settings, problem_checking, use_pdlp_solver_mode);
-  } else {
-    // Local execution - convert to optimization_problem_t and call original solve_lp
-    CUOPT_LOG_INFO("Local LP solve");
-
-    // Check if this is a CPU problem (test mode: CUOPT_USE_CPU_MEM_FOR_LOCAL=true)
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
-    if (cpu_prob != nullptr) {
-      CUOPT_LOG_INFO("Test mode: Converting CPU problem to GPU for local solve");
-
-      // Create CUDA resources for the conversion
-      rmm::cuda_stream stream;
-      raft::handle_t handle(stream);
-
-      // Temporarily set the handle on the CPU problem so it can create GPU resources
-      cpu_prob->set_handle(&handle);
-
-      // Convert CPU problem to GPU problem
-      auto op_problem = cpu_prob->to_optimization_problem();
-
-      // Clear the handle to avoid dangling pointer after this scope
-      cpu_prob->set_handle(nullptr);
-
-      // Synchronize before solving to ensure conversion is complete
-      stream.synchronize();
-
-      // Solve on GPU
-      auto gpu_solution = solve_lp<i_t, f_t>(
-        op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
-
-      // Ensure all GPU work from the solve is complete before to_cpu_solution() D2H copies.
-      stream.synchronize();
-
-      CUOPT_LOG_INFO("Test mode: Converting GPU solution back to CPU solution");
-      gpu_lp_solution_t<i_t, f_t> gpu_sol_interface(std::move(gpu_solution));
-      return gpu_sol_interface.to_cpu_solution();
-    }
-
-    auto op_problem   = problem_interface->to_optimization_problem();
-    auto gpu_solution = solve_lp<i_t, f_t>(
-      op_problem, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
-
-    // Wrap GPU solution in interface and return
-    return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
+    cuopt_expects(cpu_prob != nullptr,
+                  error_type_t::ValidationError,
+                  "Remote execution requires CPU memory backend");
+    CUOPT_LOG_INFO("Remote LP solve requested");
+    return solve_lp_remote(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode);
   }
+
+  // Local execution - dispatch to appropriate overload based on problem type
+  auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
+  if (cpu_prob != nullptr) {
+    // CPU problem: use CPU overload (converts to GPU, solves, converts solution back)
+    return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+  }
+
+  // GPU problem: call GPU solver directly
+  auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);
+  cuopt_expects(gpu_prob != nullptr,
+                error_type_t::ValidationError,
+                "problem_interface must be either a CPU or GPU optimization problem");
+  auto gpu_solution =
+    solve_lp<i_t, f_t>(*gpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
+  return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 
 #define INSTANTIATE(F_TYPE)                                                            \
@@ -1524,6 +1548,13 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
     bool problem_checking,                                                             \
     bool use_pdlp_solver_mode);                                                        \
+                                                                                       \
+  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(             \
+    cpu_optimization_problem_t<int, F_TYPE>&,                                          \
+    pdlp_solver_settings_t<int, F_TYPE> const&,                                        \
+    bool,                                                                              \
+    bool,                                                                              \
+    bool);                                                                             \
                                                                                        \
   template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(             \
     optimization_problem_interface_t<int, F_TYPE>*,                                    \

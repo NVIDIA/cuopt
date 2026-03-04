@@ -9,9 +9,9 @@
 
 #include <cuopt/linear_programming/cuopt_c.h>
 #include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 
@@ -32,14 +32,14 @@ struct problem_and_stream_view_t {
       std::unique_ptr<rmm::cuda_stream_view> sv(
         new rmm::cuda_stream_view(rmm::cuda_stream_per_thread));
       std::unique_ptr<raft::handle_t> h(new raft::handle_t(*sv));
-      std::unique_ptr<gpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>> gp(
-        new gpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>(h.get()));
+      std::unique_ptr<optimization_problem_t<cuopt_int_t, cuopt_float_t>> gp(
+        new optimization_problem_t<cuopt_int_t, cuopt_float_t>(h.get()));
       stream_view_ptr = sv.release();
       handle_ptr      = h.release();
       gpu_problem     = gp.release();
       cpu_problem     = nullptr;
     } else {
-      cpu_problem = new cpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>(nullptr);
+      cpu_problem = new cpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>();
       gpu_problem = nullptr;
     }
   }
@@ -103,17 +103,17 @@ struct problem_and_stream_view_t {
                  cpu_problem);
   }
 
-  optimization_problem_t<cuopt_int_t, cuopt_float_t> to_optimization_problem()
+  optimization_problem_t<cuopt_int_t, cuopt_float_t>* get_gpu_problem()
   {
     if (memory_backend == memory_backend_t::GPU) {
-      return gpu_problem->to_optimization_problem();
+      return gpu_problem;
     } else {
-      return cpu_problem->to_optimization_problem();
+      return nullptr;
     }
   }
 
   memory_backend_t memory_backend;
-  gpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>* gpu_problem;
+  optimization_problem_t<cuopt_int_t, cuopt_float_t>* gpu_problem;
   cpu_optimization_problem_t<cuopt_int_t, cuopt_float_t>* cpu_problem;
   rmm::cuda_stream_view*
     stream_view_ptr;           // nullptr for CPU memory backend to avoid CUDA initialization

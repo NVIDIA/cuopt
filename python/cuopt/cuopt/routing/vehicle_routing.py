@@ -112,7 +112,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         ...   [1, 2, 0, 3],
         ...   [1, 3, 9, 0]
         ... ]
-        >>> cost_mat_car = cudf.DataFrame(cost_mat_bikes)
+        >>> cost_mat_car = cudf.DataFrame(cost_mat_car)
         >>> cost_mat_car
            0  1  2  3
         0  0  1  2  1
@@ -273,7 +273,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         responsibility to ensure all time related entries are normalized to
         one common unit (hours/minutes/seconds/any).
 
-        Note: This function cannot be used in conjuction with add_vehicle_break
+        Note: This function cannot be used in conjunction with add_vehicle_break
 
         Parameters
         ----------
@@ -345,16 +345,16 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
     @catch_cuopt_exception
     def add_vehicle_break(
-        self, vehicle_id, earliest, latest, duration, locations=cudf.Series()
+        self, vehicle_id, earliest, latest, duration, locations=None
     ):
         """
         Specify a break for a given vehicle. Use this api to specify
         non-homogenous breaks. For example, different number of breaks can be
-        speficied for each vehicle by calling this function different number of
+        specified for each vehicle by calling this function different number of
         times for each vehicle. Furthermore, this function provides more
         flexibility in specifying locations for each break.
 
-        Note: This function cannot be used in conjection with
+        Note: This function cannot be used in conjunction with
         add_break_dimension
 
         Parameters
@@ -365,7 +365,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
             Earliest time the vehicle can start the break
         latest:    integer
             Latest time the vehicle can start the break
-        duration:  ingteger
+        duration:  integer
             Time spent at the break location
         locations: cudf.Series dtype - int32
             List of locations where this break can be taken. By default
@@ -380,6 +380,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> d.add_vehicle_break(0, 60, 70, 5, cudf.Series([1, 4, 7]))
         >>> d.add_vehicle_break(1, 30, 40, 5)
         """
+        if locations is None:
+            locations = cudf.Series()
         validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size())
         if len(locations) > 0:
             validate_range(
@@ -492,7 +494,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> import cudf
         >>> locations = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         >>> vehicles     = [0, 1, 2, 3, 4]
-        >>> vehicle_tpes = [0, 1, 1, 0, 0] # 0 - Car 1 - bike
+        >>> vehicle_types = [0, 1, 1, 0, 0]  # 0 - Car 1 - bike
         >>> data_model = routing.DataModel(
         ...   len(locations),
         ...   len(vehicles),

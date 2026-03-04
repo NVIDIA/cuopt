@@ -7,30 +7,39 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include <mps_parser/data_model_view.hpp>
 
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
-
 #include <rmm/device_uvector.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 namespace cuopt::linear_programming {
 
-enum class var_t { CONTINUOUS = 0, INTEGER };
-enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
+// Forward declarations
+template <typename i_t, typename f_t>
+class pdlp_solver_settings_t;
+template <typename i_t, typename f_t>
+class mip_solver_settings_t;
+template <typename i_t, typename f_t>
+class lp_solution_interface_t;
+template <typename i_t, typename f_t>
+class mip_solution_interface_t;
 
 /**
  * @brief A representation of a linear programming (LP) optimization problem
  *
+ * @tparam i_t  Integer type for indices
  * @tparam f_t  Data type of the variables and their weights in the equations
+ *
+ * This implementation stores all data in GPU memory using rmm::device_uvector.
+ * It implements both device getters (returning rmm::device_uvector references)
+ * and host getters (returning std::vector by copying from GPU to CPU).
  *
  * This structure stores all the information necessary to represent the
  * following LP:
@@ -56,7 +65,7 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
  * `set_objective_offset()` methods.
  */
 template <typename i_t, typename f_t>
-class optimization_problem_t {
+class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t> {
  public:
   static_assert(std::is_integral<i_t>::value,
                 "'optimization_problem_t' accepts only integer types for indexes");
@@ -102,119 +111,82 @@ class optimization_problem_t {
     raft::device_span<const f_t> constraint_upper_bounds;
   };  // struct view_t
 
-  optimization_problem_t(raft::handle_t const* handle_ptr);
+  explicit optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
-
-  /**
-   * @brief Check if this optimization problem is equivalent to another.
-   *
-   * Two problems are considered equivalent if they represent the same mathematical
-   * optimization problem, potentially with variables and constraints in a different order.
-   * The mapping between problems is determined by matching variable names and row names.
-   * Essentially checks for graph isomorphism given label mappings.
-   *
-   * @param other The other optimization problem to compare against.
-   * @return true if the problems are equivalent (up to permutation of variables/constraints),
-   *         false otherwise.
-   */
-  bool is_equivalent(const optimization_problem_t<i_t, f_t>& other) const;
+  optimization_problem_t(optimization_problem_t<i_t, f_t>&&)            = default;
+  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) = default;
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
+  // ============================================================================
+  // Setters
+  // ============================================================================
+
   /**
    * @brief Set the sense of optimization to maximize.
-   * @note Setting before calling the solver is optional, default value if false
-   * (minimize).
-   *
-   * @param[in] maximize true means to maximize the objective function, else
-   * minimize.
+   * @note Setting before calling the solver is optional, default is false (minimize).
+   * @param[in] maximize true means to maximize the objective function, else minimize.
    */
-  void set_maximize(bool maximize);
-  /**
-   * @brief Set the constraint matrix (A) in CSR format. For more information
-   about CSR checkout:
-   * https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr
+  void set_maximize(bool maximize) override;
 
+  /**
+   * @brief Set the constraint matrix (A) in CSR format.
    * @note Setting before calling the solver is mandatory.
-   *
-   * @throws cuopt::logic_error when an error occurs.
-   * @param[in] A_values Values of the CSR representation of the constraint
-   matrix as a device or host memory pointer to a floating point array of size
-   size_values.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
-   * @param size_values Size of the A_values array.
-   * @param[in] A_indices Indices of the CSR representation of the constraint
-   matrix as a device or host memory pointer to an integer array of size
-   size_indices.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
-   * @param size_indices Size of the A_indices array.
-   * @param[in] A_offsets Offsets of the CSR representation of the constraint
-   matrix as a device or host memory pointer to a integer array of size
-   size_offsets.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   passed to the problem.
-   * @param size_offsets Size of the A_offsets array.
+   * Data is copied to GPU memory on the stream of the RAFT handle passed to the problem.
+   * @param[in] A_values Values of the CSR representation (device or host pointer)
+   * @param size_values Size of the A_values array
+   * @param[in] A_indices Indices of the CSR representation (device or host pointer)
+   * @param size_indices Size of the A_indices array
+   * @param[in] A_offsets Offsets of the CSR representation (device or host pointer)
+   * @param size_offsets Size of the A_offsets array
    */
   void set_csr_constraint_matrix(const f_t* A_values,
                                  i_t size_values,
                                  const i_t* A_indices,
                                  i_t size_indices,
                                  const i_t* A_offsets,
-                                 i_t size_offsets);
+                                 i_t size_offsets) override;
 
   /**
    * @brief Set the constraint bounds (b / right-hand side) array.
    * @note Setting before calling the solver is mandatory.
-   *
-   * @param[in] b Device or host memory pointer to a floating point array of
-   * size size. cuOpt copies this data. Copy happens on the stream of the
-   * raft:handler passed to the problem.
+   * @param[in] b Device or host memory pointer to a floating point array of size size.
    * @param size Size of the b array.
    */
-  void set_constraint_bounds(const f_t* b, i_t size);
+  void set_constraint_bounds(const f_t* b, i_t size) override;
+
   /**
    * @brief Set the objective coefficients (c) array.
    * @note Setting before calling the solver is mandatory.
-   *
-   * @param[in] c Device or host memory pointer to a floating point array of
-   * size size. cuOpt copies this data. Copy happens on the stream of the
-   * raft:handler passed to the problem.
+   * @param[in] c Device or host memory pointer to a floating point array of size size.
    * @param size Size of the c array.
    */
-  void set_objective_coefficients(const f_t* c, i_t size);
-  /**
-   * @brief Set the scaling factor of the objective function (scaling_factor *
-   * objective_value).
-   * @note Setting before calling the solver is optional, default value if 1.
-   *
-   * @param objective_scaling_factor Objective scaling factor value.
-   */
-  void set_objective_scaling_factor(f_t objective_scaling_factor);
-  /**
-   * @brief Set the offset of the objective function (objective_offset +
-   * objective_value).
-   * @note Setting before calling the solver is optional, default value if 0.
-   *
-   * @param objective_offset Objective offset value.
-   */
-  void set_objective_offset(f_t objective_offset);
+  void set_objective_coefficients(const f_t* c, i_t size) override;
 
   /**
-   * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
-   *
-   * @note This is used for quadratic programming problems where the objective
-   * function contains quadratic terms: x^T * Q * x + c^T * x
-   *
-   * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
+   * @brief Set the scaling factor of the objective function (scaling_factor * objective_value).
+   * @note Setting before calling the solver is optional, default value is 1.
+   * @param objective_scaling_factor Objective scaling factor value.
+   */
+  void set_objective_scaling_factor(f_t objective_scaling_factor) override;
+
+  /**
+   * @brief Set the offset of the objective function (objective_offset + objective_value).
+   * @note Setting before calling the solver is optional, default value is 0.
+   * @param objective_offset Objective offset value.
+   */
+  void set_objective_offset(f_t objective_offset) override;
+
+  /**
+   * @brief Set the quadratic objective matrix (Q) in CSR format.
+   * @note Used for quadratic programming: objective is x^T * Q * x + c^T * x
+   * @param[in] Q_values Values of the CSR representation
    * @param size_values Size of the Q_values array
-   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
+   * @param[in] Q_indices Indices of the CSR representation
    * @param size_indices Size of the Q_indices array
-   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
+   * @param[in] Q_offsets Offsets of the CSR representation
    * @param size_offsets Size of the Q_offsets array
-   * @param validate_positive_semi_definite Whether to validate if the matrix is positive semi
-   * definite
+   * @param validate_positive_semi_definite Whether to validate PSD property
    */
   void set_quadratic_objective_matrix(const f_t* Q_values,
                                       i_t size_values,
@@ -222,182 +194,151 @@ class optimization_problem_t {
                                       i_t size_indices,
                                       const i_t* Q_offsets,
                                       i_t size_offsets,
-                                      bool validate_positive_semi_definite = false);
+                                      bool validate_positive_semi_definite = false) override;
+
+  /** @copydoc optimization_problem_interface_t::set_variable_lower_bounds */
+  void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_upper_bounds */
+  void set_variable_upper_bounds(const f_t* variable_upper_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_types */
+  void set_variable_types(const var_t* variable_types, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_problem_category */
+  void set_problem_category(const problem_category_t& category) override;
+  /** @copydoc optimization_problem_interface_t::set_constraint_lower_bounds */
+  void set_constraint_lower_bounds(const f_t* constraint_lower_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_constraint_upper_bounds */
+  void set_constraint_upper_bounds(const f_t* constraint_upper_bounds, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_row_types */
+  void set_row_types(const char* row_types, i_t size) override;
+  /** @copydoc optimization_problem_interface_t::set_objective_name */
+  void set_objective_name(const std::string& objective_name) override;
+  /** @copydoc optimization_problem_interface_t::set_problem_name */
+  void set_problem_name(const std::string& problem_name) override;
+  /** @copydoc optimization_problem_interface_t::set_variable_names */
+  void set_variable_names(const std::vector<std::string>& variable_names) override;
+  /** @copydoc optimization_problem_interface_t::set_row_names */
+  void set_row_names(const std::vector<std::string>& row_names) override;
+
+  // ============================================================================
+  // Device getters
+  // ============================================================================
+
+  i_t get_n_variables() const override;
+  i_t get_n_constraints() const override;
+  i_t get_nnz() const override;
+  i_t get_n_integers() const override;
+  const rmm::device_uvector<f_t>& get_constraint_matrix_values() const override;
+  rmm::device_uvector<f_t>& get_constraint_matrix_values() override;
+  const rmm::device_uvector<i_t>& get_constraint_matrix_indices() const override;
+  rmm::device_uvector<i_t>& get_constraint_matrix_indices() override;
+  const rmm::device_uvector<i_t>& get_constraint_matrix_offsets() const override;
+  rmm::device_uvector<i_t>& get_constraint_matrix_offsets() override;
+  const rmm::device_uvector<f_t>& get_constraint_bounds() const override;
+  rmm::device_uvector<f_t>& get_constraint_bounds() override;
+  const rmm::device_uvector<f_t>& get_objective_coefficients() const override;
+  rmm::device_uvector<f_t>& get_objective_coefficients() override;
+  f_t get_objective_scaling_factor() const override;
+  f_t get_objective_offset() const override;
+  const rmm::device_uvector<f_t>& get_variable_lower_bounds() const override;
+  rmm::device_uvector<f_t>& get_variable_lower_bounds() override;
+  const rmm::device_uvector<f_t>& get_variable_upper_bounds() const override;
+  rmm::device_uvector<f_t>& get_variable_upper_bounds() override;
+  const rmm::device_uvector<f_t>& get_constraint_lower_bounds() const override;
+  rmm::device_uvector<f_t>& get_constraint_lower_bounds() override;
+  const rmm::device_uvector<f_t>& get_constraint_upper_bounds() const override;
+  rmm::device_uvector<f_t>& get_constraint_upper_bounds() override;
+  const rmm::device_uvector<char>& get_row_types() const override;
+  const rmm::device_uvector<var_t>& get_variable_types() const override;
+  bool get_sense() const override;
+  bool empty() const override;
+  std::string get_objective_name() const override;
+  std::string get_problem_name() const override;
+  problem_category_t get_problem_category() const override;
+  const std::vector<std::string>& get_variable_names() const override;
+  const std::vector<std::string>& get_row_names() const override;
+  const std::vector<i_t>& get_quadratic_objective_offsets() const override;
+  const std::vector<i_t>& get_quadratic_objective_indices() const override;
+  const std::vector<f_t>& get_quadratic_objective_values() const override;
+  bool has_quadratic_objective() const override;
+
+  // ============================================================================
+  // Host getters
+  // ============================================================================
+
+  std::vector<f_t> get_constraint_matrix_values_host() const override;
+  std::vector<i_t> get_constraint_matrix_indices_host() const override;
+  std::vector<i_t> get_constraint_matrix_offsets_host() const override;
+  std::vector<f_t> get_constraint_bounds_host() const override;
+  std::vector<f_t> get_objective_coefficients_host() const override;
+  std::vector<f_t> get_variable_lower_bounds_host() const override;
+  std::vector<f_t> get_variable_upper_bounds_host() const override;
+  std::vector<f_t> get_constraint_lower_bounds_host() const override;
+  std::vector<f_t> get_constraint_upper_bounds_host() const override;
+  std::vector<char> get_row_types_host() const override;
+  std::vector<var_t> get_variable_types_host() const override;
+
+  // ============================================================================
+  // File I/O
+  // ============================================================================
 
   /**
-   * @brief Get the quadratic objective matrix offsets
-   * @return const reference to the Q_offsets vector
+   * @brief Write the optimization problem to an MPS file.
+   * @param[in] mps_file_path Path to the output MPS file
    */
-  const std::vector<i_t>& get_quadratic_objective_offsets() const;
-
-  /**
-   * @brief Get the quadratic objective matrix indices
-   * @return const reference to the Q_indices vector
-   */
-  const std::vector<i_t>& get_quadratic_objective_indices() const;
-
-  /**
-   * @brief Get the quadratic objective matrix values
-   * @return const reference to the Q_values vector
-   */
-  const std::vector<f_t>& get_quadratic_objective_values() const;
-
-  /**
-   * @brief Set the variables (x) lower bounds.
-   * @note Setting before calling the solver is optional, default value for all
-   * is 0.
-   *
-   * @param[in] variable_lower_bounds Device or host memory pointer to a
-   * floating point array of size size. cuOpt copies this data. Copy happens on
-   * the stream of the raft:handler passed to the problem.
-   * @param size Size of the variable_lower_bounds array
-   */
-  void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size);
-  /**
-   * @brief Set the variables (x) upper bounds.
-   * @note Setting before calling the solver is optional, default value for all
-   * is +infinity.
-   *
-   * @param[in] variable_upper_bounds Device or host memory pointer to a
-   * floating point array of size size. cuOpt copies this data. Copy happens on
-   * the stream of the raft:handler passed to the problem.
-   * @param size Size of the variable_upper_bounds array.
-   */
-  void set_variable_upper_bounds(const f_t* variable_upper_bounds, i_t size);
-  /**
-   * @brief Set the variables types.
-   * @note Setting before calling the solver is optional, default value for all
-   * is CONTINUOUS.
-   *
-   * @param[in] variable_types Device or host memory pointer to a var_t array.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   * passed to the problem.
-   * @param size Size of the variable_types array.
-   */
-  void set_variable_types(const var_t* variable_types, i_t size);
-  void set_problem_category(const problem_category_t& category);
-  /**
-   * @brief Set the constraints lower bounds.
-   * @note Setting before calling the solver is optional if you set the row
-   * type, else it's mandatory along with the upper bounds.
-   *
-   * @param[in] constraint_lower_bounds Device or host memory pointer to a
-   * floating point array of size size. cuOpt copies this data. Copy happens on
-   * the stream of the raft:handler passed to the problem.
-   * @param size Size of the constraint_lower_bounds array
-   */
-  void set_constraint_lower_bounds(const f_t* constraint_lower_bounds, i_t size);
-  /**
-   * @brief Set the constraints upper bounds.
-   * @note Setting before calling the solver is optional if you set the row
-   * type, else it's mandatory along with the lower bounds. If both are set,
-   * priority goes to set_constraints.
-   *
-   * @param[in] constraint_upper_bounds Device or host memory pointer to a
-   * floating point array of size size. cuOpt copies this data. Copy happens on
-   * the stream of the raft:handler passed to the problem.
-   * @param size Size of the constraint_upper_bounds array
-   */
-  void set_constraint_upper_bounds(const f_t* constraint_upper_bounds, i_t size);
-
-  /**
-   * @brief Set the type of each row (constraint). Possible values are:
-   * 'E' for equality ( = ): lower & upper constrains bound equal to b
-   * 'L' for less-than ( <= ): lower constrains bound equal to -infinity, upper
-   * constrains bound equal to b 'G' for greater-than ( >= ): lower constrains
-   * bound equal to b, upper constrains bound equal to +infinity
-   * @note Setting before calling the solver is optional if you set the
-   * constraint lower and upper bounds, else it's mandatory If both are set,
-   * priority goes to set_constraints.
-   *
-   * @param[in] row_types Device or host memory pointer to a character array of
-   * size size.
-   * cuOpt copies this data. Copy happens on the stream of the raft:handler
-   * passed to the problem.
-   * @param size Size of the row_types array
-   */
-  void set_row_types(const char* row_types, i_t size);
-
-  /**
-   * @brief Set the name of the objective function.
-   * @note Setting before calling the solver is optional. Value is only used for
-   * file generation of the solution.
-   *
-   * @param[in] objective_name Objective name value.
-   */
-  void set_objective_name(const std::string& objective_name);
-  /**
-   * @brief Set the problem name.
-   * @note Setting before calling the solver is optional.
-   *
-   * @param[in] problem_name Problem name value.
-   */
-  void set_problem_name(const std::string& problem_name);
-  /**
-   * @brief Set the variables names.
-   * @note Setting before calling the solver is optional. Value is only used for
-   * file generation of the solution.
-   *
-   * @param[in] variable_names Variable names values.
-   */
-  void set_variable_names(const std::vector<std::string>& variables_names);
-  /**
-   * @brief Set the row names.
-   * @note Setting before calling the solver is optional. Value is only used for
-   * file generation of the solution.
-   *
-   * @param[in] row_names Row names value.
-   */
-  void set_row_names(const std::vector<std::string>& row_names);
-
-  /**
-   * @brief Write the problem to an MPS formatted file
-   *
-   * @param[in] mps_file_path Path to the MPS file to write
-   */
-  void write_to_mps(const std::string& mps_file_path);
+  void write_to_mps(const std::string& mps_file_path) override;
 
   /* Print scaling information */
   void print_scaling_information() const;
 
-  i_t get_n_variables() const;
-  i_t get_n_constraints() const;
-  i_t get_nnz() const;
-  i_t get_n_integers() const;
+  // ============================================================================
+  // Comparison
+  // ============================================================================
+
+  /**
+   * @brief Check if this problem is equivalent to another optimization_problem_t.
+   * @param[in] other The other optimization problem to compare against
+   * @return true if the problems are equivalent (up to permutation of variables/constraints)
+   */
+  bool is_equivalent(const optimization_problem_t<i_t, f_t>& other) const;
+
+  /**
+   * @brief Check if this problem is equivalent to another problem (via interface).
+   * @param[in] other The other optimization problem to compare against
+   * @return true if the problems are equivalent (up to permutation of variables/constraints)
+   */
+  bool is_equivalent(const optimization_problem_interface_t<i_t, f_t>& other) const override;
+
+  // ============================================================================
+  // Conversion
+  // ============================================================================
+
+  /**
+   * @brief Returns nullptr since this is already a GPU problem.
+   * @return nullptr
+   */
+  std::unique_ptr<optimization_problem_t<i_t, f_t>> to_optimization_problem(
+    raft::handle_t const* handle_ptr = nullptr) override;
+
+  // ============================================================================
+  // C API support: Copy to host (polymorphic)
+  // ============================================================================
+
+  void copy_objective_coefficients_to_host(f_t* output, i_t size) const override;
+  void copy_constraint_matrix_to_host(f_t* values,
+                                      i_t* indices,
+                                      i_t* offsets,
+                                      i_t num_values,
+                                      i_t num_indices,
+                                      i_t num_offsets) const override;
+  void copy_row_types_to_host(char* output, i_t size) const override;
+  void copy_constraint_bounds_to_host(f_t* output, i_t size) const override;
+  void copy_constraint_lower_bounds_to_host(f_t* output, i_t size) const override;
+  void copy_constraint_upper_bounds_to_host(f_t* output, i_t size) const override;
+  void copy_variable_lower_bounds_to_host(f_t* output, i_t size) const override;
+  void copy_variable_upper_bounds_to_host(f_t* output, i_t size) const override;
+  void copy_variable_types_to_host(var_t* output, i_t size) const override;
+
   raft::handle_t const* get_handle_ptr() const noexcept;
-  const rmm::device_uvector<f_t>& get_constraint_matrix_values() const;
-  rmm::device_uvector<f_t>& get_constraint_matrix_values();
-  const rmm::device_uvector<i_t>& get_constraint_matrix_indices() const;
-  rmm::device_uvector<i_t>& get_constraint_matrix_indices();
-  const rmm::device_uvector<i_t>& get_constraint_matrix_offsets() const;
-  rmm::device_uvector<i_t>& get_constraint_matrix_offsets();
-  const rmm::device_uvector<f_t>& get_constraint_bounds() const;
-  rmm::device_uvector<f_t>& get_constraint_bounds();
-  const rmm::device_uvector<f_t>& get_objective_coefficients() const;
-  rmm::device_uvector<f_t>& get_objective_coefficients();
-  f_t get_objective_scaling_factor() const;
-  f_t get_objective_offset() const;
-  const rmm::device_uvector<f_t>& get_variable_lower_bounds() const;
-  const rmm::device_uvector<f_t>& get_variable_upper_bounds() const;
-  rmm::device_uvector<f_t>& get_variable_lower_bounds();
-  rmm::device_uvector<f_t>& get_variable_upper_bounds();
-  const rmm::device_uvector<f_t>& get_constraint_lower_bounds() const;
-  const rmm::device_uvector<f_t>& get_constraint_upper_bounds() const;
-  rmm::device_uvector<f_t>& get_constraint_lower_bounds();
-  rmm::device_uvector<f_t>& get_constraint_upper_bounds();
-  const rmm::device_uvector<char>& get_row_types() const;
-  const rmm::device_uvector<var_t>& get_variable_types() const;
-  bool get_sense() const;
-  bool empty() const;
-
-  std::string get_objective_name() const;
-  std::string get_problem_name() const;
-  // Unless an integer variable is added, by default it is LP
-  problem_category_t get_problem_category() const;
-  const std::vector<std::string>& get_variable_names() const;
-  const std::vector<std::string>& get_row_names() const;
-
-  bool has_quadratic_objective() const;
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
@@ -406,66 +347,38 @@ class optimization_problem_t {
   view_t view() const;
 
  private:
-  void add_row_related_vars_to_row(std::vector<i_t>& indices,
-                                   std::vector<f_t>& values,
-                                   std::vector<i_t>& A_offsets,
-                                   std::vector<i_t>& A_indices,
-                                   std::vector<f_t>& A_values);
-
-  // Pointer to library handle (RAFT) containing hardware resources information
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  /** problem classification */
   problem_category_t problem_category_ = problem_category_t::LP;
-  /** whether to maximize or minimize the objective function */
-  bool maximize_;
-  /** number of variables */
-  i_t n_vars_;
-  /** number of constraints in the LP representation */
-  i_t n_constraints_;
-  /**
-   * the constraint matrix itself in the CSR format
-   * @{
-   */
+  bool maximize_{false};
+  i_t n_vars_{0};
+  i_t n_constraints_{0};
+
+  // GPU memory storage
   rmm::device_uvector<f_t> A_;
   rmm::device_uvector<i_t> A_indices_;
   rmm::device_uvector<i_t> A_offsets_;
-  /** @} */
-  /** RHS of the constraints */
   rmm::device_uvector<f_t> b_;
-  /** weights in the objective function */
   rmm::device_uvector<f_t> c_;
-  /** scale factor of the objective function */
   f_t objective_scaling_factor_{1};
-  /** offset of the objective function */
   f_t objective_offset_{0};
 
-  /** Quadratic objective matrix in CSR format (for (1/2) * x^T * Q * x term) */
   std::vector<i_t> Q_offsets_;
   std::vector<i_t> Q_indices_;
   std::vector<f_t> Q_values_;
 
-  /** lower bounds of the variables (primal part) */
   rmm::device_uvector<f_t> variable_lower_bounds_;
-  /** upper bounds of the variables (primal part) */
   rmm::device_uvector<f_t> variable_upper_bounds_;
-  /** lower bounds of the constraint (dual part) */
   rmm::device_uvector<f_t> constraint_lower_bounds_;
-  /** upper bounds of the constraint (dual part) */
   rmm::device_uvector<f_t> constraint_upper_bounds_;
-  /** Type of each constraint */
   rmm::device_uvector<char> row_types_;
-  /** Type of each variable */
   rmm::device_uvector<var_t> variable_types_;
-  /** name of the objective (only a single objective is currently allowed) */
+
   std::string objective_name_;
-  /** name of the problem  */
   std::string problem_name_;
-  /** names of each of the variables in the OP */
   std::vector<std::string> var_names_{};
-  /** names of each of the rows (aka constraints or objective) in the OP */
   std::vector<std::string> row_names_{};
-};  // class optimization_problem_t
+};
 
 }  // namespace cuopt::linear_programming
