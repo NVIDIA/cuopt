@@ -776,7 +776,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             const f_t ub_star_j = complemented_mir.get_ub_star(j);
             const f_t off_lower = lb_star_j > -inf ? xstar[j] - lb_star_j : std::abs(xstar[j]);
             const f_t off_upper = ub_star_j < inf ? ub_star_j - xstar[j] : std::abs(xstar[j]);
-            const f_t off_bound = std::max(off_lower, off_upper);
+            const f_t off_bound = std::min(off_lower, off_upper);
             const i_t col_len   = lp.A.col_length(j);
             if (off_bound > max_off_bound && col_len > 1) {
               max_off_bound     = off_bound;
@@ -1669,7 +1669,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
       const f_t new_upper_j = new_upper(j);
       if (x_j > 1e-6 && new_upper_j < inf) {
         const f_t midpoint_j = new_upper_j / 2.0;
-        distance_from_midpoint.push_back(midpoint_j - x_j);
+        distance_from_midpoint.push_back(x_j - midpoint_j);
         integer_indices.push_back(k);
       }
     }
