@@ -1746,6 +1746,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
           break;
         }
       }
+      if (cut_found) { break; }
     }
   }
 

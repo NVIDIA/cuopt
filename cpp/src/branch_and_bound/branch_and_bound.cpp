@@ -2236,6 +2236,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       if (!feasible) {
         settings_.log.printf("Bound strengthening detected infeasibility\n");
+#ifdef WRITE_BOUND_STRENGTHENING_INFEASIBLE_MPS
+        original_lp_.write_mps("bound_strengthening_infeasible.mps");
+#endif
         return mip_status_t::INFEASIBLE;
       }
 
