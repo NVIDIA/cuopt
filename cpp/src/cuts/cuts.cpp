@@ -767,6 +767,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         i_t max_off_bound_var = -1;
         for (i_t p = 0; p < inequality.size(); p++) {
           const i_t j = inequality.index(p);
+          const f_t aj = inequality.coeff(p);
+          if (aj == 0.0) { continue; }
           if (var_types[j] == variable_type_t::CONTINUOUS) {
             num_continuous++;
 
@@ -806,7 +808,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
             }
             work_estimate += 5 * (col_end - col_start);
 
-            if (!potential_rows.empty()) {
+            bool did_aggregate = false;
+            while (!potential_rows.empty()) {
               const i_t pivot_row =
                 *std::max_element(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
                   return scores[a] < scores[b];
@@ -815,21 +818,31 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
               inequality_t<i_t, f_t> pivot_row_inequality(Arow, pivot_row, lp.rhs[pivot_row]);
               work_estimate += pivot_row_inequality.size();
+              // Save inequality before combine_rows mutates it, so we can restore on rejection
+              inequality_t<i_t, f_t> saved_inequality = inequality;
               f_t multiplier = complemented_mir.combine_rows(
                 lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
               if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
                   std::abs(multiplier) / min_abs_multiplier > 10000) {
-                printf("Multiplier %e is too large %e %e\n",
+                printf("Multiplier %e is too small/large max %e min %e\n",
                        multiplier,
                        max_abs_multiplier,
                        min_abs_multiplier);
+                inequality = saved_inequality;
+                // Erase the pivot row from the potential rows
+                potential_rows.erase(std::remove(potential_rows.begin(), potential_rows.end(), pivot_row), potential_rows.end());
+                continue;
               }
               max_abs_multiplier = std::max(max_abs_multiplier, std::abs(multiplier));
               min_abs_multiplier = std::min(min_abs_multiplier, std::abs(multiplier));
               aggregated_rows.push_back(pivot_row);
               aggregated_mark[pivot_row] = 1;
               work_estimate += inequality.size() + pivot_row_inequality.size();
-            } else {
+              did_aggregate = true;
+              break;
+            }
+
+            if (!did_aggregate) {
               // No potential rows to aggregate
               break;
             }
@@ -851,12 +864,12 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     }
 
     // Clear the aggregated mark
+    work_estimate += 2 * aggregated_rows.size();
     for (i_t row : aggregated_rows) {
       aggregated_mark[row] = 0;
     }
     // Clear the aggregated rows
     aggregated_rows.clear();
-    work_estimate += 2 * aggregated_rows.size();
 
     // Set the score of the current row to zero
     scores[i] = 0.0;
@@ -2377,11 +2390,10 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
     }
   }
 
-  if (a_l_j == 0) { return 0.0; }
+  if (a_l_j == 0) { printf("Pivot row has no coefficient for variable %d\n", xj); return 0.0; }
 
   f_t a_i_j = 0.0;
 
-  i_t nz = 0;
   // Store the inequality in the workspace
   // and save the coefficient associated with variable xj
   for (i_t k = 0; k < inequality.size(); k++) {
@@ -2391,6 +2403,11 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
     } else {
       a_i_j = inequality.coeff(k);
     }
+  }
+  if (a_i_j == 0.0) {
+    printf("Inequality has zero coefficient for variable %d\n", xj);
+    scratch_pad_.clear_pad();
+    return 0.0;
   }
 
   f_t pivot_value = a_i_j / a_l_j;
