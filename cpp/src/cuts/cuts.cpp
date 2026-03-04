@@ -766,7 +766,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         f_t max_off_bound     = 0.0;
         i_t max_off_bound_var = -1;
         for (i_t p = 0; p < inequality.size(); p++) {
-          const i_t j = inequality.index(p);
+          const i_t j  = inequality.index(p);
           const f_t aj = inequality.coeff(p);
           if (aj == 0.0) { continue; }
           if (var_types[j] == variable_type_t::CONTINUOUS) {
@@ -820,7 +820,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               work_estimate += pivot_row_inequality.size();
               // Save inequality before combine_rows mutates it, so we can restore on rejection
               inequality_t<i_t, f_t> saved_inequality = inequality;
-              f_t multiplier = complemented_mir.combine_rows(
+              f_t multiplier                          = complemented_mir.combine_rows(
                 lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
               if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
                   std::abs(multiplier) / min_abs_multiplier > 10000) {
@@ -830,7 +830,9 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
                        min_abs_multiplier);
                 inequality = saved_inequality;
                 // Erase the pivot row from the potential rows
-                potential_rows.erase(std::remove(potential_rows.begin(), potential_rows.end(), pivot_row), potential_rows.end());
+                potential_rows.erase(
+                  std::remove(potential_rows.begin(), potential_rows.end(), pivot_row),
+                  potential_rows.end());
                 continue;
               }
               max_abs_multiplier = std::max(max_abs_multiplier, std::abs(multiplier));
@@ -2391,7 +2393,10 @@ f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
     }
   }
 
-  if (a_l_j == 0) { printf("Pivot row has no coefficient for variable %d\n", xj); return 0.0; }
+  if (a_l_j == 0) {
+    printf("Pivot row has no coefficient for variable %d\n", xj);
+    return 0.0;
+  }
 
   f_t a_i_j = 0.0;
 
