@@ -40,9 +40,11 @@ RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
-./get_test_data.sh
-popd
+if [[ "${SKIP_ROUTING_TESTS:-}" != "true" ]]; then
+    pushd "${RAPIDS_DATASET_ROOT_DIR}"
+    ./get_test_data.sh
+    popd
+fi
 
 rapids-logger "Check GPU usage"
 nvidia-smi

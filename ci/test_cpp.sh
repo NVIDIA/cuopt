@@ -40,9 +40,11 @@ rapids-logger "Download datasets"
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
-./get_test_data.sh
-popd
+if [[ "${SKIP_ROUTING_TESTS:-}" != "true" ]]; then
+    pushd "${RAPIDS_DATASET_ROOT_DIR}"
+    ./get_test_data.sh
+    popd
+fi
 
 EXITCODE=0
 trap "EXITCODE=1" ERR

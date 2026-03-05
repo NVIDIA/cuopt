@@ -45,10 +45,12 @@ fi
 
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
-cd ./datasets
-./get_test_data.sh --solomon
-./get_test_data.sh --tsp
-cd -
+if [[ "${SKIP_ROUTING_TESTS:-}" != "true" ]]; then
+    cd ./datasets
+    ./get_test_data.sh --solomon
+    ./get_test_data.sh --tsp
+    cd -
+fi
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR

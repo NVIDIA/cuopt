@@ -21,8 +21,29 @@ else
     exit 1
 fi
 
+# Routing test binaries to skip when SKIP_ROUTING_TESTS is set
+ROUTING_TESTS=(
+    ROUTING_TEST
+    ROUTING_GES_TEST
+    VEHICLE_ORDER_TEST
+    VEHICLE_TYPES_TEST
+    OBJECTIVE_FUNCTION_TEST
+    RETAIL_L1TEST
+    ROUTING_L1TEST
+    ROUTING_UNIT_TEST
+    WAYPOINT_MATRIXTEST
+)
+
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
+    if [[ "${SKIP_ROUTING_TESTS:-}" == "true" ]]; then
+        for routing_test in "${ROUTING_TESTS[@]}"; do
+            if [[ "${test_name}" == "${routing_test}" ]]; then
+                echo "Skipping routing gtest ${test_name} (SKIP_ROUTING_TESTS=true)"
+                continue 2
+            fi
+        done
+    fi
     echo "Running gtest ${test_name}"
     "${gt}" "$@"
 done

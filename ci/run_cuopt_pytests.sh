@@ -9,4 +9,10 @@ set -euo pipefail
 # Support invoking run_cuopt_pytests.sh outside the script directory
 cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/cuopt/cuopt/
 
-pytest -s --cache-clear "$@" tests
+PYTEST_ARGS=("$@")
+if [[ "${SKIP_ROUTING_TESTS:-}" == "true" ]]; then
+    echo "Skipping routing tests (SKIP_ROUTING_TESTS=true)"
+    PYTEST_ARGS+=("--ignore=tests/routing")
+fi
+
+pytest -s --cache-clear "${PYTEST_ARGS[@]}" tests
