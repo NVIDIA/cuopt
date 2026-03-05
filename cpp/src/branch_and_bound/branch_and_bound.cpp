@@ -806,7 +806,8 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   branch_and_bound_worker_t<i_t, f_t>* worker)
 {
   logger_t log;
-  log.log                        = false;
+  // TODO put back false
+  log.log                        = true;
   i_t branch_var                 = -1;
   rounding_direction_t round_dir = rounding_direction_t::NONE;
   std::vector<f_t> current_incumbent;

@@ -315,6 +315,36 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   return mps_model;
 }
 
+template <typename i_t, typename f_t>
+static cuopt::mps_parser::mps_data_model_t<i_t, f_t> lp_problem_to_mps_data_model(
+  const lp_problem_t<i_t, f_t>& lp_problem)
+{
+  cuopt::mps_parser::mps_data_model_t<i_t, f_t> mps_model;
+  int m = lp_problem.num_rows;
+  int n = lp_problem.num_cols;
+
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  lp_problem.A.to_compressed_row(csr_A);
+
+  int nz = csr_A.row_start[m];
+
+  mps_model.set_csr_constraint_matrix(
+    csr_A.x.data(), nz, csr_A.j.data(), nz, csr_A.row_start.data(), m + 1);
+
+  mps_model.set_objective_coefficients(lp_problem.objective.data(), n);
+  mps_model.set_objective_scaling_factor(lp_problem.obj_scale);
+  mps_model.set_objective_offset(lp_problem.obj_constant);
+
+  mps_model.set_variable_lower_bounds(lp_problem.lower.data(), n);
+  mps_model.set_variable_upper_bounds(lp_problem.upper.data(), n);
+
+  mps_model.set_constraint_lower_bounds(lp_problem.rhs.data(), m);
+  mps_model.set_constraint_upper_bounds(lp_problem.rhs.data(), m);
+  mps_model.set_maximize(lp_problem.obj_scale < 0);
+
+  return mps_model;
+}
+
 // Merge a single strong branching result from Dual Simplex and PDLP.
 // Rules:
 //   1. If both found optimal   -> keep DS (higher quality vertex solution)
@@ -793,13 +823,97 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Shuffle the unreliable list so every variable has the same chance to be selected.
   if (unreliable_list.size() > max_num_candidates) { worker->rng.shuffle(unreliable_list); }
 
+  // Variables beyond num_candidates are solved by batch PDLP instead of Dual Simplex
+  std::vector<i_t> pdlp_overflow_list;
+  bool use_pdlp = settings.mip_batch_pdlp_strong_branching == 1 &&
+                  static_cast<i_t>(unreliable_list.size()) > num_candidates;
+  if (use_pdlp) {
+    pdlp_overflow_list.assign(unreliable_list.begin() + num_candidates, unreliable_list.end());
+  }
+
+  const i_t num_pdlp_vars = pdlp_overflow_list.size();
+  std::vector<f_t> pdlp_obj_down(num_pdlp_vars, std::numeric_limits<f_t>::quiet_NaN());
+  std::vector<f_t> pdlp_obj_up(num_pdlp_vars, std::numeric_limits<f_t>::quiet_NaN());
+
+  // DS can halt PDLP via concurrent_halt, but not the other way around
+  std::atomic<int> concurrent_halt{0};
+  std::thread pdlp_thread;
+
+  if (use_pdlp) {
+    pdlp_thread = std::thread([&]() {
+      log.printf("RB batch PDLP: solving %d overflow unreliable variables\n", num_pdlp_vars);
+
+      f_t start_batch = tic();
+
+      const auto mps_model = lp_problem_to_mps_data_model(worker->leaf_problem);
+
+      std::vector<f_t> fraction_values;
+      fraction_values.reserve(num_pdlp_vars);
+      for (i_t j : pdlp_overflow_list) {
+        fraction_values.push_back(solution[j]);
+      }
+
+      const f_t batch_elapsed_time    = toc(start_time);
+      const f_t batch_remaining_time =
+        std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+      if (batch_remaining_time <= 0.0) { return; }
+
+      pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+      pdlp_settings.concurrent_halt = &concurrent_halt;
+      pdlp_settings.time_limit      = batch_remaining_time;
+
+      const raft::handle_t batch_pdlp_handle;
+      const auto solutions = batch_pdlp_solve(
+        &batch_pdlp_handle, mps_model, pdlp_overflow_list, fraction_values, pdlp_settings);
+
+      f_t batch_pdlp_time = toc(start_batch);
+
+      if (solutions.get_additional_termination_informations().size() !=
+          static_cast<size_t>(num_pdlp_vars) * 2) {
+        log.printf("RB batch PDLP failed and produced no solutions\n");
+        return;
+      }
+
+      i_t amount_done = 0;
+      for (i_t k = 0; k < num_pdlp_vars * 2; k++) {
+        if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+          amount_done++;
+        }
+      }
+
+      log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
+                 batch_pdlp_time,
+                 amount_done,
+                 num_pdlp_vars * 2);
+
+      for (i_t k = 0; k < num_pdlp_vars; k++) {
+        if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+          pdlp_obj_down[k] = solutions.get_dual_objective_value(k);
+        }
+        if (solutions.get_termination_status(k + num_pdlp_vars) ==
+            pdlp_termination_status_t::Optimal) {
+          pdlp_obj_up[k] = solutions.get_dual_objective_value(k + num_pdlp_vars);
+        }
+      }
+    });
+  }
+
   if (toc(start_time) > settings.time_limit) {
     log.printf("Time limit reached");
+    if (use_pdlp) {
+      concurrent_halt.store(1);
+      pdlp_thread.join();
+    }
     return branch_var;
   }
 
+  omp_atomic_t<i_t> ds_optimal{0};
+  omp_atomic_t<i_t> ds_infeasible{0};
+  omp_atomic_t<i_t> ds_failed{0};
+  f_t ds_start_time = tic();
+
 #pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) \
-  shared(score_mutex)
+  shared(score_mutex, ds_optimal, ds_infeasible, ds_failed)
   for (i_t i = 0; i < num_candidates; ++i) {
     const i_t j = unreliable_list[i];
 
@@ -826,7 +940,16 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
                                 reliability_branching_settings.lower_max_lp_iter,
                                 strong_branching_lp_iter);
 
-      if (!std::isnan(obj)) {
+      if (std::isnan(obj)) {
+        ds_failed++;
+      } else if (std::isinf(obj)) {
+        ds_infeasible++;
+        f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
+        f_t change_in_x   = solution[j] - std::floor(solution[j]);
+        pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
+        pseudo_cost_num_down[j]++;
+      } else {
+        ds_optimal++;
         f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
         f_t change_in_x   = solution[j] - std::floor(solution[j]);
         pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
@@ -857,7 +980,17 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
                                 reliability_branching_settings.lower_max_lp_iter,
                                 strong_branching_lp_iter);
 
-      if (!std::isnan(obj)) {
+      if (std::isnan(obj)) {
+        ds_failed++;
+      } else if (std::isinf(obj)) {
+        // Is it ok to process infinity obj like this?
+        ds_infeasible++;
+        f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
+        f_t change_in_x   = std::ceil(solution[j]) - solution[j];
+        pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
+        pseudo_cost_num_up[j]++;
+      } else {
+        ds_optimal++;
         f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
         f_t change_in_x   = std::ceil(solution[j]) - solution[j];
         pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
@@ -876,6 +1009,63 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       branch_var = j;
     }
     score_mutex.unlock();
+  }
+
+  f_t ds_elapsed = toc(ds_start_time);
+  log.printf(
+    "RB Dual Simplex: %d candidates, %d/%d optimal/dual-feasible, %d/%d infeasible, "
+    "%d/%d failed in %.2fs\n",
+    num_candidates,
+    ds_optimal.load(),
+    num_candidates * 2,
+    ds_infeasible.load(),
+    num_candidates * 2,
+    ds_failed.load(),
+    num_candidates * 2,
+    ds_elapsed);
+
+  if (use_pdlp) {
+    // Dual Simplex is done on the main thread, telling Batch PDLP to stop
+    concurrent_halt.store(1);
+    pdlp_thread.join();
+
+    i_t pdlp_optimal  = 0;
+    for (i_t k = 0; k < num_pdlp_vars; k++) {
+      const i_t j = pdlp_overflow_list[k];
+
+      pseudo_cost_mutex_down[j].lock();
+      if (!std::isnan(pdlp_obj_down[k])) {
+        f_t change_in_obj = std::max(pdlp_obj_down[k] - node_ptr->lower_bound, eps);
+        f_t change_in_x   = solution[j] - std::floor(solution[j]);
+        pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
+        pseudo_cost_num_down[j]++;
+        pdlp_optimal++;
+      }
+      pseudo_cost_mutex_down[j].unlock();
+
+      pseudo_cost_mutex_up[j].lock();
+      if (!std::isnan(pdlp_obj_up[k])) {
+        f_t change_in_obj = std::max(pdlp_obj_up[k] - node_ptr->lower_bound, eps);
+        f_t change_in_x   = std::ceil(solution[j]) - solution[j];
+        pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
+        pseudo_cost_num_up[j]++;
+        pdlp_optimal++;
+      }
+      pseudo_cost_mutex_up[j].unlock();
+
+      f_t score =
+        calculate_pseudocost_score(j, solution, pseudo_cost_up_avg, pseudo_cost_down_avg);
+      if (score > max_score) {
+        max_score  = score;
+        branch_var = j;
+      }
+    }
+
+    log.printf(
+      "RB batch PDLP: %d candidates, %d/%d optimal\n",
+      num_pdlp_vars,
+      pdlp_optimal,
+      num_pdlp_vars * 2);
   }
 
   log.printf(
