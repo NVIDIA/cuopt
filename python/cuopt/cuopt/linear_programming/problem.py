@@ -229,6 +229,8 @@ class Variable:
             case LinearExpression():
                 # self - other ->   other * -1.0 + self
                 return other * -1.0 + self
+            case QuadraticExpression():
+                return other * -1.0 + self
             case _:
                 raise ValueError(
                     "Cannot subtract type %s from variable"
