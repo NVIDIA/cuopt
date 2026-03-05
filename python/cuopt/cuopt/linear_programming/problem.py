@@ -204,6 +204,8 @@ class Variable:
                 return LinearExpression([self, other], [1.0, 1.0], 0.0)
             case LinearExpression():
                 return other + self
+            case QuadraticExpression():
+                return other + self
             case _:
                 raise ValueError(
                     "Cannot add type %s to variable" % type(other).__name__
