@@ -750,6 +750,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         complemented_mir.untransform_inequality(variable_bounds, var_types, cut);
         complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
         complemented_mir.substitute_slacks(lp, Arow, cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
         f_t viol = complemented_mir.compute_violation(cut, xstar);
         work_estimate += 10 * cut.size();
         if (viol > 1e-6) { add_cut = true; }
