@@ -38,6 +38,7 @@ set(MIP_NON_LP_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/multi_probe.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/probing_cache.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/presolve/trivial_presolve.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/presolve/conflict_graph/clique_table.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/feasibility_jump_kernels.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump/fj_cpu.cu)

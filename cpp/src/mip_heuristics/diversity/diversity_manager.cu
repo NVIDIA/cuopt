@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
@@ -16,6 +17,8 @@
 #include <pdlp/solve.cuh>
 
 #include <utilities/scope_guard.hpp>
+
+#include <memory>
 
 constexpr bool fj_only_run = false;
 
@@ -172,7 +175,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
 }
 
 template <typename i_t, typename f_t>
-bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
+bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
   raft::common::nvtx::range fun_scope("run_presolve");
   CUOPT_LOG_INFO("Running presolve!");
@@ -191,31 +194,50 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit)
   if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
   if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
-    const f_t time_ratio_of_probing_cache = diversity_config.time_ratio_of_probing_cache;
-    const f_t max_time_on_probing         = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache =
-      std::min(max_time_on_probing, time_limit * time_ratio_of_probing_cache);
+    const f_t max_time_on_probing = diversity_config.max_time_on_probing;
+    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
     timer_t probing_timer{time_for_probing_cache};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
       compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
     if (problem_is_infeasible) { return false; }
   }
-  if (!presolve_timer.check_time_limit()) {
-    const bool remap_cache_ids = true;
-    trivial_presolve(*problem_ptr, remap_cache_ids);
-    if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-    // May overconstrain if Papilo presolve has been run before
-    if (context.settings.presolver == presolver_t::None) {
-      if (!problem_ptr->empty) {
-        // do the resizing no-matter what, bounds presolve might not change the bounds but initial
-        // trivial presolve might have
-        ls.constraint_prop.bounds_update.resize(*problem_ptr);
-        ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-          *problem_ptr, ls.constraint_prop.bounds_update);
-        if (!check_bounds_sanity(*problem_ptr)) { return false; }
-      }
+  const bool remap_cache_ids = true;
+  if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+  if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
+  if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
+      !problem_ptr->empty) {
+    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
+    timer_t clique_timer(time_limit_for_clique_table);
+    dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+    problem_ptr->get_host_user_problem(host_problem);
+    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+    constexpr bool modify_problem_with_cliques = false;
+    find_initial_cliques(
+      host_problem, context.settings.tolerances, clique_timer, modify_problem_with_cliques);
+    if (modify_problem_with_cliques) {
+      problem_ptr->set_constraints_from_host_user_problem(host_problem);
+      cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
+                   "host lower bound size mismatch");
+      cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
+                   "host upper bound size mismatch");
+      std::vector<i_t> all_var_indices(problem_ptr->n_variables);
+      std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+      problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
+      trivial_presolve(*problem_ptr, remap_cache_ids);
     }
+  }
+  // May overconstrain if Papilo presolve has been run before
+  if (context.settings.presolver == presolver_t::None) {
+    if (!problem_ptr->empty) {
+      // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+      // trivial presolve might have
+      ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
+      ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+        *problem_ptr, ls.constraint_prop.bounds_update);
+    }
+    if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());

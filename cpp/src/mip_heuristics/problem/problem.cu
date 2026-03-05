@@ -1097,6 +1097,7 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
                                              size_t n_variables)
 {
   raft::common::nvtx::range fun_scope("resize_constraints");
+  auto prev_dual_size = lp_state.prev_dual.size();
   coefficients.resize(matrix_size, handle_ptr->get_stream());
   variables.resize(matrix_size, handle_ptr->get_stream());
   reverse_constraints.resize(matrix_size, handle_ptr->get_stream());
@@ -1107,6 +1108,13 @@ void problem_t<i_t, f_t>::resize_constraints(size_t matrix_size,
   combined_bounds.resize(constraint_size, handle_ptr->get_stream());
   offsets.resize(constraint_size + 1, handle_ptr->get_stream());
   reverse_offsets.resize(n_variables + 1, handle_ptr->get_stream());
+  lp_state.prev_dual.resize(constraint_size, handle_ptr->get_stream());
+  if (constraint_size > prev_dual_size) {
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 lp_state.prev_dual.begin() + prev_dual_size,
+                 lp_state.prev_dual.end(),
+                 f_t{0});
+  }
 }
 
 // note that these don't change the reverse structure
@@ -2038,6 +2046,87 @@ void problem_t<i_t, f_t>::preprocess_problem()
 }
 
 template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
+  const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem)
+{
+  raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
+  cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
+  cuopt_assert(user_problem.num_cols == n_variables, "num cols mismatch");
+  n_constraints = user_problem.num_rows;
+  cuopt_assert(user_problem.rhs.size() == static_cast<size_t>(n_constraints), "rhs size mismatch");
+  cuopt_assert(user_problem.row_sense.size() == static_cast<size_t>(n_constraints),
+               "row sense size mismatch");
+  cuopt_assert(user_problem.range_rows.size() == user_problem.range_value.size(),
+               "range rows/value size mismatch");
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, user_problem.A.nnz());
+  user_problem.A.to_compressed_row(csr_A);
+  nnz   = csr_A.row_start[n_constraints];
+  empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
+
+  auto stream = handle_ptr->get_stream();
+  cuopt::device_copy(coefficients, csr_A.x, stream);
+  cuopt::device_copy(variables, csr_A.j, stream);
+  cuopt::device_copy(offsets, csr_A.row_start, stream);
+
+  std::vector<f_t> h_constraint_lower_bounds(n_constraints);
+  std::vector<f_t> h_constraint_upper_bounds(n_constraints);
+  std::vector<f_t> range_value_per_row(n_constraints, f_t{0});
+  std::vector<char> is_range_row(n_constraints, 0);
+  for (size_t idx = 0; idx < user_problem.range_rows.size(); ++idx) {
+    auto row = user_problem.range_rows[idx];
+    cuopt_assert(row >= 0 && row < n_constraints, "range row out of bounds");
+    is_range_row[row]        = 1;
+    range_value_per_row[row] = user_problem.range_value[idx];
+  }
+
+  const auto inf = std::numeric_limits<f_t>::infinity();
+  for (i_t i = 0; i < n_constraints; ++i) {
+    const f_t rhs    = user_problem.rhs[i];
+    const char sense = user_problem.row_sense[i];
+    if (sense == 'E') {
+      h_constraint_lower_bounds[i] = rhs;
+      h_constraint_upper_bounds[i] = rhs;
+      if (is_range_row[i]) { h_constraint_upper_bounds[i] = rhs + range_value_per_row[i]; }
+    } else if (sense == 'G') {
+      h_constraint_lower_bounds[i] = rhs;
+      h_constraint_upper_bounds[i] = inf;
+    } else if (sense == 'L') {
+      h_constraint_lower_bounds[i] = -inf;
+      h_constraint_upper_bounds[i] = rhs;
+    } else {
+      cuopt_assert(false, "Unsupported row sense");
+    }
+  }
+
+  cuopt::device_copy(constraint_lower_bounds, h_constraint_lower_bounds, stream);
+  cuopt::device_copy(constraint_upper_bounds, h_constraint_upper_bounds, stream);
+
+  if (!user_problem.row_names.empty()) {
+    row_names = user_problem.row_names;
+  } else if (row_names.size() != static_cast<size_t>(n_constraints)) {
+    row_names.clear();
+  }
+
+  integer_fixed_problem = nullptr;
+  fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
+  auto prev_dual_size = lp_state.prev_dual.size();
+  lp_state.prev_dual.resize(n_constraints, stream);
+  if (n_constraints > (i_t)prev_dual_size) {
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 lp_state.prev_dual.begin() + prev_dual_size,
+                 lp_state.prev_dual.end(),
+                 f_t{0});
+  }
+  handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(stream);
+
+  compute_transpose_of_problem();
+  combined_bounds.resize(n_constraints, stream);
+  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+}
+
+template <typename i_t, typename f_t>
 bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assignment)
 {
   return presolve_data.pre_process_assignment(*this, assignment);
@@ -2095,7 +2184,6 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(offsets, stream));
 
   csr_A.to_compressed_col(user_problem.A);
-
   user_problem.rhs.resize(m);
   user_problem.row_sense.resize(m);
   user_problem.range_rows.clear();
