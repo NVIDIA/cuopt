@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
@@ -232,7 +232,10 @@ class FleetData(StrictModel):
     vehicle_ids: Optional[List[str]] = Field(
         default=None,
         examples=[["veh-1", "veh-2"]],
-        description=("List of the vehicle ids or names provided as a string."),
+        description=(
+            "List of the vehicle ids or names provided as a string. "
+            "Must be unique; duplicates are not allowed."
+        ),
     )
     capacities: Optional[List[List[int]]] = Field(
         default=None,
