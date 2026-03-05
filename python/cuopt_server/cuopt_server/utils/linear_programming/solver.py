@@ -305,7 +305,7 @@ def solve(
                 sol.get_milp_stats
             )
             pdlpwarmstart_data = get_if_attribute_is_valid_else_none(
-                sol.get_pdlp_warm_start_data()
+                sol.get_pdlp_warm_start_data
             )
             solution["problem_category"] = sol.get_problem_category().name
             solution["primal_solution"] = primal_solution
