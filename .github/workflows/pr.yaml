@@ -279,8 +279,8 @@ jobs:
           - '!gemini-extension.json'
         has_non_lp_mip_changes:
           - '**'
-	  - '!cpp/src/math_optimization/**'
-	  - '!cpp/src/pdlp/**'
+          - '!cpp/src/math_optimization/**'
+          - '!cpp/src/pdlp/**'
           - '!cpp/src/dual_simplex/**'
           - '!cpp/src/cuts/**'
           - '!cpp/src/barrier/**'
