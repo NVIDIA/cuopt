@@ -173,6 +173,8 @@ class csr_matrix_t {
     return true;
   }
 
+  // get constraint range
+  std::pair<i_t, i_t> get_constraint_range(i_t cstr_idx) const;
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
   i_t n;                       // number of cols

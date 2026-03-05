@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
 #include <mip_heuristics/problem/problem.cuh>
 

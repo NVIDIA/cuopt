@@ -239,59 +239,6 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
   }
 
   /**
-   * @brief Convert CPU solution to GPU solution
-   * Copies data from host (std::vector) to device (rmm::device_uvector)
-   */
-  optimization_problem_solution_t<i_t, f_t> to_gpu_solution(
-    rmm::cuda_stream_view stream_view) override
-  {
-    // Create device vectors and copy data from host
-    rmm::device_uvector<f_t> primal_device(primal_solution_.size(), stream_view);
-    rmm::device_uvector<f_t> dual_device(dual_solution_.size(), stream_view);
-    rmm::device_uvector<f_t> reduced_cost_device(reduced_cost_.size(), stream_view);
-
-    if (!primal_solution_.empty()) {
-      raft::copy(
-        primal_device.data(), primal_solution_.data(), primal_solution_.size(), stream_view);
-    }
-    if (!dual_solution_.empty()) {
-      raft::copy(dual_device.data(), dual_solution_.data(), dual_solution_.size(), stream_view);
-    }
-    if (!reduced_cost_.empty()) {
-      raft::copy(
-        reduced_cost_device.data(), reduced_cost_.data(), reduced_cost_.size(), stream_view);
-    }
-
-    using additional_info_t =
-      typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t;
-    std::vector<additional_info_t> termination_stats(1);
-    termination_stats[0].primal_objective      = primal_objective_;
-    termination_stats[0].dual_objective        = dual_objective_;
-    termination_stats[0].solve_time            = solve_time_;
-    termination_stats[0].l2_primal_residual    = l2_primal_residual_;
-    termination_stats[0].l2_dual_residual      = l2_dual_residual_;
-    termination_stats[0].gap                   = gap_;
-    termination_stats[0].number_of_steps_taken = num_iterations_;
-    termination_stats[0].solved_by_pdlp        = solved_by_pdlp_;
-
-    std::vector<pdlp_termination_status_t> termination_status_vec = {termination_status_};
-
-    // Convert CPU warmstart to GPU warmstart
-    auto gpu_warmstart = convert_to_gpu_warmstart(pdlp_warm_start_data_, stream_view);
-
-    // Create GPU solution
-    return optimization_problem_solution_t<i_t, f_t>(primal_device,
-                                                     dual_device,
-                                                     reduced_cost_device,
-                                                     std::move(gpu_warmstart),
-                                                     "",  // objective_name
-                                                     {},  // var_names
-                                                     {},  // row_names
-                                                     std::move(termination_stats),
-                                                     std::move(termination_status_vec));
-  }
-
-  /**
    * @brief Convert to CPU-backed linear_programming_ret_t struct for Python/Cython
    * Populates the cpu_solutions_t variant.  Moves std::vector data with zero-copy.
    */
@@ -413,39 +360,6 @@ class cpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
   i_t get_num_nodes() const override { return num_nodes_; }
 
   i_t get_num_simplex_iterations() const override { return num_simplex_iterations_; }
-
-  /**
-   * @brief Convert CPU solution to GPU solution
-   * Copies data from host (std::vector) to device (rmm::device_uvector)
-   */
-  mip_solution_t<i_t, f_t> to_gpu_solution(rmm::cuda_stream_view stream_view) override
-  {
-    // Create device vector and copy data from host
-    rmm::device_uvector<f_t> solution_device(solution_.size(), stream_view);
-
-    if (!solution_.empty()) {
-      raft::copy(solution_device.data(), solution_.data(), solution_.size(), stream_view);
-    }
-
-    // Create solver stats
-    solver_stats_t<i_t, f_t> stats;
-    stats.total_solve_time       = total_solve_time_;
-    stats.presolve_time          = presolve_time_;
-    stats.solution_bound         = solution_bound_;
-    stats.num_nodes              = num_nodes_;
-    stats.num_simplex_iterations = num_simplex_iterations_;
-
-    // Create GPU solution
-    return mip_solution_t<i_t, f_t>(std::move(solution_device),
-                                    {},  // var_names
-                                    objective_,
-                                    mip_gap_,
-                                    termination_status_,
-                                    max_constraint_violation_,
-                                    max_int_violation_,
-                                    max_variable_bound_violation_,
-                                    stats);
-  }
 
   /**
    * @brief Convert to CPU-backed mip_ret_t struct for Python/Cython

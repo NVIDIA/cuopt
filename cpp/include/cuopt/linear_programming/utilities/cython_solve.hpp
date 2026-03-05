@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>

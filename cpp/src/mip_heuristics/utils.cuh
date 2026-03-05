@@ -339,8 +339,9 @@ static void inline run_device_lambda(const rmm::cuda_stream_view& stream, Func f
 template <typename f_t>
 f_t compute_rel_mip_gap(f_t user_obj, f_t solution_bound)
 {
-  if (user_obj == 0.0) {
-    return solution_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity();
+  if (integer_equal<f_t>(user_obj, 0.0, 1e-6)) {
+    return integer_equal<f_t>(solution_bound, 0.0, 1e-6) ? 0.0
+                                                         : std::numeric_limits<f_t>::infinity();
   }
   return std::abs(user_obj - solution_bound) / std::abs(user_obj);
 }

@@ -7,10 +7,10 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
@@ -147,6 +147,23 @@ template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
+
+// ============================================================================
+// CPU problem overloads (convert to GPU, solve, convert solution back)
+// ============================================================================
+
+template <typename i_t, typename f_t>
+std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
+  bool problem_checking                            = true,
+  bool use_pdlp_solver_mode                        = true,
+  bool is_batch_mode                               = false);
+
+template <typename i_t, typename f_t>
+std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
+  mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
 // ============================================================================
 // New overloads for optimization_problem_interface_t with remote execution

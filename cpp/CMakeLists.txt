@@ -235,7 +235,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
   pslp
   GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-  GIT_TAG "v0.0.4"
+  GIT_TAG "v0.0.8"
   GIT_PROGRESS TRUE
   EXCLUDE_FROM_ALL
   SYSTEM
@@ -543,6 +543,12 @@ endif()
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
+  target_include_directories(solve_MIP
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  )
 
   set_target_properties(solve_MIP
     PROPERTIES
