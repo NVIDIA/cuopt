@@ -63,6 +63,21 @@ enum method_t : int {
   Barrier     = CUOPT_METHOD_BARRIER
 };
 
+/**
+ * @brief Enum representing the PDLP precision modes.
+ *
+ * DefaultPrecision: Use the type of the problem (FP64 for double problems).
+ * SinglePrecision:  Run PDLP internally in FP32, converting inputs and outputs.
+ * DoublePrecision:  Explicitly run in FP64 (same as default for double problems).
+ * MixedPrecision:   Use mixed precision SpMV (FP32 matrix with FP64 vectors/compute).
+ */
+enum pdlp_precision_t : int {
+  DefaultPrecision = CUOPT_PDLP_DEFAULT_PRECISION,
+  SinglePrecision  = CUOPT_PDLP_SINGLE_PRECISION,
+  DoublePrecision  = CUOPT_PDLP_DOUBLE_PRECISION,
+  MixedPrecision   = CUOPT_PDLP_MIXED_PRECISION
+};
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t {
  public:
@@ -239,15 +254,7 @@ class pdlp_solver_settings_t {
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
-  /**
-   * @brief Enable mixed precision SpMV during PDHG iterations (FP64 mode only).
-   *
-   * When true, the constraint matrix A and its transpose are stored in FP32 while
-   * vectors and compute type remain in FP64, reducing memory bandwidth during SpMV.
-   * Convergence checking and restarts always use the full FP64 matrix, so this does
-   * not reduce overall memory usage.  Has no effect in FP32 mode.
-   */
-  bool mixed_precision_spmv{false};
+  pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};

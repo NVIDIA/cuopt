@@ -157,19 +157,16 @@ Batch Mode
 
 Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
 
-FP32 Precision Mode
--------------------
-
-By default, PDLP operates in FP64 (double) precision. Users can switch to FP32 (float) precision for the entire solve. FP32 uses half the memory of FP64 and allows PDHG iterations to be on average twice as fast, but it may require more iterations to converge due to reduced numerical accuracy. FP32 mode is only supported with the PDLP method (not concurrent) and without crossover.
-
-.. note:: The default precision is FP64 (double).
-
-Mixed Precision SpMV
+PDLP Precision Modes
 --------------------
 
-When running PDLP in FP64 mode, users can enable mixed precision sparse matrix-vector products (SpMV) during PDHG iterations. In this mode, the constraint matrix and its transpose are stored in FP32 while vectors and the compute type remain in FP64. This allows SpMV operations to be faster thanks to reduced memory bandwidth requirements, while maintaining FP64 accuracy in the accumulation. This will make PDHG iterations faster while limiting the potential negative impact on convergence (compared to running in FP32 mode). Convergence checking and restart logic always use the full FP64 matrix, so this mode does not reduce memory usage since both the FP32 and FP64 copies of the matrix are kept in memory. Mixed precision SpMV only applies in FP64 mode and has no effect when running in FP32.
+By default, PDLP operates in the native precision of the problem type (FP64 for double-precision problems). The ``pdlp_precision`` parameter provides several modes:
 
-.. note:: The default value is false.
+- **single**: Run PDLP internally in FP32, with automatic conversion of inputs and outputs. FP32 uses half the memory and allows PDHG iterations to be on average twice as fast, but may require more iterations to converge. Compatible with crossover (solution is converted back to FP64 before crossover) and concurrent mode (PDLP runs in FP32 while other solvers run in FP64).
+- **mixed**: Use mixed precision SpMV during PDHG iterations. The constraint matrix is stored in FP32 while vectors and compute type remain in FP64, improving SpMV performance with limited impact on convergence. Convergence checking and restart logic always use the full FP64 matrix.
+- **double**: Explicitly run in FP64 (same as default for double-precision problems).
+
+.. note:: The default precision is the native type of the problem (FP64 for double).
 
 Multi-GPU Mode
 --------------

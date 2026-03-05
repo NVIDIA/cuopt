@@ -560,6 +560,188 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
                                   0);
 }
 
+#if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
+
+struct double_to_float_op {
+  HDI float operator()(double val) const { return static_cast<float>(val); }
+};
+
+struct float_to_double_op {
+  HDI double operator()(float val) const { return static_cast<double>(val); }
+};
+
+template <typename i_t>
+static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
+  detail::problem_t<i_t, double>& problem,
+  pdlp_solver_settings_t<i_t, double> const& settings,
+  const timer_t& timer,
+  bool is_batch_mode)
+{
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running PDLP in FP32 precision");
+  auto stream     = problem.handle_ptr->get_stream();
+  auto stream_val = stream.value();
+
+  auto gpu_double_to_float = [&](const rmm::device_uvector<double>& src) {
+    rmm::device_uvector<float> dst(src.size(), stream);
+    if (src.size() > 0) {
+      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+        src.data(), dst.data(), src.size(), double_to_float_op{}, stream_val));
+    }
+    return dst;
+  };
+
+  auto gpu_float_to_double = [&](const rmm::device_uvector<float>& src) {
+    rmm::device_uvector<double> dst(src.size(), stream);
+    if (src.size() > 0) {
+      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+        src.data(), dst.data(), src.size(), float_to_double_op{}, stream_val));
+    }
+    return dst;
+  };
+
+  // Convert double device vectors to float on the GPU
+  auto f_coefficients = gpu_double_to_float(problem.coefficients);
+  auto f_obj          = gpu_double_to_float(problem.objective_coefficients);
+  auto f_clb          = gpu_double_to_float(problem.constraint_lower_bounds);
+  auto f_cub          = gpu_double_to_float(problem.constraint_upper_bounds);
+
+  // Extract and convert variable bounds from double2 to separate float arrays on GPU
+  i_t n_vars = problem.n_variables;
+  rmm::device_uvector<float> f_var_lb(n_vars, stream);
+  rmm::device_uvector<float> f_var_ub(n_vars, stream);
+  if (n_vars > 0) {
+    auto out_zip = thrust::make_zip_iterator(thrust::make_tuple(f_var_lb.data(), f_var_ub.data()));
+    RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+      problem.variable_bounds.data(),
+      out_zip,
+      n_vars,
+      [] __device__(double2 b) {
+        return thrust::make_tuple(static_cast<float>(b.x), static_cast<float>(b.y));
+      },
+      stream_val));
+  }
+
+  // Build float optimization_problem_t from device pointers
+  optimization_problem_t<i_t, float> float_op(problem.handle_ptr);
+  float_op.set_maximize(problem.maximize);
+  // Should it just be problem.objective_offset?
+  float_op.set_objective_offset(static_cast<float>(problem.presolve_data.objective_offset));
+  float_op.set_objective_scaling_factor(
+    static_cast<float>(problem.presolve_data.objective_scaling_factor));
+  float_op.set_csr_constraint_matrix(f_coefficients.data(),
+                                     static_cast<i_t>(f_coefficients.size()),
+                                     problem.variables.data(),
+                                     static_cast<i_t>(problem.variables.size()),
+                                     problem.offsets.data(),
+                                     static_cast<i_t>(problem.offsets.size()));
+  float_op.set_objective_coefficients(f_obj.data(), static_cast<i_t>(f_obj.size()));
+  float_op.set_constraint_lower_bounds(f_clb.data(), static_cast<i_t>(f_clb.size()));
+  float_op.set_constraint_upper_bounds(f_cub.data(), static_cast<i_t>(f_cub.size()));
+  float_op.set_variable_lower_bounds(f_var_lb.data(), static_cast<i_t>(f_var_lb.size()));
+  float_op.set_variable_upper_bounds(f_var_ub.data(), static_cast<i_t>(f_var_ub.size()));
+
+  float_op.set_variable_names(problem.var_names);
+  float_op.set_row_names(problem.row_names);
+  float_op.set_objective_name(problem.objective_name);
+
+  detail::problem_t<i_t, float> float_problem(float_op);
+
+  auto objective_name = problem.objective_name;
+  auto var_names      = problem.var_names;
+  auto row_names      = problem.row_names;
+  // When crossover is off, free double-precision GPU memory to reduce peak usage.
+  // When crossover is on, run_pdlp needs the problem data after we return.
+  if (!settings.crossover) {
+    {
+      [[maybe_unused]] auto discard = detail::problem_t<i_t, double>(std::move(problem));
+    }
+  }
+
+  // Create float settings from double settings
+  pdlp_solver_settings_t<i_t, float> fs;
+  fs.tolerances.absolute_dual_tolerance =
+    static_cast<float>(settings.tolerances.absolute_dual_tolerance);
+  fs.tolerances.relative_dual_tolerance =
+    static_cast<float>(settings.tolerances.relative_dual_tolerance);
+  fs.tolerances.absolute_primal_tolerance =
+    static_cast<float>(settings.tolerances.absolute_primal_tolerance);
+  fs.tolerances.relative_primal_tolerance =
+    static_cast<float>(settings.tolerances.relative_primal_tolerance);
+  fs.tolerances.absolute_gap_tolerance =
+    static_cast<float>(settings.tolerances.absolute_gap_tolerance);
+  fs.tolerances.relative_gap_tolerance =
+    static_cast<float>(settings.tolerances.relative_gap_tolerance);
+  fs.tolerances.primal_infeasible_tolerance =
+    static_cast<float>(settings.tolerances.primal_infeasible_tolerance);
+  fs.tolerances.dual_infeasible_tolerance =
+    static_cast<float>(settings.tolerances.dual_infeasible_tolerance);
+  fs.detect_infeasibility    = settings.detect_infeasibility;
+  fs.strict_infeasibility    = settings.strict_infeasibility;
+  fs.iteration_limit         = settings.iteration_limit;
+  fs.time_limit              = static_cast<float>(settings.time_limit);
+  fs.pdlp_solver_mode        = settings.pdlp_solver_mode;
+  fs.log_to_console          = settings.log_to_console;
+  fs.log_file                = settings.log_file;
+  fs.per_constraint_residual = settings.per_constraint_residual;
+  fs.save_best_primal_so_far = settings.save_best_primal_so_far;
+  fs.first_primal_feasible   = settings.first_primal_feasible;
+  fs.eliminate_dense_columns = settings.eliminate_dense_columns;
+  fs.pdlp_precision          = pdlp_precision_t::DefaultPrecision;
+  fs.method                  = method_t::PDLP;
+  fs.inside_mip              = settings.inside_mip;
+  fs.hyper_params            = settings.hyper_params;
+  fs.presolver               = settings.presolver;
+  fs.num_gpus                = settings.num_gpus;
+  fs.concurrent_halt         = settings.concurrent_halt;
+
+  detail::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
+  if (settings.inside_mip) { solver.set_inside_mip(true); }
+  auto float_sol = solver.run_solver(timer);
+
+  // Convert float solution back to double on GPU
+  auto dev_primal  = gpu_float_to_double(float_sol.get_primal_solution());
+  auto dev_dual    = gpu_float_to_double(float_sol.get_dual_solution());
+  auto dev_reduced = gpu_float_to_double(float_sol.get_reduced_cost());
+
+  // Convert termination info (small host-side struct, stays on CPU)
+  auto float_term_infos = float_sol.get_additional_termination_informations();
+  using double_term_info_t =
+    typename optimization_problem_solution_t<i_t, double>::additional_termination_information_t;
+  std::vector<double_term_info_t> term_infos;
+  for (auto& fi : float_term_infos) {
+    double_term_info_t di;
+    di.number_of_steps_taken           = fi.number_of_steps_taken;
+    di.total_number_of_attempted_steps = fi.total_number_of_attempted_steps;
+    di.l2_primal_residual              = static_cast<double>(fi.l2_primal_residual);
+    di.l2_relative_primal_residual     = static_cast<double>(fi.l2_relative_primal_residual);
+    di.l2_dual_residual                = static_cast<double>(fi.l2_dual_residual);
+    di.l2_relative_dual_residual       = static_cast<double>(fi.l2_relative_dual_residual);
+    di.primal_objective                = static_cast<double>(fi.primal_objective);
+    di.dual_objective                  = static_cast<double>(fi.dual_objective);
+    di.gap                             = static_cast<double>(fi.gap);
+    di.relative_gap                    = static_cast<double>(fi.relative_gap);
+    di.max_primal_ray_infeasibility    = static_cast<double>(fi.max_primal_ray_infeasibility);
+    di.primal_ray_linear_objective     = static_cast<double>(fi.primal_ray_linear_objective);
+    di.max_dual_ray_infeasibility      = static_cast<double>(fi.max_dual_ray_infeasibility);
+    di.dual_ray_linear_objective       = static_cast<double>(fi.dual_ray_linear_objective);
+    di.solve_time                      = fi.solve_time;
+    di.solved_by_pdlp                  = fi.solved_by_pdlp;
+    term_infos.push_back(di);
+  }
+
+  auto status_vec = float_sol.get_terminations_status();
+
+  return optimization_problem_solution_t<i_t, double>(dev_primal,
+                                                      dev_dual,
+                                                      dev_reduced,
+                                                      objective_name,
+                                                      var_names,
+                                                      row_names,
+                                                      std::move(term_infos),
+                                                      std::move(status_vec));
+}
+#endif
+
 template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   detail::problem_t<i_t, f_t>& problem,
@@ -574,6 +756,13 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
                                                      problem.handle_ptr->get_stream()};
   }
+#if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (settings.pdlp_precision == pdlp_precision_t::SinglePrecision) {
+      return run_pdlp_solver_in_fp32(problem, settings, timer, is_batch_mode);
+    }
+  }
+#endif
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
@@ -586,23 +775,22 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                    bool is_batch_mode)
 {
   if constexpr (!std::is_same_v<f_t, double>) {
-    cuopt_expects(!settings.crossover,
-                  error_type_t::ValidationError,
-                  "PDLP with crossover is not supported for float precision. Set crossover=false "
-                  "or use double precision.");
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
                   "PDLP batch mode is not supported for float precision. Use double precision.");
   }
+  cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::MixedPrecision &&
+                  !detail::is_cusparse_runtime_mixed_precision_supported()),
+                error_type_t::ValidationError,
+                "Mixed-precision SpMV requires cuSPARSE runtime 12.5 or later.");
   cuopt_expects(
-    !(settings.mixed_precision_spmv && !detail::is_cusparse_runtime_mixed_precision_supported()),
+    !(is_batch_mode && settings.pdlp_precision == pdlp_precision_t::MixedPrecision),
     error_type_t::ValidationError,
-    "Mixed-precision SpMV requires cuSPARSE runtime 12.5 or later.");
-  cuopt_expects(
-    !(is_batch_mode && settings.mixed_precision_spmv),
-    error_type_t::ValidationError,
-    "Mixed-precision SpMV is not supported in batch mode. Set mixed_precision_spmv=false "
+    "Mixed-precision SpMV is not supported in batch mode. Set pdlp_precision=0 (default) "
     "or disable batch mode.");
+  cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::SinglePrecision && is_batch_mode),
+                error_type_t::ValidationError,
+                "Single-precision PDLP is not supported in batch mode.");
 
   auto start_solver = std::chrono::high_resolution_clock::now();
   timer_t timer_pdlp(timer.remaining_time());
@@ -1613,7 +1801,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
-#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

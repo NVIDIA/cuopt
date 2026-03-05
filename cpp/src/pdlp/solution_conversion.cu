@@ -13,7 +13,6 @@
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
-#include <mip_heuristics/mip_constants.hpp>
 
 #include <rmm/device_buffer.hpp>
 #include <rmm/device_uvector.hpp>
@@ -135,18 +134,6 @@ cuopt::cython::mip_ret_t gpu_mip_solution_t<i_t, f_t>::to_mip_ret_t()
 // CPU LP Solution Conversion
 // ===========================
 
-namespace {
-template <typename f_t>
-cuopt::cython::cpu_buffer to_cpu_buffer(std::vector<f_t>& src)
-{
-  if constexpr (std::is_same_v<f_t, double>) {
-    return std::move(src);
-  } else {
-    return cuopt::cython::cpu_buffer(src.begin(), src.end());
-  }
-}
-}  // namespace
-
 template <typename i_t, typename f_t>
 cuopt::cython::linear_programming_ret_t
 cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t()
@@ -155,22 +142,22 @@ cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t()
   cuopt::cython::linear_programming_ret_t ret;
 
   cpu_solutions_t cpu;
-  cpu.primal_solution_ = to_cpu_buffer(primal_solution_);
-  cpu.dual_solution_   = to_cpu_buffer(dual_solution_);
-  cpu.reduced_cost_    = to_cpu_buffer(reduced_cost_);
+  cpu.primal_solution_ = std::move(primal_solution_);
+  cpu.dual_solution_   = std::move(dual_solution_);
+  cpu.reduced_cost_    = std::move(reduced_cost_);
 
   if (!pdlp_warm_start_data_.current_primal_solution_.empty()) {
-    cpu.current_primal_solution_ = to_cpu_buffer(pdlp_warm_start_data_.current_primal_solution_);
-    cpu.current_dual_solution_   = to_cpu_buffer(pdlp_warm_start_data_.current_dual_solution_);
-    cpu.initial_primal_average_  = to_cpu_buffer(pdlp_warm_start_data_.initial_primal_average_);
-    cpu.initial_dual_average_    = to_cpu_buffer(pdlp_warm_start_data_.initial_dual_average_);
-    cpu.current_ATY_             = to_cpu_buffer(pdlp_warm_start_data_.current_ATY_);
-    cpu.sum_primal_solutions_    = to_cpu_buffer(pdlp_warm_start_data_.sum_primal_solutions_);
-    cpu.sum_dual_solutions_      = to_cpu_buffer(pdlp_warm_start_data_.sum_dual_solutions_);
+    cpu.current_primal_solution_ = std::move(pdlp_warm_start_data_.current_primal_solution_);
+    cpu.current_dual_solution_   = std::move(pdlp_warm_start_data_.current_dual_solution_);
+    cpu.initial_primal_average_  = std::move(pdlp_warm_start_data_.initial_primal_average_);
+    cpu.initial_dual_average_    = std::move(pdlp_warm_start_data_.initial_dual_average_);
+    cpu.current_ATY_             = std::move(pdlp_warm_start_data_.current_ATY_);
+    cpu.sum_primal_solutions_    = std::move(pdlp_warm_start_data_.sum_primal_solutions_);
+    cpu.sum_dual_solutions_      = std::move(pdlp_warm_start_data_.sum_dual_solutions_);
     cpu.last_restart_duality_gap_primal_solution_ =
-      to_cpu_buffer(pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_);
+      std::move(pdlp_warm_start_data_.last_restart_duality_gap_primal_solution_);
     cpu.last_restart_duality_gap_dual_solution_ =
-      to_cpu_buffer(pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_);
+      std::move(pdlp_warm_start_data_.last_restart_duality_gap_dual_solution_);
 
     ret.initial_primal_weight_         = pdlp_warm_start_data_.initial_primal_weight_;
     ret.initial_step_size_             = pdlp_warm_start_data_.initial_step_size_;
@@ -234,12 +221,5 @@ template cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t(
 template cuopt::cython::linear_programming_ret_t
 cpu_lp_solution_t<int, double>::to_cpu_linear_programming_ret_t();
 template cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
-
-#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template cuopt::cython::linear_programming_ret_t
-gpu_lp_solution_t<int, float>::to_linear_programming_ret_t();
-template cuopt::cython::linear_programming_ret_t
-cpu_lp_solution_t<int, float>::to_cpu_linear_programming_ret_t();
-#endif
 
 }  // namespace cuopt::linear_programming

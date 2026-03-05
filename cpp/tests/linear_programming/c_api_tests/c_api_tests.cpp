@@ -272,6 +272,22 @@ INSTANTIATE_TEST_SUITE_P(c_api,
                            std::make_tuple("/mip/bb_optimality.mps", 8, 60.0, 2)));
 
 // =============================================================================
+// PDLP Precision Tests
+// =============================================================================
+
+TEST(c_api, pdlp_precision_single)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  EXPECT_EQ(test_pdlp_precision_single(filename.c_str(), &termination_status, &objective),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -464.7531, 1e-1);
+}
+
+// =============================================================================
 // Solution Interface Polymorphism Tests
 // =============================================================================
 
