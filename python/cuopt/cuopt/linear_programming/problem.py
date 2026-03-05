@@ -195,6 +195,12 @@ class Variable:
         """
         return self.VariableName
 
+    def __neg__(self):
+        return LinearExpression([self], [-1.0], 0.0)
+
+    def __pos__(self):
+        return self
+
     def __add__(self, other):
         match other:
             case int() | float():
