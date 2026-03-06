@@ -415,7 +415,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   // sort the candidates by reduced cost.
   // smaller reduce cost disturbs dual simplex less
   // less refactors and less iterations after resolve.
-  // it also increases the cut's effectiveness by keeping xstart not disturbed much
+  // it also increases the cut's effectiveness by keeping xstar not disturbed much
   // if it is disturbed too much, the cut might become non-binding
   auto reduced_cost = [&](i_t vertex_idx) -> f_t {
     i_t var_idx = vertex_idx % num_vars;
