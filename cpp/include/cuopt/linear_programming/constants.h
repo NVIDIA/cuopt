@@ -127,10 +127,10 @@
 #define CUOPT_METHOD_BARRIER      3
 
 /* @brief PDLP precision mode constants */
-#define CUOPT_PDLP_DEFAULT_PRECISION 0
-#define CUOPT_PDLP_SINGLE_PRECISION  1
-#define CUOPT_PDLP_DOUBLE_PRECISION  2
-#define CUOPT_PDLP_MIXED_PRECISION   3
+#define CUOPT_PDLP_DEFAULT_PRECISION -1
+#define CUOPT_PDLP_SINGLE_PRECISION  0
+#define CUOPT_PDLP_DOUBLE_PRECISION  1
+#define CUOPT_PDLP_MIXED_PRECISION   2
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0

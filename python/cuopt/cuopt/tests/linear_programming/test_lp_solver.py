@@ -733,7 +733,7 @@ def test_pdlp_precision_single():
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
-    settings.set_parameter(CUOPT_PDLP_PRECISION, 1)  # Single
+    settings.set_parameter(CUOPT_PDLP_PRECISION, 0)  # Single
     settings.set_optimality_tolerance(1e-4)
 
     solution = solver.Solve(data_model_obj, settings)
@@ -744,6 +744,23 @@ def test_pdlp_precision_single():
     )
     assert solution.get_solved_by_pdlp()
 
+def test_pdlp_precision_mixed():
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_parameter(CUOPT_PDLP_PRECISION, 2)  # Mixed
+    settings.set_optimality_tolerance(1e-4)
+
+    solution = solver.Solve(data_model_obj, settings)
+
+    assert solution.get_termination_status() == LPTerminationStatus.Optimal
+    assert solution.get_primal_objective() == pytest.approx(
+        -464.7531, rel=1e-1
+    )
 
 def test_pdlp_precision_single_crossover():
     file_path = (

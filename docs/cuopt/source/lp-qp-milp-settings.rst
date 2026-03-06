@@ -198,14 +198,14 @@ PDLP Precision
 ``CUOPT_PDLP_PRECISION`` controls the precision mode used by the PDLP solver. The following modes are
 available:
 
-- **default** (0): Use the native precision of the problem type (FP64 for double-precision problems).
-- **single** (1): Run PDLP internally in FP32 (float). Inputs are converted from FP64 to FP32 before
+- **default** (-1): Use the native precision of the problem type (FP64 for double-precision problems).
+- **single** (0): Run PDLP internally in FP32 (float). Inputs are converted from FP64 to FP32 before
   solving and outputs are converted back to FP64. FP32 uses half the memory and allows PDHG iterations
   to be on average twice as fast, but may require more iterations to converge due to reduced numerical
   accuracy. Compatible with crossover (solution is converted back to FP64 before crossover runs) and
   concurrent mode (the PDLP leg runs in FP32 while Dual Simplex and Barrier run in FP64).
-- **double** (2): Explicitly run in FP64 (same as default for double-precision problems).
-- **mixed** (3): Use mixed precision sparse matrix-vector products (SpMV) during PDHG iterations. The
+- **double** (1): Explicitly run in FP64 (same as default for double-precision problems).
+- **mixed** (2): Use mixed precision sparse matrix-vector products (SpMV) during PDHG iterations. The
   constraint matrix and its transpose are stored in FP32 while vectors and the compute type remain in
   FP64, improving SpMV performance. Convergence checking and restart logic always use the
   full FP64 matrix, so this mode does not reduce overall memory usage. This provides a middle ground

@@ -294,8 +294,8 @@ int main(int argc, char* argv[])
     .help(
       "PDLP precision mode. default: native type, single: FP32 internally, "
       "double: FP64 explicitly, mixed: mixed-precision SpMV (FP32 matrix, FP64 vectors).")
-    .default_value(std::string("0"))
-    .choices("default", "single", "double", "mixed", "0", "1", "2", "3");
+    .default_value(std::string("-1"))
+    .choices("default", "single", "double", "mixed", "-1", "0", "1", "2");
   arg_name_to_param_name["--pdlp-precision"] = CUOPT_PDLP_PRECISION;
 
   {
@@ -354,7 +354,7 @@ int main(int argc, char* argv[])
 
   // Map symbolic pdlp-precision names to integer values
   static const std::map<std::string, std::string> precision_name_to_value = {
-    {"default", "0"}, {"single", "1"}, {"double", "2"}, {"mixed", "3"}};
+    {"default", "-1"}, {"single", "0"}, {"double", "1"}, {"mixed", "2"}};
 
   // Read everything as a string
   std::map<std::string, std::string> settings_strings;

@@ -60,6 +60,10 @@
 
 namespace cuopt::linear_programming {
 
+template <typename From, typename To>
+extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
+                                        rmm::cuda_stream_view stream);
+
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -562,14 +566,6 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 
 #if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
 
-struct double_to_float_op {
-  HDI float operator()(double val) const { return static_cast<float>(val); }
-};
-
-struct float_to_double_op {
-  HDI double operator()(float val) const { return static_cast<double>(val); }
-};
-
 template <typename i_t>
 static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   detail::problem_t<i_t, double>& problem,
@@ -578,71 +574,13 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   bool is_batch_mode)
 {
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running PDLP in FP32 precision");
-  auto stream     = problem.handle_ptr->get_stream();
-  auto stream_val = stream.value();
+  auto stream = problem.handle_ptr->get_stream();
 
-  auto gpu_double_to_float = [&](const rmm::device_uvector<double>& src) {
-    rmm::device_uvector<float> dst(src.size(), stream);
-    if (src.size() > 0) {
-      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
-        src.data(), dst.data(), src.size(), double_to_float_op{}, stream_val));
-    }
-    return dst;
-  };
-
-  auto gpu_float_to_double = [&](const rmm::device_uvector<float>& src) {
-    rmm::device_uvector<double> dst(src.size(), stream);
-    if (src.size() > 0) {
-      RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
-        src.data(), dst.data(), src.size(), float_to_double_op{}, stream_val));
-    }
-    return dst;
-  };
-
-  // Convert double device vectors to float on the GPU
-  auto f_coefficients = gpu_double_to_float(problem.coefficients);
-  auto f_obj          = gpu_double_to_float(problem.objective_coefficients);
-  auto f_clb          = gpu_double_to_float(problem.constraint_lower_bounds);
-  auto f_cub          = gpu_double_to_float(problem.constraint_upper_bounds);
-
-  // Extract and convert variable bounds from double2 to separate float arrays on GPU
-  i_t n_vars = problem.n_variables;
-  rmm::device_uvector<float> f_var_lb(n_vars, stream);
-  rmm::device_uvector<float> f_var_ub(n_vars, stream);
-  if (n_vars > 0) {
-    auto out_zip = thrust::make_zip_iterator(thrust::make_tuple(f_var_lb.data(), f_var_ub.data()));
-    RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
-      problem.variable_bounds.data(),
-      out_zip,
-      n_vars,
-      [] __device__(double2 b) {
-        return thrust::make_tuple(static_cast<float>(b.x), static_cast<float>(b.y));
-      },
-      stream_val));
-  }
-
-  // Build float optimization_problem_t from device pointers
-  optimization_problem_t<i_t, float> float_op(problem.handle_ptr);
-  float_op.set_maximize(problem.maximize);
-  // Should it just be problem.objective_offset?
+  // Convert the optimization problem stored inside problem_t to float
+  auto float_op = problem.original_problem_ptr->template convert_to_other_prec<float>();
   float_op.set_objective_offset(static_cast<float>(problem.presolve_data.objective_offset));
   float_op.set_objective_scaling_factor(
     static_cast<float>(problem.presolve_data.objective_scaling_factor));
-  float_op.set_csr_constraint_matrix(f_coefficients.data(),
-                                     static_cast<i_t>(f_coefficients.size()),
-                                     problem.variables.data(),
-                                     static_cast<i_t>(problem.variables.size()),
-                                     problem.offsets.data(),
-                                     static_cast<i_t>(problem.offsets.size()));
-  float_op.set_objective_coefficients(f_obj.data(), static_cast<i_t>(f_obj.size()));
-  float_op.set_constraint_lower_bounds(f_clb.data(), static_cast<i_t>(f_clb.size()));
-  float_op.set_constraint_upper_bounds(f_cub.data(), static_cast<i_t>(f_cub.size()));
-  float_op.set_variable_lower_bounds(f_var_lb.data(), static_cast<i_t>(f_var_lb.size()));
-  float_op.set_variable_upper_bounds(f_var_ub.data(), static_cast<i_t>(f_var_ub.size()));
-
-  float_op.set_variable_names(problem.var_names);
-  float_op.set_row_names(problem.row_names);
-  float_op.set_objective_name(problem.objective_name);
 
   detail::problem_t<i_t, float> float_problem(float_op);
 
@@ -698,10 +636,10 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   auto float_sol = solver.run_solver(timer);
 
-  // Convert float solution back to double on GPU
-  auto dev_primal  = gpu_float_to_double(float_sol.get_primal_solution());
-  auto dev_dual    = gpu_float_to_double(float_sol.get_dual_solution());
-  auto dev_reduced = gpu_float_to_double(float_sol.get_reduced_cost());
+  // Convert float solution back to double on GPU (gpu_cast defined in optimization_problem.cu)
+  auto dev_primal  = gpu_cast<float, double>(float_sol.get_primal_solution(), stream);
+  auto dev_dual    = gpu_cast<float, double>(float_sol.get_dual_solution(), stream);
+  auto dev_reduced = gpu_cast<float, double>(float_sol.get_reduced_cost(), stream);
 
   // Convert termination info (small host-side struct, stays on CPU)
   auto float_term_infos = float_sol.get_additional_termination_informations();
@@ -786,7 +724,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
   cuopt_expects(
     !(is_batch_mode && settings.pdlp_precision == pdlp_precision_t::MixedPrecision),
     error_type_t::ValidationError,
-    "Mixed-precision SpMV is not supported in batch mode. Set pdlp_precision=0 (default) "
+    "Mixed-precision SpMV is not supported in batch mode. Set pdlp_precision=-1 (default) "
     "or disable batch mode.");
   cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::SinglePrecision && is_batch_mode),
                 error_type_t::ValidationError,
