@@ -295,7 +295,7 @@ TEST(c_api, pdlp_precision_mixed)
 {
   using namespace cuopt::linear_programming::detail;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
   if (!is_cusparse_runtime_mixed_precision_supported()) {
