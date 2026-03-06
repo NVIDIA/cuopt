@@ -39,8 +39,8 @@
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 
-#include <cub/device/device_transform.cuh>
 #include <cuda_profiler_api.h>
+#include <cub/device/device_transform.cuh>
 
 #include <algorithm>
 #include <cmath>
@@ -1512,8 +1512,7 @@ struct cast_op {
 };
 
 template <typename From, typename To>
-rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
-                                 rmm::cuda_stream_view stream)
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
 {
   rmm::device_uvector<To> dst(src.size(), stream);
   if (src.size() > 0) {

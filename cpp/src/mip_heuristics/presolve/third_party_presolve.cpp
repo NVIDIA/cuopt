@@ -593,9 +593,8 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
     return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
   } else {
-    cuopt_expects(false,
-                  error_type_t::ValidationError,
-                  "PSLP presolver only supports double precision");
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
     return std::nullopt;
   }
 }
@@ -769,9 +768,8 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
     raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
     raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
   } else {
-    cuopt_expects(false,
-                  error_type_t::ValidationError,
-                  "PSLP postsolve only supports double precision");
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
   }
 
   stream_view.synchronize();

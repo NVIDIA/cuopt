@@ -744,6 +744,7 @@ def test_pdlp_precision_single():
     )
     assert solution.get_solved_by_pdlp()
 
+
 def test_pdlp_precision_mixed():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -761,6 +762,7 @@ def test_pdlp_precision_mixed():
     assert solution.get_primal_objective() == pytest.approx(
         -464.7531, rel=1e-1
     )
+
 
 def test_pdlp_precision_single_crossover():
     file_path = (
