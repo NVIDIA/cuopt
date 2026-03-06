@@ -70,12 +70,16 @@ struct deterministic_diving_policy_t;
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  branch_and_bound_t(
-    const user_problem_t<i_t, f_t>& user_problem,
-    const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-    f_t start_time,
-    cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr = nullptr,
-    i_t num_gpus                                                            = 1);
+  /** Build from MIP problem_t (used by mip_heuristics). Implemented in
+   * branch_and_bound_from_mip.cu. */
+  branch_and_bound_t(cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
+                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+                     f_t start_time,
+                     i_t num_gpus = 1);
+  /** Build from user_problem_t (used by dual_simplex/solve.cpp, RINS, sub_mip). */
+  branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
+                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+                     f_t start_time);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -122,6 +126,7 @@ class branch_and_bound_t {
                        std::vector<f_t>& repaired_solution) const;
 
   f_t get_lower_bound();
+  i_t get_num_cols() const { return original_problem_.num_cols; }
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
@@ -146,7 +151,7 @@ class branch_and_bound_t {
   producer_sync_t& get_producer_sync() { return producer_sync_; }
 
  private:
-  const user_problem_t<i_t, f_t>& original_problem_;
+  user_problem_t<i_t, f_t> original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
 
   work_limit_context_t work_unit_context_{"B&B"};

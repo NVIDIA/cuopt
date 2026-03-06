@@ -244,9 +244,7 @@ template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  f_t start_time,
-  cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
-  i_t num_gpus)
+  f_t start_time)
   : original_problem_(user_problem),
     settings_(solver_settings),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
@@ -256,8 +254,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     root_crossover_soln_(1, 1),
     pc_(1),
     solver_status_(mip_status_t::UNSET),
-    mip_problem_ptr_(mip_problem_ptr),
-    pdlp_root_num_gpus_(num_gpus)
+    mip_problem_ptr_(nullptr),
+    pdlp_root_num_gpus_(1)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX

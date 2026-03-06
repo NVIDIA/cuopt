@@ -95,10 +95,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     if (run_sub_mip) {
       // run sub-mip
       namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-      dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
       dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
-      fixed_problem.get_host_user_problem(branch_and_bound_problem);
-      branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
       // Fill in the settings for branch and bound
       branch_and_bound_settings.time_limit = sub_mip_recombiner_config_t::sub_mip_time_limit;
       branch_and_bound_settings.print_presolve_stats = false;
@@ -117,7 +114,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-        branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic());
+        &fixed_problem, branch_and_bound_settings, dual_simplex::tic(), 1);
+      branch_and_bound_solution.resize(branch_and_bound.get_num_cols());
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),

@@ -248,12 +248,9 @@ void rins_t<i_t, f_t>::run_rins()
 
   // run sub-mip
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
   dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
-  fixed_problem.get_host_user_problem(branch_and_bound_problem);
-  branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
   // Fill in the settings for branch and bound
   branch_and_bound_settings.time_limit = time_limit;
   // branch_and_bound_settings.node_limit = 5000 + node_count / 100;  // try harder as time goes
@@ -274,7 +271,8 @@ void rins_t<i_t, f_t>::run_rins()
     rins_solution_queue.push_back(solution);
   };
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-    branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic());
+    &fixed_problem, branch_and_bound_settings, dual_simplex::tic(), 1);
+  branch_and_bound_solution.resize(branch_and_bound.get_num_cols());
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 

@@ -180,13 +180,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
   if (context.problem_ptr->is_objective_integral()) {
     CUOPT_LOG_INFO("Objective function is integral, scale %g",
                    context.problem_ptr->presolve_data.objective_scaling_factor);
   }
-  branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
@@ -194,11 +192,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   bool run_bb = !context.settings.heuristics_only;
   if (run_bb) {
-    // Convert the presolved problem to dual_simplex::user_problem_t
-    op_problem_.get_host_user_problem(branch_and_bound_problem);
-    // Resize the solution now that we know the number of columns/variables
-    branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
-
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
     branch_and_bound_settings.node_limit           = context.settings.node_limit;
@@ -264,17 +257,13 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         };
     }
 
-    // Create the branch and bound object
-    auto* mip_problem_ptr = (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC)
-                              ? context.problem_ptr
-                              : nullptr;
-    i_t num_gpus          = context.settings.num_gpus;
+    // Create the branch and bound object (builds user_problem from context.problem_ptr)
     branch_and_bound =
-      std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(branch_and_bound_problem,
+      std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(context.problem_ptr,
                                                                    branch_and_bound_settings,
                                                                    timer_.get_tic_start(),
-                                                                   mip_problem_ptr,
-                                                                   num_gpus);
+                                                                   context.settings.num_gpus);
+    branch_and_bound_solution.resize(branch_and_bound->get_num_cols());
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;
     branch_and_bound->set_user_bound_callback(
