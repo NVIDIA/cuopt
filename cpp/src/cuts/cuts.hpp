@@ -279,8 +279,7 @@ class cut_generation_t {
                    const std::vector<i_t>& new_slacks,
                    const std::vector<variable_type_t>& var_types,
                    const user_problem_t<i_t, f_t>& user_problem,
-                   std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>>
-                     clique_table = nullptr)
+                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       user_problem_(user_problem),
@@ -339,7 +338,7 @@ class cut_generation_t {
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
-  std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
 };
 
 template <typename i_t, typename f_t>

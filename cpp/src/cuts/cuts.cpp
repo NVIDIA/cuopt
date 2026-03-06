@@ -333,7 +333,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
 
 template <typename i_t, typename f_t>
 void extend_clique_vertices(std::vector<i_t>& clique_vertices,
-                            ::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>& graph,
+                            detail::clique_table_t<i_t, f_t>& graph,
                             const std::vector<f_t>& xstar,
                             const std::vector<f_t>& reduced_costs,
                             i_t num_vars,
@@ -1118,9 +1118,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
 
   if (clique_table_ == nullptr) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts building clique table");
-    ::cuopt::linear_programming::detail::clique_config_t clique_config;
+    detail::clique_config_t clique_config;
     clique_config.min_clique_size = 2;
-    clique_table_ = std::make_shared<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>>(
+    clique_table_                 = std::make_shared<detail::clique_table_t<i_t, f_t>>(
       2 * num_vars, clique_config.min_clique_size, clique_config.max_clique_size_for_extension);
 
     typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
@@ -1134,7 +1134,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     const f_t remaining_time =
       std::max(static_cast<f_t>(0.), settings.time_limit - toc(start_time));
     cuopt::timer_t clique_build_timer(static_cast<double>(remaining_time));
-    ::cuopt::linear_programming::detail::build_clique_table(
+    detail::build_clique_table(
       user_problem_, *clique_table_, tolerances, true, true, clique_build_timer);
     if (clique_build_timer.check_time_limit()) { return true; }
     CLIQUE_CUTS_DEBUG("generate_clique_cuts clique table built first=%lld addtl=%lld",

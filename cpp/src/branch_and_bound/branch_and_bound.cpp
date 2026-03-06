@@ -243,7 +243,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
   f_t start_time,
-  std::shared_ptr<::cuopt::linear_programming::detail::clique_table_t<i_t, f_t>> clique_table)
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table)
   : original_problem_(user_problem),
     settings_(solver_settings),
     clique_table_(std::move(clique_table)),
@@ -2100,19 +2100,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t root_relax_objective = root_objective_;
 
   auto report_cut_gap_closure_metric = [&]() {
-    const auto cut_configuration = classify_cut_configuration(settings_);
-    if (settings_.max_cut_passes <= 0 || cut_configuration == cut_configuration_t::NONE) {
-      settings_.log.printf("Cut gap closure skipped: max_cut_passes=%d cut_configuration=%s\n",
+    const bool cuts_enabled = settings_.clique_cuts != 0 ||
+                              settings_.mixed_integer_gomory_cuts != 0 ||
+                              settings_.strong_chvatal_gomory_cuts != 0 ||
+                              settings_.knapsack_cuts != 0 || settings_.mir_cuts != 0;
+    if (settings_.max_cut_passes <= 0 || !cuts_enabled) {
+      settings_.log.printf("Cut gap closure skipped: max_cut_passes=%d cuts_enabled=%d\n",
                            settings_.max_cut_passes,
-                           cut_configuration_name(cut_configuration));
+                           cuts_enabled ? 1 : 0);
       return;
     }
     const std::string& instance_name_for_lookup = original_problem_.problem_name;
     const std::string normalized_problem_name =
-      ::cuopt::linear_programming::detail::normalize_problem_name(instance_name_for_lookup);
+      detail::normalize_problem_name(instance_name_for_lookup);
     const auto objective_reference =
-      ::cuopt::linear_programming::detail::lookup_known_objective_reference(
-        instance_name_for_lookup);
+      detail::lookup_known_objective_reference(instance_name_for_lookup);
     if (!objective_reference.has_value()) {
       settings_.log.printf(
         "Cut gap closure skipped: no objective reference for instance raw='%s' normalized='%s'\n",
@@ -2128,12 +2130,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                               user_objective_before_cuts,
                               user_objective_after_cuts);
     settings_.log.printf(
-      "Cut gap closure [%s] instance=%s known_%s=%.16e root_before=%.16e root_after=%.16e "
+      "Cut gap closure instance=%s known_%s=%.16e root_before=%.16e root_after=%.16e "
       "gap_before=%.16e gap_after=%.16e gap_closed=%.16e gap_closed_ratio=%.2f%%\n",
-      cut_configuration_name(cut_configuration),
       instance_name_for_lookup.c_str(),
-      ::cuopt::linear_programming::detail::objective_reference_status_name(
-        objective_reference->status),
+      detail::objective_reference_status_name(objective_reference->status),
       static_cast<double>(objective_reference->objective_value),
       static_cast<double>(user_objective_before_cuts),
       static_cast<double>(user_objective_after_cuts),

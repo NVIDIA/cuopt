@@ -352,21 +352,18 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
                                                                                 : "opportunistic");
 
   if (problem_ptr->original_problem_ptr != nullptr) {
-    const auto problem_name = problem_ptr->original_problem_ptr->get_problem_name();
-    const auto normalized_problem_name =
-      ::cuopt::linear_programming::detail::normalize_problem_name(problem_name);
+    const auto problem_name            = problem_ptr->original_problem_ptr->get_problem_name();
+    const auto normalized_problem_name = normalize_problem_name(problem_name);
     CUOPT_LOG_DEBUG("Objective reference lookup raw='%s' normalized='%s'",
                     problem_name.c_str(),
                     normalized_problem_name.c_str());
     if (!problem_name.empty()) {
-      const auto objective_reference =
-        ::cuopt::linear_programming::detail::lookup_known_objective_reference(problem_name);
+      const auto objective_reference = lookup_known_objective_reference(problem_name);
       if (objective_reference.has_value()) {
         CUOPT_LOG_INFO("Known objective reference for %s: %.17g (%s)",
                        problem_name.c_str(),
                        objective_reference->objective_value,
-                       ::cuopt::linear_programming::detail::objective_reference_status_name(
-                         objective_reference->status));
+                       objective_reference_status_name(objective_reference->status));
       } else {
         CUOPT_LOG_DEBUG("No objective reference mapping found for %s", problem_name.c_str());
       }
