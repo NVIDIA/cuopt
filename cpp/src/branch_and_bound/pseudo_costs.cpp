@@ -16,7 +16,7 @@
 
 #include <utilities/copy_helpers.hpp>
 
-#include <raft/common/nvtx.hpp>
+#include <raft/core/nvtx.hpp>
 
 #include <omp.h>
 
