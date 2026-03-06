@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,7 +10,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
 #include <vector>
 

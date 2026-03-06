@@ -22,7 +22,7 @@ container-builder/ @nvidia/cuopt-infra-codeowners
 /.github/.coderabbit_review_guide.md @nvidia/cuopt-infra-codeowners
 /.github/ISSUE_TEMPLATE/             @nvidia/cuopt-infra-codeowners
 /.github/PULL_REQUEST_TEMPLATE.md    @nvidia/cuopt-infra-codeowners
-/.github/skills/                     @nvidia/cuopt-infra-codeowners
+/skills/                             @nvidia/cuopt-infra-codeowners
 /.github/agents-legacy/              @nvidia/cuopt-infra-codeowners
 
 #packaging code owners
