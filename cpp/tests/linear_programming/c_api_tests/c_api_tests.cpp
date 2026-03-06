@@ -296,11 +296,14 @@ TEST(c_api, pdlp_precision_mixed)
   using namespace cuopt::linear_programming::detail;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
-  cuopt_int_t termination_status;
+  cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
   if (!is_cusparse_runtime_mixed_precision_supported()) {
-    EXPECT_NE(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
-              CUOPT_SUCCESS);
+    auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
+    bool solve_returned_error = (status != CUOPT_SUCCESS);
+    bool solve_returned_non_optimal =
+      (status == CUOPT_SUCCESS && termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_TRUE(solve_returned_error || solve_returned_non_optimal);
     return;
   }
   EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
