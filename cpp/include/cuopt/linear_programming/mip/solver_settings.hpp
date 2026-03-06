@@ -90,11 +90,11 @@ class mip_solver_settings_t {
   i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
   i_t max_cut_passes            = 10;  // number of cut passes to make
-  i_t mir_cuts                  = 0;
-  i_t mixed_integer_gomory_cuts = 0;
-  i_t knapsack_cuts             = 0;
+  i_t mir_cuts                  = -1;
+  i_t mixed_integer_gomory_cuts = -1;
+  i_t knapsack_cuts             = -1;
   i_t clique_cuts               = -1;
-  i_t strong_chvatal_gomory_cuts      = 0;
+  i_t strong_chvatal_gomory_cuts      = -1;
   i_t reduced_cost_strengthening      = -1;
   f_t cut_change_threshold            = 1e-3;
   f_t cut_min_orthogonality           = 0.5;
