@@ -1532,7 +1532,6 @@ template <typename other_f_t>
 optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
   rmm::cuda_stream_view stream) const
 {
-
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
   other.set_maximize(maximize_);
@@ -1604,7 +1603,8 @@ template class optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template optimization_problem_t<int32_t, float>
-optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(rmm::cuda_stream_view) const;
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
+    rmm::cuda_stream_view) const;
 #endif
 
 }  // namespace cuopt::linear_programming
