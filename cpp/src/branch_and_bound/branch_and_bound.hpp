@@ -35,6 +35,10 @@
 #include <functional>
 #include <vector>
 
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+class problem_t;
+}
 namespace cuopt::linear_programming::dual_simplex {
 
 enum class mip_status_t {
@@ -66,9 +70,12 @@ struct deterministic_diving_policy_t;
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time);
+  branch_and_bound_t(
+    const user_problem_t<i_t, f_t>& user_problem,
+    const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+    f_t start_time,
+    cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr = nullptr,
+    i_t num_gpus                                                            = 1);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -193,6 +200,8 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   bool is_root_solution_set{false};
+  cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr_{nullptr};
+  i_t pdlp_root_num_gpus_{1};
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;

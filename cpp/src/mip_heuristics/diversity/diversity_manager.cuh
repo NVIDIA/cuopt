@@ -21,11 +21,16 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 
+#include <dual_simplex/types.hpp>
+
 #include <mip_heuristics/diversity/lns/rins.cuh>
 #include <mip_heuristics/local_search/local_search.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
 #include <utilities/timer.hpp>
+
+#include <condition_variable>
+#include <mutex>
 
 namespace cuopt::linear_programming::detail {
 
@@ -70,6 +75,11 @@ class diversity_manager_t {
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
 
+  // Called by B&B when first LP solution is available (PDLP/Barrier or dual simplex).
+  void on_first_lp_solution(
+    cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<i_t, f_t> const&
+      result);
+
   mip_solver_context_t<i_t, f_t>& context;
   dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
@@ -96,6 +106,11 @@ class diversity_manager_t {
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
   std::atomic<int> global_concurrent_halt{0};
+
+  // First solution from B&B: wait for B&B to call on_first_lp_solution when run_bb and concurrent
+  std::mutex first_solution_mutex_;
+  std::condition_variable first_solution_cv_;
+  std::atomic<bool> first_solution_ready_{false};
 
   rins_t<i_t, f_t> rins;
 

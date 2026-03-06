@@ -9,6 +9,8 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
 
+#include <mip_heuristics/root_lp.cuh>
+
 #include <cuts/cuts.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
@@ -28,6 +30,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -241,7 +244,9 @@ template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  f_t start_time)
+  f_t start_time,
+  cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
+  i_t num_gpus)
   : original_problem_(user_problem),
     settings_(solver_settings),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
@@ -250,7 +255,9 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     root_relax_soln_(1, 1),
     root_crossover_soln_(1, 1),
     pc_(1),
-    solver_status_(mip_status_t::UNSET)
+    solver_status_(mip_status_t::UNSET),
+    mip_problem_ptr_(mip_problem_ptr),
+    pdlp_root_num_gpus_(num_gpus)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX
@@ -1811,15 +1818,65 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                   std::ref(root_vstatus),
                                   std::ref(edge_norms),
                                   nullptr);
-  // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
-  // to finish
-  while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
-         *get_root_concurrent_halt() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    continue;
+
+  std::optional<std::future<root_relaxation_first_solution_t<i_t, f_t>>> pdlp_future_opt;
+  if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
+    root_crossover_solution_set_.store(false, std::memory_order_release);
+    pdlp_future_opt =
+      std::async(std::launch::async,
+                 &cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>,
+                 mip_problem_ptr_,
+                 lp_settings.time_limit,
+                 get_root_concurrent_halt(),
+                 pdlp_root_num_gpus_);
   }
 
-  if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
+  // Wait for first completion: PDLP/Barrier future, dual simplex future, or legacy callback
+  while (*get_root_concurrent_halt() == 0) {
+    bool pdlp_ready =
+      pdlp_future_opt && pdlp_future_opt->valid() &&
+      pdlp_future_opt->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
+    bool ds_ready =
+      root_status_future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
+    if (root_crossover_solution_set_.load(std::memory_order_acquire) || pdlp_ready || ds_ready) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  bool use_pdlp_path = false;
+  if (pdlp_future_opt && pdlp_future_opt->valid() &&
+      pdlp_future_opt->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+    auto result                         = pdlp_future_opt->get();
+    root_crossover_soln_.x              = result.primal;
+    root_crossover_soln_.y              = result.dual;
+    root_crossover_soln_.z              = result.reduced_costs;
+    root_crossover_soln_.objective      = result.objective;
+    root_crossover_soln_.user_objective = result.user_objective;
+    root_crossover_soln_.iterations     = result.iterations;
+    root_objective_                     = result.objective;
+    root_crossover_solution_set_.store(true, std::memory_order_release);
+    if (lp_settings.on_first_lp_solution_available) {
+      lp_settings.on_first_lp_solution_available(result);
+    }
+    use_pdlp_path = true;
+  }
+
+  if (!use_pdlp_path && root_crossover_solution_set_.load(std::memory_order_acquire)) {
+    // Legacy path: set_root_relaxation_solution was invoked
+    root_relaxation_first_solution_t<i_t, f_t> legacy_result;
+    legacy_result.primal         = root_crossover_soln_.x;
+    legacy_result.dual           = root_crossover_soln_.y;
+    legacy_result.reduced_costs  = root_crossover_soln_.z;
+    legacy_result.objective      = root_crossover_soln_.objective;
+    legacy_result.user_objective = root_crossover_soln_.user_objective;
+    legacy_result.iterations     = root_crossover_soln_.iterations;
+    if (lp_settings.on_first_lp_solution_available) {
+      lp_settings.on_first_lp_solution_available(legacy_result);
+    }
+  }
+
+  if (use_pdlp_path || root_crossover_solution_set_.load(std::memory_order_acquire)) {
     // Crush the root relaxation solution on converted user problem
     std::vector<f_t> crushed_root_x;
     crush_primal_solution(
@@ -1909,9 +1966,19 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       solver_name    = "Dual Simplex";
     }
   } else {
-    root_status    = root_status_future.get();
-    user_objective = root_relax_soln_.user_objective;
-    iter           = root_relax_soln_.iterations;
+    root_status = root_status_future.get();
+    root_relaxation_first_solution_t<i_t, f_t> ds_result;
+    ds_result.primal         = root_relax_soln.x;
+    ds_result.dual           = root_relax_soln.y;
+    ds_result.reduced_costs  = root_relax_soln.z;
+    ds_result.objective      = root_relax_soln.objective;
+    ds_result.user_objective = root_relax_soln.user_objective;
+    ds_result.iterations     = root_relax_soln.iterations;
+    if (lp_settings.on_first_lp_solution_available) {
+      lp_settings.on_first_lp_solution_available(ds_result);
+    }
+    user_objective = root_relax_soln.user_objective;
+    iter           = root_relax_soln.iterations;
     solver_name    = "Dual Simplex";
   }
 

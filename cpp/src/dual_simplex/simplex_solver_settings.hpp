@@ -202,6 +202,9 @@ struct simplex_solver_settings_t {
   std::function<void(const std::vector<f_t>&, f_t)> node_processed_callback;
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
+  // Called by B&B when first LP solution is available (PDLP/Barrier or dual simplex).
+  std::function<void(root_relaxation_first_solution_t<i_t, f_t> const&)>
+    on_first_lp_solution_available;
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt

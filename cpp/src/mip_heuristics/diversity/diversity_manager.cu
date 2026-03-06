@@ -409,7 +409,16 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   bool bb_thread_solution_exists = simplex_solution_exists.load();
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
+  } else if (branch_and_bound_ptr != nullptr &&
+             branch_and_bound_ptr->enable_concurrent_lp_root_solve()) {
+    // B&B drives root relaxation; wait for first solution (PDLP/Barrier or dual simplex)
+    first_solution_ready_.store(false, std::memory_order_release);
+    std::unique_lock<std::mutex> lock(first_solution_mutex_);
+    first_solution_cv_.wait(lock, [this]() { return first_solution_ready_.load(); });
+    lock.unlock();
+    clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
   } else if (!fj_only_run) {
+    // Heuristics-only or non-concurrent: diversity manager runs LP solve
     convert_greater_to_less(*problem_ptr);
 
     f_t tolerance_divisor =
@@ -479,38 +488,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
         "Initial LP run exceeded time limit, continuing solver with partial LP result!");
       // note to developer, in debug mode the LP run might be too slow and it might cause PDLP not
       // to bring variables within the bounds
-    }
-
-    // Send PDLP relaxed solution to branch and bound
-    if (problem_ptr->set_root_relaxation_solution_callback != nullptr) {
-      auto& d_primal_solution = lp_result.get_primal_solution();
-      auto& d_dual_solution   = lp_result.get_dual_solution();
-      auto& d_reduced_costs   = lp_result.get_reduced_cost();
-
-      std::vector<f_t> host_primal(d_primal_solution.size());
-      std::vector<f_t> host_dual(d_dual_solution.size());
-      std::vector<f_t> host_reduced_costs(d_reduced_costs.size());
-      raft::copy(host_primal.data(),
-                 d_primal_solution.data(),
-                 d_primal_solution.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      raft::copy(host_dual.data(),
-                 d_dual_solution.data(),
-                 d_dual_solution.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      raft::copy(host_reduced_costs.data(),
-                 d_reduced_costs.data(),
-                 d_reduced_costs.size(),
-                 problem_ptr->handle_ptr->get_stream());
-      problem_ptr->handle_ptr->sync_stream();
-
-      // PDLP returns user-space objective (it applies objective_scaling_factor internally)
-      auto user_obj   = lp_result.get_objective_value();
-      auto solver_obj = problem_ptr->get_solver_obj_from_user_obj(user_obj);
-      auto iterations = lp_result.get_additional_termination_information().number_of_steps_taken;
-      // Set for the B&B (param4 expects solver space, param5 expects user space)
-      problem_ptr->set_root_relaxation_solution_callback(
-        host_primal, host_dual, host_reduced_costs, solver_obj, user_obj, iterations);
     }
 
     // in case the pdlp returned var boudns that are out of bounds
@@ -849,6 +826,35 @@ std::pair<solution_t<i_t, f_t>, bool> diversity_manager_t<i_t, f_t>::recombine(
   }
   CUOPT_LOG_ERROR("Invalid or unhandled recombiner type: %d", recombiner);
   return std::make_pair(solution_t<i_t, f_t>(a), false);
+}
+
+template <typename i_t, typename f_t>
+void diversity_manager_t<i_t, f_t>::on_first_lp_solution(
+  cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<i_t, f_t> const& result)
+{
+  {
+    std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
+    cuopt_assert(result.primal.size() == lp_optimal_solution.size(),
+                 "First LP solution primal size mismatch");
+    cuopt_assert(result.dual.size() == lp_dual_optimal_solution.size(),
+                 "First LP solution dual size mismatch");
+    raft::copy(lp_optimal_solution.data(),
+               result.primal.data(),
+               result.primal.size(),
+               problem_ptr->handle_ptr->get_stream());
+    raft::copy(lp_dual_optimal_solution.data(),
+               result.dual.data(),
+               result.dual.size(),
+               problem_ptr->handle_ptr->get_stream());
+    problem_ptr->handle_ptr->sync_stream();
+    ls.lp_optimal_exists = true;
+    set_new_user_bound(result.user_objective);
+  }
+  {
+    std::lock_guard<std::mutex> lock(first_solution_mutex_);
+    first_solution_ready_.store(true, std::memory_order_release);
+    first_solution_cv_.notify_all();
+  }
 }
 
 template <typename i_t, typename f_t>

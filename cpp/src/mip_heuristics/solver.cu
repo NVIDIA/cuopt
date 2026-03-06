@@ -257,17 +257,29 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                   &solution_helper,
                   std::placeholders::_1,
                   std::placeholders::_2);
+
+      branch_and_bound_settings.on_first_lp_solution_available =
+        [&dm](dual_simplex::root_relaxation_first_solution_t<i_t, f_t> const& result) {
+          dm.on_first_lp_solution(result);
+        };
     }
 
     // Create the branch and bound object
-    branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem, branch_and_bound_settings, timer_.get_tic_start());
+    auto* mip_problem_ptr = (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC)
+                              ? context.problem_ptr
+                              : nullptr;
+    i_t num_gpus          = context.settings.num_gpus;
+    branch_and_bound =
+      std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(branch_and_bound_problem,
+                                                                   branch_and_bound_settings,
+                                                                   timer_.get_tic_start(),
+                                                                   mip_problem_ptr,
+                                                                   num_gpus);
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;
     branch_and_bound->set_user_bound_callback(
       [stats_ptr](f_t user_bound) { stats_ptr->set_solution_bound(user_bound); });
 
-    // Set the primal heuristics -> branch and bound callback
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
