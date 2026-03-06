@@ -8,7 +8,6 @@
 #include "cuda_profiler_api.h"
 #include "diversity_manager.cuh"
 
-#include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
@@ -25,17 +24,6 @@
 constexpr bool fj_only_run = false;
 
 namespace cuopt::linear_programming::detail {
-
-const char* env_cut_configuration_name(env_cut_configuration_t config)
-{
-  switch (config) {
-    case env_cut_configuration_t::WITHOUT_CLIQUE: return "cuts_without_clique";
-    case env_cut_configuration_t::WITH_CLIQUE: return "cuts_with_clique";
-    case env_cut_configuration_t::CLIQUE_ONLY: return "clique_only";
-    case env_cut_configuration_t::NONE: return "default";
-    default: return "unknown";
-  }
-}
 
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
@@ -92,6 +80,7 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     ls_hash_map(*context.problem_ptr)
 {
   int max_config             = -1;
+  int env_config_id          = -1;
   const char* env_max_config = std::getenv("CUOPT_MAX_CONFIG");
   if (env_max_config != nullptr) {
     try {
@@ -117,52 +106,6 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
       "CUOPT_CONFIG_ID=%d is outside [0, %d). Ignoring cut override.", env_config_id, max_config);
     return;
   }
-
-  switch (env_config_id) {
-    case 0: env_cut_configuration = env_cut_configuration_t::WITHOUT_CLIQUE; break;
-    case 1: env_cut_configuration = env_cut_configuration_t::WITH_CLIQUE; break;
-    case 2: env_cut_configuration = env_cut_configuration_t::CLIQUE_ONLY; break;
-    default:
-      CUOPT_LOG_WARN(
-        "Unsupported CUOPT_CONFIG_ID=%d for cut configuration. "
-        "Expected 0 (without clique), 1 (with clique), or 2 (clique only).",
-        env_config_id);
-      env_cut_configuration = env_cut_configuration_t::NONE;
-      return;
-  }
-
-  CUOPT_LOG_INFO("Using cut configuration from CUOPT_CONFIG_ID=%d (%s)",
-                 env_config_id,
-                 env_cut_configuration_name(env_cut_configuration));
-}
-
-template <typename i_t, typename f_t>
-void diversity_manager_t<i_t, f_t>::apply_cut_configuration_from_env(
-  dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings) const
-{
-  if (env_cut_configuration == env_cut_configuration_t::NONE) { return; }
-  switch (env_cut_configuration) {
-    case env_cut_configuration_t::WITHOUT_CLIQUE: settings.clique_cuts = 0; break;
-    case env_cut_configuration_t::WITH_CLIQUE: settings.clique_cuts = 1; break;
-    case env_cut_configuration_t::CLIQUE_ONLY:
-      settings.clique_cuts                = 1;
-      settings.mixed_integer_gomory_cuts  = 0;
-      settings.mir_cuts                   = 0;
-      settings.knapsack_cuts              = 0;
-      settings.strong_chvatal_gomory_cuts = 0;
-      break;
-    default: break;
-  }
-  settings.log.printf(
-    "Applied cut configuration from CUOPT_CONFIG_ID=%d (%s): mir=%d gomory=%d knapsack=%d "
-    "strong_cg=%d clique=%d\n",
-    env_config_id,
-    env_cut_configuration_name(env_cut_configuration),
-    settings.mir_cuts,
-    settings.mixed_integer_gomory_cuts,
-    settings.knapsack_cuts,
-    settings.strong_chvatal_gomory_cuts,
-    settings.clique_cuts);
 }
 
 // this function is to specialize the local search with config from diversity manager
@@ -256,7 +199,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
     const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
+    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit * 0.9);
     timer_t probing_timer{time_for_probing_cache};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =
@@ -270,7 +213,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       !problem_ptr->empty) {
     // TODO this is just CPU time and blocking the GPU time.
     // execute this in parallel with something else.
-    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
+    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time());
     // if it is deterministic run until the end
     if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
       time_limit_for_clique_table = std::numeric_limits<f_t>::infinity();
@@ -284,7 +227,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     find_initial_cliques(host_problem,
                          context.settings.tolerances,
                          clique_table_ptr,
-                         presolve_timer,
+                         clique_timer,
                          modify_problem_with_cliques);
     if (modify_problem_with_cliques) {
       problem_ptr->set_constraints_from_host_user_problem(host_problem);

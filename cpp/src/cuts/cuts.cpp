@@ -1246,14 +1246,13 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     kept_adj_entries += adj.size();
 #ifdef ASSERT_MODE
     {
-      std::unordered_set<i_t> adj_check;
-      adj_check.reserve(adj.size());
+      std::unordered_set<i_t> adj_global;
+      adj_global.reserve(adj.size());
       for (const auto neighbor : adj) {
-        cuopt_assert(adj_check.insert(neighbor).second, "Duplicate neighbor in adjacency list");
-        // Make sure no complementing variable is present in the adjacency list
-        // Given convention: if variable is j, its complement is j + num_vars (and vice versa)
-        i_t complement = (neighbor >= num_vars) ? (neighbor - num_vars) : (neighbor + num_vars);
-        cuopt_assert(adj_check.find(complement) == adj_check.end(),
+        i_t v = vertices[neighbor];
+        cuopt_assert(adj_global.insert(v).second, "Duplicate neighbor in adjacency list");
+        i_t complement = (v >= num_vars) ? (v - num_vars) : (v + num_vars);
+        cuopt_assert(adj_global.find(complement) == adj_global.end(),
                      "Adjacency list contains complementing variable");
       }
     }

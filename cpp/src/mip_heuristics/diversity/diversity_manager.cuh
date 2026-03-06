@@ -29,21 +29,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming::dual_simplex {
-template <typename i_t, typename f_t>
-struct simplex_solver_settings_t;
-}
-
 namespace cuopt::linear_programming::detail {
-
-enum class env_cut_configuration_t : int8_t {
-  NONE           = -1,
-  WITHOUT_CLIQUE = 0,
-  WITH_CLIQUE    = 1,
-  CLIQUE_ONLY    = 2,
-};
-
-const char* env_cut_configuration_name(env_cut_configuration_t config);
 
 template <typename i_t, typename f_t>
 class diversity_manager_t {
@@ -85,9 +71,6 @@ class diversity_manager_t {
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
-  void apply_cut_configuration_from_env(
-    dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings) const;
-
   mip_solver_context_t<i_t, f_t>& context;
   dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
@@ -121,8 +104,6 @@ class diversity_manager_t {
   bool run_only_bp_recombiner{false};
   bool run_only_fp_recombiner{false};
   bool run_only_sub_mip_recombiner{false};
-  env_cut_configuration_t env_cut_configuration{env_cut_configuration_t::NONE};
-  int env_config_id{-1};
 };
 
 }  // namespace cuopt::linear_programming::detail
