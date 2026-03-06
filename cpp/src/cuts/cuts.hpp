@@ -39,28 +39,6 @@ enum cut_type_t : int8_t {
   MAX_CUT_TYPE           = 5
 };
 
-enum class cut_configuration_t : int8_t {
-  NONE           = 0,
-  WITHOUT_CLIQUE = 1,
-  WITH_CLIQUE    = 2,
-  CLIQUE_ONLY    = 3,
-};
-
-template <typename i_t, typename f_t>
-cut_configuration_t classify_cut_configuration(const simplex_solver_settings_t<i_t, f_t>& settings)
-{
-  const bool clique_enabled     = settings.clique_cuts != 0;
-  const bool non_clique_enabled = settings.mixed_integer_gomory_cuts != 0 ||
-                                  settings.strong_chvatal_gomory_cuts != 0 ||
-                                  settings.knapsack_cuts != 0 || settings.mir_cuts != 0;
-  if (clique_enabled && non_clique_enabled) { return cut_configuration_t::WITH_CLIQUE; }
-  if (clique_enabled) { return cut_configuration_t::CLIQUE_ONLY; }
-  if (non_clique_enabled) { return cut_configuration_t::WITHOUT_CLIQUE; }
-  return cut_configuration_t::NONE;
-}
-
-const char* cut_configuration_name(cut_configuration_t cut_configuration);
-
 template <typename f_t>
 struct cut_gap_closure_t {
   f_t initial_gap{0.0};

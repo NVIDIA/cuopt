@@ -21,17 +21,6 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-const char* cut_configuration_name(cut_configuration_t cut_configuration)
-{
-  switch (cut_configuration) {
-    case cut_configuration_t::WITHOUT_CLIQUE: return "cuts_without_clique";
-    case cut_configuration_t::WITH_CLIQUE: return "cuts_with_clique";
-    case cut_configuration_t::CLIQUE_ONLY: return "clique_only";
-    case cut_configuration_t::NONE: return "no_cuts_enabled";
-    default: return "unknown";
-  }
-}
-
 namespace {
 
 #define DEBUG_CLIQUE_CUTS 0
@@ -70,11 +59,9 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   const f_t clique_size = static_cast<f_t>(clique_vertices.size());
   CLIQUE_CUTS_DEBUG("build_clique_cut start clique_size=%lld",
                     static_cast<long long>(clique_vertices.size()));
-  // Coarse function-level estimate:
-  // validate/transform vertices + duplicate checks + cut construction + sort + violation check
-  if (add_work_estimate(16.0 * clique_size + 4.0 * clique_size * std::log2(clique_size + 1.0),
-                        work_estimate,
-                        max_work_estimate)) {
+  const f_t sort_work = clique_size > 0.0 ? 2.0 * clique_size * std::log2(clique_size + 1.0) : 0.0;
+  const f_t estimated_work = 11.0 * clique_size + sort_work;
+  if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("build_clique_cut skip work_limit clique_size=%lld work=%g limit=%g",
                       static_cast<long long>(clique_vertices.size()),
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
@@ -250,8 +237,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     ctx.call_limit_reached = true;
     return;
   }
-  // Coarse recursive cost: touch call state + frontiers + weight bookkeeping
-  if (ctx.add_work(static_cast<f_t>(6 * ctx.words + R.size() + 4))) { return; }
+  if (ctx.add_work(static_cast<f_t>(2 * ctx.words + R.size()))) { return; }
 
   // if P and X are empty, we are at maximal clique
   if (!bitset_any(P) && !bitset_any(X)) {
@@ -298,8 +284,8 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
       }
     }
   }
-  // Coarse cost of pivot scan: for each visited vertex, scan one adjacency row over all words.
-  ctx.add_work(static_cast<f_t>(pivot_vertices_examined) * static_cast<f_t>(2 * ctx.words + 4));
+  ctx.add_work(static_cast<f_t>(2 * ctx.words) +
+               static_cast<f_t>(pivot_vertices_examined) * static_cast<f_t>(2 * ctx.words));
 
   std::vector<i_t> candidates;
   candidates.reserve(ctx.weights.size());
@@ -315,10 +301,8 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     }
   }
   const i_t num_candidates = static_cast<i_t>(candidates.size());
-  // Coarse cost of candidate extraction from P \ N(pivot)
-  ctx.add_work(static_cast<f_t>(ctx.words + 3 * num_candidates));
-  // Coarse cost for all branch setups in this recursion frame.
-  ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(4 * ctx.words + 8));
+  ctx.add_work(static_cast<f_t>(2 * ctx.words + num_candidates));
+  ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(7 * ctx.words + 6));
   // note that candidates will include pivot if it is in P
   for (auto v : candidates) {
     if (ctx.over_call_limit()) {
@@ -399,12 +383,10 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
     static_cast<long long>(candidates.size()));
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
-    candidate_size > 0.0 ? 6.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
-  // Coarse function-level estimate:
-  // degree scan + candidate filtering + sort + extension checks
-  const f_t estimated_extension_work =
-    2.0 * initial_clique_size + 4.0 * static_cast<f_t>(adj_set.size()) + sort_work +
-    2.0 * candidate_size * initial_clique_size + 2.0 * candidate_size;
+    candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
+  const f_t estimated_extension_work = 2.0 * initial_clique_size +
+                                       3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
+                                       candidate_size * initial_clique_size + 2.0 * candidate_size;
   if (add_work_estimate(estimated_extension_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
@@ -443,16 +425,15 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
       clique_members.insert(candidate);
     }
   }
-#if DEBUG_CLIQUE_CUTS
   CLIQUE_CUTS_DEBUG("extend_clique_vertices done start=%lld final=%lld added=%lld",
                     static_cast<long long>(initial_clique_vertices),
                     static_cast<long long>(clique_vertices.size()),
                     static_cast<long long>(clique_vertices.size() - initial_clique_vertices));
-#endif
 }
 
 }  // namespace
 
+// This function is only used in tests
 std::vector<std::vector<int>> find_maximal_cliques_for_test(
   const std::vector<std::vector<int>>& adjacency_list,
   const std::vector<double>& weights,
@@ -1218,8 +1199,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   std::vector<char> in_subgraph(2 * num_vars, 0);
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     if (toc(start_time) >= settings.time_limit) { return true; }
-    vertex_to_local[vertices[idx]] = static_cast<i_t>(idx);
-    in_subgraph[vertices[idx]]     = 1;
+    const i_t vertex_idx        = vertices[idx];
+    vertex_to_local[vertex_idx] = static_cast<i_t>(idx);
+    in_subgraph[vertex_idx]     = 1;
   }
   work_estimate += 3.0 * static_cast<f_t>(vertices.size());
   if (work_estimate > max_work_estimate) { return true; }
@@ -1329,7 +1311,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     for (auto local_idx : clique_local) {
       clique_vertices.push_back(vertices[local_idx]);
     }
-    work_estimate += 3.0 * static_cast<f_t>(clique_local.size()) + 1.0;
+    work_estimate += 3.0 * static_cast<f_t>(clique_local.size());
     if (work_estimate > max_work_estimate) { return true; }
 #if DEBUG_CLIQUE_CUTS
     const size_t size_before_extension = clique_vertices.size();
