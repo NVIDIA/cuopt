@@ -14,10 +14,13 @@
 
 #include <cuopt/linear_programming/cuopt_c.h>
 #include <pdlp/cuopt_c_internal.hpp>
-#include <pdlp/cusparse_view.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
+
+namespace cuopt::linear_programming::detail {
+bool is_cusparse_runtime_mixed_precision_supported();
+}
 
 #include <gtest/gtest.h>
 
