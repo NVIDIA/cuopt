@@ -318,7 +318,7 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
    * @tparam other_f_t  Target floating-point type (e.g. float when this is double)
    */
   template <typename other_f_t>
-  optimization_problem_t<i_t, other_f_t> convert_to_other_prec() const;
+  optimization_problem_t<i_t, other_f_t> convert_to_other_prec(rmm::cuda_stream_view stream) const;
 
   /**
    * @brief Returns nullptr since this is already a GPU problem.

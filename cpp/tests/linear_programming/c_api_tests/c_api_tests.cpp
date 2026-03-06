@@ -14,6 +14,7 @@
 
 #include <cuopt/linear_programming/cuopt_c.h>
 #include <pdlp/cuopt_c_internal.hpp>
+#include <pdlp/cusparse_view.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
@@ -289,10 +290,16 @@ TEST(c_api, pdlp_precision_single)
 
 TEST(c_api, pdlp_precision_mixed)
 {
+  using namespace cuopt::linear_programming::detail;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status;
   cuopt_float_t objective;
+  if (!is_cusparse_runtime_mixed_precision_supported()) {
+    EXPECT_NE(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
+              CUOPT_SUCCESS);
+    return;
+  }
   EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);

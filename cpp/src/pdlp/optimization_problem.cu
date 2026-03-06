@@ -1529,10 +1529,9 @@ template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_u
 
 template <typename i_t, typename f_t>
 template <typename other_f_t>
-optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec()
-  const
+optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
+  rmm::cuda_stream_view stream) const
 {
-  auto stream = handle_ptr_->get_stream();
 
   optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
 
@@ -1605,7 +1604,7 @@ template class optimization_problem_t<int32_t, double>;
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
 template optimization_problem_t<int32_t, float>
-optimization_problem_t<int32_t, double>::convert_to_other_prec<float>() const;
+optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(rmm::cuda_stream_view) const;
 #endif
 
 }  // namespace cuopt::linear_programming

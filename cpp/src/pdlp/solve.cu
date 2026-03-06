@@ -577,7 +577,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   auto stream = problem.handle_ptr->get_stream();
 
   // Convert the optimization problem stored inside problem_t to float
-  auto float_op = problem.original_problem_ptr->template convert_to_other_prec<float>();
+  auto float_op = problem.original_problem_ptr->template convert_to_other_prec<float>(stream);
   float_op.set_objective_offset(static_cast<float>(problem.presolve_data.objective_offset));
   float_op.set_objective_scaling_factor(
     static_cast<float>(problem.presolve_data.objective_scaling_factor));
