@@ -68,7 +68,8 @@ run_pdlp_barrier_for_root_lp(problem_t<i_t, f_t>* problem,
 template cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<int, double>
 run_pdlp_barrier_for_root_lp<int, double>(problem_t<int, double>*, double, std::atomic<int>*, int);
 
+#ifdef MIP_INSTANTIATION_FLOAT
 template cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<int, float>
 run_pdlp_barrier_for_root_lp<int, float>(problem_t<int, float>*, float, std::atomic<int>*, int);
-
+#endif
 }  // namespace cuopt::linear_programming::detail

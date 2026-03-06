@@ -7,6 +7,8 @@
 
 #include <dual_simplex/presolve.hpp>
 
+#include <cuopt/linear_programming/constants.h>
+
 #include <dual_simplex/bounds_strengthening.hpp>
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
@@ -1568,6 +1570,64 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
                                             std::vector<double>& uncrushed_x,
                                             std::vector<double>& uncrushed_y,
                                             std::vector<double>& uncrushed_z);
+
+#endif
+
+#if CUOPT_INSTANTIATE_FLOAT
+
+template void convert_user_problem<int, float>(
+  const user_problem_t<int, float>& user_problem,
+  const simplex_solver_settings_t<int, float>& settings,
+  lp_problem_t<int, float>& problem,
+  std::vector<int>& new_slacks,
+  dualize_info_t<int, float>& dualize_info);
+
+template void convert_user_lp_with_guess<int, float>(
+  const user_problem_t<int, float>& user_problem,
+  const lp_solution_t<int, float>& initial_solution,
+  const std::vector<float>& initial_slack,
+  lp_problem_t<int, float>& lp,
+  lp_solution_t<int, float>& converted_solution);
+
+template int presolve<int, float>(const lp_problem_t<int, float>& original,
+                                  const simplex_solver_settings_t<int, float>& settings,
+                                  lp_problem_t<int, float>& presolved,
+                                  presolve_info_t<int, float>& presolve_info);
+
+template void crush_primal_solution<int, float>(const user_problem_t<int, float>& user_problem,
+                                                const lp_problem_t<int, float>& problem,
+                                                const std::vector<float>& user_solution,
+                                                const std::vector<int>& new_slacks,
+                                                std::vector<float>& solution);
+
+template float crush_dual_solution<int, float>(const user_problem_t<int, float>& user_problem,
+                                               const lp_problem_t<int, float>& problem,
+                                               const std::vector<int>& new_slacks,
+                                               const std::vector<float>& user_y,
+                                               const std::vector<float>& user_z,
+                                               std::vector<float>& y,
+                                               std::vector<float>& z);
+
+template void uncrush_primal_solution<int, float>(const user_problem_t<int, float>& user_problem,
+                                                  const lp_problem_t<int, float>& problem,
+                                                  const std::vector<float>& solution,
+                                                  std::vector<float>& user_solution);
+
+template void uncrush_dual_solution<int, float>(const user_problem_t<int, float>& user_problem,
+                                                const lp_problem_t<int, float>& problem,
+                                                const std::vector<float>& y,
+                                                const std::vector<float>& z,
+                                                std::vector<float>& user_y,
+                                                std::vector<float>& user_z);
+
+template void uncrush_solution<int, float>(const presolve_info_t<int, float>& presolve_info,
+                                           const simplex_solver_settings_t<int, float>& settings,
+                                           const std::vector<float>& crushed_x,
+                                           const std::vector<float>& crushed_y,
+                                           const std::vector<float>& crushed_z,
+                                           std::vector<float>& uncrushed_x,
+                                           std::vector<float>& uncrushed_y,
+                                           std::vector<float>& uncrushed_z);
 
 #endif
 
