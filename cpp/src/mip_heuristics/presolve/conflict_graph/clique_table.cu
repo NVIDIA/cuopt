@@ -1080,15 +1080,15 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     dual_simplex::user_problem_t<int, F_TYPE> & problem,                  \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
     std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,      \
-    cuopt::timer_t & timer);                                              \
+    cuopt::timer_t & timer,                                               \
+    bool modify_problem);                                                 \
   template void build_clique_table<int, F_TYPE>(                          \
     const dual_simplex::user_problem_t<int, F_TYPE>& problem,             \
     clique_table_t<int, F_TYPE>& clique_table,                            \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
     bool remove_small_cliques_flag,                                       \
     bool fill_var_clique_maps_flag,                                       \
-    cuopt::timer_t& timer,                                                \
-    bool modify_problem);                                                 \
+    cuopt::timer_t& timer);                                               \
   template class clique_table_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT
