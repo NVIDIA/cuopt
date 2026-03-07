@@ -320,15 +320,16 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
                      addtl_cliques[addtl_clique_idx].start_pos_on_clique,
                    first[addtl_cliques[addtl_clique_idx].clique_idx].end());
   }
-  // Memory-neutral reverse lookup for additional cliques:
+  // Reverse lookup for additional cliques using position map:
   // if var_idx is in first[clique_idx][start_pos_on_clique:], it is adjacent to vertex_idx.
   for (const auto& addtl : addtl_cliques) {
     if (addtl.vertex_idx == var_idx) { continue; }
-    const auto& clique = first[addtl.clique_idx];
-    size_t start_pos   = static_cast<size_t>(addtl.start_pos_on_clique);
-    if (start_pos < clique.size() &&
-        std::find(clique.begin() + start_pos, clique.end(), var_idx) != clique.end()) {
-      adj_set.insert(addtl.vertex_idx);
+    if (static_cast<size_t>(addtl.clique_idx) < first_var_positions.size()) {
+      const auto& pos_map = first_var_positions[addtl.clique_idx];
+      auto it             = pos_map.find(var_idx);
+      if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) {
+        adj_set.insert(addtl.vertex_idx);
+      }
     }
   }
 
@@ -353,44 +354,39 @@ i_t clique_table_t<i_t, f_t>::get_degree_of_var(i_t var_idx)
 template <typename i_t, typename f_t>
 bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2)
 {
-  // if passed same variable
   if (var_idx1 == var_idx2) { return false; }
-  // in case they are complements of each other
   if (var_idx1 % n_variables == var_idx2 % n_variables) { return true; }
-  if (adj_list_small_cliques[var_idx1].count(var_idx2) > 0) { return true; }
-  // Check first cliques: var_clique_map_first stores clique indices
-  for (const auto& clique_idx : var_clique_map_first[var_idx1]) {
-    const auto& clique = first[clique_idx];
-    // TODO: we can also keep a set of the clique if the memory allows, instead of doing linear
-    // search
-    if (std::find(clique.begin(), clique.end(), var_idx2) != clique.end()) { return true; }
+
+  {
+    auto it = adj_list_small_cliques.find(var_idx1);
+    if (it != adj_list_small_cliques.end() && it->second.count(var_idx2) > 0) { return true; }
   }
 
-  // Check additional cliques: var_clique_map_addtl stores indices into addtl_cliques
+  // Iterate whichever variable belongs to fewer first-cliques
+  {
+    i_t probe_var  = var_idx1;
+    i_t target_var = var_idx2;
+    if (var_clique_map_first[var_idx1].size() > var_clique_map_first[var_idx2].size()) {
+      probe_var  = var_idx2;
+      target_var = var_idx1;
+    }
+    for (const auto& clique_idx : var_clique_map_first[probe_var]) {
+      if (first_var_positions[clique_idx].count(target_var) > 0) { return true; }
+    }
+  }
+
   for (const auto& addtl_idx : var_clique_map_addtl[var_idx1]) {
-    const auto& addtl  = addtl_cliques[addtl_idx];
-    const auto& clique = first[addtl.clique_idx];
-    // addtl clique is: vertex_idx + first[clique_idx][start_pos_on_clique:]
-    if (addtl.vertex_idx == var_idx2) { return true; }
-    if (addtl.start_pos_on_clique < static_cast<i_t>(clique.size())) {
-      if (std::find(clique.begin() + addtl.start_pos_on_clique, clique.end(), var_idx2) !=
-          clique.end()) {
-        return true;
-      }
-    }
+    const auto& addtl   = addtl_cliques[addtl_idx];
+    const auto& pos_map = first_var_positions[addtl.clique_idx];
+    auto it             = pos_map.find(var_idx2);
+    if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) { return true; }
   }
 
-  // var_clique_map_addtl is keyed by addtl.vertex_idx, so also check the reverse direction.
   for (const auto& addtl_idx : var_clique_map_addtl[var_idx2]) {
-    const auto& addtl  = addtl_cliques[addtl_idx];
-    const auto& clique = first[addtl.clique_idx];
-    if (addtl.vertex_idx == var_idx1) { return true; }
-    if (addtl.start_pos_on_clique < static_cast<i_t>(clique.size())) {
-      if (std::find(clique.begin() + addtl.start_pos_on_clique, clique.end(), var_idx1) !=
-          clique.end()) {
-        return true;
-      }
-    }
+    const auto& addtl   = addtl_cliques[addtl_idx];
+    const auto& pos_map = first_var_positions[addtl.clique_idx];
+    auto it             = pos_map.find(var_idx1);
+    if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) { return true; }
   }
 
   return false;
@@ -927,11 +923,15 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
 template <typename i_t, typename f_t>
 void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table)
 {
+  clique_table.first_var_positions.resize(clique_table.first.size());
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     const auto& clique = clique_table.first[clique_idx];
+    auto& pos_map      = clique_table.first_var_positions[clique_idx];
+    pos_map.reserve(clique.size());
     for (size_t idx = 0; idx < clique.size(); idx++) {
       i_t var_idx = clique[idx];
       clique_table.var_clique_map_first[var_idx].insert(clique_idx);
+      pos_map[var_idx] = static_cast<i_t>(idx);
     }
   }
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {

@@ -84,6 +84,8 @@ struct clique_table_t {
   std::vector<std::unordered_set<i_t>> var_clique_map_first;
   // keeps the indices of additional cliques that contain variable x
   std::vector<std::unordered_set<i_t>> var_clique_map_addtl;
+  // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
+  std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
   // adjacency list to keep small cliques, this basically keeps the vars share a small clique
   // constraint
   std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_small_cliques;
