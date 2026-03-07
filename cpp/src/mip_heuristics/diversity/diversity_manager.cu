@@ -213,7 +213,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       !problem_ptr->empty) {
     // TODO this is just CPU time and blocking the GPU time.
     // execute this in parallel with something else.
-    f_t time_limit_for_clique_table = std::min(10., presolve_timer.remaining_time());
+    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time());
     // if it is deterministic run until the end
     if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
       time_limit_for_clique_table = std::numeric_limits<f_t>::infinity();
