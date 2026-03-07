@@ -34,11 +34,27 @@ namespace cuopt::linear_programming::detail {
 // do constraints with only binary variables.
 template <typename i_t, typename f_t>
 void find_cliques_from_constraint(const knapsack_constraint_t<i_t, f_t>& kc,
-                                  clique_table_t<i_t, f_t>& clique_table)
+                                  clique_table_t<i_t, f_t>& clique_table,
+                                  cuopt::timer_t& timer)
 {
   i_t size = kc.entries.size();
   cuopt_assert(size > 1, "Constraint has not enough variables");
   if (kc.entries[size - 1].val + kc.entries[size - 2].val <= kc.rhs) { return; }
+
+  // For set packing constraints all variables are pairwise conflicting.
+  // Materialize edges directly into adj_list to avoid a large entry in 'first'
+  // and the downstream overhead of clique maps / position lookups.
+  constexpr i_t max_set_packing_adj_list_size = 100;
+  if (kc.is_set_packing && size <= max_set_packing_adj_list_size) {
+    for (i_t i = 0; i < size; i++) {
+      for (i_t j = i + 1; j < size; j++) {
+        clique_table.adj_list_small_cliques[kc.entries[i].col].insert(kc.entries[j].col);
+        clique_table.adj_list_small_cliques[kc.entries[j].col].insert(kc.entries[i].col);
+      }
+    }
+    return;
+  }
+
   std::vector<i_t> clique;
   i_t k = size - 1;
   // find the first clique, which is the largest
@@ -55,6 +71,7 @@ void find_cliques_from_constraint(const knapsack_constraint_t<i_t, f_t>& kc,
   // find the additional cliques
   k--;
   while (k >= 0) {
+    if (timer.check_time_limit()) { return; }
     f_t curr_val = kc.entries[k].val;
     i_t curr_col = kc.entries[k].col;
     // do a binary search in the clique coefficients to find f, such that coeff_k + coeff_f > rhs
@@ -963,7 +980,7 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
   clique_table.tolerances = tolerances;
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { return; }
-    find_cliques_from_constraint(knapsack_constraint, clique_table);
+    find_cliques_from_constraint(knapsack_constraint, clique_table, timer);
   }
   if (timer.check_time_limit()) { return; }
   if (remove_small_cliques_flag) { remove_small_cliques(clique_table, timer); }
@@ -1064,9 +1081,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   clique_table_ptr->tolerances = tolerances;
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
-    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr);
+    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, timer);
   }
-  if (timer.check_time_limit()) { return; }
 #ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();
 #endif
