@@ -385,13 +385,12 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
-  const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
-  const f_t adj_check_cost     = 3.0;
-  const f_t estimated_extension_work =
-    2.0 * initial_clique_size + adj_set_build_cost + 3.0 * static_cast<f_t>(adj_set.size()) +
-    sort_work + adj_check_cost * candidate_size * (initial_clique_size + 0.5 * candidate_size) +
-    2.0 * candidate_size;
-  if (add_work_estimate(estimated_extension_work, work_estimate, max_work_estimate)) {
+  const f_t adj_set_build_cost     = 2.0 * static_cast<f_t>(adj_set.size());
+  const f_t adj_check_cost         = 5.0;
+  const f_t estimated_preloop_work = 2.0 * initial_clique_size + adj_set_build_cost +
+                                     3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
+                                     2.0 * candidate_size;
+  if (add_work_estimate(estimated_preloop_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
                       static_cast<double>(max_work_estimate));
@@ -417,12 +416,18 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   });
 
   for (const auto candidate : candidates) {
-    bool add = true;
+    bool add   = true;
+    i_t checks = 0;
     for (const auto v : clique_vertices) {
+      checks++;
       if (!graph.check_adjacency(candidate, v)) {
         add = false;
         break;
       }
+    }
+    if (add_work_estimate(
+          adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
+      break;
     }
     if (add) {
       clique_vertices.push_back(candidate);
