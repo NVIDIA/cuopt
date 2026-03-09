@@ -43,6 +43,59 @@
 
 namespace cuopt::linear_programming::detail {
 
+// Templated wrapper for cuBLAS geam function
+// cublasSgeam for float, cublasDgeam for double
+template <typename T>
+inline cublasStatus_t cublasGeam(cublasHandle_t handle,
+                                 cublasOperation_t transa,
+                                 cublasOperation_t transb,
+                                 int m,
+                                 int n,
+                                 const T* alpha,
+                                 const T* A,
+                                 int lda,
+                                 const T* beta,
+                                 const T* B,
+                                 int ldb,
+                                 T* C,
+                                 int ldc);
+
+template <>
+inline cublasStatus_t cublasGeam<float>(cublasHandle_t handle,
+                                        cublasOperation_t transa,
+                                        cublasOperation_t transb,
+                                        int m,
+                                        int n,
+                                        const float* alpha,
+                                        const float* A,
+                                        int lda,
+                                        const float* beta,
+                                        const float* B,
+                                        int ldb,
+                                        float* C,
+                                        int ldc)
+{
+  return cublasSgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
+}
+
+template <>
+inline cublasStatus_t cublasGeam<double>(cublasHandle_t handle,
+                                         cublasOperation_t transa,
+                                         cublasOperation_t transb,
+                                         int m,
+                                         int n,
+                                         const double* alpha,
+                                         const double* A,
+                                         int lda,
+                                         const double* beta,
+                                         const double* B,
+                                         int ldb,
+                                         double* C,
+                                         int ldc)
+{
+  return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
+}
+
 template <typename i_t, typename f_t>
 static size_t batch_size_handler(const problem_t<i_t, f_t>& op_problem,
                                  const pdlp_solver_settings_t<i_t, f_t>& settings)
@@ -88,7 +141,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                  is_legacy_batch_mode,
                  climber_strategies_,
                  settings_.hyper_params,
-                 settings_.new_bounds},
+                 settings_.new_bounds,
+                 settings_.pdlp_precision == pdlp_precision_t::MixedPrecision},
     initial_scaling_strategy_{handle_ptr_,
                               op_problem_scaled_,
                               settings_.hyper_params.default_l_inf_ruiz_iterations,
@@ -1925,48 +1979,48 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
   RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           climber_strategies_.size(),
-                           primal_size_h_,
-                           reusable_device_scalar_value_1_.data(),
-                           primal_to_transpose.data(),
-                           primal_size_h_,
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           climber_strategies_.size(),
-                           primal_transposed.data(),
-                           climber_strategies_.size()));
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               climber_strategies_.size(),
+                               primal_size_h_,
+                               reusable_device_scalar_value_1_.data(),
+                               primal_to_transpose.data(),
+                               primal_size_h_,
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               climber_strategies_.size(),
+                               primal_transposed.data(),
+                               climber_strategies_.size()));
 
   if (!is_dual_slack_empty) {
-    CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                             CUBLAS_OP_T,
-                             CUBLAS_OP_N,
-                             climber_strategies_.size(),
-                             primal_size_h_,
-                             reusable_device_scalar_value_1_.data(),
-                             dual_slack_to_transpose.data(),
-                             primal_size_h_,
-                             reusable_device_scalar_value_0_.data(),
-                             nullptr,
-                             climber_strategies_.size(),
-                             dual_slack_transposed.data(),
-                             climber_strategies_.size()));
+    CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                                 CUBLAS_OP_T,
+                                 CUBLAS_OP_N,
+                                 climber_strategies_.size(),
+                                 primal_size_h_,
+                                 reusable_device_scalar_value_1_.data(),
+                                 dual_slack_to_transpose.data(),
+                                 primal_size_h_,
+                                 reusable_device_scalar_value_0_.data(),
+                                 nullptr,
+                                 climber_strategies_.size(),
+                                 dual_slack_transposed.data(),
+                                 climber_strategies_.size()));
   }
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           climber_strategies_.size(),
-                           dual_size_h_,
-                           reusable_device_scalar_value_1_.data(),
-                           dual_to_transpose.data(),
-                           dual_size_h_,
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           climber_strategies_.size(),
-                           dual_transposed.data(),
-                           climber_strategies_.size()));
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               climber_strategies_.size(),
+                               dual_size_h_,
+                               reusable_device_scalar_value_1_.data(),
+                               dual_to_transpose.data(),
+                               dual_size_h_,
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               climber_strategies_.size(),
+                               dual_transposed.data(),
+                               climber_strategies_.size()));
 
   // Copy that holds the tranpose to the original vector
   raft::copy(primal_to_transpose.data(),
@@ -2002,49 +2056,49 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
     is_dual_slack_empty ? 0 : primal_size_h_ * climber_strategies_.size(), stream_view_);
 
   RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           primal_size_h_,
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_1_.data(),
-                           primal_to_transpose.data(),
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           primal_size_h_,
-                           primal_transposed.data(),
-                           primal_size_h_));
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               primal_size_h_,
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_1_.data(),
+                               primal_to_transpose.data(),
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               primal_size_h_,
+                               primal_transposed.data(),
+                               primal_size_h_));
 
   if (!is_dual_slack_empty) {
-    CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                             CUBLAS_OP_T,
-                             CUBLAS_OP_N,
-                             primal_size_h_,
-                             climber_strategies_.size(),
-                             reusable_device_scalar_value_1_.data(),
-                             dual_slack_to_transpose.data(),
-                             climber_strategies_.size(),
-                             reusable_device_scalar_value_0_.data(),
-                             nullptr,
-                             primal_size_h_,
-                             dual_slack_transposed.data(),
-                             primal_size_h_));
+    CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                                 CUBLAS_OP_T,
+                                 CUBLAS_OP_N,
+                                 primal_size_h_,
+                                 climber_strategies_.size(),
+                                 reusable_device_scalar_value_1_.data(),
+                                 dual_slack_to_transpose.data(),
+                                 climber_strategies_.size(),
+                                 reusable_device_scalar_value_0_.data(),
+                                 nullptr,
+                                 primal_size_h_,
+                                 dual_slack_transposed.data(),
+                                 primal_size_h_));
   }
 
-  CUBLAS_CHECK(cublasDgeam(handle_ptr_->get_cublas_handle(),
-                           CUBLAS_OP_T,
-                           CUBLAS_OP_N,
-                           dual_size_h_,
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_1_.data(),
-                           dual_to_transpose.data(),
-                           climber_strategies_.size(),
-                           reusable_device_scalar_value_0_.data(),
-                           nullptr,
-                           dual_size_h_,
-                           dual_transposed.data(),
-                           dual_size_h_));
+  CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                               CUBLAS_OP_T,
+                               CUBLAS_OP_N,
+                               dual_size_h_,
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_1_.data(),
+                               dual_to_transpose.data(),
+                               climber_strategies_.size(),
+                               reusable_device_scalar_value_0_.data(),
+                               nullptr,
+                               dual_size_h_,
+                               dual_transposed.data(),
+                               dual_size_h_));
 
   // Copy that holds the tranpose to the original vector
   raft::copy(primal_to_transpose.data(),
@@ -2089,6 +2143,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   initial_scaling_strategy_.scale_problem();
+
+  // Update FP32 matrix copies for mixed precision SpMV after scaling
+  pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())
@@ -2914,7 +2971,7 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
   return current_termination_strategy_;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_t<int, float>;
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<float>(

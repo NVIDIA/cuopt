@@ -245,7 +245,7 @@ void presolve_data_t<i_t, f_t>::papilo_uncrush_assignment(
   problem.handle_ptr->sync_stream();
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class presolve_data_t<int, float>;
 #endif
 

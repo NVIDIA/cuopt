@@ -434,7 +434,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
   return 0;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template int optimal_batch_size_handler<int, float>(
   const optimization_problem_t<int, float>& op_problem, int max_batch_size);
 #endif

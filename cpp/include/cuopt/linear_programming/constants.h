@@ -74,6 +74,7 @@
 #define CUOPT_NUM_GPUS                        "num_gpus"
 #define CUOPT_USER_PROBLEM_FILE               "user_problem_file"
 #define CUOPT_RANDOM_SEED                     "random_seed"
+#define CUOPT_PDLP_PRECISION                  "pdlp_precision"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -124,6 +125,12 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
+
+/* @brief PDLP precision mode constants */
+#define CUOPT_PDLP_DEFAULT_PRECISION -1
+#define CUOPT_PDLP_SINGLE_PRECISION  0
+#define CUOPT_PDLP_DOUBLE_PRECISION  1
+#define CUOPT_PDLP_MIXED_PRECISION   2
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0

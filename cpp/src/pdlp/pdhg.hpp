@@ -29,7 +29,8 @@ class pdhg_solver_t {
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
                 const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
-                const std::vector<std::tuple<i_t, f_t, f_t>>& new_bounds);
+                const std::vector<std::tuple<i_t, f_t, f_t>>& new_bounds,
+                bool enable_mixed_precision_spmv = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
   cusparse_view_t<i_t, f_t>& get_cusparse_view();

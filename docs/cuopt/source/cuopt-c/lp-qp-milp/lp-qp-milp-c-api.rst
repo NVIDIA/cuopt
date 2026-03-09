@@ -187,6 +187,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
+.. doxygendefine:: CUOPT_PDLP_PRECISION
 
 .. _pdlp-solver-mode-constants:
 
@@ -200,6 +201,18 @@ These constants are used to configure `CUOPT_PDLP_SOLVER_MODE` via :c:func:`cuOp
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_STABLE3
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_METHODICAL1
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE_FAST1
+
+.. _pdlp-precision-constants:
+
+PDLP Precision Constants
+------------------------
+
+These constants are used to configure `CUOPT_PDLP_PRECISION` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_PDLP_DEFAULT_PRECISION
+.. doxygendefine:: CUOPT_PDLP_SINGLE_PRECISION
+.. doxygendefine:: CUOPT_PDLP_DOUBLE_PRECISION
+.. doxygendefine:: CUOPT_PDLP_MIXED_PRECISION
 
 .. _method-constants:
 
