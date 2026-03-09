@@ -69,6 +69,7 @@
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD        "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY       "mip_cut_min_orthogonality"
 #define CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING "mip_batch_pdlp_strong_branching"
+#define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_SOLUTION_FILE                   "solution_file"
 #define CUOPT_NUM_CPU_THREADS                 "num_cpu_threads"
 #define CUOPT_NUM_GPUS                        "num_gpus"

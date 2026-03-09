@@ -98,6 +98,7 @@ class mip_solver_settings_t {
   f_t cut_change_threshold            = 1e-3;
   f_t cut_min_orthogonality           = 0.5;
   i_t mip_batch_pdlp_strong_branching = 1;
+  i_t mip_batch_pdlp_reliability_branching = 1;
   i_t num_gpus                        = 1;
   bool log_to_console                 = true;
 

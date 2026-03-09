@@ -825,7 +825,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   // Variables beyond num_candidates are solved by batch PDLP instead of Dual Simplex
   std::vector<i_t> pdlp_overflow_list;
-  bool use_pdlp = settings.mip_batch_pdlp_strong_branching == 1 &&
+  bool use_pdlp = settings.mip_batch_pdlp_reliability_branching == 1 &&
                   static_cast<i_t>(unreliable_list.size()) > num_candidates;
   if (use_pdlp) {
     pdlp_overflow_list.assign(unreliable_list.begin() + num_candidates, unreliable_list.end());
@@ -881,10 +881,11 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         }
       }
 
-      log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
+      log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d in %.2fs\n",
                  batch_pdlp_time,
                  amount_done,
-                 num_pdlp_vars * 2);
+                 num_pdlp_vars * 2,
+                 toc(start_batch));
 
       for (i_t k = 0; k < num_pdlp_vars; k++) {
         if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
