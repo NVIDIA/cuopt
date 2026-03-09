@@ -148,6 +148,27 @@ The response is as follows:
     c1 DualValue = 1.0000000592359144
     c2 DualValue = 1.0000000821854418
 
+Accessing the Solution with getSolution() and getIncumbentValues()
+------------------------------------------------------------------
+
+After calling :py:meth:`solve() <cuopt.linear_programming.problem.Problem.solve>`, you can retrieve the solution object with :py:meth:`getSolution() <cuopt.linear_programming.problem.Problem.getSolution>` and pass it to :py:meth:`getIncumbentValues() <cuopt.linear_programming.problem.Problem.getIncumbentValues>` together with :py:meth:`getVariables() <cuopt.linear_programming.problem.Problem.getVariables>` to get primal values as a list (e.g. for a subset of variables or a specific order).
+
+:download:`problem_solution_api_example.py <examples/problem_solution_api_example.py>`
+
+.. literalinclude:: examples/problem_solution_api_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Optimal solution found in 0.01 seconds
+    Objective: 10.0
+    Values via var.Value: x=10.0, y=0.0
+    Values via getIncumbentValues: [10.0, 0.0]
+    Subset (x only) via getIncumbentValues: [10.0]
+
 Working with Incumbent Solutions
 --------------------------------
 

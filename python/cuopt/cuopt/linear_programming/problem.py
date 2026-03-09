@@ -1305,6 +1305,7 @@ class Problem:
         self.ObjConstant = 0.0
         self.Status = -1
         self.warmstart_data = None
+        self.solution = None
 
         self.model = None
         self.solved = False
@@ -1474,6 +1475,7 @@ class Problem:
         self.constraint_csr_matrix = None
         self.objective_qmatrix = None
         self.warmstart_data = None
+        self.solution = None
         self.solved = False
 
     def addVariable(
@@ -1694,11 +1696,47 @@ class Problem:
     def getIncumbentValues(self, solution, vars):
         """
         Extract incumbent values of the vars from a problem solution.
+
+        Use with the Problem API by passing the solution from :py:meth:`getSolution`
+        (after :py:meth:`solve`), and the variables from :py:meth:`getVariables`.
+        When using a MIP incumbent callback (:py:meth:`cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`),
+        you can pass the callback's ``solution`` argument (array-like, indexed by
+        variable index) to get values for your variables.
+
+        Parameters
+        ----------
+        solution : Solution or array-like
+            Either the Solution from :py:meth:`getSolution`, or a primal
+            solution array (e.g. from GetSolutionCallback.get_solution)
+            indexable by variable index.
+        vars : list of Variable
+            Variables to extract values for (e.g. from :py:meth:`getVariables`).
+
+        Returns
+        -------
+        list of float
+            Incumbent values for the given variables, in the same order as vars.
         """
         values = []
         for var in vars:
             values.append(solution[var.index])
         return values
+
+    def getSolution(self):
+        """
+        Return the solution from the last solve.
+
+        Set after :py:meth:`solve` completes; ``None`` before solve or after
+        the problem is modified (e.g. addVariable, addConstraint, setObjective).
+        Can be passed to :py:meth:`getIncumbentValues` together with
+        :py:meth:`getVariables`.
+
+        Returns
+        -------
+        solution : Solution or None
+            The last solution object, or None.
+        """
+        return self.solution
 
     def get_incumbent_values(self, solution, vars):
         warnings.warn(
@@ -1926,12 +1964,16 @@ class Problem:
             if dual_sol is not None and len(dual_sol) > 0:
                 constr.DualValue = dual_sol[i]
             constr.Slack = constr.compute_slack()
+        self.solution = solution
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
         """
         Optimizes the LP or MIP problem with the added variables,
         constraints and objective.
+
+        The solution is stored on the problem (see :py:meth:`getSolution`).
+        Variable values are populated on each variable's ``Value`` attribute.
 
         Examples
         --------
@@ -1943,6 +1985,9 @@ class Problem:
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
         >>> problem.setObjective(x + y, sense=MAXIMIZE)
         >>> problem.solve()
+        >>> values = problem.getIncumbentValues(
+        ...     problem.getSolution(), problem.getVariables()
+        ... )
         """
         if self.model is None:
             self._to_data_model()

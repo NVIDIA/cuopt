@@ -211,7 +211,12 @@ class SolverSettings:
         """
         Note: Only supported for MILP
 
-        Set the callback to receive incumbent solution.
+        Set the callback to receive incumbent solution. The ``solution``
+        passed to your callback is indexable by variable index and can be
+        used with :py:meth:`cuopt.linear_programming.problem.Problem.getIncumbentValues`
+        to get values for specific variables (e.g. pass the problem in
+        user_data and call ``problem.getIncumbentValues(solution,
+        problem.getVariables())``).
 
         Parameters
         ----------
