@@ -8,7 +8,6 @@
 #include "cuda_profiler_api.h"
 #include "diversity_manager.cuh"
 
-#include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>

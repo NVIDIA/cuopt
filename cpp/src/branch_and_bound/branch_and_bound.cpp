@@ -21,7 +21,6 @@
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
-#include <mip_heuristics/diversity/known_miplib_objectives.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <utilities/hashing.hpp>
@@ -2337,7 +2336,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
       f_t abs_gap = upper_bound_.load() - root_objective_;
       if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
-        report_cut_gap_closure_metric();
         set_solution_at_root(solution, cut_info);
         set_final_solution(solution, root_objective_);
         return mip_status_t::OPTIMAL;

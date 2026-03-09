@@ -723,6 +723,7 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
   std::vector<int> matrix_offsets    = base_lp_model.get_constraint_matrix_offsets();
   std::vector<double> constraint_lbs = base_lp_model.get_constraint_lower_bounds();
   std::vector<double> constraint_ubs = base_lp_model.get_constraint_upper_bounds();
+  std::vector<std::string> row_names = base_lp_model.get_row_names();
   if (matrix_offsets.empty()) { matrix_offsets.push_back(0); }
 
   const size_t cuts_to_apply = std::min(prefix_end_exclusive, dumped_cuts.size());
@@ -769,6 +770,7 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
     matrix_offsets.push_back(static_cast<int>(matrix_indices.size()));
     constraint_lbs.push_back(static_cast<double>(num_complements - 1));
     constraint_ubs.push_back(std::numeric_limits<double>::infinity());
+    row_names.push_back("literal_cut_" + std::to_string(cut_idx));
   }
 
   model_with_cuts.set_csr_constraint_matrix(matrix_values.data(),
@@ -779,6 +781,7 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
                                             matrix_offsets.size());
   model_with_cuts.set_constraint_lower_bounds(constraint_lbs.data(), constraint_lbs.size());
   model_with_cuts.set_constraint_upper_bounds(constraint_ubs.data(), constraint_ubs.size());
+  model_with_cuts.set_row_names(row_names);
   return model_with_cuts;
 }
 
