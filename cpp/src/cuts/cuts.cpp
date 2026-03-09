@@ -23,7 +23,7 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-#define DEBUG_CLIQUE_CUTS 1
+#define DEBUG_CLIQUE_CUTS 0
 #define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
@@ -1070,7 +1070,6 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       return false;
     }
     f_t cut_generation_time = toc(cut_start_time);
-    settings.log.printf("Clique cut generation time %.2f seconds\n", cut_generation_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
     }

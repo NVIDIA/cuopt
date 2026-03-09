@@ -2099,50 +2099,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t last_objective       = root_objective_;
   f_t root_relax_objective = root_objective_;
 
-  auto report_cut_gap_closure_metric = [&]() {
-    const bool cuts_enabled = settings_.clique_cuts != 0 ||
-                              settings_.mixed_integer_gomory_cuts != 0 ||
-                              settings_.strong_chvatal_gomory_cuts != 0 ||
-                              settings_.knapsack_cuts != 0 || settings_.mir_cuts != 0;
-    if (settings_.max_cut_passes <= 0 || !cuts_enabled) {
-      settings_.log.printf("Cut gap closure skipped: max_cut_passes=%d cuts_enabled=%d\n",
-                           settings_.max_cut_passes,
-                           cuts_enabled ? 1 : 0);
-      return;
-    }
-    const std::string& instance_name_for_lookup = original_problem_.problem_name;
-    const std::string normalized_problem_name =
-      detail::normalize_problem_name(instance_name_for_lookup);
-    const auto objective_reference =
-      detail::lookup_known_objective_reference(instance_name_for_lookup);
-    if (!objective_reference.has_value()) {
-      settings_.log.printf(
-        "Cut gap closure skipped: no objective reference for instance raw='%s' normalized='%s'\n",
-        original_problem_.problem_name.c_str(),
-        normalized_problem_name.c_str());
-      return;
-    }
-    const f_t user_objective_before_cuts =
-      compute_user_objective(original_lp_, root_relax_objective);
-    const f_t user_objective_after_cuts = compute_user_objective(original_lp_, root_objective_);
-    const auto gap_closure =
-      compute_cut_gap_closure(static_cast<f_t>(objective_reference->objective_value),
-                              user_objective_before_cuts,
-                              user_objective_after_cuts);
-    settings_.log.printf(
-      "Cut gap closure instance=%s known_%s=%.16e root_before=%.16e root_after=%.16e "
-      "gap_before=%.16e gap_after=%.16e gap_closed=%.16e gap_closed_ratio=%.2f%%\n",
-      instance_name_for_lookup.c_str(),
-      detail::objective_reference_status_name(objective_reference->status),
-      static_cast<double>(objective_reference->objective_value),
-      static_cast<double>(user_objective_before_cuts),
-      static_cast<double>(user_objective_after_cuts),
-      static_cast<double>(gap_closure.initial_gap),
-      static_cast<double>(gap_closure.final_gap),
-      static_cast<double>(gap_closure.gap_closed),
-      static_cast<double>(gap_closure.gap_closed_ratio * 100.0));
-  };
-
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
@@ -2313,7 +2269,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       root_objective_      = compute_objective(original_lp_, root_relax_soln_.x);
       f_t dual_phase2_time = toc(dual_phase2_start_time);
       if (dual_phase2_time > 1.0) {
-        settings_.log.printf("Dual phase2 time %.2f seconds\n", dual_phase2_time);
+        settings_.log.debug("Dual phase2 time %.2f seconds\n", dual_phase2_time);
       }
       if (cut_status == dual::status_t::TIME_LIMIT) {
         solver_status_ = mip_status_t::TIME_LIMIT;
@@ -2401,7 +2357,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  report_cut_gap_closure_metric();
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
   if (cut_info.has_cuts()) {

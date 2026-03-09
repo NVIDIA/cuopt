@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-#define DEBUG_KNAPSACK_CONSTRAINTS 1
+#define DEBUG_KNAPSACK_CONSTRAINTS 0
 
 #include "clique_table.cuh"
 
