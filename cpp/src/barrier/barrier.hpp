@@ -76,6 +76,12 @@ class barrier_solver_t {
 
   // To be able to directly pass lambdas to transform functions
  public:
+
+ std::vector<f_t> x_pdhg;
+ std::vector<f_t> w_pdhg;
+ std::vector<f_t> y_pdhg;
+ std::vector<f_t> z_pdhg;
+ std::vector<f_t> v_pdhg;
   void compute_next_iterate(iteration_data_t<i_t, f_t>& data,
                             f_t step_scale,
                             f_t step_primal,

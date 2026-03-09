@@ -835,6 +835,24 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   // FIXME:: handle no lower bound case for barrier presolve
+  if (settings.barrier_presolve && no_lower_bound > 0) {
+    presolve_info.negated_variables.reserve(no_lower_bound);
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] == -inf && problem.upper[j] < inf) {
+        presolve_info.negated_variables.push_back(j);
+
+        problem.lower[j] = -problem.upper[j];
+        problem.upper[j] = inf;
+        problem.objective[j] *= 1;
+
+        const i_t col_start = problem.A.col_start[j];
+        const i_t col_end   = problem.A.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
+          problem.A.x[p] *= -1.0;
+        }
+      }
+    }
+  }
 
   // The original problem may have nonzero lower bounds
   // 0 != l_j <= x_j <= u_j
@@ -1132,6 +1150,58 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   assert(problem.rhs.size() == problem.A.m);
   return 0;
+}
+
+template <typename i_t, typename f_t>
+void crush_solution_to_presolve_space(const lp_problem_t<i_t, f_t>& original_lp,
+                                      presolve_info_t<i_t, f_t>& presolve_info,
+                                      const std::vector<f_t>& original_x,
+                                      const std::vector<f_t>& original_y,
+                                      const std::vector<f_t>& original_z,
+                                      std::vector<f_t>& crushed_x,
+                                      std::vector<f_t>& crushed_y,
+                                      std::vector<f_t>& crushed_z)
+{
+  crushed_x = original_x;
+  crushed_y = original_y;
+  crushed_z = original_z;
+
+  if (presolve_info.negated_variables.size() > 0) {
+    for (i_t j = 0; j < presolve_info.negated_variables.size(); j++) {
+      crushed_x[presolve_info.negated_variables[j]] *= -1.0;
+      crushed_z[presolve_info.negated_variables[j]] *= -1.0;
+    }
+  }
+
+  // Repeat all presolve steps to get the crushed solution
+  if (presolve_info.removed_lower_bounds.size() > 0) {
+    // We had l_j <= x_j <= u_j
+    // And we transformed it into
+    // 0 <= v_j = x_j - l_j
+    // So we need to subtract the removed lower bounds from the original solution
+    for (i_t j = 0; j < original_x.size(); j++) {
+      crushed_x[j] -= presolve_info.removed_lower_bounds[j];
+    }
+  }
+
+  // Handle empty rows
+  if (presolve_info.removed_constraints.size() > 0) {
+    printf("Can't handle removed constraints %ld\n", presolve_info.removed_constraints.size());
+    exit(1);
+  }
+
+  // Handle empty cols
+  if (presolve_info.removed_variables.size() > 0) {
+    printf("Can't handle removed variables %ld\n", presolve_info.removed_variables.size());
+    exit(1);
+  }
+
+  // Handle free variables
+  if (presolve_info.free_variable_pairs.size() > 0) {
+    printf("Can't handle free variable pairs %ld\n", presolve_info.free_variable_pairs.size());
+    exit(1);
+  }
+
 }
 
 template <typename i_t, typename f_t>
@@ -1569,6 +1639,15 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
                                             std::vector<double>& uncrushed_y,
                                             std::vector<double>& uncrushed_z);
 
+template void crush_solution_to_presolve_space<int, double>(
+  const lp_problem_t<int, double>& problem,
+  presolve_info_t<int, double>& presolve_info,
+  const std::vector<double>& original_x,
+  const std::vector<double>& original_y,
+  const std::vector<double>& original_z,
+  std::vector<double>& x,
+  std::vector<double>& y,
+  std::vector<double>& z);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

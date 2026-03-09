@@ -87,6 +87,9 @@ struct presolve_info_t {
   // problem
   std::vector<i_t> removed_constraints;
 
+  // Variables that were negated to handle no lower bound
+  std::vector<i_t> negated_variables;
+
   folding_info_t<i_t, f_t> folding_info;
 };
 
@@ -182,5 +185,15 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_x,
                       std::vector<f_t>& uncrushed_y,
                       std::vector<f_t>& uncrushed_z);
+
+template <typename i_t, typename f_t>
+void crush_solution_to_presolve_space(const lp_problem_t<i_t, f_t>& problem,
+                                      presolve_info_t<i_t, f_t>& presolve_info,
+                                      const std::vector<f_t>& original_x,
+                                      const std::vector<f_t>& original_y,
+                                      const std::vector<f_t>& original_z,
+                                      std::vector<f_t>& x,
+                                      std::vector<f_t>& y,
+                                      std::vector<f_t>& z);
 
 }  // namespace cuopt::linear_programming::dual_simplex

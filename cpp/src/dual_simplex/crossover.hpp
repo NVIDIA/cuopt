@@ -32,4 +32,12 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& problem,
                              lp_solution_t<i_t, f_t>& solution,
                              std::vector<variable_status_t>& vstatus);
 
+template <typename i_t, typename f_t>
+crossover_status_t central_path(const lp_problem_t<i_t, f_t>& problem,
+                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                             const lp_solution_t<i_t, f_t>& initial_solution,
+                             f_t start_time,
+                             lp_solution_t<i_t, f_t>& solution,
+                             std::vector<variable_status_t>& vstatus);
+
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -11,6 +11,7 @@
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/vector_math.hpp>
 
 #include <utilities/copy_helpers.hpp>
 
@@ -190,12 +191,18 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
   CUOPT_LOG_DEBUG("Finished with x");
   initial_solution.y = cuopt::host_copy(sol.get_dual_solution(), stream);
 
-  std::vector<f_t> tmp_z = cuopt::host_copy(sol.get_reduced_cost(), stream);
-  stream.synchronize();
-  std::copy(tmp_z.begin(), tmp_z.begin() + problem.n_variables, initial_solution.z.begin());
-  for (i_t j = problem.n_variables; j < n; ++j) {
-    initial_solution.z[j] = initial_solution.y[j - problem.n_variables];
+  // Compute z = c - A^T y (exact dual feasibility)
+std::copy(lp.objective.begin(), lp.objective.end(), initial_solution.z.begin());
+dual_simplex::matrix_transpose_vector_multiply(
+  lp.A, -1.0, initial_solution.y, 1.0, initial_solution.z);
+
+  std::vector<f_t> dual_residual = initial_solution.z;
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    dual_residual[j] -= lp.objective[j];
   }
+
+  dual_simplex::matrix_transpose_vector_multiply(lp.A, 1.0, initial_solution.y, +1.0, dual_residual);
+
   CUOPT_LOG_DEBUG("Finished with z");
 
   CUOPT_LOG_DEBUG("Finished translating");

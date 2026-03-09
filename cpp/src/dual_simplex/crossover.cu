@@ -11,9 +11,15 @@
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase2.hpp>
+#include <dual_simplex/presolve.hpp>
 #include <dual_simplex/primal.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
+
+
+#include <barrier/barrier.hpp>
+#include <barrier/cusparse_view.hpp>
+#include <thrust/inner_product.h>
 
 #include <raft/core/nvtx.hpp>
 
@@ -411,7 +417,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     // U^T*etilde = es.
     // We have that B^T = U^T*L^T so B^T delta_y = U^T*etilde = -delta_zs*es
     // So we need to divide by -delta_zs
-    for (i_t k = 0; k < UTsol_sparse.i.size(); ++k) {
+    for (size_t k = 0; k < UTsol_sparse.i.size(); ++k) {
       UTsol_sparse.x[k] /= -delta_zs;
     }
 
@@ -675,7 +681,7 @@ f_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
   const i_t n             = lp.num_cols;
   f_t step_length         = 1.0;
   constexpr f_t pivot_tol = 1e-9;
-  for (i_t k = 0; k < delta_xB.i.size(); ++k) {
+  for (size_t k = 0; k < delta_xB.i.size(); ++k) {
     const i_t j = basic_list[delta_xB.i[k]];
     if (x[j] <= lp.upper[j] && delta_xB.x[k] > pivot_tol && lp.upper[j] < inf) {
       const f_t ratio = (lp.upper[j] - x[j]) / delta_xB.x[k];
@@ -782,7 +788,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       // Compute delta_xB_trial = -delta_xs * w
       sparse_vector_t<i_t, f_t>& delta_xB_trial = delta_xB_trials[push];
       delta_xB_trial                            = w_sparse;
-      for (i_t k = 0; k < w_sparse.i.size(); ++k) {
+      for (size_t k = 0; k < w_sparse.i.size(); ++k) {
         delta_xB_trial.x[k] = -w_sparse.x[k] * delta_xs;
       }
       leaving_index_trials[push]       = -1;
@@ -823,7 +829,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
 #endif
 
     // xB <- xB + step_length * delta_xB
-    for (i_t k = 0; k < delta_xB.i.size(); ++k) {
+    for (size_t k = 0; k < delta_xB.i.size(); ++k) {
       const i_t j = basic_list[delta_xB.i[k]];
       x[j] += step_length * delta_xB.x[k];
     }
@@ -1016,7 +1022,7 @@ i_t find_candidate_columns(const lp_problem_t<i_t, f_t>& lp,
   const i_t n         = lp.num_cols;
   const i_t m         = lp.num_rows;
   f_t basis_threshold = 1e-10;
-  while (candidate_columns.size() < m && basis_threshold < 1.0) {
+  while (static_cast<i_t>(candidate_columns.size()) < m && basis_threshold < 1.0) {
     basis_threshold *= 10.0;
     for (i_t j = 0; j < n; ++j) {
       const f_t lower_bound_slack = solution.x[j] - lp.lower[j];
@@ -1217,7 +1223,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     settings.log.debug("num basic %d from slacks\n", num_basic);
   }
 
-  for (i_t k = 0; k < candidate_columns.size(); k++) {
+  for (size_t k = 0; k < candidate_columns.size(); k++) {
     const i_t j = candidate_columns[k];
     vstatus[j]  = vstatus_for_candidates[k];
     if (vstatus[j] == variable_status_t::BASIC) { num_basic++; }
@@ -1572,6 +1578,444 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   return status;
 }
 
+template <typename i_t, typename f_t>
+crossover_status_t central_path(const lp_problem_t<i_t, f_t>& lp,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                const lp_solution_t<i_t, f_t>& initial_solution,
+                                f_t start_time,
+                                lp_solution_t<i_t, f_t>& solution,
+                                std::vector<variable_status_t>& vstatus)
+{
+
+  printf("\n\n\nStarting central path solver\n");
+  // First apply barrier presolve to the problem
+  simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
+  barrier_settings.barrier_presolve                    = true;
+  barrier_settings.folding                             = false;
+  barrier_settings.barrier                             = true;
+
+  std::vector<f_t> original_dual_residual = initial_solution.z;
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    original_dual_residual[j] -= lp.objective[j];
+  }
+  matrix_transpose_vector_multiply(lp.A, 1.0, initial_solution.y, +1.0, original_dual_residual);
+  // printf("Original dual residual %e\n", vector_norm_inf<i_t, f_t>(original_dual_residual));
+
+  lp_problem_t<i_t, f_t> presolved_lp(lp.handle_ptr, 1, 1, 1);
+  presolve_info_t<i_t, f_t> presolve_info;
+  presolve(lp, barrier_settings, presolved_lp, presolve_info);
+
+  std::vector<f_t> x;
+  std::vector<f_t> y;
+  std::vector<f_t> z;
+  crush_solution_to_presolve_space(
+    lp, presolve_info, initial_solution.x, initial_solution.y, initial_solution.z, x, y, z);
+
+  // Compute primal infeasibility
+  std::vector<f_t> residual = presolved_lp.rhs;
+  matrix_vector_multiply(presolved_lp.A, 1.0, x, -1.0, residual);
+
+  // Compute dual infeasibility
+  std::vector<f_t> dual_residual_presolved = z;
+  for (size_t j = 0; j < z.size(); j++) {
+    dual_residual_presolved[j] -= presolved_lp.objective[j];
+  }
+  matrix_transpose_vector_multiply(presolved_lp.A, 1.0, y, +1.0, dual_residual_presolved);
+
+  f_t primal_infeas = vector_norm_inf<i_t, f_t>(residual);
+  f_t dual_infeas   = vector_norm_inf<i_t, f_t>(dual_residual_presolved);
+
+  printf("Primal residual %e Dual residual %e\n", primal_infeas, dual_infeas);
+
+  f_t primal_inf = 0.0;
+  i_t n          = presolved_lp.num_cols;
+  for (i_t j = 0; j < n; ++j) {
+    if (x[j] < presolved_lp.lower[j]) { primal_inf += presolved_lp.lower[j] - x[j]; }
+    if (x[j] > presolved_lp.upper[j]) { primal_inf += x[j] - presolved_lp.upper[j]; }
+  }
+
+  // printf("Primal infeasibility %e\n", primal_inf);
+
+  // Currently we have
+  // minimize c^T x
+  // subject to A x = b
+  //            0 <= x <= u
+
+  // We translate this into
+  // minimize c^T x
+  // subject to A x = b
+  //            x + w = u
+  //            x, w >= 0
+
+  lp_problem_t<i_t, f_t> barrier_lp = presolved_lp;
+
+  i_t n_upper_bounds = 0;
+  for (i_t j = 0; j < n; ++j) {
+    if (presolved_lp.upper[j] < inf) { n_upper_bounds++; }
+  }
+
+  // Create the upper bounds vector
+  std::vector<i_t> upper_bounds(n_upper_bounds);
+  n_upper_bounds = 0;
+  for (i_t j = 0; j < n; j++) {
+    if (presolved_lp.upper[j] < inf) { upper_bounds[n_upper_bounds++] = j; }
+  }
+  if (n_upper_bounds > 0) {
+    // printf("Upper bounds                : %d\n", n_upper_bounds);
+
+    csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+    presolved_lp.A.to_compressed_row(Arow);
+
+    Arow.row_start.resize(presolved_lp.num_rows + n_upper_bounds + 1);
+    i_t nz = presolved_lp.A.col_start[n];
+    Arow.j.resize(nz + 2 * n_upper_bounds);
+    Arow.x.resize(nz + 2 * n_upper_bounds);
+
+    for (i_t i = presolved_lp.num_rows; i < presolved_lp.num_rows + n_upper_bounds; i++) {
+      Arow.row_start[i] = nz;
+      const i_t k       = i - presolved_lp.num_rows;
+      Arow.j[nz]        = upper_bounds[k];
+      Arow.x[nz]        = 1.0;
+      nz++;
+      Arow.j[nz] = n + k;
+      Arow.x[nz] = 1.0;
+      nz++;
+    }
+    Arow.row_start[presolved_lp.num_rows + n_upper_bounds] = nz;
+    Arow.m                                                 = presolved_lp.num_rows + n_upper_bounds;
+    Arow.n                                                 = n + n_upper_bounds;
+    Arow.nz_max                                            = nz;
+
+    Arow.to_compressed_col(barrier_lp.A);
+
+    barrier_lp.rhs.resize(presolved_lp.num_rows + n_upper_bounds);
+    for (i_t i = presolved_lp.num_rows; i < presolved_lp.num_rows + n_upper_bounds; i++) {
+      const i_t k       = i - presolved_lp.num_rows;
+      barrier_lp.rhs[i] = presolved_lp.upper[upper_bounds[k]];
+    }
+
+    barrier_lp.objective.resize(n + n_upper_bounds, 0.0);
+    barrier_lp.lower.resize(n + n_upper_bounds, 0.0);
+    barrier_lp.upper.resize(n + n_upper_bounds, inf);
+
+    // Originally we have that
+    // A^T y + z_l - z_u = c
+
+    // After the transformation we want
+    // A^T y_1 + y_2 + z_x = c_x
+    // y_2 + z_w = c_w = 0
+    // So z_x = z_l
+    // And y_2 = -z_u
+
+    std::vector<f_t> zl = z;
+    std::vector<f_t> zu = z;
+    for (i_t j = 0; j < n; j++) {
+      if (presolved_lp.upper[j] < inf) {
+        if (z[j] >= 0.0) {
+          zl[j] = z[j];
+          zu[j] = 0.0;
+        } else {
+          zl[j] = 0.0;
+          zu[j] = -z[j];
+        }
+      } else {
+        zl[j] = z[j];
+        zu[j] = 0.0;
+      }
+    }
+
+    z.resize(n + n_upper_bounds);
+    y.resize(presolved_lp.num_rows + n_upper_bounds);
+
+    for (i_t k = 0; k < n_upper_bounds; k++) {
+      const i_t j                  = upper_bounds[k];
+      y[presolved_lp.num_rows + k] = -zu[j];
+      z[n + k]                     = zu[j];
+    }
+    for (i_t j = 0; j < n; j++) {
+      z[j] = zl[j];
+    }
+
+    x.resize(n + n_upper_bounds);
+    for (i_t j = n; j < n + n_upper_bounds; j++) {
+      const i_t k = j - n;
+      x[j]        = presolved_lp.upper[upper_bounds[k]] - x[upper_bounds[k]];
+    }
+
+    barrier_lp.num_cols = n + n_upper_bounds;
+    barrier_lp.num_rows = presolved_lp.num_rows + n_upper_bounds;
+  }
+
+  std::vector<f_t> res1 = barrier_lp.rhs;
+  matrix_vector_multiply(barrier_lp.A, 1.0, x, -1.0, res1);
+  f_t primal_inf1 = vector_norm_inf<i_t, f_t>(res1);
+  // printf("Barrier Primal residual %e\n", primal_inf1);
+
+  std::vector<f_t> res2 = z;
+  for (size_t j = 0; j < z.size(); j++) {
+    res2[j] -= barrier_lp.objective[j];
+  }
+  matrix_transpose_vector_multiply(barrier_lp.A, 1.0, y, +1.0, res2);
+  f_t dual_inf2 = vector_norm_inf<i_t, f_t>(res2);
+  // printf("Barrier Dual residual %e\n", dual_inf2);
+
+  f_t barrier_primal_inf = 0.0;
+  for (size_t j = 0; j < x.size(); j++) {
+    if (x[j] < 0.0) { barrier_primal_inf += -x[j]; }
+  }
+
+  // printf("Barrier Primal infeasibility %e\n", barrier_primal_inf);
+
+  f_t barrier_dual_inf = 0.0;
+  for (size_t j = 0; j < z.size(); j++) {
+    if (z[j] < 0.0) { barrier_dual_inf += -z[j]; }
+  }
+
+  // printf("Barrier Dual infeasibility %e\n", barrier_dual_inf);
+
+  f_t mu_avg = 0.0;
+  for (size_t j = 0; j < z.size(); j++) {
+    mu_avg += x[j] * z[j];
+  }
+  mu_avg /= z.size();
+  printf("Mu avg %e\n", mu_avg);
+
+  // Now implement Algorithm 1
+  n     = barrier_lp.num_cols;
+  i_t m = barrier_lp.num_rows;
+
+  f_t mu_min    = 1e-6;
+  f_t delta_max = 1e-4;
+  f_t mu_target = 1e-6;
+  f_t alpha_min = 1e-6;
+
+  std::vector<f_t> xprime = x;
+  std::vector<f_t> zprime = z;
+
+  for (i_t j = 0; j < n; j++) {
+    xprime[j] = std::max(x[j], alpha_min);
+    zprime[j] = std::max(z[j], alpha_min);
+    if (x[j] >= z[j]) {
+      xprime[j] =
+        std::min(std::max(mu_target / zprime[j], xprime[j] - delta_max), xprime[j] + delta_max);
+      zprime[j] =
+        std::min(std::max(mu_target / xprime[j], zprime[j] - delta_max), zprime[j] + delta_max);
+    } else {
+      zprime[j] =
+        std::min(std::max(mu_target / xprime[j], zprime[j] - delta_max), zprime[j] + delta_max);
+      xprime[j] =
+        std::min(std::max(mu_target / zprime[j], xprime[j] - delta_max), xprime[j] + delta_max);
+    }
+  }
+
+  bool skip_pdhg = false;
+  bool converged = false;
+  if (!skip_pdhg) {
+    // Now do PDHG on the central path problem
+    i_t iter_max = 1000000;
+
+    f_t norm_b        = vector_norm2<i_t, f_t>(barrier_lp.rhs);
+    f_t norm_c        = vector_norm2<i_t, f_t>(barrier_lp.objective);
+    f_t primal_weight = norm_b > 0.0 ? norm_c / norm_b : 1.0;
+    f_t eta           = 1.0 / barrier_lp.A.norm1() + 1 / 5;
+    f_t tau           = eta / primal_weight;
+    f_t sigma         = eta * primal_weight;
+    f_t mu            = mu_target;
+
+    printf("tau %e sigma %e mu %e\n", tau, sigma, mu);
+
+    std::vector<f_t> ysav = y;
+    std::vector<f_t> xbar = xprime;
+    std::vector<f_t> xold = x;
+    std::vector<f_t> v    = x;
+    std::vector<f_t> w    = x;
+
+    std::vector<f_t> z_term = x;
+
+    std::vector<f_t> primal_residual = barrier_lp.rhs;
+    std::vector<f_t> dual_residual   = barrier_lp.objective;
+
+    cusparse_view_t<i_t, f_t> cusparse_view(lp.handle_ptr, barrier_lp.A);
+    rmm::device_uvector<f_t> d_delta_y(m, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_xbar(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_y(m, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_x(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_xold(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_v(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_w(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_c(n, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_b(m, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_primal_residual(m, lp.handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_dual_residual(n, lp.handle_ptr->get_stream());
+
+    raft::copy(d_b.data(), barrier_lp.rhs.data(), m, lp.handle_ptr->get_stream());
+    raft::copy(d_c.data(), barrier_lp.objective.data(), n, lp.handle_ptr->get_stream());
+
+    raft::copy(d_xbar.data(), xbar.data(), n, lp.handle_ptr->get_stream());
+    raft::copy(d_y.data(), y.data(), m, lp.handle_ptr->get_stream());
+    raft::copy(d_x.data(), x.data(), n, lp.handle_ptr->get_stream());
+
+    printf("%8s %12s %12s %8s %8s %8s\n",
+           "Iter",
+           "Primal Obj.",
+           "Dual Obj.",
+           "P. Resid.",
+           "D. Resid.",
+           "Time");
+    for (i_t iter = 0; iter < iter_max; iter++) {
+      // Dual update
+      // delta_y = -sigma * A * xbar + sigma * b = sigma * (b - A * xbar)
+      raft::copy(d_delta_y.data(), d_b.data(), m, lp.handle_ptr->get_stream());
+      cusparse_view.spmv(-1, d_xbar, 1, d_delta_y);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(d_delta_y.data(), d_y.data()),
+        d_y.data(),
+        d_delta_y.size(),
+        [sigma] HD(f_t delta_y_i, f_t dy_i) -> f_t { return dy_i + delta_y_i * sigma; },
+        lp.handle_ptr->get_stream().value());
+      RAFT_CHECK_CUDA(lp.handle_ptr->get_stream());
+
+      raft::copy(d_xold.data(), d_x.data(), n, lp.handle_ptr->get_stream());
+
+      // xold = x
+      //  Primal gradient step
+      //  v = x + tau * A' * y
+
+      lp.handle_ptr->sync_stream();
+      cusparse_view.transpose_spmv(1.0, d_y, 0.0, d_v);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(d_x.data(), d_v.data()),
+        d_v.data(),
+        d_v.size(),
+        [tau] HD(f_t x_i, f_t v_i) -> f_t { return x_i + tau * v_i; },
+        lp.handle_ptr->get_stream().value());
+      RAFT_CHECK_CUDA(lp.handle_ptr->get_stream());
+      lp.handle_ptr->sync_stream();
+
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(d_v.data(), d_c.data(), d_x.data(), d_xold.data()),
+        thrust::make_zip_iterator(d_x.data(), d_xbar.data()),
+        d_x.size(),
+        [tau, mu] HD(f_t v_j, f_t c_j, f_t x_j, f_t xold_j) -> thrust::tuple<f_t, f_t> {
+          f_t w_j     = v_j - tau * c_j;
+          f_t new_x_j = (w_j + std::sqrt(w_j * w_j + 4.0 * tau * mu)) / 2.0;
+          return {new_x_j, 2.0 * new_x_j - xold_j};
+        },
+        lp.handle_ptr->get_stream().value());
+      RAFT_CHECK_CUDA(lp.handle_ptr->get_stream());
+      lp.handle_ptr->sync_stream();
+
+      if (iter % 1000 == 0) {
+        raft::copy(x.data(), d_x.data(), n, lp.handle_ptr->get_stream());
+        raft::copy(d_primal_residual.data(), d_b.data(), m, lp.handle_ptr->get_stream());
+        cusparse_view.spmv(1.0, d_x, -1.0, d_primal_residual);
+
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(d_xbar.data(), d_c.data()),
+          d_dual_residual.data(),
+          d_xbar.size(),
+          [mu_target] HD(f_t xbar_j, f_t c_j) -> f_t { return mu_target / xbar_j - c_j; },
+          lp.handle_ptr->get_stream().value());
+        RAFT_CHECK_CUDA(lp.handle_ptr->get_stream());
+        lp.handle_ptr->sync_stream();
+
+        cusparse_view.transpose_spmv(1.0, d_y, 1.0, d_dual_residual);
+
+        f_t vector_norm_2_primal =
+          std::sqrt(thrust::inner_product(rmm::exec_policy(lp.handle_ptr->get_stream()),
+                                          d_primal_residual.data(),
+                                          d_primal_residual.data() + m,
+                                          d_primal_residual.data(),
+                                          0.0));
+        f_t vector_norm_2_dual =
+          std::sqrt(thrust::inner_product(rmm::exec_policy(lp.handle_ptr->get_stream()),
+                                          d_dual_residual.data(),
+                                          d_dual_residual.data() + n,
+                                          d_dual_residual.data(),
+                                          0.0));
+
+        f_t primal_relative = vector_norm_2_primal / (1.0 + norm_b);
+        f_t dual_relative   = vector_norm_2_dual / (1.0 + norm_c);
+
+        f_t primal_obj   = thrust::inner_product(rmm::exec_policy(lp.handle_ptr->get_stream()),
+                                               d_c.data(),
+                                               d_c.data() + n,
+                                               d_xbar.data(),
+                                               0.0);
+        f_t dual_obj     = thrust::inner_product(rmm::exec_policy(lp.handle_ptr->get_stream()),
+                                             d_b.data(),
+                                             d_b.data() + m,
+                                             d_y.data(),
+                                             0.0);
+        f_t time         = toc(start_time);
+        printf("%8d %+12.6e %+12.6e %8.2e %8.2e %8.1fs\n",
+               iter,
+               primal_obj,
+               dual_obj,
+               primal_relative,
+               dual_relative,
+               time);
+
+        if (primal_relative < 1e-5 && dual_relative < 1e-5) {
+          converged = true;
+          raft::copy(x.data(), d_x.data(), n, lp.handle_ptr->get_stream());
+          raft::copy(y.data(), d_y.data(), m, lp.handle_ptr->get_stream());
+          raft::copy(xbar.data(), d_xbar.data(), n, lp.handle_ptr->get_stream());
+          break;
+        }
+      }
+    }
+  } else {
+    x         = xprime;
+    z         = zprime;
+    converged = true;
+  }
+
+  if (converged) {
+    printf("PDHG found point on central path\n\n\n");
+    // Solve using barrier
+    lp_solution_t<i_t, f_t> barrier_solution(presolved_lp.num_rows, presolved_lp.num_cols);
+
+    barrier_solver_t<i_t, f_t> barrier_solver(presolved_lp, presolve_info, barrier_settings);
+
+    // Convert the converged solution to (x, w, y, z, v)
+    std::vector<f_t> x_pdhg(n - n_upper_bounds);
+    std::vector<f_t> w_pdhg(n_upper_bounds);
+    std::vector<f_t> y_pdhg(m - n_upper_bounds);
+    std::vector<f_t> z_pdhg(n - n_upper_bounds);
+    std::vector<f_t> v_pdhg(n_upper_bounds);
+
+    for (i_t j = 0; j < n - n_upper_bounds; j++) {
+      x_pdhg[j] = x[j];
+      z_pdhg[j] = mu_target / x[j];
+    }
+
+    for (i_t j = 0; j < n_upper_bounds; j++) {
+      w_pdhg[j] = x[n - n_upper_bounds + j];
+      v_pdhg[j] = mu_target / x[n - n_upper_bounds + j];
+    }
+
+    for (i_t i = 0; i < m - n_upper_bounds; i++) {
+      y_pdhg[i] = y[i];
+    }
+
+    barrier_solver.x_pdhg = x_pdhg;
+    barrier_solver.w_pdhg = w_pdhg;
+    barrier_solver.y_pdhg = y_pdhg;
+    barrier_solver.z_pdhg = z_pdhg;
+    barrier_solver.v_pdhg = v_pdhg;
+
+    barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
+    lp_status_t barrier_status =
+      barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
+
+    return barrier_status == lp_status_t::OPTIMAL ? crossover_status_t::OPTIMAL
+                                                  : crossover_status_t::NUMERICAL_ISSUES;
+  } else {
+    return crossover_status_t::NUMERICAL_ISSUES;
+  }
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template crossover_status_t crossover<int, double>(
@@ -1581,6 +2025,14 @@ template crossover_status_t crossover<int, double>(
   double start_time,
   lp_solution_t<int, double>& solution,
   std::vector<variable_status_t>& vstatus);
+
+  template crossover_status_t central_path<int, double>(
+    const lp_problem_t<int, double>& problem,
+    const simplex_solver_settings_t<int, double>& settings,
+    const lp_solution_t<int, double>& initial_solution,
+    double start_time,
+    lp_solution_t<int, double>& solution,
+    std::vector<variable_status_t>& vstatus);
 
 #endif
 

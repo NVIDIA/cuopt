@@ -1971,6 +1971,14 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
 #endif
 
+  if (x_pdhg.size() > 0) {
+    data.x = x_pdhg;
+    data.w = w_pdhg;
+    data.y = y_pdhg;
+    data.z = z_pdhg;
+    data.v = v_pdhg;
+  }
+
   return 0;
 }
 

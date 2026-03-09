@@ -620,7 +620,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
     dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
     std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
-    dual_simplex::crossover_status_t crossover_status = dual_simplex::crossover(
+    dual_simplex::crossover_status_t crossover_status = dual_simplex::central_path(
       lp, dual_simplex_settings, initial_solution, timer.get_tic_start(), vertex_solution, vstatus);
     pdlp_termination_status_t termination_status = pdlp_termination_status_t::TimeLimit;
     auto to_termination_status                   = [](dual_simplex::crossover_status_t status) {
