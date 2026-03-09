@@ -53,6 +53,14 @@ cuopt_int_t test_deterministic_bb(const char* filename,
 cuopt_int_t test_lp_solution_mip_methods();
 cuopt_int_t test_mip_solution_lp_methods();
 
+cuopt_int_t test_pdlp_precision_single(const char* filename,
+                                       cuopt_int_t* termination_status_ptr,
+                                       cuopt_float_t* objective_ptr);
+
+cuopt_int_t test_pdlp_precision_mixed(const char* filename,
+                                      cuopt_int_t* termination_status_ptr,
+                                      cuopt_float_t* objective_ptr);
+
 /* CPU-only execution tests (require env vars CUDA_VISIBLE_DEVICES="" and CUOPT_REMOTE_HOST) */
 cuopt_int_t test_cpu_only_execution(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);

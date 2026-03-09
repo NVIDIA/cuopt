@@ -76,6 +76,13 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .choices("None", "Papilo", "PSLP", "Default");
 
   program.add_argument("--solution-path").help("Path where solution file will be generated");
+
+  program.add_argument("--pdlp-precision")
+    .help(
+      "PDLP precision mode. default: native type, single: FP32 internally, "
+      "double: FP64 explicitly, mixed: mixed-precision SpMV (FP32 matrix, FP64 vectors).")
+    .default_value(std::string("default"))
+    .choices("default", "single", "double", "mixed");
 }
 
 static cuopt::linear_programming::presolver_t string_to_presolver(const std::string& presolver)
@@ -85,6 +92,15 @@ static cuopt::linear_programming::presolver_t string_to_presolver(const std::str
   if (presolver == "PSLP") return cuopt::linear_programming::presolver_t::PSLP;
   if (presolver == "Default") return cuopt::linear_programming::presolver_t::Default;
   return cuopt::linear_programming::presolver_t::Default;
+}
+
+static cuopt::linear_programming::pdlp_precision_t string_to_pdlp_precision(
+  const std::string& precision)
+{
+  if (precision == "single") return cuopt::linear_programming::pdlp_precision_t::SinglePrecision;
+  if (precision == "double") return cuopt::linear_programming::pdlp_precision_t::DoublePrecision;
+  if (precision == "mixed") return cuopt::linear_programming::pdlp_precision_t::MixedPrecision;
+  return cuopt::linear_programming::pdlp_precision_t::DefaultPrecision;
 }
 
 static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
@@ -105,8 +121,7 @@ static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
 static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(
   const argparse::ArgumentParser& program)
 {
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
 
   settings.time_limit      = program.get<double>("--time-limit");
   settings.iteration_limit = program.get<int>("--iteration-limit");
@@ -114,29 +129,16 @@ static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_sol
   settings.pdlp_solver_mode =
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
   settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
-  settings.crossover = program.get<int>("--crossover");
-  settings.presolver = string_to_presolver(program.get<std::string>("--presolver"));
+  settings.crossover      = program.get<int>("--crossover");
+  settings.presolver      = string_to_presolver(program.get<std::string>("--presolver"));
+  settings.pdlp_precision = string_to_pdlp_precision(program.get<std::string>("--pdlp-precision"));
 
   return settings;
 }
 
-int main(int argc, char* argv[])
+static int run_solver(const argparse::ArgumentParser& program, const raft::handle_t& handle_)
 {
-  // Parse binary arguments
-  argparse::ArgumentParser program("solve_LP");
-  parse_arguments(program);
-
-  try {
-    program.parse_args(argc, argv);
-  } catch (const std::runtime_error& err) {
-    std::cerr << err.what() << std::endl;
-    std::cerr << program;
-    return 1;
-  }
-
-  // Initialize solver settings from binary arguments
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
-    create_solver_settings(program);
+  auto settings = create_solver_settings(program);
 
   bool use_pdlp_solver_mode = true;
   if (program.is_used("--pdlp-hyper-params-path")) {
@@ -144,13 +146,6 @@ int main(int argc, char* argv[])
     fill_pdlp_hyper_params(pdlp_hyper_params_path, settings.hyper_params);
     use_pdlp_solver_mode = false;
   }
-
-  // Setup up RMM memory pool
-  auto memory_resource = make_pool();
-  rmm::mr::set_current_device_resource(memory_resource.get());
-
-  // Initialize raft handle and running stream
-  const raft::handle_t handle_{};
 
   // Parse MPS file
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
@@ -167,4 +162,28 @@ int main(int argc, char* argv[])
     solution.write_to_file(program.get<std::string>("--solution-path"), handle_.get_stream());
 
   return 0;
+}
+
+int main(int argc, char* argv[])
+{
+  // Parse binary arguments
+  argparse::ArgumentParser program("solve_LP");
+  parse_arguments(program);
+
+  try {
+    program.parse_args(argc, argv);
+  } catch (const std::runtime_error& err) {
+    std::cerr << err.what() << std::endl;
+    std::cerr << program;
+    return 1;
+  }
+
+  // Setup up RMM memory pool
+  auto memory_resource = make_pool();
+  rmm::mr::set_current_device_resource(memory_resource.get());
+
+  // Initialize raft handle and running stream
+  const raft::handle_t handle_{};
+
+  return run_solver(program, handle_);
 }

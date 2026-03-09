@@ -382,7 +382,7 @@ pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
   return pdlp_warm_start_data_view_;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_settings_t<int, float>;
 #endif
 

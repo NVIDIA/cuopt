@@ -996,7 +996,7 @@ convergence_information_t<i_t, f_t>::to_primal_quality_adapter(
           primal_objective_.element(0, stream_view_)};
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class convergence_information_t<int, float>;
 
 template __global__ void compute_remaining_stats_kernel<int, float>(

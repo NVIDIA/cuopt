@@ -144,7 +144,7 @@ localized_duality_gap_container_t<i_t, f_t>::view()
   return v;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template struct localized_duality_gap_container_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE

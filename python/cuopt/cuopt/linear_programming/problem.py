@@ -195,6 +195,12 @@ class Variable:
         """
         return self.VariableName
 
+    def __neg__(self):
+        return LinearExpression([self], [-1.0], 0.0)
+
+    def __pos__(self):
+        return self
+
     def __add__(self, other):
         match other:
             case int() | float():
@@ -203,6 +209,8 @@ class Variable:
                 # Change?
                 return LinearExpression([self, other], [1.0, 1.0], 0.0)
             case LinearExpression():
+                return other + self
+            case QuadraticExpression():
                 return other + self
             case _:
                 raise ValueError(
@@ -220,6 +228,8 @@ class Variable:
                 return LinearExpression([self, other], [1.0, -1.0], 0.0)
             case LinearExpression():
                 # self - other ->   other * -1.0 + self
+                return other * -1.0 + self
+            case QuadraticExpression():
                 return other * -1.0 + self
             case _:
                 raise ValueError(
