@@ -340,7 +340,7 @@ bool problem_checking_t<i_t, f_t>::has_crossing_bounds(
 
 #define INSTANTIATE(F_TYPE) template class problem_checking_t<int, F_TYPE>;
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

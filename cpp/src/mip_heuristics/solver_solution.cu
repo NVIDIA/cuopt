@@ -209,8 +209,8 @@ void mip_solution_t<i_t, f_t>::write_to_sol_file(std::string_view filename,
     status = "Infeasible";
   }
 
-  double objective_value = get_objective_value();
-  auto& var_names        = get_variable_names();
+  f_t objective_value = get_objective_value();
+  auto& var_names     = get_variable_names();
   std::vector<f_t> solution;
   solution.resize(solution_.size());
   raft::copy(solution.data(), solution_.data(), solution_.size(), stream_view.value());
@@ -234,7 +234,7 @@ void mip_solution_t<i_t, f_t>::log_summary() const
   CUOPT_LOG_INFO("Total Solve Time: %f", get_total_solve_time());
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class mip_solution_t<int, float>;
 #endif
 
