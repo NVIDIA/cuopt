@@ -321,7 +321,7 @@ def solve(
             solution["vars"] = sol.get_vars()
             solution["lp_statistics"] = {} if lp_stats is None else lp_stats
             solution["reduced_cost"] = reduced_cost
-            
+
             solution["pdlpwarmstart_data"] = extract_pdlpwarmstart_data(
                 pdlpwarmstart_data
             )
