@@ -1801,80 +1801,61 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   i_t iter                = 0;
   std::string solver_name = "";
 
-  // Root node path
+  // Launch dual simplex on a background thread (it may be halted later if PDLP+crossover wins).
   lp_status_t root_status;
-  std::future<lp_status_t> root_status_future;
-  root_status_future = std::async(std::launch::async,
-                                  &solve_linear_program_with_advanced_basis<i_t, f_t>,
-                                  std::ref(original_lp_),
-                                  exploration_stats_.start_time,
-                                  std::ref(lp_settings),
-                                  std::ref(root_relax_soln),
-                                  std::ref(basis_update),
-                                  std::ref(basic_list),
-                                  std::ref(nonbasic_list),
-                                  std::ref(root_vstatus),
-                                  std::ref(edge_norms),
-                                  nullptr);
+  std::future<lp_status_t> root_status_future =
+    std::async(std::launch::async,
+               &solve_linear_program_with_advanced_basis<i_t, f_t>,
+               std::ref(original_lp_),
+               exploration_stats_.start_time,
+               std::ref(lp_settings),
+               std::ref(root_relax_soln),
+               std::ref(basis_update),
+               std::ref(basic_list),
+               std::ref(nonbasic_list),
+               std::ref(root_vstatus),
+               std::ref(edge_norms),
+               nullptr);
 
-  std::optional<std::future<root_relaxation_first_solution_t<i_t, f_t>>> pdlp_future_opt;
-  if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
-    root_crossover_solution_set_.store(false, std::memory_order_release);
-    pdlp_future_opt =
-      std::async(std::launch::async,
-                 &cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>,
-                 mip_problem_ptr_,
-                 lp_settings.time_limit,
-                 get_root_concurrent_halt(),
-                 pdlp_root_num_gpus_);
-  }
-
-  // Wait for first completion: PDLP/Barrier future, dual simplex future, or legacy callback
-  while (*get_root_concurrent_halt() == 0) {
-    bool pdlp_ready =
-      pdlp_future_opt && pdlp_future_opt->valid() &&
-      pdlp_future_opt->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
-    bool ds_ready =
-      root_status_future.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
-    if (root_crossover_solution_set_.load(std::memory_order_acquire) || pdlp_ready || ds_ready) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
+  const auto wait_timeout_s = static_cast<long long>(std::max(600.0, 2.0 * lp_settings.time_limit));
+  const auto wait_timeout   = std::chrono::seconds(wait_timeout_s);
 
   bool use_pdlp_path = false;
-  if (pdlp_future_opt && pdlp_future_opt->valid() &&
-      pdlp_future_opt->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
-    auto result                         = pdlp_future_opt->get();
-    root_crossover_soln_.x              = result.primal;
-    root_crossover_soln_.y              = result.dual;
-    root_crossover_soln_.z              = result.reduced_costs;
-    root_crossover_soln_.objective      = result.objective;
-    root_crossover_soln_.user_objective = result.user_objective;
-    root_crossover_soln_.iterations     = result.iterations;
-    root_objective_                     = result.objective;
-    root_crossover_solution_set_.store(true, std::memory_order_release);
-    if (lp_settings.on_first_lp_solution_available) {
-      lp_settings.on_first_lp_solution_available(result);
+
+  if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
+    if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
+      // Legacy path: set_root_relaxation_solution was already invoked (e.g. by diversity manager).
+      root_relaxation_first_solution_t<i_t, f_t> legacy_result;
+      legacy_result.primal         = root_crossover_soln_.x;
+      legacy_result.dual           = root_crossover_soln_.y;
+      legacy_result.reduced_costs  = root_crossover_soln_.z;
+      legacy_result.objective      = root_crossover_soln_.objective;
+      legacy_result.user_objective = root_crossover_soln_.user_objective;
+      legacy_result.iterations     = root_crossover_soln_.iterations;
+      if (lp_settings.on_first_lp_solution_available) {
+        lp_settings.on_first_lp_solution_available(legacy_result);
+      }
+      use_pdlp_path = true;
+    } else {
+      // Run PDLP/Barrier on the main thread, then crossover on the main thread.
+      auto result = cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>(
+        mip_problem_ptr_, lp_settings.time_limit, get_root_concurrent_halt(), pdlp_root_num_gpus_);
+      root_crossover_soln_.x              = result.primal;
+      root_crossover_soln_.y              = result.dual;
+      root_crossover_soln_.z              = result.reduced_costs;
+      root_crossover_soln_.objective      = result.objective;
+      root_crossover_soln_.user_objective = result.user_objective;
+      root_crossover_soln_.iterations     = result.iterations;
+      root_objective_                     = result.objective;
+      root_crossover_solution_set_.store(true, std::memory_order_release);
+      if (lp_settings.on_first_lp_solution_available) {
+        lp_settings.on_first_lp_solution_available(result);
+      }
+      use_pdlp_path = true;
     }
-    use_pdlp_path = true;
   }
 
-  if (!use_pdlp_path && root_crossover_solution_set_.load(std::memory_order_acquire)) {
-    // Legacy path: set_root_relaxation_solution was invoked
-    root_relaxation_first_solution_t<i_t, f_t> legacy_result;
-    legacy_result.primal         = root_crossover_soln_.x;
-    legacy_result.dual           = root_crossover_soln_.y;
-    legacy_result.reduced_costs  = root_crossover_soln_.z;
-    legacy_result.objective      = root_crossover_soln_.objective;
-    legacy_result.user_objective = root_crossover_soln_.user_objective;
-    legacy_result.iterations     = root_crossover_soln_.iterations;
-    if (lp_settings.on_first_lp_solution_available) {
-      lp_settings.on_first_lp_solution_available(legacy_result);
-    }
-  }
-
-  if (use_pdlp_path || root_crossover_solution_set_.load(std::memory_order_acquire)) {
+  if (use_pdlp_path) {
     // Crush the root relaxation solution on converted user problem
     std::vector<f_t> crushed_root_x;
     crush_primal_solution(
@@ -1907,9 +1888,13 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
     // Check if crossover was stopped by dual simplex
     if (crossover_status == crossover_status_t::OPTIMAL) {
-      set_root_concurrent_halt(1);             // Stop dual simplex
-      root_status = root_status_future.get();  // Wait for dual simplex to finish
-      set_root_concurrent_halt(0);             // Clear the concurrent halt flag
+      set_root_concurrent_halt(1);  // Stop dual simplex
+      if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
+        root_status = root_status_future.get();
+      } else {
+        root_status = lp_status_t::OPTIMAL;
+      }
+      set_root_concurrent_halt(0);  // Clear the concurrent halt flag
       // Override the root relaxation solution with the crossover solution
       root_relax_soln = root_crossover_soln_;
       root_vstatus    = crossover_vstatus_;
@@ -1926,14 +1911,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
         }
       }
       if (basic_list.size() != original_lp_.num_rows) {
-        settings_.log.printf(
-          "basic_list size %d != m %d\n", basic_list.size(), original_lp_.num_rows);
         assert(basic_list.size() == original_lp_.num_rows);
       }
       if (nonbasic_list.size() != original_lp_.num_cols - original_lp_.num_rows) {
-        settings_.log.printf("nonbasic_list size %d != n - m %d\n",
-                             nonbasic_list.size(),
-                             original_lp_.num_cols - original_lp_.num_rows);
         assert(nonbasic_list.size() == original_lp_.num_cols - original_lp_.num_rows);
       }
       // Populate the basis_update from the crossover vstatus
@@ -1946,7 +1926,6 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                         nonbasic_list,
                                                         crossover_vstatus_);
       if (refactor_status != 0) {
-        settings_.log.printf("Failed to refactor basis. %d deficient columns.\n", refactor_status);
         assert(refactor_status == 0);
         root_status = lp_status_t::NUMERICAL_ISSUES;
       }
@@ -1958,13 +1937,21 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       iter           = root_crossover_soln_.iterations;
       solver_name    = "Barrier/PDLP and Crossover";
     } else {
-      root_status    = root_status_future.get();
+      if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
+        root_status = root_status_future.get();
+      } else {
+        root_status = lp_status_t::TIME_LIMIT;
+      }
       user_objective = root_relax_soln_.user_objective;
       iter           = root_relax_soln_.iterations;
       solver_name    = "Dual Simplex";
     }
   } else {
-    root_status = root_status_future.get();
+    if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
+      root_status = root_status_future.get();
+    } else {
+      root_status = lp_status_t::TIME_LIMIT;
+    }
     root_relaxation_first_solution_t<i_t, f_t> ds_result;
     ds_result.primal         = root_relax_soln.x;
     ds_result.dual           = root_relax_soln.y;
