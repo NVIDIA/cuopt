@@ -2523,7 +2523,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::get_last_restart_was_average() const
     const typename localized_duality_gap_container_t<int, F_TYPE>::view_t duality_gap_view,     \
     F_TYPE* primal_product);
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

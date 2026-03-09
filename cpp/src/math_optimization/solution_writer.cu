@@ -9,15 +9,18 @@
 #include <utilities/logger.hpp>
 #include "solution_writer.hpp"
 
+#include <mip_heuristics/mip_constants.hpp>
+
 #include <fstream>
 
 namespace cuopt::linear_programming {
 
+template <typename f_t>
 void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
                                                    const std::string& status,
-                                                   const double objective_value,
+                                                   const f_t objective_value,
                                                    const std::vector<std::string>& variable_names,
-                                                   const std::vector<double>& variable_values)
+                                                   const std::vector<f_t>& variable_values)
 {
   raft::common::nvtx::range fun_scope("write final solution to .sol file");
   std::ofstream file(filename.data());
@@ -27,7 +30,7 @@ void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
     return;
   }
 
-  file.precision(std::numeric_limits<double>::max_digits10 + 1);
+  file.precision(std::numeric_limits<f_t>::max_digits10 + 1);
 
   file << "# Status: " << status << std::endl;
 
@@ -38,5 +41,23 @@ void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
     }
   }
 }
+
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+template void solution_writer_t::write_solution_to_sol_file<float>(
+  const std::string& filename,
+  const std::string& status,
+  const float objective_value,
+  const std::vector<std::string>& variable_names,
+  const std::vector<float>& variable_values);
+#endif
+
+#if MIP_INSTANTIATE_DOUBLE
+template void solution_writer_t::write_solution_to_sol_file<double>(
+  const std::string& filename,
+  const std::string& status,
+  const double objective_value,
+  const std::vector<std::string>& variable_names,
+  const std::vector<double>& variable_values);
+#endif
 
 }  // namespace cuopt::linear_programming

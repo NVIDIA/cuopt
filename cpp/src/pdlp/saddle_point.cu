@@ -166,7 +166,7 @@ rmm::device_uvector<f_t>& saddle_point_state_t<i_t, f_t>::get_next_AtY()
   return next_AtY_;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class saddle_point_state_t<int, float>;
 #endif
 

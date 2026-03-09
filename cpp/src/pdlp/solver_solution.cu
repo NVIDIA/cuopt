@@ -448,7 +448,7 @@ void optimization_problem_solution_t<i_t, f_t>::write_to_sol_file(
     std::string(filename), status, objective_value, var_names_, solution);
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class optimization_problem_solution_t<int, float>;
 #endif
 

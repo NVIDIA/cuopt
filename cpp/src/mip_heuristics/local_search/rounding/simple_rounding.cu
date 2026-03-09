@@ -179,7 +179,7 @@ void invoke_correct_integers(solution_t<i_t, f_t>& solution, f_t tol)
   template void invoke_correct_integers<int, F_TYPE>(solution_t<int, F_TYPE> & solution,     \
                                                      F_TYPE tol);
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

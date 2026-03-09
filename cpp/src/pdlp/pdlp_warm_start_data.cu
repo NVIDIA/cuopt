@@ -178,7 +178,7 @@ void pdlp_warm_start_data_t<i_t, f_t>::check_sizes()
                "All dual vectors should be of same size");
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_warm_start_data_t<int, float>;
 #endif
 

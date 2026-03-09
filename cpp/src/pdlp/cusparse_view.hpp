@@ -90,7 +90,8 @@ class cusparse_view_t {
                   rmm::device_uvector<f_t>& _potential_next_dual_solution,
                   rmm::device_uvector<f_t>& _reflected_primal_solution,
                   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                  bool enable_mixed_precision_spmv);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
                   const problem_t<i_t, f_t>& op_problem,
@@ -194,7 +195,55 @@ class cusparse_view_t {
   const rmm::device_uvector<i_t>& A_indices_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
+
+  // Mixed precision SpMV support (FP32 matrix with FP64 vectors/compute)
+  // Only used when mixed_precision_enabled_ is true and f_t = double
+  rmm::device_uvector<float> A_float_;                       // FP32 copy of A values
+  rmm::device_uvector<float> A_T_float_;                     // FP32 copy of A_T values
+  cusparse_sp_mat_descr_wrapper_t<i_t, float> A_mixed_;      // FP32 matrix descriptor for A
+  cusparse_sp_mat_descr_wrapper_t<i_t, float> A_T_mixed_;    // FP32 matrix descriptor for A_T
+  rmm::device_uvector<uint8_t> buffer_non_transpose_mixed_;  // SpMV buffer for mixed precision A
+  rmm::device_uvector<uint8_t> buffer_transpose_mixed_;      // SpMV buffer for mixed precision A_T
+  bool mixed_precision_enabled_{false};
+
+  // Update FP32 matrix copies after scaling (must be called after scale_problem())
+  void update_mixed_precision_matrices();
 };
+
+// Mixed precision SpMV: FP32 matrix with FP64 vectors and FP64 compute type
+void mixed_precision_spmv(cusparseHandle_t handle,
+                          cusparseOperation_t opA,
+                          const double* alpha,
+                          cusparseSpMatDescr_t matA,  // FP32 matrix
+                          cusparseDnVecDescr_t vecX,  // FP64 vector
+                          const double* beta,
+                          cusparseDnVecDescr_t vecY,  // FP64 vector
+                          cusparseSpMVAlg_t alg,
+                          void* externalBuffer,
+                          cudaStream_t stream);
+
+size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
+                                       cusparseOperation_t opA,
+                                       const double* alpha,
+                                       cusparseSpMatDescr_t matA,  // FP32 matrix
+                                       cusparseDnVecDescr_t vecX,  // FP64 vector
+                                       const double* beta,
+                                       cusparseDnVecDescr_t vecY,  // FP64 vector
+                                       cusparseSpMVAlg_t alg,
+                                       cudaStream_t stream);
+
+#if CUDA_VER_12_4_UP
+void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
+                                     cusparseOperation_t opA,
+                                     const double* alpha,
+                                     cusparseSpMatDescr_t matA,  // FP32 matrix
+                                     cusparseDnVecDescr_t vecX,  // FP64 vector
+                                     const double* beta,
+                                     cusparseDnVecDescr_t vecY,  // FP64 vector
+                                     cusparseSpMVAlg_t alg,
+                                     void* externalBuffer,
+                                     cudaStream_t stream);
+#endif
 
 #if CUDA_VER_12_4_UP
 template <
@@ -212,5 +261,7 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
                                 void* externalBuffer,
                                 cudaStream_t stream);
 #endif
+
+bool is_cusparse_runtime_mixed_precision_supported();
 
 }  // namespace cuopt::linear_programming::detail
