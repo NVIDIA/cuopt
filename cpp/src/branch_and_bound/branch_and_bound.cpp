@@ -2143,7 +2143,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       static_cast<double>(gap_closure.gap_closed_ratio * 100.0));
   };
 
-  i_t cut_pool_size = 0;
+  f_t cut_generation_start_time = tic();
+  i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
       set_solution_at_root(solution, cut_info);
@@ -2402,8 +2403,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   report_cut_gap_closure_metric();
   print_cut_info(settings_, cut_info);
-
+  f_t cut_generation_time = toc(cut_generation_start_time);
   if (cut_info.has_cuts()) {
+    settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
     settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",
                          original_lp_.num_rows,

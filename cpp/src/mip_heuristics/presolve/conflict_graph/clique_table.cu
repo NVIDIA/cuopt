@@ -1079,9 +1079,13 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     clique_table_ptr = clique_table_shared.get();
   }
   clique_table_ptr->tolerances = tolerances;
+  // spend maximum half of the time for additional cliques
+  // the other half for extending them
+  double time_limit_for_additional_cliques = timer.remaining_time() / 2;
+  cuopt::timer_t additional_cliques_timer(time_limit_for_additional_cliques);
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
-    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, timer);
+    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, additional_cliques_timer);
   }
 #ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();

@@ -23,7 +23,7 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-#define DEBUG_CLIQUE_CUTS 0
+#define DEBUG_CLIQUE_CUTS 1
 #define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
@@ -60,7 +60,8 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   CLIQUE_CUTS_DEBUG("build_clique_cut start clique_size=%lld",
                     static_cast<long long>(clique_vertices.size()));
   const f_t sort_work = clique_size > 0.0 ? 2.0 * clique_size * std::log2(clique_size + 1.0) : 0.0;
-  const f_t estimated_work = 11.0 * clique_size + sort_work;
+  const f_t dot_work  = 2.0 * clique_size;
+  const f_t estimated_work = 9.0 * clique_size + sort_work + dot_work;
   if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("build_clique_cut skip work_limit clique_size=%lld work=%g limit=%g",
                       static_cast<long long>(clique_vertices.size()),
@@ -237,7 +238,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
     ctx.call_limit_reached = true;
     return;
   }
-  if (ctx.add_work(static_cast<f_t>(2 * ctx.words + R.size()))) { return; }
+  if (ctx.add_work(static_cast<f_t>(4 * ctx.words))) { return; }
 
   // if P and X are empty, we are at maximal clique
   if (!bitset_any(P) && !bitset_any(X)) {
@@ -384,9 +385,12 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
-  const f_t estimated_extension_work = 2.0 * initial_clique_size +
-                                       3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
-                                       candidate_size * initial_clique_size + 2.0 * candidate_size;
+  const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
+  const f_t adj_check_cost     = 3.0;
+  const f_t estimated_extension_work =
+    2.0 * initial_clique_size + adj_set_build_cost + 3.0 * static_cast<f_t>(adj_set.size()) +
+    sort_work + adj_check_cost * candidate_size * (initial_clique_size + 0.5 * candidate_size) +
+    2.0 * candidate_size;
   if (add_work_estimate(estimated_extension_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
@@ -1061,6 +1065,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       return false;
     }
     f_t cut_generation_time = toc(cut_start_time);
+    settings.log.printf("Clique cut generation time %.2f seconds\n", cut_generation_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
     }
