@@ -10,6 +10,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
@@ -216,8 +217,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     problem_ptr->get_host_user_problem(host_problem);
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
     constexpr bool modify_problem_with_cliques = true;
-    find_initial_cliques(
-      host_problem, context.settings.tolerances, clique_timer, modify_problem_with_cliques);
+    find_initial_cliques(host_problem,
+                         context.settings.tolerances,
+                         &clique_table,
+                         clique_timer,
+                         modify_problem_with_cliques,
+                         nullptr);
     if (modify_problem_with_cliques) {
       problem_ptr->set_constraints_from_host_user_problem(host_problem);
       cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
