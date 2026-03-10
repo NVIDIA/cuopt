@@ -2143,7 +2143,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
       if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
-#if 1
+#ifdef PRINT_CUT_POOL_TYPES
       cut_pool.print_cutpool_types();
       print_cut_types("In LP      ", cut_types, settings_);
       printf("Cut pool size: %d\n", cut_pool.pool_size());
@@ -2343,7 +2343,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       f_t change_in_objective = root_objective_ - last_objective;
       const f_t factor        = settings_.cut_change_threshold;
       const f_t min_objective = 1e-3;
-      if (0 &&
+      if (factor > 0.0 &&
           change_in_objective <= factor * std::max(min_objective, std::abs(root_relax_objective))) {
         settings_.log.printf(
           "Change in objective %.16e is less than 1e-3 of root relax objective %.16e\n",
