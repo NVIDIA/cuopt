@@ -1703,7 +1703,16 @@ class Problem:
 
     def getIncumbentValues(self, solution, vars):
         """
-        Extract incumbent values of the vars from a problem solution.
+        This is a utility function that can be used for extracting incumbent values
+        of the given variables during a Solve using the incumbent callback.
+        Please check docs for more details and examples of incumbent callbacks.
+
+        Parameters
+        ----------
+        solution : List[float]
+            Array-like structure containing incumbent values.
+        vars : List[:py:class:`Variable`]
+            List of variables to extract corresponding incumbent values.
         """
         values = []
         for var in vars:
