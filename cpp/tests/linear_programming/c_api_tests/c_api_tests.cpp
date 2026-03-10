@@ -18,6 +18,10 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
+namespace cuopt::linear_programming::detail {
+bool is_cusparse_runtime_mixed_precision_supported();
+}
+
 #include <gtest/gtest.h>
 
 TEST(c_api, int_size) { EXPECT_EQ(test_int_size(), sizeof(int32_t)); }
@@ -270,6 +274,43 @@ INSTANTIATE_TEST_SUITE_P(c_api,
                            std::make_tuple("/mip/gen-ip054.mps", 128, 60.0, 2),
                            // Different instance
                            std::make_tuple("/mip/bb_optimality.mps", 8, 60.0, 2)));
+
+// =============================================================================
+// PDLP Precision Tests
+// =============================================================================
+
+TEST(c_api, pdlp_precision_single)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  EXPECT_EQ(test_pdlp_precision_single(filename.c_str(), &termination_status, &objective),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -464.7531, 1e-1);
+}
+
+TEST(c_api, pdlp_precision_mixed)
+{
+  using namespace cuopt::linear_programming::detail;
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  cuopt_int_t termination_status = -1;
+  cuopt_float_t objective;
+  if (!is_cusparse_runtime_mixed_precision_supported()) {
+    auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
+    bool solve_returned_error = (status != CUOPT_SUCCESS);
+    bool solve_returned_non_optimal =
+      (status == CUOPT_SUCCESS && termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL);
+    EXPECT_TRUE(solve_returned_error || solve_returned_non_optimal);
+    return;
+  }
+  EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -464.7531, 1e-1);
+}
 
 // =============================================================================
 // Solution Interface Polymorphism Tests

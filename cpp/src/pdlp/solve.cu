@@ -60,6 +60,10 @@
 
 namespace cuopt::linear_programming {
 
+template <typename From, typename To>
+extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
+                                        rmm::cuda_stream_view stream);
+
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -560,6 +564,122 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
                                   0);
 }
 
+#if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
+
+template <typename i_t>
+static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
+  detail::problem_t<i_t, double>& problem,
+  pdlp_solver_settings_t<i_t, double> const& settings,
+  const timer_t& timer,
+  bool is_batch_mode)
+{
+  CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Running PDLP in FP32 precision");
+  auto stream = problem.handle_ptr->get_stream();
+
+  // Convert the optimization problem stored inside problem_t to float
+  auto float_op = problem.original_problem_ptr->template convert_to_other_prec<float>(stream);
+  float_op.set_objective_offset(static_cast<float>(problem.presolve_data.objective_offset));
+  float_op.set_objective_scaling_factor(
+    static_cast<float>(problem.presolve_data.objective_scaling_factor));
+
+  detail::problem_t<i_t, float> float_problem(float_op);
+
+  auto objective_name = problem.objective_name;
+  auto var_names      = problem.var_names;
+  auto row_names      = problem.row_names;
+  // When crossover is off, free double-precision GPU memory to reduce peak usage.
+  // When crossover is on, run_pdlp needs the problem data after we return.
+  if (!settings.crossover) {
+    {
+      [[maybe_unused]] auto discard = detail::problem_t<i_t, double>(std::move(problem));
+    }
+  }
+
+  // Create float settings from double settings
+  pdlp_solver_settings_t<i_t, float> fs;
+  fs.tolerances.absolute_dual_tolerance =
+    static_cast<float>(settings.tolerances.absolute_dual_tolerance);
+  fs.tolerances.relative_dual_tolerance =
+    static_cast<float>(settings.tolerances.relative_dual_tolerance);
+  fs.tolerances.absolute_primal_tolerance =
+    static_cast<float>(settings.tolerances.absolute_primal_tolerance);
+  fs.tolerances.relative_primal_tolerance =
+    static_cast<float>(settings.tolerances.relative_primal_tolerance);
+  fs.tolerances.absolute_gap_tolerance =
+    static_cast<float>(settings.tolerances.absolute_gap_tolerance);
+  fs.tolerances.relative_gap_tolerance =
+    static_cast<float>(settings.tolerances.relative_gap_tolerance);
+  fs.tolerances.primal_infeasible_tolerance =
+    static_cast<float>(settings.tolerances.primal_infeasible_tolerance);
+  fs.tolerances.dual_infeasible_tolerance =
+    static_cast<float>(settings.tolerances.dual_infeasible_tolerance);
+  fs.detect_infeasibility    = settings.detect_infeasibility;
+  fs.strict_infeasibility    = settings.strict_infeasibility;
+  fs.iteration_limit         = settings.iteration_limit;
+  fs.time_limit              = static_cast<float>(settings.time_limit);
+  fs.pdlp_solver_mode        = settings.pdlp_solver_mode;
+  fs.log_to_console          = settings.log_to_console;
+  fs.log_file                = settings.log_file;
+  fs.per_constraint_residual = settings.per_constraint_residual;
+  fs.save_best_primal_so_far = settings.save_best_primal_so_far;
+  fs.first_primal_feasible   = settings.first_primal_feasible;
+  fs.eliminate_dense_columns = settings.eliminate_dense_columns;
+  fs.pdlp_precision          = pdlp_precision_t::DefaultPrecision;
+  fs.method                  = method_t::PDLP;
+  fs.inside_mip              = settings.inside_mip;
+  fs.hyper_params            = settings.hyper_params;
+  fs.presolver               = settings.presolver;
+  fs.num_gpus                = settings.num_gpus;
+  fs.concurrent_halt         = settings.concurrent_halt;
+
+  detail::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
+  if (settings.inside_mip) { solver.set_inside_mip(true); }
+  auto float_sol = solver.run_solver(timer);
+
+  // Convert float solution back to double on GPU (gpu_cast defined in optimization_problem.cu)
+  auto dev_primal  = gpu_cast<float, double>(float_sol.get_primal_solution(), stream);
+  auto dev_dual    = gpu_cast<float, double>(float_sol.get_dual_solution(), stream);
+  auto dev_reduced = gpu_cast<float, double>(float_sol.get_reduced_cost(), stream);
+
+  // Convert termination info (small host-side struct, stays on CPU)
+  auto float_term_infos = float_sol.get_additional_termination_informations();
+  using double_term_info_t =
+    typename optimization_problem_solution_t<i_t, double>::additional_termination_information_t;
+  std::vector<double_term_info_t> term_infos;
+  for (auto& fi : float_term_infos) {
+    double_term_info_t di;
+    di.number_of_steps_taken           = fi.number_of_steps_taken;
+    di.total_number_of_attempted_steps = fi.total_number_of_attempted_steps;
+    di.l2_primal_residual              = static_cast<double>(fi.l2_primal_residual);
+    di.l2_relative_primal_residual     = static_cast<double>(fi.l2_relative_primal_residual);
+    di.l2_dual_residual                = static_cast<double>(fi.l2_dual_residual);
+    di.l2_relative_dual_residual       = static_cast<double>(fi.l2_relative_dual_residual);
+    di.primal_objective                = static_cast<double>(fi.primal_objective);
+    di.dual_objective                  = static_cast<double>(fi.dual_objective);
+    di.gap                             = static_cast<double>(fi.gap);
+    di.relative_gap                    = static_cast<double>(fi.relative_gap);
+    di.max_primal_ray_infeasibility    = static_cast<double>(fi.max_primal_ray_infeasibility);
+    di.primal_ray_linear_objective     = static_cast<double>(fi.primal_ray_linear_objective);
+    di.max_dual_ray_infeasibility      = static_cast<double>(fi.max_dual_ray_infeasibility);
+    di.dual_ray_linear_objective       = static_cast<double>(fi.dual_ray_linear_objective);
+    di.solve_time                      = fi.solve_time;
+    di.solved_by_pdlp                  = fi.solved_by_pdlp;
+    term_infos.push_back(di);
+  }
+
+  auto status_vec = float_sol.get_terminations_status();
+
+  return optimization_problem_solution_t<i_t, double>(dev_primal,
+                                                      dev_dual,
+                                                      dev_reduced,
+                                                      objective_name,
+                                                      var_names,
+                                                      row_names,
+                                                      std::move(term_infos),
+                                                      std::move(status_vec));
+}
+#endif
+
 template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   detail::problem_t<i_t, f_t>& problem,
@@ -574,6 +694,13 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     return optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::NumericalError,
                                                      problem.handle_ptr->get_stream()};
   }
+#if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (settings.pdlp_precision == pdlp_precision_t::SinglePrecision) {
+      return run_pdlp_solver_in_fp32(problem, settings, timer, is_batch_mode);
+    }
+  }
+#endif
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
@@ -585,6 +712,24 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                                    const timer_t& timer,
                                                    bool is_batch_mode)
 {
+  if constexpr (!std::is_same_v<f_t, double>) {
+    cuopt_expects(!is_batch_mode,
+                  error_type_t::ValidationError,
+                  "PDLP batch mode is not supported for float precision. Use double precision.");
+  }
+  cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::MixedPrecision &&
+                  !detail::is_cusparse_runtime_mixed_precision_supported()),
+                error_type_t::ValidationError,
+                "Mixed-precision SpMV requires cuSPARSE runtime 12.5 or later.");
+  cuopt_expects(
+    !(is_batch_mode && settings.pdlp_precision == pdlp_precision_t::MixedPrecision),
+    error_type_t::ValidationError,
+    "Mixed-precision SpMV is not supported in batch mode. Set pdlp_precision=-1 (default) "
+    "or disable batch mode.");
+  cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::SinglePrecision && is_batch_mode),
+                error_type_t::ValidationError,
+                "Single-precision PDLP is not supported in batch mode.");
+
   auto start_solver = std::chrono::high_resolution_clock::now();
   timer_t timer_pdlp(timer.remaining_time());
   auto sol = run_pdlp_solver(problem, settings, timer, is_batch_mode);
@@ -606,82 +751,89 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                                sol.get_solve_time());
   }
 
-  const bool do_crossover = settings.crossover;
-  i_t crossover_info      = 0;
-  if (do_crossover && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
-    crossover_info = -1;
+  if constexpr (std::is_same_v<f_t, double>) {
+    const bool do_crossover = settings.crossover;
+    i_t crossover_info      = 0;
+    if (do_crossover && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
+      crossover_info = -1;
 
-    dual_simplex::lp_problem_t<i_t, f_t> lp(problem.handle_ptr, 1, 1, 1);
-    dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
-    translate_to_crossover_problem(problem, sol, lp, initial_solution);
-    dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
-    dual_simplex_settings.time_limit      = settings.time_limit;
-    dual_simplex_settings.iteration_limit = settings.iteration_limit;
-    dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
-    dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
-    std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
-    dual_simplex::crossover_status_t crossover_status = dual_simplex::crossover(
-      lp, dual_simplex_settings, initial_solution, timer.get_tic_start(), vertex_solution, vstatus);
-    pdlp_termination_status_t termination_status = pdlp_termination_status_t::TimeLimit;
-    auto to_termination_status                   = [](dual_simplex::crossover_status_t status) {
-      switch (status) {
-        case dual_simplex::crossover_status_t::OPTIMAL: return pdlp_termination_status_t::Optimal;
-        case dual_simplex::crossover_status_t::PRIMAL_FEASIBLE:
-          return pdlp_termination_status_t::PrimalFeasible;
-        case dual_simplex::crossover_status_t::DUAL_FEASIBLE:
-          return pdlp_termination_status_t::NumericalError;
-        case dual_simplex::crossover_status_t::NUMERICAL_ISSUES:
-          return pdlp_termination_status_t::NumericalError;
-        case dual_simplex::crossover_status_t::CONCURRENT_LIMIT:
-          return pdlp_termination_status_t::ConcurrentLimit;
-        case dual_simplex::crossover_status_t::TIME_LIMIT:
-          return pdlp_termination_status_t::TimeLimit;
-        default: return pdlp_termination_status_t::NumericalError;
-      }
-    };
-    termination_status = to_termination_status(crossover_status);
-    if (crossover_status == dual_simplex::crossover_status_t::OPTIMAL) { crossover_info = 0; }
-    rmm::device_uvector<f_t> final_primal_solution =
-      cuopt::device_copy(vertex_solution.x, problem.handle_ptr->get_stream());
-    rmm::device_uvector<f_t> final_dual_solution =
-      cuopt::device_copy(vertex_solution.y, problem.handle_ptr->get_stream());
-    rmm::device_uvector<f_t> final_reduced_cost =
-      cuopt::device_copy(vertex_solution.z, problem.handle_ptr->get_stream());
-    problem.handle_ptr->sync_stream();
-    // Negate dual variables and reduced costs for maximization problems
-    if (problem.maximize) {
-      adjust_dual_solution_and_reduced_cost(
-        final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+      dual_simplex::lp_problem_t<i_t, f_t> lp(problem.handle_ptr, 1, 1, 1);
+      dual_simplex::lp_solution_t<i_t, f_t> initial_solution(1, 1);
+      translate_to_crossover_problem(problem, sol, lp, initial_solution);
+      dual_simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
+      dual_simplex_settings.time_limit      = settings.time_limit;
+      dual_simplex_settings.iteration_limit = settings.iteration_limit;
+      dual_simplex_settings.concurrent_halt = settings.concurrent_halt;
+      dual_simplex::lp_solution_t<i_t, f_t> vertex_solution(lp.num_rows, lp.num_cols);
+      std::vector<dual_simplex::variable_status_t> vstatus(lp.num_cols);
+      dual_simplex::crossover_status_t crossover_status =
+        dual_simplex::crossover(lp,
+                                dual_simplex_settings,
+                                initial_solution,
+                                timer.get_tic_start(),
+                                vertex_solution,
+                                vstatus);
+      pdlp_termination_status_t termination_status = pdlp_termination_status_t::TimeLimit;
+      auto to_termination_status                   = [](dual_simplex::crossover_status_t status) {
+        switch (status) {
+          case dual_simplex::crossover_status_t::OPTIMAL: return pdlp_termination_status_t::Optimal;
+          case dual_simplex::crossover_status_t::PRIMAL_FEASIBLE:
+            return pdlp_termination_status_t::PrimalFeasible;
+          case dual_simplex::crossover_status_t::DUAL_FEASIBLE:
+            return pdlp_termination_status_t::NumericalError;
+          case dual_simplex::crossover_status_t::NUMERICAL_ISSUES:
+            return pdlp_termination_status_t::NumericalError;
+          case dual_simplex::crossover_status_t::CONCURRENT_LIMIT:
+            return pdlp_termination_status_t::ConcurrentLimit;
+          case dual_simplex::crossover_status_t::TIME_LIMIT:
+            return pdlp_termination_status_t::TimeLimit;
+          default: return pdlp_termination_status_t::NumericalError;
+        }
+      };
+      termination_status = to_termination_status(crossover_status);
+      if (crossover_status == dual_simplex::crossover_status_t::OPTIMAL) { crossover_info = 0; }
+      rmm::device_uvector<f_t> final_primal_solution =
+        cuopt::device_copy(vertex_solution.x, problem.handle_ptr->get_stream());
+      rmm::device_uvector<f_t> final_dual_solution =
+        cuopt::device_copy(vertex_solution.y, problem.handle_ptr->get_stream());
+      rmm::device_uvector<f_t> final_reduced_cost =
+        cuopt::device_copy(vertex_solution.z, problem.handle_ptr->get_stream());
       problem.handle_ptr->sync_stream();
-    }
+      // Negate dual variables and reduced costs for maximization problems
+      if (problem.maximize) {
+        adjust_dual_solution_and_reduced_cost(
+          final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
+        problem.handle_ptr->sync_stream();
+      }
 
-    // Should be filled with more information from dual simplex
-    std::vector<
-      typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-      info(1);
-    info[0].primal_objective      = vertex_solution.user_objective;
-    info[0].number_of_steps_taken = vertex_solution.iterations;
-    auto crossover_end            = std::chrono::high_resolution_clock::now();
-    auto crossover_duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(crossover_end - start_solver);
-    info[0].solve_time = crossover_duration.count() / 1000.0;
-    auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
-                                                                   final_dual_solution,
-                                                                   final_reduced_cost,
-                                                                   problem.objective_name,
-                                                                   problem.var_names,
-                                                                   problem.row_names,
-                                                                   std::move(info),
-                                                                   {termination_status});
-    sol.copy_from(problem.handle_ptr, sol_crossover);
-    CUOPT_LOG_CONDITIONAL_INFO(
-      !settings.inside_mip, "Crossover status %s", sol.get_termination_status_string().c_str());
-  }
-  if (settings.method == method_t::Concurrent && settings.concurrent_halt != nullptr &&
-      crossover_info == 0 && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
-    // We finished. Tell dual simplex to stop if it is still running.
-    CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished. Telling others to stop");
-    *settings.concurrent_halt = 1;
+      // Should be filled with more information from dual simplex
+      std::vector<
+        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+        info(1);
+      info[0].primal_objective      = vertex_solution.user_objective;
+      info[0].number_of_steps_taken = vertex_solution.iterations;
+      auto crossover_end            = std::chrono::high_resolution_clock::now();
+      auto crossover_duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(crossover_end - start_solver);
+      info[0].solve_time = crossover_duration.count() / 1000.0;
+      auto sol_crossover = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
+                                                                     final_dual_solution,
+                                                                     final_reduced_cost,
+                                                                     problem.objective_name,
+                                                                     problem.var_names,
+                                                                     problem.row_names,
+                                                                     std::move(info),
+                                                                     {termination_status});
+      sol.copy_from(problem.handle_ptr, sol_crossover);
+      CUOPT_LOG_CONDITIONAL_INFO(
+        !settings.inside_mip, "Crossover status %s", sol.get_termination_status_string().c_str());
+    }
+    if (settings.method == method_t::Concurrent && settings.concurrent_halt != nullptr &&
+        crossover_info == 0 && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
+      // We finished. Tell dual simplex to stop if it is still running.
+      CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished. Telling others to stop");
+      *settings.concurrent_halt = 1;
+    }
   }
   return sol;
 }
@@ -1117,13 +1269,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   const timer_t& timer,
   bool is_batch_mode)
 {
-  if (settings.method == method_t::DualSimplex) {
-    return run_dual_simplex(problem, settings, timer);
-  } else if (settings.method == method_t::Barrier) {
-    return run_barrier(problem, settings, timer);
-  } else if (settings.method == method_t::Concurrent) {
-    return run_concurrent(problem, settings, timer, is_batch_mode);
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (settings.method == method_t::DualSimplex) {
+      return run_dual_simplex(problem, settings, timer);
+    } else if (settings.method == method_t::Barrier) {
+      return run_barrier(problem, settings, timer);
+    } else if (settings.method == method_t::Concurrent) {
+      return run_concurrent(problem, settings, timer, is_batch_mode);
+    } else {
+      return run_pdlp(problem, settings, timer, is_batch_mode);
+    }
   } else {
+    // Float precision only supports PDLP without presolve/crossover
+    cuopt_expects(settings.method == method_t::PDLP,
+                  error_type_t::ValidationError,
+                  "Float precision only supports PDLP method. DualSimplex, Barrier, and Concurrent "
+                  "require double precision.");
     return run_pdlp(problem, settings, timer, is_batch_mode);
   }
 }
@@ -1199,9 +1360,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
-    if (!run_presolve && !settings_const.inside_mip) {
-      CUOPT_LOG_INFO("Third-party presolve is disabled, skipping");
-    }
 
     // Declare result at outer scope so that result->reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.

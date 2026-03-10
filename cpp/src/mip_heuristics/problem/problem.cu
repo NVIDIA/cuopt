@@ -2380,7 +2380,7 @@ void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_ind
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class problem_t<int, float>;
 #endif
 

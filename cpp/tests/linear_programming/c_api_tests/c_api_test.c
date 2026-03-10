@@ -2122,3 +2122,135 @@ DONE:
   cuOptDestroySolution(&solution);
   return status;
 }
+
+cuopt_int_t test_pdlp_precision_mixed(const char* filename,
+                                      cuopt_int_t* termination_status_ptr,
+                                      cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_int_t termination_status = -1;
+  cuopt_float_t objective_value;
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem\n");
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method\n");
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_PDLP_PRECISION, CUOPT_PDLP_MIXED_PRECISION);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting pdlp_precision\n");
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem with pdlp_precision=mixed\n");
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status\n");
+    goto DONE;
+  }
+  *termination_status_ptr = termination_status;
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value\n");
+    goto DONE;
+  }
+  *objective_ptr = objective_value;
+
+  printf("PDLP precision=mixed test passed: status=%s, objective=%f\n",
+         termination_status_to_string(termination_status),
+         objective_value);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_pdlp_precision_single(const char* filename,
+                                      cuopt_int_t* termination_status_ptr,
+                                      cuopt_float_t* objective_ptr)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_int_t termination_status = -1;
+  cuopt_float_t objective_value;
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem\n");
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method\n");
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_PDLP_PRECISION, CUOPT_PDLP_SINGLE_PRECISION);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting pdlp_precision\n");
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem with pdlp_precision=single\n");
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status\n");
+    goto DONE;
+  }
+  *termination_status_ptr = termination_status;
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value\n");
+    goto DONE;
+  }
+  *objective_ptr = objective_value;
+
+  printf("PDLP precision=single test passed: status=%s, objective=%f\n",
+         termination_status_to_string(termination_status),
+         objective_value);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
