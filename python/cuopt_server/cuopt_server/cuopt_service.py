@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
@@ -6,7 +6,7 @@ import logging
 import os
 import signal
 import sys
-from multiprocessing import Event, Process, Queue
+from multiprocessing import get_context
 
 import psutil
 
@@ -66,21 +66,23 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    ctx = get_context("fork")
+
     # Flag for this process that says we have already run the
     # exit handler
-    terminated = Event()
+    terminated = ctx.Event()
 
     # Flag for all processes that the app is shutting down
-    app_exit = Event()
+    app_exit = ctx.Event()
 
     # Flag set by results thread when all jobs have been
     # marked done, to give a chance for anyone actively
     # waiting to get a graceful response
-    jobs_marked_done = Event()
+    jobs_marked_done = ctx.Event()
 
-    job_queue = Queue()
-    abort_queue = Queue()
-    results_queue = Queue()
+    job_queue = ctx.Queue()
+    abort_queue = ctx.Queue()
+    results_queue = ctx.Queue()
 
     w = None
 
@@ -401,7 +403,7 @@ if __name__ == "__main__":
 
         from cuopt_server.webserver import run_server
 
-        w = Process(
+        w = ctx.Process(
             target=run_server,
             args=(
                 app_exit,
