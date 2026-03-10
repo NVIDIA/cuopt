@@ -1817,7 +1817,7 @@ crossover_status_t central_path(const lp_problem_t<i_t, f_t>& lp,
     f_t norm_b        = vector_norm2<i_t, f_t>(barrier_lp.rhs);
     f_t norm_c        = vector_norm2<i_t, f_t>(barrier_lp.objective);
     f_t primal_weight = norm_b > 0.0 ? norm_c / norm_b : 1.0;
-    f_t eta           = 1.0 / barrier_lp.A.norm1() + 1 / 5;
+    f_t eta           = 1.0 / (barrier_lp.A.norm2_estimate(1e-4) + 1e-4);
     f_t tau           = eta / primal_weight;
     f_t sigma         = eta * primal_weight;
     f_t mu            = mu_target;

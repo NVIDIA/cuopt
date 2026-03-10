@@ -103,6 +103,8 @@ class csc_matrix_t {
   // Compute || A ||_1 = max_j (sum {i = 1 to m} | A(i, j) | )
   f_t norm1() const;
 
+  f_t norm2_estimate(f_t tol) const;
+
   // Compare two matrices
   void compare(csc_matrix_t<i_t, f_t> const& B) const;
 

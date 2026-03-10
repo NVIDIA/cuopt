@@ -30,6 +30,13 @@ class random_t {
     return distrib(gen);
   }
 
+  template <typename T>
+  T random_value(T min, T max)
+  {
+    std::uniform_real_distribution<> distrib(min, max);
+    return distrib(gen);
+  }
+
  private:
   std::mt19937 gen;
 };
