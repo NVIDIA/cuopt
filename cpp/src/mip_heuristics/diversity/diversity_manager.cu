@@ -198,7 +198,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
     const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit * 0.9);
+    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
     timer_t probing_timer{time_for_probing_cache};
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible =

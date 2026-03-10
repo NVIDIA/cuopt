@@ -1160,7 +1160,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   // TODO this can be problem dependent
   const i_t max_calls         = 100000;
   f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 2e9;
+  const f_t max_work_estimate = 1e8;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
