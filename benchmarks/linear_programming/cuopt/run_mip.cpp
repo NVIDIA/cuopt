@@ -213,6 +213,7 @@ int run_single_file(std::string file_path,
   settings.tolerances.absolute_tolerance = 1e-6;
   settings.presolver                     = cuopt::linear_programming::presolver_t::Default;
   settings.reliability_branching         = reliability_branching;
+  settings.clique_cuts                   = 0;
   settings.seed                          = 42;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
@@ -419,12 +420,12 @@ int main(int argc, char* argv[])
 
   if (num_cpu_threads < 0) {
     num_cpu_threads = omp_get_max_threads() / n_gpus;
-    std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
-    if (smt_file.is_open()) {
-      int smt_active = 0;
-      smt_file >> smt_active;
-      if (smt_active) { num_cpu_threads /= 2; }
-    }
+    // std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
+    // if (smt_file.is_open()) {
+    //   int smt_active = 0;
+    //   smt_file >> smt_active;
+    //   if (smt_active) { num_cpu_threads /= 2; }
+    // }
     num_cpu_threads = std::max(num_cpu_threads, 1);
   }
 
