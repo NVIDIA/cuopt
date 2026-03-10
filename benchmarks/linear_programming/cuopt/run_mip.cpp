@@ -417,7 +417,16 @@ int main(int argc, char* argv[])
   int reliability_branching = program.get<int>("--reliability-branching");
   bool deterministic        = program.get<bool>("--determinism");
 
-  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
+  if (num_cpu_threads < 0) {
+    num_cpu_threads = omp_get_max_threads() / n_gpus;
+    std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
+    if (smt_file.is_open()) {
+      int smt_active = 0;
+      smt_file >> smt_active;
+      if (smt_active) { num_cpu_threads /= 2; }
+    }
+    num_cpu_threads = std::max(num_cpu_threads, 1);
+  }
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
