@@ -288,16 +288,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.work_unit_scheduler_.register_context(branch_and_bound->get_work_unit_context());
     // context.work_unit_scheduler_.verbose = true;
 
-    context.problem_ptr->set_root_relaxation_solution_callback =
-      std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
-                branch_and_bound.get(),
-                std::placeholders::_1,
-                std::placeholders::_2,
-                std::placeholders::_3,
-                std::placeholders::_4,
-                std::placeholders::_5,
-                std::placeholders::_6);
-
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");
       solution_t<i_t, f_t> sol(*context.problem_ptr);

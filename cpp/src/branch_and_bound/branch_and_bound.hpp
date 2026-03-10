@@ -84,26 +84,6 @@ class branch_and_bound_t {
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
 
-  // Set the root solution found by PDLP
-  void set_root_relaxation_solution(const std::vector<f_t>& primal,
-                                    const std::vector<f_t>& dual,
-                                    const std::vector<f_t>& reduced_costs,
-                                    f_t objective,
-                                    f_t user_objective,
-                                    i_t iterations)
-  {
-    if (!is_root_solution_set) {
-      root_crossover_soln_.x              = primal;
-      root_crossover_soln_.y              = dual;
-      root_crossover_soln_.z              = reduced_costs;
-      root_objective_                     = objective;
-      root_crossover_soln_.objective      = objective;
-      root_crossover_soln_.user_objective = user_objective;
-      root_crossover_soln_.iterations     = iterations;
-      root_crossover_solution_set_.store(true, std::memory_order_release);
-    }
-  }
-
   // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
 
@@ -201,10 +181,8 @@ class branch_and_bound_t {
   lp_solution_t<i_t, f_t> root_relax_soln_;
   lp_solution_t<i_t, f_t> root_crossover_soln_;
   std::vector<f_t> edge_norms_;
-  std::atomic<bool> root_crossover_solution_set_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
-  bool is_root_solution_set{false};
   cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr_{nullptr};
   i_t pdlp_root_num_gpus_{1};
 

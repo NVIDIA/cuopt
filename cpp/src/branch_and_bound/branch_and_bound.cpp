@@ -1823,36 +1823,20 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   bool use_pdlp_path = false;
 
   if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
-    if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
-      // Legacy path: set_root_relaxation_solution was already invoked (e.g. by diversity manager).
-      root_relaxation_first_solution_t<i_t, f_t> legacy_result;
-      legacy_result.primal         = root_crossover_soln_.x;
-      legacy_result.dual           = root_crossover_soln_.y;
-      legacy_result.reduced_costs  = root_crossover_soln_.z;
-      legacy_result.objective      = root_crossover_soln_.objective;
-      legacy_result.user_objective = root_crossover_soln_.user_objective;
-      legacy_result.iterations     = root_crossover_soln_.iterations;
-      if (lp_settings.on_first_lp_solution_available) {
-        lp_settings.on_first_lp_solution_available(legacy_result);
-      }
-      use_pdlp_path = true;
-    } else {
-      // Run PDLP/Barrier on the main thread, then crossover on the main thread.
-      auto result = cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>(
-        mip_problem_ptr_, lp_settings.time_limit, get_root_concurrent_halt(), pdlp_root_num_gpus_);
-      root_crossover_soln_.x              = result.primal;
-      root_crossover_soln_.y              = result.dual;
-      root_crossover_soln_.z              = result.reduced_costs;
-      root_crossover_soln_.objective      = result.objective;
-      root_crossover_soln_.user_objective = result.user_objective;
-      root_crossover_soln_.iterations     = result.iterations;
-      root_objective_                     = result.objective;
-      root_crossover_solution_set_.store(true, std::memory_order_release);
-      if (lp_settings.on_first_lp_solution_available) {
-        lp_settings.on_first_lp_solution_available(result);
-      }
-      use_pdlp_path = true;
+    // Run PDLP/Barrier on the main thread, then crossover on the main thread.
+    auto result = cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>(
+      mip_problem_ptr_, lp_settings.time_limit, get_root_concurrent_halt(), pdlp_root_num_gpus_);
+    root_crossover_soln_.x              = result.primal;
+    root_crossover_soln_.y              = result.dual;
+    root_crossover_soln_.z              = result.reduced_costs;
+    root_crossover_soln_.objective      = result.objective;
+    root_crossover_soln_.user_objective = result.user_objective;
+    root_crossover_soln_.iterations     = result.iterations;
+    root_objective_                     = result.objective;
+    if (lp_settings.on_first_lp_solution_available) {
+      lp_settings.on_first_lp_solution_available(result);
     }
+    use_pdlp_path = true;
   }
 
   if (use_pdlp_path) {
@@ -1980,7 +1964,6 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   }
 
   settings_.log.printf("\n");
-  is_root_solution_set = true;
 
   return root_status;
 }
