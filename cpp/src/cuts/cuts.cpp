@@ -1061,7 +1061,17 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
-  // Generate Clique cuts
+  // Generate MIR and CG cuts
+  if (settings.mir_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
+    f_t cut_start_time = tic();
+    generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+
+  // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
     bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, reduced_costs, start_time);
@@ -1072,16 +1082,6 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
-    }
-  }
-
-  // Generate MIR and CG cuts
-  if (settings.mir_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
-    f_t cut_start_time = tic();
-    generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
-    f_t cut_generation_time = toc(cut_start_time);
-    if (cut_generation_time > 1.0) {
-      settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
   return true;
@@ -1125,35 +1125,26 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<double>(settings.time_limit),
                     static_cast<double>(toc(start_time)));
 
-  if (clique_table_ == nullptr) {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts building clique table");
-    detail::clique_config_t clique_config;
-    clique_config.min_clique_size = 2;
-    clique_table_                 = std::make_shared<detail::clique_table_t<i_t, f_t>>(
-      2 * num_vars, clique_config.min_clique_size, clique_config.max_clique_size_for_extension);
-
-    typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
-    tolerances.presolve_absolute_tolerance = settings.primal_tol;
-    tolerances.absolute_tolerance          = settings.primal_tol;
-    tolerances.relative_tolerance          = settings.zero_tol;
-    tolerances.integrality_tolerance       = settings.integer_tol;
-    tolerances.absolute_mip_gap            = settings.absolute_mip_gap_tol;
-    tolerances.relative_mip_gap            = settings.relative_mip_gap_tol;
-
-    const f_t remaining_time =
-      std::max(static_cast<f_t>(0.), settings.time_limit - toc(start_time));
-    cuopt::timer_t clique_build_timer(static_cast<double>(remaining_time));
-    detail::build_clique_table(
-      user_problem_, *clique_table_, tolerances, true, true, clique_build_timer);
-    if (clique_build_timer.check_time_limit()) { return true; }
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts clique table built first=%lld addtl=%lld",
-                      static_cast<long long>(clique_table_->first.size()),
-                      static_cast<long long>(clique_table_->addtl_cliques.size()));
-  } else {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts reusing clique table first=%lld addtl=%lld",
-                      static_cast<long long>(clique_table_->first.size()),
-                      static_cast<long long>(clique_table_->addtl_cliques.size()));
+  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
+      clique_table_future_->valid()) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts signaling background thread and waiting");
+    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
+    clique_table_        = clique_table_future_->get();
+    clique_table_future_ = nullptr;
+    if (clique_table_) {
+      CLIQUE_CUTS_DEBUG("generate_clique_cuts received clique table first=%lld addtl=%lld",
+                        static_cast<long long>(clique_table_->first.size()),
+                        static_cast<long long>(clique_table_->addtl_cliques.size()));
+    }
   }
+
+  if (clique_table_ == nullptr) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts no clique table available, skipping");
+    return true;
+  }
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts using clique table first=%lld addtl=%lld",
+                    static_cast<long long>(clique_table_->first.size()),
+                    static_cast<long long>(clique_table_->addtl_cliques.size()));
 
   if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts empty clique table, nothing to separate");

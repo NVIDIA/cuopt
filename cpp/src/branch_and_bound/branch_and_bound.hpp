@@ -32,7 +32,9 @@
 
 #include <omp.h>
 
+#include <atomic>
 #include <functional>
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -147,6 +149,8 @@ class branch_and_bound_t {
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
+  std::atomic<bool> signal_extend_cliques_{false};
 
   work_limit_context_t work_unit_context_{"B&B"};
 

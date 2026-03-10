@@ -23,6 +23,7 @@
 #include <memory>
 #include <utilities/timer.hpp>
 
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -103,7 +104,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          bool modify_problem);
+                          bool modify_problem,
+                          std::atomic<bool>* signal_extend = nullptr);
 
 template <typename i_t, typename f_t>
 void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
