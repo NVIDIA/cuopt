@@ -41,20 +41,6 @@ void find_cliques_from_constraint(const knapsack_constraint_t<i_t, f_t>& kc,
   cuopt_assert(size > 1, "Constraint has not enough variables");
   if (kc.entries[size - 1].val + kc.entries[size - 2].val <= kc.rhs) { return; }
 
-  // For set packing constraints all variables are pairwise conflicting.
-  // Materialize edges directly into adj_list to avoid a large entry in 'first'
-  // and the downstream overhead of clique maps / position lookups.
-  constexpr i_t max_set_packing_adj_list_size = 100;
-  if (kc.is_set_packing && size <= max_set_packing_adj_list_size) {
-    for (i_t i = 0; i < size; i++) {
-      for (i_t j = i + 1; j < size; j++) {
-        clique_table.adj_list_small_cliques[kc.entries[i].col].insert(kc.entries[j].col);
-        clique_table.adj_list_small_cliques[kc.entries[j].col].insert(kc.entries[i].col);
-      }
-    }
-    return;
-  }
-
   std::vector<i_t> clique;
   i_t k = size - 1;
   // find the first clique, which is the largest
@@ -229,8 +215,6 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
 template <typename i_t, typename f_t>
 void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t& timer)
 {
-  if (timer.check_time_limit()) { return; }
-
   i_t num_removed_first = 0;
   i_t num_removed_addtl = 0;
   std::vector<bool> to_delete(clique_table.first.size(), false);
@@ -250,7 +234,6 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
     }
   }
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
-    if (timer.check_time_limit()) { return; }
     const auto& addtl_clique   = clique_table.addtl_cliques[addtl_c];
     const auto base_clique_idx = static_cast<size_t>(addtl_clique.clique_idx);
     cuopt_assert(base_clique_idx < to_delete.size(),
