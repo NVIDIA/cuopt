@@ -1788,7 +1788,6 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
       work_estimate += 2 * scaled_delta_xB_sparse.i.size() + scaled_delta_xB.size();
       scale = -scaled_delta_xB[basic_leaving_index];
     } else if (delta_z[entering_index] != 0.0) {
-      printf("Using delta_z for entering index %d %e\n", entering_index, delta_z[entering_index]);
       scale = -delta_z[entering_index];
       // The sparse solve did not produce a coefficient for basic_leaving_index.
       // Add it so update_primal_variables / update_primal_infeasibilities process

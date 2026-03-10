@@ -825,10 +825,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
                 lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
               if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
                   std::abs(multiplier) / min_abs_multiplier > 10000) {
-                printf("Multiplier %e is too small/large max %e min %e\n",
-                       multiplier,
-                       max_abs_multiplier,
-                       min_abs_multiplier);
                 inequality = saved_inequality;
                 // Erase the pivot row from the potential rows
                 potential_rows.erase(
