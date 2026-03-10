@@ -1790,6 +1790,21 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
     } else if (delta_z[entering_index] != 0.0) {
       printf("Using delta_z for entering index %d %e\n", entering_index, delta_z[entering_index]);
       scale = -delta_z[entering_index];
+      // The sparse solve did not produce a coefficient for basic_leaving_index.
+      // Add it so update_primal_variables / update_primal_infeasibilities process
+      // the leaving variable (they iterate over scaled_delta_xB_sparse.i).
+      bool found_leaving = false;
+      for (i_t k = 0; k < static_cast<i_t>(scaled_delta_xB_sparse.i.size()); ++k) {
+        if (scaled_delta_xB_sparse.i[k] == basic_leaving_index) {
+          scaled_delta_xB_sparse.x[k] = scale;
+          found_leaving               = true;
+          break;
+        }
+      }
+      if (!found_leaving) {
+        scaled_delta_xB_sparse.i.push_back(basic_leaving_index);
+        scaled_delta_xB_sparse.x.push_back(scale);
+      }
     } else {
       return -1;
     }
