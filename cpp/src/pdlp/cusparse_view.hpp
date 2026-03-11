@@ -120,6 +120,8 @@ class cusparse_view_t {
                   const rmm::device_uvector<i_t>&,               // Empty just to init the const&
                   const std::vector<pdlp_climber_strategy_t>&);  // Empty just to init the const&
 
+  void create_spmv_op_plans(bool is_reflected);
+
   const bool batch_mode_{false};
 
   raft::handle_t const* handle_ptr_{nullptr};
@@ -171,6 +173,15 @@ class cusparse_view_t {
   // reuse buffers for cusparse spmv
   rmm::device_uvector<uint8_t> buffer_non_transpose;
   rmm::device_uvector<uint8_t> buffer_transpose;
+  rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop;
+  rmm::device_uvector<uint8_t> buffer_transpose_spmvop;
+
+  // here for tests of compilation
+  cusparseSpMVOpDescr_t spmv_op_descr_A_;
+  cusparseSpMVOpDescr_t spmv_op_descr_A_t_;
+  cusparseSpMVOpPlan_t spmv_op_plan_A_;
+  cusparseSpMVOpPlan_t spmv_op_plan_A_t_;
+
 
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;

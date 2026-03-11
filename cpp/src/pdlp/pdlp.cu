@@ -2143,6 +2143,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   initial_scaling_strategy_.scale_problem();
+  pdhg_solver_.get_cusparse_view().create_spmv_op_plans(settings_.hyper_params.use_reflected_primal_dual);
 
   // Update FP32 matrix copies for mixed precision SpMV after scaling
   pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
