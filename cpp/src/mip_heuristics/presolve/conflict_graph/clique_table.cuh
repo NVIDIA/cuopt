@@ -20,8 +20,10 @@
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <memory>
 #include <utilities/timer.hpp>
 
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -83,6 +85,8 @@ struct clique_table_t {
   std::vector<std::unordered_set<i_t>> var_clique_map_first;
   // keeps the indices of additional cliques that contain variable x
   std::vector<std::unordered_set<i_t>> var_clique_map_addtl;
+  // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
+  std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
   // adjacency list to keep small cliques, this basically keeps the vars share a small clique
   // constraint
   std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_small_cliques;
@@ -98,8 +102,18 @@ struct clique_table_t {
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          bool modify_problem);
+                          bool modify_problem,
+                          std::atomic<bool>* signal_extend = nullptr);
+
+template <typename i_t, typename f_t>
+void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+                        clique_table_t<i_t, f_t>& clique_table,
+                        typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
+                        bool remove_small_cliques,
+                        bool fill_var_clique_maps,
+                        cuopt::timer_t& timer);
 
 }  // namespace cuopt::linear_programming::detail
 

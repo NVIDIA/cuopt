@@ -15,12 +15,20 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <future>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include <cmath>
 #include <cstdint>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -29,8 +37,30 @@ enum cut_type_t : int8_t {
   MIXED_INTEGER_ROUNDING = 1,
   KNAPSACK               = 2,
   CHVATAL_GOMORY         = 3,
-  MAX_CUT_TYPE           = 4
+  CLIQUE                 = 4,
+  MAX_CUT_TYPE           = 5
 };
+
+template <typename f_t>
+struct cut_gap_closure_t {
+  f_t initial_gap{0.0};
+  f_t final_gap{0.0};
+  f_t gap_closed{0.0};
+  f_t gap_closed_ratio{0.0};
+};
+
+template <typename f_t>
+cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
+                                               f_t objective_before_cuts,
+                                               f_t objective_after_cuts)
+{
+  const f_t initial_gap      = std::abs(objective_reference - objective_before_cuts);
+  const f_t final_gap        = std::abs(objective_reference - objective_after_cuts);
+  const f_t gap_closed       = initial_gap - final_gap;
+  constexpr f_t eps          = static_cast<f_t>(1e-12);
+  const f_t gap_closed_ratio = initial_gap > eps ? gap_closed / initial_gap : static_cast<f_t>(0.0);
+  return {initial_gap, final_gap, gap_closed, gap_closed_ratio};
+}
 
 template <typename i_t, typename f_t>
 struct cut_info_t {
@@ -48,8 +78,9 @@ struct cut_info_t {
       num_cuts[static_cast<int>(cut_type)]++;
     }
   }
-  const char* cut_type_names[MAX_CUT_TYPE] = {"Gomory   ", "MIR      ", "Knapsack ", "Strong CG"};
-  std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
+  const char* cut_type_names[MAX_CUT_TYPE] = {
+    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   "};
+  std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
 };
 
 template <typename i_t, typename f_t>
@@ -82,6 +113,19 @@ template <typename f_t>
 f_t fractional_part(f_t a)
 {
   return a - std::floor(a);
+}
+
+template <typename f_t>
+bool add_work_estimate(f_t accesses,
+                       f_t* work_estimate,
+                       f_t max_work_estimate,
+                       bool* work_limit_reached = nullptr)
+{
+  if (work_estimate == nullptr) { return false; }
+  *work_estimate += accesses;
+  const bool over_work_limit = *work_estimate > max_work_estimate;
+  if (over_work_limit && work_limit_reached != nullptr) { *work_limit_reached = true; }
+  return over_work_limit;
 }
 
 // Computes a permutation of a score vector that puts the highest scores first
@@ -118,6 +162,15 @@ template <typename i_t, typename f_t>
 void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
                                         const std::vector<f_t>& cut_rhs,
                                         const std::vector<f_t>& saved_solution);
+
+// Test-only helper to run the production maximal-clique algorithm used by clique cuts.
+// adjacency_list must contain local vertex indices in [0, n_vertices).
+std::vector<std::vector<int>> find_maximal_cliques_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& weights,
+  double min_weight,
+  int max_calls,
+  double time_limit);
 
 template <typename i_t, typename f_t>
 class cut_pool_t {
@@ -221,25 +274,37 @@ class mixed_integer_rounding_cut_t;
 template <typename i_t, typename f_t>
 class cut_generation_t {
  public:
-  cut_generation_t(cut_pool_t<i_t, f_t>& cut_pool,
-                   const lp_problem_t<i_t, f_t>& lp,
-                   const simplex_solver_settings_t<i_t, f_t>& settings,
-                   csr_matrix_t<i_t, f_t>& Arow,
-                   const std::vector<i_t>& new_slacks,
-                   const std::vector<variable_type_t>& var_types)
-    : cut_pool_(cut_pool), knapsack_generation_(lp, settings, Arow, new_slacks, var_types)
+  cut_generation_t(
+    cut_pool_t<i_t, f_t>& cut_pool,
+    const lp_problem_t<i_t, f_t>& lp,
+    const simplex_solver_settings_t<i_t, f_t>& settings,
+    csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<i_t>& new_slacks,
+    const std::vector<variable_type_t>& var_types,
+    const user_problem_t<i_t, f_t>& user_problem,
+    std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
+    std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
+    std::atomic<bool>* signal_extend                                                    = nullptr)
+    : cut_pool_(cut_pool),
+      knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
+      user_problem_(user_problem),
+      clique_table_(std::move(clique_table)),
+      clique_table_future_(clique_table_future),
+      signal_extend_(signal_extend)
   {
   }
 
-  void generate_cuts(const lp_problem_t<i_t, f_t>& lp,
+  bool generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      csr_matrix_t<i_t, f_t>& Arow,
                      const std::vector<i_t>& new_slacks,
                      const std::vector<variable_type_t>& var_types,
                      basis_update_mpf_t<i_t, f_t>& basis_update,
                      const std::vector<f_t>& xstar,
+                     const std::vector<f_t>& reduced_costs,
                      const std::vector<i_t>& basic_list,
-                     const std::vector<i_t>& nonbasic_list);
+                     const std::vector<i_t>& nonbasic_list,
+                     f_t start_time);
 
  private:
   // Generate all mixed integer gomory cuts
@@ -269,8 +334,20 @@ class cut_generation_t {
                               const std::vector<variable_type_t>& var_types,
                               const std::vector<f_t>& xstar);
 
+  // Generate clique cuts from conflict graph cliques
+  bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<variable_type_t>& var_types,
+                            const std::vector<f_t>& xstar,
+                            const std::vector<f_t>& reduced_costs,
+                            f_t start_time);
+
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
+  const user_problem_t<i_t, f_t>& user_problem_;
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
+  std::atomic<bool>* signal_extend_{nullptr};
 };
 
 template <typename i_t, typename f_t>

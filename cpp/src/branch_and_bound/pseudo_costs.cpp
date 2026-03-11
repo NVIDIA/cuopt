@@ -237,15 +237,46 @@ f_t trial_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
 template <typename i_t, typename f_t>
 static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
-  const dual_simplex::user_problem_t<i_t, f_t>& user_problem)
+  const dual_simplex::lp_problem_t<i_t, f_t>& lp,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<f_t>& root_soln,
+  std::vector<f_t>& original_root_soln_x)
 {
+
+  // Branch and bound has a problem of the form:
+  // minimize c^T x
+  // subject to A*x + Es = b
+  //            l <= x <= u
+  //            E_{jj} = sigma_j, where sigma_j is +1 or -1
+
+  // We need to convert this into a problem that is better for PDLP
+  // to solve. PDLP perfers inequality constraints. Thus, we want
+  // to convert the above into the problem:
+  // minimize c^T x
+  // subject to  lb <= A*x <= ub
+  //             l <= x <= u
+
+
   cuopt::mps_parser::mps_data_model_t<i_t, f_t> mps_model;
-  int m = user_problem.num_rows;
-  int n = user_problem.num_cols;
+  int m = lp.num_rows;
+  int n = lp.num_cols - new_slacks.size();
+  original_root_soln_x.resize(n);
+
+  // Remove slacks from A
+  dual_simplex::csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
+  std::vector<i_t> cols_to_remove(lp.A.n, 0);
+  for (i_t j : new_slacks) {
+    cols_to_remove[j] = 1;
+  }
+  A_no_slacks.remove_columns(cols_to_remove);
+
+  for (i_t j = 0; j < n; j++) {
+    original_root_soln_x[j] = root_soln[j];
+  }
 
   // Convert CSC to CSR using built-in method
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
-  user_problem.A.to_compressed_row(csr_A);
+  A_no_slacks.to_compressed_row(csr_A);
 
   int nz = csr_A.row_start[m];
 
@@ -254,63 +285,65 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
     csr_A.x.data(), nz, csr_A.j.data(), nz, csr_A.row_start.data(), m + 1);
 
   // Set objective coefficients
-  mps_model.set_objective_coefficients(user_problem.objective.data(), n);
+  mps_model.set_objective_coefficients(lp.objective.data(), n);
 
   // Set objective scaling and offset
-  mps_model.set_objective_scaling_factor(user_problem.obj_scale);
-  mps_model.set_objective_offset(user_problem.obj_constant);
+  mps_model.set_objective_scaling_factor(lp.obj_scale);
+  mps_model.set_objective_offset(lp.obj_constant);
 
   // Set variable bounds
-  mps_model.set_variable_lower_bounds(user_problem.lower.data(), n);
-  mps_model.set_variable_upper_bounds(user_problem.upper.data(), n);
+  mps_model.set_variable_lower_bounds(lp.lower.data(), n);
+  mps_model.set_variable_upper_bounds(lp.upper.data(), n);
 
   // Convert row sense and RHS to constraint bounds
   std::vector<f_t> constraint_lower(m);
   std::vector<f_t> constraint_upper(m);
 
-  for (i_t i = 0; i < m; ++i) {
-    if (user_problem.row_sense[i] == 'L') {
-      constraint_lower[i] = -std::numeric_limits<f_t>::infinity();
-      constraint_upper[i] = user_problem.rhs[i];
-    } else if (user_problem.row_sense[i] == 'G') {
-      constraint_lower[i] = user_problem.rhs[i];
-      constraint_upper[i] = std::numeric_limits<f_t>::infinity();
-    } else if (user_problem.row_sense[i] == 'E') {
-      constraint_lower[i] = user_problem.rhs[i];
-      constraint_upper[i] = user_problem.rhs[i];
-    } else {
-      throw std::runtime_error("Invalid row sense: " + std::string(1, user_problem.row_sense[i]));
-    }
+  std::vector<i_t> slack_map(m, -1);
+  for (i_t j : new_slacks) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t i = lp.A.i[col_start];
+    slack_map[i] = j;
   }
 
-  for (i_t k = 0; k < user_problem.num_range_rows; ++k) {
-    i_t i = user_problem.range_rows[k];
-    f_t r = user_problem.range_value[k];
-    f_t b = user_problem.rhs[i];
-    f_t h = -std::numeric_limits<f_t>::infinity();
-    f_t u = std::numeric_limits<f_t>::infinity();
-    if (user_problem.row_sense[i] == 'L') {
-      h = b - std::abs(r);
-      u = b;
-    } else if (user_problem.row_sense[i] == 'G') {
-      h = b;
-      u = b + std::abs(r);
-    } else if (user_problem.row_sense[i] == 'E') {
-      if (r > 0) {
-        h = b;
-        u = b + std::abs(r);
-      } else {
-        h = b - std::abs(r);
-        u = b;
-      }
+  for (i_t i = 0; i < m; ++i) {
+    // Each row is of the form a_i^T x + sigma * s_i = b_i
+    // with sigma = +1 or -1
+    // and l_i <= s_i <= u_i
+    // We have that a_i^T x - b_i = -sigma * s_i
+    // If sigma = -1, then we have
+    //    a_i^T x - b_i = s_i
+    //  l_i <= a_i^T x - b_i <= u_i
+    //  l_i + b_i <= a_i^T x <= u_i + b_i
+    //
+    // If sigma = +1, then we have
+    //    a_i^T x - b_i = -s_i
+    //   -a_i^T x + b_i = s_i
+    //  l_i <= -a_i^T x + b_i <= u_i
+    //  l_i - b_i <= -a_i^T x <= u_i - b_i
+    //  -u_i + b_i <= a_i^T x <= -l_i + b_i
+
+    const i_t slack = slack_map[i];
+    assert(slack != -1);
+    const i_t col_start = lp.A.col_start[slack];
+    const f_t sigma = lp.A.x[col_start];
+    const f_t slack_lower = lp.lower[slack];
+    const f_t slack_upper = lp.upper[slack];
+
+    if (sigma == -1) {
+      constraint_lower[i] = slack_lower + lp.rhs[i];
+      constraint_upper[i] = slack_upper + lp.rhs[i];
+    } else if (sigma == 1) {
+      constraint_lower[i] = -slack_upper + lp.rhs[i];
+      constraint_upper[i] = -slack_lower + lp.rhs[i];
+    } else {
+      assert(sigma == 1.0 || sigma == -1.0);
     }
-    constraint_lower[i] = h;
-    constraint_upper[i] = u;
   }
 
   mps_model.set_constraint_lower_bounds(constraint_lower.data(), m);
   mps_model.set_constraint_upper_bounds(constraint_upper.data(), m);
-  mps_model.set_maximize(user_problem.obj_scale < 0);
+  mps_model.set_maximize(lp.obj_scale < 0);
 
   return mps_model;
 }
@@ -380,10 +413,10 @@ static std::pair<f_t, i_t> merge_sb_result(f_t ds_val,
 
 
 template <typename i_t, typename f_t>
-void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
-                      const lp_problem_t<i_t, f_t>& original_lp,
+void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
                       f_t start_time,
+                      const std::vector<i_t>& new_slacks,
                       const std::vector<variable_type_t>& var_types,
                       const std::vector<f_t>& root_soln,
                       const std::vector<f_t>& root_soln_y,
@@ -417,27 +450,22 @@ void strong_branching(const user_problem_t<i_t, f_t>& original_problem,
     settings.log.printf("Racing batch PDLP and Dual Simplex for strong branching\n");
 
     f_t start_batch = tic();
-
-    // Use original_problem to create the BatchLP problem
-    csr_matrix_t<i_t, f_t> A_row(original_problem.A.m, original_problem.A.n, 0);
-    original_problem.A.to_compressed_row(A_row);
-
-    // Convert the root_soln to the original problem space
     std::vector<f_t> original_root_soln_x;
-    uncrush_primal_solution(original_problem, original_lp, root_soln, original_root_soln_x);
+
+    const auto mps_model         = simplex_problem_to_mps_data_model(original_lp, new_slacks, root_soln, original_root_soln_x);
+
 
     std::vector<f_t> fraction_values;
 
     std::vector<f_t> original_root_soln_y, original_root_soln_z;
-    uncrush_dual_solution(
-      original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y, original_root_soln_z);
+    // TODO put back later once Chris has this part
+    /*uncrush_dual_solution(
+      original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y, original_root_soln_z);*/
 
     for (i_t k = 0; k < fractional.size(); k++) {
       const i_t j = fractional[k];
       fraction_values.push_back(original_root_soln_x[j]);
     }
-
-    const auto mps_model         = simplex_problem_to_mps_data_model(original_problem);
 
     const f_t batch_elapsed_time = toc(start_time);
     const f_t batch_remaining_time =
@@ -1134,10 +1162,10 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs_from_strong_branching(
 
 template class pseudo_costs_t<int, double>;
 
-template void strong_branching<int, double>(const user_problem_t<int, double>& original_problem,
-                                            const lp_problem_t<int, double>& original_lp,
+template void strong_branching<int, double>(const lp_problem_t<int, double>& original_lp,
                                             const simplex_solver_settings_t<int, double>& settings,
                                             double start_time,
+                                            const std::vector<int>& new_slacks,
                                             const std::vector<variable_type_t>& var_types,
                                             const std::vector<double>& root_soln,
                                             const std::vector<double>& root_soln_y,

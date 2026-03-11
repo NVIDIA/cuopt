@@ -77,8 +77,8 @@ inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_re
 inline cuopt::init_logger_t dummy_logger(
   const cuopt::linear_programming::solver_settings_t<int, double>& settings)
 {
-  return cuopt::init_logger_t(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
-                              settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+  return cuopt::init_logger_t(settings.template get_parameter<std::string>(CUOPT_LOG_FILE),
+                              settings.template get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
 }
 
 /**
@@ -287,6 +287,17 @@ int main(int argc, char* argv[])
     .implicit_value(true);
 
   std::map<std::string, std::string> arg_name_to_param_name;
+
+  // Register --pdlp-precision with string-to-int mapping so that it flows
+  // through the settings_strings map like other settings.
+  program.add_argument("--pdlp-precision")
+    .help(
+      "PDLP precision mode. default: native type, single: FP32 internally, "
+      "double: FP64 explicitly, mixed: mixed-precision SpMV (FP32 matrix, FP64 vectors).")
+    .default_value(std::string("-1"))
+    .choices("default", "single", "double", "mixed", "-1", "0", "1", "2");
+  arg_name_to_param_name["--pdlp-precision"] = CUOPT_PDLP_PRECISION;
+
   {
     // Add all solver settings as arguments
     cuopt::linear_programming::solver_settings_t<int, double> dummy_settings;
@@ -341,11 +352,20 @@ int main(int argc, char* argv[])
     return 1;
   }
 
+  // Map symbolic pdlp-precision names to integer values
+  static const std::map<std::string, std::string> precision_name_to_value = {
+    {"default", "-1"}, {"single", "0"}, {"double", "1"}, {"mixed", "2"}};
+
   // Read everything as a string
   std::map<std::string, std::string> settings_strings;
   for (auto& [arg_name, param_name] : arg_name_to_param_name) {
     if (program.is_used(arg_name.c_str())) {
-      settings_strings[param_name] = program.get<std::string>(arg_name.c_str());
+      auto val = program.get<std::string>(arg_name.c_str());
+      if (param_name == CUOPT_PDLP_PRECISION) {
+        auto it = precision_name_to_value.find(val);
+        if (it != precision_name_to_value.end()) { val = it->second; }
+      }
+      settings_strings[param_name] = val;
     }
   }
   // Get the values

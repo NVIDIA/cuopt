@@ -10,6 +10,7 @@
 #include <branch_and_bound/pseudo_costs.hpp>
 
 #include <cuts/cuts.hpp>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
@@ -241,9 +242,11 @@ template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  f_t start_time)
+  f_t start_time,
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table)
   : original_problem_(user_problem),
     settings_(solver_settings),
+    clique_table_(std::move(clique_table)),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
     Arow_(1, 1, 0),
     incumbent_(1),
@@ -1968,6 +1971,31 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
 
+  if (settings_.clique_cuts != 0 && clique_table_ == nullptr) {
+    signal_extend_cliques_.store(false, std::memory_order_release);
+    typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t
+      tolerances_for_clique{};
+    tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
+    tolerances_for_clique.absolute_tolerance          = settings_.primal_tol;
+    tolerances_for_clique.relative_tolerance          = settings_.zero_tol;
+    tolerances_for_clique.integrality_tolerance       = settings_.integer_tol;
+    tolerances_for_clique.absolute_mip_gap            = settings_.absolute_mip_gap_tol;
+    tolerances_for_clique.relative_mip_gap            = settings_.relative_mip_gap_tol;
+    auto* signal_ptr                                  = &signal_extend_cliques_;
+    clique_table_future_ =
+      std::async(std::launch::async,
+                 [this,
+                  tolerances_for_clique,
+                  signal_ptr]() -> std::shared_ptr<detail::clique_table_t<i_t, f_t>> {
+                   user_problem_t<i_t, f_t> problem_copy = original_problem_;
+                   cuopt::timer_t timer(std::numeric_limits<double>::infinity());
+                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> table;
+                   detail::find_initial_cliques(
+                     problem_copy, tolerances_for_clique, &table, timer, false, signal_ptr);
+                   return table;
+                 });
+  }
+
   i_t original_rows                     = original_lp_.num_rows;
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.inside_mip                = 1;
@@ -2003,14 +2031,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
   exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
 
+  auto finish_clique_thread = [this]() {
+    if (clique_table_future_.valid()) {
+      signal_extend_cliques_.store(true, std::memory_order_release);
+      clique_table_ = clique_table_future_.get();
+    }
+  };
+
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    // FIXME: rarely dual simplex detects infeasible whereas it is feasible.
-    // to add a small safety net, check if there is a primal solution already.
-    // Uncomment this if the issue with cost266-UUE is resolved
-    // if (settings.heuristic_preemption_callback != nullptr) {
-    //   settings.heuristic_preemption_callback();
-    // }
+    finish_clique_thread();
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
@@ -2018,23 +2048,27 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
+    finish_clique_thread();
     return mip_status_t::UNBOUNDED;
   }
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
+    finish_clique_thread();
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
+    finish_clique_thread();
     return solver_status_;
   }
 
   if (root_status == lp_status_t::NUMERICAL_ISSUES) {
     solver_status_ = mip_status_t::NUMERICAL;
     set_final_solution(solution, -inf);
+    finish_clique_thread();
     return solver_status_;
   }
 
@@ -2065,6 +2099,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional == 0) {
     set_solution_at_root(solution, cut_info);
+    finish_clique_thread();
     return mip_status_t::OPTIMAL;
   }
 
@@ -2079,8 +2114,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
-  cut_generation_t<i_t, f_t> cut_generation(
-    cut_pool, original_lp_, settings_, Arow_, new_slacks_, var_types_);
+  cut_generation_t<i_t, f_t> cut_generation(cut_pool,
+                                            original_lp_,
+                                            settings_,
+                                            Arow_,
+                                            new_slacks_,
+                                            var_types_,
+                                            original_problem_,
+                                            clique_table_,
+                                            &clique_table_future_,
+                                            &signal_extend_cliques_);
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
@@ -2091,7 +2134,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t last_objective       = root_objective_;
   f_t root_relax_objective = root_objective_;
 
-  i_t cut_pool_size = 0;
+  f_t cut_generation_start_time = tic();
+  i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
       set_solution_at_root(solution, cut_info);
@@ -2110,16 +2154,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #endif
 
       // Generate cuts and add them to the cut pool
-      f_t cut_start_time = tic();
-      cut_generation.generate_cuts(original_lp_,
-                                   settings_,
-                                   Arow_,
-                                   new_slacks_,
-                                   var_types_,
-                                   basis_update,
-                                   root_relax_soln_.x,
-                                   basic_list,
-                                   nonbasic_list);
+      f_t cut_start_time    = tic();
+      bool problem_feasible = cut_generation.generate_cuts(original_lp_,
+                                                           settings_,
+                                                           Arow_,
+                                                           new_slacks_,
+                                                           var_types_,
+                                                           basis_update,
+                                                           root_relax_soln_.x,
+                                                           root_relax_soln_.z,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           exploration_stats_.start_time);
+      if (!problem_feasible) {
+        if (settings_.heuristic_preemption_callback != nullptr) {
+          settings_.heuristic_preemption_callback();
+        }
+        finish_clique_thread();
+        return mip_status_t::INFEASIBLE;
+      }
       f_t cut_generation_time = toc(cut_start_time);
       if (cut_generation_time > 1.0) {
         settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
@@ -2340,8 +2393,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   print_cut_info(settings_, cut_info);
-
+  f_t cut_generation_time = toc(cut_generation_start_time);
   if (cut_info.has_cuts()) {
+    settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
     settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",
                          original_lp_.num_rows,
@@ -2354,10 +2408,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   pc_.resize(original_lp_.num_cols);
   {
     raft::common::nvtx::range scope_sb("BB::strong_branching");
-    strong_branching<i_t, f_t>(original_problem_,
-                               original_lp_,
+    strong_branching<i_t, f_t>(original_lp_,
                                settings_,
                                exploration_stats_.start_time,
+                               new_slacks_,
                                var_types_,
                                root_relax_soln_.x,
                                root_relax_soln_.y,

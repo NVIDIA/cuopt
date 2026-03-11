@@ -304,6 +304,9 @@ def solve(
             milp_stats = get_if_attribute_is_valid_else_none(
                 sol.get_milp_stats
             )
+            pdlpwarmstart_data = get_if_attribute_is_valid_else_none(
+                sol.get_pdlp_warm_start_data
+            )
             solution["problem_category"] = sol.get_problem_category().name
             solution["primal_solution"] = primal_solution
             solution["dual_solution"] = dual_solution
@@ -318,8 +321,9 @@ def solve(
             solution["vars"] = sol.get_vars()
             solution["lp_statistics"] = {} if lp_stats is None else lp_stats
             solution["reduced_cost"] = reduced_cost
+
             solution["pdlpwarmstart_data"] = extract_pdlpwarmstart_data(
-                sol.get_pdlp_warm_start_data()
+                pdlpwarmstart_data
             )
             solution["milp_statistics"] = (
                 {} if milp_stats is None else milp_stats

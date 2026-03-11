@@ -27,6 +27,8 @@
 #include <mip_heuristics/solver.cuh>
 #include <utilities/timer.hpp>
 
+#include <cstdint>
+
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
@@ -69,7 +71,6 @@ class diversity_manager_t {
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
-
   mip_solver_context_t<i_t, f_t>& context;
   dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;

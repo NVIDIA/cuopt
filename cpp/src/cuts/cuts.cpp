@@ -9,10 +9,485 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/tic_toc.hpp>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <utilities/macros.cuh>
+
+#include <cstdint>
+#include <cstdio>
+#include <limits>
+#include <unordered_set>
 
 #include <barrier/dense_matrix.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
+
+namespace {
+
+#define DEBUG_CLIQUE_CUTS 0
+#define CHECK_WORKSPACE   0
+
+enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
+
+#if DEBUG_CLIQUE_CUTS
+#define CLIQUE_CUTS_DEBUG(...)                    \
+  do {                                            \
+    std::fprintf(stderr, "[DEBUG_CLIQUE_CUTS] "); \
+    std::fprintf(stderr, __VA_ARGS__);            \
+    std::fprintf(stderr, "\n");                   \
+  } while (0)
+#else
+#define CLIQUE_CUTS_DEBUG(...) \
+  do {                         \
+  } while (0)
+#endif
+
+template <typename i_t, typename f_t>
+clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertices,
+                                           i_t num_vars,
+                                           const std::vector<variable_type_t>& var_types,
+                                           const std::vector<f_t>& lower_bounds,
+                                           const std::vector<f_t>& upper_bounds,
+                                           const std::vector<f_t>& xstar,
+                                           f_t bound_tol,
+                                           f_t min_violation,
+                                           sparse_vector_t<i_t, f_t>& cut,
+                                           f_t& cut_rhs,
+                                           f_t* work_estimate,
+                                           f_t max_work_estimate)
+{
+  if (clique_vertices.size() < 2) { return clique_cut_build_status_t::NO_CUT; }
+  const f_t clique_size = static_cast<f_t>(clique_vertices.size());
+  CLIQUE_CUTS_DEBUG("build_clique_cut start clique_size=%lld",
+                    static_cast<long long>(clique_vertices.size()));
+  const f_t sort_work = clique_size > 0.0 ? 2.0 * clique_size * std::log2(clique_size + 1.0) : 0.0;
+  const f_t dot_work  = 2.0 * clique_size;
+  const f_t estimated_work = 9.0 * clique_size + sort_work + dot_work;
+  if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
+    CLIQUE_CUTS_DEBUG("build_clique_cut skip work_limit clique_size=%lld work=%g limit=%g",
+                      static_cast<long long>(clique_vertices.size()),
+                      work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
+                      static_cast<double>(max_work_estimate));
+    return clique_cut_build_status_t::NO_CUT;
+  }
+
+  cuopt_assert(num_vars > 0, "Clique cut num_vars must be positive");
+  cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
+               "Clique cut lower bounds size mismatch");
+  cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
+
+  cut.i.clear();
+  cut.x.clear();
+  i_t num_complements = 0;
+  std::unordered_set<i_t> seen_original;
+  std::unordered_set<i_t> seen_complement;
+  seen_original.reserve(clique_vertices.size());
+  seen_complement.reserve(clique_vertices.size());
+  for (const auto vertex_idx : clique_vertices) {
+    cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
+    const i_t var_idx     = vertex_idx % num_vars;
+    const bool complement = vertex_idx >= num_vars;
+    const f_t lower_bound = lower_bounds[var_idx];
+    const f_t upper_bound = upper_bounds[var_idx];
+
+    cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
+                 "Clique contains continuous variable");
+    cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
+    cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
+
+    // we store the cut in the form of >= 1, for easy violation check with dot product
+    // that's why compelements have 1 as coeff and normal vars have -1
+    if (complement) {
+      if (seen_original.count(var_idx) > 0) {
+        // FIXME: this is temporary, fix all the vars of all other vars in the clique
+        return clique_cut_build_status_t::NO_CUT;
+        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
+                          static_cast<long long>(var_idx));
+        return clique_cut_build_status_t::INFEASIBLE;
+      }
+      cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");
+      seen_complement.insert(var_idx);
+      num_complements++;
+      cut.i.push_back(var_idx);
+      cut.x.push_back(1.0);
+    } else {
+      if (seen_complement.count(var_idx) > 0) {
+        // FIXME: this is temporary, fix all the vars of all other vars in the clique
+        return clique_cut_build_status_t::NO_CUT;
+        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
+                          static_cast<long long>(var_idx));
+        return clique_cut_build_status_t::INFEASIBLE;
+      }
+      cuopt_assert(seen_original.count(var_idx) == 0, "Duplicate variable in clique");
+      seen_original.insert(var_idx);
+      cut.i.push_back(var_idx);
+      cut.x.push_back(-1.0);
+    }
+  }
+
+  if (cut.i.empty()) {
+    CLIQUE_CUTS_DEBUG("build_clique_cut no_cut empty support");
+    return clique_cut_build_status_t::NO_CUT;
+  }
+
+  cut_rhs = static_cast<f_t>(num_complements - 1);
+  cut.sort();
+
+  const f_t dot       = cut.dot(xstar);
+  const f_t violation = cut_rhs - dot;
+  if (violation > min_violation) {
+    CLIQUE_CUTS_DEBUG(
+      "build_clique_cut accepted nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+      static_cast<long long>(cut.i.size()),
+      static_cast<double>(cut_rhs),
+      static_cast<double>(dot),
+      static_cast<double>(violation),
+      static_cast<double>(min_violation),
+      static_cast<long long>(num_complements));
+    return clique_cut_build_status_t::CUT_ADDED;
+  }
+  CLIQUE_CUTS_DEBUG(
+    "build_clique_cut rejected nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+    static_cast<long long>(cut.i.size()),
+    static_cast<double>(cut_rhs),
+    static_cast<double>(dot),
+    static_cast<double>(violation),
+    static_cast<double>(min_violation),
+    static_cast<long long>(num_complements));
+  return clique_cut_build_status_t::NO_CUT;
+}
+
+template <typename i_t, typename f_t>
+struct bk_bitset_context_t {
+  const std::vector<std::vector<uint64_t>>& adj;
+  const std::vector<f_t>& weights;
+  f_t min_weight;
+  i_t max_calls;
+  f_t start_time;
+  f_t time_limit;
+  size_t words;
+  f_t* work_estimate;
+  f_t max_work_estimate;
+  i_t num_calls{0};
+  bool work_limit_reached{false};
+  bool call_limit_reached{false};
+  std::vector<std::vector<i_t>> cliques;
+
+  bool add_work(f_t accesses)
+  {
+    return add_work_estimate(accesses, work_estimate, max_work_estimate, &work_limit_reached);
+  }
+
+  bool over_work_limit() const
+  {
+    if (work_limit_reached) { return true; }
+    if (work_estimate == nullptr) { return false; }
+    return *work_estimate > max_work_estimate;
+  }
+
+  bool over_call_limit() const { return call_limit_reached || num_calls >= max_calls; }
+};
+
+inline size_t bitset_words(size_t n) { return (n + 63) / 64; }
+
+inline bool bitset_any(const std::vector<uint64_t>& bs)
+{
+  for (auto word : bs) {
+    if (word != 0) { return true; }
+  }
+  return false;
+}
+
+inline void bitset_set(std::vector<uint64_t>& bs, size_t idx)
+{
+  bs[idx >> 6] |= (uint64_t(1) << (idx & 63));
+}
+
+inline void bitset_clear(std::vector<uint64_t>& bs, size_t idx)
+{
+  bs[idx >> 6] &= ~(uint64_t(1) << (idx & 63));
+}
+
+template <typename i_t, typename f_t>
+f_t sum_weights_bitset(const std::vector<uint64_t>& bs, const std::vector<f_t>& weights)
+{
+  f_t sum = 0.0;
+  for (size_t w = 0; w < bs.size(); ++w) {
+    uint64_t word = bs[w];
+    while (word) {
+      const int bit    = __builtin_ctzll(word);
+      const size_t idx = w * 64 + static_cast<size_t>(bit);
+      sum += weights[idx];
+      word &= (word - 1);
+    }
+  }
+  return sum;
+}
+
+template <typename i_t, typename f_t>
+void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
+                   std::vector<i_t>& R,       // current clique
+                   std::vector<uint64_t>& P,  // potential candidates
+                   std::vector<uint64_t>& X,  // already in the clique
+                   f_t weight_R)
+{
+  if (ctx.over_work_limit() || ctx.over_call_limit()) { return; }
+  if (toc(ctx.start_time) >= ctx.time_limit) { return; }
+  ctx.num_calls++;
+  // stop the recursion, for perf reasons
+  if (ctx.num_calls > ctx.max_calls) {
+    ctx.call_limit_reached = true;
+    return;
+  }
+  if (ctx.add_work(static_cast<f_t>(4 * ctx.words))) { return; }
+
+  // if P and X are empty, we are at maximal clique
+  if (!bitset_any(P) && !bitset_any(X)) {
+    // if the weight is enough, add and exit
+    if (weight_R >= ctx.min_weight) {
+      ctx.add_work(static_cast<f_t>(R.size()));
+      ctx.cliques.push_back(R);
+    }
+    return;
+  }
+
+  const f_t sumP = sum_weights_bitset<i_t, f_t>(P, ctx.weights);
+  // check if all P is added to clique, would we exceed the weight?
+  if (weight_R + sumP < ctx.min_weight) { return; }
+
+  i_t pivot                   = -1;
+  i_t max_deg                 = -1;
+  i_t pivot_vertices_examined = 0;
+  // pivoting rule according to the highest degree vertex
+  // TODO try other pivoting strategies, we can also implement some online learning like MAB
+  for (size_t w = 0; w < ctx.words; ++w) {
+    // union of P and X
+    uint64_t word = P[w] | X[w];
+    while (word) {
+      pivot_vertices_examined++;
+      // least significant set bit idnex
+      const int bit = __builtin_ctzll(word);
+      // overall vertex index
+      const i_t v = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
+      // clear the least significant set bit (v)
+      word &= (word - 1);
+      i_t count = 0;
+      // count the number of neighbors of v in P
+      for (size_t k = 0; k < ctx.words; ++k) {
+        count += __builtin_popcountll(P[k] & ctx.adj[v][k]);
+      }
+      // chose the highest degree v as the pivot
+      // we choose the highest degree as the pivot to reduce the recursion size
+      // later in this function we recurse on the candidate P / N(v)
+      // so it is good to maximize P n N(v)
+      if (count > max_deg) {
+        max_deg = count;
+        pivot   = v;
+      }
+    }
+  }
+  ctx.add_work(static_cast<f_t>(2 * ctx.words) +
+               static_cast<f_t>(pivot_vertices_examined) * static_cast<f_t>(2 * ctx.words));
+
+  std::vector<i_t> candidates;
+  candidates.reserve(ctx.weights.size());
+  cuopt_assert(pivot >= 0, "Pivot must be valid when P or X is non-empty");
+  for (size_t w = 0; w < ctx.words; ++w) {
+    // P / N(pivot)
+    uint64_t word = P[w] & ~ctx.adj[pivot][w];
+    while (word) {
+      const int bit = __builtin_ctzll(word);
+      const i_t v   = static_cast<i_t>(w * 64 + static_cast<size_t>(bit));
+      word &= (word - 1);
+      candidates.push_back(v);
+    }
+  }
+  const i_t num_candidates = static_cast<i_t>(candidates.size());
+  ctx.add_work(static_cast<f_t>(2 * ctx.words + num_candidates));
+  ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(7 * ctx.words + 6));
+  // note that candidates will include pivot if it is in P
+  for (auto v : candidates) {
+    if (ctx.over_call_limit()) {
+      ctx.call_limit_reached = true;
+      return;
+    }
+    if (toc(ctx.start_time) >= ctx.time_limit) { return; }
+
+    R.push_back(v);
+    std::vector<uint64_t> P_next(ctx.words, 0);
+    std::vector<uint64_t> X_next(ctx.words, 0);
+    for (size_t k = 0; k < ctx.words; ++k) {
+      P_next[k] = P[k] & ctx.adj[v][k];
+      X_next[k] = X[k] & ctx.adj[v][k];
+    }
+
+    bron_kerbosch(ctx, R, P_next, X_next, weight_R + ctx.weights[v]);
+    if (ctx.over_work_limit()) { return; }
+    if (ctx.over_call_limit()) {
+      ctx.call_limit_reached = true;
+      return;
+    }
+    R.pop_back();
+    bitset_clear(P, static_cast<size_t>(v));
+    bitset_set(X, static_cast<size_t>(v));
+  }
+}
+
+template <typename i_t, typename f_t>
+void extend_clique_vertices(std::vector<i_t>& clique_vertices,
+                            detail::clique_table_t<i_t, f_t>& graph,
+                            const std::vector<f_t>& xstar,
+                            const std::vector<f_t>& reduced_costs,
+                            i_t num_vars,
+                            f_t integer_tol,
+                            f_t start_time,
+                            f_t time_limit,
+                            f_t* work_estimate,
+                            f_t max_work_estimate)
+{
+  if (toc(start_time) >= time_limit) { return; }
+  if (clique_vertices.empty()) { return; }
+#if DEBUG_CLIQUE_CUTS
+  const size_t initial_clique_vertices = clique_vertices.size();
+#endif
+  CLIQUE_CUTS_DEBUG("extend_clique_vertices start size=%lld",
+                    static_cast<long long>(clique_vertices.size()));
+  const f_t initial_clique_size = static_cast<f_t>(clique_vertices.size());
+
+  i_t smallest_degree     = std::numeric_limits<i_t>::max();
+  i_t smallest_degree_var = -1;
+  for (auto v : clique_vertices) {
+    if (toc(start_time) >= time_limit) { return; }
+    i_t degree = graph.get_degree_of_var(v);
+    if (degree < smallest_degree) {
+      smallest_degree     = degree;
+      smallest_degree_var = v;
+    }
+  }
+
+  auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
+  std::unordered_set<i_t> clique_members(clique_vertices.begin(), clique_vertices.end());
+  std::vector<i_t> candidates;
+  candidates.reserve(adj_set.size());
+  // the candidate list if only the integer valued vertices
+  for (const auto& candidate : adj_set) {
+    if (toc(start_time) >= time_limit) { return; }
+    if (clique_members.count(candidate) != 0) { continue; }
+    i_t var_idx = candidate % num_vars;
+    f_t value   = candidate >= num_vars ? (1.0 - xstar[var_idx]) : xstar[var_idx];
+    if (std::abs(value - std::round(value)) <= integer_tol) { candidates.push_back(candidate); }
+  }
+  CLIQUE_CUTS_DEBUG(
+    "extend_clique_vertices anchor=%lld degree=%lld adj_size=%lld integer_candidates=%lld",
+    static_cast<long long>(smallest_degree_var),
+    static_cast<long long>(smallest_degree),
+    static_cast<long long>(adj_set.size()),
+    static_cast<long long>(candidates.size()));
+  const f_t candidate_size = static_cast<f_t>(candidates.size());
+  const f_t sort_work =
+    candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
+  const f_t adj_set_build_cost     = 2.0 * static_cast<f_t>(adj_set.size());
+  const f_t adj_check_cost         = 5.0;
+  const f_t estimated_preloop_work = 2.0 * initial_clique_size + adj_set_build_cost +
+                                     3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
+                                     2.0 * candidate_size;
+  if (add_work_estimate(estimated_preloop_work, work_estimate, max_work_estimate)) {
+    CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
+                      work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
+                      static_cast<double>(max_work_estimate));
+    return;
+  }
+
+  // sort the candidates by reduced cost.
+  // smaller reduce cost disturbs dual simplex less
+  // less refactors and less iterations after resolve.
+  // it also increases the cut's effectiveness by keeping xstar not disturbed much
+  // if it is disturbed too much, the cut might become non-binding
+  auto reduced_cost = [&](i_t vertex_idx) -> f_t {
+    i_t var_idx = vertex_idx % num_vars;
+    cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
+                 "Variable index out of range");
+    f_t rc = reduced_costs[var_idx];
+    if (!std::isfinite(rc)) { rc = 0.0; }
+    return vertex_idx >= num_vars ? -rc : rc;
+  };
+
+  std::sort(candidates.begin(), candidates.end(), [&](i_t a, i_t b) {
+    return reduced_cost(a) < reduced_cost(b);
+  });
+
+  for (const auto candidate : candidates) {
+    bool add   = true;
+    i_t checks = 0;
+    for (const auto v : clique_vertices) {
+      checks++;
+      if (!graph.check_adjacency(candidate, v)) {
+        add = false;
+        break;
+      }
+    }
+    if (add_work_estimate(
+          adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
+      break;
+    }
+    if (add) {
+      clique_vertices.push_back(candidate);
+      clique_members.insert(candidate);
+    }
+  }
+  CLIQUE_CUTS_DEBUG("extend_clique_vertices done start=%lld final=%lld added=%lld",
+                    static_cast<long long>(initial_clique_vertices),
+                    static_cast<long long>(clique_vertices.size()),
+                    static_cast<long long>(clique_vertices.size() - initial_clique_vertices));
+}
+
+}  // namespace
+
+// This function is only used in tests
+std::vector<std::vector<int>> find_maximal_cliques_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& weights,
+  double min_weight,
+  int max_calls,
+  double time_limit)
+{
+  const size_t n_vertices = adjacency_list.size();
+  if (n_vertices == 0) { return {}; }
+  cuopt_assert(weights.size() == n_vertices, "Weights size mismatch in clique test helper");
+  cuopt_assert(max_calls > 0, "max_calls must be positive in clique test helper");
+
+  const size_t words = bitset_words(n_vertices);
+  std::vector<std::vector<uint64_t>> adj_bitset(n_vertices, std::vector<uint64_t>(words, 0));
+  for (size_t v = 0; v < n_vertices; ++v) {
+    for (const auto& nbr : adjacency_list[v]) {
+      cuopt_assert(nbr >= 0 && static_cast<size_t>(nbr) < n_vertices,
+                   "Neighbor index out of range in clique test helper");
+      bitset_set(adj_bitset[v], static_cast<size_t>(nbr));
+    }
+  }
+
+  double work_estimate           = 0.0;
+  const double max_work_estimate = std::numeric_limits<double>::infinity();
+  const double start_time        = tic();
+
+  bk_bitset_context_t<int, double> ctx{adj_bitset,
+                                       weights,
+                                       min_weight,
+                                       max_calls,
+                                       start_time,
+                                       time_limit,
+                                       words,
+                                       &work_estimate,
+                                       max_work_estimate};
+
+  std::vector<int> R;
+  std::vector<uint64_t> P(words, 0);
+  std::vector<uint64_t> X(words, 0);
+  for (size_t idx = 0; idx < n_vertices; ++idx) {
+    bitset_set(P, idx);
+  }
+  bron_kerbosch<int, double>(ctx, R, P, X, 0.0);
+  return ctx.cliques;
+}
 
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
@@ -553,15 +1028,17 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 }
 
 template <typename i_t, typename f_t>
-void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
+bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const simplex_solver_settings_t<i_t, f_t>& settings,
                                                csr_matrix_t<i_t, f_t>& Arow,
                                                const std::vector<i_t>& new_slacks,
                                                const std::vector<variable_type_t>& var_types,
                                                basis_update_mpf_t<i_t, f_t>& basis_update,
                                                const std::vector<f_t>& xstar,
+                                               const std::vector<f_t>& reduced_costs,
                                                const std::vector<i_t>& basic_list,
-                                               const std::vector<i_t>& nonbasic_list)
+                                               const std::vector<i_t>& nonbasic_list,
+                                               f_t start_time)
 {
   // Generate Gomory and CG Cuts
   if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
@@ -593,6 +1070,21 @@ void cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
+
+  // Generate Clique cuts (last to give background clique table generation maximum time)
+  if (settings.clique_cuts != 0) {
+    f_t cut_start_time = tic();
+    bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, reduced_costs, start_time);
+    if (!feasible) {
+      settings.log.printf("Clique cuts proved infeasible\n");
+      return false;
+    }
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+  return true;
 }
 
 template <typename i_t, typename f_t>
@@ -613,6 +1105,279 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
       if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut, cut_rhs); }
     }
   }
+}
+
+template <typename i_t, typename f_t>
+bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar,
+  const std::vector<f_t>& reduced_costs,
+  f_t start_time)
+{
+  if (settings.clique_cuts == 0) { return true; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
+
+  const i_t num_vars = user_problem_.num_cols;
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts start num_vars=%lld time_limit=%g elapsed=%g",
+                    static_cast<long long>(num_vars),
+                    static_cast<double>(settings.time_limit),
+                    static_cast<double>(toc(start_time)));
+
+  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
+      clique_table_future_->valid()) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts signaling background thread and waiting");
+    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
+    clique_table_        = clique_table_future_->get();
+    clique_table_future_ = nullptr;
+    if (clique_table_) {
+      CLIQUE_CUTS_DEBUG("generate_clique_cuts received clique table first=%lld addtl=%lld",
+                        static_cast<long long>(clique_table_->first.size()),
+                        static_cast<long long>(clique_table_->addtl_cliques.size()));
+    }
+  }
+
+  if (clique_table_ == nullptr) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts no clique table available, skipping");
+    return true;
+  }
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts using clique table first=%lld addtl=%lld",
+                    static_cast<long long>(clique_table_->first.size()),
+                    static_cast<long long>(clique_table_->addtl_cliques.size()));
+
+  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts empty clique table, nothing to separate");
+    return true;
+  }
+
+  cuopt_assert(clique_table_->n_variables == num_vars, "Clique table variable count mismatch");
+  cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
+
+  const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
+  const f_t bound_tol     = settings.primal_tol;
+  const f_t min_weight    = 1.0 + min_violation;
+  // TODO this can be problem dependent
+  const i_t max_calls         = 100000;
+  f_t work_estimate           = 0.0;
+  const f_t max_work_estimate = 1e8;
+
+  cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
+               "User problem var_types size mismatch");
+
+  std::vector<i_t> vertices;
+  std::vector<f_t> weights;
+  vertices.reserve(num_vars * 2);
+  weights.reserve(num_vars * 2);
+
+  // create the sub graph induced by fractional binary variables
+  for (i_t j = 0; j < num_vars; ++j) {
+    if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
+    const f_t lower_bound = user_problem_.lower[j];
+    const f_t upper_bound = user_problem_.upper[j];
+    if (lower_bound < -bound_tol || upper_bound > 1 + bound_tol) { continue; }
+    const f_t xj = xstar[j];
+    if (std::abs(xj - std::round(xj)) <= settings.integer_tol) { continue; }
+    vertices.push_back(j);
+    weights.push_back(xj);
+    vertices.push_back(j + num_vars);
+    weights.push_back(1.0 - xj);
+  }
+  // Coarse loop estimate: variable scans + selected vertex/weight writes
+  work_estimate += 4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
+
+  if (vertices.empty()) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts no fractional binary vertices");
+    return true;
+  }
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts fractional subgraph vertices=%lld (literals=%lld)",
+                    static_cast<long long>(vertices.size() / 2),
+                    static_cast<long long>(vertices.size()));
+
+  std::vector<i_t> vertex_to_local(2 * num_vars, -1);
+  std::vector<char> in_subgraph(2 * num_vars, 0);
+  for (size_t idx = 0; idx < vertices.size(); ++idx) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
+    const i_t vertex_idx        = vertices[idx];
+    vertex_to_local[vertex_idx] = static_cast<i_t>(idx);
+    in_subgraph[vertex_idx]     = 1;
+  }
+  work_estimate += 3.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
+
+  std::vector<std::vector<i_t>> adj_local(vertices.size());
+  size_t total_adj_entries = 0;
+  size_t kept_adj_entries  = 0;
+  for (size_t idx = 0; idx < vertices.size(); ++idx) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
+    i_t vertex_idx = vertices[idx];
+    // returns the complement as well
+    auto adj_set = clique_table_->get_adj_set_of_var(vertex_idx);
+    total_adj_entries += adj_set.size();
+    auto& adj = adj_local[idx];
+    adj.reserve(adj_set.size());
+    for (const auto neighbor : adj_set) {
+      if (toc(start_time) >= settings.time_limit) { return true; }
+      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Neighbor out of range");
+      if (!in_subgraph[neighbor]) { continue; }
+      i_t local_neighbor = vertex_to_local[neighbor];
+      cuopt_assert(local_neighbor >= 0, "Local neighbor out of range");
+      adj.push_back(local_neighbor);
+    }
+    kept_adj_entries += adj.size();
+#ifdef ASSERT_MODE
+    {
+      std::unordered_set<i_t> adj_global;
+      adj_global.reserve(adj.size());
+      for (const auto neighbor : adj) {
+        i_t v = vertices[neighbor];
+        cuopt_assert(adj_global.insert(v).second, "Duplicate neighbor in adjacency list");
+        i_t complement = (v >= num_vars) ? (v - num_vars) : (v + num_vars);
+        cuopt_assert(adj_global.find(complement) == adj_global.end(),
+                     "Adjacency list contains complementing variable");
+      }
+    }
+#endif
+  }
+  work_estimate += static_cast<f_t>(vertices.size()) + static_cast<f_t>(total_adj_entries) +
+                   2.0 * static_cast<f_t>(kept_adj_entries);
+  if (work_estimate > max_work_estimate) { return true; }
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts adjacency raw_entries=%lld kept_entries=%lld",
+                    static_cast<long long>(total_adj_entries),
+                    static_cast<long long>(kept_adj_entries));
+
+  const size_t words = bitset_words(vertices.size());
+  std::vector<std::vector<uint64_t>> adj_bitset(vertices.size(), std::vector<uint64_t>(words, 0));
+  size_t local_adj_entries = 0;
+  for (size_t v = 0; v < adj_local.size(); ++v) {
+    local_adj_entries += adj_local[v].size();
+    for (const auto neighbor : adj_local[v]) {
+      bitset_set(adj_bitset[v], static_cast<size_t>(neighbor));
+    }
+  }
+  work_estimate += static_cast<f_t>(adj_local.size()) + 3.0 * static_cast<f_t>(local_adj_entries);
+  if (work_estimate > max_work_estimate) { return true; }
+  CLIQUE_CUTS_DEBUG("generate_clique_cuts bitset graph words=%lld local_entries=%lld",
+                    static_cast<long long>(words),
+                    static_cast<long long>(local_adj_entries));
+
+  bk_bitset_context_t<i_t, f_t> ctx{adj_bitset,
+                                    weights,
+                                    min_weight,
+                                    max_calls,
+                                    start_time,
+                                    settings.time_limit,
+                                    words,
+                                    &work_estimate,
+                                    max_work_estimate};
+  std::vector<i_t> R;
+  std::vector<uint64_t> P(words, 0);
+  std::vector<uint64_t> X(words, 0);
+  for (size_t idx = 0; idx < vertices.size(); ++idx) {
+    bitset_set(P, idx);
+  }
+  work_estimate += 2.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
+  bron_kerbosch<i_t, f_t>(ctx, R, P, X, 0.0);
+  CLIQUE_CUTS_DEBUG(
+    "generate_clique_cuts maximal cliques found=%lld bk_calls=%lld work=%g work_limit=%d "
+    "call_limit=%d",
+    static_cast<long long>(ctx.cliques.size()),
+    static_cast<long long>(ctx.num_calls),
+    static_cast<double>(work_estimate),
+    ctx.over_work_limit() ? 1 : 0,
+    ctx.over_call_limit() ? 1 : 0);
+  if (ctx.over_call_limit()) { return true; }
+  if (ctx.over_work_limit()) { return true; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
+  if (work_estimate > max_work_estimate) { return true; }
+
+  sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
+  f_t cut_rhs = 0.0;
+#if DEBUG_CLIQUE_CUTS
+  size_t candidate_cliques = 0;
+  size_t added_cuts        = 0;
+  size_t rejected_cliques  = 0;
+  size_t extension_gain    = 0;
+#endif
+  for (auto& clique_local : ctx.cliques) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
+#if DEBUG_CLIQUE_CUTS
+    candidate_cliques++;
+#endif
+    std::vector<i_t> clique_vertices;
+    clique_vertices.reserve(clique_local.size());
+    for (auto local_idx : clique_local) {
+      clique_vertices.push_back(vertices[local_idx]);
+    }
+    work_estimate += 3.0 * static_cast<f_t>(clique_local.size());
+    if (work_estimate > max_work_estimate) { return true; }
+#if DEBUG_CLIQUE_CUTS
+    const size_t size_before_extension = clique_vertices.size();
+#endif
+    extend_clique_vertices<i_t, f_t>(clique_vertices,
+                                     *clique_table_,
+                                     xstar,
+                                     reduced_costs,
+                                     num_vars,
+                                     settings.integer_tol,
+                                     start_time,
+                                     settings.time_limit,
+                                     &work_estimate,
+                                     max_work_estimate);
+#if DEBUG_CLIQUE_CUTS
+    extension_gain += clique_vertices.size() - size_before_extension;
+#endif
+    if (work_estimate > max_work_estimate) { return true; }
+    if (toc(start_time) >= settings.time_limit) { return true; }
+    const auto build_status = build_clique_cut<i_t, f_t>(clique_vertices,
+                                                         num_vars,
+                                                         var_types,
+                                                         user_problem_.lower,
+                                                         user_problem_.upper,
+                                                         xstar,
+                                                         bound_tol,
+                                                         min_violation,
+                                                         cut,
+                                                         cut_rhs,
+                                                         &work_estimate,
+                                                         max_work_estimate);
+    if (work_estimate > max_work_estimate) { return true; }
+    if (build_status == clique_cut_build_status_t::INFEASIBLE) {
+      settings.log.debug("Detected contradictory variable/complement clique\n");
+      CLIQUE_CUTS_DEBUG(
+        "generate_clique_cuts infeasible clique detected after processing=%lld cliques",
+        static_cast<long long>(candidate_cliques));
+      return false;
+    }
+    if (build_status == clique_cut_build_status_t::CUT_ADDED) {
+      cut_pool_.add_cut(cut_type_t::CLIQUE, cut, cut_rhs);
+#if DEBUG_CLIQUE_CUTS
+      added_cuts++;
+      CLIQUE_CUTS_DEBUG("generate_clique_cuts added cut nz=%lld rhs=%g clique_size=%lld",
+                        static_cast<long long>(cut.i.size()),
+                        static_cast<double>(cut_rhs),
+                        static_cast<long long>(clique_vertices.size()));
+#endif
+    }
+#if DEBUG_CLIQUE_CUTS
+    else {
+      rejected_cliques++;
+    }
+#endif
+  }
+#if DEBUG_CLIQUE_CUTS
+  CLIQUE_CUTS_DEBUG(
+    "generate_clique_cuts done candidate_cliques=%lld added=%lld rejected=%lld extension_gain=%lld "
+    "final_work=%g",
+    static_cast<long long>(candidate_cliques),
+    static_cast<long long>(added_cuts),
+    static_cast<long long>(rejected_cliques),
+    static_cast<long long>(extension_gain),
+    static_cast<double>(work_estimate));
+#endif
+  return true;
 }
 
 template <typename i_t, typename f_t>

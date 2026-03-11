@@ -32,8 +32,16 @@
 
 #include <omp.h>
 
+#include <atomic>
 #include <functional>
+#include <future>
+#include <memory>
 #include <vector>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -68,7 +76,8 @@ class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time);
+                     f_t start_time,
+                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -106,8 +115,6 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
-  bool stop_for_time_limit(mip_solution_t<i_t, f_t>& solution);
-
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
@@ -141,6 +148,9 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
+  std::atomic<bool> signal_extend_cliques_{false};
 
   work_limit_context_t work_unit_context_{"B&B"};
 
