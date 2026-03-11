@@ -13,7 +13,7 @@ SOLOMON_DATASETS_PATH = os.path.join(
     utils.RAPIDS_DATASET_ROOT_DIR, "solomon/In/"
 )
 
-"""def test_solomon():
+def test_solomon():
     SOLOMON_DATASET = "r107.txt"
     SOLOMON_YAML = "r107.yaml"
     utils.convert_solomon_inp_file_to_yaml(
@@ -56,7 +56,7 @@ SOLOMON_DATASETS_PATH = os.path.join(
     assert vehicle_size <= 12
     if vehicle_size == 11:
         assert math.fabs((final_cost - ref_cost) / ref_cost) < 0.1
-"""
+
 
 
 def test_pdptw():

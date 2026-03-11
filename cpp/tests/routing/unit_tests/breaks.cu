@@ -250,9 +250,8 @@ TEST(vehicle_breaks, uniform_breaks)
   int n_orders    = nodes - 1;
   int vehicle_num = 25;
 
-  std::vector<float> cost_matrix(nodes * nodes), time_matrix(nodes * nodes);
+  std::vector<float> cost_matrix(nodes * nodes);
   build_dense_matrix(cost_matrix.data(), route.x_h, route.y_h);
-  build_dense_matrix(time_matrix.data(), route.x_h, route.y_h);
 
   std::vector<int> order_locations(n_orders), order_earliest(n_orders), order_latest(n_orders),
     order_service(n_orders);
@@ -283,7 +282,6 @@ TEST(vehicle_breaks, uniform_breaks)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, nodes, vehicle_num, n_orders);
 
   auto v_cost_matrix     = cuopt::device_copy(cost_matrix, stream);
-  auto v_time_matrix     = cuopt::device_copy(time_matrix, stream);
   auto v_order_locations = cuopt::device_copy(order_locations, stream);
   auto v_order_earliest  = cuopt::device_copy(order_earliest, stream);
   auto v_order_latest    = cuopt::device_copy(order_latest, stream);
@@ -291,7 +289,7 @@ TEST(vehicle_breaks, uniform_breaks)
   auto v_break_locations = cuopt::device_copy(break_locations, stream);
 
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_transit_time_matrix(v_time_matrix.data());
+  data_model.add_transit_time_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
   data_model.set_order_time_windows(v_order_earliest.data(), v_order_latest.data());
   data_model.set_order_service_times(v_order_service.data());
@@ -344,9 +342,8 @@ TEST(vehicle_breaks, non_uniform_breaks)
   int n_orders    = nodes - 1;
   int vehicle_num = 30;
 
-  std::vector<float> cost_matrix(nodes * nodes), time_matrix(nodes * nodes);
+  std::vector<float> cost_matrix(nodes * nodes);
   build_dense_matrix(cost_matrix.data(), route.x_h, route.y_h);
-  build_dense_matrix(time_matrix.data(), route.x_h, route.y_h);
 
   std::vector<int> order_locations(n_orders), order_earliest(n_orders), order_latest(n_orders),
     order_service(n_orders);
@@ -397,7 +394,6 @@ TEST(vehicle_breaks, non_uniform_breaks)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, nodes, vehicle_num, n_orders);
 
   auto v_cost_matrix     = cuopt::device_copy(cost_matrix, stream);
-  auto v_time_matrix     = cuopt::device_copy(time_matrix, stream);
   auto v_order_locations = cuopt::device_copy(order_locations, stream);
   auto v_order_earliest  = cuopt::device_copy(order_earliest, stream);
   auto v_order_latest    = cuopt::device_copy(order_latest, stream);
@@ -405,7 +401,7 @@ TEST(vehicle_breaks, non_uniform_breaks)
   auto v_break_locations = cuopt::device_copy(break_locations, stream);
 
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_transit_time_matrix(v_time_matrix.data());
+  data_model.add_transit_time_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
   data_model.set_order_time_windows(v_order_earliest.data(), v_order_latest.data());
   data_model.set_order_service_times(v_order_service.data());
