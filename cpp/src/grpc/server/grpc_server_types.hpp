@@ -156,7 +156,7 @@ struct JobWaiter {
 // =============================================================================
 
 struct ServerConfig {
-  int port            = 8765;
+  int port            = 5001;
   int num_workers     = 1;
   bool verbose        = true;
   bool log_to_console = false;

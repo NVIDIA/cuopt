@@ -120,6 +120,7 @@ message ChunkedProblemHeader {
   double objective_offset = 4;
   string problem_name = 5;
   string objective_name = 6;
+  ProblemCategory problem_category = 9;
 
   // String arrays (included here since they are rarely the size bottleneck)
   repeated string variable_names = 7;
@@ -183,57 +184,8 @@ message GetResultRequest {
   string job_id = 1;
 }
 
-// Metadata about a single result array available for chunked download
-message ResultArrayDescriptor {
-  ResultFieldId field_id = 1;
-  int64 total_elements = 2;
-  int64 element_size_bytes = 3;   // 8 for double, 4 for int32, etc.
-}
-
-// Header for chunked result download - carries all scalar/enum/string fields
-// from LPSolution or MIPSolution. Array data is sent via GetResultChunk.
-message ChunkedResultHeader {
-  bool is_mip = 1;
-
-  // LP result scalars
-  PDLPTerminationStatus lp_termination_status = 10;
-  string error_message = 11;
-  double l2_primal_residual = 12;
-  double l2_dual_residual = 13;
-  double primal_objective = 14;
-  double dual_objective = 15;
-  double gap = 16;
-  int32 nb_iterations = 17;
-  double solve_time = 18;
-  bool solved_by_pdlp = 19;
-
-  // MIP result scalars
-  MIPTerminationStatus mip_termination_status = 30;
-  string mip_error_message = 31;
-  double mip_objective = 32;
-  double mip_gap = 33;
-  double solution_bound = 34;
-  double total_solve_time = 35;
-  double presolve_time = 36;
-  double max_constraint_violation = 37;
-  double max_int_violation = 38;
-  double max_variable_bound_violation = 39;
-  int32 nodes = 40;
-  int32 simplex_iterations = 41;
-
-  // LP warm start scalars (included in header since they are small)
-  double ws_initial_primal_weight = 60;
-  double ws_initial_step_size = 61;
-  int32 ws_total_pdlp_iterations = 62;
-  int32 ws_total_pdhg_iterations = 63;
-  double ws_last_candidate_kkt_score = 64;
-  double ws_last_restart_kkt_score = 65;
-  double ws_sum_solution_weight = 66;
-  int32 ws_iterations_since_last_restart = 67;
-
-  // Array metadata so client knows what to fetch
-  repeated ResultArrayDescriptor arrays = 50;
-}
+// ResultArrayDescriptor and ChunkedResultHeader are defined in
+// cuopt_remote_data.proto (auto-generated from field_registry.yaml).
 
 message StartChunkedDownloadRequest {
   string job_id = 1;

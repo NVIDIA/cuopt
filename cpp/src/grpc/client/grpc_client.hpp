@@ -52,7 +52,7 @@ void grpc_test_mark_as_connected(class grpc_client_t& client);
  * - Result retrieval uses chunked download for results exceeding max_message_bytes.
  */
 struct grpc_client_config_t {
-  std::string server_address = "localhost:8765";
+  std::string server_address = "localhost:5001";
   int poll_interval_ms       = 1000;   // How often to poll for job status
   int timeout_seconds        = 0;      // Max time to wait for job completion (0 = no limit)
   bool stream_logs           = false;  // Whether to stream logs from server
@@ -204,7 +204,7 @@ struct remote_mip_result_t {
  *
  * Usage:
  * @code
- * grpc_client_t client("localhost:8765");
+ * grpc_client_t client("localhost:5001");
  * if (!client.connect()) { ... handle error ... }
  *
  * auto result = client.solve_lp(problem, settings);

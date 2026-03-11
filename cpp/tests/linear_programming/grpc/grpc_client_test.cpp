@@ -23,6 +23,7 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include "grpc_client.hpp"
 #include "grpc_service_mapper.hpp"
+#include "grpc_settings_mapper.hpp"
 
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
@@ -834,7 +835,7 @@ TEST_F(GrpcClientTest, ChunkedDownload_FallbackOnResourceExhausted)
                  cuopt::remote::StartChunkedDownloadResponse* resp) {
       resp->set_download_id("dl-001");
       auto* h = resp->mutable_header();
-      h->set_is_mip(false);
+      h->set_problem_category(cuopt::remote::LP);
       h->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       h->set_primal_objective(-464.753);
       auto* arr = h->add_arrays();
@@ -1124,7 +1125,7 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithPolling)
       cuopt::remote::LPSolution solution;
       solution.add_primal_solution(1.0);
       solution.set_primal_objective(1.0);
-      solution.set_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      solution.set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       resp->mutable_lp_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1172,7 +1173,7 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithWait)
       cuopt::remote::LPSolution solution;
       solution.add_primal_solution(1.0);
       solution.set_primal_objective(1.0);
-      solution.set_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      solution.set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       resp->mutable_lp_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1305,9 +1306,9 @@ TEST_F(GrpcClientTest, SolveMIP_Success)
                  const cuopt::remote::GetResultRequest&,
                  cuopt::remote::ResultResponse* resp) {
       cuopt::remote::MIPSolution solution;
-      solution.add_solution(1.0);
-      solution.set_objective(1.0);
-      solution.set_termination_status(cuopt::remote::MIP_OPTIMAL);
+      solution.add_mip_solution(1.0);
+      solution.set_mip_objective(1.0);
+      solution.set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
       resp->mutable_mip_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1631,4 +1632,94 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
 
   EXPECT_TRUE(result.success) << "Error: " << result.error_message;
   EXPECT_EQ(result.job_id, "unary-lp-001");
+}
+
+// =============================================================================
+// Settings mapper round-trip tests (no mock stub / server required)
+// =============================================================================
+
+TEST(SettingsMapperTest, MIPSettingsRoundTrip_AllFields)
+{
+  mip_solver_settings_t<int32_t, double> original;
+  original.time_limit                             = 42.5;
+  original.tolerances.relative_mip_gap            = 0.01;
+  original.tolerances.absolute_mip_gap            = 1e-8;
+  original.tolerances.integrality_tolerance       = 1e-6;
+  original.tolerances.absolute_tolerance          = 1e-7;
+  original.tolerances.relative_tolerance          = 1e-13;
+  original.tolerances.presolve_absolute_tolerance = 1e-5;
+  original.log_to_console                         = false;
+  original.heuristics_only                        = true;
+  original.num_cpu_threads                        = 8;
+  original.num_gpus                               = 2;
+  original.mip_scaling                            = true;
+
+  // The 15 fields that were previously missing from the proto:
+  original.work_limit                      = 100.0;
+  original.node_limit                      = 5000;
+  original.reliability_branching           = 3;
+  original.mip_batch_pdlp_strong_branching = 1;
+  original.max_cut_passes                  = 20;
+  original.mir_cuts                        = 2;
+  original.mixed_integer_gomory_cuts       = 1;
+  original.knapsack_cuts                   = 0;
+  original.clique_cuts                     = 3;
+  original.strong_chvatal_gomory_cuts      = -1;
+  original.reduced_cost_strengthening      = 1;
+  original.cut_change_threshold            = 0.05;
+  original.cut_min_orthogonality           = 0.3;
+  original.determinism_mode                = 1;
+  original.seed                            = 12345;
+
+  cuopt::remote::MIPSolverSettings proto;
+  map_mip_settings_to_proto(original, &proto);
+
+  mip_solver_settings_t<int32_t, double> restored;
+  map_proto_to_mip_settings(proto, restored);
+
+  EXPECT_DOUBLE_EQ(restored.time_limit, original.time_limit);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_mip_gap, original.tolerances.relative_mip_gap);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_mip_gap, original.tolerances.absolute_mip_gap);
+  EXPECT_DOUBLE_EQ(restored.tolerances.integrality_tolerance,
+                   original.tolerances.integrality_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_tolerance, original.tolerances.absolute_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_tolerance, original.tolerances.relative_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.presolve_absolute_tolerance,
+                   original.tolerances.presolve_absolute_tolerance);
+  EXPECT_EQ(restored.log_to_console, original.log_to_console);
+  EXPECT_EQ(restored.heuristics_only, original.heuristics_only);
+  EXPECT_EQ(restored.num_cpu_threads, original.num_cpu_threads);
+  EXPECT_EQ(restored.num_gpus, original.num_gpus);
+  EXPECT_EQ(restored.mip_scaling, original.mip_scaling);
+
+  EXPECT_DOUBLE_EQ(restored.work_limit, original.work_limit);
+  EXPECT_EQ(restored.node_limit, original.node_limit);
+  EXPECT_EQ(restored.reliability_branching, original.reliability_branching);
+  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, original.mip_batch_pdlp_strong_branching);
+  EXPECT_EQ(restored.max_cut_passes, original.max_cut_passes);
+  EXPECT_EQ(restored.mir_cuts, original.mir_cuts);
+  EXPECT_EQ(restored.mixed_integer_gomory_cuts, original.mixed_integer_gomory_cuts);
+  EXPECT_EQ(restored.knapsack_cuts, original.knapsack_cuts);
+  EXPECT_EQ(restored.clique_cuts, original.clique_cuts);
+  EXPECT_EQ(restored.strong_chvatal_gomory_cuts, original.strong_chvatal_gomory_cuts);
+  EXPECT_EQ(restored.reduced_cost_strengthening, original.reduced_cost_strengthening);
+  EXPECT_DOUBLE_EQ(restored.cut_change_threshold, original.cut_change_threshold);
+  EXPECT_DOUBLE_EQ(restored.cut_min_orthogonality, original.cut_min_orthogonality);
+  EXPECT_EQ(restored.determinism_mode, original.determinism_mode);
+  EXPECT_EQ(restored.seed, original.seed);
+}
+
+TEST(SettingsMapperTest, MIPSettings_NodeLimitSentinel)
+{
+  mip_solver_settings_t<int32_t, double> original;
+  original.node_limit = std::numeric_limits<int32_t>::max();
+
+  cuopt::remote::MIPSolverSettings proto;
+  map_mip_settings_to_proto(original, &proto);
+  EXPECT_EQ(proto.node_limit(), -1) << "max() should serialize as -1 sentinel";
+
+  mip_solver_settings_t<int32_t, double> restored;
+  restored.node_limit = 999;
+  map_proto_to_mip_settings(proto, restored);
+  EXPECT_EQ(restored.node_limit, 999) << "Sentinel -1 should leave node_limit unchanged (default)";
 }

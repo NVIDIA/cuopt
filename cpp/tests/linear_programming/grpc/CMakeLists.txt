@@ -59,6 +59,7 @@ target_include_directories(GRPC_PIPE_SERIALIZATION_TEST
     "${CUOPT_SOURCE_DIR}/include"
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/server"
+    "${CUOPT_SOURCE_DIR}/codegen/generated"
     "${CMAKE_BINARY_DIR}"  # For generated protobuf headers
 )
 

@@ -13,29 +13,29 @@ For gRPC protocol and client API, see `GRPC_INTERFACE.md`. Server source files l
 ## Process Model
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│                        Main Server Process                          │
-│                                                                      │
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Main Server Process                         │
+│                                                                     │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
 │  │  gRPC       │  │  Job         │  │  Background Threads         │ │
 │  │  Service    │  │  Tracker     │  │  - Result retrieval         │ │
 │  │  Handler    │  │  (job status,│  │  - Incumbent retrieval      │ │
 │  │             │  │   results)   │  │  - Worker monitor           │ │
 │  └─────────────┘  └──────────────┘  └─────────────────────────────┘ │
-│         │                                        ▲                   │
-│         │ shared memory                         │ pipes              │
-│         ▼                                        │                   │
-│  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                    Shared Memory Queues                          ││
-│  │   ┌─────────────────┐        ┌─────────────────────┐            ││
-│  │   │  Job Queue      │        │  Result Queue       │            ││
-│  │   │  (MAX_JOBS=100) │        │  (MAX_RESULTS=100)  │            ││
-│  │   └─────────────────┘        └─────────────────────┘            ││
-│  └─────────────────────────────────────────────────────────────────┘│
-└────────────────────────────────────────────────────────────────────┘
-         │                                        ▲
-         │ fork()                                 │
-         ▼                                        │
+│         │                                          ▲                │
+│         │ shared memory                            │ pipes          │
+│         ▼                                          │                │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                      Shared Memory Queues                      │ │
+│  │   ┌─────────────────┐        ┌─────────────────────┐           │ │
+│  │   │  Job Queue      │        │  Result Queue       │           │ │
+│  │   │  (MAX_JOBS=100) │        │  (MAX_RESULTS=100)  │           │ │
+│  │   └─────────────────┘        └─────────────────────┘           │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+          │                                          ▲
+          │ fork()                                   │
+          ▼                                          │
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │  Worker 0       │  │  Worker 1       │  │  Worker N       │
 │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │
@@ -86,7 +86,9 @@ All paths below are under `cpp/src/grpc/server/`.
 | `grpc_server_types.hpp` | Shared structs (e.g. `JobQueueEntry`, `ResultQueueEntry`, `ServerConfig`, `JobInfo`), enums, globals (atomics, mutexes, condition variables), and forward declarations used across server .cpp files. |
 | `grpc_field_element_size.hpp` | Maps `cuopt::remote::ArrayFieldId` to element byte size; used by pipe deserialization and chunked logic. |
 | `grpc_pipe_serialization.hpp` | Streaming pipe I/O: write/read individual length-prefixed protobuf messages (ChunkedProblemHeader, ChunkedResultHeader, ArrayChunk) directly to/from pipe fds. Avoids large intermediate buffers. Also serializes SubmitJobRequest for unary pipe transfer. |
+| `grpc_pipe_io.cpp` | Low-level pipe read/write helpers: length-prefixed protobuf serialization, raw byte transfer with retry-on-EINTR, and pipe buffer sizing. |
 | `grpc_incumbent_proto.hpp` | Build `Incumbent` proto from (job_id, objective, assignment) and parse it back; used by worker when pushing incumbents and by main when reading from the incumbent pipe. |
+| `grpc_server_logger.{hpp,cpp}` | Server-side logging utilities: log file management, console echo, and log message formatting for worker processes. |
 | `grpc_worker.cpp` | `worker_process(worker_index)`: loop over job queue, receive job data via pipe (unary or chunked), call solver, send result (and optionally incumbents) back. Contains `IncumbentPipeCallback` and `store_simple_result`. |
 | `grpc_worker_infra.cpp` | Pipe creation/teardown, `spawn_worker` / `spawn_workers`, `wait_for_workers`, `mark_worker_jobs_failed`, `cleanup_shared_memory`. |
 | `grpc_server_threads.cpp` | `worker_monitor_thread`, `result_retrieval_thread`, `incumbent_retrieval_thread`, `session_reaper_thread`. |
@@ -115,7 +117,7 @@ Client                     Server                      Worker
    │─── SubmitJob ──────────►│                           │
    │                          │ Create job entry          │
    │                          │ Store problem data        │
-   │                          │ job_queue[slot].ready=true│
+   │                          │ job_queue[slot].ready=true │
    │◄── job_id ──────────────│                           │
 ```
 
@@ -132,8 +134,8 @@ Client                     Server                      Worker
    │                          │                           │ solve_lp/solve_mip
    │                          │                           │ Convert GPU→CPU
    │                          │                           │
-   │                          │ result_queue[slot].ready │◄──────────────────
-   │                          │◄── result data via pipe ─│
+   │                          │ result_queue[slot].ready  │
+   │                          │◄── result data via pipe ──│
 ```
 
 ### 3. Result Retrieval
@@ -213,15 +215,15 @@ The `StreamLogs` RPC:
 ## Job States
 
 ```text
-┌─────────┐  submit   ┌───────────┐  claim   ┌────────────┐
-│ QUEUED  │──────────►│ PROCESSING│─────────►│ COMPLETED  │
-└─────────┘           └───────────┘          └────────────┘
-     │                      │
-     │ cancel               │ error
-     ▼                      ▼
-┌───────────┐          ┌─────────┐
-│ CANCELLED │          │ FAILED  │
-└───────────┘          └─────────┘
+┌─────────┐  submit   ┌────────────┐  claim   ┌────────────┐
+│ QUEUED  │──────────►│ PROCESSING │─────────►│ COMPLETED  │
+└─────────┘           └────────────┘          └────────────┘
+     │                       │
+     │ cancel                │ error
+     ▼                       ▼
+┌───────────┐           ┌─────────┐
+│ CANCELLED │           │ FAILED  │
+└───────────┘           └─────────┘
 ```
 
 ## Configuration Options
@@ -229,7 +231,7 @@ The `StreamLogs` RPC:
 ```bash
 cuopt_grpc_server [options]
 
-  -p, --port PORT              gRPC listen port (default: 8765)
+  -p, --port PORT              gRPC listen port (default: 5001)
   -w, --workers NUM            Number of worker processes (default: 1)
       --max-message-mb N       Max gRPC message size in MiB (default: 256; clamped to [4 KiB, ~2 GiB])
       --max-message-bytes N    Max gRPC message size in bytes (exact; min 4096)

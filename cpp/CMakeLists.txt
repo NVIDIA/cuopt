@@ -305,7 +305,23 @@ else()
   endif()
 endif()
 
-# Generate C++ code from cuopt_remote.proto (base message definitions)
+# Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
+set(DATA_PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/cuopt_remote_data.proto")
+set(DATA_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_data.pb.cc")
+set(DATA_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_data.pb.h")
+
+add_custom_command(
+  OUTPUT "${DATA_PROTO_SRCS}" "${DATA_PROTO_HDRS}"
+  COMMAND ${_PROTOBUF_PROTOC}
+  ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+       --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc
+       ${DATA_PROTO_FILE}
+  DEPENDS ${DATA_PROTO_FILE}
+  COMMENT "Generating C++ code from cuopt_remote_data.proto"
+  VERBATIM
+)
+
+# Generate C++ code from cuopt_remote.proto (control/protocol messages, imports data proto)
 set(PROTO_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/cuopt_remote.proto")
 set(PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.cc")
 set(PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote.pb.h")
@@ -316,7 +332,7 @@ add_custom_command(
   ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
        --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc
        ${PROTO_FILE}
-  DEPENDS ${PROTO_FILE}
+  DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE}
   COMMENT "Generating C++ code from cuopt_remote.proto"
   VERBATIM
 )
@@ -336,7 +352,7 @@ add_custom_command(
        --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
        --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc
        ${GRPC_PROTO_FILE}
-  DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE}
+  DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE}
   COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
   VERBATIM
 )
@@ -363,6 +379,7 @@ endif()
 
 # Add gRPC mapper files and generated protobuf sources
 list(APPEND CUOPT_SRC_FILES
+  ${DATA_PROTO_SRCS}
   ${PROTO_SRCS}
   ${GRPC_PROTO_SRCS}
   ${GRPC_SERVICE_SRCS}
@@ -427,6 +444,7 @@ target_include_directories(cuopt
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/generated"
   "${CMAKE_CURRENT_BINARY_DIR}"
   "${CUDSS_INCLUDE}"
   PUBLIC
@@ -751,6 +769,7 @@ target_include_directories(cuopt_grpc_server
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/server"
+  "${CMAKE_CURRENT_SOURCE_DIR}/codegen/generated"
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
   "${CMAKE_CURRENT_BINARY_DIR}"

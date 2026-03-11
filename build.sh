@@ -359,6 +359,15 @@ if buildAll || hasArg libmps_parser; then
 fi
 
 ################################################################################
+# Regenerate gRPC codegen .inc files from the field registry
+if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+    echo "Regenerating codegen .inc files from field_registry.yaml..."
+    python "${REPODIR}"/cpp/codegen/generate_conversions.py \
+        --registry "${REPODIR}"/cpp/codegen/field_registry.yaml \
+        --output-dir "${REPODIR}"/cpp/codegen/generated
+fi
+
+################################################################################
 # Configure and build libcuopt (and optionally just the gRPC server)
 if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
