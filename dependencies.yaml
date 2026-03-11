@@ -7,7 +7,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.9", "13.1"]
+      cuda: ["12.9", "13.2"]
       arch: [x86_64, aarch64]
     includes:
       - build_common
@@ -666,9 +666,9 @@ dependencies:
             packages:
               - cuda-version=13.0
           - matrix:
-              cuda: "13.1"
+              cuda: "13.2"
             packages:
-              - cuda-version=13.1
+              - cuda-version=13.2
   cuda:
     common:
       - output_types: [conda]
