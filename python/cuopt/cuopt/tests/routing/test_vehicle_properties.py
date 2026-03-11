@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -193,7 +193,10 @@ def test_vehicle_max_times_fail():
     routing_solution = routing.Solve(d, s)
     assert routing_solution.get_error_status() == ErrorStatus.ValidationError
     err_msg = routing_solution.get_error_message().decode()
-    assert "Time matrix should be set in order to use vehicle max time constraints" in err_msg
+    assert (
+        "Time matrix should be set in order to use vehicle max time constraints"
+        in err_msg
+    )
 
 
 def test_vehicle_max_times():
@@ -263,7 +266,7 @@ def test_order_to_vehicle_match():
     ret_order_vehicle = d.get_order_vehicle_match()
     assert set(ret_order_vehicle.keys()) == set(order_vehicle_match.keys())
     for order, vehicles in order_vehicle_match.items():
-        assert (ret_order_vehicle[order].to_arrow().to_pylist() == vehicles)
+        assert ret_order_vehicle[order].to_arrow().to_pylist() == vehicles
 
     s = routing.SolverSettings()
     s.set_time_limit(10)
@@ -309,7 +312,7 @@ def test_vehicle_to_order_match():
     ret_vehicle_order = d.get_vehicle_order_match()
     assert set(ret_vehicle_order.keys()) == set(vehicle_order_match.keys())
     for vehicle, orders in vehicle_order_match.items():
-        assert (ret_vehicle_order[vehicle].to_arrow().to_pylist() == orders)
+        assert ret_vehicle_order[vehicle].to_arrow().to_pylist() == orders
 
     s = routing.SolverSettings()
     s.set_time_limit(10)

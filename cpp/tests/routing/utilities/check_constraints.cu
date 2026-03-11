@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -159,7 +159,7 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
     }
 
     if (has_breaks) {
-      int break_dim = 0;
+      int break_dim           = 0;
       auto const& non_uniform = data_model.get_non_uniform_breaks();
       bool use_uniform        = !uniform_break_earliest_h.empty();
       bool use_non_uniform    = (non_uniform.count(id) > 0);
@@ -168,13 +168,13 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
           double arrival   = h_routing_solution.stamp[k];
           i_t break_loc_id = locations[k];
           if (use_uniform && break_dim < static_cast<int>(uniform_break_earliest_h.size())) {
-            //std::cout<<"VEHID: "<<id<<" ARRIVAL_REAL: "<<arrival<<" EARLIEST: "<<uniform_break_earliest_h[break_dim][id]<<" LATEST: "<<uniform_break_latest_h[break_dim][id]<<"\n";
-            ASSERT_GE(arrival,
-                      static_cast<double>(uniform_break_earliest_h[break_dim][id]) - 1e-6)
+            // std::cout<<"VEHID: "<<id<<" ARRIVAL_REAL: "<<arrival<<" EARLIEST:
+            // "<<uniform_break_earliest_h[break_dim][id]<<" LATEST:
+            // "<<uniform_break_latest_h[break_dim][id]<<"\n";
+            ASSERT_GE(arrival, static_cast<double>(uniform_break_earliest_h[break_dim][id]) - 1e-6)
               << "Break " << break_dim << " vehicle " << id << " arrival " << arrival
               << " before earliest " << uniform_break_earliest_h[break_dim][id];
-            ASSERT_LE(arrival,
-                      static_cast<double>(uniform_break_latest_h[break_dim][id]) + 1e-6)
+            ASSERT_LE(arrival, static_cast<double>(uniform_break_latest_h[break_dim][id]) + 1e-6)
               << "Break " << break_dim << " vehicle " << id << " arrival " << arrival
               << " after latest " << uniform_break_latest_h[break_dim][id];
             if (!uniform_break_locations_set.empty()) {
@@ -192,9 +192,8 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
                 << "Non-uniform break " << break_dim << " vehicle " << id;
               if (b.locations_.size() > 0) {
                 auto allowed_locs = cuopt::host_copy(b.locations_, stream);
-                bool found =
-                  std::find(allowed_locs.begin(), allowed_locs.end(), break_loc_id) !=
-                  allowed_locs.end();
+                bool found = std::find(allowed_locs.begin(), allowed_locs.end(), break_loc_id) !=
+                             allowed_locs.end();
                 ASSERT_TRUE(found)
                   << "Non-uniform break " << break_dim << " vehicle " << id << " at location "
                   << break_loc_id << " not in allowed break locations";
@@ -206,12 +205,12 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
       }
       if (use_uniform) {
         ASSERT_EQ(break_dim, static_cast<int>(uniform_break_earliest_h.size()))
-          << "Vehicle " << id << " break count " << break_dim
-          << " expected " << uniform_break_earliest_h.size();
+          << "Vehicle " << id << " break count " << break_dim << " expected "
+          << uniform_break_earliest_h.size();
       } else if (use_non_uniform) {
         ASSERT_EQ(break_dim, static_cast<int>(non_uniform.at(id).size()))
-          << "Vehicle " << id << " non-uniform break count " << break_dim
-          << " expected " << non_uniform.at(id).size();
+          << "Vehicle " << id << " non-uniform break count " << break_dim << " expected "
+          << non_uniform.at(id).size();
       }
     }
 

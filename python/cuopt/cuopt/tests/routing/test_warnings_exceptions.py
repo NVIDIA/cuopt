@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import warnings
@@ -58,7 +58,9 @@ def test_dist_mat():
     with pytest.raises(Exception) as exc_info:
         dm = routing.DataModel(cost_matrix.shape[0], 3)
         dm.add_cost_matrix(cost_matrix[:3])
-    assert str(exc_info.value) == "cost matrix is expected to be a square matrix"
+    assert (
+        str(exc_info.value) == "cost matrix is expected to be a square matrix"
+    )
     with pytest.raises(Exception) as exc_info:
         dm = routing.DataModel(cost_matrix.shape[0], 3)
         dm.add_cost_matrix(cost_matrix)
@@ -109,9 +111,7 @@ def test_time_windows():
 
 
 def test_range():
-    cost_matrix = cudf.DataFrame(
-        [[0, 5.0, 5.0], [5.0, 0, 5.0], [5.0, 5.0, 0]]
-    )
+    cost_matrix = cudf.DataFrame([[0, 5.0, 5.0], [5.0, 0, 5.0], [5.0, 5.0, 0]])
     dm = routing.DataModel(cost_matrix.shape[0], 3, 5)
     dm.add_cost_matrix(cost_matrix)
     with pytest.raises(Exception) as exc_info:

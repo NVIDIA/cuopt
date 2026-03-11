@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -262,7 +262,7 @@ TEST(vehicle_breaks, uniform_breaks)
     order_latest[i]    = route.latest_time_h[i + 1];
     order_service[i]   = route.service_time_h[i + 1];
   }
-  int num_breaks  = 2;
+  int num_breaks = 2;
   std::vector<int> break_earliest(vehicle_num * num_breaks);
   std::vector<int> break_latest(vehicle_num * num_breaks);
   std::vector<int> break_duration(vehicle_num * num_breaks);
@@ -276,7 +276,9 @@ TEST(vehicle_breaks, uniform_breaks)
   }
 
   std::vector<int> break_locations(nodes);
-  for (int i = 0; i < nodes; ++i) { break_locations[i] = i; }
+  for (int i = 0; i < nodes; ++i) {
+    break_locations[i] = i;
+  }
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, nodes, vehicle_num, n_orders);
 
@@ -306,13 +308,13 @@ TEST(vehicle_breaks, uniform_breaks)
     dim1_duration[v] = break_duration[v * num_breaks + 1];
   }
   auto v_break_earliest_0 = cuopt::device_copy(dim0_earliest, stream);
-  auto v_break_latest_0  = cuopt::device_copy(dim0_latest, stream);
+  auto v_break_latest_0   = cuopt::device_copy(dim0_latest, stream);
   auto v_break_duration_0 = cuopt::device_copy(dim0_duration, stream);
   data_model.add_break_dimension(
     v_break_earliest_0.data(), v_break_latest_0.data(), v_break_duration_0.data());
 
   auto v_break_earliest_1 = cuopt::device_copy(dim1_earliest, stream);
-  auto v_break_latest_1  = cuopt::device_copy(dim1_latest, stream);
+  auto v_break_latest_1   = cuopt::device_copy(dim1_latest, stream);
   auto v_break_duration_1 = cuopt::device_copy(dim1_duration, stream);
   data_model.add_break_dimension(
     v_break_earliest_1.data(), v_break_latest_1.data(), v_break_duration_1.data());
@@ -354,9 +356,9 @@ TEST(vehicle_breaks, non_uniform_breaks)
     order_latest[i]    = route.latest_time_h[i + 1];
     order_service[i]   = route.service_time_h[i + 1];
   }
-  int num_v_type_1  = vehicle_num / 2;
-  int num_v_type_2  = vehicle_num - num_v_type_1;
-  int num_breaks    = 3;
+  int num_v_type_1 = vehicle_num / 2;
+  int num_v_type_2 = vehicle_num - num_v_type_1;
+  int num_breaks   = 3;
 
   // Type 1: [40,50]/5, [100,120]/20, [170,180]/10
   // Type 2: [60,90]/20, [110,120]/10, [200,210]/5
@@ -388,7 +390,9 @@ TEST(vehicle_breaks, non_uniform_breaks)
 
   // Depot (0) excluded from break locations
   std::vector<int> break_locations(nodes - 1);
-  for (int i = 0; i < nodes - 1; ++i) { break_locations[i] = i + 1; }
+  for (int i = 0; i < nodes - 1; ++i) {
+    break_locations[i] = i + 1;
+  }
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, nodes, vehicle_num, n_orders);
 

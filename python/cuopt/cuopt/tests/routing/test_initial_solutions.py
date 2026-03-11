@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
@@ -128,9 +128,9 @@ def test_initial_solutions(flag):
     ret_initial = d.get_initial_solutions()
     assert len(ret_initial) == 4
     ret_sizes = sorted(len(x) for x in ret_initial)
-    expected_sizes = sorted([
-        len(vehicle_ids), len(routes), len(types), len(sol_offsets)
-    ])
+    expected_sizes = sorted(
+        [len(vehicle_ids), len(routes), len(types), len(sol_offsets)]
+    )
     assert ret_sizes == expected_sizes
 
     s.set_time_limit(1)

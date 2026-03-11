@@ -1,7 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 import os
 import numpy as np
 
@@ -10,7 +9,9 @@ import cudf
 from cuopt import routing
 from cuopt.routing import utils
 
-SOLOMON_DATASETS_PATH = os.path.join(utils.RAPIDS_DATASET_ROOT_DIR, "solomon/In/")
+SOLOMON_DATASETS_PATH = os.path.join(
+    utils.RAPIDS_DATASET_ROOT_DIR, "solomon/In/"
+)
 
 """def test_solomon():
     SOLOMON_DATASET = "r107.txt"
@@ -56,6 +57,7 @@ SOLOMON_DATASETS_PATH = os.path.join(utils.RAPIDS_DATASET_ROOT_DIR, "solomon/In/
     if vehicle_size == 11:
         assert math.fabs((final_cost - ref_cost) / ref_cost) < 0.1
 """
+
 
 def test_pdptw():
     """
@@ -103,10 +105,16 @@ def test_pdptw():
 
     # Getter checks: pickup/delivery pairs and transit time matrix
     ret_pickup, ret_delivery = dm.get_pickup_delivery_pairs()
-    assert (ret_pickup == pickup_indices).all(), "get_pickup_delivery_pairs pickup mismatch"
-    assert (ret_delivery == delivery_indices).all(), "get_pickup_delivery_pairs delivery mismatch"
+    assert (ret_pickup == pickup_indices).all(), (
+        "get_pickup_delivery_pairs pickup mismatch"
+    )
+    assert (ret_delivery == delivery_indices).all(), (
+        "get_pickup_delivery_pairs delivery mismatch"
+    )
     ret_transit = dm.get_transit_time_matrix(0)
-    assert cudf.DataFrame(ret_transit).equals(times), "get_transit_time_matrix mismatch"
+    assert cudf.DataFrame(ret_transit).equals(times), (
+        "get_transit_time_matrix mismatch"
+    )
 
     settings = routing.SolverSettings()
     settings.set_time_limit(10)
@@ -114,7 +122,9 @@ def test_pdptw():
     solution = routing.Solve(dm, settings)
     status = solution.get_status()
 
-    assert status == 0, f"Expected status 0, got {status}: {solution.get_message()}"
+    assert status == 0, (
+        f"Expected status 0, got {status}: {solution.get_message()}"
+    )
     assert solution.get_vehicle_count() >= 1
     # Exercise Assignment getters (return type / no raise)
     assert isinstance(solution.get_accepted_solutions(), cudf.Series)
@@ -250,4 +260,3 @@ def test_prize_collection():
     assert objectives[routing.Objective.COST] == 13.0
     assert sol.get_status() == 0
     assert sol.get_vehicle_count() >= 2
-

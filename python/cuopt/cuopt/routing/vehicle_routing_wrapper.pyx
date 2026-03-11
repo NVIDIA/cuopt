@@ -655,7 +655,7 @@ cdef class DataModel:
         }
 
     def get_order_service_times(self, vehicle_id):
-        if vehicle_id in self.order_service_times:        
+        if vehicle_id in self.order_service_times:
             return self.order_service_times[vehicle_id]
         else:
             return cudf.Series([])
