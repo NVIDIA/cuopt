@@ -1571,9 +1571,8 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   if (data_model.get_objective_name().size() != 0) {
     op_problem.set_objective_name(data_model.get_objective_name());
   }
-  if (data_model.get_problem_name().size() != 0) {
-    op_problem.set_problem_name(data_model.get_problem_name().data());
-  }
+  auto problem_name = data_model.get_problem_name();
+  op_problem.set_problem_name(problem_name);
   if (data_model.get_variable_names().size() != 0) {
     op_problem.set_variable_names(data_model.get_variable_names());
   }

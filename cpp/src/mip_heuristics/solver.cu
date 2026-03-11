@@ -220,6 +220,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
+    branch_and_bound_settings.clique_cuts   = context.settings.clique_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.reduced_cost_strengthening =
@@ -261,7 +262,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Create the branch and bound object
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem, branch_and_bound_settings, timer_.get_tic_start());
+      branch_and_bound_problem,
+      branch_and_bound_settings,
+      timer_.get_tic_start(),
+      context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;
     branch_and_bound->set_user_bound_callback(

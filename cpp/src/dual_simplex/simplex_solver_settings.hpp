@@ -100,6 +100,7 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
@@ -178,6 +179,7 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
