@@ -20,6 +20,7 @@ INSTANCES=(
     "thor50dday"
     "stein9inf"
     "neos5"
+    "neos8"
     "swath1"
     "enlight_hard"
     "enlight11"

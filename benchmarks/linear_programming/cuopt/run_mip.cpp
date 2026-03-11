@@ -183,6 +183,10 @@ int run_single_file(std::string file_path,
     CUOPT_LOG_ERROR("Parsing MPS failed exiting!");
     return -1;
   }
+  // Use the benchmark filename for downstream instance-level reporting.
+  // This keeps per-instance metrics aligned with the run list even if the MPS NAME card differs.
+  mps_data_model.set_problem_name(base_filename);
+
   if (initial_solution_dir.has_value()) {
     auto initial_solutions = read_solution_from_dir(
       initial_solution_dir.value(), base_filename, mps_data_model.get_variable_names());
@@ -209,6 +213,7 @@ int run_single_file(std::string file_path,
   settings.tolerances.absolute_tolerance = 1e-6;
   settings.presolver                     = cuopt::linear_programming::presolver_t::Default;
   settings.reliability_branching         = reliability_branching;
+  settings.clique_cuts                   = -1;
   settings.seed                          = 42;
   cuopt::linear_programming::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
@@ -413,7 +418,16 @@ int main(int argc, char* argv[])
   int reliability_branching = program.get<int>("--reliability-branching");
   bool deterministic        = program.get<bool>("--determinism");
 
-  if (num_cpu_threads < 0) { num_cpu_threads = omp_get_max_threads() / n_gpus; }
+  if (num_cpu_threads < 0) {
+    num_cpu_threads = omp_get_max_threads() / n_gpus;
+    // std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
+    // if (smt_file.is_open()) {
+    //   int smt_active = 0;
+    //   smt_file >> smt_active;
+    //   if (smt_active) { num_cpu_threads /= 2; }
+    // }
+    num_cpu_threads = std::max(num_cpu_threads, 1);
+  }
 
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
