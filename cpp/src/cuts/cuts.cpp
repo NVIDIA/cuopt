@@ -1063,7 +1063,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
-    bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
     if (!feasible) {
       settings.log.printf("Clique cuts proved infeasible\n");
       return false;
@@ -1342,7 +1342,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     if (build_status == clique_cut_build_status_t::CUT_ADDED) {
       inequality_t<i_t, f_t> cut_inequality;
       cut_inequality.vector = cut;
-      cut_inequality.rhs = cut_rhs;
+      cut_inequality.rhs    = cut_rhs;
       cut_pool_.add_cut(cut_type_t::CLIQUE, cut_inequality);
 #if DEBUG_CLIQUE_CUTS
       added_cuts++;
