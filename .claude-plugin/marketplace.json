@@ -115,6 +115,12 @@
       "source": "./skills/cuopt-server-api-python",
       "skills": "./",
       "description": "cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API."
+    },
+    {
+      "name": "skill-evolution",
+      "source": "./skills/skill-evolution",
+      "skills": "./",
+      "description": "After solving a non-trivial problem, detect generalizable learnings and propose skill updates. Always active."
     }
   ]
 }
