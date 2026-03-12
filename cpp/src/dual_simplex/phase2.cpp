@@ -412,19 +412,23 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
   delta_z[leaving_index] = direction;
 
 #ifdef CHECK_CHANGE_IN_REDUCED_COST
-  delta_y_sparse.to_dense(delta_y);
+  const i_t m = A_transpose.n;
+  const i_t n = A_transpose.m;
+  std::vector<f_t> delta_y_dense(m);
+  delta_y.to_dense(delta_y_dense);
   std::vector<f_t> delta_z_check(n);
   std::vector<i_t> delta_z_mark_check(n, 0);
   std::vector<i_t> delta_z_indices_check;
   phase2::compute_reduced_cost_update(lp,
                                       basic_list,
                                       nonbasic_list,
-                                      delta_y,
+                                      delta_y_dense,
                                       leaving_index,
                                       direction,
                                       delta_z_mark_check,
                                       delta_z_indices_check,
-                                      delta_z_check);
+                                      delta_z_check,
+                                      work_estimate);
   f_t error_check = 0.0;
   for (i_t k = 0; k < n; ++k) {
     const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
@@ -1726,6 +1730,7 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
                     const std::vector<i_t>& basic_list,
                     const std::vector<f_t>& delta_x_flip,
                     const sparse_vector_t<i_t, f_t>& rhs_sparse,
+                    const std::vector<f_t>& delta_z,
                     const std::vector<f_t>& x,
                     sparse_vector_t<i_t, f_t>& utilde_sparse,
                     sparse_vector_t<i_t, f_t>& scaled_delta_xB_sparse,
@@ -1782,6 +1787,23 @@ i_t compute_delta_x(const lp_problem_t<i_t, f_t>& lp,
       scaled_delta_xB_sparse.negate();
       work_estimate += 2 * scaled_delta_xB_sparse.i.size() + scaled_delta_xB.size();
       scale = -scaled_delta_xB[basic_leaving_index];
+    } else if (delta_z[entering_index] != 0.0) {
+      scale = -delta_z[entering_index];
+      // The sparse solve did not produce a coefficient for basic_leaving_index.
+      // Add it so update_primal_variables / update_primal_infeasibilities process
+      // the leaving variable (they iterate over scaled_delta_xB_sparse.i).
+      bool found_leaving = false;
+      for (i_t k = 0; k < static_cast<i_t>(scaled_delta_xB_sparse.i.size()); ++k) {
+        if (scaled_delta_xB_sparse.i[k] == basic_leaving_index) {
+          scaled_delta_xB_sparse.x[k] = scale;
+          found_leaving               = true;
+          break;
+        }
+      }
+      if (!found_leaving) {
+        scaled_delta_xB_sparse.i.push_back(basic_leaving_index);
+        scaled_delta_xB_sparse.x.push_back(scale);
+      }
     } else {
       return -1;
     }
@@ -2029,8 +2051,8 @@ void check_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                   const simplex_solver_settings_t<i_t, f_t>& settings,
                                   const std::vector<i_t>& basic_list,
                                   const std::vector<f_t>& x,
-                                  const ins_vector<f_t>& squared_infeasibilities,
-                                  const ins_vector<i_t>& infeasibility_indices)
+                                  const std::vector<f_t>& squared_infeasibilities,
+                                  const std::vector<i_t>& infeasibility_indices)
 {
   const i_t m = basic_list.size();
   for (i_t k = 0; k < m; ++k) {
@@ -2054,14 +2076,30 @@ void check_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
         }
       }
       if (!found) { settings.log.printf("Infeasibility index not found %d\n", j); }
+    } else {
+      bool found = false;
+      i_t h;
+      for (h = 0; h < infeasibility_indices.size(); ++h) {
+        if (infeasibility_indices[h] == j) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        settings.log.printf("Incorrect infeasible index %d/%d infeas %e sq %e\n",
+                            j,
+                            h,
+                            infeas,
+                            squared_infeasibilities[j]);
+      }
     }
   }
 }
 
 template <typename i_t>
 void check_basic_infeasibilities(const std::vector<i_t>& basic_list,
-                                 const ins_vector<i_t>& basic_mark,
-                                 const ins_vector<i_t>& infeasibility_indices,
+                                 const std::vector<i_t>& basic_mark,
+                                 const std::vector<i_t>& infeasibility_indices,
                                  i_t info)
 {
   for (i_t k = 0; k < infeasibility_indices.size(); ++k) {
@@ -2104,8 +2142,8 @@ template <typename i_t, typename f_t>
 void check_basis_mark(const simplex_solver_settings_t<i_t, f_t>& settings,
                       const std::vector<i_t>& basic_list,
                       const std::vector<i_t>& nonbasic_list,
-                      const ins_vector<i_t>& basic_mark,
-                      const ins_vector<i_t>& nonbasic_mark)
+                      const std::vector<i_t>& basic_mark,
+                      const std::vector<i_t>& nonbasic_mark)
 {
   const i_t m = basic_list.size();
   const i_t n = basic_mark.size();
@@ -2925,7 +2963,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_residual;
     std::vector<f_t> zeros(n, 0.0);
-    phase2::compute_dual_residual(lp.A, zeros, delta_y, delta_z, dual_residual);
+    std::vector<f_t> delta_y_dense(m);
+    delta_y_sparse.to_dense(delta_y_dense);
+    phase2::compute_dual_residual(lp.A, zeros, delta_y_dense, delta_z, dual_residual);
     // || A'*delta_y + delta_z ||_inf
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
     settings.log.printf(
@@ -3182,6 +3222,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     timers.vector_time += timers.stop_timer();
 
 #ifdef COMPUTE_DUAL_RESIDUAL
+    std::vector<f_t> dual_res1;
     phase2::compute_dual_residual(lp.A, objective, y, z, dual_res1);
     f_t dual_res_norm = vector_norm_inf<i_t, f_t>(dual_res1);
     if (dual_res_norm > settings.dual_tol) {
@@ -3241,6 +3282,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                   basic_list,
                                   delta_x_flip,
                                   rhs_sparse,
+                                  delta_z,
                                   x,
                                   utilde_sparse,
                                   scaled_delta_xB_sparse,
@@ -3406,7 +3448,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       if (should_refactor) {
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
-        bool should_recompute_x = false;
+        bool should_recompute_x = true;  // Need for numerically difficult problems like cbs-cta
         i_t refactor_status     = ft.refactor_basis(
           lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
         if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
@@ -3510,16 +3552,20 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
     if ((iter - start_iter) < settings.first_iteration_log ||
         (iter % settings.iteration_log_frequency) == 0) {
+      const f_t user_obj = compute_user_objective(lp, obj);
       if (phase == 1 && iter == 1) {
         settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time\n");
       }
       settings.log.printf("%5d %+.16e %7d %.8e %.2e %.2f\n",
                           iter,
-                          compute_user_objective(lp, obj),
+                          user_obj,
                           infeasibility_indices.size(),
                           primal_infeasibility_squared,
                           sum_perturb,
                           now);
+      if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback) {
+        settings.dual_simplex_objective_callback(user_obj);
+      }
     }
 
     if (obj >= settings.cut_off) {
