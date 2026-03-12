@@ -218,6 +218,7 @@ A proposal must NOT:
 
 Before proposing, verify:
 - [ ] The learning is stated generically (no user-specific variable names, data, or paths)
+- [ ] No problem-specific values, constants, or example outputs that could overfit the proposal to a single instance (e.g. avoid citing specific objective values, dataset sizes, or variable counts from the triggering problem)
 - [ ] It fits the skill's existing structure (matches the style of surrounding content)
 - [ ] It does not contradict existing skill content
 - [ ] It is factually correct (verified during the interaction, not speculative)
