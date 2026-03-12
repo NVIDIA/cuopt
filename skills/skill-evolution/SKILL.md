@@ -6,42 +6,131 @@ description: After solving a non-trivial problem, detect generalizable learnings
 
 # Skill Evolution
 
-After resolving a non-trivial problem (debugging, formulation fix, API gotcha, workflow correction), check whether the learning is **generalizable** — useful beyond this specific user's situation.
+Skills improve through a three-phase lifecycle. The agent operates in one phase at a time depending on whether ground truth is available.
 
-## When to propose a skill update
+## Trigger conditions
 
-Propose when you discovered something that:
-- Is NOT already in the relevant skill's SKILL.md
-- Would prevent the same class of problem for future users or agents
-- Can be stated as a general pattern, not tied to one user's data or code
+You MUST evaluate whether to enter the skill evolution workflow when ANY of these events occur during a conversation:
 
-Common triggers: silent failures, misleading defaults, missing examples, undocumented constraints, recurring questions.
+1. **User correction** — The user corrects your output (e.g., "the answer should be X", "no, use Y instead of Z"). A correction means the skill that guided you was missing information.
+2. **Retry after failure** — Your code/formulation failed (wrong result, solver error, runtime exception) and you had to change approach. The fix likely contains a generalizable pattern.
+3. **Undocumented behavior** — You discovered an API behavior, default value, or constraint not mentioned in the relevant skill.
+4. **Workaround** — You had to work around a limitation or gotcha not documented in any skill.
+5. **Variable type or modeling error** — You chose the wrong variable type (e.g., CONTINUOUS vs INTEGER), constraint form, or objective structure, and the correction changed the result.
 
-Do NOT propose for: trivial typos, user-specific configurations, one-off data issues.
+**When a trigger fires:** Finish solving the user's problem first, then evaluate whether the learning is generalizable (not user-specific) before entering Phase 1 or Phase 2.
 
-## How to propose
+**Do NOT trigger for:** Trivial typos, user-specific data/paths, one-off configuration issues, or problems already covered by existing skills.
 
-1. **Identify the skill** — which `skills/*/SKILL.md` would benefit
-2. **Distill the lesson** — extract the general pattern from the specific fix:
-   - Specific: "User got RecursionError building 500-term objective with chained +"
-   - General: "Use LinearExpression(vars, coeffs) for large objectives to avoid recursion limits"
-3. **Write the patch** — show the exact addition (new row in a table, new subsection, new code example)
-4. **State provenance** — one sentence: what interaction surfaced this learning
-5. **Ask the user** — present the proposal and ask: "Should I apply this skill update?"
+## Phase 1: Learning (with ground truth)
 
-## Proposal format
+Enter this phase when you can **score** your output — a ground truth answer exists, a test suite passes/fails, or a known-correct result can be compared against.
+
+### Skill generation loop (sandbox)
+
+Inside the learning phase, run an evolutionary loop before proposing anything:
+
+1. **Read** current skills (the general skills in `skills/*/SKILL.md`)
+2. **Reason + execute** to produce a solution
+3. **Score** against ground truth (see scoring criteria below)
+4. **If score fails** — tune the approach: adjust the pattern, fix the example, add a missing gotcha. Retry from step 2. Maximum **3 iterations**.
+5. **If score passes** — proceed to distillation.
+
+The sandbox is conceptual for interactive agents (Cursor, Claude Code): iterate internally before presenting to the user. Do not propose on the first attempt if the score failed. For CI/batch contexts, the sandbox is literal — experimental skill modifications in a temp directory, validated by running tests, then promoted.
+
+### Scoring criteria
+
+Use whatever ground truth is available:
+
+| Ground truth | How to score |
+|---|---|
+| Behavioral tests | `must_include` / `must_not_include` patterns pass |
+| Code execution | `solution.py` runs without error, produces expected output |
+| Solver status | cuOpt returns `Optimal` / `FeasibleFound` / `SUCCESS` |
+| Constraint satisfaction | All constraints in the formulation are met |
+| Known answer | Output matches the expected value within tolerance |
+
+If no ground truth is available, you are in Phase 2 (inference), not Phase 1.
+
+### Distillation
+
+When the score passes, distill the learning into a skill artifact. Two types:
+
+**Markdown** (SKILL.md patches) — gotchas, patterns, examples, table rows:
+- Identify which `skills/*/SKILL.md` would benefit
+- Extract the general pattern from the specific fix
+- Write the exact addition (new row, new subsection, new code example)
+
+**Code** (assets/*.py) — reusable helper functions, reference solutions:
+- Place in `skills/*/assets/` alongside existing assets
+- Must be runnable by `ci/test_skills_assets.sh`
+- Include a docstring explaining what the code does and why it was extracted
+
+### Proposal format
 
 Present to the user as:
 
 ```
 Skill update proposal:
-  Skill: skills/<name>/SKILL.md
+  Skill: skills/<name>/SKILL.md        (or skills/<name>/assets/<file>.py)
+  Type: markdown | code
+  Phase: learning (scored)
   Section: <where it goes>
   Trigger: <what happened that surfaced this>
+  Score: <how it was validated — e.g. "solver returned Optimal", "test passed">
   Change: <the exact content to add or modify>
 ```
 
-Only apply the change after the user approves. If the user declines, do not persist.
+Only apply after the user approves. If the user declines, do not persist.
+
+## Phase 2: Inference (no ground truth)
+
+Enter this phase during normal user interactions where no ground truth exists to score against.
+
+### Use specialized skills
+
+Read and apply skills (including any content added by prior learning phases) to solve the user's problem.
+
+### Collect insights
+
+While solving, note **insights** — observations that could not be scored but may be valuable:
+- A pattern that worked but has no ground truth to validate against
+- A gotcha encountered that might be generalizable
+- A missing example that would have helped
+
+### Propose insights (lower confidence)
+
+Present insights to the user as lower-confidence proposals, clearly marked:
+
+```
+Skill insight (unscored):
+  Skill: skills/<name>/SKILL.md
+  Type: markdown | code
+  Phase: inference (unscored)
+  Section: <where it goes>
+  Trigger: <what happened>
+  Change: <the exact content to add or modify>
+  Note: This was not validated against ground truth. Review carefully.
+```
+
+The user may approve, decline, or defer for offline reflection.
+
+## Phase 3: Offline reflection
+
+After inference interactions, review accumulated insights to find patterns.
+
+### When to reflect
+
+- Multiple interactions surfaced the same insight
+- An insight from inference was later confirmed by a learning-phase score
+- A batch of deferred insights has accumulated
+
+### How to reflect
+
+1. Compare insights across interactions — look for recurring patterns
+2. If a pattern appears in 2+ independent interactions, promote it to a scored proposal (treat the recurrence as evidence)
+3. Present the promoted proposal using the Phase 1 proposal format with `Phase: reflection (pattern-validated)`
+4. Same approval gate — user must approve before applying
 
 ## Provenance tagging
 
@@ -83,6 +172,15 @@ origin: skill-evolution
 ---
 ```
 
+### Code assets
+
+When adding a code file to `skills/*/assets/`, include a header comment:
+
+```python
+# origin: skill-evolution
+# trigger: <one-line description of what surfaced this>
+```
+
 ## Security rules (non-negotiable)
 
 ### Never weaken safety guardrails
@@ -107,7 +205,7 @@ Before proposing, verify the learning originated from **genuine problem-solving*
 ### Scope limits
 
 A proposal may only:
-- **Add** new content (gotchas, examples, table rows, subsections)
+- **Add** new content (gotchas, examples, table rows, subsections, code assets)
 - **Clarify** existing content (more precise wording, better examples)
 - **Correct** factual errors (wrong API name, wrong status value)
 
@@ -129,9 +227,12 @@ Before proposing, verify:
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
 - [ ] Added content is tagged with `<!-- added by skill-evolution -->` comment
 - [ ] New skills have `origin: skill-evolution` in frontmatter
+- [ ] Code assets have `# origin: skill-evolution` header and are runnable
+- [ ] Phase is correctly identified (learning/inference/reflection)
+- [ ] Learning-phase proposals include a score; inference-phase proposals are marked unscored
 
 ## Validation
 
 Proposed skill changes must pass the same CI bar as manual edits:
 - `./ci/utils/validate_skills.sh` — structural compliance
-- `./ci/test_skills_assets.sh` — executable assets still work
+- `./ci/test_skills_assets.sh` — executable assets still work (including new code assets)

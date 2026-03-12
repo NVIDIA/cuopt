@@ -37,6 +37,16 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 
 Skills improve through agent interactions. When you solve a problem and discover a generalizable fix, gotcha, or pattern, follow `skills/skill-evolution/SKILL.md` to propose a skill update. All proposals go through the same CI validation as manual edits.
 
+### Post-correction hook (mandatory)
+
+After completing any task where one of these occurred, you MUST read `skills/skill-evolution/SKILL.md` and evaluate whether to propose a skill update:
+- The user corrected your output or approach
+- Your initial solution failed and you had to retry with a different approach
+- You discovered undocumented API behavior or a non-obvious gotcha
+- You used a workaround not described in any existing skill
+
+Finish solving the problem first, then evaluate. Not every correction warrants a proposal — only generalizable learnings that would help future interactions.
+
 ## Resources
 
 ### Documentation
