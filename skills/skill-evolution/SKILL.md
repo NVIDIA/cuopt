@@ -66,6 +66,17 @@ When the score passes, distill the learning into a skill artifact. Two types:
 - Must be runnable by `ci/test_skills_assets.sh`
 - Include a docstring explaining what the code does and why it was extracted
 
+### Placement rule — target highest-impact skill
+
+Always place the learning in the **single skill where it has the widest effect**. Do NOT duplicate the same content across multiple skills.
+
+Choose the target using this priority:
+1. **Common / concept skill** (e.g. `lp-milp-formulation`, `routing-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
+2. **API skill** (e.g. `cuopt-lp-milp-api-python`, `cuopt-routing-api-python`) — if the learning is specific to one API or language.
+3. **New skill** — only if the learning doesn't fit any existing skill.
+
+If a gotcha affects both Python and C users but is about the solver behavior (not the API), it belongs in the common formulation skill, not in both `api-python` and `api-c`.
+
 ### Proposal format
 
 Present to the user as:
@@ -138,25 +149,30 @@ Every change made through skill evolution MUST be tagged so its origin is tracea
 
 ### Updates to existing skills
 
-When adding content to an existing SKILL.md, append an inline HTML comment at the end of the added content:
+Wrap added content with **start** and **end** boundary markers so it is easy to locate, review, and remove:
 
 ```markdown
-<!-- added by skill-evolution -->
+<!-- skill-evolution:start — <short trigger description> -->
+<added content>
+<!-- skill-evolution:end -->
 ```
 
 For example, a new table row:
 
 ```markdown
-| Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` | <!-- added by skill-evolution -->
+<!-- skill-evolution:start — large objective recursion fix -->
+| Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` |
+<!-- skill-evolution:end -->
 ```
 
 Or a new subsection:
 
 ```markdown
+<!-- skill-evolution:start — warmstart gotcha -->
 ### Warmstart gotcha
-<!-- added by skill-evolution -->
 
 Content here...
+<!-- skill-evolution:end -->
 ```
 
 ### New skills
@@ -226,9 +242,10 @@ Before proposing, verify:
 - [ ] It does not modify this skill (`skill-evolution`)
 - [ ] It does not expand agent permissions or reduce user control
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
-- [ ] Added content is tagged with `<!-- added by skill-evolution -->` comment
+- [ ] Added content is wrapped with `<!-- skill-evolution:start -->` / `<!-- skill-evolution:end -->` markers
 - [ ] New skills have `origin: skill-evolution` in frontmatter
 - [ ] Code assets have `# origin: skill-evolution` header and are runnable
+- [ ] Placed in the single highest-impact skill (common > API > new); not duplicated across skills
 - [ ] Phase is correctly identified (learning/inference/reflection)
 - [ ] Learning-phase proposals include a score; inference-phase proposals are marked unscored
 
