@@ -43,6 +43,46 @@ Skill update proposal:
 
 Only apply the change after the user approves. If the user declines, do not persist.
 
+## Provenance tagging
+
+Every change made through skill evolution MUST be tagged so its origin is traceable.
+
+### Updates to existing skills
+
+When adding content to an existing SKILL.md, append an inline HTML comment at the end of the added content:
+
+```markdown
+<!-- added by skill-evolution -->
+```
+
+For example, a new table row:
+
+```markdown
+| Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` | <!-- added by skill-evolution -->
+```
+
+Or a new subsection:
+
+```markdown
+### Warmstart gotcha
+<!-- added by skill-evolution -->
+
+Content here...
+```
+
+### New skills
+
+When skill evolution creates an entirely new skill directory, add `origin: skill-evolution` to the YAML frontmatter:
+
+```yaml
+---
+name: new-skill-name
+version: "26.04.00"
+description: ...
+origin: skill-evolution
+---
+```
+
 ## Security rules (non-negotiable)
 
 ### Never weaken safety guardrails
@@ -87,6 +127,8 @@ Before proposing, verify:
 - [ ] It does not modify this skill (`skill-evolution`)
 - [ ] It does not expand agent permissions or reduce user control
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
+- [ ] Added content is tagged with `<!-- added by skill-evolution -->` comment
+- [ ] New skills have `origin: skill-evolution` in frontmatter
 
 ## Validation
 
