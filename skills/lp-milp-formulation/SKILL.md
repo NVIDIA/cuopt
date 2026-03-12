@@ -126,3 +126,22 @@ When the user gives **problem text**, classify every sentence and then summarize
 Result: Parameters = 3 factories, 500 units target. Constraints = produce exactly 500 (implicit from "plans to produce"). Decisions = production allocation across factories, overtime amounts. Objective = minimize cost.
 
 **Implicit-objective example:** A problem that asks to "determine the production plan" (or similar) and gives cost components (e.g. workshop, inspection, sales) but does not state "minimize" or "maximize" → **Objective is implicit: minimize total cost**. Always state it explicitly: "The objective is to minimize total cost."
+
+---
+
+## Goal programming (preemptive / lexicographic)
+<!-- added by skill-evolution -->
+
+Goal programming optimizes multiple objectives in priority order. Implement it as **sequential solves** — one per priority level.
+
+### Formulation pattern
+
+1. **Hard constraints** — capacity limits, non-negativity, etc. These hold in every phase.
+2. **Goal constraints** — for each goal, introduce deviation variables (d⁻ for underachievement, d⁺ for overachievement) and write an equality: `expression + d⁻ − d⁺ = target`.
+3. **Solve sequentially by priority:**
+   - Phase 1: minimize (or maximize) the relevant deviation for the highest-priority goal.
+   - Phase k: fix all higher-priority deviations at their optimal values, then optimize priority k's deviation.
+
+### Variable types in goal programming
+
+Deviation variables (d⁻, d⁺) and slack/idle-time variables are always **continuous**. However, **decision variables must still be INTEGER when they represent discrete/countable quantities** (units produced, vehicles, workers, etc.). Do not let the presence of continuous deviation variables cause you to make all variables continuous — the integrality of decision variables directly affects feasibility and objective values.
