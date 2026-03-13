@@ -34,7 +34,7 @@ jobs:
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@python-3.14
     if: always()
     with:
       needs: ${{ toJSON(needs) }}
@@ -111,7 +111,7 @@ jobs:
 
   changed-files:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@python-3.14
     with:
       files_yaml: |
         build_docs:
@@ -279,20 +279,20 @@ jobs:
           - '!gemini-extension.json'
   checks:
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@python-3.14
     with:
       enable_check_generated_files: false
   conda-cpp-build:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files, compute-matrix-filters]
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@python-3.14
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
@@ -308,14 +308,14 @@ jobs:
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@python-3.14
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
     with:
       run_codecov: false
@@ -332,7 +332,7 @@ jobs:
   docs-build:
     needs: [conda-python-build, changed-files]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@python-3.14
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     with:
       build_type: pull-request
@@ -345,7 +345,7 @@ jobs:
   wheel-build-cuopt-mps-parser:
     needs: compute-matrix-filters
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_mps_parser.sh
@@ -357,7 +357,7 @@ jobs:
   wheel-build-libcuopt:
     needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@python-3.14
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
@@ -368,7 +368,7 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt.sh
@@ -377,7 +377,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@python-3.14
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
@@ -393,7 +393,7 @@ jobs:
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters]
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_server.sh
@@ -405,7 +405,7 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: compute-matrix-filters
     secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@python-3.14
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_sh_client.sh
@@ -417,7 +417,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@python-3.14
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request

@@ -48,7 +48,12 @@ class csc_matrix_t {
   // Adjust to i and x vectors for a new number of nonzeros
   void reallocate(i_t new_nz);
 
+  // Get the number of nonzeros in the matrix
   i_t nnz() const { return col_start[n]; }
+
+  // Get the number of nonzeros in column j
+  i_t col_length(i_t j) const { return col_start[j + 1] - col_start[j]; }
+
   // Convert the CSC matrix to a CSR matrix
   i_t to_compressed_row(
     cuopt::linear_programming::dual_simplex::csr_matrix_t<i_t, f_t>& Arow) const;
@@ -144,6 +149,9 @@ class csr_matrix_t {
     : m(rows), n(cols), nz_max(nz), row_start(m + 1), j(nz_max), x(nz_max)
   {
   }
+
+  // Get the number of nonzeros in row i
+  i_t row_length(i_t i) const { return row_start[i + 1] - row_start[i]; }
 
   // Convert the CSR matrix to CSC
   i_t to_compressed_col(csc_matrix_t<i_t, f_t>& Acol) const;

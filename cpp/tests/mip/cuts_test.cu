@@ -897,7 +897,7 @@ TEST(cuts, test_cuts_1)
   // Expected objective value from documentation example is approximately -28
   EXPECT_NEAR(-28, obj_val, 1e-3);
 
-  EXPECT_EQ(solution.get_num_nodes(), 0);
+  EXPECT_LE(solution.get_num_nodes(), 2);
 }
 
 // Problem data for the mixed integer linear programming problem

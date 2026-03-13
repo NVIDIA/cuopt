@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
 import queue
 import time
-from multiprocessing import Event, Process
+from multiprocessing import get_context
 
 import psutil
 
@@ -70,11 +70,12 @@ def terminate(job_queue, results_queue, abort_queue, signame):
 def create_process(app_exit, job_queue, results_queue, abort_list, gpu_id):
     global s_procs
 
-    complete = Event()
+    ctx = get_context("fork")
+    complete = ctx.Event()
 
     from cuopt_server.utils import solver
 
-    s = Process(
+    s = ctx.Process(
         target=solver.process_async_solve,
         args=(
             app_exit,

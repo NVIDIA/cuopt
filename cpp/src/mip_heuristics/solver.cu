@@ -231,6 +231,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.mip_batch_pdlp_strong_branching;
     branch_and_bound_settings.mip_batch_pdlp_reliability_branching =
       context.settings.mip_batch_pdlp_reliability_branching;
+    branch_and_bound_settings.reduced_cost_strengthening =
+      context.settings.reduced_cost_strengthening == -1
+        ? 2
+        : context.settings.reduced_cost_strengthening;
 
     if (context.settings.num_cpu_threads < 0) {
       branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);

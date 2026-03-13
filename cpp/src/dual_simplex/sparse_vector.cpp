@@ -241,6 +241,15 @@ void sparse_vector_t<i_t, f_t>::negate()
 }
 
 template <typename i_t, typename f_t>
+void sparse_vector_t<i_t, f_t>::scale(f_t factor)
+{
+  const i_t nz = x.size();
+  for (i_t k = 0; k < nz; ++k) {
+    x[k] *= factor;
+  }
+}
+
+template <typename i_t, typename f_t>
 f_t sparse_vector_t<i_t, f_t>::find_coefficient(i_t index) const
 {
   const i_t nz = i.size();
