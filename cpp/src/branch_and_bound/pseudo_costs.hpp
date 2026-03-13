@@ -481,7 +481,9 @@ class pseudo_costs_t {
                                   const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
                                   f_t upper_bound,
                                   int max_num_tasks,
-                                  logger_t& log);
+                                  logger_t& log,
+                                  const std::vector<i_t>& new_slacks,
+                                  const lp_problem_t<i_t, f_t>& original_lp);
 
   void update_pseudo_costs_from_strong_branching(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& root_soln);

@@ -102,6 +102,7 @@ void strong_branch_helper(i_t start,
 
       if (branch == 0) {
         pc.strong_branch_down[k] = std::max(obj - root_obj, 0.0);
+        ds_obj_down[k] = std::max(obj - root_obj, 0.0);
         ds_status_down[k]        = status;
         if (verbose) {
           settings.log.printf("Thread id %2d remaining %d variable %d branch %d obj %e time %.2f\n",
@@ -114,6 +115,7 @@ void strong_branch_helper(i_t start,
         }
       } else {
         pc.strong_branch_up[k] = std::max(obj - root_obj, 0.0);
+        ds_obj_up[k] = std::max(obj - root_obj, 0.0);
         ds_status_up[k]        = status;
         if (verbose) {
           settings.log.printf(
@@ -348,36 +350,6 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   return mps_model;
 }
 
-template <typename i_t, typename f_t>
-static cuopt::mps_parser::mps_data_model_t<i_t, f_t> lp_problem_to_mps_data_model(
-  const lp_problem_t<i_t, f_t>& lp_problem)
-{
-  cuopt::mps_parser::mps_data_model_t<i_t, f_t> mps_model;
-  int m = lp_problem.num_rows;
-  int n = lp_problem.num_cols;
-
-  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
-  lp_problem.A.to_compressed_row(csr_A);
-
-  int nz = csr_A.row_start[m];
-
-  mps_model.set_csr_constraint_matrix(
-    csr_A.x.data(), nz, csr_A.j.data(), nz, csr_A.row_start.data(), m + 1);
-
-  mps_model.set_objective_coefficients(lp_problem.objective.data(), n);
-  mps_model.set_objective_scaling_factor(lp_problem.obj_scale);
-  mps_model.set_objective_offset(lp_problem.obj_constant);
-
-  mps_model.set_variable_lower_bounds(lp_problem.lower.data(), n);
-  mps_model.set_variable_upper_bounds(lp_problem.upper.data(), n);
-
-  mps_model.set_constraint_lower_bounds(lp_problem.rhs.data(), m);
-  mps_model.set_constraint_upper_bounds(lp_problem.rhs.data(), m);
-  mps_model.set_maximize(lp_problem.obj_scale < 0);
-
-  return mps_model;
-}
-
 // Merge a single strong branching result from Dual Simplex and PDLP.
 // Rules:
 //   1. If both found optimal   -> keep DS (higher quality vertex solution)
@@ -536,8 +508,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                      ? solutions.get_dual_objective_value(k + fractional.size())
                      : std::numeric_limits<f_t>::quiet_NaN();
 
-      pdlp_obj_down[k] = obj_down - root_obj;
-      pdlp_obj_up[k]   = obj_up - root_obj;
+      pdlp_obj_down[k] = std::max(obj_down - root_obj, f_t(0.0));
+      pdlp_obj_up[k]   = std::max(obj_up - root_obj, f_t(0.0));
     }
 
     // Batch PDLP finished – tell Dual Simplex to stop
@@ -763,7 +735,9 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
   f_t upper_bound,
   int max_num_tasks,
-  logger_t& log)
+  logger_t& log,
+  const std::vector<i_t>& new_slacks,
+  const lp_problem_t<i_t, f_t>& original_lp)
 {
   constexpr f_t eps = 1e-6;
   f_t start_time    = bnb_stats.start_time;
@@ -873,12 +847,23 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
       f_t start_batch = tic();
 
-      const auto mps_model = lp_problem_to_mps_data_model(worker->leaf_problem);
+      std::vector<f_t> original_soln_x;
+      // Convert the original_lp that has cuts to a problem that is better for PDLP
+      auto mps_model = simplex_problem_to_mps_data_model(
+        original_lp, new_slacks, solution, original_soln_x);
+      // Apply the bounds of the current leaf problem
+      {
+        const i_t n_orig = original_lp.num_cols - new_slacks.size();
+        for (i_t j = 0; j < n_orig; j++) {
+          mps_model.variable_lower_bounds_[j] = worker->leaf_problem.lower[j];
+          mps_model.variable_upper_bounds_[j] = worker->leaf_problem.upper[j];
+        }
+      }
 
       std::vector<f_t> fraction_values;
       fraction_values.reserve(num_pdlp_vars);
       for (i_t j : pdlp_overflow_list) {
-        fraction_values.push_back(solution[j]);
+        fraction_values.push_back(original_soln_x[j]);
       }
 
       const f_t batch_elapsed_time    = toc(start_time);

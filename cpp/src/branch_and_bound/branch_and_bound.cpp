@@ -829,7 +829,9 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
                                                      exploration_stats_,
                                                      upper_bound_,
                                                      worker_pool_.num_idle_workers(),
-                                                     log);
+                                                     log,
+                                                     new_slacks_,
+                                                     original_lp_);
       } else {
         branch_var = pc_.variable_selection(fractional, solution, log);
       }

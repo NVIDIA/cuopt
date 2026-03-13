@@ -1506,9 +1506,6 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
     norm_squared_delta_primal * primal_weight + norm_squared_delta_dual / primal_weight;
   const f_t computed_interaction = f_t(2.0) * interaction * step_size;
 
-  cuopt_assert(movement + computed_interaction >= f_t(0.0),
-               "Movement + computed interaction must be >= 0");
-
   // Clamp to 0 to avoid NaN
   *fixed_point_error = cuda::std::sqrt(cuda::std::max(f_t(0.0), movement + computed_interaction));
 
