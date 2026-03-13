@@ -130,7 +130,7 @@ Result: Parameters = 3 factories, 500 units target. Constraints = produce exactl
 ---
 
 ## Goal programming (preemptive / lexicographic)
-<!-- added by skill-evolution -->
+<!-- skill-evolution:start — goal programming section -->
 
 Goal programming optimizes multiple objectives in priority order. Implement it as **sequential solves** — one per priority level.
 
@@ -145,3 +145,4 @@ Goal programming optimizes multiple objectives in priority order. Implement it a
 ### Variable types in goal programming
 
 Deviation variables (d⁻, d⁺) and slack/idle-time variables are always **continuous**. However, **decision variables must still be INTEGER when they represent discrete/countable quantities** (units produced, vehicles, workers, etc.). Do not let the presence of continuous deviation variables cause you to make all variables continuous — the integrality of decision variables directly affects feasibility and objective values.
+<!-- skill-evolution:end -->

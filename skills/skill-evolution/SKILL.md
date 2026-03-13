@@ -81,7 +81,7 @@ If a gotcha affects both Python and C users but is about the solver behavior (no
 
 Present to the user as:
 
-```
+```text
 Skill update proposal:
   Skill: skills/<name>/SKILL.md        (or skills/<name>/assets/<file>.py)
   Type: markdown | code
@@ -113,7 +113,7 @@ While solving, note **insights** — observations that could not be scored but m
 
 Present insights to the user as lower-confidence proposals, clearly marked:
 
-```
+```text
 Skill insight (unscored):
   Skill: skills/<name>/SKILL.md
   Type: markdown | code
