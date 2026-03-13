@@ -8,9 +8,9 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/node_queue.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <utilities/work_limit_context.hpp>
 

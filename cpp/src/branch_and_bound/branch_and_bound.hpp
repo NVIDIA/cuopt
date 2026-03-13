@@ -8,12 +8,12 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/deterministic_workers.hpp>
-#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/worker.hpp>
+#include <branch_and_bound/worker_pool.hpp>
 
 #include <cuts/cuts.hpp>
 
@@ -107,7 +107,7 @@ class branch_and_bound_t {
     }
   }
 
-  // Set a solution based on the user problem during the course of the solve
+  // Set a solution based on the user problem during solve time
   void set_new_solution(const std::vector<f_t>& solution);
 
   // This queues the solution to be processed at the correct work unit timestamp

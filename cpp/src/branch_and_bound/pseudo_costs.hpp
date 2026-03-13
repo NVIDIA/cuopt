@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/mip_node.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/logger.hpp>

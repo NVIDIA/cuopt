@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
 
@@ -35,15 +36,12 @@
 #include <deque>
 #include <future>
 #include <limits>
-#include <map>
 #include <optional>
 #include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
-
 namespace {
 
 template <typename f_t>
@@ -467,11 +465,9 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
     original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
   f_t obj = compute_objective(original_lp_, crushed_solution);
   mutex_original_lp_.unlock();
-  bool is_feasible    = false;
-  bool attempt_repair = false;
-  mutex_upper_.lock();
+  bool is_feasible        = false;
+  bool attempt_repair     = false;
   f_t current_upper_bound = upper_bound_;
-  mutex_upper_.unlock();
   if (obj < current_upper_bound) {
     f_t primal_err;
     f_t bound_err;
@@ -1184,6 +1180,9 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
   node_status_t status                   = node_status_t::PENDING;
   rounding_direction_t round_dir         = rounding_direction_t::NONE;
 
+  worker->recompute_basis  = true;
+  worker->recompute_bounds = true;
+
   if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
     policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
@@ -1243,6 +1242,8 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
       assert(dir != rounding_direction_t::NONE);
 
       policy.update_objective_estimate(node_ptr, leaf_fractional, leaf_solution.x);
+      worker->recompute_basis  = false;
+      worker->recompute_bounds = false;
 
       logger_t log;
       log.log = false;
