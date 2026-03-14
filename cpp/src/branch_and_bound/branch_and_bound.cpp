@@ -727,7 +727,7 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   {
     const f_t root_lp_obj = root_lp_current_lower_bound_.load();
     if (std::isfinite(root_lp_obj)) {
-      settings_.log.printf("Root LP dual objective (last): %.16e\n", root_lp_obj);
+      settings_.log.printf("Root LP dual objective (best): %.16e\n", root_lp_obj);
     }
   }
 
@@ -769,6 +769,14 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   solution.lower_bound        = lower_bound;
   solution.nodes_explored     = exploration_stats_.nodes_explored;
   solution.simplex_iterations = exploration_stats_.total_lp_iters;
+
+  // When returning early (e.g. time limit at root) with -inf, push root LP bound to stats
+  // so relative_mip_gap uses the best bound we have (root_lp_bound is already in user space)
+  const f_t root_lp_bound = root_lp_current_lower_bound_.load();
+  if (!std::isfinite(lower_bound) && std::isfinite(root_lp_bound) &&
+      user_bound_callback_ != nullptr) {
+    user_bound_callback_(root_lp_bound);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2026,7 +2034,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_settings.scale_columns                   = false;
   lp_settings.concurrent_halt                 = get_root_concurrent_halt();
   lp_settings.dual_simplex_objective_callback = [this](f_t user_obj) {
-    root_lp_current_lower_bound_.store(user_obj);
+    // Store only the best (tightest) dual objective; it can worsen during iterations
+    const bool is_maximization = original_lp_.obj_scale < 0.0;
+    f_t current                = root_lp_current_lower_bound_.load();
+    const bool update =
+      !std::isfinite(current) || (is_maximization ? (user_obj < current) : (user_obj > current));
+    if (update) { root_lp_current_lower_bound_.store(user_obj); }
   };
   std::vector<i_t> basic_list(original_lp_.num_rows);
   std::vector<i_t> nonbasic_list;

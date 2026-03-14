@@ -272,8 +272,13 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;
-    branch_and_bound->set_user_bound_callback(
-      [stats_ptr](f_t user_bound) { stats_ptr->set_solution_bound(user_bound); });
+    const bool is_minimization   = !context.problem_ptr->maximize;
+    branch_and_bound->set_user_bound_callback([stats_ptr, is_minimization](f_t user_bound) {
+      f_t current          = stats_ptr->get_solution_bound();
+      const bool is_better = !std::isfinite(current) ||
+                             (is_minimization ? (user_bound > current) : (user_bound < current));
+      if (is_better) { stats_ptr->set_solution_bound(user_bound); }
+    });
 
     // Set the primal heuristics -> branch and bound callback
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
