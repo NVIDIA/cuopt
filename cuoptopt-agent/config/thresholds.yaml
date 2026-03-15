@@ -1,0 +1,40 @@
+# Regression detection thresholds for cuoptopt-agent
+#
+# speed_tolerance_pct:
+#   If the geometric mean solve time increases by more than this percentage
+#   across the benchmark suite, the change is automatically rejected and the
+#   agent reassesses without human involvement.
+speed_tolerance_pct: 5.0
+
+# quality_tolerance_pct:
+#   If the best objective value degrades by more than this percentage on any
+#   benchmark instance, human review is required before proceeding.
+quality_tolerance_pct: 1.0
+
+# max_reassess_iterations:
+#   Maximum number of LLM-driven implementation/test cycles before the agent
+#   gives up and reports failure to the user.
+max_reassess_iterations: 5
+
+# benchmark_warmup_runs:
+#   Number of un-timed warm-up solves before timing begins. Reduces GPU
+#   cold-start and JIT variance.
+benchmark_warmup_runs: 2
+
+# benchmark_timed_runs:
+#   Number of timed runs per benchmark instance. The median is used for
+#   comparison to reduce outlier sensitivity.
+benchmark_timed_runs: 5
+
+# datasets_root:
+#   Path to the benchmark dataset directory, relative to the repo root.
+#   The agent walks this tree collecting supported file extensions.
+datasets_root: datasets
+
+# supported_extensions:
+#   File types the test runner will include in benchmarking.
+supported_extensions:
+  - .mps
+  - .json
+  - .qps
+  - .csv

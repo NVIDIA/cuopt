@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cuoptopt-agent"
+version = "0.1.0"
+description = "Agentic optimization loop for NVIDIA cuOpt — searches literature, implements improvements, validates, and opens PRs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    # CLI
+    "typer>=0.12",
+    "rich>=13",
+    # LLM backends
+    "anthropic>=0.28",
+    "openai>=1.30",           # also used for NVIDIA NIM (OpenAI-compatible)
+    # Research
+    "scholarly>=1.7",
+    "arxiv>=2.1",
+    # GitHub integration
+    "PyGithub>=2.3",
+    # Config & data models
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    # Diff application
+    "unidiff>=0.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov", "ruff"]
+
+[project.scripts]
+cuoptopt-agent = "cuoptopt_agent.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cuoptopt_agent*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

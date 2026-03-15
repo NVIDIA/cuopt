@@ -1,0 +1,30 @@
+# LLM backend definitions for cuoptopt-agent
+# API keys are read from environment variables — never hardcode keys here.
+#
+# Usage:
+#   cuoptopt-agent "query" --model claude    (default)
+#   cuoptopt-agent "query" --model gpt
+#   cuoptopt-agent "query" --model nvidia
+
+claude:
+  provider: anthropic
+  model: claude-opus-4-5
+  api_key_env: ANTHROPIC_API_KEY
+  max_tokens: 8192
+  temperature: 0.2
+
+gpt:
+  provider: openai
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+  max_tokens: 8192
+  temperature: 0.2
+
+nvidia:
+  provider: nvidia_nim
+  # NVIDIA NIM uses the OpenAI-compatible interface at this base URL.
+  base_url: https://integrate.api.nvidia.com/v1
+  model: nvidia/llama-3.1-nemotron-70b-instruct
+  api_key_env: NVIDIA_API_KEY
+  max_tokens: 8192
+  temperature: 0.2

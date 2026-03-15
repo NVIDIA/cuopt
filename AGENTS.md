@@ -32,6 +32,9 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 - `skills/cuopt-qp-api-cli/`
 - `skills/cuopt-server-api-python/` (deploy + client)
 
+### Optimization Agent
+- `skills/cuoptopt-agent/` — Autonomous optimization agent; reads this skill when the user asks to speed up, optimize, or improve cuOpt's solver performance or solution quality. Orchestrates literature research, LLM-driven code changes, benchmarking, and GitHub PR creation. Also launchable as a CLI via `cuoptopt-agent "query" --model claude|gpt|nvidia` or via Cursor tasks (`Ctrl+Shift+P` → **Tasks: Run Task** → **cuoptopt-agent: Run (interactive)**).
+
 ## Resources
 
 ### Documentation
