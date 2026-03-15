@@ -66,6 +66,29 @@ class RegressionReport:
         ]
         return "\n".join(lines)
 
+    def to_json(self) -> str:
+        """Serialise the report for storage on the PR branch (results/benchmarks/)."""
+        base_map = {r.path: r for r in self.baseline.results}
+        instances = []
+        for cr in self.candidate.results:
+            br = base_map.get(cr.path)
+            instances.append({
+                "name": Path(cr.path).name,
+                "baseline_s": br.solve_time_s if br else None,
+                "candidate_s": cr.solve_time_s,
+                "baseline_obj": br.objective if br else None,
+                "candidate_obj": cr.objective,
+                "status": cr.status,
+            })
+        payload = {
+            "speed_delta_pct": round(self.speed_delta_pct, 4),
+            "quality_delta_pct": round(self.quality_delta_pct, 4),
+            "speed_regression": self.speed_regression,
+            "quality_regression": self.quality_regression,
+            "instances": instances,
+        }
+        return json.dumps(payload, indent=2)
+
     def per_instance_table(self) -> str:
         """Markdown table comparing baseline vs candidate per instance."""
         base_map = {r.path: r for r in self.baseline.results}

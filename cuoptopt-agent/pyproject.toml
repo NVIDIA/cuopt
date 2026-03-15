@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=43", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "cuoptopt-agent"
@@ -26,6 +26,10 @@ dependencies = [
     "PyYAML>=6.0",
     # Diff application
     "unidiff>=0.7",
+    # Dashboard
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "aiosqlite>=0.20",
 ]
 
 [project.optional-dependencies]
@@ -33,10 +37,11 @@ dev = ["pytest>=8", "pytest-cov", "ruff"]
 
 [project.scripts]
 cuoptopt-agent = "cuoptopt_agent.main:app"
+cuoptopt-dashboard = "dashboard.server:start"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cuoptopt_agent*"]
+include = ["cuoptopt_agent*", "dashboard*"]
 
 [tool.ruff]
 line-length = 100

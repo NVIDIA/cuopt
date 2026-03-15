@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import yaml
 from rich.console import Console
@@ -32,6 +33,7 @@ from .git_utils import (
     get_current_branch,
     make_branch_name,
     push_branch,
+    save_metrics_to_branch,
 )
 from .implementation import (
     ImplementationResult,
@@ -76,8 +78,13 @@ def _load_yaml(path: Path) -> dict:  # type: ignore[type-arg]
         return yaml.safe_load(f) or {}
 
 
+_progress_fn: Callable[[str], None] | None = None
+
+
 def _section(title: str) -> None:
     console.rule(f"[bold cyan]{title}[/bold cyan]")
+    if _progress_fn is not None:
+        _progress_fn(title)
 
 
 def _print_md(text: str) -> None:
@@ -95,8 +102,21 @@ def run(
     repo_root: Path,
     max_iter: int = 5,
     skip_research: bool = False,
+    approval_fn: Callable[[str], bool] | None = None,
+    progress_fn: Callable[[str], None] | None = None,
 ) -> None:
-    """Entry point called from main.py."""
+    """Entry point called from main.py or the web dashboard.
+
+    When *approval_fn* is provided (dashboard mode) it is called instead of
+    ``rich.prompt.Confirm.ask`` at every human gate.  The callable receives a
+    prompt string and must return ``True`` (accept) or ``False`` (deny).
+
+    When *progress_fn* is provided it is called with a short section title at
+    each major workflow step, enabling real-time progress streaming over
+    WebSocket without parsing stdout.
+    """
+    global _progress_fn
+    _progress_fn = progress_fn
     thresholds = _load_yaml(config_dir / "thresholds.yaml")
     models_cfg_path = str(config_dir / "models.yaml")
 
@@ -203,9 +223,14 @@ def run(
         if report.quality_regression:
             console.print("[yellow]Quality regression detected. Human review required.[/yellow]")
             _print_md(report.per_instance_table())
-            accept = Confirm.ask(
+            prompt_msg = (
                 f"Quality degraded by {report.quality_delta_pct:.2f}%. "
                 "Accept this tradeoff and proceed?"
+            )
+            accept = (
+                approval_fn(prompt_msg)
+                if approval_fn is not None
+                else Confirm.ask(prompt_msg)
             )
             if not accept:
                 console.print("[red]Quality regression denied — reverting.[/red]")
@@ -227,7 +252,12 @@ def run(
         for c in impl_result.changes:
             console.print(f"  • {c.file_path}")
 
-        approved = Confirm.ask("\nAccept these changes and create a GitHub PR?")
+        final_prompt = "Accept these changes and create a GitHub PR?"
+        approved = (
+            approval_fn(final_prompt)
+            if approval_fn is not None
+            else Confirm.ask(f"\n{final_prompt}")
+        )
         if not approved:
             console.print("[red]Changes rejected by user — reverting.[/red]")
             revert_all_changes(repo_root, impl_result.changes)
@@ -246,6 +276,7 @@ def run(
         branch_name = make_branch_name(query)
         create_branch(branch_name, repo_root)
         commit_changes(impl_result.changes, query, repo_root)
+        save_metrics_to_branch(branch_name, report, repo_root)
         push_branch(branch_name, repo_root)
 
         papers_text = format_papers_for_prompt(state.papers)

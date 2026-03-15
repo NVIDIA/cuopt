@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cuOpt Agent Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- Plotly for performance charts -->
+  <script src="https://cdn.plot.ly/plotly-2.34.0.min.js" defer></script>
+</head>
+<body>
+
+<!-- ── Mobile hamburger ─────────────────────────────────────────────── -->
+<button id="hamburger" class="hamburger" aria-label="Toggle branch list">
+  <span></span><span></span><span></span>
+</button>
+
+<!-- ── Sidebar — branch list ────────────────────────────────────────── -->
+<aside id="sidebar" class="sidebar">
+  <header class="sidebar-header">
+    <span class="sidebar-title">Branches</span>
+    <button id="refresh-branches" class="icon-btn" title="Refresh">↻</button>
+  </header>
+  <div id="branch-list" class="branch-list">
+    <div class="branch-skeleton">Loading…</div>
+  </div>
+</aside>
+
+<!-- ── Sidebar overlay (mobile) ─────────────────────────────────────── -->
+<div id="overlay" class="overlay"></div>
+
+<!-- ── Main content ─────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Chat panel -->
+  <section class="chat-panel" id="chat-panel">
+    <div class="chat-topbar">
+      <span class="chat-title">cuOpt Agent</span>
+      <div class="model-select-wrap">
+        <label for="model-select">Model</label>
+        <select id="model-select">
+          <option value="claude">Claude</option>
+          <option value="gpt">GPT-4o</option>
+          <option value="nvidia">NVIDIA NIM</option>
+        </select>
+      </div>
+      <span id="status-badge" class="status-badge idle">Idle</span>
+    </div>
+
+    <div id="messages" class="messages" role="log" aria-live="polite"></div>
+
+    <!-- Input row -->
+    <form id="query-form" class="query-form" autocomplete="off">
+      <textarea
+        id="query-input"
+        class="query-input"
+        rows="2"
+        placeholder="Describe an optimization goal, e.g. "Improve MIP feasibility jump on A1000 GPU.""
+        aria-label="Optimization query"
+      ></textarea>
+      <button type="submit" id="send-btn" class="send-btn">Run</button>
+    </form>
+  </section>
+
+  <!-- Performance plot panel -->
+  <section class="plot-panel" id="plot-panel" aria-label="Performance metrics">
+    <div class="plot-topbar">
+      <span class="plot-title" id="plot-title">Branch performance</span>
+      <button id="close-plot" class="icon-btn" title="Close">✕</button>
+    </div>
+    <div id="plot" class="plot-container"></div>
+  </section>
+
+</main>
+
+<!-- ── Templates ────────────────────────────────────────────────────── -->
+
+<!-- Branch card template -->
+<template id="tmpl-branch">
+  <div class="branch-card" data-name="">
+    <div class="branch-card-header">
+      <span class="branch-name"></span>
+      <span class="branch-delta"></span>
+    </div>
+    <div class="branch-meta">
+      <span class="branch-date"></span>
+      <a class="branch-pr-link" href="#" target="_blank" rel="noopener" hidden>PR ↗</a>
+    </div>
+    <div class="branch-instances hidden"></div>
+  </div>
+</template>
+
+<!-- Chat message template -->
+<template id="tmpl-msg">
+  <div class="msg" data-role="">
+    <span class="msg-role"></span>
+    <div class="msg-body"></div>
+  </div>
+</template>
+
+<!-- Section divider template -->
+<template id="tmpl-section">
+  <div class="section-divider">
+    <span class="section-label"></span>
+  </div>
+</template>
+
+<!-- Log line template -->
+<template id="tmpl-log">
+  <div class="log-line"><code></code></div>
+</template>
+
+<!-- Approval card template -->
+<template id="tmpl-approval">
+  <div class="approval-card">
+    <div class="approval-prompt"></div>
+    <div class="approval-actions">
+      <button class="btn-accept">Accept</button>
+      <button class="btn-deny">Deny</button>
+    </div>
+  </div>
+</template>
+
+<script src="/static/app.js" defer></script>
+</body>
+</html>

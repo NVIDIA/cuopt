@@ -25,10 +25,14 @@
 namespace cuopt::linear_programming::detail {
 
 static constexpr int TPB_resetmoves                 = raft::WarpSize * 4;
-static constexpr int TPB_heavyvars                  = raft::WarpSize * 16;
+// A1000 laptop GPU (16 SMs, 128 GB/s): halved block size raises
+// theoretical occupancy and reduces the per-SM register/shared-mem pressure.
+static constexpr int TPB_heavyvars                  = raft::WarpSize * 8;
 static constexpr int TPB_heavycstrs                 = raft::WarpSize * 4;
 static constexpr int TPB_localmin                   = raft::WarpSize * 4;
-static constexpr int TPB_setval                     = raft::WarpSize * 16;
+// Smaller block lets each block finish faster; latency hiding beats
+// raw throughput when L2 is only 2 MB.
+static constexpr int TPB_setval                     = raft::WarpSize * 8;
 static constexpr int TPB_update_changed_constraints = raft::WarpSize * 4;
 static constexpr int TPB_liftmoves                  = raft::WarpSize * 4;
 static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
@@ -36,7 +40,10 @@ static constexpr int TPB_loadbalance                = raft::WarpSize * 4;
 struct fj_hyper_parameters_t {
   // The number of moves to evaluate, if there are many positive-score
   // variables available.
-  int max_sampled_moves = raft::WarpSize * 16;
+  // Reduced from WarpSize*16 (512): the A1000's 128 GB/s bandwidth is
+  // quickly saturated by wide move-score scans; 128 entries still
+  // covers the problem well while cutting DRAM traffic 4×.
+  int max_sampled_moves = raft::WarpSize * 4;
   // The probability of choosing a random positive-score variable.
   double random_var_probability = 0.04;
   // The probability of choosing a variable using a random constraint's
@@ -70,7 +77,9 @@ struct fj_hyper_parameters_t {
 
   // load-balancing related settings
   int old_codepath_total_var_to_relvar_ratio_threshold = 200;
-  int load_balancing_codepath_min_varcount             = 3200;
+  // Lowered from 3200: the A1000 has only 16 SMs; switch to the
+  // load-balanced codepath sooner so every SM gets useful work.
+  int load_balancing_codepath_min_varcount             = 800;
 };
 
 enum fj_move_type_t {

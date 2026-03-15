@@ -125,6 +125,212 @@ web, proposing diffs, and asking for approval in the chat window.
 
 ---
 
+## Dashboard
+
+The agent includes a web dashboard that lets you start queries, approve steps, watch
+live agent output, and review per-branch benchmark results — all from a browser.  It
+is designed to run remotely (e.g., on a Brev L40 node) and be reached over HTTPS from
+any device.
+
+### Starting the server
+
+After installing the package, run:
+
+```bash
+cuoptopt-dashboard
+```
+
+The server listens on `0.0.0.0:8080` by default. Open `http://localhost:8080` in your
+browser.
+
+To use a different port:
+
+```bash
+DASHBOARD_PORT=9090 cuoptopt-dashboard
+```
+
+Alternatively, you can start it directly with Python (useful if the `cuoptopt-dashboard`
+script is not on `PATH`):
+
+```bash
+python -m dashboard.server
+```
+
+### Environment variables for the dashboard
+
+| Variable | Purpose |
+|----------|---------|
+| `DASHBOARD_PORT` | Port to listen on (default: `8080`) |
+| `GITHUB_TOKEN` | Required for the branch sidebar to fetch branches and metrics from GitHub |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `NVIDIA_API_KEY` | Required for whichever model you select in the chat UI |
+
+### Local testing (no GPU)
+
+The server starts and the UI is fully interactive without a GPU. The branch sidebar
+will show `GITHUB_TOKEN not set` if no token is configured. The chat query will fail
+gracefully at the benchmarking step if cuOpt is not installed, but all other UI
+elements (chat history, approval cards, plot panel) work normally.
+
+```bash
+# Minimal local smoke-test — no API keys, no GPU
+cuoptopt-dashboard
+# then open http://localhost:8080
+```
+
+### Remote / Brev deployment
+
+On a remote machine (Brev, AWS, GCP, etc.) start the server and expose the port:
+
+```bash
+export GITHUB_TOKEN="ghp_..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+DASHBOARD_PORT=8080 cuoptopt-dashboard
+```
+
+The server is already configured with `proxy_headers=True` so it correctly reads the
+originating IP from `X-Forwarded-For` when sitting behind Brev's HTTPS reverse proxy.
+Session-based chat history will persist correctly across reconnects from the same
+device.
+
+### Dashboard features
+
+| Panel | Description |
+|-------|-------------|
+| **Branch sidebar** (left) | Lists all GitHub branches. Branches with saved benchmark data show their average solve time. Tap any branch to expand per-instance times and open the performance plot. Branches with no data show `no data`. Auto-refreshes every 60 seconds. |
+| **Chat** (center) | Send optimization queries, approve quality-regression reviews, and accept or deny the final change. Chat history is persisted per device/IP and restored on reconnect. |
+| **Performance plot** (right) | A horizontal bar chart of solve times for each benchmark instance on the selected branch. Opens automatically when a branch with data is tapped. |
+
+---
+
+## Remote GPU on Brev
+
+[Brev](https://brev.nvidia.com) lets you spin up a cloud GPU instance (L40, A100, H100,
+etc.) with CUDA pre-installed, then connect Cursor directly to it over SSH — so the
+terminal, file editing, and extensions all run on the GPU machine. The dashboard's
+Secure Link means you can reach port 8080 from any browser over HTTPS.
+
+### How it fits together
+
+```
+Local machine (Cursor)
+  │
+  │  brev refresh / brev open cursor
+  │  (Remote-SSH via Cloudflare tunnel)
+  ▼
+Brev GPU instance  (Ubuntu 22.04, CUDA, cuOpt, cuoptopt-agent)
+  │
+  │  port 8080 — Secure Link (HTTPS)
+  ▼
+Dashboard  (accessible from phone, browser, anywhere)
+```
+
+### Step 1 — Install the Brev CLI
+
+```bash
+# macOS / Linux
+curl -sfL https://raw.githubusercontent.com/brevdev/brev-cli/main/bin/install-latest.sh | bash
+
+# Log in
+brev login
+```
+
+### Step 2 — Create a GPU instance
+
+The `.brev/setup.sh` in this repo handles all software installation automatically.
+Use it as the startup script when creating your instance.
+
+**Option A — Brev CLI one-liner (fastest)**
+
+```bash
+# L40 instance, runs .brev/setup.sh on boot, waits until ready
+brev create cuopt-dev --gpu-name L40 -s @.brev/setup.sh
+
+# A100 fallback if L40 is unavailable
+brev create cuopt-dev --gpu-name L40,A100 -s @.brev/setup.sh
+```
+
+**Option B — Brev Console (for a shareable Launchable)**
+
+1. Go to [brev.nvidia.com](https://brev.nvidia.com) → **Launchables** → **Create**.
+2. **Code source:** Git Repository → paste this repo URL.
+3. **Runtime:** VM Mode → upload or paste `.brev/setup.sh`.
+4. **Secure Link:** enable for port `8080`.
+5. **GPU:** select L40 (recommended) or A100.
+6. Click **Create Launchable** to generate a shareable one-click deploy link.
+
+### Step 3 — Connect Cursor
+
+Once the instance is `running`:
+
+```bash
+# Refresh your local SSH config
+brev refresh
+
+# Open the instance directly in Cursor
+brev open cursor cuopt-dev
+```
+
+Cursor opens a Remote-SSH session to the GPU instance. The workspace folder is
+`~/cuopt-opt`. All terminals, file edits, and extensions run on the remote machine.
+
+> **Tip:** The first connection takes ~30 seconds while Cursor installs its server-side
+> component on the instance.
+
+### Step 4 — Set environment variables on the instance
+
+A `.env.template` file is written to the repo root by the setup script.
+
+```bash
+# On the remote instance (in the Cursor terminal or SSH session)
+cd ~/cuopt-opt
+cp .env.template .env
+nano .env          # fill in your API keys
+source .env
+```
+
+| Variable | Required for |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | `--model claude` (default) |
+| `OPENAI_API_KEY` | `--model gpt` |
+| `NVIDIA_API_KEY` | `--model nvidia` |
+| `GITHUB_TOKEN` | Branch sidebar + PR creation |
+
+To make the keys persistent across SSH sessions, add the `source ~/cuopt-opt/.env` line
+to `~/.bashrc` on the instance.
+
+### Step 5 — Start the dashboard
+
+```bash
+# In the Cursor terminal on the remote instance
+source ~/coo-venv/bin/activate
+source ~/cuopt-opt/.env
+cuoptopt-dashboard
+```
+
+Then open the **Secure Link** for port 8080 shown in the Brev Console, or use Brev's
+port-forward for a local tunnel:
+
+```bash
+# From your local machine — forwards remote :8080 to local :8080
+brev port-forward cuopt-dev --port 8080:8080
+# then open http://localhost:8080
+```
+
+### Stopping and resuming
+
+```bash
+# Stop the instance (billing pauses on stoppable instance types)
+brev stop cuopt-dev
+
+# Resume later
+brev start cuopt-dev
+
+# Check instance state
+brev ls
+```
+
+---
+
 ## CLI Reference
 
 ```
@@ -343,6 +549,9 @@ supported_extensions:          # file types included in benchmarks
 cuopt-opt/
 ├── CUOPT-OPT-AGENT.md          ← this file
 ├── AGENTS.md                   ← AI agent skill index (includes cuoptopt-agent entry)
+├── .brev/
+│   └── setup.sh                ← Brev instance provisioning script
+├── .env.template               ← API key template (written by setup.sh, not committed)
 ├── .vscode/
 │   └── tasks.json              ← Cursor launch tasks
 ├── skills/
@@ -369,6 +578,13 @@ cuopt-opt/
     │   ├── testing.py          ← benchmark runner + regression detection
     │   ├── models.py           ← unified LLM client
     │   └── git_utils.py        ← branch + commit + PR
+    ├── dashboard/
+    │   ├── server.py           ← FastAPI app (REST + WebSocket)
+    │   ├── db.py               ← SQLite session + chat history
+    │   └── static/
+    │       ├── index.html      ← single-page app
+    │       ├── app.js          ← WebSocket client, branch sidebar, Plotly chart
+    │       └── style.css       ← dark theme, responsive layout
     └── skills/
         ├── cuda-optimization/
         ├── nvidia-l40-architecture/

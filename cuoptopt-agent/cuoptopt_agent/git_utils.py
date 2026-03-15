@@ -93,6 +93,24 @@ def commit_changes(changes: list["Change"], query: str, repo_root: Path) -> str:
     return sha
 
 
+def save_metrics_to_branch(
+    branch_name: str,
+    report: "RegressionReport",
+    repo_root: Path,
+) -> None:
+    """Persist benchmark metrics JSON on the branch before pushing.
+
+    The file is amend-committed so the metrics travel with the code changes
+    in a single commit and are immediately fetchable from the GitHub API.
+    """
+    path = repo_root / "results" / "benchmarks" / f"{branch_name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(report.to_json())
+    _git(["add", str(path)], cwd=repo_root)
+    _git(["commit", "--amend", "--no-edit"], cwd=repo_root)
+    logger.info("Saved metrics to %s (amend-committed)", path.relative_to(repo_root))
+
+
 def push_branch(branch_name: str, repo_root: Path) -> None:
     _git(["push", "-u", "origin", branch_name], cwd=repo_root)
     logger.info("Pushed %s to origin", branch_name)
