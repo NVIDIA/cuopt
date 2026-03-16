@@ -1,0 +1,22 @@
+{
+  "name": "nvidia-cuopt-skills",
+  "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (Python/C/developer), and REST server. Use when building or solving optimization with cuOpt.",
+  "version": "26.04.00",
+  "author": {
+    "name": "NVIDIA"
+  },
+  "homepage": "https://github.com/NVIDIA/cuopt",
+  "repository": "https://github.com/NVIDIA/cuopt",
+  "license": "Apache-2.0",
+  "skills": "skills",
+  "keywords": [
+    "nvidia",
+    "cuopt",
+    "optimization",
+    "routing",
+    "vrp",
+    "lp",
+    "milp",
+    "qp"
+  ]
+}

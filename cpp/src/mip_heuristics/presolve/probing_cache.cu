@@ -6,7 +6,6 @@
 /* clang-format on */
 
 #include "probing_cache.cuh"
-#include "trivial_presolve.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/multi_probe.cuh>
@@ -18,6 +17,8 @@
 #include <thrust/sort.h>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
+
+#include <unordered_set>
 
 namespace cuopt::linear_programming::detail {
 

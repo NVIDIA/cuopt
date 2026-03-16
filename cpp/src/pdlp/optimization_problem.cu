@@ -40,6 +40,7 @@
 #include <thrust/tuple.h>
 
 #include <cuda_profiler_api.h>
+#include <cub/device/device_transform.cuh>
 
 #include <algorithm>
 #include <cmath>
@@ -1505,15 +1506,105 @@ void optimization_problem_t<i_t, f_t>::copy_variable_types_to_host(var_t* output
     cudaMemcpy(output, variable_types_.data(), size * sizeof(var_t), cudaMemcpyDeviceToHost));
 }
 
+template <typename From, typename To>
+struct cast_op {
+  HDI To operator()(From val) const { return static_cast<To>(val); }
+};
+
+template <typename From, typename To>
+rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src, rmm::cuda_stream_view stream)
+{
+  rmm::device_uvector<To> dst(src.size(), stream);
+  if (src.size() > 0) {
+    RAFT_CUDA_TRY(cub::DeviceTransform::Transform(
+      src.data(), dst.data(), src.size(), cast_op<From, To>{}, stream.value()));
+  }
+  return dst;
+}
+
+template rmm::device_uvector<float> gpu_cast<double, float>(const rmm::device_uvector<double>&,
+                                                            rmm::cuda_stream_view);
+template rmm::device_uvector<double> gpu_cast<float, double>(const rmm::device_uvector<float>&,
+                                                             rmm::cuda_stream_view);
+
+template <typename i_t, typename f_t>
+template <typename other_f_t>
+optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert_to_other_prec(
+  rmm::cuda_stream_view stream) const
+{
+  optimization_problem_t<i_t, other_f_t> other(handle_ptr_);
+
+  other.set_maximize(maximize_);
+  other.set_objective_offset(static_cast<other_f_t>(objective_offset_));
+  other.set_objective_scaling_factor(static_cast<other_f_t>(objective_scaling_factor_));
+
+  if (A_.size() > 0) {
+    auto other_A = gpu_cast<f_t, other_f_t>(A_, stream);
+    other.set_csr_constraint_matrix(other_A.data(),
+                                    static_cast<i_t>(other_A.size()),
+                                    A_indices_.data(),
+                                    static_cast<i_t>(A_indices_.size()),
+                                    A_offsets_.data(),
+                                    static_cast<i_t>(A_offsets_.size()));
+  }
+
+  if (c_.size() > 0) {
+    auto other_c = gpu_cast<f_t, other_f_t>(c_, stream);
+    other.set_objective_coefficients(other_c.data(), static_cast<i_t>(other_c.size()));
+  }
+
+  if (b_.size() > 0) {
+    auto other_b = gpu_cast<f_t, other_f_t>(b_, stream);
+    other.set_constraint_bounds(other_b.data(), static_cast<i_t>(other_b.size()));
+  }
+
+  if (constraint_lower_bounds_.size() > 0) {
+    auto other_clb = gpu_cast<f_t, other_f_t>(constraint_lower_bounds_, stream);
+    other.set_constraint_lower_bounds(other_clb.data(), static_cast<i_t>(other_clb.size()));
+  }
+
+  if (constraint_upper_bounds_.size() > 0) {
+    auto other_cub = gpu_cast<f_t, other_f_t>(constraint_upper_bounds_, stream);
+    other.set_constraint_upper_bounds(other_cub.data(), static_cast<i_t>(other_cub.size()));
+  }
+
+  if (variable_lower_bounds_.size() > 0) {
+    auto other_vlb = gpu_cast<f_t, other_f_t>(variable_lower_bounds_, stream);
+    other.set_variable_lower_bounds(other_vlb.data(), static_cast<i_t>(other_vlb.size()));
+  }
+
+  if (variable_upper_bounds_.size() > 0) {
+    auto other_vub = gpu_cast<f_t, other_f_t>(variable_upper_bounds_, stream);
+    other.set_variable_upper_bounds(other_vub.data(), static_cast<i_t>(other_vub.size()));
+  }
+
+  if (variable_types_.size() > 0) {
+    other.set_variable_types(variable_types_.data(), static_cast<i_t>(variable_types_.size()));
+  }
+
+  other.set_variable_names(var_names_);
+  other.set_row_names(row_names_);
+  other.set_objective_name(objective_name_);
+  other.set_problem_category(problem_category_);
+
+  return other;
+}
+
 // ==============================================================================
 // Template instantiations
 // ==============================================================================
 // Explicit template instantiations matching MIP constants
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class optimization_problem_t<int32_t, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
 template class optimization_problem_t<int32_t, double>;
+#endif
+
+#if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT
+template optimization_problem_t<int32_t, float>
+  optimization_problem_t<int32_t, double>::convert_to_other_prec<float>(
+    rmm::cuda_stream_view) const;
 #endif
 
 }  // namespace cuopt::linear_programming

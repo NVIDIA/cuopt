@@ -58,24 +58,24 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
   // clang-format off
   // Float parameters
   float_parameters = {
-    {CUOPT_TIME_LIMIT, &mip_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
-    {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
-    {CUOPT_WORK_LIMIT, &mip_settings.work_limit, 0.0, std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
-    {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, 0.0, 1e-1, 1e-4},
-    {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, 0.0, 1e-1, 1e-5},
-    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, 0.0, CUOPT_INFINITY, 1e-10},
-    {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, 0.0, 1e-1, 1e-4},
-    {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, 0.0, 1e-1, 1e-10},
-    {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, 0.0, 1e-1, 1e-10},
-    {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, 0.0, std::numeric_limits<f_t>::infinity(), 1e-3},
-    {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, 0.0, 1.0, 0.5}
+    {CUOPT_TIME_LIMIT, &mip_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_TIME_LIMIT, &pdlp_settings.time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_WORK_LIMIT, &mip_settings.work_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::numeric_limits<f_t>::infinity()},
+    {CUOPT_ABSOLUTE_DUAL_TOLERANCE, &pdlp_settings.tolerances.absolute_dual_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_DUAL_TOLERANCE, &pdlp_settings.tolerances.relative_dual_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.absolute_primal_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_PRIMAL_TOLERANCE, &pdlp_settings.tolerances.relative_primal_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_ABSOLUTE_GAP_TOLERANCE, &pdlp_settings.tolerances.absolute_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_RELATIVE_GAP_TOLERANCE, &pdlp_settings.tolerances.relative_gap_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_ABSOLUTE_TOLERANCE, &mip_settings.tolerances.absolute_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_RELATIVE_TOLERANCE, &mip_settings.tolerances.relative_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_MIP_INTEGRALITY_TOLERANCE, &mip_settings.tolerances.integrality_tolerance, f_t(0.0), f_t(1e-1), f_t(1e-5)},
+    {CUOPT_MIP_ABSOLUTE_GAP, &mip_settings.tolerances.absolute_mip_gap, f_t(0.0), std::numeric_limits<f_t>::infinity(), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
+    {CUOPT_MIP_RELATIVE_GAP, &mip_settings.tolerances.relative_mip_gap, f_t(0.0), f_t(1e-1), f_t(1e-4)},
+    {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, f_t(0.0), f_t(1e-1), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
+    {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, f_t(0.0), f_t(1e-1), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
+    {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0)},
+    {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)}
    };
 
   // Int parameters
@@ -94,6 +94,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_KNAPSACK_CUTS, &mip_settings.knapsack_cuts, -1, 1, -1},
+    {CUOPT_MIP_CLIQUE_CUTS, &mip_settings.clique_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
@@ -103,7 +104,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
-    {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1}
+    {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION}
   };
 
     // Bool parameters
@@ -120,7 +122,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_CROSSOVER, &pdlp_settings.crossover, false},
     {CUOPT_ELIMINATE_DENSE_COLUMNS, &pdlp_settings.eliminate_dense_columns, true},
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
-    {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true}
+    {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
   };
   // String parameters
   string_parameters = {
