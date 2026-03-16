@@ -174,7 +174,7 @@ where `required_useful_area = sum_i (order_width_i × order_length_i)`.
 Using `sum_j (waste_width_j × x_j)` as the objective only captures trim loss — the unused strip within each pattern. It does **not** penalize over-production of an order. The solver will over-produce narrow orders to fill patterns efficiently, but that excess material is still waste. Always use total material area as the objective.
 <!-- skill-evolution:end -->
 ## Goal programming (preemptive / lexicographic)
-<!-- added by skill-evolution -->
+<!-- skill-evolution:start — goal programming section -->
 
 Goal programming optimizes multiple objectives in priority order. Implement it as **sequential solves** — one per priority level.
 
