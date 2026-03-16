@@ -1,7 +1,10 @@
 /**
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
  * cuOpt install selector - generates install commands from user choices.
  * Stable version comes from window.CUOPT_INSTALL_VERSION (injected at build from cuopt.__version__).
- * Next = stable + 2 on minor (e.g. 26.04 -> 26.06). Update COMMANDS structure when commands change.
+ * Next = stable + 2 on minor (e.g. YY.MM -> YY.(MM+2)). Update COMMANDS structure when commands change.
  */
 (function () {
   "use strict";

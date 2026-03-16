@@ -1,4 +1,7 @@
-/* Install selector – NVIDIA green button and improved look and feel */
+/* SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Install selector – NVIDIA green button and improved look and feel */
 :root {
   --cuopt-nvidia-green: #76b900;
   --cuopt-nvidia-green-hover: #6aa000;
