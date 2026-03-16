@@ -388,6 +388,8 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
   std::vector<f_t>& y       = solution.y;
   const std::vector<f_t>& x = solution.x;
   i_t num_pushes            = 0;
+  std::vector<f_t> delta_zN(n - m);
+  std::vector<f_t> delta_expanded(n);
   while (superbasic_list.size() > 0) {
     const i_t s                   = superbasic_list.back();
     const i_t basic_leaving_index = superbasic_list_index.back();
@@ -415,9 +417,9 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     }
 
     // delta_zN = -N^T delta_y
-    std::vector<f_t> delta_zN(n - m);
-    std::vector<f_t> delta_expanded(n, 0.);
-    
+    std::fill(delta_expanded.begin(), delta_expanded.end(), 0.);
+    std::fill(delta_zN.begin(), delta_zN.end(), 0.);
+
     // Iterate directly over sparse delta_y instead of checking zeros
     for (i_t nnz_idx = 0; nnz_idx < delta_y_sparse.i.size(); ++nnz_idx) {
       const i_t row = delta_y_sparse.i[nnz_idx];
