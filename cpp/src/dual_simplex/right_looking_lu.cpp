@@ -79,6 +79,29 @@ i_t initialize_degree_data(const csc_matrix_t<i_t, f_t>& A,
   return Bnz;
 }
 
+// Fill col_pos and row_pos so that column j has col_pos[j] = its index in col_count[Cdegree[j]],
+// and row i has row_pos[i] = its index in row_count[Rdegree[i]]. Enables O(1) degree-bucket
+// removal.
+template <typename i_t>
+void initialize_bucket_positions(const std::vector<std::vector<i_t>>& col_count,
+                                 const std::vector<std::vector<i_t>>& row_count,
+                                 i_t col_max_degree,
+                                 i_t row_max_degree,
+                                 std::vector<i_t>& col_pos,
+                                 std::vector<i_t>& row_pos)
+{
+  for (i_t d = 0; d <= col_max_degree; ++d) {
+    for (i_t pos = 0; pos < static_cast<i_t>(col_count[d].size()); ++pos) {
+      col_pos[col_count[d][pos]] = pos;
+    }
+  }
+  for (i_t d = 0; d <= row_max_degree; ++d) {
+    for (i_t pos = 0; pos < static_cast<i_t>(row_count[d].size()); ++pos) {
+      row_pos[row_count[d][pos]] = pos;
+    }
+  }
+}
+
 template <typename i_t, typename f_t>
 i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
                   const std::vector<i_t>& column_list,
@@ -656,19 +679,10 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
   const i_t Bnz =
     initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
 
-  // Position arrays for O(1) degree-bucket removal
+  // Position arrays for O(1) degree-bucket removal (col_count and row_count each have n+1 buckets)
   std::vector<i_t> col_pos(n);  // if Cdegree[j] = nz, then j is in col_count[nz][col_pos[j]]
-  for (i_t d = 0; d <= n; ++d) {
-    for (i_t pos = 0; pos < static_cast<i_t>(col_count[d].size()); ++pos) {
-      col_pos[col_count[d][pos]] = pos;
-    }
-  }
   std::vector<i_t> row_pos(n);  // if Rdegree[i] = nz, then i is in row_count[nz][row_pos[i]]
-  for (i_t d = 0; d <= n; ++d) {
-    for (i_t pos = 0; pos < static_cast<i_t>(row_count[d].size()); ++pos) {
-      row_pos[row_count[d][pos]] = pos;
-    }
-  }
+  initialize_bucket_positions(col_count, row_count, n, n, col_pos, row_pos);
 
   std::vector<element_t<i_t, f_t>> elements(Bnz);
   std::vector<i_t> first_in_row(n, kNone);
@@ -1058,17 +1072,8 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 
   // Position arrays for O(1) degree-bucket removal (col_count has m+1 buckets, row_count n+1)
   std::vector<i_t> col_pos(n);  // if Cdegree[j] = nz, then j is in col_count[nz][col_pos[j]]
-  for (i_t d = 0; d <= m; ++d) {
-    for (i_t pos = 0; pos < static_cast<i_t>(col_count[d].size()); ++pos) {
-      col_pos[col_count[d][pos]] = pos;
-    }
-  }
   std::vector<i_t> row_pos(m);  // if Rdegree[i] = nz, then i is in row_count[nz][row_pos[i]]
-  for (i_t d = 0; d <= n; ++d) {
-    for (i_t pos = 0; pos < static_cast<i_t>(row_count[d].size()); ++pos) {
-      row_pos[row_count[d][pos]] = pos;
-    }
-  }
+  initialize_bucket_positions(col_count, row_count, m, n, col_pos, row_pos);
 
   std::vector<element_t<i_t, f_t>> elements(Bnz);
   std::vector<i_t> first_in_row(m, kNone);
