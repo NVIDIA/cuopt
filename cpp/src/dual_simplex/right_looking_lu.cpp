@@ -105,8 +105,14 @@ i_t load_elements(const csc_matrix_t<i_t, f_t>& A,
       elements[nz].x              = A.x[p];
       elements[nz].next_in_column = kNone;
       if (p > col_start) { elements[nz - 1].next_in_column = nz; }
-      elements[nz].next_in_row = kNone;
-      if (last_in_row[i] != kNone) { elements[last_in_row[i]].next_in_row = nz; }
+      elements[nz].next_in_row = kNone;  // set the current next in row to None (since we don't know
+      // if there will be more entries in this row yet))
+      if (last_in_row[i] != kNone) {
+        // If we have seen an entry in this row before, set the last entry we've seen in this row to
+        // point to the current entry
+        elements[last_in_row[i]].next_in_row = nz;
+      }
+      // The current entry becomes the last element seen in the row
       last_in_row[i] = nz;
       if (p == col_start) { first_in_col[k] = nz; }
       if (first_in_row[i] == kNone) { first_in_row[i] = nz; }
@@ -402,9 +408,11 @@ void schur_complement(i_t pivot_i,
                       std::vector<element_t<i_t, f_t>>& elements,
                       f_t& work_estimate)
 {
-  // Initialize row_last_workspace from last_in_row (O(1) per row, no full row traversal)
+  // row_last_workspace: temp copy of last_in_row for this pivot step, updated when adding fill
+  // last_in_row: persistent tail pointer per row
   for (i_t p1 = first_in_col[pivot_j]; p1 != kNone; p1 = elements[p1].next_in_column) {
-    row_last_workspace[elements[p1].i] = last_in_row[elements[p1].i];
+    const i_t i           = elements[p1].i;
+    row_last_workspace[i] = last_in_row[i];
   }
   work_estimate += 4 * Cdegree[pivot_j];
 
@@ -569,8 +577,10 @@ void remove_pivot_col(i_t pivot_i,
   for (i_t p1 = first_in_col[pivot_j]; p1 != kNone; p1 = elements[p1].next_in_column) {
     element_t<i_t, f_t>* e = &elements[p1];
     const i_t i            = e->i;
-    i_t last               = kNone;
-    i_t last_surviving     = kNone;
+    // Need both: last = previous-in-row (for link update when removing); last_surviving = new row
+    // tail (for last_in_row[i]). They differ when the pivot is the last element in the row.
+    i_t last           = kNone;
+    i_t last_surviving = kNone;
 #ifdef THRESHOLD_ROOK_PIVOTING
     f_t max_in_row_i = 0.0;
 #endif
@@ -647,13 +657,13 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
 
   // Position arrays for O(1) degree-bucket removal
-  std::vector<i_t> col_pos(n);
+  std::vector<i_t> col_pos(n);  // if Cdegree[j] = nz, then j is in col_count[nz][col_pos[j]]
   for (i_t d = 0; d <= n; ++d) {
     for (i_t pos = 0; pos < static_cast<i_t>(col_count[d].size()); ++pos) {
       col_pos[col_count[d][pos]] = pos;
     }
   }
-  std::vector<i_t> row_pos(n);
+  std::vector<i_t> row_pos(n);  // if Rdegree[i] = nz, then i is in row_count[nz][row_pos[i]]
   for (i_t d = 0; d <= n; ++d) {
     for (i_t pos = 0; pos < static_cast<i_t>(row_count[d].size()); ++pos) {
       row_pos[row_count[d][pos]] = pos;
@@ -1046,15 +1056,14 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   const i_t Bnz =
     initialize_degree_data(A, column_list, Cdegree, Rdegree, col_count, row_count, work_estimate);
 
-  // Position arrays for O(1) degree-bucket removal
-  // col_count has m+1 buckets, row_count has n+1 buckets
-  std::vector<i_t> col_pos(n);
+  // Position arrays for O(1) degree-bucket removal (col_count has m+1 buckets, row_count n+1)
+  std::vector<i_t> col_pos(n);  // if Cdegree[j] = nz, then j is in col_count[nz][col_pos[j]]
   for (i_t d = 0; d <= m; ++d) {
     for (i_t pos = 0; pos < static_cast<i_t>(col_count[d].size()); ++pos) {
       col_pos[col_count[d][pos]] = pos;
     }
   }
-  std::vector<i_t> row_pos(m);
+  std::vector<i_t> row_pos(m);  // if Rdegree[i] = nz, then i is in row_count[nz][row_pos[i]]
   for (i_t d = 0; d <= n; ++d) {
     for (i_t pos = 0; pos < static_cast<i_t>(row_count[d].size()); ++pos) {
       row_pos[row_count[d][pos]] = pos;
