@@ -19,6 +19,9 @@
 
 #include <barrier/dense_matrix.hpp>
 
+#include <numeric>
+#include <queue>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
@@ -490,14 +493,12 @@ std::vector<std::vector<int>> find_maximal_cliques_for_test(
 }
 
 template <typename i_t, typename f_t>
-void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
-                                   const sparse_vector_t<i_t, f_t>& cut,
-                                   f_t rhs)
+void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
 {
   // TODO: Need to deduplicate cuts and only add if the cut is not already in the pool
 
-  for (i_t p = 0; p < cut.i.size(); p++) {
-    const i_t j = cut.i[p];
+  for (i_t p = 0; p < cut.size(); p++) {
+    const i_t j = cut.index(p);
     if (j >= original_vars_) {
       settings_.log.printf(
         "Cut has variable %d that is greater than original_vars_ %d\n", j, original_vars_);
@@ -505,14 +506,14 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
     }
   }
 
-  sparse_vector_t<i_t, f_t> cut_squeezed;
+  inequality_t<i_t, f_t> cut_squeezed;
   cut.squeeze(cut_squeezed);
-  if (cut_squeezed.i.size() == 0) {
+  if (cut_squeezed.size() == 0) {
     settings_.log.printf("Cut has no coefficients\n");
     return;
   }
-  cut_storage_.append_row(cut_squeezed);
-  rhs_storage_.push_back(rhs);
+  cut_storage_.append_row(cut_squeezed.vector);
+  rhs_storage_.push_back(cut_squeezed.rhs);
   cut_type_.push_back(cut_type);
   cut_age_.push_back(0);
 }
@@ -574,7 +575,6 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
 {
-  const f_t min_cut_distance = 1e-4;
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
@@ -582,7 +582,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
   for (i_t i = 0; i < cut_storage_.m; i++) {
     f_t violation;
     f_t cut_dist      = cut_distance(i, x_relax, violation, cut_norms_[i]);
-    cut_distances_[i] = cut_dist <= min_cut_distance ? 0.0 : cut_dist;
+    cut_distances_[i] = cut_dist <= min_cut_distance_ ? 0.0 : cut_dist;
     if (verbose) {
       settings_.log.printf("Cut %d type %d distance %+e violation %+e cut_norm %e\n",
                            i,
@@ -613,7 +613,7 @@ void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
     const i_t i = sorted_indices.back();
     sorted_indices.pop_back();
 
-    if (cut_distances_[i] <= min_cut_distance) { break; }
+    if (cut_distances_[i] <= min_cut_distance_) { break; }
 
     f_t cut_ortho            = 1.0;
     const i_t best_cuts_size = best_cuts_.size();
@@ -646,6 +646,7 @@ i_t cut_pool_t<i_t, f_t>::get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
   best_cut_types.reserve(scored_cuts_);
 
   for (i_t i : best_cuts_) {
+    if (cut_distances_[i] <= min_cut_distance_) { continue; }
     sparse_vector_t<i_t, f_t> cut(cut_storage_, i);
     cut.negate();
     best_cuts.append_row(cut);
@@ -655,7 +656,7 @@ i_t cut_pool_t<i_t, f_t>::get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
 
   age_cuts();
 
-  return static_cast<i_t>(best_cuts_.size());
+  return static_cast<i_t>(best_rhs.size());
 }
 
 template <typename i_t, typename f_t>
@@ -749,8 +750,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  inequality_t<i_t, f_t>& cut)
 {
   const bool verbose = false;
   // Get the row associated with the knapsack constraint
@@ -821,44 +821,31 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cuts(
     if (solution[k] == 0.0) { cover_size++; }
   }
 
-  cut.i.clear();
-  cut.x.clear();
-  cut.i.reserve(cover_size);
-  cut.x.reserve(cover_size);
+  cut.reserve(cover_size);
+  cut.clear();
 
   h = 0;
   for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
     const i_t j = knapsack_inequality.i[k];
     if (!is_slack_[j]) {
-      if (solution[h] == 0.0) {
-        cut.i.push_back(j);
-        cut.x.push_back(-1.0);
-      }
+      if (solution[h] == 0.0) { cut.push_back(j, -1.0); }
       h++;
     }
   }
-  cut_rhs = -cover_size + 1;
+  cut.rhs = -cover_size + 1;
   cut.sort();
 
   // The cut is in the form: - sum_{j in cover} x_j >= -cover_size + 1
   // Which is equivalent to: sum_{j in cover} x_j <= cover_size - 1
 
   // Verify the cut is violated
-  f_t dot       = cut.dot(xstar);
-  f_t violation = dot - cut_rhs;
+  f_t dot       = cut.vector.dot(xstar);
+  f_t violation = dot - cut.rhs;
   if (verbose) {
     settings.log.printf("Knapsack cut %d violation %e < 0\n", knapsack_row, violation);
   }
 
   if (violation >= -tol) { return -1; }
-
-#ifdef PRINT_KNAPSACK_CUT
-  settings.log.printf("knapsack cut (cover %d): \n", cover_size);
-  for (i_t k = 0; k < cut.i.size(); k++) {
-    settings.log.printf("x%d coeff %g value %g\n", cut.i[k], -cut.x[k], xstar[cut.i[k]]);
-  }
-  settings.log.printf("cut_rhs %g\n", -cut_rhs);
-#endif
   return 0;
 }
 
@@ -1035,9 +1022,11 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const std::vector<variable_type_t>& var_types,
                                                basis_update_mpf_t<i_t, f_t>& basis_update,
                                                const std::vector<f_t>& xstar,
-                                               const std::vector<f_t>& reduced_costs,
+                                               const std::vector<f_t>& ystar,
+                                               const std::vector<f_t>& zstar,
                                                const std::vector<i_t>& basic_list,
                                                const std::vector<i_t>& nonbasic_list,
+                                               variable_bounds_t<i_t, f_t>& variable_bounds,
                                                f_t start_time)
 {
   // Generate Gomory and CG Cuts
@@ -1064,7 +1053,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate MIR and CG cuts
   if (settings.mir_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
     f_t cut_start_time = tic();
-    generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
+    generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
@@ -1074,7 +1063,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
-    bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, reduced_costs, start_time);
+    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
     if (!feasible) {
       settings.log.printf("Clique cuts proved infeasible\n");
       return false;
@@ -1098,11 +1087,10 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
 {
   if (knapsack_generation_.num_knapsack_constraints() > 0) {
     for (i_t knapsack_row : knapsack_generation_.get_knapsack_constraints()) {
-      sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
-      f_t cut_rhs;
+      inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cuts(
-        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut, cut_rhs);
-      if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut, cut_rhs); }
+        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
+      if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut); }
     }
   }
 }
@@ -1352,7 +1340,10 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       return false;
     }
     if (build_status == clique_cut_build_status_t::CUT_ADDED) {
-      cut_pool_.add_cut(cut_type_t::CLIQUE, cut, cut_rhs);
+      inequality_t<i_t, f_t> cut_inequality;
+      cut_inequality.vector = cut;
+      cut_inequality.rhs    = cut_rhs;
+      cut_pool_.add_cut(cut_type_t::CLIQUE, cut_inequality);
 #if DEBUG_CLIQUE_CUTS
       added_cuts++;
       CLIQUE_CUTS_DEBUG("generate_clique_cuts added cut nz=%lld rhs=%g clique_size=%lld",
@@ -1387,64 +1378,23 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& xstar)
+  const std::vector<f_t>& xstar,
+  const std::vector<f_t>& ystar,
+  variable_bounds_t<i_t, f_t>& variable_bounds)
 {
-  f_t mir_start_time = tic();
-  mixed_integer_rounding_cut_t<i_t, f_t> mir(lp, settings, new_slacks, xstar);
+  f_t mir_start_time     = tic();
+  constexpr bool verbose = false;
+  complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
   strong_cg_cut_t<i_t, f_t> cg(lp, var_types, xstar);
 
-  std::vector<i_t> slack_map(lp.num_rows, -1);
-  for (i_t slack : new_slacks) {
-    const i_t col_start = lp.A.col_start[slack];
-    const i_t col_end   = lp.A.col_start[slack + 1];
-    const i_t col_len   = col_end - col_start;
-    assert(col_len == 1);
-    const i_t i  = lp.A.i[col_start];
-    slack_map[i] = slack;
-  }
+  std::vector<f_t> scores;
+  complemented_mir.compute_initial_scores_for_rows(lp, settings, Arow, xstar, ystar, scores);
 
-  // Compute initial scores for all rows
-  std::vector<f_t> score(lp.num_rows, 0.0);
+  // Push all the scores onto the priority queue
+  std::priority_queue<std::pair<f_t, i_t>> score_queue;
   for (i_t i = 0; i < lp.num_rows; i++) {
-    const i_t row_start = Arow.row_start[i];
-    const i_t row_end   = Arow.row_start[i + 1];
-
-    const i_t row_nz          = row_end - row_start;
-    i_t num_integer_in_row    = 0;
-    i_t num_continuous_in_row = 0;
-    for (i_t p = row_start; p < row_end; p++) {
-      const i_t j = Arow.j[p];
-      if (var_types[j] == variable_type_t::INTEGER) {
-        num_integer_in_row++;
-      } else {
-        num_continuous_in_row++;
-      }
-    }
-
-    if (num_integer_in_row == 0) {
-      score[i] = 0.0;
-
-    } else {
-      f_t nz_score = lp.num_cols - row_nz;
-
-      const i_t slack = slack_map[i];
-      assert(slack >= 0);
-      const f_t slack_value = xstar[slack];
-
-      f_t slack_score = -std::log10(1e-16 + std::abs(slack_value));
-
-      const f_t nz_weight      = 1.0;
-      const f_t slack_weight   = 1.0;
-      const f_t integer_weight = 1.0;
-
-      score[i] =
-        nz_weight * nz_score + slack_weight * slack_score + integer_weight * num_integer_in_row;
-    }
+    score_queue.push(std::make_pair(scores[i], i));
   }
-
-  // Sort the rows by score
-  std::vector<i_t> sorted_indices;
-  best_score_last_permutation(score, sorted_indices);
 
   // These data structures are used to track the rows that have been aggregated
   // The invariant is that aggregated_rows is empty and aggregated_mark is all zeros
@@ -1452,62 +1402,72 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   std::vector<i_t> aggregated_rows;
   std::vector<i_t> aggregated_mark(lp.num_rows, 0);
 
-  const i_t max_cuts = std::min(lp.num_rows, 1000);
-  f_t work_estimate  = 0.0;
-  for (i_t h = 0; h < max_cuts; h++) {
-    // Get the row with the highest score
-    const i_t i = sorted_indices.back();
-    sorted_indices.pop_back();
-    const f_t max_score = score[i];
+  // Transform the relaxation solution
+  std::vector<f_t> transformed_xstar;
+  complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
-    const i_t row_nz      = Arow.row_start[i + 1] - Arow.row_start[i];
-    const i_t slack       = slack_map[i];
+  const i_t max_cuts = std::min(lp.num_rows, 100000);
+  f_t work_estimate  = 0.0;
+  i_t num_cuts       = 0;
+  while (num_cuts < max_cuts && !score_queue.empty()) {
+    // Get the row with the highest score from the queue
+    auto [max_score, i] = score_queue.top();
+    score_queue.pop();
+    // skip stale score entries
+    if (max_score != scores[i]) { continue; }
+
+    // Add the current row to the aggregated set
+    aggregated_mark[i] = 1;
+    aggregated_rows.push_back(i);
+
+    const i_t row_nz      = Arow.row_length(i);
+    const i_t slack       = complemented_mir.slack_cols(i);
     const f_t slack_value = xstar[slack];
 
     if (max_score <= 0.0) { break; }
     if (work_estimate > 2e9) { break; }
 
-    sparse_vector_t<i_t, f_t> inequality(Arow, i);
-    work_estimate += inequality.i.size();
-    f_t inequality_rhs         = lp.rhs[i];
+    inequality_t<i_t, f_t> inequality(Arow, i, lp.rhs[i]);
+    work_estimate += inequality.size();
+
     const bool generate_cg_cut = settings.strong_chvatal_gomory_cuts != 0;
-    f_t fractional_part_rhs    = fractional_part(inequality_rhs);
+    f_t fractional_part_rhs    = fractional_part(inequality.rhs);
     if (generate_cg_cut && fractional_part_rhs > 1e-6 && fractional_part_rhs < (1 - 1e-6)) {
       // Try to generate a CG cut
-      sparse_vector_t<i_t, f_t> cg_inequality = inequality;
-      f_t cg_inequality_rhs                   = inequality_rhs;
-      if (fractional_part(inequality_rhs) < 0.5) {
+
+      inequality_t<i_t, f_t> cg_inequality = inequality;
+      if (fractional_part(inequality.rhs) < 0.5) {
         // Multiply by -1 to force the fractional part to be greater than 0.5
-        cg_inequality_rhs *= -1;
         cg_inequality.negate();
       }
-      sparse_vector_t<i_t, f_t> cg_cut(lp.num_cols, 0);
-      f_t cg_cut_rhs;
-      i_t cg_status = cg.generate_strong_cg_cut(
-        lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
-      if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs); }
+      inequality_t<i_t, f_t> cg_cut;
+      i_t cg_status =
+        cg.generate_strong_cg_cut(lp, settings, var_types, cg_inequality, xstar, cg_cut);
+      if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut); }
     }
 
+    if (settings.mir_cuts == 0) { continue; }
+
     // Remove the slack from the equality to get an inequality
-    work_estimate += inequality.i.size();
+    work_estimate += inequality.size();
     i_t negate_inequality = 1;
-    for (i_t k = 0; k < inequality.i.size(); k++) {
-      const i_t j = inequality.i[k];
+    for (i_t k = 0; k < inequality.size(); k++) {
+      const i_t j = inequality.index(k);
       if (j == slack) {
-        if (inequality.x[k] != 1.0) {
-          if (inequality.x[k] == -1.0 && lp.lower[j] >= 0.0) {
+        if (inequality.coeff(k) != 1.0) {
+          if (inequality.coeff(k) == -1.0 && lp.lower[j] >= 0.0) {
             negate_inequality = 0;
           } else {
             settings.log.debug("Bad slack %d in inequality: aj %e lo %e up %e\n",
                                j,
-                               inequality.x[k],
+                               inequality.coeff(k),
                                lp.lower[j],
                                lp.upper[j]);
             negate_inequality = -1;
             break;
           }
         }
-        inequality.x[k] = 0.0;
+        inequality.vector.x[k] = 0.0;
       }
     }
 
@@ -1516,112 +1476,56 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     if (negate_inequality) {
       // inequaility'*x <= inequality_rhs
       // But for MIR we need: inequality'*x >= inequality_rhs
-      inequality_rhs *= -1;
       inequality.negate();
-      work_estimate += inequality.i.size();
+      work_estimate += inequality.size();
     }
     // We should now have: inequality'*x >= inequality_rhs
 
-    // Transform the relaxation solution
-    std::vector<f_t> transformed_xstar;
-    mir.relaxation_to_nonnegative(lp, xstar, transformed_xstar);
-    work_estimate += transformed_xstar.size();
+    for (i_t k = 0; k < inequality.size(); k++) {
+      const i_t j = inequality.index(k);
+      if (var_types[j] == variable_type_t::INTEGER) {
+        if (transformed_xstar[j] > complemented_mir.new_upper(j) / 2.0) {
+          settings.log.printf("!!!!!! j %d transformed x_j %e new_upper_j/2.0 %e\n",
+                              j,
+                              transformed_xstar[j],
+                              complemented_mir.new_upper(j) / 2.0);
+        }
+      }
+    }
 
-    sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
-    f_t cut_rhs;
     bool add_cut             = false;
     i_t num_aggregated       = 0;
     const i_t max_aggregated = 6;
+    f_t min_abs_multiplier   = 1.0;
+    f_t max_abs_multiplier   = 1.0;
     work_estimate += lp.num_cols;
 
     while (!add_cut && num_aggregated < max_aggregated) {
-      sparse_vector_t<i_t, f_t> transformed_inequality;
+      inequality_t<i_t, f_t> transformed_inequality;
       inequality.squeeze(transformed_inequality);
-      f_t transformed_rhs = inequality_rhs;
-      work_estimate += transformed_inequality.i.size();
+      work_estimate += transformed_inequality.size();
 
-      mir.to_nonnegative(lp, transformed_inequality, transformed_rhs);
-      work_estimate += transformed_inequality.i.size();
-      std::vector<sparse_vector_t<i_t, f_t>> transformed_cuts;
-      std::vector<f_t> transformed_cut_rhs;
-      std::vector<f_t> transformed_violations;
+      complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
+      work_estimate += transformed_inequality.size();
 
-      //  Generate cut for delta = 1
-      {
-        sparse_vector_t<i_t, f_t> cut_1(lp.num_cols, 0);
-        f_t cut_1_rhs;
-        mir.generate_cut_nonnegative(
-          transformed_inequality, transformed_rhs, var_types, cut_1, cut_1_rhs);
-        f_t cut_1_violation = mir.compute_violation(cut_1, cut_1_rhs, transformed_xstar);
-        if (cut_1_violation > 1e-6) {
-          transformed_cuts.push_back(cut_1);
-          transformed_cut_rhs.push_back(cut_1_rhs);
-          transformed_violations.push_back(cut_1_violation);
-        }
-        work_estimate += transformed_inequality.i.size();
-      }
+      inequality_t<i_t, f_t> cut;
+      bool cut_found = complemented_mir.cut_generation_heuristic(
+        transformed_inequality, var_types, transformed_xstar, cut, work_estimate);
+      // Note cut is in the transformed variables
 
-      // Generate a cut for delta = max { |a_j|, j in I}
-      {
-        f_t max_coeff = 0.0;
-        for (i_t k = 0; k < transformed_inequality.i.size(); k++) {
-          const i_t j = transformed_inequality.i[k];
-          if (var_types[j] == variable_type_t::INTEGER) {
-            const f_t abs_aj = std::abs(transformed_inequality.x[k]);
-            if (abs_aj > max_coeff) { max_coeff = abs_aj; }
-          }
-        }
-        work_estimate += transformed_inequality.i.size();
-
-        if (max_coeff > 1e-6 && max_coeff != 1.0) {
-          sparse_vector_t<i_t, f_t> scaled_inequality = transformed_inequality;
-          const i_t nz                                = transformed_inequality.i.size();
-          for (i_t k = 0; k < nz; k++) {
-            scaled_inequality.x[k] /= max_coeff;
-          }
-          const f_t scaled_rhs = transformed_rhs / max_coeff;
-          sparse_vector_t<i_t, f_t> cut_2(lp.num_cols, 0);
-          f_t cut_2_rhs;
-          mir.generate_cut_nonnegative(scaled_inequality, scaled_rhs, var_types, cut_2, cut_2_rhs);
-          f_t cut_2_violation = mir.compute_violation(cut_2, cut_2_rhs, transformed_xstar);
-          if (cut_2_violation > 1e-6) {
-            transformed_cuts.push_back(cut_2);
-            transformed_cut_rhs.push_back(cut_2_rhs);
-            transformed_violations.push_back(cut_2_violation);
-          }
-          work_estimate += 5 * transformed_inequality.i.size();
-        }
-      }
-
-      if (!transformed_violations.empty()) {
-        std::vector<i_t> permuted(transformed_violations.size());
-        std::iota(permuted.begin(), permuted.end(), 0);
-        std::sort(permuted.begin(), permuted.end(), [&](i_t i, i_t j) {
-          return transformed_violations[i] > transformed_violations[j];
-        });
-        work_estimate += transformed_violations.size() * std::log2(transformed_violations.size());
-        // Get the biggest violation
-        const i_t best_index = permuted[0];
-        f_t max_viol         = transformed_violations[best_index];
-        cut                  = transformed_cuts[best_index];
-        cut_rhs              = transformed_cut_rhs[best_index];
-
-        if (max_viol > 1e-6) {
-          // TODO: Divide by 1/2*violation, 1/4*violation, 1/8*violation
-          // Transform back to the original variables
-          mir.to_original(lp, cut, cut_rhs);
-          mir.remove_small_coefficients(lp.lower, lp.upper, cut, cut_rhs);
-          mir.substitute_slacks(lp, Arow, cut, cut_rhs);
-          f_t viol = mir.compute_violation(cut, cut_rhs, xstar);
-          work_estimate += 10 * cut.i.size();
-          add_cut = true;
-        }
+      if (cut_found) {
+        // Transform back to the original variables
+        complemented_mir.untransform_inequality(variable_bounds, var_types, cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
+        complemented_mir.substitute_slacks(lp, Arow, cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut);
+        f_t viol = complemented_mir.compute_violation(cut, xstar);
+        work_estimate += 10 * cut.size();
+        if (viol > 1e-6) { add_cut = true; }
       }
 
       if (add_cut) {
-        if (settings.mir_cuts != 0) {
-          cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_ROUNDING, cut, cut_rhs);
-        }
+        if (settings.mir_cuts != 0) { cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_ROUNDING, cut); }
         break;
       } else {
         // Perform aggregation to try and find a cut
@@ -1630,24 +1534,26 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         i_t num_continuous    = 0;
         f_t max_off_bound     = 0.0;
         i_t max_off_bound_var = -1;
-        for (i_t p = 0; p < inequality.i.size(); p++) {
-          const i_t j = inequality.i[p];
+        for (i_t p = 0; p < inequality.size(); p++) {
+          const i_t j  = inequality.index(p);
+          const f_t aj = inequality.coeff(p);
+          if (aj == 0.0) { continue; }
           if (var_types[j] == variable_type_t::CONTINUOUS) {
             num_continuous++;
 
-            const f_t off_lower = lp.lower[j] > -inf ? xstar[j] - lp.lower[j] : std::abs(xstar[j]);
-            const f_t off_upper = lp.upper[j] < inf ? lp.upper[j] - xstar[j] : std::abs(xstar[j]);
-            const f_t off_bound = std::max(off_lower, off_upper);
-            const i_t col_start = lp.A.col_start[j];
-            const i_t col_end   = lp.A.col_start[j + 1];
-            const i_t col_len   = col_end - col_start;
+            const f_t lb_star_j = complemented_mir.get_lb_star(j);
+            const f_t ub_star_j = complemented_mir.get_ub_star(j);
+            const f_t off_lower = lb_star_j > -inf ? xstar[j] - lb_star_j : std::abs(xstar[j]);
+            const f_t off_upper = ub_star_j < inf ? ub_star_j - xstar[j] : std::abs(xstar[j]);
+            const f_t off_bound = std::min(off_lower, off_upper);
+            const i_t col_len   = lp.A.col_length(j);
             if (off_bound > max_off_bound && col_len > 1) {
               max_off_bound     = off_bound;
               max_off_bound_var = j;
             }
           }
         }
-        work_estimate += 10 * inequality.i.size();
+        work_estimate += 10 * inequality.size();
 
         if (num_continuous == 0 || max_off_bound < 1e-6) { break; }
 
@@ -1655,8 +1561,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
         if (max_off_bound_var >= 0) {
           const i_t col_start          = lp.A.col_start[max_off_bound_var];
           const i_t col_end            = lp.A.col_start[max_off_bound_var + 1];
-          const i_t col_len            = col_end - col_start;
-          const i_t max_potential_rows = 10;
+          const i_t col_len            = lp.A.col_length(max_off_bound_var);
+          const i_t max_potential_rows = col_len;
           if (col_len > 1) {
             std::vector<i_t> potential_rows;
             potential_rows.reserve(col_len);
@@ -1666,35 +1572,44 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
               const i_t i   = lp.A.i[q];
               const f_t val = lp.A.x[q];
               // Can't use rows that have already been aggregated
-              if (std::abs(val) > threshold && aggregated_mark[i] == 0) {
-                potential_rows.push_back(i);
-              }
+              if (std::abs(val) > threshold && !aggregated_mark[i]) { potential_rows.push_back(i); }
               if (potential_rows.size() >= max_potential_rows) { break; }
             }
             work_estimate += 5 * (col_end - col_start);
 
-            if (!potential_rows.empty()) {
-              std::sort(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
-                return score[a] > score[b];
-              });
-              work_estimate += 10 * std::log2(10);
+            bool did_aggregate = false;
+            while (!potential_rows.empty()) {
+              const i_t pivot_row =
+                *std::max_element(potential_rows.begin(), potential_rows.end(), [&](i_t a, i_t b) {
+                  return scores[a] < scores[b];
+                });
+              work_estimate += potential_rows.size();
 
-              const i_t pivot_row = potential_rows[0];
-
-              sparse_vector_t<i_t, f_t> pivot_row_inequality(Arow, pivot_row);
-              f_t pivot_row_rhs = lp.rhs[pivot_row];
-              work_estimate += pivot_row_inequality.i.size();
-              mir.combine_rows(lp,
-                               Arow,
-                               max_off_bound_var,
-                               pivot_row_inequality,
-                               pivot_row_rhs,
-                               inequality,
-                               inequality_rhs);
+              inequality_t<i_t, f_t> pivot_row_inequality(Arow, pivot_row, lp.rhs[pivot_row]);
+              work_estimate += pivot_row_inequality.size();
+              // Save inequality before combine_rows mutates it, so we can restore on rejection
+              inequality_t<i_t, f_t> saved_inequality = inequality;
+              f_t multiplier                          = complemented_mir.combine_rows(
+                lp, Arow, max_off_bound_var, pivot_row_inequality, inequality);
+              if (max_abs_multiplier / std::abs(multiplier) > 10000 ||
+                  std::abs(multiplier) / min_abs_multiplier > 10000) {
+                inequality = saved_inequality;
+                // Erase the pivot row from the potential rows
+                potential_rows.erase(
+                  std::remove(potential_rows.begin(), potential_rows.end(), pivot_row),
+                  potential_rows.end());
+                continue;
+              }
+              max_abs_multiplier = std::max(max_abs_multiplier, std::abs(multiplier));
+              min_abs_multiplier = std::min(min_abs_multiplier, std::abs(multiplier));
               aggregated_rows.push_back(pivot_row);
               aggregated_mark[pivot_row] = 1;
-              work_estimate += inequality.i.size() + pivot_row_inequality.i.size();
-            } else {
+              work_estimate += inequality.size() + pivot_row_inequality.size();
+              did_aggregate = true;
+              break;
+            }
+
+            if (!did_aggregate) {
               // No potential rows to aggregate
               break;
             }
@@ -1707,32 +1622,26 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     if (add_cut) {
       // We were successful in generating a cut.
 
-      // Set the score of the aggregated rows to zero
+      // Set the score of the aggregated rows to a lower value
       for (i_t row : aggregated_rows) {
-        score[row] = 0.0;
+        scores[row] = 0.99 * scores[row];
+        score_queue.push(std::make_pair(scores[row], row));
       }
+      work_estimate += aggregated_rows.size() * std::log2(score_queue.size());
     }
 
     // Clear the aggregated mark
+    work_estimate += 2 * aggregated_rows.size();
     for (i_t row : aggregated_rows) {
       aggregated_mark[row] = 0;
     }
-    work_estimate += 2 * aggregated_rows.size();
     // Clear the aggregated rows
     aggregated_rows.clear();
 
     // Set the score of the current row to zero
-    score[i] = 0.0;
-
-    // Re-sort the rows by score
-    // It's possible this could be made more efficient by storing the rows in a data structure
-    // that allows us to:
-    // 1. Get the row with the best score
-    // 2. Get the row with a nonzero in column j that has the best score
-    // 3. Remove the rows that have been aggregated
-    // 4. Remove the current row
-    best_score_last_permutation(score, sorted_indices);
-    work_estimate += score.size() * std::log2(score.size());
+    scores[i] = 0.0;
+    score_queue.push(std::make_pair(scores[i], i));
+    work_estimate += std::log2(std::max(1, static_cast<i_t>(score_queue.size())));
   }
 }
 
@@ -1749,100 +1658,118 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   const std::vector<i_t>& nonbasic_list)
 {
   tableau_equality_t<i_t, f_t> tableau(lp, basis_update, nonbasic_list);
-  mixed_integer_rounding_cut_t<i_t, f_t> mir(lp, settings, new_slacks, xstar);
+  mixed_integer_gomory_cut_t<i_t, f_t> gomory_cut;
+  complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
+  simplex_solver_settings_t<i_t, f_t> variable_settings = settings;
+  variable_settings.sub_mip                             = 1;
+  variable_bounds_t<i_t, f_t> variable_bounds(lp, variable_settings, var_types, Arow, new_slacks);
   strong_cg_cut_t<i_t, f_t> cg(lp, var_types, xstar);
+  std::vector<f_t> transformed_xstar;
+  complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
   for (i_t i = 0; i < lp.num_rows; i++) {
-    sparse_vector_t<i_t, f_t> inequality(lp.num_cols, 0);
-    f_t inequality_rhs;
+    inequality_t<i_t, f_t> inequality(lp.num_cols);
     const i_t j = basic_list[i];
     if (var_types[j] != variable_type_t::INTEGER) { continue; }
     const f_t x_j = xstar[j];
-    if (std::abs(x_j - std::round(x_j)) < settings.integer_tol) { continue; }
-    i_t tableau_status = tableau.generate_base_equality(lp,
-                                                        settings,
-                                                        Arow,
-                                                        var_types,
-                                                        basis_update,
-                                                        xstar,
-                                                        basic_list,
-                                                        nonbasic_list,
-                                                        i,
-                                                        inequality,
-                                                        inequality_rhs);
+    if (fractional_part(x_j) < 0.05 || fractional_part(x_j) > 0.95) { continue; }
+
+    i_t tableau_status = tableau.generate_base_equality(
+      lp, settings, Arow, var_types, basis_update, xstar, basic_list, nonbasic_list, i, inequality);
     if (tableau_status == 0) {
       // Generate a CG cut
       const bool generate_cg_cut = settings.strong_chvatal_gomory_cuts != 0;
       if (generate_cg_cut) {
         // Try to generate a CG cut
-        sparse_vector_t<i_t, f_t> cg_inequality = inequality;
-        f_t cg_inequality_rhs                   = inequality_rhs;
-        if (fractional_part(inequality_rhs) < 0.5) {
+        inequality_t<i_t, f_t> cg_inequality = inequality;
+        if (fractional_part(inequality.rhs) < 0.5) {
           // Multiply by -1 to force the fractional part to be greater than 0.5
-          cg_inequality_rhs *= -1;
           cg_inequality.negate();
         }
-        sparse_vector_t<i_t, f_t> cg_cut(lp.num_cols, 0);
-        f_t cg_cut_rhs;
-        i_t cg_status = cg.generate_strong_cg_cut(
-          lp, settings, var_types, cg_inequality, cg_inequality_rhs, xstar, cg_cut, cg_cut_rhs);
-        if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut, cg_cut_rhs); }
+        inequality_t<i_t, f_t> cg_cut(lp.num_cols);
+        i_t cg_status =
+          cg.generate_strong_cg_cut(lp, settings, var_types, cg_inequality, xstar, cg_cut);
+        if (cg_status == 0) { cut_pool_.add_cut(cut_type_t::CHVATAL_GOMORY, cg_cut); }
       }
 
       if (settings.mixed_integer_gomory_cuts == 0) { continue; }
 
-      // Given the base inequality, generate a MIR cut
-      sparse_vector_t<i_t, f_t> cut_A(lp.num_cols, 0);
-      f_t cut_A_rhs;
-      i_t mir_status = mir.generate_cut(
-        inequality, inequality_rhs, lp.upper, lp.lower, var_types, cut_A, cut_A_rhs);
-      bool A_valid       = false;
-      f_t cut_A_distance = 0.0;
-      if (mir_status == 0) {
-        if (cut_A.i.size() == 0) { continue; }
-        mir.substitute_slacks(lp, Arow, cut_A, cut_A_rhs);
-        if (cut_A.i.size() == 0) {
+      // Transform the inequality
+      inequality_t<i_t, f_t> transformed_inequality = inequality;
+      complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
+
+      // Generate a MIR cut from the transformed inequality
+      inequality_t<i_t, f_t> cut_A_float(lp.num_cols);
+      bool cut_ok = complemented_mir.generate_cut_nonnegative_maintain_indicies(
+        transformed_inequality, var_types, cut_A_float);
+
+      // Transform the cut back to the original variables
+      complemented_mir.untransform_inequality(variable_bounds, var_types, cut_A_float);
+      complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_A_float);
+
+      inequality_t<i_t, f_t> cut_A(lp.num_cols);
+      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_A_float, cut_A); }
+
+      // See if the inequality is violated by the original relaxation solution
+      f_t cut_A_violation = complemented_mir.compute_violation(cut_A, xstar);
+      bool A_valid        = false;
+      f_t cut_A_distance  = 0.0;
+      if (cut_ok && cut_A_violation > 1e-6) {
+        if (cut_A.size() == 0) { continue; }
+        complemented_mir.substitute_slacks(lp, Arow, cut_A);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_A);
+        if (cut_A.size() == 0) {
           A_valid = false;
         } else {
           // Check that the cut is violated
-          f_t dot      = cut_A.dot(xstar);
-          f_t cut_norm = cut_A.norm2_squared();
-          if (dot >= cut_A_rhs) { continue; }
-          cut_A_distance = (cut_A_rhs - dot) / std::sqrt(cut_norm);
+          f_t dot      = cut_A.vector.dot(xstar);
+          f_t cut_norm = cut_A.vector.norm2_squared();
+          if (dot >= cut_A.rhs) { continue; }
+          cut_A_distance = (cut_A.rhs - dot) / std::sqrt(cut_norm);
           A_valid        = true;
         }
       }
 
       // Negate the base inequality
       inequality.negate();
-      inequality_rhs *= -1;
 
-      sparse_vector_t<i_t, f_t> cut_B(lp.num_cols, 0);
-      f_t cut_B_rhs;
+      inequality_t<i_t, f_t> cut_B_float(lp.num_cols);
 
-      mir_status = mir.generate_cut(
-        inequality, inequality_rhs, lp.upper, lp.lower, var_types, cut_B, cut_B_rhs);
-      bool B_valid       = false;
-      f_t cut_B_distance = 0.0;
-      if (mir_status == 0) {
-        if (cut_B.i.size() == 0) { continue; }
-        mir.substitute_slacks(lp, Arow, cut_B, cut_B_rhs);
-        if (cut_B.i.size() == 0) {
+      transformed_inequality = inequality;
+      complemented_mir.transform_inequality(variable_bounds, var_types, transformed_inequality);
+
+      cut_ok = complemented_mir.generate_cut_nonnegative_maintain_indicies(
+        transformed_inequality, var_types, cut_B_float);
+      // Transform the cut back to the original variables
+      complemented_mir.untransform_inequality(variable_bounds, var_types, cut_B_float);
+      complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_B_float);
+
+      inequality_t<i_t, f_t> cut_B(lp.num_cols);
+      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_B_float, cut_B); }
+
+      bool B_valid        = false;
+      f_t cut_B_distance  = 0.0;
+      f_t cut_B_violation = complemented_mir.compute_violation(cut_B, xstar);
+      if (cut_ok && cut_B_violation > 1e-6) {
+        if (cut_B.size() == 0) { continue; }
+        complemented_mir.substitute_slacks(lp, Arow, cut_B);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_B);
+        if (cut_B.size() == 0) {
           B_valid = false;
         } else {
           // Check that the cut is violated
-          f_t dot      = cut_B.dot(xstar);
-          f_t cut_norm = cut_B.norm2_squared();
-          if (dot >= cut_B_rhs) { continue; }
-          cut_B_distance = (cut_B_rhs - dot) / std::sqrt(cut_norm);
+          f_t dot      = cut_B.vector.dot(xstar);
+          f_t cut_norm = cut_B.vector.norm2_squared();
+          if (dot >= cut_B.rhs) { continue; }
+          cut_B_distance = (cut_B.rhs - dot) / std::sqrt(cut_norm);
           B_valid        = true;
         }
       }
 
       if ((cut_A_distance > cut_B_distance) && A_valid) {
-        cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_GOMORY, cut_A, cut_A_rhs);
+        cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_GOMORY, cut_A);
       } else if (B_valid) {
-        cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_GOMORY, cut_B, cut_B_rhs);
+        cut_pool_.add_cut(cut_type_t::MIXED_INTEGER_GOMORY, cut_B);
       }
     }
   }
@@ -1859,8 +1786,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   const std::vector<i_t>& basic_list,
   const std::vector<i_t>& nonbasic_list,
   i_t i,
-  sparse_vector_t<i_t, f_t>& inequality,
-  f_t& inequality_rhs)
+  inequality_t<i_t, f_t>& inequality)
 {
   // Let's look for Gomory cuts
   const i_t j = basic_list[i];
@@ -1998,296 +1924,1094 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   settings_.log.printf("b_bar[%d] = %e\n", i, b_bar[i]);
 #endif
 
-  inequality     = a_bar;
-  inequality_rhs = b_bar_[i];
+  inequality.vector = a_bar;
+  inequality.rhs    = b_bar_[i];
 
   return 0;
 }
 
 template <typename i_t, typename f_t>
-mixed_integer_rounding_cut_t<i_t, f_t>::mixed_integer_rounding_cut_t(
+bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_approximation(f_t x,
+                                                                  int64_t max_denominator,
+                                                                  int64_t& numerator,
+                                                                  int64_t& denominator)
+{
+  int64_t a, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
+  f_t val       = x;
+  bool negative = false;
+
+  if (x < 0) {
+    negative = true;
+    val      = -val;
+  }
+
+  while (1) {
+    a = (int64_t)std::floor(val);
+    if (a < 0 || a > INT64_MAX) { return false; }  // Protect against overflow
+    int64_t p2 = a * p1 + p0;
+    int64_t q2 = a * q1 + q0;
+    if (q2 > max_denominator) { break; }
+    p0 = p1;
+    q0 = q1;
+    p1 = p2;
+    q1 = q2;
+
+    f_t rem = val - a;
+    if (rem < 1e-14) { break; }
+    val = 1.0 / rem;
+  }
+
+  numerator   = negative ? -p1 : p1;
+  denominator = q1;
+
+  f_t approx = static_cast<f_t>(numerator) / static_cast<f_t>(denominator);
+  f_t err    = std::abs(approx - x);
+  return err <= 1e-14;
+}
+
+template <typename i_t, typename f_t>
+bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_coefficients(
+  const std::vector<variable_type_t>& var_types,
+  const inequality_t<i_t, f_t>& input_inequality,
+  inequality_t<i_t, f_t>& rational_inequality)
+{
+  rational_inequality = input_inequality;
+
+  std::vector<int64_t> numerators;
+  std::vector<int64_t> denominators;
+  std::vector<i_t> indices;
+  for (i_t k = 0; k < input_inequality.size(); k++) {
+    const i_t j = rational_inequality.index(k);
+    const f_t x = rational_inequality.coeff(k);
+    if (var_types[j] == variable_type_t::INTEGER) {
+      int64_t numerator, denominator;
+      if (!rational_approximation(x, static_cast<int64_t>(1000), numerator, denominator)) {
+        return false;
+      }
+      numerators.push_back(numerator);
+      denominators.push_back(denominator);
+      indices.push_back(k);
+      rational_inequality.vector.x[k] = static_cast<f_t>(numerator) / static_cast<f_t>(denominator);
+    }
+  }
+
+  int64_t gcd_numerators   = gcd(numerators);
+  int64_t lcm_denominators = lcm(denominators);
+
+  f_t scalar = static_cast<f_t>(lcm_denominators) / static_cast<f_t>(gcd_numerators);
+  if (scalar < 0) { return false; }
+  if (std::abs(scalar) > 1000) { return false; }
+
+  rational_inequality.scale(scalar);
+
+  return true;
+}
+
+template <typename i_t, typename f_t>
+int64_t mixed_integer_gomory_cut_t<i_t, f_t>::gcd(const std::vector<int64_t>& integers)
+{
+  if (integers.empty()) { return 0; }
+
+  int64_t result = integers[0];
+  for (size_t i = 1; i < integers.size(); ++i) {
+    result = std::gcd(result, integers[i]);
+  }
+  return result;
+}
+
+template <typename i_t, typename f_t>
+int64_t mixed_integer_gomory_cut_t<i_t, f_t>::lcm(const std::vector<int64_t>& integers)
+{
+  if (integers.empty()) { return 0; }
+  int64_t result =
+    std::reduce(std::next(integers.begin()), integers.end(), integers[0], [](int64_t a, int64_t b) {
+      return std::lcm(a, b);
+    });
+  return result;
+}
+
+template <typename i_t, typename f_t>
+variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
+                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                               const std::vector<variable_type_t>& var_types,
+                                               const csr_matrix_t<i_t, f_t>& Arow,
+                                               const std::vector<i_t>& new_slacks)
+  : upper_offsets(lp.num_cols + 1, 0),
+    lower_offsets(lp.num_cols + 1, 0),
+    upper_activities_(lp.num_rows, 0.0),
+    lower_activities_(lp.num_rows, 0.0),
+    num_pos_inf_(lp.num_rows, 0),
+    num_neg_inf_(lp.num_rows, 0)
+{
+  if (settings.sub_mip) {
+    return;  // Don't compute the variable upper/lower bounds inside sub-MIP
+  }
+  f_t start_time = tic();
+
+  // Construct the slack map
+  slack_map_.resize(lp.num_rows, -1);
+  std::vector<f_t> slack_coeff(lp.num_rows, 0.0);
+  for (i_t j : new_slacks) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const i_t col_len   = col_end - col_start;
+    assert(col_len == 1);
+    const i_t i    = lp.A.i[col_start];
+    slack_map_[i]  = j;
+    slack_coeff[i] = lp.A.x[col_start];
+  }
+
+  // The constraints are in the form:
+  // sum_j a_j x_j + sigma * slack = beta
+
+  std::vector<i_t> num_integer_in_row(lp.num_rows, 0);
+  // Compute the upper activities of the constraints
+  for (i_t i = 0; i < lp.num_rows; i++) {
+    const i_t row_start   = Arow.row_start[i];
+    const i_t row_end     = Arow.row_start[i + 1];
+    const i_t slack_index = slack_map_[i];
+    f_t activity          = 0.0;
+    for (i_t p = row_start; p < row_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == slack_index) { continue; }
+      const f_t aj = Arow.x[p];
+      const f_t uj = lp.upper[j];
+      const f_t lj = lp.lower[j];
+
+      if (aj > 0.0) {
+        if (uj < inf) {
+          activity += aj * uj;
+        } else {
+          num_pos_inf_[i]++;
+        }
+      } else {  // a_j < 0.0
+        if (lj > -inf) {
+          activity += aj * lj;
+        } else {
+          num_pos_inf_[i]++;
+        }
+      }
+
+      if (var_types[j] == variable_type_t::INTEGER) { num_integer_in_row[i]++; }
+    }
+    upper_activities_[i] = activity;
+  }
+
+  // Compute the lower activities of the constraints
+  for (i_t i = 0; i < lp.num_rows; i++) {
+    const i_t row_start   = Arow.row_start[i];
+    const i_t row_end     = Arow.row_start[i + 1];
+    const i_t slack_index = slack_map_[i];
+    f_t activity          = 0.0;
+    for (i_t p = row_start; p < row_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == slack_index) { continue; }
+      const f_t aj = Arow.x[p];
+      const f_t uj = lp.upper[j];
+      const f_t lj = lp.lower[j];
+      if (aj > 0.0) {
+        if (lj > -inf) {
+          activity += aj * lj;
+        } else {
+          num_neg_inf_[i]++;
+        }
+      } else {  // a_j < 0.0
+        if (uj < inf) {
+          activity += aj * uj;
+        } else {
+          num_neg_inf_[i]++;
+        }
+      }
+    }
+    lower_activities_[i] = activity;
+  }
+
+  // Now go through all continuous variables and use the activiites to get upper variable bounds
+  i_t upper_edges = 0;
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    upper_offsets[j] = upper_edges;
+    if (var_types[j] != variable_type_t::CONTINUOUS) { continue; }
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t i = lp.A.i[p];
+      if (num_integer_in_row[i] < 1) { continue; }
+      if (num_neg_inf_[i] > 2 && num_pos_inf_[i] > 2) { continue; }
+      const i_t row_start = Arow.row_start[i];
+      const i_t row_end   = Arow.row_start[i + 1];
+      const i_t row_len   = row_end - row_start;
+      if (row_len < 2) { continue; }
+      const f_t a_ij              = lp.A.x[p];
+      const f_t slack_lower       = lp.lower[slack_map_[i]];
+      const f_t slack_upper       = lp.upper[slack_map_[i]];
+      const f_t slack_coeff_i     = slack_coeff[i];
+      const f_t sigma_slack_lower = slack_coeff_i == 1.0 ? slack_lower : -slack_upper;
+      const f_t sigma_slack_upper = slack_coeff_i == 1.0 ? slack_upper : -slack_lower;
+
+      if (sigma_slack_lower > -inf) {
+        const f_t beta = lp.rhs[i] - sigma_slack_lower;
+        // sum_k a_ik x_k <= beta
+
+        // If we have too many variables in the row that would cause the activity to be infinite,
+        // we cannot derive an variable bound
+        if (a_ij > 0.0 && num_neg_inf_[i] <= 2) {
+          const f_t lower_activity_j = lower_activity(lp.lower[j], lp.upper[j], a_ij);
+
+          // This is inefficient if num_neg_inf_[i] > 0
+          // If num_neg_inf_[i] == 1 and var_types[s] != INTEGER, we can't derive a bound
+          // If num_neg_inf_[i] == 2 and var_types[s ^ j] != INTEGER, we can't derive a bound
+          // If num_neg_inf_[i] == 2 and var_types[s ^ j] == INTEGER, and lower_activity_j != -inf,
+          // we can't derive a bound
+          for (i_t q = row_start; q < row_end; q++) {
+            const i_t l = Arow.j[q];
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
+            // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
+            const f_t a_il             = Arow.x[q];
+            const f_t lower_activity_l = lower_activity(lp.lower[l], lp.upper[l], a_il);
+            const f_t sum              = adjusted_lower_activity(
+              lower_activities_[i], num_neg_inf_[i], lower_activity_j, lower_activity_l);
+            if (sum > -inf) {
+              // We have a valid variable upper bound
+              // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
+              // bound(x_k)
+              upper_variables.push_back(l);
+              upper_weights.push_back(-a_il / a_ij);
+              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
+              upper_edges++;
+            }
+          }
+        }
+      }
+
+      if (sigma_slack_upper < inf) {
+        const f_t beta = lp.rhs[i] - sigma_slack_upper;
+        // sum_k a_ik x_k >= beta
+
+        // If we have too many variables in the row that would cause the activity to be infinite,
+        // we cannot derive an variable bound
+        if (a_ij < 0.0 && num_pos_inf_[i] <= 2) {
+          const f_t upper_activity_j = upper_activity(lp.lower[j], lp.upper[j], a_ij);
+
+          for (i_t q = row_start; q < row_end; q++) {
+            const i_t l = Arow.j[q];
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
+            // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
+            const f_t a_il             = Arow.x[q];
+            const f_t upper_activity_l = upper_activity(lp.lower[l], lp.upper[l], a_il);
+            const f_t sum              = adjusted_upper_activity(
+              upper_activities_[i], num_pos_inf_[i], upper_activity_j, upper_activity_l);
+            if (sum < inf) {
+              // We have a valid variable upper bound
+              // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
+              // bound(x_k)
+              upper_variables.push_back(l);
+              upper_weights.push_back(-a_il / a_ij);
+              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
+              upper_edges++;
+            }
+          }
+        }
+      }
+    }
+  }
+  upper_offsets[lp.num_cols] = upper_edges;
+  settings.log.printf("%d variable upper bounds in %.2f seconds\n", upper_edges, toc(start_time));
+
+  // Now go through all continuous variables and use the activiites to get lower variable bounds
+  i_t lower_edges = 0;
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    lower_offsets[j] = lower_edges;
+    if (var_types[j] != variable_type_t::CONTINUOUS) { continue; }
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t i = lp.A.i[p];
+      if (num_integer_in_row[i] < 1) { continue; }
+      const i_t row_start = Arow.row_start[i];
+      const i_t row_end   = Arow.row_start[i + 1];
+      const i_t row_len   = row_end - row_start;
+      if (row_len < 2) { continue; }
+      const f_t a_ij              = lp.A.x[p];
+      const f_t slack_lower       = lp.lower[slack_map_[i]];
+      const f_t slack_upper       = lp.upper[slack_map_[i]];
+      const f_t slack_coeff_i     = slack_coeff[i];
+      const f_t sigma_slack_lower = slack_coeff_i == 1.0 ? slack_lower : -slack_upper;
+      const f_t sigma_slack_upper = slack_coeff_i == 1.0 ? slack_upper : -slack_lower;
+
+      if (sigma_slack_lower > -inf) {
+        const f_t beta = lp.rhs[i] - sigma_slack_lower;
+        // sum_k a_ik x_k <= beta
+
+        // If we have too many variables in the row that would cause the activity to be infinite,
+        // we cannot derive a variable bound
+        if (a_ij < 0.0 && num_neg_inf_[i] <= 2) {
+          const f_t lower_activity_j = lower_activity(lp.lower[j], lp.upper[j], a_ij);
+
+          for (i_t q = row_start; q < row_end; q++) {
+            const i_t l = Arow.j[q];
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
+            // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
+            // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik * bound(x_k)
+            const f_t a_il             = Arow.x[q];
+            const f_t lower_activity_l = lower_activity(lp.lower[l], lp.upper[l], a_il);
+            const f_t sum              = adjusted_lower_activity(
+              lower_activities_[i], num_neg_inf_[i], lower_activity_j, lower_activity_l);
+            if (sum > -inf) {
+              // We have a valid variable lower bound
+              // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
+              // bound(x_k)
+              lower_variables.push_back(l);
+              lower_weights.push_back(-a_il / a_ij);
+              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
+              lower_edges++;
+            }
+          }
+        }
+      }
+
+      if (sigma_slack_upper < inf) {
+        const f_t beta = lp.rhs[i] - sigma_slack_upper;
+        // sum_k a_ik x_k >= beta
+
+        // If we have too many variables in the row that would cause the activity to be infinite,
+        // we cannot derive a variable bound
+        if (a_ij > 0.0 && num_pos_inf_[i] <= 2) {
+          const f_t upper_activity_j = upper_activity(lp.lower[j], lp.upper[j], a_ij);
+
+          for (i_t q = row_start; q < row_end; q++) {
+            const i_t l = Arow.j[q];
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
+            // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
+            const f_t a_il             = Arow.x[q];
+            const f_t upper_activity_l = upper_activity(lp.lower[l], lp.upper[l], a_il);
+            const f_t sum              = adjusted_upper_activity(
+              upper_activities_[i], num_pos_inf_[i], upper_activity_j, upper_activity_l);
+            if (sum < inf) {
+              // We have a valid variable lower bound
+              // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
+              // bound(x_k)
+              lower_variables.push_back(l);
+              lower_weights.push_back(-a_il / a_ij);
+              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
+              lower_edges++;
+            }
+          }
+        }
+      }
+    }
+  }
+  lower_offsets[lp.num_cols] = lower_edges;
+  settings.log.printf("%d variable lower bounds in %.2f seconds\n", lower_edges, toc(start_time));
+}
+
+template <typename i_t, typename f_t>
+complemented_mixed_integer_rounding_cut_t<i_t, f_t>::complemented_mixed_integer_rounding_cut_t(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
-  const std::vector<i_t>& new_slacks,
-  const std::vector<f_t>& xstar)
-  : num_vars_(lp.num_cols),
-    settings_(settings),
-    x_workspace_(num_vars_, 0.0),
-    x_mark_(num_vars_, 0),
-    has_lower_(num_vars_, 0),
-    has_upper_(num_vars_, 0),
-    is_slack_(num_vars_, 0),
-    slack_rows_(num_vars_, 0),
-    bound_info_(num_vars_, 0)
+  const std::vector<i_t>& new_slacks)
+  : is_slack_(lp.num_cols, 0),
+    slack_rows_(lp.num_cols, -1),
+    slack_cols_(lp.num_rows, -1),
+    lb_variable_(lp.num_cols, -1),
+    lb_star_(lp.num_cols, 0.0),
+    ub_variable_(lp.num_cols, -1),
+    ub_star_(lp.num_cols, 0.0),
+    transformed_upper_(lp.num_cols, inf),
+    bound_changed_(lp.num_cols, 0),
+    scratch_pad_(lp.num_cols)
 {
   for (i_t j : new_slacks) {
     is_slack_[j]        = 1;
     const i_t col_start = lp.A.col_start[j];
     const i_t i         = lp.A.i[col_start];
     slack_rows_[j]      = i;
+    slack_cols_[i]      = j;
     assert(std::abs(lp.A.x[col_start]) == 1.0);
   }
-
-  needs_complement_ = false;
-  for (i_t j = 0; j < num_vars_; j++) {
-    if (lp.lower[j] < 0) {
-      settings_.log.debug("Variable %d has negative lower bound %e\n", j, lp.lower[j]);
-    }
-    const f_t uj      = lp.upper[j];
-    const f_t lj      = lp.lower[j];
-    const f_t xstar_j = xstar[j];
-    if (uj < inf) {
-      if (uj - xstar_j <= xstar_j - lj) {
-        has_upper_[j]     = 1;
-        bound_info_[j]    = 1;
-        needs_complement_ = true;
-      } else if (lj != 0.0) {
-        has_lower_[j]     = 1;
-        bound_info_[j]    = -1;
-        needs_complement_ = true;
-      }
-      continue;
-    }
-
-    if (lj > -inf && lj != 0.0) {
-      has_lower_[j]     = 1;
-      bound_info_[j]    = -1;
-      needs_complement_ = true;
-    }
-  }
 }
 
 template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::to_nonnegative(const lp_problem_t<i_t, f_t>& lp,
-                                                            sparse_vector_t<i_t, f_t>& inequality,
-                                                            f_t& rhs)
-{
-  const i_t nz = inequality.i.size();
-  for (i_t k = 0; k < nz; k++) {
-    const i_t j  = inequality.i[k];
-    const f_t aj = inequality.x[k];
-    if (bound_info_[j] == -1) {
-      // v_j = x_j - l_j, v_j >= 0
-      // x_j = v_j + l_j
-      // sum_{k != j} a_k x_j + a_j x_j <= beta
-      // sum_{k != j} a_k x_j + a_j (v_j + l_j) <= beta
-      // sum_{k != j} a_k x_j + a_j v_j <= beta - a_j l_j
-      const f_t lj = lp.lower[j];
-      rhs -= aj * lj;
-    } else if (bound_info_[j] == 1) {
-      // w_j = u_j - x_j, w_j >= 0
-      // x_j = u_j - w_j
-      // sum_{k != j} a_k x_k + a_j x_j <= beta
-      // sum_{k != j} a_k x_k + a_j (u_j - w_j) <= beta
-      // sum_{k != j} a_k x_k - a_j w_j <= beta - a_j u_j
-      const f_t uj = lp.upper[j];
-      inequality.x[k] *= -1.0;
-      rhs -= aj * uj;
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::relaxation_to_nonnegative(
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_initial_scores_for_rows(
   const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<f_t>& xstar,
-  std::vector<f_t>& xstar_nonnegative)
+  const std::vector<f_t>& ystar,
+  std::vector<f_t>& scores)
 {
-  xstar_nonnegative = xstar;
-  const i_t n       = lp.num_cols;
-  for (i_t j = 0; j < n; ++j) {
-    if (bound_info_[j] == -1) {
-      // v_j = x_j - l_j
-      const f_t lj = lp.lower[j];
-      xstar_nonnegative[j] -= lj;
-    } else if (bound_info_[j] == 1) {
-      // w_j = u_j - x_j
-      const f_t uj         = lp.upper[j];
-      xstar_nonnegative[j] = uj - xstar_nonnegative[j];
+  const bool verbose  = false;
+  const i_t n         = lp.num_cols;
+  const f_t obj_norm  = vector_norm2<i_t, f_t>(lp.objective);
+  const f_t obj_denom = std::max(1.0, obj_norm);
+
+  // Compute initial scores for all rows
+  scores.resize(lp.num_rows, 0.0);
+  for (i_t i = 0; i < lp.num_rows; i++) {
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_end   = Arow.row_start[i + 1];
+
+    const i_t row_nz = row_end - row_start;
+    f_t row_norm     = 0.0;
+    for (i_t p = row_start; p < row_end; p++) {
+      const f_t a_j = Arow.x[p];
+      row_norm += a_j * a_j;
+    }
+    row_norm = std::sqrt(row_norm);
+
+    const f_t density = static_cast<f_t>(row_nz) / static_cast<f_t>(n);
+    const f_t dual    = std::abs(ystar[i]);
+
+    const i_t slack = slack_cols_[i];
+    assert(slack >= 0);
+    const f_t slack_value = std::max(xstar[slack], 0.0);
+    const f_t slack_denom = std::max(0.1, std::sqrt(row_norm));
+
+    const f_t nz_weight    = 0.0001;
+    const f_t dual_weight  = 1.0;
+    const f_t slack_weight = 0.001;
+
+    scores[i] = nz_weight * (1.0 - density) + dual_weight * std::max(dual / obj_denom, 0.0001) +
+                slack_weight * (1.0 - slack_value / slack_denom);
+
+    if (verbose) {
+      settings.log.printf("Scores[%d] = %e density %.2f dual %e slack %e\n",
+                          i,
+                          scores[i],
+                          density,
+                          dual,
+                          slack_value);
     }
   }
 }
 
 template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::to_original(const lp_problem_t<i_t, f_t>& lp,
-                                                         sparse_vector_t<i_t, f_t>& inequality,
-                                                         f_t& rhs)
+bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heuristic(
+  const inequality_t<i_t, f_t>& transformed_inequality,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& transformed_xstar,
+  inequality_t<i_t, f_t>& transformed_cut,
+  f_t& work_estimate)
 {
-  const i_t nz = inequality.i.size();
-  for (i_t k = 0; k < nz; k++) {
-    const i_t j  = inequality.i[k];
-    const f_t dj = inequality.x[k];
-    if (bound_info_[j] == -1) {
-      // v_j = x_j - l_j, v_j >= 0
-      // sum_{k != j} d_k x_k + d_j v_j >= beta
-      // sum_{k != j} d_k x_k + d_j (x_j - l_j) >= beta
-      // sum_{k != j} d_k x_k + d_j x_j >= beta + d_j l_j
-      const f_t lj = lp.lower[j];
-      rhs += dj * lj;
-    } else if (bound_info_[j] == 1) {
-      // w_j = u_j - x_j, w_j >= 0
-      // sum_{k != j} d_k x_k + d_j w_j >= beta
-      // sum_{k != j} d_k x_k + d_j (u_j - x_j) >= beta
-      // sum_{k != j} d_k x_k - d_j x_j  >= beta - d_j u_j
-      const f_t uj = lp.upper[j];
-      inequality.x[k] *= -1.0;
-      rhs -= dj * uj;
+  std::vector<f_t> deltas_to_try;
+  deltas_to_try.reserve(transformed_inequality.size());
+  deltas_to_try.push_back(1.0);
+  work_estimate += transformed_inequality.size();
+  i_t num_integers = 0;
+  f_t max_coeff    = 0.0;
+  for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    const i_t j      = transformed_inequality.index(k);
+    const f_t abs_aj = std::abs(transformed_inequality.coeff(k));
+    if (var_types[j] == variable_type_t::INTEGER) {
+      num_integers++;
+      max_coeff                 = std::max(max_coeff, abs_aj);
+      const f_t x_j             = transformed_xstar[j];
+      const f_t new_upper_j     = new_upper(j);
+      const f_t dist_upper      = new_upper_j - x_j;
+      const f_t dist_lower      = x_j;
+      const bool between_bounds = x_j > 1e-6 && (new_upper_j == inf || dist_upper > 0.0);
+      if (between_bounds) { deltas_to_try.push_back(abs_aj); }
     }
   }
+  if (max_coeff > 1e-6 && max_coeff != 1.0) {
+    deltas_to_try.push_back(max_coeff);
+    deltas_to_try.push_back(max_coeff + 1.0);
+  }
+
+  std::vector<i_t> complemented_indices;
+  complemented_indices.reserve(num_integers);
+  std::vector<f_t> distance_from_midpoint;
+  distance_from_midpoint.reserve(num_integers);
+  std::vector<i_t> integer_indices;
+  integer_indices.reserve(num_integers);
+  for (i_t k = 0; k < transformed_inequality.size(); k++) {
+    const i_t j = transformed_inequality.index(k);
+    if (var_types[j] == variable_type_t::INTEGER && new_upper(j) < inf) {
+      const f_t x_j         = transformed_xstar[j];
+      const f_t new_upper_j = new_upper(j);
+      if (x_j > 1e-6 && new_upper_j < inf) {
+        const f_t midpoint_j = new_upper_j / 2.0;
+        distance_from_midpoint.push_back(x_j - midpoint_j);
+        integer_indices.push_back(k);
+      }
+    }
+  }
+
+  std::vector<i_t> perm(integer_indices.size());
+  best_score_first_permutation(distance_from_midpoint, perm);
+  work_estimate +=
+    integer_indices.size() > 0 ? integer_indices.size() * std::log2(integer_indices.size()) : 0;
+
+  bool cut_found = false;
+
+  inequality_t<i_t, f_t> complemented_inequality = transformed_inequality;
+  work_estimate += 4 * transformed_inequality.size();
+
+  f_t delta          = 0.0;
+  f_t best_violation = 0.0;
+
+  // First try without any complementation
+  for (const f_t tmp_delta : deltas_to_try) {
+    bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      tmp_delta,
+                                                      transformed_cut,
+                                                      work_estimate);
+    if (!cut_ok) { continue; }
+    // Check if the cut is violated
+    best_violation = compute_violation(transformed_cut, transformed_xstar);
+    work_estimate += 4 * transformed_cut.size();
+    if (best_violation > 1e-6) {
+      cut_found = true;
+      delta     = tmp_delta;
+      break;
+    }
+  }
+
+  if (!cut_found) {
+    // Complement an integer variable
+    for (const i_t idx : perm) {
+      const i_t l = integer_indices[idx];
+      const i_t j = complemented_inequality.index(l);
+      // We have an integer variable x_j <= b_j
+      // We create a new variable xbar_j such that
+      // x_j + xbar_j = b_j
+      // x_j = b_j - xbar_j, xbar_j = b_j - x_j
+      //
+      // The inequality
+      // sum_{k != j} a_k x_k + a_j x_j >= beta
+      // becomes
+      // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
+      // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
+      const f_t b_j = new_upper(j);
+      const f_t a_j = complemented_inequality.coeff(l);
+
+      complemented_inequality.vector.x[l] = -a_j;
+      complemented_inequality.rhs -= a_j * b_j;
+      complemented_indices.push_back(l);
+
+      for (const f_t tmp_delta : deltas_to_try) {
+        bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
+                                                          transformed_xstar,
+                                                          complemented_indices,
+                                                          complemented_inequality,
+                                                          tmp_delta,
+                                                          transformed_cut,
+                                                          work_estimate);
+        if (!cut_ok) { continue; }
+        // Check if the cut is violated
+        best_violation = compute_violation(transformed_cut, transformed_xstar);
+        work_estimate += 4 * transformed_cut.size();
+        if (best_violation > 1e-6) {
+          cut_found = true;
+          delta     = tmp_delta;
+          break;
+        }
+      }
+      if (cut_found) { break; }
+    }
+  }
+
+  if (!cut_found) { return false; }
+
+  // We have found a cut. Now try to improve the violation by scaling the cut by 1/2, 1/4, 1/8, etc.
+  std::vector<f_t> scaled_deltas_to_try = {delta / 2.0, delta / 4.0, delta / 8.0};
+  for (const f_t tmp_delta : scaled_deltas_to_try) {
+    inequality_t<i_t, f_t> tmp_cut_delta;
+    bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      tmp_delta,
+                                                      tmp_cut_delta,
+                                                      work_estimate);
+    if (!cut_ok) { continue; }
+
+    // Check if the cut is violated
+    f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
+    work_estimate += 4 * tmp_cut_delta.size();
+    if (violation > best_violation) {
+      best_violation  = violation;
+      transformed_cut = tmp_cut_delta;
+      delta           = tmp_delta;
+    }
+  }
+
+  std::vector<i_t> best_complemented_indices = complemented_indices;
+  work_estimate += 2 * best_complemented_indices.size();
+
+  // Try to improve the violation by complementing integer variables
+  complemented_inequality = transformed_inequality;
+  work_estimate += 4 * transformed_inequality.size();
+  complemented_indices.clear();
+  for (const i_t idx : perm) {
+    const i_t l = integer_indices[idx];
+    const i_t j = complemented_inequality.index(l);
+    // We have an integer variable x_j <= b_j
+    // We create a new variable xbar_j such that
+    // x_j + xbar_j = b_j
+    // x_j = b_j - xbar_j, xbar_j = b_j - x_j
+    //
+    // The inequality
+    // sum_{k != j} a_k x_k + a_j x_j >= beta
+    // becomes
+    // sum_{k != j} a_k x_k + a_j (b_j - xbar_j) >= beta
+    // sum_{k != j} a_k x_k - a_j xbar_j >= beta - a_j b_j
+    const f_t b_j = new_upper(j);
+    const f_t a_j = complemented_inequality.coeff(l);
+
+    complemented_inequality.vector.x[l] = -a_j;
+    complemented_inequality.rhs -= a_j * b_j;
+    complemented_indices.push_back(l);
+
+    inequality_t<i_t, f_t> tmp_cut_delta;
+
+    bool cut_ok = scale_uncomplement_and_generate_cut(var_types,
+                                                      transformed_xstar,
+                                                      complemented_indices,
+                                                      complemented_inequality,
+                                                      delta,
+                                                      tmp_cut_delta,
+                                                      work_estimate);
+    if (!cut_ok) { continue; }
+    // Check if the cut is violated
+    f_t violation = compute_violation(tmp_cut_delta, transformed_xstar);
+    work_estimate += 4 * tmp_cut_delta.size();
+    if (violation > best_violation) {
+      best_violation            = violation;
+      best_complemented_indices = complemented_indices;
+      transformed_cut           = tmp_cut_delta;
+    }
+  }
+
+  return best_violation > 1e-6;
 }
 
 template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::remove_small_coefficients(
+bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::scale_uncomplement_and_generate_cut(
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& transformed_xstar,
+  const std::vector<i_t>& complemented_indices,
+  const inequality_t<i_t, f_t>& complemented_inequality,
+  f_t delta,
+  inequality_t<i_t, f_t>& cut_delta,
+  f_t& work_estimate)
+{
+  inequality_t scaled_inequality = complemented_inequality;
+  if (delta != 1.0) { scaled_inequality.scale(1.0 / delta); }
+  bool cut_ok = generate_cut_nonnegative_maintain_indicies(scaled_inequality, var_types, cut_delta);
+  if (!cut_ok) { return false; }
+  work_estimate += 4 * scaled_inequality.size();
+
+  // Now we need to transform the complemented variables back
+  for (i_t h = 0; h < complemented_indices.size(); h++) {
+    const i_t l = complemented_indices[h];
+    const i_t j = complemented_inequality.index(l);
+    // Our cut is of the form
+    // sum_{k != j} d_k x_k  + d_j xbar_j >= alpha
+    // we have that xbar_j = b_j - x_j
+    // So
+    // sum_{k != j} d_k x_k  + d_j (b_j - x_j) >= alpha
+    // Or
+    // sum_{k != j} d_k x_k  - d_j x_j >= alpha - d_j b_j
+
+    const f_t b_j         = new_upper(j);
+    const f_t d_j         = cut_delta.coeff(l);
+    cut_delta.vector.x[l] = -d_j;
+    cut_delta.rhs -= d_j * b_j;
+  }
+  work_estimate += 5 * complemented_indices.size();
+  return true;
+}
+
+template <typename i_t, typename f_t>
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::remove_small_coefficients(
   const std::vector<f_t>& lower_bounds,
   const std::vector<f_t>& upper_bounds,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  inequality_t<i_t, f_t>& cut)
 {
-  const i_t nz = cut.i.size();
+  const i_t nz = cut.size();
   i_t removed  = 0;
-  for (i_t k = 0; k < cut.i.size(); k++) {
-    const i_t j = cut.i[k];
+  for (i_t k = 0; k < cut.size(); k++) {
+    const i_t j = cut.index(k);
 
     // Check for small coefficients
-    const f_t aj = cut.x[k];
+    const f_t aj = cut.coeff(k);
     if (std::abs(aj) < 1e-6) {
       if (aj >= 0.0 && upper_bounds[j] < inf) {
         // Move this to the right-hand side
-        cut_rhs -= aj * upper_bounds[j];
-        cut.x[k] = 0.0;
+        cut.rhs -= aj * upper_bounds[j];
+        cut.vector.x[k] = 0.0;
         removed++;
       } else if (aj <= 0.0 && lower_bounds[j] > -inf) {
-        cut_rhs += aj * lower_bounds[j];
-        cut.x[k] = 0.0;
+        cut.rhs -= aj * lower_bounds[j];
+        cut.vector.x[k] = 0.0;
         removed++;
         continue;
       } else {
+        // We need to keep the coefficient
       }
     }
   }
 
   if (removed > 0) {
-    sparse_vector_t<i_t, f_t> new_cut(cut.n, 0);
+    inequality_t<i_t, f_t> new_cut(cut.vector.n);
     cut.squeeze(new_cut);
     cut = new_cut;
   }
 }
 
 template <typename i_t, typename f_t>
-i_t mixed_integer_rounding_cut_t<i_t, f_t>::generate_cut_nonnegative(
-  const sparse_vector_t<i_t, f_t>& a,
-  f_t beta,
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
+  const lp_problem_t<i_t, f_t>& lp,
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  const std::vector<f_t>& xstar,
+  std::vector<f_t>& transformed_xstar)
 {
-  auto f = [](f_t q_1, f_t q_2) -> f_t {
-    f_t q_1_hat = q_1 - std::floor(q_1);
-    f_t q_2_hat = q_2 - std::floor(q_2);
-    return std::min(q_1_hat, q_2_hat) + q_2_hat * std::floor(q_1);
-  };
+  transformed_xstar.resize(lp.num_cols);
+  // Perform bound substitution for continuous variables
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    if (var_types[j] != variable_type_t::CONTINUOUS) { continue; }
+    // Step 1: Decide whether to use variable or simple bounds
+    const f_t uj      = lp.upper[j];
+    const f_t lj      = lp.lower[j];
+    const f_t xstar_j = xstar[j];
 
-  auto h = [](f_t q) -> f_t { return std::max(q, 0.0); };
+    // Set lb and lb_star to the simple lower bound
+    lb_variable_[j] = -1;
+    lb_star_[j]     = lj;
 
-  std::vector<i_t> cut_indices;
-  cut_indices.reserve(a.i.size());
-  f_t R = (beta - std::floor(beta)) * std::ceil(beta);
+    // Set ub and ub_star to the simple upper bound
+    ub_variable_[j] = -1;
+    ub_star_[j]     = uj;
 
-  for (i_t k = 0; k < a.i.size(); k++) {
-    const i_t jj = a.i[k];
-    f_t aj       = a.x[k];
-    if (var_types[jj] == variable_type_t::INTEGER) {
-      x_workspace_[jj] += f(aj, beta);
-      if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-        x_mark_[jj] = 1;
-        cut_indices.push_back(jj);
+    // Check the variable lower bound and update lb and lb_star
+    // if these yield a tighter bound
+    const i_t lower_variable_start = variable_bounds.lower_offsets[j];
+    const i_t lower_variable_end   = variable_bounds.lower_offsets[j + 1];
+    for (i_t p = lower_variable_start; p < lower_variable_end; p++) {
+      const i_t i     = variable_bounds.lower_variables[p];
+      const f_t gamma = variable_bounds.lower_weights[p];
+      const f_t alpha = variable_bounds.lower_biases[p];
+      // x_j >= gamma * x_i + alpha
+
+      const f_t xstar_i = xstar[i];
+      const f_t val     = gamma * xstar_i + alpha;
+      if (val > lb_star_[j]) {
+        lb_variable_[j] = p;
+        lb_star_[j]     = val;
+      }
+    }
+
+    // Check the variable upper bound and update ub and ub_star
+    // if these yield a tighter bound
+    const i_t upper_variable_start = variable_bounds.upper_offsets[j];
+    const i_t upper_variable_end   = variable_bounds.upper_offsets[j + 1];
+    for (i_t p = upper_variable_start; p < upper_variable_end; p++) {
+      const i_t i     = variable_bounds.upper_variables[p];
+      const f_t gamma = variable_bounds.upper_weights[p];
+      const f_t alpha = variable_bounds.upper_biases[p];
+      // x_j <= gamma * x_i + alpha
+
+      const f_t xstar_i = xstar[i];
+      const f_t val     = gamma * xstar_i + alpha;
+      if (val < ub_star_[j]) {
+        ub_variable_[j] = p;
+        ub_star_[j]     = val;
+      }
+    }
+
+    // Step 2: Decide to use the lower or upper bound
+    const bool has_finite_lower_bound = lb_star_[j] > -inf;
+    const bool has_finite_upper_bound = ub_star_[j] < inf;
+    if (!has_finite_lower_bound && !has_finite_upper_bound) {
+      transformed_xstar[j]  = xstar_j;
+      transformed_upper_[j] = inf;
+      bound_changed_[j]     = 0;
+      continue;
+    }
+    if (has_finite_lower_bound &&
+        (!has_finite_upper_bound || (xstar_j - lb_star_[j] <= ub_star_[j] - xstar_j))) {
+      // Use the lower bound
+      // lb_star_j <= x_j <= ub_star_j
+      // v_j = x_j - lb_star_j,
+      // 0 <= v_j <= ub_star_j - lb_star_j
+      transformed_upper_[j] = ub_star_[j] - lb_star_[j];
+      transformed_xstar[j]  = xstar_j - lb_star_[j];
+      bound_changed_[j]     = (lb_star_[j] == 0.0) ? 0 : -1;
+    } else if (has_finite_upper_bound) {
+      // Use the upper bound
+      // lb_star_j <= x_j <= ub_star_j
+      // x_j + w_j = ub_star_j,
+      // w_j = ub_star_j - x_j,
+      // x_j = ub_star_j - w_j
+      // 0 <= w_j <= ub_star_j - lb_star_j
+      transformed_upper_[j] = ub_star_[j] - lb_star_[j];
+      transformed_xstar[j]  = ub_star_[j] - xstar_j;
+      bound_changed_[j]     = 1;
+    }
+  }
+
+  // Perform bound substitution for the integer variables
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    if (var_types[j] != variable_type_t::INTEGER) { continue; }
+    const f_t uj      = lp.upper[j];
+    const f_t lj      = lp.lower[j];
+    const f_t xstar_j = xstar[j];
+
+    lb_star_[j]           = lj;
+    ub_star_[j]           = uj;
+    transformed_xstar[j]  = xstar_j;
+    transformed_upper_[j] = uj;
+    bound_changed_[j]     = 0;
+
+    if (uj < inf) {
+      if (uj - xstar_j <= xstar_j - lj) {
+        // Use the upper bound
+        // lj <= x_j <= uj
+        // x_j + w_j = uj,
+        // w_j = uj - x_j,
+        // x_j = uj - w_j
+        // 0 <= w_j <= uj - lj
+        transformed_upper_[j] = uj - lj;
+        transformed_xstar[j]  = uj - xstar_j;
+        bound_changed_[j]     = 1;
+      } else if (lj != 0.0) {
+        // Use the lower bound
+        // lj <= x_j <= uj
+        // v_j = x_j - lj,
+        // 0 <= v_j <= uj - lj
+        transformed_upper_[j] = uj - lj;
+        transformed_xstar[j]  = xstar_j - lj;
+        bound_changed_[j]     = -1;
+      }
+      continue;
+    }
+
+    if (lj > -inf && lj != 0.0) {
+      // Use the lower bound
+      // lj <= x_j <= uj
+      // v_j = x_j - lj,
+      // 0 <= v_j <= uj - lj
+      transformed_upper_[j] = uj - lj;
+      transformed_xstar[j]  = xstar_j - lj;
+      bound_changed_[j]     = -1;
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::transform_inequality(
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
+  const std::vector<variable_type_t>& var_type,
+  inequality_t<i_t, f_t>& inequality)
+{
+  const i_t nz = inequality.size();
+  for (i_t k = 0; k < nz; k++) {
+    const i_t j  = inequality.index(k);
+    const f_t aj = inequality.coeff(k);
+    if (var_type[j] != variable_type_t::CONTINUOUS) {
+      scratch_pad_.add_to_pad(j, aj);
+      continue;
+    }
+    if (bound_changed_[j] == -1) {
+      if (lb_variable_[j] == -1) {
+        // v_j = x_j - l_j, v_j >= 0
+        // x_j = v_j + l_j
+        // sum_{k != j} a_k x_k + a_j x_j >= beta
+        // sum_{k != j} a_k x_k + a_j (v_j + l_j) >= beta
+        // sum_{k != j} a_k x_k + a_j v_j >= beta - a_j l_j
+        const f_t lj = lb_star_[j];
+        inequality.rhs -= aj * lj;
+        scratch_pad_.add_to_pad(j, aj);
+      } else {
+        // v_j = x_j - lb*_j, v_j >= 0
+        // x_j = v_j + lb*_j
+        // lb*_j = gamma * x_i + alpha
+        // x_j = v_j + gamma * x_i + alpha
+        // sum_{k != j} a_k x_k + a_j x_j >= beta
+        // sum_{k != j} a_k x_k + a_j (v_j + gamma * x_i + alpha) >= beta
+        // sum_{k != j} a_k x_k + a_j v_j + a_j * gamma * x_i >= beta - a_j alpha
+        const i_t p     = lb_variable_[j];
+        const f_t alpha = variable_bounds.lower_biases[p];
+        const f_t gamma = variable_bounds.lower_weights[p];
+        const i_t i     = variable_bounds.lower_variables[p];
+        inequality.rhs -= aj * alpha;
+        scratch_pad_.add_to_pad(j, aj);
+        scratch_pad_.add_to_pad(i, aj * gamma);
+      }
+    } else if (bound_changed_[j] == 1) {
+      if (ub_variable_[j] == -1) {
+        // w_j = u_j - x_j, w_j >= 0
+        // x_j = u_j - w_j
+        // sum_{k != j} a_k x_k + a_j x_j >= beta
+        // sum_{k != j} a_k x_k + a_j (u_j - w_j) >= beta
+        // sum_{k != j} a_k x_k - a_j w_j >= beta - a_j u_j
+        const f_t uj = ub_star_[j];
+        inequality.rhs -= aj * uj;
+        scratch_pad_.add_to_pad(j, -aj);
+      } else {
+        // w_j = ub*_j - x_j, w_j >= 0
+        // x_j = ub*_j - w_j
+        // ub*_j = gamma * x_i + alpha
+        // x_j = gamma * x_i + alpha - w_j
+        // sum_{k != j} a_k x_k + a_j x_j >= beta
+        // sum_{k != j} a_k x_k + a_j (ub*_j - w_j) >= beta
+        // sum_{k != j} a_k x_k + a_j (gamma * x_i + alpha) - a_j w_j >= beta
+        // sum_{k != j} a_k x_k + a_j gamma * x_i - a_j w_j >= beta - a_j alpha
+        const i_t p     = ub_variable_[j];
+        const f_t alpha = variable_bounds.upper_biases[p];
+        const f_t gamma = variable_bounds.upper_weights[p];
+        const i_t i     = variable_bounds.upper_variables[p];
+        inequality.rhs -= aj * alpha;
+        scratch_pad_.add_to_pad(j, -aj);
+        scratch_pad_.add_to_pad(i, aj * gamma);
+      }
+    } else if (bound_changed_[j] == 0) {
+      scratch_pad_.add_to_pad(j, aj);
+    }
+  }
+  scratch_pad_.get_pad(inequality.vector.i, inequality.vector.x);
+  // At this point we have converted all the continuous variables to be nonnegative
+  // Note that since continuous variables had VUB or VLB, they modified
+  // the integer variables.
+
+  // We clear the scratch pad. As it is no longer needed.
+  scratch_pad_.clear_pad();
+
+  // We now convert all the integer variables to be nonnegative
+  const i_t nz_after = inequality.size();
+  for (i_t k = 0; k < nz_after; k++) {
+    const i_t j = inequality.index(k);
+    if (var_type[j] != variable_type_t::INTEGER) { continue; }
+    const f_t aj = inequality.coeff(k);
+    if (bound_changed_[j] == -1) {
+      // v_j = x_j - l_j, v_j >= 0
+      // x_j = v_j + l_j
+      // sum_{k != j} a_k x_k + a_j x_j >= beta
+      // sum_{k != j} a_k x_k + a_j (v_j + l_j) >= beta
+      // sum_{k != j} a_k x_k + a_j v_j >= beta - a_j l_j
+      const f_t lj = lb_star_[j];
+      inequality.rhs -= aj * lj;
+    } else if (bound_changed_[j] == 1) {
+      // w_j = u_j - x_j, w_j >= 0
+      // x_j = u_j - w_j
+      // sum_{k != j} a_k x_j + a_j x_j >= beta
+      // sum_{k != j} a_k x_j + a_j (u_j - w_j) >= beta
+      // sum_{k != j} a_k x_j - a_j w_j >= beta - a_j u_j
+      const f_t uj = ub_star_[j];
+      inequality.rhs -= aj * uj;
+      inequality.vector.x[k] *= -1.0;
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::untransform_inequality(
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
+  const std::vector<variable_type_t>& var_type,
+  inequality_t<i_t, f_t>& inequality)
+{
+  // First convert all the integers variables back to their original form: l_j <= x_j <= u_j
+  const i_t nz = inequality.size();
+  for (i_t k = 0; k < nz; k++) {
+    const i_t j = inequality.index(k);
+    if (var_type[j] != variable_type_t::INTEGER) { continue; }
+    const f_t dj = inequality.coeff(k);
+    if (bound_changed_[j] == -1) {
+      // v_j = x_j - l_j, v_j >= 0
+      // sum_{k != j} d_k x_k + d_j v_j >= beta
+      // sum_{k != j} d_k x_k + d_j (x_j - l_j) >= beta
+      // sum_{k != j} d_k x_k + d_j x_j >= beta + d_j l_j
+      const f_t lj = lb_star_[j];
+      inequality.rhs += dj * lj;
+    } else if (bound_changed_[j] == 1) {
+      // w_j = u_j - x_j, w_j >= 0
+      // sum_{k != j} d_k x_k + d_j w_j >= beta
+      // sum_{k != j} d_k x_k + d_j (u_j - x_j) >= beta
+      // sum_{k != j} d_k x_k - d_j x_j  >= beta - d_j u_j
+      const f_t uj = ub_star_[j];
+      inequality.rhs -= dj * uj;
+      inequality.vector.x[k] *= -1.0;
+    }
+  }
+  // Then undo the VUB/VLB substitions and bring continuous variables back to their original form
+  for (i_t k = 0; k < nz; k++) {
+    const i_t j  = inequality.index(k);
+    const f_t dj = inequality.coeff(k);
+    if (var_type[j] != variable_type_t::CONTINUOUS) {
+      scratch_pad_.add_to_pad(j, dj);
+      continue;
+    }
+    if (bound_changed_[j] == -1) {
+      if (lb_variable_[j] == -1) {
+        // v_j = x_j - l_j, v_j >= 0
+        // sum_{k != j} d_k x_k + d_j v_j >= beta
+        // sum_{k != j} d_k x_k + d_j (x_j - l_j) >= beta
+        // sum_{k != j} d_k x_k + d_j x_j >= beta + d_j l_j
+        const f_t lj = lb_star_[j];
+        inequality.rhs += dj * lj;
+        scratch_pad_.add_to_pad(j, dj);
+      } else {
+        // v_j = x_j - lb*_j, v_j >= 0
+        // lb*_j = gamma * x_i + alpha
+        // v_j = x_j - gamma * x_i -  alpha
+        // sum_{k != j} d_k x_k + d_j v_j >= beta
+        // sum_{k != j} d_k x_k + d_j (x_j - gamma * x_i - alpha) >= beta
+        // sum_{k != j} d_k x_k + d_j x_j - d_j * gamma * x_i >= beta + d_j alpha
+        const i_t p     = lb_variable_[j];
+        const f_t alpha = variable_bounds.lower_biases[p];
+        const f_t gamma = variable_bounds.lower_weights[p];
+        const i_t i     = variable_bounds.lower_variables[p];
+        inequality.rhs += dj * alpha;
+        scratch_pad_.add_to_pad(j, dj);
+        scratch_pad_.add_to_pad(i, -dj * gamma);
+      }
+    } else if (bound_changed_[j] == 1) {
+      if (ub_variable_[j] == -1) {
+        // w_j = u_j - x_j, w_j >= 0
+        // sum_{k != j} d_k x_k + d_j w_j >= beta
+        // sum_{k != j} d_k x_k + d_j (u_j - x_j) >= beta
+        // sum_{k != j} d_k x_k - d_j x_j  >= beta - d_j u_j
+        const f_t uj = ub_star_[j];
+        inequality.rhs -= dj * uj;
+        scratch_pad_.add_to_pad(j, -dj);
+      } else {
+        // w_j = ub*_j - x_j, w_j >= 0
+        // ub*_j = gamma * x_i + alpha
+        // w_j = gamma * x_i + alpha - x_j
+        // sum_{k != j} d_k x_k + d_j w_j >= beta
+        // sum_{k != j} d_k x_k + d_j (gamma * x_i + alpha - x_j) >= beta
+        // sum_{k != j} d_k x_k + d_j gamma * x_i - d_j x_j >= beta - d_j alpha
+        const i_t p     = ub_variable_[j];
+        const f_t alpha = variable_bounds.upper_biases[p];
+        const f_t gamma = variable_bounds.upper_weights[p];
+        const i_t i     = variable_bounds.upper_variables[p];
+        inequality.rhs -= dj * alpha;
+        scratch_pad_.add_to_pad(j, -dj);
+        scratch_pad_.add_to_pad(i, dj * gamma);
       }
     } else {
-      x_workspace_[jj] += h(aj);
-      if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-        x_mark_[jj] = 1;
-        cut_indices.push_back(jj);
-      }
+      scratch_pad_.add_to_pad(j, dj);
     }
   }
 
-  cut.i.reserve(cut_indices.size());
-  cut.x.reserve(cut_indices.size());
-  cut.i.clear();
-  cut.x.clear();
-  for (i_t k = 0; k < cut_indices.size(); k++) {
-    const i_t j = cut_indices[k];
-    cut.i.push_back(j);
-    cut.x.push_back(x_workspace_[j]);
-  }
-
-  // Clear the workspace
-  for (i_t jj : cut_indices) {
-    x_workspace_[jj] = 0.0;
-    x_mark_[jj]      = 0;
-  }
-
-#ifdef CHECK_WORKSPACE
-  for (i_t j = 0; j < x_workspace_.size(); j++) {
-    if (x_workspace_[j] != 0.0) {
-      printf("After generate_cut: Dirty x_workspace_[%d] = %e\n", j, x_workspace_[j]);
-      assert(x_workspace_[j] == 0.0);
-    }
-    if (x_mark_[j] != 0) {
-      printf("After generate_cut: Dirty x_mark_[%d] = %d\n", j, x_mark_[j]);
-      assert(x_mark_[j] == 0);
-    }
-  }
-#endif
-
-  // The new cut is: g'*x >= R
-  // But we want to have it in the form h'*x <= b
-  cut.sort();
-
-  cut_rhs = R;
-
-#ifdef CHECK_REPEATED_INDICES
-  // Check for repeated indicies
-  std::vector<i_t> check(num_vars_, 0);
-  for (i_t p = 0; p < cut.i.size(); p++) {
-    if (check[cut.i[p]] != 0) {
-      printf("repeated index in generated cut\n");
-      assert(check[cut.i[p]] == 0);
-    }
-    check[cut.i[p]] = 1;
-  }
-#endif
-
-  if (cut.i.size() == 0) { return -1; }
-
-  return 0;
+  scratch_pad_.get_pad(inequality.vector.i, inequality.vector.x);
+  scratch_pad_.clear_pad();
 }
 
 template <typename i_t, typename f_t>
-i_t mixed_integer_rounding_cut_t<i_t, f_t>::generate_cut(
-  const sparse_vector_t<i_t, f_t>& a,
-  f_t beta,
-  const std::vector<f_t>& upper_bounds,
-  const std::vector<f_t>& lower_bounds,
-  const std::vector<variable_type_t>& var_types,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::
+  generate_cut_nonnegative_maintain_indicies(const inequality_t<i_t, f_t>& inequality,
+                                             const std::vector<variable_type_t>& var_types,
+                                             inequality_t<i_t, f_t>& cut)
 {
-#ifdef CHECK_WORKSPACE
-  for (i_t j = 0; j < x_workspace_.size(); j++) {
-    if (x_workspace_[j] != 0.0) {
-      printf("Before generate_cut: Dirty x_workspace_[%d] = %e\n", j, x_workspace_[j]);
-      printf("num_vars_ %d\n", num_vars_);
-      printf("x_workspace_.size() %ld\n", x_workspace_.size());
-      assert(x_workspace_[j] == 0.0);
-    }
-    if (x_mark_[j] != 0) {
-      printf("Before generate_cut: Dirty x_mark_[%d] = %d\n", j, x_mark_[j]);
-      assert(x_mark_[j] == 0);
-    }
-  }
-#endif
-
   auto f = [](f_t q_1, f_t q_2) -> f_t {
     f_t q_1_hat = q_1 - std::floor(q_1);
     f_t q_2_hat = q_2 - std::floor(q_2);
@@ -2296,206 +3020,59 @@ i_t mixed_integer_rounding_cut_t<i_t, f_t>::generate_cut(
 
   auto h = [](f_t q) -> f_t { return std::max(q, 0.0); };
 
-  std::vector<i_t> cut_indices;
-  cut_indices.reserve(a.i.size());
-  f_t R;
-  if (!needs_complement_) {
-    R = (beta - std::floor(beta)) * std::ceil(beta);
+  cut.vector       = inequality.vector;
+  const f_t beta   = inequality.rhs;
+  const f_t f_beta = fractional_part(beta);
+  cut.rhs          = f_beta * std::ceil(beta);
+  if (f_beta < 0.05 || f_beta > 0.95) { return false; }
 
-    for (i_t k = 0; k < a.i.size(); k++) {
-      const i_t jj = a.i[k];
-      f_t aj       = a.x[k];
-      if (var_types[jj] == variable_type_t::INTEGER) {
-        x_workspace_[jj] += f(aj, beta);
-        if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-          x_mark_[jj] = 1;
-          cut_indices.push_back(jj);
-        }
-      } else {
-        x_workspace_[jj] += h(aj);
-        if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-          x_mark_[jj] = 1;
-          cut_indices.push_back(jj);
-        }
-      }
+  for (i_t k = 0; k < inequality.size(); k++) {
+    const i_t j = inequality.index(k);
+    f_t aj      = inequality.coeff(k);
+    if (var_types[j] == variable_type_t::INTEGER) {
+      cut.vector.x[k] = f(aj, beta);
+    } else {
+      cut.vector.x[k] = h(aj);
     }
-  } else {
-    // Compute r
-    f_t r = beta;
-    for (i_t k = 0; k < a.i.size(); k++) {
-      const i_t jj = a.i[k];
-      if (has_upper_[jj]) {
-        const f_t uj = upper_bounds[jj];
-        r -= uj * a.x[k];
-        continue;
-      }
-      if (has_lower_[jj]) {
-        const f_t lj = lower_bounds[jj];
-        r -= lj * a.x[k];
-      }
-    }
-
-    // Compute R
-    R = std::ceil(r) * (r - std::floor(r));
-    for (i_t k = 0; k < a.i.size(); k++) {
-      const i_t jj = a.i[k];
-      const f_t aj = a.x[k];
-      if (has_upper_[jj]) {
-        const f_t uj = upper_bounds[jj];
-        if (var_types[jj] == variable_type_t::INTEGER) {
-          R -= f(-aj, r) * uj;
-        } else {
-          R -= h(-aj) * uj;
-        }
-      } else if (has_lower_[jj]) {
-        const f_t lj = lower_bounds[jj];
-        if (var_types[jj] == variable_type_t::INTEGER) {
-          R += f(aj, r) * lj;
-        } else {
-          R += h(aj) * lj;
-        }
-      }
-    }
-
-    // Compute the cut coefficients
-    for (i_t k = 0; k < a.i.size(); k++) {
-      const i_t jj = a.i[k];
-      const f_t aj = a.x[k];
-      if (has_upper_[jj]) {
-        if (var_types[jj] == variable_type_t::INTEGER) {
-          // Upper intersect I
-          x_workspace_[jj] -= f(-aj, r);
-          if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-            x_mark_[jj] = 1;
-            cut_indices.push_back(jj);
-          }
-        } else {
-          // Upper intersect C
-          f_t h_j = h(-aj);
-          if (h_j != 0.0) {
-            x_workspace_[jj] -= h_j;
-            if (!x_mark_[jj]) {
-              x_mark_[jj] = 1;
-              cut_indices.push_back(jj);
-            }
-          }
-        }
-      } else if (var_types[jj] == variable_type_t::INTEGER) {
-        // I \ Upper
-        x_workspace_[jj] += f(aj, r);
-        if (!x_mark_[jj] && x_workspace_[jj] != 0.0) {
-          x_mark_[jj] = 1;
-          cut_indices.push_back(jj);
-        }
-      } else {
-        // C \ Upper
-        f_t h_j = h(aj);
-        if (h_j != 0.0) {
-          x_workspace_[jj] += h_j;
-          if (!x_mark_[jj]) {
-            x_mark_[jj] = 1;
-            cut_indices.push_back(jj);
-          }
-        }
-      }
+    if (cut.vector.x[k] != cut.vector.x[k]) {
+      printf("cut.x[%d] %e != cut.x[%d] %e. aj %e beta %e var type %d\n",
+             k,
+             cut.vector.x[k],
+             k,
+             cut.vector.x[k],
+             aj,
+             beta,
+             static_cast<int>(var_types[j]));
+      exit(1);
     }
   }
 
-  cut.i.reserve(cut_indices.size());
-  cut.x.reserve(cut_indices.size());
-  cut.i.clear();
-  cut.x.clear();
-  for (i_t k = 0; k < cut_indices.size(); k++) {
-    const i_t jj = cut_indices[k];
-
-    // Check for small coefficients
-    const f_t aj = x_workspace_[jj];
-    if (std::abs(aj) < 1e-6) {
-      if (aj >= 0.0 && upper_bounds[jj] < inf) {
-        // Move this to the right-hand side
-        R -= aj * upper_bounds[jj];
-        continue;
-      } else if (aj <= 0.0 && lower_bounds[jj] > -inf) {
-        R += aj * lower_bounds[jj];
-        continue;
-      } else {
-      }
-    }
-    cut.i.push_back(jj);
-    cut.x.push_back(x_workspace_[jj]);
-  }
-
-  // Clear the workspace
-  for (i_t jj : cut_indices) {
-    x_workspace_[jj] = 0.0;
-    x_mark_[jj]      = 0;
-  }
-
-#ifdef CHECK_WORKSPACE
-  for (i_t j = 0; j < x_workspace_.size(); j++) {
-    if (x_workspace_[j] != 0.0) {
-      printf("After generate_cut: Dirty x_workspace_[%d] = %e\n", j, x_workspace_[j]);
-      assert(x_workspace_[j] == 0.0);
-    }
-    if (x_mark_[j] != 0) {
-      printf("After generate_cut: Dirty x_mark_[%d] = %d\n", j, x_mark_[j]);
-      assert(x_mark_[j] == 0);
-    }
-  }
-#endif
-
-  // The new cut is: g'*x >= R
-  // But we want to have it in the form h'*x <= b
-  cut.sort();
-
-  cut_rhs = R;
-
-#ifdef CHECK_REPEATED_INDICES
-  // Check for repeated indicies
-  std::vector<i_t> check(num_vars_, 0);
-  for (i_t p = 0; p < cut.i.size(); p++) {
-    if (check[cut.i[p]] != 0) {
-      printf("repeated index in generated cut\n");
-      assert(check[cut.i[p]] == 0);
-    }
-    check[cut.i[p]] = 1;
-  }
-#endif
-
-  if (cut.i.size() == 0) { return -1; }
-
-  return 0;
+  return true;
 }
 
 template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_t<i_t, f_t>& lp,
-                                                               csr_matrix_t<i_t, f_t>& Arow,
-                                                               sparse_vector_t<i_t, f_t>& cut,
-                                                               f_t& cut_rhs)
+f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_violation(
+  const inequality_t<i_t, f_t>& cut, const std::vector<f_t>& xstar)
+{
+  f_t dot           = cut.vector.dot(xstar);
+  f_t cut_violation = cut.rhs - dot;
+  return cut_violation;
+}
+
+template <typename i_t, typename f_t>
+void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(
+  const lp_problem_t<i_t, f_t>& lp, csr_matrix_t<i_t, f_t>& Arow, inequality_t<i_t, f_t>& cut)
 {
   // Remove slacks from the cut
   // So that the cut is only over the original variables
   bool found_slack = false;
   i_t cut_nz       = 0;
   std::vector<i_t> cut_indices;
-  cut_indices.reserve(cut.i.size());
+  cut_indices.reserve(cut.size());
 
-#ifdef CHECK_WORKSPACE
-  for (i_t j = 0; j < x_workspace_.size(); j++) {
-    if (x_workspace_[j] != 0.0) {
-      printf("Begin Dirty x_workspace_[%d] = %e\n", j, x_workspace_[j]);
-      assert(x_workspace_[j] == 0.0);
-    }
-    if (x_mark_[j] != 0) {
-      printf("Begin Dirty x_mark_[%d] = %d\n", j, x_mark_[j]);
-      assert(x_mark_[j] == 0);
-    }
-  }
-#endif
-
-  for (i_t k = 0; k < cut.i.size(); k++) {
-    const i_t j  = cut.i[k];
-    const f_t cj = cut.x[k];
+  for (i_t k = 0; k < cut.size(); k++) {
+    const i_t j  = cut.index(k);
+    const f_t cj = cut.coeff(k);
     if (is_slack_[j]) {
       found_slack           = true;
       const i_t slack_start = lp.A.col_start[j];
@@ -2531,198 +3108,97 @@ void mixed_integer_rounding_cut_t<i_t, f_t>::substitute_slacks(const lp_problem_
       // sum_{k != j} C(k) * x_k + sum_{h != j} -C(j)/alpha * A(i, h) * x_h >= cut_rhs - C(j)/alpha
       // * rhs_i
       const i_t i = slack_rows_[j];
-      cut_rhs -= cj * lp.rhs[i] / alpha;
+      cut.rhs -= cj * lp.rhs[i] / alpha;
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
       for (i_t q = row_start; q < row_end; q++) {
         const i_t h = Arow.j[q];
         if (h != j) {
           const f_t aih = Arow.x[q];
-          x_workspace_[h] -= cj * aih / alpha;
-          if (!x_mark_[h]) {
-            x_mark_[h] = 1;
-            cut_indices.push_back(h);
-            cut_nz++;
-          }
+          scratch_pad_.add_to_pad(h, -cj * aih / alpha);
         } else {
           const f_t aij = Arow.x[q];
           if (std::abs(aij) != 1.0) {
-            settings_.log.printf(
-              "Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
+            printf("Slack row %d has non-unit coefficient %e for variable %d\n", i, aij, j);
             assert(std::abs(aij) == 1.0);
           }
         }
       }
 
     } else {
-      x_workspace_[j] += cj;
-      if (!x_mark_[j]) {
-        x_mark_[j] = 1;
-        cut_indices.push_back(j);
-        cut_nz++;
-      }
+      scratch_pad_.add_to_pad(j, cj);
     }
   }
 
   if (found_slack) {
-    cut.i.reserve(cut_nz);
-    cut.x.reserve(cut_nz);
-    cut.i.clear();
-    cut.x.clear();
-
-    for (i_t k = 0; k < cut_nz; k++) {
-      const i_t j = cut_indices[k];
-
-      // Check for small coefficients
-      const f_t aj = x_workspace_[j];
-      if (std::abs(aj) < 1e-6) {
-        if (aj >= 0.0 && lp.upper[j] < inf) {
-          // Move this to the right-hand side
-          cut_rhs -= aj * lp.upper[j];
-          continue;
-        } else if (aj <= 0.0 && lp.lower[j] > -inf) {
-          cut_rhs += aj * lp.lower[j];
-          continue;
-        } else {
-        }
-      }
-
-      cut.i.push_back(j);
-      cut.x.push_back(x_workspace_[j]);
-    }
+    scratch_pad_.get_pad(cut.vector.i, cut.vector.x);
     // Sort the cut
     cut.sort();
   }
 
   // Clear the workspace
-  for (i_t jj : cut_indices) {
-    x_workspace_[jj] = 0.0;
-    x_mark_[jj]      = 0;
-  }
-
-#ifdef CHECK_WORKSPACE
-  for (i_t j = 0; j < x_workspace_.size(); j++) {
-    if (x_workspace_[j] != 0.0) {
-      printf("End Dirty x_workspace_[%d] = %e\n", j, x_workspace_[j]);
-      assert(x_workspace_[j] == 0.0);
-    }
-    if (x_mark_[j] != 0) {
-      printf("End Dirty x_mark_[%d] = %d\n", j, x_mark_[j]);
-      assert(x_mark_[j] == 0);
-    }
-  }
-#endif
+  scratch_pad_.clear_pad();
 }
 
 template <typename i_t, typename f_t>
-f_t mixed_integer_rounding_cut_t<i_t, f_t>::compute_violation(const sparse_vector_t<i_t, f_t>& cut,
-                                                              f_t cut_rhs,
-                                                              const std::vector<f_t>& xstar)
-{
-  f_t dot           = cut.dot(xstar);
-  f_t cut_violation = cut_rhs - dot;
-  return cut_violation;
-}
-
-template <typename i_t, typename f_t>
-void mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
+f_t complemented_mixed_integer_rounding_cut_t<i_t, f_t>::combine_rows(
   const lp_problem_t<i_t, f_t>& lp,
   csr_matrix_t<i_t, f_t>& Arow,
   i_t xj,
-  const sparse_vector_t<i_t, f_t>& pivot_row,
-  f_t pivot_row_rhs,
-  sparse_vector_t<i_t, f_t>& inequality,
-  f_t& inequality_rhs)
+  const inequality_t<i_t, f_t>& pivot_row,
+  inequality_t<i_t, f_t>& inequality)
 {
-#ifdef CHECK_WORKSPACE
-  for (i_t k = 0; k < x_workspace_.size(); k++) {
-    if (x_workspace_[k] != 0.0) {
-      printf("Dirty x_workspace_[%d] = %e\n", k, x_workspace_[k]);
-      assert(x_workspace_[k] == 0.0);
-    }
-    if (x_mark_[k] != 0) {
-      printf("Dirty x_mark_[%d] = %d\n", k, x_mark_[k]);
-      assert(x_mark_[k] == 0);
-    }
-  }
-#endif
-
-  indices_.clear();
-  indices_.reserve(pivot_row.i.size() + inequality.i.size());
-
   // Find the coefficient associated with variable xj in the pivot row
   f_t a_l_j = 0.0;
-  for (i_t k = 0; k < pivot_row.i.size(); k++) {
-    const i_t j = pivot_row.i[k];
+  for (i_t k = 0; k < pivot_row.size(); k++) {
+    const i_t j = pivot_row.index(k);
     if (j == xj) {
-      a_l_j = pivot_row.x[k];
+      a_l_j = pivot_row.coeff(k);
       break;
     }
   }
 
-  if (a_l_j == 0) { return; }
+  if (a_l_j == 0) {
+    printf("Pivot row has no coefficient for variable %d\n", xj);
+    return 0.0;
+  }
 
   f_t a_i_j = 0.0;
 
-  i_t nz = 0;
   // Store the inequality in the workspace
   // and save the coefficient associated with variable xj
-  for (i_t k = 0; k < inequality.i.size(); k++) {
-    const i_t j = inequality.i[k];
+  for (i_t k = 0; k < inequality.size(); k++) {
+    const i_t j = inequality.index(k);
     if (j != xj) {
-      x_workspace_[j] = inequality.x[k];
-      x_mark_[j]      = 1;
-      indices_.push_back(j);
-      nz++;
+      scratch_pad_.add_to_pad(j, inequality.coeff(k));
     } else {
-      a_i_j = inequality.x[k];
+      a_i_j = inequality.coeff(k);
     }
+  }
+  if (a_i_j == 0.0) {
+    printf("Inequality has zero coefficient for variable %d\n", xj);
+    scratch_pad_.clear_pad();
+    return 0.0;
   }
 
   f_t pivot_value = a_i_j / a_l_j;
   // Adjust the rhs of the inequality
-  inequality_rhs -= pivot_value * pivot_row_rhs;
+  inequality.rhs -= pivot_value * pivot_row.rhs;
 
   // Adjust the coefficients of the inequality
   // based on the nonzeros in the pivot row
-  for (i_t k = 0; k < pivot_row.i.size(); k++) {
-    const i_t j = pivot_row.i[k];
-    if (j != xj) {
-      x_workspace_[j] -= pivot_value * pivot_row.x[k];
-      if (!x_mark_[j]) {
-        x_mark_[j] = 1;
-        indices_.push_back(j);
-        nz++;
-      }
-    }
+  for (i_t k = 0; k < pivot_row.size(); k++) {
+    const i_t j = pivot_row.index(k);
+    if (j != xj) { scratch_pad_.add_to_pad(j, -pivot_value * pivot_row.coeff(k)); }
   }
 
   // Store the new inequality
-  inequality.i.resize(nz);
-  inequality.x.resize(nz);
-  for (i_t k = 0; k < nz; k++) {
-    inequality.i[k] = indices_[k];
-    inequality.x[k] = x_workspace_[indices_[k]];
-  }
-
-#ifdef CHECK_REPEATED_INDICES
-  // Check for repeated indices
-  std::vector<i_t> check(num_vars_, 0);
-  for (i_t k = 0; k < inequality.i.size(); k++) {
-    if (check[inequality.i[k]] == 1) {
-      printf("repeated index\n");
-      assert(check[inequality.i[k]] == 0);
-    }
-    check[inequality.i[k]] = 1;
-  }
-#endif
+  scratch_pad_.get_pad(inequality.vector.i, inequality.vector.x);
 
   // Clear the workspace
-  for (i_t j : indices_) {
-    x_workspace_[j] = 0.0;
-    x_mark_[j]      = 0;
-  }
-  indices_.clear();
+  scratch_pad_.clear_pad();
+
+  return -pivot_value;
 }
 
 template <typename i_t, typename f_t>
@@ -2758,15 +3234,14 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
-  sparse_vector_t<i_t, f_t>& inequality,
-  f_t& inequality_rhs)
+  inequality_t<i_t, f_t>& inequality)
 {
   const bool verbose = false;
   // Count the number of continuous variables in the inequality
   i_t num_continuous = 0;
-  const i_t nz       = inequality.i.size();
+  const i_t nz       = inequality.size();
   for (i_t k = 0; k < nz; k++) {
-    const i_t j = inequality.i[k];
+    const i_t j = inequality.index(k);
     if (var_types[j] == variable_type_t::CONTINUOUS) { num_continuous++; }
   }
 
@@ -2774,10 +3249,10 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
   // We assume the inequality is of the form sum_j a_j x_j <= rhs
 
   for (i_t k = 0; k < nz; k++) {
-    const i_t j   = inequality.i[k];
+    const i_t j   = inequality.index(k);
     const f_t l_j = lp.lower[j];
     const f_t u_j = lp.upper[j];
-    const f_t a_j = inequality.x[k];
+    const f_t a_j = inequality.coeff(k);
     if (var_types[j] == variable_type_t::CONTINUOUS) {
       if (a_j == 0.0) { continue; }
 
@@ -2787,13 +3262,13 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
         // sum_{k != j} a_k x_k + a_j x_j <= rhs
         // sum_{k != j} a_k x_k + a_j (v_j + l_j) <= rhs
         // sum_{k != j} a_k x_k + a_j v_j <= rhs - a_j l_j
-        inequality_rhs -= a_j * l_j;
+        inequality.rhs -= a_j * l_j;
         transformed_variables_[j] = -1;
 
         // We now have a_j * v_j with a_j, v_j >= 0
         // So we have sum_{k != j} a_k x_k <= sum_{k != j} a_k x_k + a_j v_j <= rhs - a_j l_j
         // So we can now drop the continuous variable v_j
-        inequality.x[k] = 0.0;
+        inequality.vector.x[k] = 0.0;
 
       } else if (a_j < 0.0 && u_j < inf) {
         // w_j = u_j - x_j >= 0
@@ -2801,13 +3276,13 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
         // sum_{k != j} a_k x_k + a_j x_j <= rhs
         // sum_{k != j} a_k x_k + a_j (u_j - w_j) <= rhs
         // sum_{k != j} a_k x_k - a_j w_j <= rhs - a_j u_j
-        inequality_rhs -= a_j * u_j;
+        inequality.rhs -= a_j * u_j;
         transformed_variables_[j] = 1;
 
         // We now have a_j * w_j with a_j, w_j >= 0
         // So we have sum_{k != j} a_k x_k <= sum_{k != j} a_k x_k + a_j w_j <= rhs - a_j u_j
         // So we can now drop the continuous variable w_j
-        inequality.x[k] = 0.0;
+        inequality.vector.x[k] = 0.0;
       } else {
         // We can't keep the coefficient of the continuous variable positive
         // This means we can't eliminate the continuous variable
@@ -2823,7 +3298,7 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
         // sum_{k != j} a_k x_k + a_j x_j <= rhs
         // sum_{k != j} a_k x_k + a_j (v_j + l_j) <= rhs
         // sum_{k != j} a_k x_k + a_j v_j <= rhs - a_j l_j
-        inequality_rhs -= a_j * l_j;
+        inequality.rhs -= a_j * l_j;
       } else if (transformed_variables_[j] == 1) {
         // We are closer to the finite upper bound
         // w_j = u_j - x_j >= 0
@@ -2831,44 +3306,43 @@ i_t strong_cg_cut_t<i_t, f_t>::remove_continuous_variables_integers_nonnegative(
         // sum_{k != j} a_k x_k + a_j x_j <= rhs
         // sum_{k != j} a_k x_k + a_j (u_j - w_j) <= rhs
         // sum_{k != j} a_k x_k - a_j w_j <= rhs - a_j u_j
-        inequality_rhs -= a_j * u_j;
-        inequality.x[k] *= -1.0;
+        inequality.rhs -= a_j * u_j;
+        inequality.vector.x[k] *= -1.0;
       }
     }
   }
 
   // Squeeze out the zero coefficents
-  sparse_vector_t<i_t, f_t> new_inequality(inequality.n, 0);
-  inequality.squeeze(new_inequality);
-  inequality = new_inequality;
+  sparse_vector_t<i_t, f_t> new_inequality_vector(inequality.vector.n, 0);
+  inequality.vector.squeeze(new_inequality_vector);
+  inequality.vector = new_inequality_vector;
   return 0;
 }
 
 template <typename i_t, typename f_t>
 void strong_cg_cut_t<i_t, f_t>::to_original_integer_variables(const lp_problem_t<i_t, f_t>& lp,
-                                                              sparse_vector_t<i_t, f_t>& cut,
-                                                              f_t& cut_rhs)
+                                                              inequality_t<i_t, f_t>& cut)
 {
   // We expect a cut of the form sum_j a_j y_j <= rhs
   // where y_j >= 0 is a transformed variable
   // We need to convert it back into a cut on the original variables
 
-  for (i_t k = 0; k < cut.i.size(); k++) {
-    const i_t j   = cut.i[k];
-    const f_t a_j = cut.x[k];
+  for (i_t k = 0; k < cut.size(); k++) {
+    const i_t j   = cut.index(k);
+    const f_t a_j = cut.coeff(k);
     if (transformed_variables_[j] == -1) {
       // sum_{k != j} a_k x_k + a_j v_j <= rhs
       // v_j = x_j - l_j >= 0,
       // sum_{k != j} a_k x_k + a_j (x_j - l_j) <= rhs
       // sum_{k != j} a_k x_k + a_j x_j <= rhs + a_j l_j
-      cut_rhs += a_j * lp.lower[j];
+      cut.rhs += a_j * lp.lower[j];
     } else if (transformed_variables_[j] == 1) {
       // sum_{k != j} a_k x_k + a_j w_j <= rhs
       // w_j = u_j - x_j >= 0
       // sum_{k != j} a_k x_k + a_j (u_j - x_j) <= rhs
       // sum_{k != j} a_k x_k - a_j x_j <= rhs - a_j u_j
-      cut_rhs -= a_j * lp.upper[j];
-      cut.x[k] *= -1.0;
+      cut.rhs -= a_j * lp.upper[j];
+      cut.vector.x[k] *= -1.0;
     }
   }
 }
@@ -2877,44 +3351,37 @@ template <typename i_t, typename f_t>
 i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_integer_only(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
-  const sparse_vector_t<i_t, f_t>& inequality,
-  f_t inequality_rhs,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  const inequality_t<i_t, f_t>& inequality,
+  inequality_t<i_t, f_t>& cut)
 {
   // We expect an inequality of the form sum_j a_j x_j <= rhs
   // where all the variables x_j are integer and nonnegative
 
   // We then apply the CG cut:
   // sum_j floor(a_j) x_j <= floor(rhs)
-  cut.i.reserve(inequality.i.size());
-  cut.x.reserve(inequality.i.size());
-  cut.i.clear();
-  cut.x.clear();
+  cut.reserve(inequality.size());
+  cut.clear();
 
-  f_t a_0   = inequality_rhs;
+  f_t a_0   = inequality.rhs;
   f_t f_a_0 = fractional_part(a_0);
 
   if (f_a_0 == 0.0) {
     // f(a_0) == 0.0 so we do a weak CG cut
-    cut.i.reserve(inequality.i.size());
-    cut.x.reserve(inequality.i.size());
-    cut.i.clear();
-    cut.x.clear();
-    for (i_t k = 0; k < inequality.i.size(); k++) {
-      const i_t j   = inequality.i[k];
-      const f_t a_j = inequality.x[k];
+    cut.reserve(inequality.size());
+    cut.clear();
+    for (i_t k = 0; k < inequality.size(); k++) {
+      const i_t j   = inequality.index(k);
+      const f_t a_j = inequality.coeff(k);
       if (var_types[j] == variable_type_t::INTEGER) {
-        cut.i.push_back(j);
-        cut.x.push_back(std::floor(a_j));
+        cut.push_back(j, std::floor(a_j));
       } else {
         return -1;
       }
     }
-    cut_rhs = std::floor(inequality_rhs);
+    cut.rhs = std::floor(inequality.rhs);
   } else {
     return generate_strong_cg_cut_helper(
-      inequality.i, inequality.x, inequality_rhs, var_types, cut, cut_rhs);
+      inequality.vector.i, inequality.vector.x, inequality.rhs, var_types, cut);
   }
   return 0;
 }
@@ -2925,8 +3392,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
   const std::vector<f_t>& coefficients,
   f_t rhs,
   const std::vector<variable_type_t>& var_types,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  inequality_t<i_t, f_t>& cut)
 {
   const bool verbose = false;
   const i_t nz       = indicies.size();
@@ -2947,10 +3413,8 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
   f_t upper       = 1.0 / static_cast<f_t>(k);
   if (verbose) { printf("f_a_0 %e lower %e upper %e alpha %e\n", f_a_0, lower, upper, alpha); }
   if (f_a_0 >= lower && f_a_0 < upper) {
-    cut.i.reserve(nz);
-    cut.x.reserve(nz);
-    cut.i.clear();
-    cut.x.clear();
+    cut.reserve(nz);
+    cut.clear();
     for (i_t q = 0; q < nz; q++) {
       const i_t j   = indicies[q];
       const f_t a_j = coefficients[q];
@@ -2958,8 +3422,7 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
         const f_t f_a_j = fractional_part(a_j);
         const f_t tol   = 1e-4;
         if (f_a_j <= f_a_0 + tol) {
-          cut.i.push_back(j);
-          cut.x.push_back((k + 1.0) * std::floor(a_j));
+          cut.push_back(j, (k + 1.0) * std::floor(a_j));
           if (verbose) { printf("j %d a_j %e f_a_j %e k %d\n", j, a_j, f_a_j, k); }
         } else {
           // Find p such that p <= k * f(a_j) < p + 1
@@ -2968,11 +3431,9 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
           const f_t rhs_j = f_a_0 + static_cast<f_t>(p) / static_cast<f_t>(k) * alpha;
           const i_t coeff = (k + 1) * static_cast<i_t>(std::floor(a_j)) + p;
           if (f_a_j > rhs_j + tol) {
-            cut.i.push_back(j);
-            cut.x.push_back(static_cast<f_t>(coeff + 1));
+            cut.push_back(j, static_cast<f_t>(coeff + 1));
           } else {
-            cut.i.push_back(j);
-            cut.x.push_back(static_cast<f_t>(coeff));
+            cut.push_back(j, static_cast<f_t>(coeff));
           }
         }
       } else {
@@ -2983,11 +3444,11 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut_helper(
     if (verbose) { printf("Error: k %d lower %e f(a_0) %e upper %e\n", k, lower, f_a_0, upper); }
     return -1;
   }
-  cut_rhs = (k + 1.0) * std::floor(rhs);
+  cut.rhs = (k + 1.0) * std::floor(rhs);
   if (verbose) {
-    printf("Generated strong CG cut: k %d f_a_0 %e cut_rhs %e\n", k, f_a_0, cut_rhs);
-    for (i_t q = 0; q < cut.i.size(); q++) {
-      if (cut.x[q] != 0.0) { printf("%.16e x%d ", cut.x[q], cut.i[q]); }
+    printf("Generated strong CG cut: k %d f_a_0 %e cut_rhs %e\n", k, f_a_0, cut.rhs);
+    for (i_t q = 0; q < cut.size(); q++) {
+      if (cut.vector.x[q] != 0.0) { printf("%.16e x%d ", cut.vector.x[q], cut.vector.i[q]); }
     }
     printf("\n");
     printf("Original inequality rhs %e nz %ld\n", rhs, coefficients.size());
@@ -3004,11 +3465,9 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<variable_type_t>& var_types,
-  const sparse_vector_t<i_t, f_t>& inequality,
-  const f_t inequality_rhs,
+  const inequality_t<i_t, f_t>& inequality,
   const std::vector<f_t>& xstar,
-  sparse_vector_t<i_t, f_t>& cut,
-  f_t& cut_rhs)
+  inequality_t<i_t, f_t>& cut)
 {
 #ifdef PRINT_INEQUALITY_INFO
   for (i_t k = 0; k < inequality.i.size(); k++) {
@@ -3023,36 +3482,33 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut(
   // and transform integer variables to be nonnegative
 
   // Copy the inequality since remove continuous variables will modify it
-  sparse_vector_t<i_t, f_t> cg_inequality = inequality;
-  f_t cg_inequality_rhs                   = inequality_rhs;
-  i_t status                              = remove_continuous_variables_integers_nonnegative(
-    lp, settings, var_types, cg_inequality, cg_inequality_rhs);
+  inequality_t<i_t, f_t> cg_inequality = inequality;
+  i_t status =
+    remove_continuous_variables_integers_nonnegative(lp, settings, var_types, cg_inequality);
 
   if (status != 0) {
     // Try negating the equality and see if that helps
     cg_inequality = inequality;
     cg_inequality.negate();
-    cg_inequality_rhs = -inequality_rhs;
 
-    status = remove_continuous_variables_integers_nonnegative(
-      lp, settings, var_types, cg_inequality, cg_inequality_rhs);
+    status =
+      remove_continuous_variables_integers_nonnegative(lp, settings, var_types, cg_inequality);
   }
 
   if (status == 0) {
     // We have an inequality with no continuous variables
 
     // Generate a CG cut
-    status = generate_strong_cg_cut_integer_only(
-      settings, var_types, cg_inequality, cg_inequality_rhs, cut, cut_rhs);
+    status = generate_strong_cg_cut_integer_only(settings, var_types, cg_inequality, cut);
     if (status != 0) { return -1; }
 
     // Convert the CG cut back to the original variables
-    to_original_integer_variables(lp, cut, cut_rhs);
+    to_original_integer_variables(lp, cut);
 
     // Check for violation
-    f_t dot = cut.dot(xstar);
+    f_t dot = cut.vector.dot(xstar);
     // If the cut is violated we will have: sum_j a_j xstar_j > rhs
-    f_t violation                     = dot - cut_rhs;
+    f_t violation                     = dot - cut.rhs;
     const f_t min_violation_threshold = 1e-6;
     if (violation > min_violation_threshold) {
       //  Note that no slacks are currently present. Since slacks are currently treated as
@@ -3061,7 +3517,6 @@ i_t strong_cg_cut_t<i_t, f_t>::generate_strong_cg_cut(
       // The CG cut is in the form: sum_j a_j x_j <= rhs
       // The cut pool wants the cut in the form: sum_j a_j x_j >= rhs
       cut.negate();
-      cut_rhs *= -1.0;
       return 0;
     }
   }
@@ -3549,7 +4004,8 @@ template class cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
 template class knapsack_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
-template class mixed_integer_rounding_cut_t<int, double>;
+template class complemented_mixed_integer_rounding_cut_t<int, double>;
+template class variable_bounds_t<int, double>;
 
 template int add_cuts(const simplex_solver_settings_t<int, double>& settings,
                       const csr_matrix_t<int, double>& cuts,
