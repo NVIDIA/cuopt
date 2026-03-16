@@ -8,6 +8,7 @@ NVIDIA cuOpt
    :name: NVIDIA cuOpt
 
    introduction.rst
+   install.rst
    release-notes
 
    system-requirements.rst

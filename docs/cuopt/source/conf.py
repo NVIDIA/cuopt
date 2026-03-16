@@ -378,7 +378,29 @@ linkcheck_ignore = [
 ]
 
 
+def write_install_version_js(app):
+    """Write install selector version from cuopt.__version__ to output _static."""
+    import os
+
+    outdir = getattr(app.builder, "outdir", None) or getattr(
+        app.config, "outdir", None
+    )
+    if not outdir:
+        return
+    static_dir = os.path.join(outdir, "_static")
+    os.makedirs(static_dir, exist_ok=True)
+    conda_ver = f"{CUOPT_VERSION.major:02}.{CUOPT_VERSION.minor:02}"
+    pip_ver = f"{CUOPT_VERSION.major}.{CUOPT_VERSION.minor}"
+    path = os.path.join(static_dir, "cuopt-install-version.js")
+    with open(path, "w") as f:
+        f.write(
+            'window.CUOPT_INSTALL_VERSION = { "conda": "%s", "pip": "%s" };\n'
+            % (conda_ver, pip_ver)
+        )
+
+
 def setup(app):
     app.setup_extension("sphinx.ext.autodoc")
     app.connect("autodoc-skip-member", skip_unwanted_inherited_members)
     app.connect("write-started", write_project_json)
+    app.connect("builder-inited", write_install_version_js)
