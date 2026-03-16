@@ -7,15 +7,10 @@ Choose your interface, install method, and options below to get the exact instal
 Install selector
 ================
 
-.. raw:: html
+.. install-selector::
 
-   <link rel="stylesheet" href="_static/install-selector.css" />
-   <script src="_static/cuopt-install-version.js"></script>
-   <div id="cuopt-install-selector"></div>
-   <script src="_static/install-selector.js"></script>
-
-Manual instructions
-===================
+Quick starts
+============
 
 If the selector does not load or you prefer step-by-step guides, use the quick-start pages for each interface:
 

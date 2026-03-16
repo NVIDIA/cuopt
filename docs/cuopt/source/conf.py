@@ -15,6 +15,8 @@ import tempfile
 import json
 from sphinx.util.fileutil import copy_asset_file
 from pathlib import Path
+from docutils import nodes
+from docutils.parsers.rst import Directive, directives
 
 # Run cuopt server help command and save output
 subprocess.run(
@@ -169,7 +171,8 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_css_files = ["swagger-nvidia.css"]
+html_css_files = ["swagger-nvidia.css", "install-selector.css"]
+html_js_files = ["cuopt-install-version.js", "install-selector.js"]
 html_extra_path = ["versions1.json"]
 
 
@@ -378,6 +381,28 @@ linkcheck_ignore = [
 ]
 
 
+class InstallSelector(Directive):
+    """Embed the install selector widget. Optional :default-iface: (python, c, server, cli)."""
+
+    optional_arguments = 0
+    option_spec = {"default-iface": directives.unchanged}
+    has_content = False
+
+    def run(self):
+        default_iface = (
+            (self.options.get("default-iface") or "").strip().lower()
+        )
+        if default_iface not in ("python", "c", "server", "cli"):
+            default_iface = ""
+        data_attr = (
+            ' data-default-iface="' + default_iface + '"'
+            if default_iface
+            else ""
+        )
+        html = '<div id="cuopt-install-selector"' + data_attr + "></div>"
+        return [nodes.raw("", html, format="html")]
+
+
 def write_install_version_js(app):
     """Write install selector version from cuopt.__version__ to output _static."""
     import os
@@ -400,6 +425,7 @@ def write_install_version_js(app):
 
 
 def setup(app):
+    app.add_directive("install-selector", InstallSelector)
     app.setup_extension("sphinx.ext.autodoc")
     app.connect("autodoc-skip-member", skip_unwanted_inherited_members)
     app.connect("write-started", write_project_json)

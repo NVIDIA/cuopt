@@ -232,12 +232,6 @@
         },
       },
     },
-    cli: {
-      pip: null,
-      conda: null,
-      container: null,
-      note: "cuopt_cli is installed with the C API (libcuopt). Install libcuopt via pip or Conda above, then use cuopt_cli.",
-    },
   };
 
   function getSelectedValue(name) {
@@ -252,7 +246,7 @@
     var cuda = getSelectedValue("cuopt-cuda");
 
     if (iface === "cli") {
-      return COMMANDS.cli.note;
+      iface = "c";
     }
 
     var data = COMMANDS[iface] && COMMANDS[iface][method];
@@ -276,7 +270,7 @@
     var cmd = getCommand();
     out.value = cmd;
     out.style.display = cmd ? "block" : "none";
-    copyBtn.style.display = cmd && cmd !== COMMANDS.cli.note ? "inline-flex" : "none";
+    copyBtn.style.display = cmd ? "inline-flex" : "none";
   }
 
   function updateVisibility() {
@@ -349,6 +343,15 @@
     );
     document.getElementById("cuopt-copy-btn").addEventListener("click", copyToClipboard);
     updateVisibility();
+
+    var defaultIface = root.getAttribute("data-default-iface");
+    if (defaultIface && ["python", "c", "server", "cli"].indexOf(defaultIface) !== -1) {
+      var radio = document.querySelector('input[name="cuopt-iface"][value="' + defaultIface + '"]');
+      if (radio) {
+        radio.checked = true;
+        updateVisibility();
+      }
+    }
   }
 
   if (document.readyState === "loading") {
