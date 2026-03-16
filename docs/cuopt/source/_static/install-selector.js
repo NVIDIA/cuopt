@@ -60,29 +60,21 @@
           cu12:
             "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" +
             V_CONDA +
-            ".* cuda-version=" +
-            V_CONDA +
-            ".*",
+            ".* cuda-version=12.9",
           cu13:
             "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" +
             V_CONDA +
-            ".* cuda-version=" +
-            V_CONDA +
-            ".*",
+            ".* cuda-version=13.0",
         },
         nightly: {
           cu12:
             "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" +
             V_CONDA_NEXT +
-            ".* cuda-version=" +
-            V_CONDA_NEXT +
-            ".*",
+            ".* cuda-version=12.9",
           cu13:
             "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" +
             V_CONDA_NEXT +
-            ".* cuda-version=" +
-            V_CONDA_NEXT +
-            ".*",
+            ".* cuda-version=13.0",
         },
       },
       container: {
@@ -136,29 +128,21 @@
           cu12:
             "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
-            ".* cuda-version=" +
-            V_CONDA +
-            ".*",
+            ".* cuda-version=12.9",
           cu13:
             "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
-            ".* cuda-version=" +
-            V_CONDA +
-            ".*",
+            ".* cuda-version=13.0",
         },
         nightly: {
           cu12:
             "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" +
             V_CONDA_NEXT +
-            ".* cuda-version=" +
-            V_CONDA_NEXT +
-            ".*",
+            ".* cuda-version=12.9",
           cu13:
             "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" +
             V_CONDA_NEXT +
-            ".* cuda-version=" +
-            V_CONDA_NEXT +
-            ".*",
+            ".* cuda-version=13.0",
         },
       },
       container: null,
@@ -237,6 +221,13 @@
     },
   };
 
+  var SUPPORTED_METHODS = {
+    python: ["pip", "conda", "container"],
+    c: ["pip", "conda"],
+    server: ["pip", "conda", "container"],
+    cli: ["pip", "conda"],
+  };
+
   function getSelectedValue(name) {
     var el = document.querySelector('input[name="' + name + '"]:checked');
     return el ? el.value : "";
@@ -248,6 +239,7 @@
     var release = getSelectedValue("cuopt-release");
     var cuda = getSelectedValue("cuopt-cuda");
 
+    /* CLI uses libcuopt (c) install; cuopt_cli is shipped with libcuopt. */
     if (iface === "cli") {
       iface = "c";
     }
@@ -279,9 +271,23 @@
   function updateVisibility() {
     var method = getSelectedValue("cuopt-method");
     var iface = getSelectedValue("cuopt-iface");
+    var allowed = SUPPORTED_METHODS[iface] || [];
+    var methodInputs = document.querySelectorAll('input[name="cuopt-method"]');
+    methodInputs.forEach(function (input) {
+      var enabled = allowed.indexOf(input.value) !== -1;
+      input.disabled = !enabled;
+      var label = input.closest("label");
+      if (label) label.style.display = enabled ? "" : "none";
+    });
+    if (allowed.indexOf(method) === -1 && allowed.length) {
+      var fallback = document.querySelector('input[name="cuopt-method"][value="' + allowed[0] + '"]');
+      if (fallback) {
+        fallback.checked = true;
+        method = allowed[0];
+      }
+    }
     var cudaRow = document.getElementById("cuopt-cuda-row");
     var releaseRow = document.getElementById("cuopt-release-row");
-
     var showCuda = (method === "pip" || method === "conda" || method === "container") && iface !== "cli";
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = iface !== "cli" ? "table-row" : "none";

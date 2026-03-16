@@ -405,8 +405,6 @@ class InstallSelector(Directive):
 
 def write_install_version_js(app):
     """Write install selector version from cuopt.__version__ to output _static."""
-    import os
-
     outdir = getattr(app.builder, "outdir", None) or getattr(
         app.config, "outdir", None
     )

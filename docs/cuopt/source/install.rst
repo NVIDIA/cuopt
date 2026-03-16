@@ -4,13 +4,13 @@ Installation
 
 Choose your interface, install method, and options below to get the exact install command. Ensure your system meets the :doc:`system-requirements` before installing.
 
-Install selector
+Install Selector
 ================
 
 .. install-selector::
 
-Quick starts
-============
+Quick Start Guides
+==================
 
 If the selector does not load or you prefer step-by-step guides, use the quick-start pages for each interface:
 
