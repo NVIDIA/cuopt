@@ -233,6 +233,12 @@
     return el ? el.value : "";
   }
 
+  function hasCudaVariants(iface, method) {
+    var d = COMMANDS[iface] && COMMANDS[iface][method];
+    if (!d || !d.stable) return false;
+    return !!(d.stable.cu12 && d.stable.cu13);
+  }
+
   function getCommand() {
     var iface = getSelectedValue("cuopt-iface");
     var method = getSelectedValue("cuopt-method");
@@ -242,6 +248,8 @@
     /* CLI uses libcuopt (c) install; cuopt_cli is shipped with libcuopt. */
     if (iface === "cli") {
       iface = "c";
+      release = "stable";
+      cuda = "cu12";
     }
 
     var data = COMMANDS[iface] && COMMANDS[iface][method];
@@ -288,9 +296,10 @@
     }
     var cudaRow = document.getElementById("cuopt-cuda-row");
     var releaseRow = document.getElementById("cuopt-release-row");
-    var showCuda = (method === "pip" || method === "conda" || method === "container") && iface !== "cli";
+    var releaseVisible = iface !== "cli";
+    var showCuda = releaseVisible && (method === "pip" || method === "conda" || method === "container") && hasCudaVariants(iface, method);
     cudaRow.style.display = showCuda ? "table-row" : "none";
-    releaseRow.style.display = iface !== "cli" ? "table-row" : "none";
+    releaseRow.style.display = releaseVisible ? "table-row" : "none";
     updateOutput();
   }
 
