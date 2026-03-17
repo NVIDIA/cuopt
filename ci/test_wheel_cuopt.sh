@@ -43,8 +43,8 @@ elif command -v dnf &> /dev/null; then
     dnf -y install file unzip
 fi
 
-# Detect which test components to run
-source ./ci/detect_test_components.sh
+# Derive CUOPT_TEST_COMPONENTS from changed-files env vars
+source ./ci/derive_test_components.sh
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR

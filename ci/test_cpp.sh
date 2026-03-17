@@ -34,8 +34,8 @@ rapids-print-env
 rapids-logger "Check GPU usage"
 nvidia-smi
 
-# Detect which test components to run
-source ./ci/detect_test_components.sh
+# Derive CUOPT_TEST_COMPONENTS from changed-files env vars
+source ./ci/derive_test_components.sh
 
 rapids-logger "Download datasets"
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
