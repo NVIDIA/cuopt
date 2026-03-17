@@ -4,7 +4,7 @@
  *
  * cuOpt install selector - generates install commands from user choices.
  * Stable version comes from window.CUOPT_INSTALL_VERSION (injected at build from cuopt.__version__).
- * Next = stable + 2 on minor with year rollover (e.g. 26.04->26.06, 26.12->27.02). Update COMMANDS structure when commands change.
+ * Next = stable + 2 on minor with year rollover (YY.MM format). Update COMMANDS structure when commands change.
  */
 (function () {
   "use strict";
