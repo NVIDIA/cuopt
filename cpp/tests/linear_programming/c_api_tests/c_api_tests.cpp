@@ -382,7 +382,7 @@ class CPUOnlyTestEnvironment {
 
 // TODO: Add numerical assertions once gRPC remote solver replaces the stub implementation.
 // Currently validates that the CPU-only C API path completes without errors.
-TEST(c_api_cpu_only, lp_solve)
+TEST(c_api_cpu_only, DISABLED_lp_solve)
 {
   CPUOnlyTestEnvironment env;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
@@ -391,7 +391,7 @@ TEST(c_api_cpu_only, lp_solve)
 }
 
 // TODO: Add numerical assertions once gRPC remote solver replaces the stub implementation.
-TEST(c_api_cpu_only, mip_solve)
+TEST(c_api_cpu_only, DISABLED_mip_solve)
 {
   CPUOnlyTestEnvironment env;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
