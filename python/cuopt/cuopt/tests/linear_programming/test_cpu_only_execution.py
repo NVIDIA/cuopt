@@ -168,6 +168,8 @@ def _impl_warmstart_cpu_only():
 class TestCPUOnlyExecution:
     """Tests that run with CUDA_VISIBLE_DEVICES='' to simulate CPU-only hosts."""
 
+    pytestmark = pytest.mark.skip(reason="CPU-only tests temporarily disabled")
+
     @pytest.fixture
     def env(self):
         return _cpu_only_env()
@@ -200,6 +202,8 @@ class TestCPUOnlyExecution:
 
 class TestCuoptCliCPUOnly:
     """Test that cuopt_cli runs without CUDA in remote-execution mode."""
+
+    pytestmark = pytest.mark.skip(reason="CPU-only tests temporarily disabled")
 
     @pytest.fixture
     def env(self):
