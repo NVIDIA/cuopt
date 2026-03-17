@@ -4,7 +4,7 @@
  *
  * cuOpt install selector - generates install commands from user choices.
  * Stable version comes from window.CUOPT_INSTALL_VERSION (injected at build from cuopt.__version__).
- * Next = stable + 2 on minor (e.g. YY.MM -> YY.(MM+2)). Update COMMANDS structure when commands change.
+ * Next = stable + 2 on minor with year rollover (e.g. 26.04->26.06, 26.12->27.02). Update COMMANDS structure when commands change.
  */
 (function () {
   "use strict";
@@ -28,8 +28,13 @@
   var major = parseInt(parts[0], 10);
   var minor = parseInt(parts[1], 10) || 0;
   var nextMinor = minor + 2;
-  var V_CONDA_NEXT = major + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
-  var V_NEXT = major + "." + nextMinor;
+  var nextMajor = major;
+  if (nextMinor > 12) {
+    nextMajor = major + 1;
+    nextMinor = nextMinor - 12;
+  }
+  var V_CONDA_NEXT = nextMajor + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
+  var V_NEXT = nextMajor + "." + nextMinor;
 
   var COMMANDS = {
     python: {
