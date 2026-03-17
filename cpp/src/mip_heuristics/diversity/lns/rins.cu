@@ -186,7 +186,7 @@ void rins_t<i_t, f_t>::run_rins()
 
   total_calls++;
   node_count_at_last_rins = node_count.load();
-  time_limit              = std::min(time_limit, dm.timer.remaining_time());
+  time_limit              = std::min(time_limit, static_cast<f_t>(dm.timer.remaining_time()));
   CUOPT_LOG_DEBUG("Running RINS on solution with objective %g, fixing %d/%d",
                   best_sol.get_user_objective(),
                   vars_to_fix.size(),
@@ -266,6 +266,7 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.num_threads = 1;
   branch_and_bound_settings.reliability_branching = 0;
   branch_and_bound_settings.max_cut_passes        = 0;
+  branch_and_bound_settings.clique_cuts           = 0;
   branch_and_bound_settings.sub_mip               = 1;
   branch_and_bound_settings.log.log               = false;
   branch_and_bound_settings.log.log_prefix        = "[RINS] ";
@@ -288,22 +289,22 @@ void rins_t<i_t, f_t>::run_rins()
   if (branch_and_bound_status == dual_simplex::mip_status_t::OPTIMAL) {
     CUOPT_LOG_DEBUG("RINS submip optimal");
     // do goldilocks update
-    fixrate    = std::max(fixrate - 0.05, settings.min_fixrate);
-    time_limit = std::max(time_limit - 2, settings.min_time_limit);
+    fixrate    = std::max(fixrate - f_t(0.05), static_cast<f_t>(settings.min_fixrate));
+    time_limit = std::max(time_limit - f_t(2), static_cast<f_t>(settings.min_time_limit));
   } else if (branch_and_bound_status == dual_simplex::mip_status_t::TIME_LIMIT) {
     CUOPT_LOG_DEBUG("RINS submip time limit");
     // do goldilocks update
-    fixrate    = std::min(fixrate + 0.05, settings.max_fixrate);
-    time_limit = std::min(time_limit + 2, settings.max_time_limit);
+    fixrate    = std::min(fixrate + f_t(0.05), static_cast<f_t>(settings.max_fixrate));
+    time_limit = std::min(time_limit + f_t(2), static_cast<f_t>(settings.max_time_limit));
   } else if (branch_and_bound_status == dual_simplex::mip_status_t::INFEASIBLE) {
     CUOPT_LOG_DEBUG("RINS submip infeasible");
     // do goldilocks update, decreasing fixrate
-    fixrate = std::max(fixrate - 0.05, settings.min_fixrate);
+    fixrate = std::max(fixrate - f_t(0.05), static_cast<f_t>(settings.min_fixrate));
   } else {
     CUOPT_LOG_DEBUG("RINS solution not found");
     // do goldilocks update
-    fixrate    = std::min(fixrate + 0.05, settings.max_fixrate);
-    time_limit = std::min(time_limit + 2, settings.max_time_limit);
+    fixrate    = std::min(fixrate + f_t(0.05), static_cast<f_t>(settings.max_fixrate));
+    time_limit = std::min(time_limit + f_t(2), static_cast<f_t>(settings.max_time_limit));
   }
 
   cpu_fj_thread.stop_cpu_solver();

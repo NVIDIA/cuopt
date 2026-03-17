@@ -1,12 +1,15 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
+#include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mps_parser/parser.hpp>
 #include <utilities/logger.hpp>
@@ -74,8 +77,8 @@ inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_re
 inline cuopt::init_logger_t dummy_logger(
   const cuopt::linear_programming::solver_settings_t<int, double>& settings)
 {
-  return cuopt::init_logger_t(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
-                              settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
+  return cuopt::init_logger_t(settings.template get_parameter<std::string>(CUOPT_LOG_FILE),
+                              settings.template get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
 }
 
 /**
@@ -89,7 +92,6 @@ int run_single_file(const std::string& file_path,
                     bool solve_relaxation,
                     const std::map<std::string, std::string>& settings_strings)
 {
-  const raft::handle_t handle_{};
   cuopt::linear_programming::solver_settings_t<int, double> settings;
 
   try {
@@ -122,13 +124,31 @@ int run_single_file(const std::string& file_path,
     return -1;
   }
 
-  auto op_problem =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem(&handle_, mps_data_model);
+  // Determine memory backend and create problem using interface
+  // Create handle only for GPU memory backend (avoid CUDA init on CPU-only hosts)
+  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  std::unique_ptr<raft::handle_t> handle_ptr;
+  std::unique_ptr<cuopt::linear_programming::optimization_problem_interface_t<int, double>>
+    problem_interface;
 
-  const bool is_mip =
-    (op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
-     op_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP) &&
-    !solve_relaxation;
+  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+    handle_ptr = std::make_unique<raft::handle_t>();
+    problem_interface =
+      std::make_unique<cuopt::linear_programming::optimization_problem_t<int, double>>(
+        handle_ptr.get());
+  } else {
+    problem_interface =
+      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
+  }
+
+  // Populate the problem from MPS data model
+  cuopt::linear_programming::populate_from_mps_data_model(problem_interface.get(), mps_data_model);
+
+  const bool is_mip = (problem_interface->get_problem_category() ==
+                         cuopt::linear_programming::problem_category_t::MIP ||
+                       problem_interface->get_problem_category() ==
+                         cuopt::linear_programming::problem_category_t::IP) &&
+                      !solve_relaxation;
 
   try {
     auto initial_solution =
@@ -157,10 +177,10 @@ int run_single_file(const std::string& file_path,
   try {
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
-      auto solution      = cuopt::linear_programming::solve_mip(op_problem, mip_settings);
+      auto solution = cuopt::linear_programming::solve_mip(problem_interface.get(), mip_settings);
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(op_problem, lp_settings);
+      auto solution     = cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
     }
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Error: %s", e.what());
@@ -267,6 +287,17 @@ int main(int argc, char* argv[])
     .implicit_value(true);
 
   std::map<std::string, std::string> arg_name_to_param_name;
+
+  // Register --pdlp-precision with string-to-int mapping so that it flows
+  // through the settings_strings map like other settings.
+  program.add_argument("--pdlp-precision")
+    .help(
+      "PDLP precision mode. default: native type, single: FP32 internally, "
+      "double: FP64 explicitly, mixed: mixed-precision SpMV (FP32 matrix, FP64 vectors).")
+    .default_value(std::string("-1"))
+    .choices("default", "single", "double", "mixed", "-1", "0", "1", "2");
+  arg_name_to_param_name["--pdlp-precision"] = CUOPT_PDLP_PRECISION;
+
   {
     // Add all solver settings as arguments
     cuopt::linear_programming::solver_settings_t<int, double> dummy_settings;
@@ -321,11 +352,20 @@ int main(int argc, char* argv[])
     return 1;
   }
 
+  // Map symbolic pdlp-precision names to integer values
+  static const std::map<std::string, std::string> precision_name_to_value = {
+    {"default", "-1"}, {"single", "0"}, {"double", "1"}, {"mixed", "2"}};
+
   // Read everything as a string
   std::map<std::string, std::string> settings_strings;
   for (auto& [arg_name, param_name] : arg_name_to_param_name) {
     if (program.is_used(arg_name.c_str())) {
-      settings_strings[param_name] = program.get<std::string>(arg_name.c_str());
+      auto val = program.get<std::string>(arg_name.c_str());
+      if (param_name == CUOPT_PDLP_PRECISION) {
+        auto it = precision_name_to_value.find(val);
+        if (it != precision_name_to_value.end()) { val = it->second; }
+      }
+      settings_strings[param_name] = val;
     }
   }
   // Get the values
@@ -334,19 +374,23 @@ int main(int argc, char* argv[])
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
   const auto solve_relaxation      = program.get<bool>("--relaxation");
 
-  // All arguments are parsed as string, default values are parsed as int if unused.
-  const auto num_gpus = program.is_used("--num-gpus")
-                          ? std::stoi(program.get<std::string>("--num-gpus"))
-                          : program.get<int>("--num-gpus");
-
+  // Only initialize CUDA resources if using GPU memory backend (not remote execution)
+  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
   std::vector<std::shared_ptr<rmm::mr::device_memory_resource>> memory_resources;
 
-  for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
-    cudaSetDevice(i);
-    memory_resources.push_back(make_async());
-    rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
+  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+    // All arguments are parsed as string, default values are parsed as int if unused.
+    const auto num_gpus = program.is_used("--num-gpus")
+                            ? std::stoi(program.get<std::string>("--num-gpus"))
+                            : program.get<int>("--num-gpus");
+
+    for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
+      RAFT_CUDA_TRY(cudaSetDevice(i));
+      memory_resources.push_back(make_async());
+      rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
+    }
+    RAFT_CUDA_TRY(cudaSetDevice(0));
   }
-  cudaSetDevice(0);
 
   return run_single_file(file_name, initial_solution_file, solve_relaxation, settings_strings);
 }

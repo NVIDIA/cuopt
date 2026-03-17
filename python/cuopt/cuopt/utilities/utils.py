@@ -1,16 +1,10 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
 
 import cudf
 import pylibcudf as plc
-
-from cuopt.linear_programming.solver.solver_parameters import (
-    CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
-    CUOPT_MIP_INTEGRALITY_TOLERANCE,
-    CUOPT_RELATIVE_PRIMAL_TOLERANCE,
-)
 
 
 def series_from_buf(buf, dtype):
@@ -39,6 +33,10 @@ def series_from_buf(buf, dtype):
 
 
 def validate_variable_bounds(data, settings, solution):
+    from cuopt.linear_programming.solver.solver_parameters import (
+        CUOPT_MIP_INTEGRALITY_TOLERANCE,
+    )
+
     integrality_tolerance = settings.get_parameter(
         CUOPT_MIP_INTEGRALITY_TOLERANCE
     )
@@ -110,6 +108,11 @@ def validate_objective_sanity(data, solution, cost, tolerance):
 
 
 def check_solution(data, setting, solution, cost):
+    from cuopt.linear_programming.solver.solver_parameters import (
+        CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
+        CUOPT_RELATIVE_PRIMAL_TOLERANCE,
+    )
+
     # check size of the solution matches variable size
     assert len(solution) == len(data.get_variable_types())
 

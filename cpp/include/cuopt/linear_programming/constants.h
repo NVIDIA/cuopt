@@ -64,6 +64,7 @@
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS "mip_mixed_integer_rounding_cuts"
 #define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS   "mip_mixed_integer_gomory_cuts"
 #define CUOPT_MIP_KNAPSACK_CUTS               "mip_knapsack_cuts"
+#define CUOPT_MIP_CLIQUE_CUTS                 "mip_clique_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS  "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING  "mip_reduced_cost_strengthening"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD        "mip_cut_change_threshold"
@@ -74,6 +75,7 @@
 #define CUOPT_NUM_GPUS                        "num_gpus"
 #define CUOPT_USER_PROBLEM_FILE               "user_problem_file"
 #define CUOPT_RANDOM_SEED                     "random_seed"
+#define CUOPT_PDLP_PRECISION                  "pdlp_precision"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -124,6 +126,12 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
+
+/* @brief PDLP precision mode constants */
+#define CUOPT_PDLP_DEFAULT_PRECISION -1
+#define CUOPT_PDLP_SINGLE_PRECISION  0
+#define CUOPT_PDLP_DOUBLE_PRECISION  1
+#define CUOPT_PDLP_MIXED_PRECISION   2
 
 /* @brief File format constants for problem I/O */
 #define CUOPT_FILE_FORMAT_MPS 0

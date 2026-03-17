@@ -48,7 +48,12 @@ class csc_matrix_t {
   // Adjust to i and x vectors for a new number of nonzeros
   void reallocate(i_t new_nz);
 
+  // Get the number of nonzeros in the matrix
   i_t nnz() const { return col_start[n]; }
+
+  // Get the number of nonzeros in column j
+  i_t col_length(i_t j) const { return col_start[j + 1] - col_start[j]; }
+
   // Convert the CSC matrix to a CSR matrix
   i_t to_compressed_row(
     cuopt::linear_programming::dual_simplex::csr_matrix_t<i_t, f_t>& Arow) const;
@@ -145,6 +150,9 @@ class csr_matrix_t {
   {
   }
 
+  // Get the number of nonzeros in row i
+  i_t row_length(i_t i) const { return row_start[i + 1] - row_start[i]; }
+
   // Convert the CSR matrix to CSC
   i_t to_compressed_col(csc_matrix_t<i_t, f_t>& Acol) const;
 
@@ -173,6 +181,8 @@ class csr_matrix_t {
     return true;
   }
 
+  // get constraint range
+  std::pair<i_t, i_t> get_constraint_range(i_t cstr_idx) const;
   i_t nz_max;                  // maximum number of nonzero entries
   i_t m;                       // number of rows
   i_t n;                       // number of cols

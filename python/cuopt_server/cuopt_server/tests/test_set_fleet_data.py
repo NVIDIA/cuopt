@@ -1,10 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import RequestClient
+from cuopt_server.utils.routing.validation_fleet_data import (
+    validate_fleet_data,
+)
 
 client = RequestClient()
 
@@ -62,6 +65,117 @@ valid_data = {
 # FLEET DATA TESTING
 
 
+# Test validate_fleet_data rejects duplicate vehicle_ids (no server required)
+def test_validate_fleet_data_duplicate_vehicle_ids():
+    vehicle_locations = [[0, 0], [0, 0], [0, 0]]
+    vehicle_ids_dup = ["Truck 1", "Truck 1", "Truck 1"]
+
+    is_valid, msg = validate_fleet_data(
+        vehicle_ids=vehicle_ids_dup,
+        vehicle_locations=vehicle_locations,
+        capacities=None,
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=None,
+        vehicle_break_durations=None,
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_types_dict={},
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+    assert is_valid is False
+    assert "unique" in msg.lower() and "duplicate" in msg.lower()
+
+
+# Test validate_fleet_data accepts unique vehicle_ids (no server required)
+def test_validate_fleet_data_unique_vehicle_ids():
+    vehicle_locations = [[0, 0], [0, 0]]
+    vehicle_ids_unique = ["Truck 1", "Truck 2"]
+
+    is_valid, msg = validate_fleet_data(
+        vehicle_ids=vehicle_ids_unique,
+        vehicle_locations=vehicle_locations,
+        capacities=None,
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=None,
+        vehicle_break_durations=None,
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_types_dict={},
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+    assert is_valid is True
+    assert msg == "Valid Fleet Data"
+
+
+# Test validate_fleet_data with vehicle_ids=None passes (no server required)
+def test_validate_fleet_data_vehicle_ids_none():
+    vehicle_locations = [[0, 0], [0, 0]]
+
+    is_valid, msg = validate_fleet_data(
+        vehicle_ids=None,
+        vehicle_locations=vehicle_locations,
+        capacities=None,
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=None,
+        vehicle_break_durations=None,
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_types_dict={},
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+    assert is_valid is True
+    assert msg == "Valid Fleet Data"
+
+
+# Test validate_fleet_data with single vehicle (no server required)
+def test_validate_fleet_data_single_vehicle():
+    vehicle_locations = [[0, 0]]
+    vehicle_ids_single = ["Truck 1"]
+
+    is_valid, msg = validate_fleet_data(
+        vehicle_ids=vehicle_ids_single,
+        vehicle_locations=vehicle_locations,
+        capacities=None,
+        vehicle_time_windows=None,
+        vehicle_breaks=None,
+        vehicle_break_time_windows=None,
+        vehicle_break_durations=None,
+        vehicle_break_locations=None,
+        vehicle_types=None,
+        vehicle_types_dict={},
+        vehicle_order_match=None,
+        skip_first_trips=None,
+        drop_return_trips=None,
+        min_vehicles=None,
+        vehicle_max_costs=None,
+        vehicle_max_times=None,
+        vehicle_fixed_costs=None,
+    )
+    assert is_valid is True
+    assert msg == "Valid Fleet Data"
+
+
 # Test validation error when multiple cost matrices set without vehicle types
 def test_invalid_vehicle_types(cuoptproc):  # noqa
     matrix_data = {
@@ -98,6 +212,38 @@ def test_invalid_vehicle_types(cuoptproc):  # noqa
 # Testing valid with all fleet parameters
 def test_valid_full_set_fleet_data(cuoptproc):  # noqa
     response_set = client.post("/cuopt/request", json=valid_data)
+    assert response_set.status_code == 200
+
+
+# Testing duplicate vehicle_ids rejected (issue #903)
+def test_duplicate_vehicle_ids_set_fleet_data(cuoptproc):  # noqa
+    test_data = copy.deepcopy(valid_data)
+    test_data["fleet_data"]["vehicle_ids"] = [
+        "veh-1",
+        "veh-2",
+        "veh-1",
+        "veh-4",
+    ]
+
+    response_set = client.post("/cuopt/request", json=test_data)
+    assert response_set.status_code == 400
+    assert response_set.json() == {
+        "error": "vehicle_ids must be unique; duplicates are not allowed",
+        "error_result": True,
+    }
+
+
+# Testing valid with unique vehicle_ids
+def test_valid_unique_vehicle_ids_set_fleet_data(cuoptproc):  # noqa
+    test_data = copy.deepcopy(valid_data)
+    test_data["fleet_data"]["vehicle_ids"] = [
+        "veh-1",
+        "veh-2",
+        "veh-3",
+        "veh-4",
+    ]
+
+    response_set = client.post("/cuopt/request", json=test_data)
     assert response_set.status_code == 200
 
 

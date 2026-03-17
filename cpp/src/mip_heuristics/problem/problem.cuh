@@ -24,6 +24,7 @@
 
 #include <utilities/macros.cuh>
 
+#include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
 #include <raft/util/cuda_dev_essentials.cuh>
@@ -36,6 +37,9 @@
 namespace cuopt {
 
 namespace linear_programming::detail {
+
+template <typename i_t, typename f_t>
+struct clique_table_t;
 
 template <typename i_t, typename f_t>
 class solution_t;
@@ -119,8 +123,12 @@ class problem_t {
   bool is_integer(f_t val) const;
   bool integer_equal(f_t val1, f_t val2) const;
 
+  std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+  void set_constraints_from_host_user_problem(
+    const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem);
 
   uint32_t get_fingerprint() const;
 

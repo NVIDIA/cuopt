@@ -235,7 +235,7 @@ FetchContent_MakeAvailable(papilo)
 FetchContent_Declare(
   pslp
   GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-  GIT_TAG "v0.0.4"
+  GIT_TAG "v0.0.8"
   GIT_PROGRESS TRUE
   EXCLUDE_FROM_ALL
   SYSTEM
@@ -484,6 +484,15 @@ endif()
 
 
 if(NOT BUILD_LP_ONLY)
+rapids_cpm_find(
+  argparse 3.2.0
+  GLOBAL_TARGETS argparse::argparse
+  CPM_ARGS
+  GIT_REPOSITORY https://github.com/p-ranav/argparse.git
+  GIT_TAG v3.2
+  GIT_SHALLOW TRUE
+)
+
 add_executable(cuopt_cli cuopt_cli.cpp)
 
 set_target_properties(cuopt_cli
@@ -515,6 +524,7 @@ target_link_libraries(cuopt_cli
   ${CUDSS_LIBRARIES}
   TBB::tbb
   PRIVATE
+  argparse::argparse
 )
   # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
 if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
@@ -533,6 +543,12 @@ endif()
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
 if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
   add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
+  target_include_directories(solve_MIP
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  )
 
   set_target_properties(solve_MIP
     PROPERTIES

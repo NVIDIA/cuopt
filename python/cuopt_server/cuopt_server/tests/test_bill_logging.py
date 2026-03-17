@@ -1,7 +1,8 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import os
 import platform
 import shutil
 import signal
@@ -29,16 +30,12 @@ def test_time_limit_logs():
     )
     dataset = json.load(open(dataset_path))
     client = RequestClient(port=5010)
-    env = {
-        "CUOPT_SERVER_IP": "127.0.0.1",
-        "CUOPT_SERVER_PORT": "5010",
-        "CUOPT_SERVER_LOG_LEVEL": "debug",
-        "CUOPT_MAX_SOLVE_TIME_LIMIT": "5",
-    }
+    env = os.environ.copy()
+    env["CUOPT_MAX_SOLVE_TIME_LIMIT"] = "5"
 
     url = "/cuopt/"
 
-    cmd = python_path + " " + server_script
+    cmd = python_path + " " + server_script + " -i 127.0.0.1 -p 5010 -l debug"
     process = pexpect.spawn(cmd, env=env)
 
     try:

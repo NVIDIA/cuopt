@@ -1,0 +1,120 @@
+{
+  "name": "nvidia-cuopt-skills",
+  "owner": {
+    "name": "NVIDIA"
+  },
+  "metadata": {
+    "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (Python/C/developer), and REST server.",
+    "version": "26.04.00"
+  },
+  "plugins": [
+    {
+      "name": "cuopt-user-rules",
+      "source": "./skills/cuopt-user-rules",
+      "skills": "./",
+      "description": "Base behavior rules for using NVIDIA cuOpt. Read first when helping users with cuOpt (routing, LP/MILP, QP, installation, server)."
+    },
+    {
+      "name": "cuopt-developer",
+      "source": "./skills/cuopt-developer",
+      "skills": "./",
+      "description": "Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture."
+    },
+    {
+      "name": "cuopt-installation-common",
+      "source": "./skills/cuopt-installation-common",
+      "skills": "./",
+      "description": "Install cuOpt — system and environment requirements only. Domain concepts; no install commands or interface guidance."
+    },
+    {
+      "name": "cuopt-installation-api-python",
+      "source": "./skills/cuopt-installation-api-python",
+      "skills": "./",
+      "description": "Install cuOpt for Python — pip, conda, Docker, verification. Use when the user is installing or verifying the Python API."
+    },
+    {
+      "name": "cuopt-installation-api-c",
+      "source": "./skills/cuopt-installation-api-c",
+      "skills": "./",
+      "description": "Install cuOpt for C — conda, locate lib/headers, verification. Use when the user is installing or verifying the C API."
+    },
+    {
+      "name": "cuopt-installation-developer",
+      "source": "./skills/cuopt-installation-developer",
+      "skills": "./",
+      "description": "Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt."
+    },
+    {
+      "name": "lp-milp-formulation",
+      "source": "./skills/lp-milp-formulation",
+      "skills": "./",
+      "description": "LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements."
+    },
+    {
+      "name": "cuopt-lp-milp-api-python",
+      "source": "./skills/cuopt-lp-milp-api-python",
+      "skills": "./",
+      "description": "Solve LP and MILP with the Python API. Use when the user asks about optimization with linear constraints, integer variables, scheduling, resource allocation, facility location, or production planning."
+    },
+    {
+      "name": "cuopt-lp-milp-api-c",
+      "source": "./skills/cuopt-lp-milp-api-c",
+      "skills": "./",
+      "description": "LP and MILP with cuOpt — C API only. Use when the user is embedding LP/MILP in C/C++."
+    },
+    {
+      "name": "cuopt-lp-milp-api-cli",
+      "source": "./skills/cuopt-lp-milp-api-cli",
+      "skills": "./",
+      "description": "LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving from MPS via command line."
+    },
+    {
+      "name": "routing-formulation",
+      "source": "./skills/routing-formulation",
+      "skills": "./",
+      "description": "Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface."
+    },
+    {
+      "name": "cuopt-routing-api-python",
+      "source": "./skills/cuopt-routing-api-python",
+      "skills": "./",
+      "description": "Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python."
+    },
+    {
+      "name": "qp-formulation",
+      "source": "./skills/qp-formulation",
+      "skills": "./",
+      "description": "Quadratic Programming (QP) — problem form and constraints. Domain concepts; no API or interface. QP is beta."
+    },
+    {
+      "name": "cuopt-qp-api-python",
+      "source": "./skills/cuopt-qp-api-python",
+      "skills": "./",
+      "description": "Quadratic Programming (QP) with cuOpt — Python API only (beta). Use when the user is building or solving QP in Python."
+    },
+    {
+      "name": "cuopt-qp-api-c",
+      "source": "./skills/cuopt-qp-api-c",
+      "skills": "./",
+      "description": "Quadratic Programming (QP) with cuOpt — C API. Use when the user is embedding QP in C/C++."
+    },
+    {
+      "name": "cuopt-qp-api-cli",
+      "source": "./skills/cuopt-qp-api-cli",
+      "skills": "./",
+      "description": "QP with cuOpt — CLI (e.g. cuopt_cli with QP-capable input). Use when the user is solving QP from the command line."
+    },
+    {
+      "name": "cuopt-server-common",
+      "source": "./skills/cuopt-server-common",
+      "skills": "./",
+      "description": "cuOpt REST server — what it does and how requests flow. Domain concepts; no deploy or client code."
+    },
+    {
+      "name": "cuopt-server-api-python",
+      "source": "./skills/cuopt-server-api-python",
+      "skills": "./",
+      "description": "cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API."
+    }
+  ]
+}
