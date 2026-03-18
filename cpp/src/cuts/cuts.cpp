@@ -691,21 +691,22 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   }
 
   for (i_t i = 0; i < lp.num_rows; i++) {
-    const i_t row_start = Arow.row_start[i];
-    const i_t row_end   = Arow.row_start[i + 1];
-    const i_t row_len   = row_end - row_start;
+    inequality_t<i_t, f_t> inequality(Arow, i, lp.rhs[i]);
+    inequality_t<i_t, f_t> rational_inequality = inequality;
+    if (!rational_coefficients(var_types, inequality, rational_inequality)) {
+      continue;
+    }
+    inequality = rational_inequality;
+
+    const i_t row_len   = rational_inequality.size();
     if (row_len < 3) { continue; }
     bool is_knapsack = true;
     f_t sum_pos      = 0.0;
     f_t sum_neg      = 0.0;
-    for (i_t p = row_start; p < row_end; p++) {
-      const i_t j = Arow.j[p];
+    for (i_t p = 0; p < row_len; p++) {
+      const i_t j = inequality.index(p);
       if (is_slack_[j]) { continue; }
-      const f_t aj = Arow.x[p];
-      if (std::abs(aj - std::round(aj)) > settings.integer_tol) {
-        is_knapsack = false;
-        break;
-      }
+      const f_t aj = inequality.coeff(p);
       if (var_types[j] != variable_type_t::INTEGER || lp.lower[j] != 0.0 || lp.upper[j] != 1.0) {
         is_knapsack = false;
         break;
@@ -719,7 +720,7 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
     }
 
     if (is_knapsack) {
-      const f_t beta = lp.rhs[i] + sum_neg;
+      const f_t beta = inequality.rhs + sum_neg;
       if (std::abs(beta - std::round(beta)) <= settings.integer_tol) {
         if (beta > 0.0 && beta <= sum_pos && std::abs(sum_pos / (row_len - 1) - beta) > 1e-3) {
           if (1) {
@@ -758,37 +759,61 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 {
   const bool verbose = false;
   // Get the row associated with the knapsack constraint
-  sparse_vector_t<i_t, f_t> knapsack_inequality(Arow, knapsack_row);
-  f_t knapsack_rhs = lp.rhs[knapsack_row];
+  inequality_t<i_t, f_t> knapsack_inequality(Arow, knapsack_row, lp.rhs[knapsack_row]);
+  inequality_t<i_t, f_t> rational_knapsack_inequality = knapsack_inequality;
+  if (!rational_coefficients(var_types, knapsack_inequality, rational_knapsack_inequality)) {
+    return -1;
+  }
+  knapsack_inequality = rational_knapsack_inequality;
+
+  // Given the following knapsack constraint:
+  // sum_j a_j x_j <= beta
+  //
+  // We solve the following separation problem:
+  // minimize   sum_j (1 - xstar_j) z_j
+  // subject to sum_j a_j z_j > beta
+  //            z_j in {0, 1}
+  // When z_j = 1, then j is in the cover.
+  // Let phi_star be the optimal objective of this problem.
+  // We have a violated cover when phi_star < 1.0
+  //
+  // We convert this problem into a 0-1 knapsack problem
+  // maximize     sum_j (1 - xstar_j) zbar_j
+  // subject to   sum_j a_j zbar_j <= sum_j a_j - (beta + 1)
+  //            zbar_j in {0, 1}
+  // where zbar_j = 1 - z_j
+  // This problem is in the form of a 0-1 knapsack problem
+  // which we can solve with dynamic programming or generate
+  // a heuristic solution with a greedy algorithm.
 
   // Remove the slacks from the inequality
   f_t seperation_rhs = 0.0;
   if (verbose) { settings.log.printf(" Knapsack : "); }
   std::vector<i_t> complemented_variables;
-  complemented_variables.reserve(knapsack_inequality.i.size());
-  for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
-    const i_t j = knapsack_inequality.i[k];
+  complemented_variables.reserve(knapsack_inequality.size());
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
     if (is_slack_[j]) {
-      knapsack_inequality.x[k] = 0.0;
+      knapsack_inequality.vector.x[k] = 0.0;
     } else {
-      const f_t aj = knapsack_inequality.x[k];
+      const f_t aj = knapsack_inequality.vector.x[k];
       if (aj < 0.0) {
-        knapsack_rhs -= aj;
-        knapsack_inequality.x[k] *= -1.0;
+        knapsack_inequality.rhs -= aj;
+        knapsack_inequality.vector.x[k] *= -1.0;
         complemented_variables.push_back(j);
         is_complemented[j] = 1;
       }
-      if (verbose) { settings.log.printf(" %g x%d +", knapsack_inequality.x[k], j); }
-      seperation_rhs += knapsack_inequality.x[k];
+      if (verbose) { settings.log.printf(" %g x%d +", knapsack_inequality.vector.x[k], j); }
+      seperation_rhs += knapsack_inequality.vector.x[k];
     }
   }
-  if (verbose) { settings.log.printf(" <= %g\n", knapsack_rhs); }
-  seperation_rhs -= (knapsack_rhs + 1);
+  if (verbose) { settings.log.printf(" <= %g\n", knapsack_inequality.rhs); }
+  seperation_rhs -= (knapsack_inequality.rhs + 1);
 
   if (verbose) {
     settings.log.printf("\t");
-    for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
-      const i_t j = knapsack_inequality.i[k];
+    for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+      const i_t j = knapsack_inequality.index(k);
       if (!is_slack_[j]) {
         if (std::abs(xstar[j]) > 1e-3) { settings.log.printf("x_relax[%d]= %g ", j, xstar[j]); }
       }
@@ -808,24 +833,49 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   }
 
   std::vector<f_t> values;
-  values.resize(knapsack_inequality.i.size() - 1);
+  values.reserve(knapsack_inequality.size() - 1);
   std::vector<f_t> weights;
-  weights.resize(knapsack_inequality.i.size() - 1);
-  i_t h                  = 0;
+  weights.reserve(knapsack_inequality.size() - 1);
+  std::vector<i_t> indices;
+  indices.reserve(knapsack_inequality.size() - 1);
   f_t objective_constant = 0.0;
-  for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
-    const i_t j = knapsack_inequality.i[k];
+  std::vector<i_t> fixed_variables;
+  std::vector<f_t> fixed_values;
+  const f_t x_tol = 1e-5;
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
     if (!is_slack_[j]) {
       const f_t xstar_j = is_complemented[j] ? 1.0 - xstar[j] : xstar[j];
       const f_t vj = std::min(1.0, std::max(0.0, 1.0 - xstar_j));
+      if (xstar_j < x_tol) {
+        // if xstar_j is close to 0, then we can fix z to zero
+        fixed_variables.push_back(j);
+        fixed_values.push_back(0.0);
+        seperation_rhs -= knapsack_inequality.vector.x[k];
+        // No need to adjust the objective constant
+        continue;
+      }
+      if (xstar_j > 1.0 - x_tol) {
+        // if xstar_j is close to 1, then we can fix z to 1
+        fixed_variables.push_back(j);
+        fixed_values.push_back(1.0);
+        // Note seperation rhs is unchanged
+        objective_constant += vj;
+        continue;
+      }
       objective_constant += vj;
-      values[h]  = vj;
-      weights[h] = knapsack_inequality.x[k];
-      h++;
+      values.push_back(vj);
+      weights.push_back(knapsack_inequality.vector.x[k]);
+      indices.push_back(j);
     }
   }
   std::vector<f_t> solution;
-  solution.resize(knapsack_inequality.i.size() - 1);
+  solution.resize(values.size());
+
+  if (seperation_rhs <= 0.0) {
+    restore_complemented();
+    return -1;
+  }
 
   if (verbose) { settings.log.printf("Calling solve_knapsack_problem\n"); }
   f_t objective = solve_knapsack_problem(values, weights, seperation_rhs, solution);
@@ -842,17 +892,20 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   for (i_t k = 0; k < solution.size(); k++) {
     if (solution[k] == 0.0) { cover_size++; }
   }
+  for (i_t k = 0; k < fixed_values.size(); k++) {
+    if (fixed_values[k] == 1.0) { cover_size++; }
+  }
 
   cut.reserve(cover_size);
   cut.clear();
 
-  h = 0;
-  for (i_t k = 0; k < knapsack_inequality.i.size(); k++) {
-    const i_t j = knapsack_inequality.i[k];
-    if (!is_slack_[j]) {
-      if (solution[h] == 0.0) { cut.push_back(j, -1.0); }
-      h++;
-    }
+  for (i_t k = 0; k < solution.size(); k++) {
+    const i_t j = indices[k];
+    if (solution[k] == 0.0) { cut.push_back(j, -1.0); }
+  }
+  for (i_t k = 0; k < fixed_variables.size(); k++) {
+    const i_t j = fixed_variables[k];
+    if (fixed_values[k] == 1.0) { cut.push_back(j, -1.0); }
   }
   cut.rhs = -cover_size + 1;
 
@@ -1740,7 +1793,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_A_float);
 
       inequality_t<i_t, f_t> cut_A(lp.num_cols);
-      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_A_float, cut_A); }
+      if (cut_ok) { cut_ok = rational_coefficients(var_types, cut_A_float, cut_A); }
 
       // See if the inequality is violated by the original relaxation solution
       f_t cut_A_violation = complemented_mir.compute_violation(cut_A, xstar);
@@ -1777,7 +1830,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
       complemented_mir.remove_small_coefficients(lp.lower, lp.upper, cut_B_float);
 
       inequality_t<i_t, f_t> cut_B(lp.num_cols);
-      if (cut_ok) { cut_ok = gomory_cut.rational_coefficients(var_types, cut_B_float, cut_B); }
+      if (cut_ok) { cut_ok = rational_coefficients(var_types, cut_B_float, cut_B); }
 
       bool B_valid        = false;
       f_t cut_B_distance  = 0.0;
@@ -1962,11 +2015,11 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   return 0;
 }
 
-template <typename i_t, typename f_t>
-bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_approximation(f_t x,
-                                                                  int64_t max_denominator,
-                                                                  int64_t& numerator,
-                                                                  int64_t& denominator)
+template <typename f_t>
+bool rational_approximation(f_t x,
+                            int64_t max_denominator,
+                            int64_t& numerator,
+                            int64_t& denominator)
 {
   int64_t a, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
   f_t val       = x;
@@ -2002,7 +2055,7 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_approximation(f_t x,
 }
 
 template <typename i_t, typename f_t>
-bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_coefficients(
+bool rational_coefficients(
   const std::vector<variable_type_t>& var_types,
   const inequality_t<i_t, f_t>& input_inequality,
   inequality_t<i_t, f_t>& rational_inequality)
@@ -2039,8 +2092,7 @@ bool mixed_integer_gomory_cut_t<i_t, f_t>::rational_coefficients(
   return true;
 }
 
-template <typename i_t, typename f_t>
-int64_t mixed_integer_gomory_cut_t<i_t, f_t>::gcd(const std::vector<int64_t>& integers)
+int64_t gcd(const std::vector<int64_t>& integers)
 {
   if (integers.empty()) { return 0; }
 
@@ -2051,8 +2103,7 @@ int64_t mixed_integer_gomory_cut_t<i_t, f_t>::gcd(const std::vector<int64_t>& in
   return result;
 }
 
-template <typename i_t, typename f_t>
-int64_t mixed_integer_gomory_cut_t<i_t, f_t>::lcm(const std::vector<int64_t>& integers)
+int64_t lcm(const std::vector<int64_t>& integers)
 {
   if (integers.empty()) { return 0; }
   int64_t result =
