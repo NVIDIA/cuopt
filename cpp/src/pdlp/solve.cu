@@ -906,6 +906,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   // Hyper parameter than can be changed, I have put what I believe to be the best
   bool pdlp_primal_dual_init    = true;
   bool primal_weight_init       = true;
+  bool use_initial_pdlp_iterations = true;
   bool use_optimal_batch_size   = false;
   constexpr int iteration_limit = 100000;
 
@@ -915,6 +916,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   rmm::device_uvector<f_t> initial_dual(0, stream);
   f_t initial_step_size     = std::numeric_limits<f_t>::signaling_NaN();
   f_t initial_primal_weight = std::numeric_limits<f_t>::signaling_NaN();
+  i_t initial_pdlp_iteration = -1;
 
   cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
   const size_t max_batch_size  = settings.new_bounds.size();
@@ -993,6 +995,9 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     if (primal_weight_init) {
       initial_primal_weight = original_solution.get_pdlp_warm_start_data().initial_primal_weight_;
     }
+    if (use_initial_pdlp_iterations) {
+      initial_pdlp_iteration = original_solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
+    }
   }
 
   // We don't use the solutions vectors for now
@@ -1020,6 +1025,9 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
       initial_dual.data(), initial_dual.size(), initial_dual.stream());
     if (!std::isnan(initial_step_size)) {
       batch_settings.set_initial_step_size(initial_step_size);
+    }
+    if (use_initial_pdlp_iterations) {
+      batch_settings.set_initial_pdlp_iteration(initial_pdlp_iteration);
     }
   }
   if (primal_weight_init) { batch_settings.set_initial_primal_weight(initial_primal_weight); }

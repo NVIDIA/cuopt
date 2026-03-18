@@ -147,6 +147,12 @@ class pdlp_solver_settings_t {
    * @param[in] initial_primal_weight Initial primal weight.
    */
   void set_initial_primal_weight(f_t initial_primal_weight);
+    /**
+   * @brief Set an initial pdlp iteration.
+   *
+   * @param[in] initial_pdlp_iteration Initial pdlp iteration.
+   */
+   void set_initial_pdlp_iteration(i_t initial_pdlp_iteration);
 
   /**
    * @brief Set the pdlp warm start data. This allows to restart PDLP with a
@@ -213,6 +219,8 @@ class pdlp_solver_settings_t {
   std::optional<f_t> get_initial_step_size() const;
   // TODO batch mode: tmp
   std::optional<f_t> get_initial_primal_weight() const;
+  // TODO batch mode: tmp
+  std::optional<i_t> get_initial_pdlp_iteration() const;
 
   const rmm::device_uvector<f_t>& get_initial_primal_solution() const;
   const rmm::device_uvector<f_t>& get_initial_dual_solution() const;
@@ -284,6 +292,9 @@ class pdlp_solver_settings_t {
   /** Initial primal weight */
   // TODO batch mode: tmp
   std::optional<f_t> initial_primal_weight_;
+  /** Initial pdlp iteration */
+  // TODO batch mode: tmp
+  std::optional<i_t> initial_pdlp_iteration_;
   /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
   /** Warm start data as spans over external memory, used by Cython/Python interface */

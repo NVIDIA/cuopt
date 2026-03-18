@@ -349,6 +349,18 @@ std::optional<f_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_primal_weight()
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_settings_t<i_t, f_t>::set_initial_pdlp_iteration(i_t initial_pdlp_iteration)
+{
+  initial_pdlp_iteration_ = std::make_optional(initial_pdlp_iteration);
+}
+
+template <typename i_t, typename f_t>
+std::optional<i_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_pdlp_iteration() const
+{
+  return initial_pdlp_iteration_;
+}
+
+template <typename i_t, typename f_t>
 const pdlp_warm_start_data_t<i_t, f_t>& pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data()
   const noexcept
 {

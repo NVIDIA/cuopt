@@ -2195,6 +2195,19 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     pdhg_solver_.total_pdhg_iterations_ = initial_k_.value();
     pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(initial_k_.value(), stream_view_);
   }
+  if (settings_.get_initial_pdlp_iteration().has_value()) {
+    total_pdlp_iterations_ = settings_.get_initial_pdlp_iteration().value();
+    // This is meaningless in batch mode since pdhg step is never used, set it just to avoid assertions
+    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_, stream_view_);
+    pdhg_solver_.total_pdhg_iterations_ = total_pdlp_iterations_;
+    // Reset the fixed point error since at this pdlp iteration it is expected to already be initialized to some value
+    std::fill(restart_strategy_.initial_fixed_point_error_.begin(),
+    restart_strategy_.initial_fixed_point_error_.end(),
+    f_t(0.0));
+    std::fill(restart_strategy_.fixed_point_error_.begin(),
+              restart_strategy_.fixed_point_error_.end(),
+              f_t(0.0));
+  }
 
   // Only the primal_weight_ and step_size_ variables are initialized during the initial phase
   // The associated primal/dual step_size (computed using the two firstly mentionned) are not
