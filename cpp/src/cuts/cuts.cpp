@@ -725,20 +725,19 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
 
     if (is_knapsack) {
       const f_t beta = inequality.rhs + sum_neg;
-      if (std::abs(beta - std::round(beta)) <= settings.integer_tol) {
-        if (beta > 0.0 && beta <= sum_pos && std::abs(sum_pos / (row_len - 1) - beta) > 1e-3) {
-          if (1) {
-            settings.log.printf(
-              "Knapsack constraint %d row len %d beta %e sum_neg %e sum_pos %e sum_pos / (row_len - 1) %e\n",
-              i,
-              row_len,
-              beta,
-              sum_neg,
-              sum_pos,
-              sum_pos / (row_len - 1));
-          }
-          knapsack_constraints_.push_back(i);
+      if (beta > 0.0 && beta <= sum_pos && std::abs(sum_pos / (row_len - 1) - beta) > 1e-3) {
+        if (verbose) {
+          settings.log.printf(
+            "Knapsack constraint %d row len %d beta %e sum_neg %e sum_pos %e sum_pos / (row_len - "
+            "1) %e\n",
+            i,
+            row_len,
+            beta,
+            sum_neg,
+            sum_pos,
+            sum_pos / (row_len - 1));
         }
+        knapsack_constraints_.push_back(i);
       }
     }
   }
@@ -912,14 +911,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   // The cut is in the form: - sum_{j in cover} x_j >= -cover_size + 1
   // Which is equivalent to: sum_{j in cover} x_j <= cover_size - 1
 
-  // Verify the cut is violated
-  f_t dot       = cut.vector.dot(complemented_xstar_);
-  f_t violation = dot - cut.rhs;
-  if (1) {
-    settings.log.printf("Knapsack cut %d violation %e < 0\n", knapsack_row, violation);
-  }
-
-  if (violation >= -tol) { restore_complemented(complemented_variables); return -1; }
 
   // Compute the minimal cover and partition the variables into C1 and C2
   inequality_t<i_t, f_t> minimal_cover_cut(lp.num_cols);
@@ -939,7 +930,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
                     c1_partition,
                     c2_partition,
                     lifted_cut);
-
   lifted_cut.negate();
 
 
@@ -955,31 +945,16 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   // Verify the cut is violated
   f_t lifted_dot       = lifted_cut.vector.dot(xstar);
   f_t lifted_violation = lifted_dot - lifted_cut.rhs;
-  if (1) {
+  if (verbose) {
     settings.log.printf("Knapsack cut %d lifted violation %e < 0\n", knapsack_row, lifted_violation);
   }
 
-  f_t best_violation;
-  if (lifted_violation < violation) {
-    cut = lifted_cut;
-    best_violation = lifted_violation;
-  } else {
-    for (i_t k = 0; k < cut.size(); k++) {
-      const i_t j = cut.index(k);
-      if (is_complemented_[j]) {
-        cut.vector.x[k] *= -1.0;
-        cut.rhs += 1.0;
-      }
-    }
-    cut.sort();
-    best_violation = violation;
-  }
-
-  if (best_violation >= -tol) {
+  if (lifted_violation >= -tol) {
     restore_complemented(complemented_variables);
     return -1;
   }
 
+  cut = lifted_cut;
   restore_complemented(complemented_variables);
   return 0;
 }
@@ -1253,7 +1228,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
 
     if (alpha_k > 0.0) {
-      printf("Lifted variable %d with alpha %g\n", k, alpha_k);
+      settings_.log.printf("Lifted variable %d with alpha %g\n", k, alpha_k);
       F.push_back(k);
       alpha.push_back(alpha_k);
       values.push_back(alpha_k);
@@ -1267,7 +1242,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
     remaining_variables.pop_back();
     remaining_coefficients.pop_back();
   }
-  printf("Lifted %ld variables\n", F.size());
+  settings_.log.printf("Lifted %ld variables\n", F.size());
 
   // Restore is_marked_
   for (i_t j : marked_variables) {
@@ -1474,8 +1449,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     f_t cut_start_time = tic();
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
     f_t cut_generation_time = toc(cut_start_time);
-    if (cut_generation_time > 1.0) {
-      settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
+    if (1 || cut_generation_time > 1.0) {
+      settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
