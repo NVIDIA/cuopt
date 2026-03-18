@@ -310,13 +310,34 @@ class knapsack_generation_t {
                              const std::vector<variable_type_t>& var_types,
                              const std::vector<f_t>& xstar,
                              i_t knapsack_row,
-                             std::vector<i_t>& is_complemented,
                              inequality_t<i_t, f_t>& cut);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
 
  private:
+  void restore_complemented(const std::vector<i_t>& complemented_variables) {
+    for (i_t j : complemented_variables) {
+      is_complemented_[j] = 0;
+    }
+  }
+  bool is_minimal_cover(f_t cover_sum,
+                         f_t beta,
+                         const std::vector<f_t>& cover_coefficients);
+
+  void minimial_cover_and_partition(const inequality_t<i_t, f_t>& knapsack_inequality,
+                                    const inequality_t<i_t, f_t>& negated_base_cut,
+                                    const std::vector<f_t>& xstar,
+                                    inequality_t<i_t, f_t>& minimal_cover_cut,
+                                    std::vector<i_t>& c1_partition,
+                                    std::vector<i_t>& c2_partition);
+
+  void lift_knapsack_cut(const inequality_t<i_t, f_t>& knapsack_inequality,
+                         const inequality_t<i_t, f_t>& base_cut,
+                         const std::vector<i_t>& c1_partition,
+                         const std::vector<i_t>& c2_partition,
+                         inequality_t<i_t, f_t>& lifted_cut);
+
   // Generate a heuristic solution to the 0-1 knapsack problem
   f_t greedy_knapsack_problem(const std::vector<f_t>& values,
                               const std::vector<f_t>& weights,
@@ -331,6 +352,10 @@ class knapsack_generation_t {
 
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
+  std::vector<i_t> is_complemented_;
+  std::vector<i_t> is_marked_;
+  std::vector<f_t> workspace_;
+  std::vector<f_t> complemented_xstar_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 

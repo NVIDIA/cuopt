@@ -680,12 +680,16 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types)
-  : settings_(settings)
+  : is_slack_(lp.num_cols, 0),
+    is_complemented_(lp.num_cols, 0),
+    is_marked_(lp.num_cols, 0),
+    workspace_(lp.num_cols, 0.0),
+    complemented_xstar_(lp.num_cols, 0.0),
+    settings_(settings)
 {
   const bool verbose = false;
   knapsack_constraints_.reserve(lp.num_rows);
 
-  is_slack_.resize(lp.num_cols, 0);
   for (i_t j : new_slacks) {
     is_slack_[j] = 1;
   }
@@ -754,7 +758,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t knapsack_row,
-  std::vector<i_t>& is_complemented,
   inequality_t<i_t, f_t>& cut)
 {
   const bool verbose = false;
@@ -801,7 +804,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
         knapsack_inequality.rhs -= aj;
         knapsack_inequality.vector.x[k] *= -1.0;
         complemented_variables.push_back(j);
-        is_complemented[j] = 1;
+        is_complemented_[j] = 1;
       }
       if (verbose) { settings.log.printf(" %g x%d +", knapsack_inequality.vector.x[k], j); }
       seperation_rhs += knapsack_inequality.vector.x[k];
@@ -822,13 +825,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 
     settings.log.printf("seperation_rhs %g\n", seperation_rhs);
   }
-  auto restore_complemented = [&complemented_variables, &is_complemented]() {
-    for (i_t j : complemented_variables) {
-      is_complemented[j] = 0;
-    }
-  };
+
   if (seperation_rhs <= 0.0) {
-    restore_complemented();
+    restore_complemented(complemented_variables);
     return -1;
   }
 
@@ -845,7 +844,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
     if (!is_slack_[j]) {
-      const f_t xstar_j = is_complemented[j] ? 1.0 - xstar[j] : xstar[j];
+      const f_t xstar_j = is_complemented_[j] ? 1.0 - xstar[j] : xstar[j];
+      complemented_xstar_[j] = xstar_j;
       const f_t vj = std::min(1.0, std::max(0.0, 1.0 - xstar_j));
       if (xstar_j < x_tol) {
         // if xstar_j is close to 0, then we can fix z to zero
@@ -873,20 +873,20 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   solution.resize(values.size());
 
   if (seperation_rhs <= 0.0) {
-    restore_complemented();
+    restore_complemented(complemented_variables);
     return -1;
   }
 
   if (verbose) { settings.log.printf("Calling solve_knapsack_problem\n"); }
   f_t objective = solve_knapsack_problem(values, weights, seperation_rhs, solution);
-  if (std::isnan(objective)) { restore_complemented(); return -1; }
+  if (std::isnan(objective)) { restore_complemented(complemented_variables); return -1; }
   if (verbose) {
     settings.log.printf("objective %e objective_constant %e\n", objective, objective_constant);
   }
   f_t seperation_value = -objective + objective_constant;
   if (verbose) { settings.log.printf("seperation_value %e\n", seperation_value); }
   const f_t tol = 1e-6;
-  if (seperation_value >= 1.0 - tol) { restore_complemented(); return -1; }
+  if (seperation_value >= 1.0 - tol) { restore_complemented(complemented_variables); return -1; }
 
   i_t cover_size = 0;
   for (i_t k = 0; k < solution.size(); k++) {
@@ -909,28 +909,371 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   }
   cut.rhs = -cover_size + 1;
 
-  for (i_t k = 0; k < cut.size(); k++) {
-    const i_t j = cut.index(k);
-    if (is_complemented[j]) {
-      cut.vector.x[k] *= -1.0;
-      cut.rhs += 1.0;
-    }
-  }
-  cut.sort();
-
   // The cut is in the form: - sum_{j in cover} x_j >= -cover_size + 1
   // Which is equivalent to: sum_{j in cover} x_j <= cover_size - 1
 
   // Verify the cut is violated
-  f_t dot       = cut.vector.dot(xstar);
+  f_t dot       = cut.vector.dot(complemented_xstar_);
   f_t violation = dot - cut.rhs;
-  if (verbose) {
+  if (1) {
     settings.log.printf("Knapsack cut %d violation %e < 0\n", knapsack_row, violation);
   }
 
-  restore_complemented();
-  if (violation >= -tol) { return -1; }
+  if (violation >= -tol) { restore_complemented(complemented_variables); return -1; }
+
+  // Compute the minimal cover and partition the variables into C1 and C2
+  inequality_t<i_t, f_t> minimal_cover_cut(lp.num_cols);
+  std::vector<i_t> c1_partition;
+  std::vector<i_t> c2_partition;
+  minimial_cover_and_partition(knapsack_inequality,
+                               cut,
+                               complemented_xstar_,
+                               minimal_cover_cut,
+                               c1_partition,
+                               c2_partition);
+
+  // Lift the cut
+  inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
+  lift_knapsack_cut(knapsack_inequality,
+                    minimal_cover_cut,
+                    c1_partition,
+                    c2_partition,
+                    lifted_cut);
+
+  lifted_cut.negate();
+
+
+  for (i_t k = 0; k < lifted_cut.size(); k++) {
+    const i_t j = lifted_cut.index(k);
+    if (is_complemented_[j]) {
+      lifted_cut.vector.x[k] *= -1.0;
+      lifted_cut.rhs += 1.0;
+    }
+  }
+  lifted_cut.sort();
+
+  // Verify the cut is violated
+  f_t lifted_dot       = lifted_cut.vector.dot(xstar);
+  f_t lifted_violation = lifted_dot - lifted_cut.rhs;
+  if (1) {
+    settings.log.printf("Knapsack cut %d lifted violation %e < 0\n", knapsack_row, lifted_violation);
+  }
+
+  f_t best_violation;
+  if (lifted_violation < violation) {
+    cut = lifted_cut;
+    best_violation = lifted_violation;
+  } else {
+    for (i_t k = 0; k < cut.size(); k++) {
+      const i_t j = cut.index(k);
+      if (is_complemented_[j]) {
+        cut.vector.x[k] *= -1.0;
+        cut.rhs += 1.0;
+      }
+    }
+    cut.sort();
+    best_violation = violation;
+  }
+
+  if (best_violation >= -tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
+
+  restore_complemented(complemented_variables);
   return 0;
+}
+
+template <typename i_t, typename f_t>
+bool knapsack_generation_t<i_t, f_t>::is_minimal_cover(f_t cover_sum,
+                                                       f_t beta,
+                                                       const std::vector<f_t>& cover_coefficients)
+{
+  // Check if the cover is minimial
+  // A set C is a cover if
+  // sum_{j in C} a_j > beta
+  // A set C is a minimal cover if
+  // sum_{k in C \ {j}} a_k <= beta for all j in C
+  bool minimal = true;
+
+  // cover_sum = sum_{j in C} a_j
+
+  // A cover is minimal if cover_sum - a_j <= beta for all j in C
+
+  for (i_t k = 0; k < cover_coefficients.size(); k++) {
+    const f_t a_j = cover_coefficients[k];
+    if (a_j == 0.0) { continue; }
+    if (cover_sum - a_j > beta) {
+      minimal = false;
+      break;
+    }
+  }
+  return minimal;
+
+}
+
+template <typename i_t, typename f_t>
+void knapsack_generation_t<i_t, f_t>::minimial_cover_and_partition(
+  const inequality_t<i_t, f_t>& knapsack_inequality,
+  const inequality_t<i_t, f_t>& negated_base_cut,
+  const std::vector<f_t>& xstar,
+  inequality_t<i_t, f_t>& minimal_cover_cut,
+  std::vector<i_t>& c1_partition,
+  std::vector<i_t>& c2_partition)
+{
+  // Compute the minimal cover cut
+  inequality_t<i_t, f_t> base_cut = negated_base_cut;
+  base_cut.negate();
+
+  std::vector<i_t> cover_indicies;
+  cover_indicies.reserve(base_cut.size());
+
+  std::vector<f_t> cover_coefficients;
+  cover_coefficients.reserve(base_cut.size());
+
+  std::vector<f_t> score;
+  score.reserve(base_cut.size());
+
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
+    workspace_[j] = knapsack_inequality.coeff(k);
+  }
+
+  for (i_t k = 0; k < base_cut.size(); k++) {
+    const i_t j = base_cut.index(k);
+    const f_t xstar_j = xstar[j];
+    score.push_back((1.0 - xstar_j) / workspace_[j]);
+    cover_indicies.push_back(j);
+    cover_coefficients.push_back(workspace_[j]);
+  }
+
+  f_t cover_sum = std::accumulate(cover_coefficients.begin(), cover_coefficients.end(), 0.0);
+
+  bool is_minimal = is_minimal_cover(cover_sum, knapsack_inequality.rhs, cover_coefficients);
+
+  if (is_minimal) {
+    minimal_cover_cut = base_cut;
+    return;
+  }
+
+  // We don't have a minimal cover. So sort the score from smallest to largest breaking ties by largest to smallest a_j
+  std::vector<i_t> permuation(cover_indicies.size());
+  std::iota(permuation.begin(), permuation.end(), 0);
+  std::sort(permuation.begin(), permuation.end(), [&](i_t a, i_t b) {
+    if (score[a] < score[b]) {
+      return true;
+    } else if (score[a] == score[b]) {
+      return cover_coefficients[a] > cover_coefficients[b];
+    } else {
+      return false;
+    }
+  });
+
+  const f_t beta = knapsack_inequality.rhs;
+  for (i_t k = 0; k < permuation.size(); k++) {
+    const i_t h = permuation[k];
+    const f_t a_j = cover_coefficients[h];
+    if (cover_sum - a_j > beta) {
+      // sum_{k in C} a_k - a_j > beta
+      // so sum_{k in C \ {k}} a_k > beta and C \ {k} remains a cover
+
+      cover_sum -= a_j;
+      // Set the coefficient to 0 to remove it from the cover
+      cover_coefficients[h] = 0.0;
+
+      is_minimal = is_minimal_cover(cover_sum, beta, cover_coefficients);
+      if (is_minimal) {
+        break;
+      }
+    } else {
+      // C \ {j} is no longer a cover.
+      continue;
+    }
+  }
+
+  // Go through and correct cover_indicies and cover_coefficients
+  for (i_t k = 0; k < cover_coefficients.size(); ) {
+    if (cover_coefficients[k] == 0.0) {
+      cover_indicies[k] = cover_indicies.back();
+      cover_indicies.pop_back();
+      cover_coefficients[k] = cover_coefficients.back();
+      cover_coefficients.pop_back();
+    } else {
+      k++;
+    }
+  }
+
+  // We now have a minimal cover cut
+  // sum_{j in C} x_j <= |C| - 1
+  minimal_cover_cut.vector.i = cover_indicies;
+  minimal_cover_cut.vector.x.resize(cover_indicies.size(), 1.0);
+  minimal_cover_cut.rhs = cover_coefficients.size() - 1;
+
+  // Now we need to partition the variables into C1 and C2
+  // C2 = {j in C | x_j = 1}
+  // C1 = C / C2
+
+  const f_t x_tol = 1e-5;
+  for (i_t j : cover_indicies) {
+    if (xstar[j] > 1.0 - x_tol) {
+      c2_partition.push_back(j);
+    } else {
+      c1_partition.push_back(j);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
+  const inequality_t<i_t, f_t>& knapsack_inequality,
+  const inequality_t<i_t, f_t>& base_cut,
+  const std::vector<i_t>& c1_partition,
+  const std::vector<i_t>& c2_partition,
+  inequality_t<i_t, f_t>& lifted_cut)
+{
+  // The base cut is in the form: sum_{j in cover} x_j <= |cover| - 1
+
+  // We will attempt to lift the cut by adding a new variable x_k with k not in C to the base cut
+  // so that the cut becomes
+  // sum_{j in cover} x_j + alpha_k * x_k <= |cover| - 1
+  //
+  // We can do this for multiple variables so that in the end the cut becomes
+  //
+  // sum_{j in cover} x_j + sum_{k in F} alpha_k * x_k <= |cover| - 1
+
+  // Determine which variables are in the knapsack constraint and not in the cover
+  std::vector<i_t> marked_variables;
+  marked_variables.reserve(knapsack_inequality.size());
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
+    if (!is_marked_[j]) {
+      is_marked_[j] = 1;         // is_marked_[j] = 1 for all j in N
+      marked_variables.push_back(j);
+    }
+  }
+  for (i_t k = 0; k < base_cut.size(); k++) {
+    const i_t j = base_cut.index(k);
+    if (is_marked_[j]) {
+      is_marked_[j] = 0;         // is_marked_[j] = 1 for all j in N \ C
+      // OK to leave marked_variables unchanged as marked_variables will be a superset of all dirty is_marked
+    }
+  }
+  std::vector<i_t> remaining_variables;
+  std::vector<i_t> remaining_indices;
+  std::vector<f_t> remaining_coefficients;
+  remaining_variables.reserve(knapsack_inequality.size());
+  remaining_indices.reserve(knapsack_inequality.size());
+  remaining_coefficients.reserve(knapsack_inequality.size());
+
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
+    if (is_marked_[j]) {
+      remaining_variables.push_back(j);
+      remaining_indices.push_back(k);
+      remaining_coefficients.push_back(knapsack_inequality.coeff(k));
+    }
+  }
+
+  // We start with F = {} and lift remaining variables one by one
+  // For a variable k not in C union F, the inequality
+  //
+  // alpha_k * x_k + sum_{j in C} x_j <= |C| - 1
+  // is trivially satisfied when x_k = 0.
+  // If x_k = 1, then the inequality will be valid for all alpha_k
+  // such that
+  // alpha_k +  maximize sum_{j in C} x_j                          <= |C| - 1
+  //            subject to a_k + sum_{j in C} a_j x_j <= beta
+  //
+  // where here we require a_k + sum_{j in C} a_j x_j <= beta so that the inequality
+  // is valid for the set { x_j in {0, 1}^(|C| + 1) | sum_{j in C union k} a_j x_j <= beta}
+  //
+  // Let phi^star_k denote the optimal objective value of the problem
+  //
+  // maximize sum_{j in C} x_j
+  // subject to a_k + sum_{j in C} a_j x_j <= beta
+  //             x_j in {0, 1} for all j in C
+  // Then alpha_k <= |C| - 1 - phi^star_k
+  // and we can set alpha_k = |C| - 1 - phi^star_k
+  //
+  // We can continue this process for each variable k not in C union F
+  //
+  // Assume the valid inequality
+  // sum_{j in C} x_j + sum_{j in F} alpha_j * x_j <= |C| - 1
+  // has been obtained so far. We now add the variable x_k with k not in C union F to the inequality.
+  // So we have
+  // alpha_k * x_k + sum_{j in C} x_j + sum_{j in F} alpha_j * x_j <= |C| - 1
+  //
+  // Again, this is trivially satisfied when x_k = 0. And we can determine the max value of alpha_k
+  // by solving the 0-1 knapsack problem:
+  //
+  // maximize sum_{j in C} x_j + sum_{j in F} alpha_j * x_j
+  // subject to sum_{j in C} a_j x_j + sum_{j in F} a_j * x_j <= beta - a_k
+  //            x_j in {0, 1} for all j in C union F
+  //
+  // Let phi^star_k denote the optimal objective value of the knapsack problem.
+  // The lifted coefficient alpha_k = |C| - 1 - phi^star_k
+
+
+  // Construct weight and values for C
+  std::vector<f_t> values;
+  values.reserve(knapsack_inequality.size());
+
+  std::vector<f_t> weights;
+  weights.reserve(knapsack_inequality.size());
+
+  for (i_t k = 0; k < knapsack_inequality.size(); k++) {
+    const i_t j = knapsack_inequality.index(k);
+    if (!is_marked_[j]) {
+      // j is in C
+      weights.push_back(knapsack_inequality.coeff(k));
+      values.push_back(1.0);
+    }
+  }
+
+  std::vector<i_t> F;
+  std::vector<f_t> alpha;
+
+  std::vector<f_t> solution;
+
+  f_t cover_size = base_cut.size();
+
+  lifted_cut = base_cut;
+
+  //  TODO sort the remaining variables / coefficients according to some ordering
+
+  while (remaining_variables.size() > 0) {
+    const i_t k = remaining_variables.back();
+    const f_t a_k = remaining_coefficients.back();
+
+    f_t capacity = knapsack_inequality.rhs - a_k;
+
+    f_t objective = solve_knapsack_problem(values, weights, capacity, solution);
+    if (std::isnan(objective)) { break; }
+
+    f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
+
+    if (alpha_k > 0.0) {
+      printf("Lifted variable %d with alpha %g\n", k, alpha_k);
+      F.push_back(k);
+      alpha.push_back(alpha_k);
+      values.push_back(alpha_k);
+      weights.push_back(a_k);
+
+      lifted_cut.vector.i.push_back(k);
+      lifted_cut.vector.x.push_back(alpha_k);
+    }
+
+    // Remove the variable from the remaining variables and coefficients
+    remaining_variables.pop_back();
+    remaining_coefficients.pop_back();
+  }
+  printf("Lifted %ld variables\n", F.size());
+
+  // Restore is_marked_
+  for (i_t j : marked_variables) {
+    is_marked_[j] = 0;
+  }
+
 }
 
 template <typename i_t, typename f_t>
@@ -1054,6 +1397,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
     return greedy_knapsack_problem(values, weights, rhs, solution);
   }
 
+  solution.assign(n, 0.0);
+
   // dp(j, v) = minimum weight using first j items to get value v
   dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
   dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
@@ -1170,11 +1515,10 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
   const std::vector<f_t>& xstar)
 {
   if (knapsack_generation_.num_knapsack_constraints() > 0) {
-    std::vector<i_t> is_complemented(lp.num_cols, 0);
     for (i_t knapsack_row : knapsack_generation_.get_knapsack_constraints()) {
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
-        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, is_complemented, cut);
+        lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
       if (knapsack_status == 0) { cut_pool_.add_cut(cut_type_t::KNAPSACK, cut); }
     }
   }

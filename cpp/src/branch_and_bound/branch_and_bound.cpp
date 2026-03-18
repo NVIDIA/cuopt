@@ -724,12 +724,6 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
                        obj,
                        is_maximization ? "Upper" : "Lower",
                        user_bound);
-  {
-    const f_t root_lp_obj = root_lp_current_lower_bound_.load();
-    if (std::isfinite(root_lp_obj)) {
-      settings_.log.printf("Root LP dual objective (last): %.16e\n", root_lp_obj);
-    }
-  }
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     solver_status_ = mip_status_t::OPTIMAL;
