@@ -685,10 +685,6 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
     k_max = 4;
   }
 
-  // Base number of insertion positions (used to compute grid size after k_max is fixed)
-  const i_t n_lexico_positions = (solution_ptr->get_num_orders() + solution_ptr->get_n_routes() -
-                                  solution_ptr->problem_ptr->order_info.depot_included_);
-
   size_t sh_size = 0;
   bool is_set    = false;
   while (k_max > 1) {
@@ -703,14 +699,12 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
 
   if (k_max == 1 || !is_set) { return false; }
 
-  // Recompute block count with final k_max so kernel's blockIdx.x stays in valid range
-  // (kernel uses delivery_insertion_idx = blockIdx.x / n_lexico_positions, so we must launch
-  // exactly n_lexico_positions * max_neighbors(k_max) blocks for PDP).
-  i_t n_blocks_lexico = n_lexico_positions;
+  // Compute n_blocks_lexico after k_max is finalized by the while-loop above
+  i_t n_blocks_lexico = (solution_ptr->get_num_orders() + solution_ptr->get_n_routes() -
+                         solution_ptr->problem_ptr->order_info.depot_included_);
   if constexpr (REQUEST == request_t::PDP) {
     n_blocks_lexico *= max_neighbors<i_t, REQUEST>(k_max);
   }
-  if (n_blocks_lexico <= 0) { return false; }
 
   // Init global min before call to lexicographic
   const auto max = std::numeric_limits<typename decltype(global_min_p_)::value_type>::max();
