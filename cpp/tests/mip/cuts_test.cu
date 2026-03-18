@@ -1253,6 +1253,8 @@ TEST(cuts, clique_neos8_phase1_symmetry_and_degree_cache_consistency)
   }
 }
 
+// Disabled: hits time limit on ARM (L4) instead of Optimal.
+// https://github.com/NVIDIA/cuopt/issues/972
 TEST(cuts, DISABLED_clique_neos8_phase2_no_cut_off_optimal_solution_validation)
 {
   auto& no_cut_mip = get_neos8_optimal_solution_no_cuts_cached();
@@ -1296,6 +1298,8 @@ TEST(cuts, clique_neos8_phase3_fractional_separation_must_cut_off)
   }
 }
 
+// Disabled: depends on phase2 cached result which fails on ARM (L4).
+// https://github.com/NVIDIA/cuopt/issues/972
 TEST(cuts, DISABLED_clique_neos8_phase4_fault_isolation_binary_search)
 {
   auto& no_cut_mip = get_neos8_optimal_solution_no_cuts_cached();
