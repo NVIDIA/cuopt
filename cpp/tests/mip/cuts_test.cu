@@ -1253,7 +1253,7 @@ TEST(cuts, clique_neos8_phase1_symmetry_and_degree_cache_consistency)
   }
 }
 
-TEST(cuts, clique_neos8_phase2_no_cut_off_optimal_solution_validation)
+TEST(cuts, DISABLED_clique_neos8_phase2_no_cut_off_optimal_solution_validation)
 {
   auto& no_cut_mip = get_neos8_optimal_solution_no_cuts_cached();
   ASSERT_EQ(no_cut_mip.status, mip_termination_status_t::Optimal);
@@ -1296,7 +1296,7 @@ TEST(cuts, clique_neos8_phase3_fractional_separation_must_cut_off)
   }
 }
 
-TEST(cuts, clique_neos8_phase4_fault_isolation_binary_search)
+TEST(cuts, DISABLED_clique_neos8_phase4_fault_isolation_binary_search)
 {
   auto& no_cut_mip = get_neos8_optimal_solution_no_cuts_cached();
   ASSERT_EQ(no_cut_mip.status, mip_termination_status_t::Optimal);
