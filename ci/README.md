@@ -41,3 +41,15 @@ Similarly, for Conda package,
 
 
 There are other scripts in this directory which are used to build and test the code and are also used in the workflows as utlities.
+
+## Skill validation
+
+These checks validate the agent skills under `skills/` (structure, content, and runnable assets).
+
+### Existing tests
+
+| Test | What it does | How to run |
+|------|--------------|------------|
+| **validate_skills.sh** | Every skill has `SKILL.md`, frontmatter (`name:`, `description:`), version in sync with `VERSION`, and is referenced in plugin/AGENTS config. | `./ci/utils/validate_skills.sh` (also runs in pre-commit). |
+| **test_skills_assets.sh** | Runs executable assets: Python scripts, C programs, CLI via `cuopt_cli` on MPS files. | `./ci/test_skills_assets.sh` |
+| **validate_developer_skills.sh** | Ensures developer SKILL.md files contain required sections and key workflow commands. | `./ci/utils/validate_developer_skills.sh` |
