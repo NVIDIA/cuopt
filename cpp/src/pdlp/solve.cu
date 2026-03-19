@@ -962,6 +962,9 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   size_t optimal_batch_size = use_optimal_batch_size
                              ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
                              : max_batch_size;
+  if (settings.sub_batch_size > 0) {
+    optimal_batch_size = settings.sub_batch_size;
+  }
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
                "Optimal batch size should be between 1 and max batch size");
   using f_t2 = typename type_2<f_t>::type;
@@ -1039,6 +1042,11 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     // Only take the new bounds from [i, i + current_batch_size)
     batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
       original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
+
+    if (settings.shared_sb_view.is_valid()) {
+      batch_settings.shared_sb_view =
+        settings.shared_sb_view.subview(i, current_batch_size);
+    }
 
     auto sol = solve_lp(problem, batch_settings);
 

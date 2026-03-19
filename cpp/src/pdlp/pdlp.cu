@@ -776,7 +776,27 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
   }
 #endif
 
-  // All are optimal or infeasible
+  // Sync external solved status into internal termination strategy before all_done() check
+  if (settings_.shared_sb_view.is_valid()) {
+    for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+      // If PDLP has solved it to optimality we want to keep it and resolved both solvers having solved the problem later
+      if (current_termination_strategy_.is_done(
+            current_termination_strategy_.get_termination_status(i)))
+        continue;
+      const i_t local_idx = climber_strategies_[i].original_index;
+      if (settings_.shared_sb_view.is_solved(local_idx)) {
+        current_termination_strategy_.set_termination_status(i,
+          pdlp_termination_status_t::ConcurrentLimit);
+#ifdef BATCH_VERBOSE_MODE
+        std::cout << "[COOP SB] DS already solved climber " << i << " (original_index "
+                  << local_idx << "), synced to ConcurrentLimit at step "
+                  << total_pdlp_iterations_ << std::endl;
+#endif
+      }
+    }
+  }
+
+  // All are optimal, infeasible, or externally solved
   if (current_termination_strategy_.all_done()) {
     const auto original_batch_size = settings_.new_bounds.size();
     // Some climber got removed from the batch while the optimization was running
@@ -823,6 +843,9 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
                              pdlp_termination_status_t::ConcurrentLimit);
+        if (settings_.shared_sb_view.is_valid()) {
+          settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
+        }
       }
       current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -838,6 +861,11 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         problem_ptr->row_names,
         std::move(batch_solution_to_return_.get_additional_termination_informations()),
         std::move(batch_solution_to_return_.get_terminations_status())};
+    }
+    if (settings_.shared_sb_view.is_valid()) {
+      for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+        settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
+      }
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
     return current_termination_strategy_.fill_return_problem_solution(
@@ -857,8 +885,11 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
             current_termination_strategy_.get_termination_status(i))) {
         raft::common::nvtx::range fun_scope("remove_done_climber");
 #ifdef BATCH_VERBOSE_MODE
-        std::cout << "Removing climber " << i << " because it is done. Its original index is "
-                  << climber_strategies_[i].original_index << std::endl;
+        const bool externally_solved = (current_termination_strategy_.get_termination_status(i) ==
+                                        pdlp_termination_status_t::ConcurrentLimit);
+        std::cout << "Removing climber " << i << " (original_index "
+                  << climber_strategies_[i].original_index << ") because it is done"
+                  << (externally_solved ? " [solved by DS]" : " [solved by PDLP]") << std::endl;
 #endif
         to_remove.emplace(i);
         // Copy current climber solution information
@@ -891,6 +922,9 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
                              pdlp_termination_status_t::ConcurrentLimit);
+        if (settings_.shared_sb_view.is_valid()) {
+          settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
+        }
       }
     }
     if (to_remove.size() > 0) {

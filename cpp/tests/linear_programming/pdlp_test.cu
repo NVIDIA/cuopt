@@ -43,7 +43,10 @@
 #include <cmath>
 #include <cstdint>
 #include <sstream>
+#include <thread>
 #include <vector>
+
+#include <branch_and_bound/shared_strong_branching_context.hpp>
 
 namespace cuopt::linear_programming::test {
 
@@ -2042,6 +2045,301 @@ TEST(pdlp_class, precision_single_pslp_presolve)
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+}
+
+// ---------------------------------------------------------------------------
+// Cooperative strong branching tests
+// ---------------------------------------------------------------------------
+
+TEST(pdlp_class, shared_sb_context_unit)
+{
+  using namespace cuopt::linear_programming::dual_simplex;
+
+  constexpr int N = 10;
+  shared_strong_branching_context_t<int, double> ctx(N);
+  shared_strong_branching_context_view_t<int, double> view(std::span(ctx.solved));
+
+  EXPECT_TRUE(view.is_valid());
+
+  shared_strong_branching_context_view_t<int, double> empty_view;
+  EXPECT_FALSE(empty_view.is_valid());
+
+  for (int i = 0; i < N; ++i) {
+    EXPECT_FALSE(view.is_solved(i));
+  }
+
+  view.mark_solved(0);
+  view.mark_solved(3);
+  view.mark_solved(7);
+
+  EXPECT_TRUE(view.is_solved(0));
+  EXPECT_FALSE(view.is_solved(1));
+  EXPECT_FALSE(view.is_solved(2));
+  EXPECT_TRUE(view.is_solved(3));
+  EXPECT_FALSE(view.is_solved(4));
+  EXPECT_FALSE(view.is_solved(5));
+  EXPECT_FALSE(view.is_solved(6));
+  EXPECT_TRUE(view.is_solved(7));
+  EXPECT_FALSE(view.is_solved(8));
+  EXPECT_FALSE(view.is_solved(9));
+
+  // subview(2, 5) covers global indices [2..6]
+  auto sv = view.subview(2, 5);
+  EXPECT_TRUE(sv.is_valid());
+  EXPECT_FALSE(sv.is_solved(0));  // global 2
+  EXPECT_TRUE(sv.is_solved(1));   // global 3
+  EXPECT_FALSE(sv.is_solved(2));  // global 4
+  EXPECT_FALSE(sv.is_solved(3));  // global 5
+  EXPECT_FALSE(sv.is_solved(4));  // global 6
+
+  // Mark through subview: local 4 -> global 6
+  sv.mark_solved(4);
+  EXPECT_TRUE(view.is_solved(6));
+  EXPECT_TRUE(sv.is_solved(4));
+}
+
+TEST(pdlp_class, shared_sb_view_batch_pre_solved)
+{
+  using namespace cuopt::linear_programming::dual_simplex;
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  const std::vector<int> fractional     = {1, 2, 4};
+  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
+  const int n_fractional                = fractional.size();
+  const int batch_size                  = n_fractional * 2;  // 6
+
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+
+  // Build new_bounds: down branches [0..2], up branches [3..5]
+  for (int i = 0; i < n_fractional; ++i)
+    solver_settings.new_bounds.push_back({fractional[i],
+                                          op_problem.get_variable_lower_bounds()[fractional[i]],
+                                          std::floor(root_soln_x[i])});
+  for (int i = 0; i < n_fractional; ++i)
+    solver_settings.new_bounds.push_back({fractional[i],
+                                          std::ceil(root_soln_x[i]),
+                                          op_problem.get_variable_upper_bounds()[fractional[i]]});
+
+  shared_strong_branching_context_t<int, double> ctx(batch_size);
+
+  // Pre-mark entries 1 and 4 as solved (simulating DS)
+  ctx.solved[1].store(1);
+  ctx.solved[4].store(1);
+
+  solver_settings.shared_sb_view =
+    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+
+  auto solution = solve_lp(&handle_, op_problem, solver_settings);
+
+  ASSERT_EQ(solution.get_terminations_status().size(), batch_size);
+
+  // Pre-solved entries should have ConcurrentLimit
+  EXPECT_EQ(solution.get_termination_status(1), pdlp_termination_status_t::ConcurrentLimit);
+  EXPECT_EQ(solution.get_termination_status(4), pdlp_termination_status_t::ConcurrentLimit);
+
+  // Others should be Optimal
+  EXPECT_EQ(solution.get_termination_status(0), pdlp_termination_status_t::Optimal);
+  EXPECT_EQ(solution.get_termination_status(2), pdlp_termination_status_t::Optimal);
+  EXPECT_EQ(solution.get_termination_status(3), pdlp_termination_status_t::Optimal);
+  EXPECT_EQ(solution.get_termination_status(5), pdlp_termination_status_t::Optimal);
+
+  // All entries should now be marked solved in the shared context
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+  }
+}
+
+TEST(pdlp_class, shared_sb_view_subbatch)
+{
+  using namespace cuopt::linear_programming::dual_simplex;
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  const std::vector<int> fractional     = {1, 2, 4};
+  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
+  const int n_fractional                = fractional.size();
+  const int batch_size                  = n_fractional * 2;
+
+  auto solver_settings                   = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                 = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode       = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver              = cuopt::linear_programming::presolver_t::None;
+  solver_settings.sub_batch_size         = 2;
+
+  shared_strong_branching_context_t<int, double> ctx(batch_size);
+
+  // Pre-mark one entry in each sub-batch of size 2: indices 1, 4
+  ctx.solved[1].store(1);
+  ctx.solved[4].store(1);
+
+  solver_settings.shared_sb_view =
+    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+
+  auto solution = batch_pdlp_solve(&handle_, op_problem, fractional, root_soln_x, solver_settings);
+
+  ASSERT_EQ(solution.get_terminations_status().size(), batch_size);
+
+  // Pre-solved entries should have ConcurrentLimit
+  EXPECT_EQ(solution.get_termination_status(1), pdlp_termination_status_t::ConcurrentLimit);
+  EXPECT_EQ(solution.get_termination_status(4), pdlp_termination_status_t::ConcurrentLimit);
+
+  // Others should be Optimal
+  for (int i = 0; i < batch_size; ++i) {
+    if (i == 1 || i == 4) continue;
+    EXPECT_EQ(solution.get_termination_status(i), pdlp_termination_status_t::Optimal)
+      << "Entry " << i << " should be Optimal";
+  }
+
+  // All should be marked solved
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+  }
+}
+
+TEST(pdlp_class, shared_sb_view_concurrent_mark)
+{
+  using namespace cuopt::linear_programming::dual_simplex;
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  const std::vector<int> fractional     = {1, 2, 4};
+  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
+  const int n_fractional                = fractional.size();
+  const int batch_size                  = n_fractional * 2;
+
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  solver_settings.iteration_limit  = 1000000;
+
+  for (int i = 0; i < n_fractional; ++i)
+    solver_settings.new_bounds.push_back({fractional[0],
+                                          -5,
+                                          -5});
+
+  for (int i = 0; i < n_fractional; ++i)
+    solver_settings.new_bounds.push_back({fractional[i],
+                                          std::ceil(root_soln_x[i]),
+                                          op_problem.get_variable_upper_bounds()[fractional[i]]});
+
+  shared_strong_branching_context_t<int, double> ctx(batch_size);
+
+  solver_settings.shared_sb_view =
+    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+
+  optimization_problem_solution_t<int, double>* result_ptr = nullptr;
+
+  auto pdlp_thread = std::thread([&]() {
+    auto sol = new optimization_problem_solution_t<int, double>(
+      solve_lp(&handle_, op_problem, solver_settings));
+    result_ptr = sol;
+  });
+
+  // Wait a bit then mark entries 0, 2, 4 as solved (simulating DS)
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  for (int i = 0; i < n_fractional; ++i)
+    ctx.solved[i].store(1);
+
+  pdlp_thread.join();
+
+  ASSERT_NE(result_ptr, nullptr);
+  auto& solution = *result_ptr;
+
+  ASSERT_EQ(solution.get_terminations_status().size(), batch_size);
+
+  for (int i = 0; i < batch_size; ++i) {
+    auto status = solution.get_termination_status(i);
+    // Each entry should be either Optimal (PDLP solved it first) or ConcurrentLimit (DS marked it)
+    EXPECT_TRUE(status == pdlp_termination_status_t::Optimal ||
+                status == pdlp_termination_status_t::ConcurrentLimit)
+      << "Entry " << i << " has unexpected status " << cuopt::linear_programming::optimization_problem_solution_t<int, double>::get_termination_status_string(status);
+  }
+
+  // All entries should end up marked solved
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+  }
+
+  delete result_ptr;
+}
+
+TEST(pdlp_class, shared_sb_view_all_infeasible)
+{
+  using namespace cuopt::linear_programming::dual_simplex;
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  const std::vector<int> fractional     = {1, 2, 4};
+  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
+  const int n_fractional                = fractional.size();
+  const int batch_size                  = n_fractional;
+
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  solver_settings.iteration_limit  = 1000000;
+
+  for (int i = 0; i < n_fractional; ++i)
+    solver_settings.new_bounds.push_back({fractional[0],
+                                          -5,
+                                          -5});
+
+  shared_strong_branching_context_t<int, double> ctx(batch_size);
+
+  solver_settings.shared_sb_view =
+    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+
+  optimization_problem_solution_t<int, double>* result_ptr = nullptr;
+
+  auto pdlp_thread = std::thread([&]() {
+    auto sol = new optimization_problem_solution_t<int, double>(
+      solve_lp(&handle_, op_problem, solver_settings));
+    result_ptr = sol;
+  });
+
+  // Wait a bit then mark entries 0, 2, 4 as solved (simulating DS)
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  for (int i = 0; i < n_fractional; ++i)
+    ctx.solved[i].store(1);
+
+  pdlp_thread.join();
+
+  ASSERT_NE(result_ptr, nullptr);
+  auto& solution = *result_ptr;
+
+  ASSERT_EQ(solution.get_terminations_status().size(), batch_size);
+
+  for (int i = 0; i < batch_size; ++i) {
+    auto status = solution.get_termination_status(i);
+    // Each entry should be either Optimal (PDLP solved it first) or ConcurrentLimit (DS marked it)
+    EXPECT_TRUE(status == pdlp_termination_status_t::ConcurrentLimit)
+      << "Entry " << i << " has unexpected status " << cuopt::linear_programming::optimization_problem_solution_t<int, double>::get_termination_status_string(status);
+  }
+
+  // All entries should end up marked solved
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+  }
+
+  delete result_ptr;
 }
 
 }  // namespace cuopt::linear_programming::test

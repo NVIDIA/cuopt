@@ -18,6 +18,8 @@
 
 #include <atomic>
 
+#include <branch_and_bound/shared_strong_branching_context.hpp>
+
 namespace cuopt::linear_programming {
 
 // Forward declare solver_settings_t for friend class
@@ -272,6 +274,8 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Shared strong branching context view for cooperative DS + PDLP
+  dual_simplex::shared_strong_branching_context_view_t<i_t, f_t> shared_sb_view;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
   // Holds the information of new variable lower and upper bounds for each climber in the format:
@@ -283,6 +287,8 @@ class pdlp_solver_settings_t {
   // By default to save memory and speed we don't store and copy each climber's primal and dual solutions
   // We only retrieve termination statistics and the objective values
   bool generate_batch_primal_dual_solution{false};
+  // Used to force batch PDLP to solve a subbatch of the problems at a time
+  i_t sub_batch_size{0};
 
  private:
   /** Initial primal solution */

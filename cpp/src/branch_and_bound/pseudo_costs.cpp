@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/shared_strong_branching_context.hpp>
 
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -41,7 +42,8 @@ void strong_branch_helper(i_t start,
                           std::vector<f_t>& ds_obj_up,
                           std::vector<dual::status_t>& ds_status_down,
                           std::vector<dual::status_t>& ds_status_up,
-                          std::atomic<int>* concurrent_halt)
+                          std::atomic<int>* concurrent_halt,
+                          shared_strong_branching_context_view_t<i_t, f_t>& sb_view)
 {
   raft::common::nvtx::range scope("BB::strong_branch_helper");
   lp_problem_t child_problem = original_lp;
@@ -56,6 +58,15 @@ void strong_branch_helper(i_t start,
 
     for (i_t branch = 0; branch < 2; branch++) {
       // Do the down branch
+      const i_t shared_idx = (branch == 0) ? k : k + static_cast<i_t>(fractional.size());
+      // Batch PDLP has already solved this subproblem, skip it
+      if (sb_view.is_valid() && sb_view.is_solved(shared_idx)) {
+        settings.log.printf(
+          "[COOP SB] DS thread %d skipping variable %d branch %s (shared_idx %d): already solved by PDLP\n",
+          thread_id, j, branch == 0 ? "down" : "up", shared_idx);
+        continue;
+      }
+
       if (branch == 0) {
         child_problem.lower[j] = original_lp.lower[j];
         child_problem.upper[j] = std::floor(root_soln[j]);
@@ -130,6 +141,13 @@ void strong_branch_helper(i_t start,
             ds_obj_up[k],
             toc(start_time));
         }
+      }
+      // Mark the subproblem as solved so that batch PDLP removes it from the batch
+      if (sb_view.is_valid()) {
+        sb_view.mark_solved(shared_idx);
+        settings.log.printf(
+          "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in shared context\n",
+          thread_id, j, branch == 0 ? "down" : "up", shared_idx);
       }
       if (toc(start_time) > settings.time_limit || *concurrent_halt == 1) {
         break; 
@@ -408,7 +426,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       settings.num_threads,
                       fractional.size());
 
-  // Race both batch PDLP and parallel Dual Simplex
+  // Cooperative DS + PDLP: shared context tracks which subproblems are solved
+  shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * fractional.size());
+  shared_strong_branching_context_view_t<i_t, f_t> sb_view(std::span(shared_ctx.solved));
+
   std::atomic<int> concurrent_halt{0};
 
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
@@ -446,6 +467,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
     pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
     pdlp_settings.concurrent_halt = &concurrent_halt;
+    pdlp_settings.shared_sb_view  = sb_view;
 
     pdlp_settings.time_limit = batch_remaining_time;
     const raft::handle_t batch_pdlp_handle;
@@ -512,8 +534,6 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       pdlp_obj_up[k]   = std::max(obj_up - root_obj, f_t(0.0));
     }
 
-    // Batch PDLP finished – tell Dual Simplex to stop
-    concurrent_halt.store(1);
   });
   
   std::vector<dual::status_t> ds_status_down(fractional.size(), dual::status_t::UNSET);
@@ -559,20 +579,12 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                              ds_obj_up,
                              ds_status_down,
                              ds_status_up,
-                             &concurrent_halt);
+                             &concurrent_halt,
+                             sb_view);
       }
     }
 
-  if (settings.mip_batch_pdlp_strong_branching == 1) {
-    if (concurrent_halt.load() == 1) {
-      settings.log.printf("Batch PDLP finished before Dual Simplex\n");
-    }
-    else {
-      settings.log.printf("Dual Simplex finished before Batch PDLP\n");
-    }
-  }
-
-  // Dual Simplex finished all subproblems – tell Batch PDLP to stop
+  // DS done: signal PDLP to stop (time-limit or all work done) and wait
   concurrent_halt.store(1);
 
   pdlp_thread.join();
@@ -614,25 +626,46 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   i_t merged_from_ds = 0;
   i_t merged_from_pdlp = 0;
   i_t merged_nan = 0;
+  i_t solved_by_both_down = 0;
+  i_t solved_by_both_up = 0;
   for (i_t k = 0; k < fractional.size(); k++) {
-    const auto [value_down, source_down] = merge_sb_result<i_t, f_t>(ds_obj_down[k], ds_status_down[k], pdlp_obj_down[k], !std::isnan(pdlp_obj_down[k]));
+    bool ds_has_down   = ds_status_down[k] != dual::status_t::UNSET;
+    bool pdlp_has_down = !std::isnan(pdlp_obj_down[k]);
+    const auto [value_down, source_down] = merge_sb_result<i_t, f_t>(ds_obj_down[k], ds_status_down[k], pdlp_obj_down[k], pdlp_has_down);
     pc.strong_branch_down[k] = value_down;
     if (source_down == 0) merged_from_ds++;
     else if (source_down == 1) merged_from_pdlp++;
     else merged_nan++;
-    const auto [value_up, source_up] = merge_sb_result<i_t, f_t>(ds_obj_up[k], ds_status_up[k], pdlp_obj_up[k], !std::isnan(pdlp_obj_up[k]));
+    if (ds_has_down && pdlp_has_down) {
+      solved_by_both_down++;
+      settings.log.printf(
+        "[COOP SB] Merge: variable %d DOWN solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
+        fractional[k], ds_obj_down[k], pdlp_obj_down[k], source_down == 0 ? "DS" : "PDLP");
+    }
+
+    bool ds_has_up   = ds_status_up[k] != dual::status_t::UNSET;
+    bool pdlp_has_up = !std::isnan(pdlp_obj_up[k]);
+    const auto [value_up, source_up] = merge_sb_result<i_t, f_t>(ds_obj_up[k], ds_status_up[k], pdlp_obj_up[k], pdlp_has_up);
     pc.strong_branch_up[k] = value_up;
     if (source_up == 0) merged_from_ds++;
     else if (source_up == 1) merged_from_pdlp++;
     else merged_nan++;
+    if (ds_has_up && pdlp_has_up) {
+      solved_by_both_up++;
+      settings.log.printf(
+        "[COOP SB] Merge: variable %d UP solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
+        fractional[k], ds_obj_up[k], pdlp_obj_up[k], source_up == 0 ? "DS" : "PDLP");
+    }
   }
 
   if (settings.mip_batch_pdlp_strong_branching == 1) {
     settings.log.printf(
-      "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN)\n",
+      "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both (down/up)\n",
       merged_from_ds,
       merged_from_pdlp,
-      merged_nan);
+      merged_nan,
+      solved_by_both_down,
+      solved_by_both_up);
   }
 
   pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);
