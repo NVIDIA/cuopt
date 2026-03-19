@@ -445,6 +445,21 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
 
 }  // namespace
 
+template <typename i_t, typename f_t>
+bool rational_coefficients(const std::vector<variable_type_t>& var_types,
+                           const inequality_t<i_t, f_t>& inequality,
+                           inequality_t<i_t, f_t>& rational_inequality);
+
+template <typename f_t>
+bool rational_approximation(f_t x,
+                            int64_t max_denominator,
+                            int64_t& numerator,
+                            int64_t& denominator);
+
+int64_t gcd(const std::vector<int64_t>& integers);
+
+int64_t lcm(const std::vector<int64_t>& integers);
+
 // This function is only used in tests
 std::vector<std::vector<int>> find_maximal_cliques_for_test(
   const std::vector<std::vector<int>>& adjacency_list,
@@ -876,8 +891,14 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
     return -1;
   }
 
-  if (verbose) { settings.log.printf("Calling solve_knapsack_problem\n"); }
-  f_t objective = solve_knapsack_problem(values, weights, seperation_rhs, solution);
+  f_t objective = 0.0;
+  if (!values.empty()) {
+    if (verbose) { settings.log.printf("Calling solve_knapsack_problem\n"); }
+
+    objective = solve_knapsack_problem(values, weights, seperation_rhs, solution);
+  } else {
+    solution.clear();
+  }
   if (std::isnan(objective)) { restore_complemented(complemented_variables); return -1; }
   if (verbose) {
     settings.log.printf("objective %e objective_constant %e\n", objective, objective_constant);
@@ -933,11 +954,18 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   lifted_cut.negate();
 
 
+  // The cut is now in the form:
+  // -\sum_{j in C} x_j - \sum_{j in F} alpha_j x_j >= -cover_size + 1
   for (i_t k = 0; k < lifted_cut.size(); k++) {
     const i_t j = lifted_cut.index(k);
+    // \sum_{k!=j} d_k x_k + d_j xbar_j >= gamma
+    // xbar_j = 1 - x_j
+    // \sum_{k!=j} d_k x_k + d_j (1 - x_j) >= gamma
+    // \sum_{k!=j} d_k x_k + d_j - d_j x_j >= gamma
+    // \sum_{k!=j} d_k x_k  + d_j x_j >= gamma - d_j
     if (is_complemented_[j]) {
+      lifted_cut.rhs -= lifted_cut.vector.x[k];
       lifted_cut.vector.x[k] *= -1.0;
-      lifted_cut.rhs += 1.0;
     }
   }
   lifted_cut.sort();

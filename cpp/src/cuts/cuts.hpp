@@ -166,21 +166,6 @@ f_t fractional_part(f_t a)
   return a - std::floor(a);
 }
 
-template <typename i_t, typename f_t>
-bool rational_coefficients(const std::vector<variable_type_t>& var_types,
-                           const inequality_t<i_t, f_t>& inequality,
-                           inequality_t<i_t, f_t>& rational_inequality);
-
-template <typename f_t>
-bool rational_approximation(f_t x,
-                            int64_t max_denominator,
-                            int64_t& numerator,
-                            int64_t& denominator);
-
-int64_t gcd(const std::vector<int64_t>& integers);
-
-int64_t lcm(const std::vector<int64_t>& integers);
-
 template <typename f_t>
 bool add_work_estimate(f_t accesses,
                        f_t* work_estimate,
