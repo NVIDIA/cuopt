@@ -590,7 +590,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
     auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
       pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
-
+    opt_problem.set_problem_name(op_problem.get_problem_name());
     return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
   } else {
     cuopt_expects(
@@ -669,6 +669,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   auto opt_problem = build_optimization_problem<i_t, f_t>(
     papilo_problem, op_problem.get_handle_ptr(), category, maximize_);
+  opt_problem.set_problem_name(op_problem.get_problem_name());
   auto col_flags = papilo_problem.getColFlags();
   std::vector<i_t> implied_integer_indices;
   for (size_t i = 0; i < col_flags.size(); i++) {
