@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-version: "26.04.00"
+version: "26.06.00"
 description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
 ---
 
@@ -112,6 +112,11 @@ Do not bury the objective value only in the middle of a paragraph; it must appea
 **Workflow:** Formulate once carefully (with verified understanding), solve, then sanity-check the result. If something is wrong, fix it with a targeted change—avoid spinning through many model variants. Decide, implement, verify, then move on.
 
 Provide diagnostic code snippets when helpful.
+
+### Post-correction check (mandatory)
+<!-- skill-evolution:start — post-correction hook -->
+If the result required a correction, retry, or workaround to reach this point, you MUST evaluate the skill-evolution workflow (`skills/skill-evolution/SKILL.md`) before moving on. Do not skip this step.
+<!-- skill-evolution:end -->
 
 ---
 

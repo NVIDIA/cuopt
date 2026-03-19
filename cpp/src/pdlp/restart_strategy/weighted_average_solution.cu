@@ -139,7 +139,7 @@ i_t weighted_average_solution_t<i_t, f_t>::get_iterations_since_last_restart() c
   return iterations_since_last_restart_;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template __global__ void add_weight_sums<float>(const float* primal_weight,
                                                 const float* dual_weight,
                                                 float* sum_primal_solution_weights,

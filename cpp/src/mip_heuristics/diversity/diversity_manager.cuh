@@ -31,6 +31,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <cstdint>
 
 namespace cuopt::linear_programming::detail {
 

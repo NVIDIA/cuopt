@@ -745,7 +745,7 @@ typename infeasibility_information_t<i_t, f_t>::view_t infeasibility_information
   return v;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class infeasibility_information_t<int, float>;
 
 template __global__ void compute_remaining_stats_kernel<int, float>(

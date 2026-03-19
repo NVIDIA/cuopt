@@ -63,6 +63,21 @@ enum method_t : int {
   Barrier     = CUOPT_METHOD_BARRIER
 };
 
+/**
+ * @brief Enum representing the PDLP precision modes.
+ *
+ * DefaultPrecision: Use the type of the problem (FP64 for double problems).
+ * SinglePrecision:  Run PDLP internally in FP32, converting inputs and outputs.
+ * DoublePrecision:  Explicitly run in FP64 (same as default for double problems).
+ * MixedPrecision:   Use mixed precision SpMV (FP32 matrix with FP64 vectors/compute).
+ */
+enum pdlp_precision_t : int {
+  DefaultPrecision = CUOPT_PDLP_DEFAULT_PRECISION,
+  SinglePrecision  = CUOPT_PDLP_SINGLE_PRECISION,
+  DoublePrecision  = CUOPT_PDLP_DOUBLE_PRECISION,
+  MixedPrecision   = CUOPT_PDLP_MIXED_PRECISION
+};
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t {
  public:
@@ -224,7 +239,7 @@ class pdlp_solver_settings_t {
   bool detect_infeasibility{false};
   bool strict_infeasibility{false};
   i_t iteration_limit{std::numeric_limits<i_t>::max()};
-  double time_limit{std::numeric_limits<double>::infinity()};
+  f_t time_limit{std::numeric_limits<f_t>::infinity()};
   pdlp_solver_mode_t pdlp_solver_mode{pdlp_solver_mode_t::Stable3};
   bool log_to_console{true};
   std::string log_file{""};
@@ -239,6 +254,7 @@ class pdlp_solver_settings_t {
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
+  pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool save_best_primal_so_far{false};
   bool first_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};

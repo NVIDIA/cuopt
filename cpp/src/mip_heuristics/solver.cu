@@ -213,6 +213,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
+    branch_and_bound_settings.clique_cuts   = context.settings.clique_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.reduced_cost_strengthening =
@@ -221,6 +222,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
     branch_and_bound_settings.mip_batch_pdlp_strong_branching =
       context.settings.mip_batch_pdlp_strong_branching;
+    branch_and_bound_settings.reduced_cost_strengthening =
+      context.settings.reduced_cost_strengthening == -1
+        ? 2
+        : context.settings.reduced_cost_strengthening;
 
     if (context.settings.num_cpu_threads < 0) {
       branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);
@@ -266,7 +271,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                                                                    branch_and_bound_settings,
                                                                    timer_.get_tic_start(),
                                                                    context.problem_ptr,
-                                                                   context.settings.num_gpus);
+                                                                   context.settings.num_gpus,
+                                                                  context.problem_ptr->clique_table);
     branch_and_bound_solution.resize(branch_and_bound->get_num_cols());
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;

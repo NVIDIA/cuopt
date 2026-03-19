@@ -48,7 +48,11 @@ class sparse_vector_t {
   void sort();
   // compute the squared 2-norm of the sparse vector
   f_t norm2_squared() const;
+  // negate the coefficients in the sparse vector
   void negate();
+  // scale the coefficients in the sparse vector by a factor
+  void scale(f_t factor);
+  // find the coefficient of a given index
   f_t find_coefficient(i_t index) const;
 
   void clear()

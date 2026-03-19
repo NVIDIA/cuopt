@@ -100,6 +100,7 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
@@ -110,6 +111,7 @@ struct simplex_solver_settings_t {
       sub_mip(0),
       solution_callback(nullptr),
       heuristic_preemption_callback(nullptr),
+      dual_simplex_objective_callback(nullptr),
       concurrent_halt(nullptr)
   {
   }
@@ -178,6 +180,7 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
@@ -205,6 +208,7 @@ struct simplex_solver_settings_t {
   // Called by B&B when first LP solution is available (PDLP/Barrier or dual simplex).
   std::function<void(root_relaxation_first_solution_t<i_t, f_t> const&)>
     on_first_lp_solution_available;
+  std::function<void(f_t)> dual_simplex_objective_callback;  // Called with current dual obj
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt

@@ -1,6 +1,6 @@
 ---
 name: cuopt-qp-api-cli
-version: "26.04.00"
+version: "26.06.00"
 description: QP with cuOpt — CLI (e.g. cuopt_cli with QP-capable input). Use when the user is solving QP from the command line.
 ---
 

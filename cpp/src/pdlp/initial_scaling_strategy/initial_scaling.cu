@@ -858,7 +858,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
     int* A_T_offsets,                                                                         \
     int* A_T_indices);
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 INSTANTIATE(float)
 #endif
 

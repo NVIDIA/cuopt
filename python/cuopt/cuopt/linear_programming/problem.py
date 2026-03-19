@@ -195,6 +195,12 @@ class Variable:
         """
         return self.VariableName
 
+    def __neg__(self):
+        return LinearExpression([self], [-1.0], 0.0)
+
+    def __pos__(self):
+        return self
+
     def __add__(self, other):
         match other:
             case int() | float():
@@ -203,6 +209,8 @@ class Variable:
                 # Change?
                 return LinearExpression([self, other], [1.0, 1.0], 0.0)
             case LinearExpression():
+                return other + self
+            case QuadraticExpression():
                 return other + self
             case _:
                 raise ValueError(
@@ -220,6 +228,8 @@ class Variable:
                 return LinearExpression([self, other], [1.0, -1.0], 0.0)
             case LinearExpression():
                 # self - other ->   other * -1.0 + self
+                return other * -1.0 + self
+            case QuadraticExpression():
                 return other * -1.0 + self
             case _:
                 raise ValueError(
@@ -1900,7 +1910,11 @@ class Problem:
     def populate_solution(self, solution):
         self.Status = solution.get_termination_status()
         self.SolveTime = solution.get_solve_time()
-        self.warmstart_data = solution.get_pdlp_warm_start_data()
+        self.warmstart_data = (
+            solution.get_pdlp_warm_start_data()
+            if solution.problem_category == 0
+            else None
+        )
 
         IsMIP = False
         if solution.problem_category == 0:
@@ -1909,7 +1923,7 @@ class Problem:
             IsMIP = True
             self.SolutionStats = self.dict_to_object(solution.get_milp_stats())
         primal_sol = solution.get_primal_solution()
-        reduced_cost = solution.get_reduced_cost()
+        reduced_cost = solution.get_reduced_cost() if not IsMIP else None
         if len(primal_sol) > 0:
             for var in self.vars:
                 var.Value = primal_sol[var.index]
