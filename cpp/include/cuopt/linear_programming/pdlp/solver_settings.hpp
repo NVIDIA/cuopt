@@ -248,6 +248,8 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  /** If true, solver does not set concurrent_halt; caller sets it after crossover. */
+  bool halt_set_by_caller{false};
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
   // Holds the information of new variable lower and upper bounds for each climber in the format:

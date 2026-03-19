@@ -459,9 +459,10 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
 
-  if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
-                                              status == dual_simplex::lp_status_t::UNBOUNDED ||
-                                              status == dual_simplex::lp_status_t::INFEASIBLE)) {
+  if (!settings.halt_set_by_caller && settings.concurrent_halt != nullptr &&
+      (status == dual_simplex::lp_status_t::OPTIMAL ||
+       status == dual_simplex::lp_status_t::UNBOUNDED ||
+       status == dual_simplex::lp_status_t::INFEASIBLE)) {
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
@@ -531,9 +532,10 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Dual simplex finished in %.2f seconds", timer.elapsed_time());
 
-  if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
-                                              status == dual_simplex::lp_status_t::UNBOUNDED ||
-                                              status == dual_simplex::lp_status_t::INFEASIBLE)) {
+  if (!settings.halt_set_by_caller && settings.concurrent_halt != nullptr &&
+      (status == dual_simplex::lp_status_t::OPTIMAL ||
+       status == dual_simplex::lp_status_t::UNBOUNDED ||
+       status == dual_simplex::lp_status_t::INFEASIBLE)) {
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
@@ -677,8 +679,9 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip, "Crossover status %s", sol.get_termination_status_string().c_str());
   }
-  if (settings.method == method_t::Concurrent && settings.concurrent_halt != nullptr &&
-      crossover_info == 0 && sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
+  if (!settings.halt_set_by_caller && settings.method == method_t::Concurrent &&
+      settings.concurrent_halt != nullptr && crossover_info == 0 &&
+      sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
     // We finished. Tell dual simplex to stop if it is still running.
     CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "PDLP finished. Telling others to stop");
     *settings.concurrent_halt = 1;

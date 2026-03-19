@@ -17,6 +17,7 @@
 
 #include <cuts/cuts.hpp>
 
+#include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -31,6 +32,10 @@
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <omp.h>
+
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 #include <functional>
 #include <vector>
@@ -118,6 +123,21 @@ class branch_and_bound_t {
                                     std::vector<i_t>& nonbasic_list,
                                     std::vector<f_t>& edge_norms);
 
+  /** Starts PDLP+crossover and Barrier+crossover in two threads. winner is 0=none, 1=dual, 2=PDLP,
+   * 3=Barrier; first OPTIMAL sets it. first_solver_* for diversity manager callback. */
+  void run_concurrent_pdlp_and_barrier_with_crossover(
+    const simplex_solver_settings_t<i_t, f_t>& lp_settings,
+    crossover_status_t& crossover_status_out,
+    lp_solution_t<i_t, f_t>& winner_crossover_soln_out,
+    std::vector<variable_status_t>& winner_crossover_vstatus_out,
+    f_t& winner_root_objective_out,
+    std::string& winner_solver_name_out,
+    std::atomic<int>& winner,
+    std::mutex* first_solver_mutex,
+    bool* first_solver_callback_done,
+    std::thread& pdlp_thread_out,
+    std::thread& barrier_thread_out);
+
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
                                 std::vector<f_t>& upper_bounds);
@@ -176,10 +196,8 @@ class branch_and_bound_t {
 
   // Variables for the root node in the search tree.
   std::vector<variable_status_t> root_vstatus_;
-  std::vector<variable_status_t> crossover_vstatus_;
   f_t root_objective_;
   lp_solution_t<i_t, f_t> root_relax_soln_;
-  lp_solution_t<i_t, f_t> root_crossover_soln_;
   std::vector<f_t> edge_norms_;
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};

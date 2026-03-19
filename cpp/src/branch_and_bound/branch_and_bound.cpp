@@ -32,12 +32,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <functional>
 #include <future>
 #include <limits>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -251,7 +255,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     Arow_(1, 1, 0),
     incumbent_(1),
     root_relax_soln_(1, 1),
-    root_crossover_soln_(1, 1),
     pc_(1),
     solver_status_(mip_status_t::UNSET),
     mip_problem_ptr_(nullptr),
@@ -1787,6 +1790,84 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossover(
+  const simplex_solver_settings_t<i_t, f_t>& lp_settings,
+  crossover_status_t& crossover_status_out,
+  lp_solution_t<i_t, f_t>& winner_crossover_soln_out,
+  std::vector<variable_status_t>& winner_crossover_vstatus_out,
+  f_t& winner_root_objective_out,
+  std::string& winner_solver_name_out,
+  std::atomic<int>& winner,
+  std::mutex* first_solver_mutex,
+  bool* first_solver_callback_done,
+  std::thread& pdlp_thread_out,
+  std::thread& barrier_thread_out)
+{
+  // PDLP+crossover and Barrier+crossover each in a thread. winner: 0=none, 1=dual, 2=PDLP,
+  // 3=Barrier.
+  struct concurrent_shared_state_t {
+    std::mutex first_result_mutex;
+  };
+  auto shared = std::make_shared<concurrent_shared_state_t>();
+
+  auto do_crush_crossover = [this,
+                             &lp_settings,
+                             &crossover_status_out,
+                             &winner_crossover_soln_out,
+                             &winner_crossover_vstatus_out,
+                             &winner_root_objective_out,
+                             &winner_solver_name_out,
+                             &winner,
+                             first_solver_mutex,
+                             first_solver_callback_done,
+                             shared](const root_relaxation_first_solution_t<i_t, f_t>& result,
+                                     const char* solver_name,
+                                     int winner_id) {
+    return cuopt::linear_programming::detail::run_crush_crossover_and_maybe_win<i_t, f_t>(
+      result,
+      original_problem_,
+      original_lp_,
+      new_slacks_,
+      settings_,
+      exploration_stats_.start_time,
+      get_root_concurrent_halt(),
+      [this]() { set_root_concurrent_halt(1); },
+      lp_settings.on_first_lp_solution_available,
+      first_solver_mutex,
+      first_solver_callback_done,
+      &shared->first_result_mutex,
+      &winner,
+      winner_id,
+      &crossover_status_out,
+      &winner_crossover_soln_out,
+      &winner_crossover_vstatus_out,
+      &winner_root_objective_out,
+      solver_name,
+      &winner_solver_name_out);
+  };
+
+  pdlp_thread_out = std::thread([this, &lp_settings, do_crush_crossover]() {
+    auto result = cuopt::linear_programming::detail::run_solver_for_root_lp<i_t, f_t>(
+      mip_problem_ptr_,
+      lp_settings.time_limit,
+      get_root_concurrent_halt(),
+      pdlp_root_num_gpus_,
+      cuopt::linear_programming::method_t::PDLP);
+    (void)do_crush_crossover(result, "PDLP", 2);
+  });
+
+  barrier_thread_out = std::thread([this, &lp_settings, do_crush_crossover]() {
+    auto result = cuopt::linear_programming::detail::run_solver_for_root_lp<i_t, f_t>(
+      mip_problem_ptr_,
+      lp_settings.time_limit,
+      get_root_concurrent_halt(),
+      pdlp_root_num_gpus_,
+      cuopt::linear_programming::method_t::Barrier);
+    (void)do_crush_crossover(result, "Barrier", 3);
+  });
+}
+
+template <typename i_t, typename f_t>
 lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   simplex_solver_settings_t<i_t, f_t> const& lp_settings,
   lp_solution_t<i_t, f_t>& root_relax_soln,
@@ -1801,94 +1882,148 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   i_t iter                = 0;
   std::string solver_name = "";
 
-  // Launch dual simplex on a background thread (it may be halted later if PDLP+crossover wins).
-  lp_status_t root_status;
-  std::future<lp_status_t> root_status_future =
-    std::async(std::launch::async,
-               &solve_linear_program_with_advanced_basis<i_t, f_t>,
-               std::ref(original_lp_),
-               exploration_stats_.start_time,
-               std::ref(lp_settings),
-               std::ref(root_relax_soln),
-               std::ref(basis_update),
-               std::ref(basic_list),
-               std::ref(nonbasic_list),
-               std::ref(root_vstatus),
-               std::ref(edge_norms),
-               nullptr);
+  // Dual simplex runs on the main thread when concurrent; otherwise it runs alone on main.
+  auto dual_simplex_settings = std::make_shared<simplex_solver_settings_t<i_t, f_t>>(lp_settings);
+  dual_simplex_settings->inside_mip = 1;
 
-  const auto wait_timeout_s = static_cast<long long>(std::max(600.0, 2.0 * lp_settings.time_limit));
-  const auto wait_timeout   = std::chrono::seconds(wait_timeout_s);
+  lp_status_t root_status = lp_status_t::UNSET;
+  lp_status_t root_result_status =
+    lp_status_t::UNSET;  // dual simplex result; set when dual returns, read in else branch
 
-  bool use_pdlp_path = false;
+  bool use_pdlp_path               = false;
+  bool dual_simplex_finished_first = false;
+
+  crossover_status_t crossover_status = crossover_status_t::NUMERICAL_ISSUES;
+  lp_solution_t<i_t, f_t> winner_crossover_soln(original_lp_.num_rows, original_lp_.num_cols);
+  std::vector<variable_status_t> winner_crossover_vstatus;
+  f_t winner_root_objective = 0;
+  std::string root_winner_solver_name;
+
+  std::thread pdlp_thread;
+  std::thread barrier_thread;
+  std::thread dual_simplex_thread;
+  std::atomic<int> winner{0};  // 0=none, 1=dual, 2=PDLP, 3=Barrier
 
   if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
-    // Run PDLP/Barrier on the main thread, then crossover on the main thread.
-    auto result = cuopt::linear_programming::detail::run_pdlp_barrier_for_root_lp<i_t, f_t>(
-      mip_problem_ptr_, lp_settings.time_limit, get_root_concurrent_halt(), pdlp_root_num_gpus_);
-    root_crossover_soln_.x              = result.primal;
-    root_crossover_soln_.y              = result.dual;
-    root_crossover_soln_.z              = result.reduced_costs;
-    root_crossover_soln_.objective      = result.objective;
-    root_crossover_soln_.user_objective = result.user_objective;
-    root_crossover_soln_.iterations     = result.iterations;
-    root_objective_                     = result.objective;
+    // All three run in threads; main only starts them and joins. First to finish with OPTIMAL sets
+    // winner and halt.
+    std::mutex first_solver_mutex;
+    bool first_solver_callback_done = false;
+    run_concurrent_pdlp_and_barrier_with_crossover(lp_settings,
+                                                   crossover_status,
+                                                   winner_crossover_soln,
+                                                   winner_crossover_vstatus,
+                                                   winner_root_objective,
+                                                   root_winner_solver_name,
+                                                   winner,
+                                                   &first_solver_mutex,
+                                                   &first_solver_callback_done,
+                                                   pdlp_thread,
+                                                   barrier_thread);
+
+    // Dual simplex does not call on_first_lp_solution: diversity manager prefers optimal first;
+    // only PDLP/Barrier feed first solution when they have one.
+    dual_simplex_thread = std::thread([this,
+                                       dual_simplex_settings,
+                                       &root_relax_soln,
+                                       &basis_update,
+                                       &basic_list,
+                                       &nonbasic_list,
+                                       &root_vstatus,
+                                       &edge_norms,
+                                       &root_result_status,
+                                       &winner]() {
+      lp_status_t status =
+        solve_linear_program_with_advanced_basis<i_t, f_t>(original_lp_,
+                                                           exploration_stats_.start_time,
+                                                           *dual_simplex_settings,
+                                                           root_relax_soln,
+                                                           basis_update,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           root_vstatus,
+                                                           edge_norms,
+                                                           nullptr);
+      root_result_status = status;
+      int expected       = 0;
+      if (status == lp_status_t::OPTIMAL &&
+          winner.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+        set_root_concurrent_halt(1);
+      }
+    });
+
+    struct join_threads_guard_t {
+      std::thread* a = nullptr;
+      std::thread* b = nullptr;
+      std::thread* c = nullptr;
+      ~join_threads_guard_t()
+      {
+        if (a && a->joinable()) { a->join(); }
+        if (b && b->joinable()) { b->join(); }
+        if (c && c->joinable()) { c->join(); }
+      }
+    } join_guard;
+    join_guard.a = &pdlp_thread;
+    join_guard.b = &barrier_thread;
+    join_guard.c = &dual_simplex_thread;
+
+    pdlp_thread.join();
+    barrier_thread.join();
+    dual_simplex_thread.join();
+    join_guard.a = nullptr;
+    join_guard.b = nullptr;
+    join_guard.c = nullptr;
+
+    // Winner may have set concurrent_halt==1 to stop peer solvers. All threads are joined; reset
+    // the flag for the rest of B&B (subsequent LP solves, etc.).
+    set_root_concurrent_halt(0);
+
+    const int w   = winner.load(std::memory_order_acquire);
+    use_pdlp_path = (w == 2 || w == 3);
+    if (w == 1) { dual_simplex_finished_first = true; }
+  } else {
+    // Non-concurrent: run dual simplex on main only.
+    root_status        = solve_linear_program_with_advanced_basis<i_t, f_t>(original_lp_,
+                                                                     exploration_stats_.start_time,
+                                                                     *dual_simplex_settings,
+                                                                     root_relax_soln,
+                                                                     basis_update,
+                                                                     basic_list,
+                                                                     nonbasic_list,
+                                                                     root_vstatus,
+                                                                     edge_norms,
+                                                                     nullptr);
+    root_result_status = root_status;
     if (lp_settings.on_first_lp_solution_available) {
-      lp_settings.on_first_lp_solution_available(result);
+      root_relaxation_first_solution_t<i_t, f_t> ds_result;
+      ds_result.primal         = root_relax_soln.x;
+      ds_result.dual           = root_relax_soln.y;
+      ds_result.reduced_costs  = root_relax_soln.z;
+      ds_result.objective      = root_relax_soln.objective;
+      ds_result.user_objective = root_relax_soln.user_objective;
+      ds_result.iterations     = root_relax_soln.iterations;
+      lp_settings.on_first_lp_solution_available(ds_result);
     }
-    use_pdlp_path = true;
   }
 
   if (use_pdlp_path) {
-    // Crush the root relaxation solution on converted user problem
-    std::vector<f_t> crushed_root_x;
-    crush_primal_solution(
-      original_problem_, original_lp_, root_crossover_soln_.x, new_slacks_, crushed_root_x);
-    std::vector<f_t> crushed_root_y;
-    std::vector<f_t> crushed_root_z;
-
-    f_t dual_res_inf = crush_dual_solution(original_problem_,
-                                           original_lp_,
-                                           new_slacks_,
-                                           root_crossover_soln_.y,
-                                           root_crossover_soln_.z,
-                                           crushed_root_y,
-                                           crushed_root_z);
-
-    root_crossover_soln_.x = crushed_root_x;
-    root_crossover_soln_.y = crushed_root_y;
-    root_crossover_soln_.z = crushed_root_z;
-
-    // Call crossover on the crushed solution
-    auto root_crossover_settings            = settings_;
-    root_crossover_settings.log.log         = false;
-    root_crossover_settings.concurrent_halt = get_root_concurrent_halt();
-    crossover_status_t crossover_status     = crossover(original_lp_,
-                                                    root_crossover_settings,
-                                                    root_crossover_soln_,
-                                                    exploration_stats_.start_time,
-                                                    root_crossover_soln_,
-                                                    crossover_vstatus_);
-
-    // Check if crossover was stopped by dual simplex
+    root_objective_                 = winner_root_objective;
+    auto root_crossover_settings    = settings_;
+    root_crossover_settings.log.log = false;
+    // Single-threaded CPU post-processing (refactor_basis, edge norms); concurrent halt must not
+    // apply.
+    root_crossover_settings.concurrent_halt = nullptr;
     if (crossover_status == crossover_status_t::OPTIMAL) {
-      set_root_concurrent_halt(1);  // Stop dual simplex
-      if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
-        root_status = root_status_future.get();
-      } else {
-        root_status = lp_status_t::OPTIMAL;
-      }
-      set_root_concurrent_halt(0);  // Clear the concurrent halt flag
-      // Override the root relaxation solution with the crossover solution
-      root_relax_soln = root_crossover_soln_;
-      root_vstatus    = crossover_vstatus_;
+      // Use winner's crossover solution; no wait.
+      root_relax_soln = winner_crossover_soln;
+      root_vstatus    = winner_crossover_vstatus;
       root_status     = lp_status_t::OPTIMAL;
       basic_list.clear();
       nonbasic_list.reserve(original_lp_.num_cols - original_lp_.num_rows);
       nonbasic_list.clear();
       // Get the basic list and nonbasic list from the vstatus
       for (i_t j = 0; j < original_lp_.num_cols; j++) {
-        if (crossover_vstatus_[j] == variable_status_t::BASIC) {
+        if (winner_crossover_vstatus[j] == variable_status_t::BASIC) {
           basic_list.push_back(j);
         } else {
           nonbasic_list.push_back(j);
@@ -1908,7 +2043,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                         exploration_stats_.start_time,
                                                         basic_list,
                                                         nonbasic_list,
-                                                        crossover_vstatus_);
+                                                        winner_crossover_vstatus);
       if (refactor_status != 0) {
         assert(refactor_status == 0);
         root_status = lp_status_t::NUMERICAL_ISSUES;
@@ -1917,35 +2052,30 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       // Set the edge norms to a default value
       edge_norms.resize(original_lp_.num_cols, -1.0);
       set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms);
-      user_objective = root_crossover_soln_.user_objective;
-      iter           = root_crossover_soln_.iterations;
-      solver_name    = "Barrier/PDLP and Crossover";
+      user_objective = winner_crossover_soln.user_objective;
+      iter           = winner_crossover_soln.iterations;
+      solver_name    = root_winner_solver_name + " and Crossover";
     } else {
-      if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
-        root_status = root_status_future.get();
-      } else {
-        root_status = lp_status_t::TIME_LIMIT;
+      // Crossover winner path but crossover was not OPTIMAL. Map crossover outcome to lp_status_t.
+      switch (crossover_status) {
+        case crossover_status_t::TIME_LIMIT: root_status = lp_status_t::TIME_LIMIT; break;
+        case crossover_status_t::NUMERICAL_ISSUES:
+          root_status = lp_status_t::NUMERICAL_ISSUES;
+          break;
+        case crossover_status_t::CONCURRENT_LIMIT: root_status = lp_status_t::TIME_LIMIT; break;
+        case crossover_status_t::PRIMAL_FEASIBLE:
+        case crossover_status_t::DUAL_FEASIBLE: root_status = lp_status_t::NUMERICAL_ISSUES; break;
+        default: root_status = lp_status_t::NUMERICAL_ISSUES; break;
       }
-      user_objective = root_relax_soln_.user_objective;
-      iter           = root_relax_soln_.iterations;
-      solver_name    = "Dual Simplex";
+      user_objective = winner_crossover_soln.user_objective;
+      iter           = winner_crossover_soln.iterations;
+      solver_name    = root_winner_solver_name + " and Crossover";
     }
   } else {
-    if (root_status_future.wait_for(wait_timeout) == std::future_status::ready) {
-      root_status = root_status_future.get();
-    } else {
-      root_status = lp_status_t::TIME_LIMIT;
-    }
-    root_relaxation_first_solution_t<i_t, f_t> ds_result;
-    ds_result.primal         = root_relax_soln.x;
-    ds_result.dual           = root_relax_soln.y;
-    ds_result.reduced_costs  = root_relax_soln.z;
-    ds_result.objective      = root_relax_soln.objective;
-    ds_result.user_objective = root_relax_soln.user_objective;
-    ds_result.iterations     = root_relax_soln.iterations;
-    if (lp_settings.on_first_lp_solution_available) {
-      lp_settings.on_first_lp_solution_available(ds_result);
-    }
+    // Use dual simplex result (root_result_status was set when dual simplex returned).
+    root_status = root_result_status;
+    (void)dual_simplex_finished_first;  // used only to select path
+    // Diversity manager was already notified by whoever was first (dual simplex, PDLP, or Barrier).
     user_objective = root_relax_soln.user_objective;
     iter           = root_relax_soln.iterations;
     solver_name    = "Dual Simplex";
@@ -1965,6 +2095,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
   settings_.log.printf("\n");
 
+  set_root_concurrent_halt(0);
   return root_status;
 }
 

@@ -235,6 +235,7 @@ class optimization_problem_solution_t : public base_solution_t {
    * @return rmm::device_uvector<i_t> The device memory container for the reduced cost.
    */
   rmm::device_uvector<f_t>& get_reduced_cost();
+  const rmm::device_uvector<f_t>& get_reduced_cost() const;
 
   /**
    * @brief Get termination reason

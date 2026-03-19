@@ -373,6 +373,12 @@ rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced
 }
 
 template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>& optimization_problem_solution_t<i_t, f_t>::get_reduced_cost() const
+{
+  return reduced_cost_;
+}
+
+template <typename i_t, typename f_t>
 pdlp_termination_status_t optimization_problem_solution_t<i_t, f_t>::get_termination_status(
   i_t id) const
 {

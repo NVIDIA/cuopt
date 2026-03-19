@@ -46,7 +46,6 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     Arow_(1, 1, 0),
     incumbent_(1),
     root_relax_soln_(1, 1),
-    root_crossover_soln_(1, 1),
     pc_(1),
     solver_status_(mip_status_t::UNSET),
     mip_problem_ptr_(mip_problem_ptr),
