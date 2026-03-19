@@ -248,7 +248,9 @@ template <typename i_t, typename f_t>
 branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-  f_t start_time)
+  f_t start_time,
+  cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
+  i_t pdlp_root_num_gpus)
   : original_problem_(user_problem),
     settings_(solver_settings),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
@@ -257,8 +259,8 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     root_relax_soln_(1, 1),
     pc_(1),
     solver_status_(mip_status_t::UNSET),
-    mip_problem_ptr_(nullptr),
-    pdlp_root_num_gpus_(1)
+    mip_problem_ptr_(mip_problem_ptr),
+    pdlp_root_num_gpus_(pdlp_root_num_gpus)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX
@@ -3867,6 +3869,12 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template class branch_and_bound_t<int, double>;
+
+#endif
+
+#ifdef MIP_INSTANTIATION_FLOAT
+
+template class branch_and_bound_t<int, float>;
 
 #endif
 

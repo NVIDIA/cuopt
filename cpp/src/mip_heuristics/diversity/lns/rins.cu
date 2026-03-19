@@ -270,8 +270,12 @@ void rins_t<i_t, f_t>::run_rins()
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
   };
+  dual_simplex::user_problem_t<i_t, f_t> bb_user_problem(fixed_problem.handle_ptr);
+  fixed_problem.recompute_objective_integrality();
+  bb_user_problem.objective_is_integral = fixed_problem.is_objective_integral();
+  fixed_problem.get_host_user_problem(bb_user_problem);
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-    &fixed_problem, branch_and_bound_settings, dual_simplex::tic(), 1);
+    bb_user_problem, branch_and_bound_settings, dual_simplex::tic(), &fixed_problem, 1);
   branch_and_bound_solution.resize(branch_and_bound.get_num_cols());
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);

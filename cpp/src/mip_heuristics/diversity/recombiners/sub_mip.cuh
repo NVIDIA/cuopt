@@ -113,8 +113,12 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
 
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
+      dual_simplex::user_problem_t<i_t, f_t> bb_user_problem(fixed_problem.handle_ptr);
+      fixed_problem.recompute_objective_integrality();
+      bb_user_problem.objective_is_integral = fixed_problem.is_objective_integral();
+      fixed_problem.get_host_user_problem(bb_user_problem);
       dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-        &fixed_problem, branch_and_bound_settings, dual_simplex::tic(), 1);
+        bb_user_problem, branch_and_bound_settings, dual_simplex::tic(), &fixed_problem, 1);
       branch_and_bound_solution.resize(branch_and_bound.get_num_cols());
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {

@@ -257,11 +257,15 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         };
     }
 
-    // Create the branch and bound object (builds user_problem from context.problem_ptr)
+    dual_simplex::user_problem_t<i_t, f_t> bb_user_problem(context.problem_ptr->handle_ptr);
+    context.problem_ptr->recompute_objective_integrality();
+    bb_user_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
+    context.problem_ptr->get_host_user_problem(bb_user_problem);
     branch_and_bound =
-      std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(context.problem_ptr,
+      std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(bb_user_problem,
                                                                    branch_and_bound_settings,
                                                                    timer_.get_tic_start(),
+                                                                   context.problem_ptr,
                                                                    context.settings.num_gpus);
     branch_and_bound_solution.resize(branch_and_bound->get_num_cols());
     context.branch_and_bound_ptr = branch_and_bound.get();

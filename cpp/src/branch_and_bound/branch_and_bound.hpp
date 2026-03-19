@@ -75,16 +75,15 @@ struct deterministic_diving_policy_t;
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  /** Build from MIP problem_t (used by mip_heuristics). Implemented in
-   * branch_and_bound_from_mip.cu. */
-  branch_and_bound_t(cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time,
-                     i_t num_gpus = 1);
-  /** Build from user_problem_t (used by dual_simplex/solve.cpp, RINS, sub_mip). */
-  branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time);
+  /** Host \p user_problem must be fully populated by the caller. When \p mip_problem_ptr is
+   *  non-null (GPU MIP / concurrent root), the caller must sync from device first, e.g.
+   *  recompute_objective_integrality(), set objective_is_integral, get_host_user_problem(). */
+  branch_and_bound_t(
+    const user_problem_t<i_t, f_t>& user_problem,
+    const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+    f_t start_time,
+    cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr = nullptr,
+    i_t pdlp_root_num_gpus                                                  = 1);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
