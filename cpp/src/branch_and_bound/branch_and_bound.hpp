@@ -48,7 +48,7 @@ class problem_t;
 
 template <typename i_t, typename f_t>
 struct clique_table_t;
-}
+}  // namespace cuopt::linear_programming::detail
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -88,9 +88,9 @@ class branch_and_bound_t {
     const user_problem_t<i_t, f_t>& user_problem,
     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
     f_t start_time,
-    cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr,
-    i_t pdlp_root_num_gpus,
-    std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
+    cuopt::linear_programming::detail::problem_t<i_t, f_t>* mip_problem_ptr = nullptr,
+    i_t pdlp_root_num_gpus                                                  = 1,
+    std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table          = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
