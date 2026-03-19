@@ -685,13 +685,6 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
     k_max = 4;
   }
 
-  // As we fix the insertion we don't need to try k_max permutations of insertion for cvrptw
-  i_t n_blocks_lexico = (solution_ptr->get_num_orders() + solution_ptr->get_n_routes() -
-                         solution_ptr->problem_ptr->order_info.depot_included_);
-  if constexpr (REQUEST == request_t::PDP) {
-    n_blocks_lexico *= max_neighbors<i_t, REQUEST>(k_max);
-  }
-
   size_t sh_size = 0;
   bool is_set    = false;
   while (k_max > 1) {
@@ -705,6 +698,14 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
   }
 
   if (k_max == 1 || !is_set) { return false; }
+
+  // Compute n_blocks_lexico after k_max is finalized by the while-loop above
+  i_t n_blocks_lexico = (solution_ptr->get_num_orders() + solution_ptr->get_n_routes() -
+                         solution_ptr->problem_ptr->order_info.depot_included_);
+  if constexpr (REQUEST == request_t::PDP) {
+    n_blocks_lexico *= max_neighbors<i_t, REQUEST>(k_max);
+  }
+
   // Init global min before call to lexicographic
   const auto max = std::numeric_limits<typename decltype(global_min_p_)::value_type>::max();
   const i_t zero = 0;

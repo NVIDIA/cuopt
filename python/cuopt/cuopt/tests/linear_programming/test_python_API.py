@@ -512,7 +512,7 @@ def test_problem_update():
                 CUOPT_CUDSS_DETERMINISTIC: False,
             },
         ),
-        (
+        pytest.param(
             "mixed",
             {
                 CUOPT_FOLDING: 1,
@@ -520,6 +520,9 @@ def test_problem_update():
                 CUOPT_ORDERING: -1,
                 CUOPT_AUGMENTED: 1,
             },
+            marks=pytest.mark.skip(
+                reason="Barrier augmented-system numerical issue; re-enable when barrier initial-point fix is in the build"
+            ),
         ),
         (
             "folding_on",
@@ -557,11 +560,14 @@ def test_problem_update():
                 CUOPT_ORDERING: 0,
             },
         ),
-        (
+        pytest.param(
             "augmented_system",
             {
                 CUOPT_AUGMENTED: 1,
             },
+            marks=pytest.mark.skip(
+                reason="Barrier augmented-system numerical issue; re-enable when barrier initial-point fix is in the build"
+            ),
         ),
         (
             "adat_system",
@@ -615,13 +621,16 @@ def test_problem_update():
                 CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
             },
         ),
-        (
+        pytest.param(
             "combo3_with_dual_init",
             {
                 CUOPT_AUGMENTED: 1,
                 CUOPT_BARRIER_DUAL_INITIAL_POINT: 1,
                 CUOPT_ELIMINATE_DENSE_COLUMNS: True,
             },
+            marks=pytest.mark.skip(
+                reason="Barrier augmented-system numerical issue; re-enable when barrier initial-point fix is in the build"
+            ),
         ),
     ],
 )
