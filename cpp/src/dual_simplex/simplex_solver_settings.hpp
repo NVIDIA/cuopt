@@ -187,8 +187,7 @@ struct simplex_solver_settings_t {
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
   f_t cut_min_orthogonality;       // minimum orthogonality for cuts
-  i_t mip_batch_pdlp_strong_branching{0};  // 0 if not using batch PDLP for strong branching, 1 if
-                                           // using batch PDLP for strong branching
+  i_t mip_batch_pdlp_strong_branching{0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching{0};  // 0 if not using batch PDLP for reliability branching, 1 if
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics

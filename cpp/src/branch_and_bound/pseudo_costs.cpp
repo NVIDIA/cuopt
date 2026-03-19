@@ -440,7 +440,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     if (settings.mip_batch_pdlp_strong_branching == 0)
      return;
   
-    settings.log.printf("Racing batch PDLP and Dual Simplex for strong branching\n");
+    settings.log.printf(settings.mip_batch_pdlp_strong_branching == 2
+      ? "Batch PDLP only for strong branching\n"
+      : "Cooperative batch PDLP and Dual Simplex for strong branching\n");
 
     f_t start_batch = tic();
     std::vector<f_t> original_root_soln_x;
@@ -466,8 +468,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     if (batch_remaining_time <= 0.0) { return; }
 
     pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-    pdlp_settings.concurrent_halt = &concurrent_halt;
-    pdlp_settings.shared_sb_view  = sb_view;
+    if (settings.mip_batch_pdlp_strong_branching == 1) {
+      pdlp_settings.concurrent_halt = &concurrent_halt;
+      pdlp_settings.shared_sb_view  = sb_view;
+    }
 
     pdlp_settings.time_limit = batch_remaining_time;
     const raft::handle_t batch_pdlp_handle;
@@ -542,6 +546,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> ds_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   f_t dual_simplex_strong_branching_time = tic();
 
+  if (settings.mip_batch_pdlp_strong_branching != 2) {
 #pragma omp parallel num_threads(settings.num_threads)
     {
       i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
@@ -586,6 +591,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
   // DS done: signal PDLP to stop (time-limit or all work done) and wait
   concurrent_halt.store(1);
+  }
 
   pdlp_thread.join();
 
@@ -593,24 +599,37 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
 
   // Collect Dual Simplex statistics
-  i_t ds_optimal_count = 0;
-  i_t ds_dual_feasible_only_count = 0;
+  i_t ds_optimal = 0, ds_infeasible = 0, ds_iter_limit = 0;
+  i_t ds_numerical = 0, ds_cutoff = 0, ds_time_limit = 0;
+  i_t ds_concurrent = 0, ds_work_limit = 0, ds_unset = 0;
+  const i_t total_subproblems = fractional.size() * 2;
   for (i_t k = 0; k < fractional.size(); k++) {
-    if (ds_status_down[k] == dual::status_t::OPTIMAL) ds_optimal_count++;
-    if (ds_status_up[k] == dual::status_t::OPTIMAL) ds_optimal_count++;
-    if (ds_status_down[k] == dual::status_t::ITERATION_LIMIT) ds_dual_feasible_only_count++;
-    if (ds_status_up[k] == dual::status_t::ITERATION_LIMIT) ds_dual_feasible_only_count++;
+    for (auto st : {ds_status_down[k], ds_status_up[k]}) {
+      switch (st) {
+        case dual::status_t::OPTIMAL:          ds_optimal++;     break;
+        case dual::status_t::DUAL_UNBOUNDED:   ds_infeasible++;  break;
+        case dual::status_t::ITERATION_LIMIT:  ds_iter_limit++;  break;
+        case dual::status_t::NUMERICAL:        ds_numerical++;   break;
+        case dual::status_t::CUTOFF:           ds_cutoff++;      break;
+        case dual::status_t::TIME_LIMIT:       ds_time_limit++;  break;
+        case dual::status_t::CONCURRENT_LIMIT: ds_concurrent++;  break;
+        case dual::status_t::WORK_LIMIT:       ds_work_limit++;  break;
+        case dual::status_t::UNSET:            ds_unset++;       break;
+      }
+    }
   }
 
-  settings.log.printf(
-    "Dual Simplex found %d/%d optimal solutions and %d/%d dual feasible only solutions\n",
-    ds_optimal_count,
-    fractional.size() * 2,
-    ds_dual_feasible_only_count,
-    fractional.size() * 2);
+  settings.log.printf("Dual Simplex: %d/%d optimal, %d infeasible, %d iter-limit",
+    ds_optimal, total_subproblems, ds_infeasible, ds_iter_limit);
+  if (ds_cutoff)     settings.log.printf(", %d cutoff", ds_cutoff);
+  if (ds_time_limit) settings.log.printf(", %d time-limit", ds_time_limit);
+  if (ds_numerical)  settings.log.printf(", %d numerical", ds_numerical);
+  if (ds_concurrent) settings.log.printf(", %d concurrent-halt", ds_concurrent);
+  if (ds_work_limit) settings.log.printf(", %d work-limit", ds_work_limit);
+  if (ds_unset)      settings.log.printf(", %d unset/skipped", ds_unset);
+  settings.log.printf("\n");
 
-  if (settings.mip_batch_pdlp_strong_branching == 1) {
-    // Collect Batch PDLP statistics
+  if (settings.mip_batch_pdlp_strong_branching != 0) {
     i_t pdlp_optimal_count = 0;
     for (i_t k = 0; k < fractional.size(); k++) {
       if (!std::isnan(pdlp_obj_down[k])) pdlp_optimal_count++;
@@ -658,7 +677,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
   }
 
-  if (settings.mip_batch_pdlp_strong_branching == 1) {
+  if (settings.mip_batch_pdlp_strong_branching != 0) {
     settings.log.printf(
       "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both (down/up)\n",
       merged_from_ds,
