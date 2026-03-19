@@ -1677,10 +1677,11 @@ TEST(pdlp_class, strong_branching_test)
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
 
-  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
-  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  auto solver_settings                                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode                      = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver                             = cuopt::linear_programming::presolver_t::None;
+  solver_settings.generate_batch_primal_dual_solution   = true;
 
   const int n_fractional = fractional.size();
   const int batch_size   = n_fractional * 2;

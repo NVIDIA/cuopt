@@ -1000,10 +1000,12 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     }
   }
 
-  // We don't use the solutions vectors for now
-  rmm::device_uvector<f_t> full_primal_solution(0, stream);
-  rmm::device_uvector<f_t> full_dual_solution(0, stream);
-  rmm::device_uvector<f_t> full_reduced_cost(0, stream);
+  
+  const bool collect_solutions = settings.generate_batch_primal_dual_solution;
+  
+  rmm::device_uvector<f_t> full_primal_solution((collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
+  rmm::device_uvector<f_t> full_dual_solution((collect_solutions) ? problem.get_n_constraints() * max_batch_size : 0, stream);
+  rmm::device_uvector<f_t> full_reduced_cost((collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
 
   std::vector<
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
@@ -1045,6 +1047,21 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 
     auto status = sol.get_terminations_status();
     full_status.insert(full_status.end(), status.begin(), status.end());
+
+    if (collect_solutions) {
+        raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
+                   sol.get_primal_solution().data(),
+                   sol.get_primal_solution().size(),
+                   stream);
+        raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
+                   sol.get_dual_solution().data(),
+                   sol.get_dual_solution().size(),
+                   stream);
+        raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
+                   sol.get_reduced_cost().data(),
+                   sol.get_reduced_cost().size(),
+                   stream);
+    }
   }
 
   return optimization_problem_solution_t<i_t, f_t>(full_primal_solution,

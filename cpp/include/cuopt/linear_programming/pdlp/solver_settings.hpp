@@ -280,6 +280,9 @@ class pdlp_solver_settings_t {
   // concurrently i.e. if new_bounds.size() == 2, then 2 versions of the problem with updated bounds
   // will be solved concurrently
   std::vector<std::tuple<i_t, f_t, f_t>> new_bounds;
+  // By default to save memory and speed we don't store and copy each climber's primal and dual solutions
+  // We only retrieve termination statistics and the objective values
+  bool generate_batch_primal_dual_solution{false};
 
  private:
   /** Initial primal solution */
