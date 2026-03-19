@@ -1242,16 +1242,20 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
 
   lifted_cut = base_cut;
 
-  //  TODO sort the remaining variables / coefficients according to some ordering
+  // Sort the coefficients such that the largest coefficients are lifted first
+  // We will pop the largest coefficients from the back of the permutation
+  std::vector<i_t> permutation;
+  best_score_last_permutation(remaining_coefficients, permutation);
 
-  while (remaining_variables.size() > 0) {
-    const i_t k = remaining_variables.back();
-    const f_t a_k = remaining_coefficients.back();
+  while (permutation.size() > 0) {
+    const i_t h = permutation.back();
+    const i_t k = remaining_variables[h];
+    const f_t a_k = remaining_coefficients[h];
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective = solve_knapsack_problem(values, weights, capacity, solution);
-    if (std::isnan(objective)) { break; }
+    f_t objective = greedy_knapsack_problem(values, weights, capacity, solution);
+    if (std::isnan(objective)) { settings_.log.printf("lifting knapsack problem failed\n"); break; }
 
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
 
@@ -1266,9 +1270,8 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
       lifted_cut.vector.x.push_back(alpha_k);
     }
 
-    // Remove the variable from the remaining variables and coefficients
-    remaining_variables.pop_back();
-    remaining_coefficients.pop_back();
+    // Remove the variable from the permutation
+    permutation.pop_back();
   }
   settings_.log.printf("Lifted %ld variables\n", F.size());
 
