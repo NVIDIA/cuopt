@@ -310,12 +310,12 @@ class knapsack_generation_t {
                          f_t beta,
                          const std::vector<f_t>& cover_coefficients);
 
-  void minimial_cover_and_partition(const inequality_t<i_t, f_t>& knapsack_inequality,
-                                    const inequality_t<i_t, f_t>& negated_base_cut,
-                                    const std::vector<f_t>& xstar,
-                                    inequality_t<i_t, f_t>& minimal_cover_cut,
-                                    std::vector<i_t>& c1_partition,
-                                    std::vector<i_t>& c2_partition);
+  void minimal_cover_and_partition(const inequality_t<i_t, f_t>& knapsack_inequality,
+                                   const inequality_t<i_t, f_t>& negated_base_cut,
+                                   const std::vector<f_t>& xstar,
+                                   inequality_t<i_t, f_t>& minimal_cover_cut,
+                                   std::vector<i_t>& c1_partition,
+                                   std::vector<i_t>& c2_partition);
 
   void lift_knapsack_cut(const inequality_t<i_t, f_t>& knapsack_inequality,
                          const inequality_t<i_t, f_t>& base_cut,

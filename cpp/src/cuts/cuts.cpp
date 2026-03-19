@@ -937,12 +937,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   inequality_t<i_t, f_t> minimal_cover_cut(lp.num_cols);
   std::vector<i_t> c1_partition;
   std::vector<i_t> c2_partition;
-  minimial_cover_and_partition(knapsack_inequality,
-                               cut,
-                               complemented_xstar_,
-                               minimal_cover_cut,
-                               c1_partition,
-                               c2_partition);
+  minimal_cover_and_partition(
+    knapsack_inequality, cut, complemented_xstar_, minimal_cover_cut, c1_partition, c2_partition);
 
   // Lift the cut
   inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
@@ -1016,7 +1012,7 @@ bool knapsack_generation_t<i_t, f_t>::is_minimal_cover(f_t cover_sum,
 }
 
 template <typename i_t, typename f_t>
-void knapsack_generation_t<i_t, f_t>::minimial_cover_and_partition(
+void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
   const inequality_t<i_t, f_t>& knapsack_inequality,
   const inequality_t<i_t, f_t>& negated_base_cut,
   const std::vector<f_t>& xstar,
