@@ -173,7 +173,7 @@ The response is as follows:
     === Final Results ===
     Problem status: Optimal
     Solve time: 0.17 seconds
-    Final solution:  x=36.0  y=41.0  
+    Final solution:  x=36.0  y=41.0
     Final objective value: 303.00
 
     Total incumbent solutions found: 1

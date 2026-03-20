@@ -22,9 +22,7 @@ class IncumbentCallback(GetSolutionCallback):
 
     def get_solution(self, solution, solution_cost, solution_bound, user_data):
         self.n_callbacks += 1
-        values = self.problem.getIncumbentValues(
-            solution, self.variables
-        )
+        values = self.problem.getIncumbentValues(solution, self.variables)
         cost = float(solution_cost[0])
         vals_str = ", ".join(f"{float(v)}" for v in values)
         print(f"Incumbent {self.n_callbacks}: [{vals_str}], cost: {cost:.2f}")

@@ -64,9 +64,7 @@ class IncumbentCallback(GetSolutionCallback):
         self.n_callbacks += 1
 
         # Use getIncumbentValues to extract values for specific variables
-        values = self.problem.getIncumbentValues(
-            solution, self.variables
-        )
+        values = self.problem.getIncumbentValues(solution, self.variables)
 
         incumbent = {
             "values": values,
@@ -76,9 +74,9 @@ class IncumbentCallback(GetSolutionCallback):
         }
         self.solutions.append(incumbent)
 
-        print(f"Incumbent {self.n_callbacks}:", end=' ')
+        print(f"Incumbent {self.n_callbacks}:", end=" ")
         for i, var in enumerate(self.variables):
-            print(f"{var.VariableName}={values[i]}", end=' ')
+            print(f"{var.VariableName}={values[i]}", end=" ")
         print(f"cost: {incumbent['cost']:.2f}")
 
 
@@ -87,8 +85,8 @@ def main():
     problem = Problem("Incumbent Example")
 
     # Add integer variables
-    x = problem.addVariable(vtype=INTEGER, name='x')
-    y = problem.addVariable(vtype=INTEGER, name='y')
+    x = problem.addVariable(vtype=INTEGER, name="x")
+    y = problem.addVariable(vtype=INTEGER, name="y")
 
     # Add constraints
     problem.addConstraint(2 * x + 4 * y >= 230)
@@ -100,9 +98,7 @@ def main():
     # Configure solver settings with callback
     settings = SolverSettings()
     user_data = {"source": "incumbent_solutions_example"}
-    incumbent_callback = IncumbentCallback(
-        problem, [x, y], user_data
-    )
+    incumbent_callback = IncumbentCallback(problem, [x, y], user_data)
     settings.set_mip_callback(incumbent_callback, user_data)
     settings.set_parameter(CUOPT_TIME_LIMIT, 30)
 
@@ -113,9 +109,9 @@ def main():
     print("\n=== Final Results ===")
     print(f"Problem status: {problem.Status.name}")
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
-    print(f"Final solution: ", end=' ')
+    print("Final solution: ", end=" ")
     for i, var in enumerate(problem.getVariables()):
-        print(f"{var.VariableName}={var.getValue()} ", end=' ')
+        print(f"{var.VariableName}={var.getValue()} ", end=" ")
     print(f"\nFinal objective value: {problem.ObjValue:.2f}")
 
     print(
