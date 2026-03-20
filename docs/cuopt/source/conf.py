@@ -94,6 +94,10 @@ swagger = [
 nbsphinx_execute = "never"
 ipython_mplbackend = "str"
 
+# GPU routing example: execution during Sphinx can fail when CUDA/CuPy don't match the
+# docs env. The notebook sets mystnb.execution_mode=off and ships checked-in outputs.
+nb_execution_excludepatterns = ["cuopt-python/routing/routing-example.ipynb"]
+
 # Add any files to exclude from the build
 exclude_patterns = ["hidden"]
 
