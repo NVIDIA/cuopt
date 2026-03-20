@@ -243,9 +243,11 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const user_problem_t<i_t, f_t>& user_problem,
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
   f_t start_time,
+  const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds,
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table)
   : original_problem_(user_problem),
     settings_(solver_settings),
+    probing_implied_bounds_(probing_implied_bounds),
     clique_table_(std::move(clique_table)),
     original_lp_(user_problem.handle_ptr, 1, 1, 1),
     Arow_(1, 1, 0),
@@ -2144,6 +2146,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                             new_slacks_,
                                             var_types_,
                                             original_problem_,
+                                            probing_implied_bounds_,
                                             clique_table_,
                                             &clique_table_future_,
                                             &signal_extend_cliques_);

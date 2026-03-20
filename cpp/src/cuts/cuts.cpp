@@ -1446,6 +1446,121 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 }
 
 template <typename i_t, typename f_t>
+void cut_generation_t<i_t, f_t>::generate_implied_bounds_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
+  f_t start_time)
+{
+  if (probing_implied_bounds_.zero_offsets.empty()) { return; }
+
+  const f_t tol    = 1e-4;
+  i_t num_cuts     = 0;
+  const i_t pib_cols = static_cast<i_t>(probing_implied_bounds_.zero_offsets.size()) - 1;
+  const i_t n_cols = std::min(lp.num_cols, pib_cols);
+
+  for (i_t j = 0; j < n_cols; j++) {
+    if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
+    const f_t xstar_j = xstar[j];
+
+    // x_j = 0 implications
+    const i_t zero_begin = probing_implied_bounds_.zero_offsets[j];
+    const i_t zero_end   = probing_implied_bounds_.zero_offsets[j + 1];
+    for (i_t p = zero_begin; p < zero_end; p++) {
+      const i_t i   = probing_implied_bounds_.zero_variables[p];
+      const f_t l_i = lp.lower[i];
+      const f_t u_i = lp.upper[i];
+
+      // Tightened upper bound: x_j = 0 implies y_i <= b, where b < u_i
+      // Valid inequality: y_i <= b + (u_i - b)*x_j  or  -y_i + (u_i - b)*x_j >= -b
+      const f_t b_ub = probing_implied_bounds_.zero_upper_bound[p];
+      if (b_ub < u_i - tol) {
+        const f_t coeff_j  = u_i - b_ub;
+        const f_t y_i      = xstar[i];
+        const f_t lhs_val  = -y_i + coeff_j * xstar_j;
+        const f_t rhs_val  = -b_ub;
+        if (lhs_val < rhs_val - tol) {
+          inequality_t<i_t, f_t> cut;
+          cut.push_back(i, -1.0);
+          cut.push_back(j, coeff_j);
+          cut.rhs = -b_ub;
+          cut_pool_.add_cut(cut_type_t::IMPLIED_BOUNDS, cut);
+          num_cuts++;
+        }
+      }
+
+      // Tightened lower bound: x_j = 0 implies y_i >= b, where b > l_i
+      // Valid inequality: y_i >= b - (b - l_i)*x_j  or  y_i + (b - l_i)*x_j >= b
+      const f_t b_lb = probing_implied_bounds_.zero_lower_bound[p];
+      if (b_lb > l_i + tol) {
+        const f_t coeff_j  = b_lb - l_i;
+        const f_t y_i      = xstar[i];
+        const f_t lhs_val  = y_i + coeff_j * xstar_j;
+        const f_t rhs_val  = b_lb;
+        if (lhs_val < rhs_val - tol) {
+          inequality_t<i_t, f_t> cut;
+          cut.push_back(i, 1.0);
+          cut.push_back(j, coeff_j);
+          cut.rhs = b_lb;
+          cut_pool_.add_cut(cut_type_t::IMPLIED_BOUNDS, cut);
+          num_cuts++;
+        }
+      }
+    }
+
+    // x_j = 1 implications
+    const i_t one_begin = probing_implied_bounds_.one_offsets[j];
+    const i_t one_end   = probing_implied_bounds_.one_offsets[j + 1];
+    for (i_t p = one_begin; p < one_end; p++) {
+      const i_t i   = probing_implied_bounds_.one_variables[p];
+      const f_t l_i = lp.lower[i];
+      const f_t u_i = lp.upper[i];
+
+      // Tightened upper bound: x_j = 1 implies y_i <= b, where b < u_i
+      // Valid inequality: y_i <= u_i - (u_i - b)*x_j  or  -y_i - (u_i - b)*x_j >= -u_i
+      const f_t b_ub = probing_implied_bounds_.one_upper_bound[p];
+      if (b_ub < u_i - tol) {
+        const f_t coeff_j  = -(u_i - b_ub);
+        const f_t y_i      = xstar[i];
+        const f_t lhs_val  = -y_i + coeff_j * xstar_j;
+        const f_t rhs_val  = -u_i;
+        if (lhs_val < rhs_val - tol) {
+          inequality_t<i_t, f_t> cut;
+          cut.push_back(i, -1.0);
+          cut.push_back(j, coeff_j);
+          cut.rhs = -u_i;
+          cut_pool_.add_cut(cut_type_t::IMPLIED_BOUNDS, cut);
+          num_cuts++;
+        }
+      }
+
+      // Tightened lower bound: x_j = 1 implies y_i >= b, where b > l_i
+      // Valid inequality: y_i >= l_i + (b - l_i)*x_j  or  y_i - (b - l_i)*x_j >= l_i
+      const f_t b_lb = probing_implied_bounds_.one_lower_bound[p];
+      if (b_lb > l_i + tol) {
+        const f_t coeff_j  = -(b_lb - l_i);
+        const f_t lhs_val  = xstar[i] + coeff_j * xstar_j;
+        const f_t rhs_val  = l_i;
+        if (lhs_val < rhs_val - tol) {
+          inequality_t<i_t, f_t> cut;
+          cut.push_back(i, 1.0);
+          cut.push_back(j, coeff_j);
+          cut.rhs = rhs_val;
+          cut_pool_.add_cut(cut_type_t::IMPLIED_BOUNDS, cut);
+          num_cuts++;
+        }
+      }
+    }
+  }
+
+  if (num_cuts > 0) {
+    settings.log.debug("Generated %d implied bounds cuts from probing\n", num_cuts);
+  }
+}
+
+template <typename i_t, typename f_t>
 bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const simplex_solver_settings_t<i_t, f_t>& settings,
                                                csr_matrix_t<i_t, f_t>& Arow,
@@ -1502,6 +1617,16 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+
+  // Generate implied bounds cuts
+  if (settings.implied_bounds_cuts != 0) {
+    f_t cut_start_time = tic();
+    generate_implied_bounds_cuts(lp, settings, var_types, xstar, variable_bounds, start_time);
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
   return true;

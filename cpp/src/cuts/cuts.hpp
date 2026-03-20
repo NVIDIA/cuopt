@@ -38,7 +38,8 @@ enum cut_type_t : int8_t {
   KNAPSACK               = 2,
   CHVATAL_GOMORY         = 3,
   CLIQUE                 = 4,
-  MAX_CUT_TYPE           = 5
+  IMPLIED_BOUNDS         = 5,
+  MAX_CUT_TYPE           = 6
 };
 
 template <typename f_t>
@@ -61,6 +62,46 @@ cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
   const f_t gap_closed_ratio = initial_gap > eps ? gap_closed / initial_gap : static_cast<f_t>(0.0);
   return {initial_gap, final_gap, gap_closed, gap_closed_ratio};
 }
+
+template <typename i_t, typename f_t>
+struct probing_implied_bounds_t {
+  // Probing implications stored in CSR format, indexed by binary variable x_j.
+  //
+  // "zero" = implications discovered when probing x_j = 0.
+  // "one"  = implications discovered when probing x_j = 1.
+  //
+  // For a binary variable x_j, the range
+  //   zero_offsets[j] .. zero_offsets[j+1]
+  // indexes into the flat arrays zero_variables, zero_lower_bound, zero_upper_bound.
+  //
+  // For each position p in that range:
+  //   zero_variables[p]    = i if variable y_i bounds were tightened
+  //                          when x_j was fixed to 0 and constraints were propagated.
+  //   zero_lower_bound[p]  = tightened lower bound on y_i (i.e., x_j = 0  =>  y_i >= zero_lower_bound[p]).
+  //   zero_upper_bound[p]  = tightened upper bound on y_i (i.e., x_j = 0  =>  y_i <= zero_upper_bound[p]).
+  //
+  // The one arrays are analogous for probing x_j = 1.
+  //
+  // Non-binary variables have empty ranges (zero_offsets[j] == zero_offsets[j+1]).
+  // Offsets vectors have size num_cols + 1.
+
+  probing_implied_bounds_t() = default;
+
+  probing_implied_bounds_t(i_t num_cols)
+    : zero_offsets(num_cols + 1, 0), one_offsets(num_cols + 1, 0)
+  {
+  }
+
+  std::vector<i_t> zero_offsets;
+  std::vector<i_t> zero_variables;
+  std::vector<f_t> zero_lower_bound;
+  std::vector<f_t> zero_upper_bound;
+
+  std::vector<i_t> one_offsets;
+  std::vector<i_t> one_variables;
+  std::vector<f_t> one_lower_bound;
+  std::vector<f_t> one_upper_bound;
+};
 
 template <typename i_t, typename f_t>
 struct inequality_t {
@@ -132,7 +173,7 @@ struct cut_info_t {
     }
   }
   const char* cut_type_names[MAX_CUT_TYPE] = {
-    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   "};
+    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   ", "Implied Bounds"};
   std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
 };
 
@@ -362,12 +403,14 @@ class cut_generation_t {
     const std::vector<i_t>& new_slacks,
     const std::vector<variable_type_t>& var_types,
     const user_problem_t<i_t, f_t>& user_problem,
+    const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds,
     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
     std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
     std::atomic<bool>* signal_extend                                                    = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       user_problem_(user_problem),
+      probing_implied_bounds_(probing_implied_bounds),
       clique_table_(std::move(clique_table)),
       clique_table_future_(clique_table_future),
       signal_extend_(signal_extend)
@@ -426,9 +469,18 @@ class cut_generation_t {
                             const std::vector<f_t>& reduced_costs,
                             f_t start_time);
 
+  // Generate implied bounds cuts from probing implications
+  void generate_implied_bounds_cuts(const lp_problem_t<i_t, f_t>& lp,
+                                    const simplex_solver_settings_t<i_t, f_t>& settings,
+                                    const std::vector<variable_type_t>& var_types,
+                                    const std::vector<f_t>& xstar,
+                                    variable_bounds_t<i_t, f_t>& variable_bounds,
+                                    f_t start_time);
+
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
+  const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
   std::atomic<bool>* signal_extend_{nullptr};

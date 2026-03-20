@@ -192,12 +192,85 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
+  dual_simplex::probing_implied_bounds_t<i_t, f_t> probing_implied_bounds;
+
   bool run_bb = !context.settings.heuristics_only;
   if (run_bb) {
     // Convert the presolved problem to dual_simplex::user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
     // Resize the solution now that we know the number of columns/variables
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
+
+    // Extract probing cache into CPU-only CSR struct for implied bounds cuts
+    {
+      const i_t num_cols = branch_and_bound_problem.num_cols;
+      probing_implied_bounds = dual_simplex::probing_implied_bounds_t<i_t, f_t>(num_cols);
+      auto& pc       = dm.ls.constraint_prop.bounds_update.probing_cache.probing_cache;
+      auto& rev_ids  = context.problem_ptr->reverse_original_ids;
+
+      // First pass: count entries per binary variable
+      for (auto& [var_idx, entries] : pc) {
+        if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
+        i_t j = (var_idx < static_cast<i_t>(rev_ids.size())) ? rev_ids[var_idx] : -1;
+        if (j < 0 || j >= num_cols) { continue; }
+
+        for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
+          i_t i = (imp_var < static_cast<i_t>(rev_ids.size())) ? rev_ids[imp_var] : -1;
+          if (i < 0 || i >= num_cols) { continue; }
+          probing_implied_bounds.zero_offsets[j + 1]++;
+        }
+        for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
+          i_t i = (imp_var < static_cast<i_t>(rev_ids.size())) ? rev_ids[imp_var] : -1;
+          if (i < 0 || i >= num_cols) { continue; }
+          probing_implied_bounds.one_offsets[j + 1]++;
+        }
+      }
+
+      // Prefix sum
+      for (i_t j = 0; j < num_cols; j++) {
+        probing_implied_bounds.zero_offsets[j + 1] += probing_implied_bounds.zero_offsets[j];
+        probing_implied_bounds.one_offsets[j + 1] += probing_implied_bounds.one_offsets[j];
+      }
+
+      // Allocate flat arrays
+      i_t zero_nnz = probing_implied_bounds.zero_offsets[num_cols];
+      i_t one_nnz  = probing_implied_bounds.one_offsets[num_cols];
+      probing_implied_bounds.zero_variables.resize(zero_nnz);
+      probing_implied_bounds.zero_lower_bound.resize(zero_nnz);
+      probing_implied_bounds.zero_upper_bound.resize(zero_nnz);
+      probing_implied_bounds.one_variables.resize(one_nnz);
+      probing_implied_bounds.one_lower_bound.resize(one_nnz);
+      probing_implied_bounds.one_upper_bound.resize(one_nnz);
+
+      // Second pass: fill flat arrays using write cursors
+      std::vector<i_t> zero_cursor(probing_implied_bounds.zero_offsets);
+      std::vector<i_t> one_cursor(probing_implied_bounds.one_offsets);
+
+      for (auto& [var_idx, entries] : pc) {
+        if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
+        i_t j = (var_idx < static_cast<i_t>(rev_ids.size())) ? rev_ids[var_idx] : -1;
+        if (j < 0 || j >= num_cols) { continue; }
+
+        for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
+          i_t i = (imp_var < static_cast<i_t>(rev_ids.size())) ? rev_ids[imp_var] : -1;
+          if (i < 0 || i >= num_cols) { continue; }
+          i_t p                                      = zero_cursor[j]++;
+          probing_implied_bounds.zero_variables[p]   = i;
+          probing_implied_bounds.zero_lower_bound[p] = bound.lb;
+          probing_implied_bounds.zero_upper_bound[p] = bound.ub;
+        }
+        for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
+          i_t i = (imp_var < static_cast<i_t>(rev_ids.size())) ? rev_ids[imp_var] : -1;
+          if (i < 0 || i >= num_cols) { continue; }
+          i_t p                                     = one_cursor[j]++;
+          probing_implied_bounds.one_variables[p]   = i;
+          probing_implied_bounds.one_lower_bound[p] = bound.lb;
+          probing_implied_bounds.one_upper_bound[p] = bound.ub;
+        }
+      }
+
+      CUOPT_LOG_INFO("Probing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
+    }
 
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
@@ -269,6 +342,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound_problem,
       branch_and_bound_settings,
       timer_.get_tic_start(),
+      probing_implied_bounds,
       context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
     auto* stats_ptr              = &context.stats;
