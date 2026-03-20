@@ -166,13 +166,17 @@ The response is as follows:
 
 .. code-block:: text
 
-    Incumbent 1: x=36.0, y=41.0, cost: 303.00
+    Optimal solution found.
+    Incumbent 1: x=36.0 y=41.0 cost: 303.00
+    Solution objective: 303.000000 , relative_mip_gap 0.000000 solution_bound 303.000000 presolve_time 0.103659 total_solve_time 0.173678 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 0 simplex_iterations 2
 
     === Final Results ===
     Problem status: Optimal
-    Solve time: 0.27 seconds
-    Final solution: x=36.0, y=41.0
+    Solve time: 0.17 seconds
+    Final solution:  x=36.0  y=41.0  
     Final objective value: 303.00
+
+    Total incumbent solutions found: 1
 
 Working with PDLP Warmstart Data
 --------------------------------
