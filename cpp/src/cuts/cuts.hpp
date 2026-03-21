@@ -173,7 +173,7 @@ struct cut_info_t {
     }
   }
   const char* cut_type_names[MAX_CUT_TYPE] = {
-    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   ", "Implied Bounds"};
+    "Gomory        ", "MIR           ", "Knapsack      ", "Strong CG     ", "Clique        ", "Implied Bounds"};
   std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
 };
 

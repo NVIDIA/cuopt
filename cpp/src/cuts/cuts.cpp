@@ -2276,7 +2276,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
 
     starting_count[i]++;
     scores[i] = initial_scores[i] * std::pow(0.9, starting_count[i]);
-    score_queue.push(std::make_pair(scores[i], i));
+    //score_queue.push(std::make_pair(scores[i], i));
     work_estimate += std::log2(std::max(1, static_cast<i_t>(score_queue.size())));
   }
 }
