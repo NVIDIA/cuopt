@@ -1221,7 +1221,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
 
 
   // Construct weight and values for C
-  std::vector<f_t> values;
+  std::vector<i_t> values;
   values.reserve(knapsack_inequality.size());
 
   std::vector<f_t> weights;
@@ -1232,7 +1232,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
     if (!is_marked_[j]) {
       // j is in C
       weights.push_back(knapsack_inequality.coeff(k));
-      values.push_back(1.0);
+      values.push_back(1);
     }
   }
 
@@ -1257,7 +1257,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective = solve_knapsack_problem(values, weights, capacity, solution);
+    f_t objective = exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
     if (std::isnan(objective)) { settings_.log.printf("lifting knapsack problem failed\n"); break; }
 
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
@@ -1266,7 +1266,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
       settings_.log.printf("Lifted variable %d with alpha %g\n", k, alpha_k);
       F.push_back(k);
       alpha.push_back(alpha_k);
-      values.push_back(alpha_k);
+      values.push_back(static_cast<i_t>(alpha_k));
       weights.push_back(a_k);
 
       lifted_cut.vector.i.push_back(k);
@@ -1450,6 +1450,78 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
 
   objective = best_value * scale;
   return objective;
+}
+
+template <typename i_t, typename f_t>
+f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fraction_values(
+  const std::vector<i_t>& values,
+  const std::vector<f_t>& weights,
+  f_t rhs,
+  std::vector<f_t>& solution)
+{
+  // Solve the knapsack problem
+  // maximize sum_{j=0}^n values[j] * solution[j]
+  // subject to sum_{j=0}^n weights[j] * solution[j] <= rhs
+  // values: values of the items
+  // weights: weights of the items
+  // return the value of the solution
+
+  const i_t n = weights.size();
+
+  const bool verbose = false;
+  i_t sum_value     = std::accumulate(values.begin(), values.end(), 0);
+  if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
+  const i_t max_size = 10000;
+  if (sum_value <= 0.0 || sum_value >= max_size) {
+    if (verbose) {
+      settings_.log.printf("sum value %d is negative or too large\n",
+                           sum_value);
+    }
+    return std::numeric_limits<f_t>::quiet_NaN();
+  }
+
+  solution.assign(n, 0.0);
+
+  // dp(j, v) = minimum weight using first j items to get value v
+  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
+  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  dp(0, 0) = 0;
+
+  // 4. Dynamic programming
+  for (i_t j = 1; j <= n; ++j) {
+    for (i_t v = 0; v <= sum_value; ++v) {
+      // Do not take item i-1
+      dp(j, v) = dp(j - 1, v);
+
+      // Take item j-1 if possible
+      if (v >= values[j - 1]) {
+        f_t candidate = dp(j - 1, v - values[j - 1]) + weights[j - 1];
+        if (candidate < dp(j, v)) {
+          dp(j, v)   = candidate;
+          take(j, v) = 1;
+        }
+      }
+    }
+  }
+
+  // 5. Find best achievable value within capacity
+  i_t best_value = 0;
+  for (i_t v = 0; v <= sum_value; ++v) {
+    if (dp(n, v) <= rhs) { best_value = v; }
+  }
+
+  // 6. Backtrack to recover solution
+  i_t v = best_value;
+  for (i_t j = n; j >= 1; --j) {
+    if (take(j, v)) {
+      solution[j - 1] = 1.0;
+      v -= values[j - 1];
+    } else {
+      solution[j - 1] = 0.0;
+    }
+  }
+
+  return f_t(best_value);
 }
 
 template <typename i_t, typename f_t>

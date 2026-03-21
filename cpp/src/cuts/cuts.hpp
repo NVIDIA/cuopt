@@ -376,6 +376,11 @@ class knapsack_generation_t {
                              f_t rhs,
                              std::vector<f_t>& solution);
 
+  f_t exact_knapsack_problem_integer_values_fraction_values(const std::vector<i_t>& values,
+                                                            const std::vector<f_t>& weights,
+                                                            f_t rhs,
+                                                            std::vector<f_t>& solution);
+
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
   std::vector<i_t> is_complemented_;
