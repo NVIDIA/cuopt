@@ -38,7 +38,7 @@ enum cut_type_t : int8_t {
   KNAPSACK               = 2,
   CHVATAL_GOMORY         = 3,
   CLIQUE                 = 4,
-  IMPLIED_BOUNDS         = 5,
+  IMPLIED_BOUND          = 5,
   MAX_CUT_TYPE           = 6
 };
 
@@ -64,7 +64,7 @@ cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
 }
 
 template <typename i_t, typename f_t>
-struct probing_implied_bounds_t {
+struct probing_implied_bound_t {
   // Probing implications stored in CSR format, indexed by binary variable x_j.
   //
   // "zero" = implications discovered when probing x_j = 0.
@@ -85,9 +85,9 @@ struct probing_implied_bounds_t {
   // Non-binary variables have empty ranges (zero_offsets[j] == zero_offsets[j+1]).
   // Offsets vectors have size num_cols + 1.
 
-  probing_implied_bounds_t() = default;
+  probing_implied_bound_t() = default;
 
-  probing_implied_bounds_t(i_t num_cols)
+  probing_implied_bound_t(i_t num_cols)
     : zero_offsets(num_cols + 1, 0), one_offsets(num_cols + 1, 0)
   {
   }
@@ -408,14 +408,14 @@ class cut_generation_t {
     const std::vector<i_t>& new_slacks,
     const std::vector<variable_type_t>& var_types,
     const user_problem_t<i_t, f_t>& user_problem,
-    const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds,
+    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
     std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
     std::atomic<bool>* signal_extend                                                    = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       user_problem_(user_problem),
-      probing_implied_bounds_(probing_implied_bounds),
+      probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
       clique_table_future_(clique_table_future),
       signal_extend_(signal_extend)
@@ -475,17 +475,16 @@ class cut_generation_t {
                             f_t start_time);
 
   // Generate implied bounds cuts from probing implications
-  void generate_implied_bounds_cuts(const lp_problem_t<i_t, f_t>& lp,
-                                    const simplex_solver_settings_t<i_t, f_t>& settings,
-                                    const std::vector<variable_type_t>& var_types,
-                                    const std::vector<f_t>& xstar,
-                                    variable_bounds_t<i_t, f_t>& variable_bounds,
-                                    f_t start_time);
+  void generate_implied_bound_cuts(const lp_problem_t<i_t, f_t>& lp,
+                                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                                   const std::vector<variable_type_t>& var_types,
+                                   const std::vector<f_t>& xstar,
+                                   f_t start_time);
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
-  const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
   std::atomic<bool>* signal_extend_{nullptr};

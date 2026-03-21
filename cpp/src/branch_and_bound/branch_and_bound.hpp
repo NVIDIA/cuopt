@@ -77,7 +77,7 @@ class branch_and_bound_t {
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
-                     const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds,
+                     const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
                      std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
@@ -149,7 +149,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
-  const probing_implied_bounds_t<i_t, f_t>& probing_implied_bounds_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
   std::atomic<bool> signal_extend_cliques_{false};

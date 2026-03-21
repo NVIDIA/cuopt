@@ -275,7 +275,7 @@ void rins_t<i_t, f_t>::run_rins()
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
   };
-  dual_simplex::probing_implied_bounds_t<i_t, f_t> empty_probing(
+  dual_simplex::probing_implied_bound_t<i_t, f_t> empty_probing(
     branch_and_bound_problem.num_cols);
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
     branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
