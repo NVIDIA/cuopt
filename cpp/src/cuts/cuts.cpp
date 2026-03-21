@@ -724,7 +724,13 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
     f_t sum_neg      = 0.0;
     for (i_t p = 0; p < row_len; p++) {
       const i_t j = inequality.index(p);
-      if (is_slack_[j]) { continue; }
+      if (is_slack_[j]) {
+        if (inequality.coeff(p) < 0.0) {
+          is_knapsack = false;
+          break;
+        }
+        continue;
+      }
       const f_t aj = inequality.coeff(p);
       if (var_types[j] != variable_type_t::INTEGER || lp.lower[j] != 0.0 || lp.upper[j] != 1.0) {
         is_knapsack = false;
@@ -1167,6 +1173,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
     if (is_marked_[j]) {
+      if (is_slack_[j]) { continue; }
       remaining_variables.push_back(j);
       remaining_indices.push_back(k);
       remaining_coefficients.push_back(knapsack_inequality.coeff(k));
@@ -1250,7 +1257,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective = greedy_knapsack_problem(values, weights, capacity, solution);
+    f_t objective = solve_knapsack_problem(values, weights, capacity, solution);
     if (std::isnan(objective)) { settings_.log.printf("lifting knapsack problem failed\n"); break; }
 
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
