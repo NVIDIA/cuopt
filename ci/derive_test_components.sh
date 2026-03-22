@@ -17,6 +17,11 @@ else
     [[ "${CUOPT_ROUTING_CHANGED:-true}" == "true" ]] && components="${components:+${components},}routing"
     [[ "${CUOPT_LP_CHANGED:-true}" == "true" ]]      && components="${components:+${components},}lp"
     [[ "${CUOPT_MIP_CHANGED:-true}" == "true" ]]      && components="${components:+${components},}mip"
+    # MIP is validated through LP tests (no separate MIP Python tests),
+    # so always include LP when MIP changes.
+    if [[ "${CUOPT_MIP_CHANGED:-true}" == "true" && "${components}" != *"lp"* ]]; then
+        components="${components:+${components},}lp"
+    fi
     # Fallback to "all" if all components are false (defensive — the job-level
     # 'if' gate in pr.yaml would normally skip the job entirely in this case).
     export CUOPT_TEST_COMPONENTS="${components:-all}"
