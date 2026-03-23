@@ -2039,8 +2039,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   // Transform the relaxation solution
   std::vector<f_t> transformed_xstar;
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
-  std::vector<f_t> initial_scores = scores;
-  std::vector<i_t> starting_count(lp.num_rows, 0);
 
   const i_t max_cuts = std::min(lp.num_rows, 100000);
   f_t work_estimate  = 0.0;
@@ -2274,9 +2272,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
     // Clear the aggregated rows
     aggregated_rows.clear();
 
-    starting_count[i]++;
-    scores[i] = initial_scores[i] * std::pow(0.9, starting_count[i]);
-    //score_queue.push(std::make_pair(scores[i], i));
+    scores[i] = 0.0;
+    score_queue.push(std::make_pair(scores[i], i));
     work_estimate += std::log2(std::max(1, static_cast<i_t>(score_queue.size())));
   }
 }
