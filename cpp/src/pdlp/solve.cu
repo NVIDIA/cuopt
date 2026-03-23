@@ -986,8 +986,16 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     warm_start_settings.detect_infeasibility = false;
     warm_start_settings.iteration_limit      = iteration_limit;
     warm_start_settings.inside_mip           = true;
+    #ifdef BATCH_VERBOSE_MODE
+    auto start_time = std::chrono::high_resolution_clock::now();
+    #endif
     optimization_problem_solution_t<i_t, f_t> original_solution =
       solve_lp(problem, warm_start_settings);
+    #ifdef BATCH_VERBOSE_MODE
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    std::cout << "Original problem solved in " << duration << " milliseconds" << " and iterations: " << original_solution.get_pdlp_warm_start_data().total_pdlp_iterations_ << std::endl;
+    #endif
     if (pdlp_primal_dual_init) {
       initial_primal    = rmm::device_uvector<f_t>(original_solution.get_primal_solution(),
                                                 original_solution.get_primal_solution().stream());

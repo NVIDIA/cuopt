@@ -790,7 +790,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
 #ifdef BATCH_VERBOSE_MODE
         std::cout << "[COOP SB] DS already solved climber " << i << " (original_index "
                   << local_idx << "), synced to ConcurrentLimit at step "
-                  << total_pdlp_iterations_ << std::endl;
+                  << internal_solver_iterations_ << std::endl;
 #endif
       }
     }
@@ -1797,6 +1797,90 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     op_problem_scaled_.n_variables,
     pdhg_solver_.get_primal_tmp_resource().data(),
     CUSPARSE_ORDER_COL);
+
+  // Recalculate SpMM buffer sizes for the new batch dimensions.
+  // cuSparse may require different buffer sizes when the number of columns changes
+  // (e.g. SpMM with 1 column may internally fall back to SpMV with larger buffer needs).
+  {
+    size_t new_buf_size = 0;
+
+    // PDHG row-row: A_T * batch_dual_solutions -> batch_current_AtYs
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A_T,
+      pdhg_cusparse_view.batch_dual_solutions,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_current_AtYs,
+      (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
+
+    // PDHG row-row: A * batch_reflected_primal_solutions -> batch_dual_gradients
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A,
+      pdhg_cusparse_view.batch_reflected_primal_solutions,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_dual_gradients,
+      (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_non_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
+
+    // Adaptive step size: A_T * batch_potential_next_dual_solution -> batch_next_AtYs
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A_T,
+      pdhg_cusparse_view.batch_potential_next_dual_solution,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_next_AtYs,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_transpose_batch.resize(new_buf_size, stream_view_);
+
+    // Convergence info: A_T * batch_dual_solutions -> batch_tmp_primals
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      current_op_problem_evaluation_cusparse_view_.A_T,
+      current_op_problem_evaluation_cusparse_view_.batch_dual_solutions,
+      reusable_device_scalar_value_0_.data(),
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_primals,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.resize(new_buf_size,
+                                                                              stream_view_);
+
+    // Convergence info: A * batch_primal_solutions -> batch_tmp_duals
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      current_op_problem_evaluation_cusparse_view_.A,
+      current_op_problem_evaluation_cusparse_view_.batch_primal_solutions,
+      reusable_device_scalar_value_0_.data(),
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_duals,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.resize(new_buf_size,
+                                                                                  stream_view_);
+  }
 
   // Rerun preprocess
 
