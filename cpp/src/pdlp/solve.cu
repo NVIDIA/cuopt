@@ -904,11 +904,12 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   // Hyper parameter than can be changed, I have put what I believe to be the best
-  bool pdlp_primal_dual_init    = true;
-  bool primal_weight_init       = true;
-  bool use_initial_pdlp_iterations = true;
+  constexpr bool pdlp_primal_dual_init    = true;
+  constexpr bool primal_weight_init       = true;
+  constexpr bool use_initial_pdlp_iterations = true;
   bool use_optimal_batch_size   = false;
-  constexpr int iteration_limit = 100000;
+  constexpr int batch_iteration_limit = 100000;
+  constexpr f_t pdlp_tolerance = 1e-6;
 
   rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
 
@@ -967,47 +968,31 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   }
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
                "Optimal batch size should be between 1 and max batch size");
-  using f_t2 = typename type_2<f_t>::type;
 
-  // In case Dual Simplex already provided the initial primal and dual solution
-  if (settings.has_initial_primal_solution() && settings.has_initial_dual_solution()) {
-    initial_primal = rmm::device_uvector<f_t>(
-      settings.get_initial_primal_solution(), settings.get_initial_primal_solution().stream());
-    initial_dual = rmm::device_uvector<f_t>(
-      settings.get_initial_dual_solution(), settings.get_initial_dual_solution().stream());
-  }
+  const bool warm_start_from_settings =
+    settings.has_initial_primal_solution() || settings.has_initial_dual_solution() ||
+    settings.get_initial_step_size().has_value() ||
+    settings.get_initial_primal_weight().has_value() ||
+    settings.get_initial_pdlp_iteration().has_value();
 
-  if (pdlp_primal_dual_init || primal_weight_init) {
-    pdlp_solver_settings_t<i_t, f_t> warm_start_settings = settings;
-    warm_start_settings.new_bounds.clear();
-    warm_start_settings.method               = cuopt::linear_programming::method_t::PDLP;
-    warm_start_settings.presolver            = cuopt::linear_programming::presolver_t::None;
-    warm_start_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
-    warm_start_settings.detect_infeasibility = false;
-    warm_start_settings.iteration_limit      = iteration_limit;
-    warm_start_settings.inside_mip           = true;
+  if (warm_start_from_settings) {
     #ifdef BATCH_VERBOSE_MODE
-    auto start_time = std::chrono::high_resolution_clock::now();
+    std::cout << "Using warm start from settings" << std::endl;
     #endif
-    optimization_problem_solution_t<i_t, f_t> original_solution =
-      solve_lp(problem, warm_start_settings);
-    #ifdef BATCH_VERBOSE_MODE
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    std::cout << "Original problem solved in " << duration << " milliseconds" << " and iterations: " << original_solution.get_pdlp_warm_start_data().total_pdlp_iterations_ << std::endl;
-    #endif
-    if (pdlp_primal_dual_init) {
-      initial_primal    = rmm::device_uvector<f_t>(original_solution.get_primal_solution(),
-                                                original_solution.get_primal_solution().stream());
-      initial_dual      = rmm::device_uvector<f_t>(original_solution.get_dual_solution(),
-                                              original_solution.get_dual_solution().stream());
-      initial_step_size = original_solution.get_pdlp_warm_start_data().initial_step_size_;
+    if (settings.has_initial_primal_solution() && pdlp_primal_dual_init) {
+      initial_primal = rmm::device_uvector<f_t>(settings.get_initial_primal_solution(), settings.get_initial_primal_solution().stream());
     }
-    if (primal_weight_init) {
-      initial_primal_weight = original_solution.get_pdlp_warm_start_data().initial_primal_weight_;
+    if (settings.has_initial_dual_solution() && pdlp_primal_dual_init) {
+      initial_dual = rmm::device_uvector<f_t>(settings.get_initial_dual_solution(), settings.get_initial_dual_solution().stream());
     }
-    if (use_initial_pdlp_iterations) {
-      initial_pdlp_iteration = original_solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
+    if (settings.get_initial_step_size().has_value() && pdlp_primal_dual_init) {
+      initial_step_size = *settings.get_initial_step_size();
+    }
+    if (settings.get_initial_primal_weight().has_value() && primal_weight_init) {
+      initial_primal_weight = *settings.get_initial_primal_weight();
+    }
+    if (settings.get_initial_pdlp_iteration().has_value() && use_initial_pdlp_iterations) {
+      initial_pdlp_iteration = *settings.get_initial_pdlp_iteration();
     }
   }
 
@@ -1029,21 +1014,31 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   batch_settings.presolver                        = presolver_t::None;
   batch_settings.pdlp_solver_mode                 = pdlp_solver_mode_t::Stable3;
   batch_settings.detect_infeasibility             = false;
-  batch_settings.iteration_limit                  = iteration_limit;
+  batch_settings.iteration_limit                  = batch_iteration_limit;
   batch_settings.inside_mip                       = true;
+  batch_settings.tolerances.absolute_dual_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.relative_dual_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.absolute_gap_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.relative_gap_tolerance = pdlp_tolerance;
   if (initial_primal.size() > 0) {
     batch_settings.set_initial_primal_solution(
       initial_primal.data(), initial_primal.size(), initial_primal.stream());
+  }
+  if (initial_dual.size() > 0) {
     batch_settings.set_initial_dual_solution(
       initial_dual.data(), initial_dual.size(), initial_dual.stream());
-    if (!std::isnan(initial_step_size)) {
-      batch_settings.set_initial_step_size(initial_step_size);
-    }
-    if (use_initial_pdlp_iterations) {
-      batch_settings.set_initial_pdlp_iteration(initial_pdlp_iteration);
-    }
   }
-  if (primal_weight_init) { batch_settings.set_initial_primal_weight(initial_primal_weight); }
+  if (!std::isnan(initial_step_size)) {
+    batch_settings.set_initial_step_size(initial_step_size);
+  }
+  if (initial_pdlp_iteration != -1) {
+    batch_settings.set_initial_pdlp_iteration(initial_pdlp_iteration);
+  }
+  if (!std::isnan(initial_primal_weight)) {
+    batch_settings.set_initial_primal_weight(initial_primal_weight);
+  }
 
   for (size_t i = 0; i < max_batch_size; i += optimal_batch_size) {
     const size_t current_batch_size = std::min(optimal_batch_size, max_batch_size - i);

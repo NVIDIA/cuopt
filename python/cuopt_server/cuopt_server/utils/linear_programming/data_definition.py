@@ -456,6 +456,12 @@ class SolverConfig(BaseModel):
         "1 = cooperative work-stealing (DS + batch PDLP), "
         "2 = batch PDLP only.",
     )
+    mip_batch_pdlp_reliability_branching: Optional[int] = Field(
+        default=0,
+        description="Reliability branching mode: 0 = Dual Simplex only, "
+        "1 = cooperative work-stealing (DS + batch PDLP), "
+        "2 = batch PDLP only.",
+    )
     num_cpu_threads: Optional[int] = Field(
         default=None,
         description="Set the number of CPU threads to use for branch and bound.",  # noqa

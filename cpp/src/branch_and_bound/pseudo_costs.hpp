@@ -20,7 +20,10 @@
 
 #include <omp.h>
 #include <cmath>
+#include <rmm/device_uvector.hpp>
+
 #include <cstdint>
+#include <limits>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -406,6 +409,17 @@ struct reliability_branching_settings_t {
 };
 
 template <typename i_t, typename f_t>
+struct batch_pdlp_warm_cache_t {
+  const raft::handle_t batch_pdlp_handle{};
+  rmm::device_uvector<f_t> initial_primal{0, batch_pdlp_handle.get_stream()};
+  rmm::device_uvector<f_t> initial_dual{0, batch_pdlp_handle.get_stream()};
+  f_t step_size{std::numeric_limits<f_t>::signaling_NaN()};
+  f_t primal_weight{std::numeric_limits<f_t>::signaling_NaN()};
+  i_t pdlp_iteration{-1};
+  bool populated{false};
+};
+
+template <typename i_t, typename f_t>
 class pseudo_costs_t {
  public:
   explicit pseudo_costs_t(i_t num_variables)
@@ -516,6 +530,8 @@ class pseudo_costs_t {
   std::vector<omp_mutex_t> pseudo_cost_mutex_down;
   omp_atomic_t<i_t> num_strong_branches_completed = 0;
   omp_atomic_t<int64_t> strong_branching_lp_iter  = 0;
+
+  batch_pdlp_warm_cache_t<i_t, f_t> pdlp_warm_cache;
 };
 
 template <typename i_t, typename f_t>

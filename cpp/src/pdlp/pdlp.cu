@@ -770,7 +770,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
     if (current_termination_strategy_.is_done(term)) {
       std::cout << "[BATCH MODE]: Climber " << i << " is done with "
                 << optimization_problem_solution_t<i_t, f_t>::get_termination_status_string(term)
-                << " at step " << total_pdlp_iterations_ << ". It's original index is "
+                << " at step " << internal_solver_iterations_ << ". It's original index is "
                 << climber_strategies_[i].original_index << std::endl;
     }
   }
