@@ -1548,6 +1548,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
     const i_t zero_end   = probing_implied_bound_.zero_offsets[j + 1];
     for (i_t p = zero_begin; p < zero_end; p++) {
       const i_t i   = probing_implied_bound_.zero_variables[p];
+      if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
       const f_t u_i = lp.upper[i];
 
@@ -1593,6 +1594,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
     const i_t one_end   = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = one_begin; p < one_end; p++) {
       const i_t i   = probing_implied_bound_.one_variables[p];
+      if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
       const f_t u_i = lp.upper[i];
 
