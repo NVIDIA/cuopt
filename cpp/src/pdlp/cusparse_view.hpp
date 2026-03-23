@@ -120,8 +120,6 @@ class cusparse_view_t {
                   const rmm::device_uvector<i_t>&,               // Empty just to init the const&
                   const std::vector<pdlp_climber_strategy_t>&);  // Empty just to init the const&
 
-  void create_spmv_op_plans(bool is_reflected);
-
   const bool batch_mode_{false};
 
   raft::handle_t const* handle_ptr_{nullptr};
@@ -176,7 +174,7 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop;
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop;
 
-  // here for tests of compilation
+  // SpMVOp descriptors and plans for A and A_T
   cusparseSpMVOpDescr_t spmv_op_descr_A_;
   cusparseSpMVOpDescr_t spmv_op_descr_A_t_;
   cusparseSpMVOpPlan_t spmv_op_plan_A_;
@@ -219,6 +217,9 @@ class cusparse_view_t {
 
   // Update FP32 matrix copies after scaling (must be called after scale_problem())
   void update_mixed_precision_matrices();
+
+  // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
+  void create_spmv_op_plans(bool is_reflected);
 };
 
 // Mixed precision SpMV: FP32 matrix with FP64 vectors and FP64 compute type
