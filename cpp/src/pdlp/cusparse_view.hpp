@@ -20,6 +20,8 @@
 
 #include <cusparse_v2.h>
 
+#define CUDA_VER_13_2_UP (CUDART_VERSION >= 13020)
+
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
@@ -171,6 +173,9 @@ class cusparse_view_t {
   // reuse buffers for cusparse spmv
   rmm::device_uvector<uint8_t> buffer_non_transpose;
   rmm::device_uvector<uint8_t> buffer_transpose;
+
+#if CUDA_VER_13_2_UP
+  // SpMVOp buffers for A and A_T
   rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop;
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop;
 
@@ -179,7 +184,7 @@ class cusparse_view_t {
   cusparseSpMVOpDescr_t spmv_op_descr_A_t_;
   cusparseSpMVOpPlan_t spmv_op_plan_A_;
   cusparseSpMVOpPlan_t spmv_op_plan_A_t_;
-
+#endif
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch;

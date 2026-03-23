@@ -1194,6 +1194,7 @@ bool is_cusparse_runtime_mixed_precision_supported()
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
+#if CUDA_VER_13_2_UP
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
   RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
@@ -1253,6 +1254,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                                                 lto_buffer,
                                                 lto_buffer_size));
   }
+#endif
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
