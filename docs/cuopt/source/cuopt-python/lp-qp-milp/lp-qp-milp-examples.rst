@@ -167,17 +167,16 @@ The response is as follows:
 .. code-block:: text
 
     Optimal solution found.
-    Incumbent 1: [ 0. 58.], cost: 174.00
-    Incumbent 2: [36. 41.], cost: 303.00
-    Generated fast solution in 0.158467 seconds with objective 303.000000
-    Consuming B&B solutions, solution queue size 2
-    Solution objective: 303.000000 , relative_mip_gap 0.000000 solution_bound 303.000000 presolve_time 0.043211 total_solve_time 0.160270 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 4 simplex_iterations 3
+    Incumbent 1: x=36.0 y=41.0 cost: 303.00
+    Solution objective: 303.000000 , relative_mip_gap 0.000000 solution_bound 303.000000 presolve_time 0.103659 total_solve_time 0.173678 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 0 simplex_iterations 2
 
     === Final Results ===
     Problem status: Optimal
-    Solve time: 0.16 seconds
-    Final solution: x=36.0, y=40.99999999999999
+    Solve time: 0.17 seconds
+    Final solution:  x=36.0  y=41.0
     Final objective value: 303.00
+
+    Total incumbent solutions found: 1
 
 Working with PDLP Warmstart Data
 --------------------------------
