@@ -1037,71 +1037,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 }
 
-// Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
-template <typename i_t, typename f_t>
-void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
-{
-  // Prepare buffers for At_y SpMVOp
-  size_t buffer_size_transpose = 0;
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
-                                              CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                              A_T,
-                                              dual_solution,
-                                              current_AtY,
-                                              current_AtY,
-                                              CUDA_R_64F,
-                                              &buffer_size_transpose));
-  buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
-
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(handle_ptr_->get_cusparse_handle(),
-                                               &spmv_op_descr_A_t_,
-                                               CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                               A_T,
-                                               dual_solution,
-                                               current_AtY,
-                                               current_AtY,
-                                               CUDA_R_64F,
-                                               buffer_transpose_spmvop.data()));
-
-  char* lto_buffer       = NULL;
-  size_t lto_buffer_size = 0;
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle_ptr_->get_cusparse_handle(),
-                                              spmv_op_descr_A_t_,
-                                              &spmv_op_plan_A_t_,
-                                              lto_buffer,
-                                              lto_buffer_size));
-
-  // Only prepare buffers for A_x if we are using reflected_halpern
-  if (is_reflected) {
-    size_t buffer_size_non_transpose = 0;
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
-                                                CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                A,
-                                                reflected_primal_solution,
-                                                dual_gradient,
-                                                dual_gradient,
-                                                CUDA_R_64F,
-                                                &buffer_size_non_transpose));
-    buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
-
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(handle_ptr_->get_cusparse_handle(),
-                                                 &spmv_op_descr_A_,
-                                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                 A,
-                                                 reflected_primal_solution,
-                                                 dual_gradient,
-                                                 dual_gradient,
-                                                 CUDA_R_64F,
-                                                 buffer_non_transpose_spmvop.data()));
-
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle_ptr_->get_cusparse_handle(),
-                                                spmv_op_descr_A_,
-                                                &spmv_op_plan_A_,
-                                                lto_buffer,
-                                                lto_buffer_size));
-  }
-}
-
 // Empty constructor used in kkt restart to save memory
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
@@ -1253,6 +1188,71 @@ bool is_cusparse_runtime_mixed_precision_supported()
   status = cusparseGetProperty(libraryPropertyType_t::MINOR_VERSION, &minor);
   if (status != CUSPARSE_STATUS_SUCCESS) return false;
   return (major > 12) || (major == 12 && minor >= 5);
+}
+
+// Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
+template <typename i_t, typename f_t>
+void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
+{
+  // Prepare buffers for At_y SpMVOp
+  size_t buffer_size_transpose = 0;
+  RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
+                                              CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                              A_T,
+                                              dual_solution,
+                                              current_AtY,
+                                              current_AtY,
+                                              CUDA_R_64F,
+                                              &buffer_size_transpose));
+  buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
+
+  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(handle_ptr_->get_cusparse_handle(),
+                                               &spmv_op_descr_A_t_,
+                                               CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                               A_T,
+                                               dual_solution,
+                                               current_AtY,
+                                               current_AtY,
+                                               CUDA_R_64F,
+                                               buffer_transpose_spmvop.data()));
+
+  char* lto_buffer       = NULL;
+  size_t lto_buffer_size = 0;
+  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle_ptr_->get_cusparse_handle(),
+                                              spmv_op_descr_A_t_,
+                                              &spmv_op_plan_A_t_,
+                                              lto_buffer,
+                                              lto_buffer_size));
+
+  // Only prepare buffers for A_x if we are using reflected_halpern
+  if (is_reflected) {
+    size_t buffer_size_non_transpose = 0;
+    RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
+                                                CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                A,
+                                                reflected_primal_solution,
+                                                dual_gradient,
+                                                dual_gradient,
+                                                CUDA_R_64F,
+                                                &buffer_size_non_transpose));
+    buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
+
+    RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(handle_ptr_->get_cusparse_handle(),
+                                                 &spmv_op_descr_A_,
+                                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                 A,
+                                                 reflected_primal_solution,
+                                                 dual_gradient,
+                                                 dual_gradient,
+                                                 CUDA_R_64F,
+                                                 buffer_non_transpose_spmvop.data()));
+
+    RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle_ptr_->get_cusparse_handle(),
+                                                spmv_op_descr_A_,
+                                                &spmv_op_plan_A_,
+                                                lto_buffer,
+                                                lto_buffer_size));
+  }
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

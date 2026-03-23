@@ -180,7 +180,6 @@ class cusparse_view_t {
   cusparseSpMVOpPlan_t spmv_op_plan_A_;
   cusparseSpMVOpPlan_t spmv_op_plan_A_t_;
 
-
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch;
