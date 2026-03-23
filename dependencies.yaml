@@ -678,6 +678,7 @@ dependencies:
           - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
+          - libnvjitlink-dev
 
 
   cuda_wheels:

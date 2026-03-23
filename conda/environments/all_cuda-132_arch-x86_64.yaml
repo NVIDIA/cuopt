@@ -32,8 +32,9 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
-- libraft-headers==26.6.*,>=0.0.0a0
-- librmm==26.6.*,>=0.0.0a0
+- libnvjitlink-dev
+- libraft-headers==26.4.*,>=0.0.0a0
+- librmm==26.4.*,>=0.0.0a0
 - make
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.2
