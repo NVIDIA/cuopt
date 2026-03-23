@@ -82,7 +82,6 @@ class diversity_manager_t {
       result);
 
   mip_solver_context_t<i_t, f_t>& context;
-  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;

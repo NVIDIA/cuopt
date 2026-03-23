@@ -40,7 +40,6 @@ std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
 template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
   : context(context_),
-    branch_and_bound_ptr(nullptr),
     problem_ptr(context.problem_ptr),
     diversity_config(),
     population("population",
@@ -417,8 +416,8 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   bool bb_thread_solution_exists = simplex_solution_exists.load();
   if (bb_thread_solution_exists) {
     ls.lp_optimal_exists = true;
-  } else if (branch_and_bound_ptr != nullptr &&
-             branch_and_bound_ptr->enable_concurrent_lp_root_solve()) {
+  } else if (context.branch_and_bound_ptr != nullptr &&
+             context.branch_and_bound_ptr->enable_concurrent_lp_root_solve()) {
     // B&B drives root relaxation; wait for first solution (PDLP/Barrier or dual simplex)
     first_solution_ready_.store(false, std::memory_order_release);
     std::unique_lock<std::mutex> lock(first_solution_mutex_);
