@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -78,9 +79,8 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     mab_ls(mab_ls_config_t<i_t, f_t>::n_of_arms, cuopt::seed_generator::get_seed(), ls_alpha, "ls"),
     ls_hash_map(*context.problem_ptr)
 {
-  // Read configuration ID from environment variable
-  int max_config = -1;
-  // Read max configuration value from environment variable
+  int max_config             = -1;
+  int env_config_id          = -1;
   const char* env_max_config = std::getenv("CUOPT_MAX_CONFIG");
   if (env_max_config != nullptr) {
     try {
@@ -90,17 +90,21 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
       CUOPT_LOG_WARN("Failed to parse CUOPT_MAX_CONFIG environment variable: %s", e.what());
     }
   }
-  if (max_config > 1) {
-    [[maybe_unused]] int config_id = -1;  // Default value
-    const char* env_config_id      = std::getenv("CUOPT_CONFIG_ID");
-    if (env_config_id != nullptr) {
-      try {
-        config_id = std::stoi(env_config_id);
-        CUOPT_LOG_INFO("Using configuration ID from environment: %d", config_id);
-      } catch (const std::exception& e) {
-        CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID environment variable: %s", e.what());
-      }
-    }
+
+  const char* env_config_id_raw = std::getenv("CUOPT_CONFIG_ID");
+  if (env_config_id_raw == nullptr) { return; }
+
+  try {
+    env_config_id = std::stoi(env_config_id_raw);
+  } catch (const std::exception& e) {
+    CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID environment variable: %s", e.what());
+    return;
+  }
+
+  if (max_config > 0 && env_config_id >= max_config) {
+    CUOPT_LOG_WARN(
+      "CUOPT_CONFIG_ID=%d is outside [0, %d). Ignoring cut override.", env_config_id, max_config);
+    return;
   }
 }
 
@@ -205,28 +209,32 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const bool remap_cache_ids = true;
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
-      !problem_ptr->empty) {
-    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
-    timer_t clique_timer(time_limit_for_clique_table);
-    dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
-    problem_ptr->get_host_user_problem(host_problem);
-    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
-    constexpr bool modify_problem_with_cliques = false;
-    find_initial_cliques(
-      host_problem, context.settings.tolerances, clique_timer, modify_problem_with_cliques);
-    if (modify_problem_with_cliques) {
-      problem_ptr->set_constraints_from_host_user_problem(host_problem);
-      cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
-                   "host lower bound size mismatch");
-      cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
-                   "host upper bound size mismatch");
-      std::vector<i_t> all_var_indices(problem_ptr->n_variables);
-      std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
-      problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
-      trivial_presolve(*problem_ptr, remap_cache_ids);
-    }
-  }
+  // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
+  //     !problem_ptr->empty) {
+  //   f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
+  //   timer_t clique_timer(time_limit_for_clique_table);
+  //   dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+  //   problem_ptr->get_host_user_problem(host_problem);
+  //   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+  //   constexpr bool modify_problem_with_cliques = false;
+  //   find_initial_cliques(host_problem,
+  //                        context.settings.tolerances,
+  //                        &clique_table,
+  //                        clique_timer,
+  //                        modify_problem_with_cliques,
+  //                        nullptr);
+  //   if (modify_problem_with_cliques) {
+  //     problem_ptr->set_constraints_from_host_user_problem(host_problem);
+  //     cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
+  //                  "host lower bound size mismatch");
+  //     cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
+  //                  "host upper bound size mismatch");
+  //     std::vector<i_t> all_var_indices(problem_ptr->n_variables);
+  //     std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
+  //     problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower,
+  //     host_problem.upper); trivial_presolve(*problem_ptr, remap_cache_ids);
+  //   }
+  // }
   // May overconstrain if Papilo presolve has been run before
   if (context.settings.presolver == presolver_t::None) {
     if (!problem_ptr->empty) {

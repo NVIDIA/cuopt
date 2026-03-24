@@ -25,8 +25,18 @@ cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client-*.
 libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 EOF
 
-# echo to expand wildcard before adding `[extra]` requires for pip
+# generate constraints (possibly pinning to oldest support versions of dependencies)
+rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+# notes:
+#
+#   * echo to expand wildcard before adding `[test]` requires for pip
+#   * just providing --constraint="${PIP_CONSTRAINT}" to be explicit, and because
+#     that environment variable is ignored if any other --constraint are passed via the CLI
+#
 rapids-pip-retry install \
+    --prefer-binary \
+    --constraint "${PIP_CONSTRAINT}" \
     --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \

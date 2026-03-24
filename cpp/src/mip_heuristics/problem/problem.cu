@@ -143,6 +143,7 @@ problem_t<i_t, f_t>::problem_t(
     objective_offset(problem_.get_objective_offset()),
     lp_state(*this, problem_.get_handle_ptr()->get_stream()),
     fixing_helpers(n_constraints, n_variables, handle_ptr),
+    clique_table(nullptr),
     Q_offsets(problem_.get_quadratic_objective_offsets()),
     Q_indices(problem_.get_quadratic_objective_indices()),
     Q_values(problem_.get_quadratic_objective_values())
@@ -199,6 +200,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    clique_table(problem_.clique_table),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
     Q_offsets(problem_.Q_offsets),
@@ -255,6 +257,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
     objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state, handle_ptr),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
+    clique_table(problem_.clique_table),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
     Q_offsets(problem_.Q_offsets),
@@ -279,6 +282,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     maximize(problem_.maximize),
     empty(problem_.empty),
     is_binary_pb(problem_.is_binary_pb),
+    clique_table(problem_.clique_table),
     // Copy constructor used by PDLP and MIP
     // PDLP uses the version with no_deep_copy = false which deep copy some fields but doesn't
     // allocate others that are not needed in PDLP
