@@ -176,11 +176,11 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_non_transpose;
   rmm::device_uvector<uint8_t> buffer_transpose;
 
-#if CUDA_VER_13_2_UP
   // SpMVOp buffers for A and A_T
-  rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop;
-  rmm::device_uvector<uint8_t> buffer_transpose_spmvop;
-
+  rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop{0, handle_ptr_->get_stream()};
+  rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
+  
+#if CUDA_VER_13_2_UP
   // SpMVOp descriptors and plans for A and A_T
   cusparseSpMVOpDescr_t spmv_op_descr_A_{nullptr};
   cusparseSpMVOpDescr_t spmv_op_descr_A_t_{nullptr};
