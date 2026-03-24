@@ -208,7 +208,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       auto& pc       = dm.ls.constraint_prop.bounds_update.probing_cache.probing_cache;
 
       // First pass: count entries per binary variable
-      // Probing cache indices are already in the post-presolve space (same as B&B)
+      // Probing cache indices are in pre-trivial-presolve space; remap to post-presolve (B&B) space
+      auto& rev_ids = op_problem_.reverse_original_ids;
+      i_t rev_size = static_cast<i_t>(rev_ids.size());
+      auto remap = [&](i_t raw_idx) -> i_t {
+        if (rev_size == 0) return raw_idx;
+        if (raw_idx < 0 || raw_idx >= rev_size) return -1;
+        return rev_ids[raw_idx];
+      };
       auto is_bb_binary = [&](i_t j) {
         return branch_and_bound_problem.lower[j] == 0.0 &&
                branch_and_bound_problem.upper[j] == 1.0;
@@ -219,18 +226,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       };
       for (auto& [var_idx, entries] : pc) {
         if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
-        i_t j = var_idx;
+        i_t j = remap(var_idx);
         if (j < 0 || j >= num_cols) { continue; }
         if (!is_bb_binary(j)) { continue; }
 
         for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-          i_t i = imp_var;
+          i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
           probing_implied_bound.zero_offsets[j + 1]++;
         }
         for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-          i_t i = imp_var;
+          i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
           probing_implied_bound.one_offsets[j + 1]++;
@@ -259,12 +266,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
       for (auto& [var_idx, entries] : pc) {
         if (entries[0].val_interval.interval_type != interval_type_t::EQUALS) { continue; }
-        i_t j = var_idx;
+        i_t j = remap(var_idx);
         if (j < 0 || j >= num_cols) { continue; }
         if (!is_bb_binary(j)) { continue; }
 
         for (auto& [imp_var, bound] : entries[0].var_to_cached_bound_map) {
-          i_t i = imp_var;
+          i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
           i_t p                                      = zero_cursor[j]++;
@@ -273,7 +280,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
           probing_implied_bound.zero_upper_bound[p] = bound.ub;
         }
         for (auto& [imp_var, bound] : entries[1].var_to_cached_bound_map) {
-          i_t i = imp_var;
+          i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
           i_t p                                     = one_cursor[j]++;
