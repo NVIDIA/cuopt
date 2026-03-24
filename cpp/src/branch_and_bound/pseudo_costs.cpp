@@ -25,6 +25,11 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
+static bool ds_is_valid_done(dual::status_t status)
+{
+  return status == dual::status_t::DUAL_UNBOUNDED || status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT || status == dual::status_t::CUTOFF;
+}
+
 template <typename i_t, typename f_t>
 void strong_branch_helper(i_t start,
                           i_t end,
@@ -100,7 +105,7 @@ void strong_branch_helper(i_t start,
       if (status == dual::status_t::DUAL_UNBOUNDED) {
         // LP was infeasible
         obj = std::numeric_limits<f_t>::infinity();
-      } else if (status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT) {
+      } else if (status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT || status == dual::status_t::CUTOFF) {
         obj = compute_objective(child_problem, solution.x);
       } else {
         settings.log.debug("Thread id %2d remaining %d variable %d branch %d status %d\n",
@@ -144,10 +149,14 @@ void strong_branch_helper(i_t start,
       }
       // Mark the subproblem as solved so that batch PDLP removes it from the batch
       if (sb_view.is_valid()) {
-        sb_view.mark_solved(shared_idx);
-        settings.log.printf(
-          "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in shared context\n",
-          thread_id, j, branch == 0 ? "down" : "up", shared_idx);
+        // We could not mark as solved nodes hitting iteartion limit in DS
+        if ((branch == 0 && ds_is_valid_done(ds_status_down[k])) || (branch == 1 && ds_is_valid_done(ds_status_up[k])))
+        {
+          sb_view.mark_solved(shared_idx);
+          settings.log.printf(
+            "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in shared context\n",
+            thread_id, j, branch == 0 ? "down" : "up", shared_idx);
+        }
       }
       if (toc(start_time) > settings.time_limit || *concurrent_halt == 1) {
         break; 
@@ -422,6 +431,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   pc.strong_branch_up.assign(fractional.size(), 0);
   pc.num_strong_branches_completed = 0;
 
+  const f_t elapsed_time = toc(start_time);
+  if (elapsed_time > settings.time_limit) { return; }
+
   settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
                       settings.num_threads,
                       fractional.size());
@@ -466,18 +478,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
     if (concurrent_halt.load() == 1) { return; }
 
-    const f_t batch_elapsed_time = toc(start_time);
-    const f_t batch_remaining_time =
+    f_t batch_elapsed_time = toc(start_time);
+    const f_t warm_start_remaining_time =
       std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
-    if (batch_remaining_time <= 0.0) { return; }
-
-    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-    if (settings.mip_batch_pdlp_strong_branching == 1) {
-      pdlp_settings.concurrent_halt = &concurrent_halt;
-      pdlp_settings.shared_sb_view  = sb_view;
-    }
-
-    pdlp_settings.time_limit = batch_remaining_time;
+    if (warm_start_remaining_time <= 0.0) { return; }
 
     if (!pc.pdlp_warm_cache.populated) {
       pdlp_solver_settings_t<i_t, f_t> ws_settings;
@@ -489,6 +493,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       // Batch PDLP is very compute intensive so we want to minimize the number of iterations
       constexpr int warm_start_iteration_limit = 500000;
       ws_settings.iteration_limit      = warm_start_iteration_limit;
+      ws_settings.time_limit = warm_start_remaining_time;
       constexpr f_t pdlp_tolerance = 1e-6;
       ws_settings.tolerances.relative_dual_tolerance = pdlp_tolerance;
       ws_settings.tolerances.absolute_dual_tolerance = pdlp_tolerance;
@@ -536,6 +541,18 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
 
     if (concurrent_halt.load() == 1) { return; }
+
+    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+    if (settings.mip_batch_pdlp_strong_branching == 1) {
+      pdlp_settings.concurrent_halt = &concurrent_halt;
+      pdlp_settings.shared_sb_view  = sb_view;
+    }
+
+    batch_elapsed_time = toc(start_time);
+    const f_t batch_remaining_time =
+    std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+    if (batch_remaining_time <= 0.0) { return; }
+    pdlp_settings.time_limit = batch_remaining_time;
 
     if (pc.pdlp_warm_cache.populated) {
       auto& cache = pc.pdlp_warm_cache;
@@ -928,7 +945,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // We don't use batch PDLP in reliability branching if the PDLP warm start data was not filled
   // This indicates that PDLP alone (not batched) couldn't even run at the root node
   // So it will most likely perform poorly compared to DS
-  // Also, if the number of candidate is very small we don't use batch PDLP
+  // It is also off if the number of candidate is very small
   constexpr i_t min_num_candidates_for_pdlp = 5;
   const bool use_pdlp = (rb_mode != 0) && (pdlp_warm_cache.populated) && unreliable_list.size() > min_num_candidates_for_pdlp;
 
@@ -1080,22 +1097,18 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   std::vector<dual::status_t> ds_status_down(num_candidates, dual::status_t::UNSET);
   std::vector<dual::status_t> ds_status_up(num_candidates, dual::status_t::UNSET);
 
-  omp_atomic_t<i_t> ds_optimal{0};
-  omp_atomic_t<i_t> ds_infeasible{0};
-  omp_atomic_t<i_t> ds_failed{0};
-  omp_atomic_t<i_t> ds_skipped{0};
   f_t ds_start_time = tic();
 
   if (rb_mode != 2) {
 #pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) \
-  shared(score_mutex, ds_optimal, ds_infeasible, ds_failed, ds_skipped, ds_obj_down, ds_obj_up, ds_status_down, ds_status_up, sb_view)
+  shared(score_mutex, sb_view)
     for (i_t i = 0; i < num_candidates; ++i) {
       const i_t j = unreliable_list[i];
 
       if (toc(start_time) > settings.time_limit) { continue; }
 
       if (rb_mode == 1 && sb_view.is_solved(i)) {
-        ds_skipped++;
+        log.printf("DS skipping variable %d branch down (shared_idx %d): already solved by PDLP\n", j, i);
       } else {
         pseudo_cost_mutex_down[j].lock();
         if (pseudo_cost_num_down[j] < reliable_threshold) {
@@ -1120,22 +1133,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
           ds_obj_down[i] = obj;
           ds_status_down[i] = status;
-          if (std::isnan(obj)) {
-            ds_failed++;
-          } else if (std::isinf(obj)) {
-            ds_infeasible++;
+          if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = solution[j] - std::floor(solution[j]);
             pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
             pseudo_cost_num_down[j]++;
-          } else {
-            ds_optimal++;
-            f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
-            f_t change_in_x   = solution[j] - std::floor(solution[j]);
-            pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_down[j]++;
+            // Should be valid if were are already here
+            if (rb_mode == 1 && ds_is_valid_done(status)) { sb_view.mark_solved(i); }
           }
-          if (rb_mode == 1) { sb_view.mark_solved(i); }
         }
         pseudo_cost_mutex_down[j].unlock();
       }
@@ -1144,7 +1149,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
       const i_t shared_idx = i + num_candidates;
       if (rb_mode == 1 && sb_view.is_solved(shared_idx)) {
-        ds_skipped++;
+        log.printf("DS skipping variable %d branch up (shared_idx %d): already solved by PDLP\n", j, shared_idx);
       } else {
         pseudo_cost_mutex_up[j].lock();
         if (pseudo_cost_num_up[j] < reliable_threshold) {
@@ -1168,22 +1173,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
           ds_obj_up[i] = obj;
           ds_status_up[i] = status;
-          if (std::isnan(obj)) {
-            ds_failed++;
-          } else if (std::isinf(obj)) {
-            ds_infeasible++;
+          if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(solution[j]) - solution[j];
             pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
             pseudo_cost_num_up[j]++;
-          } else {
-            ds_optimal++;
-            f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
-            f_t change_in_x   = std::ceil(solution[j]) - solution[j];
-            pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
-            pseudo_cost_num_up[j]++;
+            // Should be valid if were are already here
+            if (rb_mode == 1 && ds_is_valid_done(status)) { sb_view.mark_solved(shared_idx); }
           }
-          if (rb_mode == 1) { sb_view.mark_solved(shared_idx); }
         }
         pseudo_cost_mutex_up[j].unlock();
       }
@@ -1205,25 +1202,26 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   f_t ds_elapsed = toc(ds_start_time);
 
-  if (rb_mode != 2) {
-    if (rb_mode == 1) {
-      log.printf(
-        "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed, %d skipped (PDLP) in %.2fs\n",
-        num_candidates,
-        ds_optimal.load(), num_candidates * 2,
-        ds_infeasible.load(), num_candidates * 2,
-        ds_failed.load(), num_candidates * 2,
-        ds_skipped.load(), ds_elapsed);
-    } else {
-      log.printf(
-        "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed in %.2fs\n",
-        num_candidates,
-        ds_optimal.load(), num_candidates * 2,
-        ds_infeasible.load(), num_candidates * 2,
-        ds_failed.load(), num_candidates * 2,
-        ds_elapsed);
-    }
-  }
+  // TODO put back
+  //if (rb_mode != 2) {
+  //  if (rb_mode == 1) {
+  //    log.printf(
+  //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed, %d skipped (PDLP) in %.2fs\n",
+  //      num_candidates,
+  //      ds_optimal.load(), num_candidates * 2,
+  //      ds_infeasible.load(), num_candidates * 2,
+  //      ds_failed.load(), num_candidates * 2,
+  //      ds_skipped.load(), ds_elapsed);
+  //  } else {
+  //    log.printf(
+  //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed in %.2fs\n",
+  //      num_candidates,
+  //      ds_optimal.load(), num_candidates * 2,
+  //      ds_infeasible.load(), num_candidates * 2,
+  //      ds_failed.load(), num_candidates * 2,
+  //      ds_elapsed);
+  //  }
+  //}
 
   if (use_pdlp) {
     pdlp_thread.join();

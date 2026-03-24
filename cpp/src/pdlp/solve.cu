@@ -996,7 +996,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     }
   }
 
-  
+  // Only used in tests
   const bool collect_solutions = settings.generate_batch_primal_dual_solution;
   
   rmm::device_uvector<f_t> full_primal_solution((collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
@@ -1053,26 +1053,26 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 
     auto sol = solve_lp(problem, batch_settings);
 
+    
+    if (collect_solutions) {
+      raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
+      sol.get_primal_solution().data(),
+      sol.get_primal_solution().size(),
+      stream);
+      raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
+      sol.get_dual_solution().data(),
+      sol.get_dual_solution().size(),
+      stream);
+      raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
+      sol.get_reduced_cost().data(),
+      sol.get_reduced_cost().size(),
+      stream);
+    }
     auto info = sol.get_additional_termination_informations();
     full_info.insert(full_info.end(), info.begin(), info.end());
 
     auto status = sol.get_terminations_status();
     full_status.insert(full_status.end(), status.begin(), status.end());
-
-    if (collect_solutions) {
-        raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
-                   sol.get_primal_solution().data(),
-                   sol.get_primal_solution().size(),
-                   stream);
-        raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
-                   sol.get_dual_solution().data(),
-                   sol.get_dual_solution().size(),
-                   stream);
-        raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
-                   sol.get_reduced_cost().data(),
-                   sol.get_reduced_cost().size(),
-                   stream);
-    }
   }
 
   return optimization_problem_solution_t<i_t, f_t>(full_primal_solution,

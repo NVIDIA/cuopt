@@ -288,6 +288,7 @@ class pdlp_solver_settings_t {
   // We only retrieve termination statistics and the objective values
   bool generate_batch_primal_dual_solution{false};
   // Used to force batch PDLP to solve a subbatch of the problems at a time
+  // The 0 default value will make the solver use its heuristic to determine the subbatch size
   i_t sub_batch_size{0};
 
  private:
