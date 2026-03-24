@@ -167,7 +167,7 @@ static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
   term_stats[0].l2_dual_residual      = 2e-8;
   term_stats[0].gap                   = 0.5;
   term_stats[0].number_of_steps_taken = 100;
-  term_stats[0].solved_by        = method_t::PDLP;
+  term_stats[0].solved_by             = method_t::PDLP;
 
   std::vector<pdlp_termination_status_t> term_status = {pdlp_termination_status_t::Optimal};
 

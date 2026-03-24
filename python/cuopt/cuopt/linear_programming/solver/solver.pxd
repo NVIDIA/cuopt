@@ -35,7 +35,7 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "
         DualSimplex "cuopt::linear_programming::method_t::DualSimplex" # noqa
         Barrier "cuopt::linear_programming::method_t::Barrier" # noqa
         Unset "cuopt::linear_programming::method_t::Unset" # noqa
-        
+
 cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
 
     cdef cppclass solver_settings_t[i_t, f_t]:
