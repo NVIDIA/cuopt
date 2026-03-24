@@ -8,53 +8,9 @@ NVIDIA cuOpt provides C API for LP, QP and MILP. This section will show you how 
 Installation
 ============
 
-pip
----
+Choose your install method below; the selector is pre-set for the C API (libcuopt), which also provides ``cuopt_cli``. Copy the command and run it in your environment. See :doc:`../install` for all interfaces and options.
 
-This wheel is a Python wrapper around the C++ library and eases installation and access to libcuopt. This also helps in the pip environment to load libraries dynamically while using the Python SDK.
-
-.. code-block:: bash
-
-    # This is a deprecated module and no longer used, but it shares the same name for the CLI, so we need to uninstall it first if it exists.
-    pip uninstall cuopt-thin-client
-
-    # CUDA 13
-    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==26.4.*'
-
-    # CUDA 12
-    pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==26.4.*'
-
-
-.. note::
-    For development wheels which are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/`.
-
-.. code-block:: bash
-
-    # CUDA 13
-    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'libcuopt-cu13==26.4.*'
-
-    # CUDA 12
-    pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-      'libcuopt-cu12==26.4.*'
-
-Conda
------
-
-NVIDIA cuOpt can be installed with Conda (via `miniforge <https://github.com/conda-forge/miniforge>`_) from the ``nvidia`` channel:
-
-.. code-block:: bash
-
-    # This is a deprecated module and no longer used, but it shares the same name for the CLI, so we need to uninstall it first if it exists.
-    conda remove cuopt-thin-client
-
-    # CUDA 13
-    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=26.04.* cuda-version=26.04.*
-
-    # CUDA 12
-    conda install -c rapidsai -c conda-forge -c nvidia libcuopt=26.04.* cuda-version=26.04.*
+.. install-selector::
+   :default-iface: c
 
 Please visit examples under each section to learn how to use the cuOpt C API.
-
-.. note::
-    For development conda packages which are available as nightlies, please update `-c rapidsai` to `-c rapidsai-nightly`.

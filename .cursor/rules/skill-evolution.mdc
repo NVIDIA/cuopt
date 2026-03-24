@@ -1,0 +1,8 @@
+---
+description: Trigger skill evolution — after solving non-trivial problems, propose skill updates.
+alwaysApply: true
+---
+
+# Skill Evolution
+
+After resolving a non-trivial problem, read and follow `skills/skill-evolution/SKILL.md` to check whether the learning should be captured as a skill update.

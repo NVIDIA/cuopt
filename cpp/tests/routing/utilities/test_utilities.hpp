@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -246,6 +246,16 @@ void load_cvrptw(const std::string& fileName, Route<i_t, f_t>& route, i_t limit)
     curr_node_id++;
   }
   route.n_locations = route.x_h.size();
+}
+
+// Load Solomon CVRPTW file with 100 nodes (101 including depot)
+constexpr int SOLOMON_100_NODES = 101;
+template <typename i_t, typename f_t>
+void load_solomon(const std::string& solomon_path,
+                  Route<i_t, f_t>& route,
+                  i_t limit = SOLOMON_100_NODES)
+{
+  load_cvrptw(solomon_path, route, limit);
 }
 
 template <typename i_t, typename f_t>
