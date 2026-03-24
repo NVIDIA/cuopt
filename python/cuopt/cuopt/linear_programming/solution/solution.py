@@ -117,8 +117,8 @@ class Solution:
         Time used for pre-solve
     solve_time: Float64
         Solve time in seconds
-    solved_by_pdlp: bool
-        Whether the problem was solved by PDLP or Dual Simplex
+    solved_by: enum
+        Whether the problem was solved by Dual Simplex(1), PDLP(2) or Barrier(3)
     """
 
     def __init__(
@@ -155,7 +155,7 @@ class Solution:
         dual_objective=0.0,
         gap=0.0,
         nb_iterations=0,
-        solved_by_pdlp=None,
+        solved_by=SolverMethod.Unset,
         mip_gap=0.0,
         solution_bound=0.0,
         presolve_time=0.0,
@@ -302,11 +302,11 @@ class Solution:
         """
         return self.solve_time
 
-    def get_solved_by_pdlp(self):
+    def get_solved_by(self):
         """
-        Returns whether the problem was solved by PDLP or Dual Simplex
+        Returns whether the problem was solved by Dual Simplex(1), PDLP(2) or Barrier(3)
         """
-        return self.solved_by_pdlp
+        return self.solved_by
 
     def get_vars(self):
         """

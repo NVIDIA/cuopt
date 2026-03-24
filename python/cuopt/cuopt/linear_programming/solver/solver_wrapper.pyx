@@ -478,7 +478,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 lp_ptr.dual_objective_,
                 lp_ptr.gap_,
                 lp_ptr.nb_iterations_,
-                lp_ptr.solved_by_pdlp_,
+                lp_ptr.solved_by_,
             )
         else:
             return Solution(
@@ -497,7 +497,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 dual_objective=lp_ptr.dual_objective_,
                 gap=lp_ptr.gap_,
                 nb_iterations=lp_ptr.nb_iterations_,
-                solved_by_pdlp=lp_ptr.solved_by_pdlp_,
+                solved_by=lp_ptr.solved_by_,
             )
 
 

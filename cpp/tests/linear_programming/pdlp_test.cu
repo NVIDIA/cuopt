@@ -272,10 +272,10 @@ TEST(pdlp_class, run_sub_mittleman)
         const raft::handle_t handle_{};
         optimization_problem_solution_t<int, double> solution =
           solve_lp(&handle_, op_problem, settings);
-        printf("running %s mode %d presolve? %d\n",
+        printf("running %s mode %d presolver %d\n",
                name.c_str(),
                (int)solver_mode,
-               (int)settings.presolve);
+               (int)settings.presolver);
         EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
         EXPECT_FALSE(is_incorrect_objective(
           expected_objective_value,
