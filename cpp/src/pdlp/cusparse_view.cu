@@ -1037,6 +1037,23 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 }
 
+template <typename i_t, typename f_t>
+cusparse_view_t<i_t, f_t>::~cusparse_view_t()
+{
+#if CUDA_VER_13_2_UP
+  if (spmv_op_plan_A_t_) {
+    RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyPlan(spmv_op_plan_A_t_));
+  }
+  if (spmv_op_descr_A_t_) {
+    RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyDescr(spmv_op_descr_A_t_));
+  }
+  if (spmv_op_plan_A_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyPlan(spmv_op_plan_A_)); }
+  if (spmv_op_descr_A_) {
+    RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyDescr(spmv_op_descr_A_));
+  }
+#endif
+}
+
 // Empty constructor used in kkt restart to save memory
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
