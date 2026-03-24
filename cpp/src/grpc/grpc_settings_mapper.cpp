@@ -12,6 +12,8 @@
 #include <cuopt/linear_programming/solver_settings.hpp>
 
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 namespace cuopt::linear_programming {
 
@@ -26,8 +28,9 @@ cuopt::remote::PDLPSolverMode to_proto_pdlp_mode(pdlp_solver_mode_t mode)
     case pdlp_solver_mode_t::Methodical1: return cuopt::remote::Methodical1;
     case pdlp_solver_mode_t::Fast1: return cuopt::remote::Fast1;
     case pdlp_solver_mode_t::Stable3: return cuopt::remote::Stable3;
-    default: return cuopt::remote::Stable3;
   }
+  throw std::invalid_argument("Unknown pdlp_solver_mode_t: " +
+                              std::to_string(static_cast<int>(mode)));
 }
 
 // Convert protobuf enum to cuOpt pdlp_solver_mode_t
@@ -39,8 +42,8 @@ pdlp_solver_mode_t from_proto_pdlp_mode(cuopt::remote::PDLPSolverMode mode)
     case cuopt::remote::Methodical1: return pdlp_solver_mode_t::Methodical1;
     case cuopt::remote::Fast1: return pdlp_solver_mode_t::Fast1;
     case cuopt::remote::Stable3: return pdlp_solver_mode_t::Stable3;
-    default: return pdlp_solver_mode_t::Stable3;
   }
+  throw std::invalid_argument("Unknown PDLPSolverMode: " + std::to_string(static_cast<int>(mode)));
 }
 
 // Convert cuOpt method_t to protobuf enum
@@ -51,8 +54,8 @@ cuopt::remote::LPMethod to_proto_method(method_t method)
     case method_t::PDLP: return cuopt::remote::PDLP;
     case method_t::DualSimplex: return cuopt::remote::DualSimplex;
     case method_t::Barrier: return cuopt::remote::Barrier;
-    default: return cuopt::remote::Concurrent;
   }
+  throw std::invalid_argument("Unknown method_t: " + std::to_string(static_cast<int>(method)));
 }
 
 // Convert protobuf enum to cuOpt method_t
@@ -63,8 +66,8 @@ method_t from_proto_method(cuopt::remote::LPMethod method)
     case cuopt::remote::PDLP: return method_t::PDLP;
     case cuopt::remote::DualSimplex: return method_t::DualSimplex;
     case cuopt::remote::Barrier: return method_t::Barrier;
-    default: return method_t::Concurrent;
   }
+  throw std::invalid_argument("Unknown LPMethod: " + std::to_string(static_cast<int>(method)));
 }
 
 }  // anonymous namespace
@@ -115,12 +118,6 @@ void map_pdlp_settings_to_proto(const pdlp_solver_settings_t<i_t, f_t>& settings
   pb_settings->set_pdlp_precision(static_cast<int32_t>(settings.pdlp_precision));
   pb_settings->set_save_best_primal_so_far(settings.save_best_primal_so_far);
   pb_settings->set_first_primal_feasible(settings.first_primal_feasible);
-
-  // TODO: Add warmstart data support
-  // if (settings.warm_start_data.has_value()) {
-  //   auto* pb_warmstart = pb_settings->mutable_warm_start_data();
-  //   // Map warmstart data fields...
-  // }
 }
 
 template <typename i_t, typename f_t>
@@ -181,11 +178,6 @@ void map_proto_to_pdlp_settings(const cuopt::remote::PDLPSolverSettings& pb_sett
   }
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible   = pb_settings.first_primal_feasible();
-
-  // TODO: Add warmstart data support
-  // if (pb_settings.has_warm_start_data()) {
-  //   // Map warmstart data fields...
-  // }
 }
 
 template <typename i_t, typename f_t>
