@@ -4,10 +4,10 @@
 
 set -e -u -o pipefail
 
-echo "building 'pyomo' from source and running cuOpt tests"
+rapids-logger "building 'pyomo' from source and running cuOpt tests"
 
 if [ -z "${PIP_CONSTRAINT:-}" ]; then
-    echo "PIP_CONSTRAINT is not set; ensure ci/test_wheel_cuopt.sh (or equivalent) has set it so cuopt wheels are used."
+    rapids-logger "PIP_CONSTRAINT is not set; ensure ci/test_wheel_cuopt.sh (or equivalent) has set it so cuopt wheels are used."
     exit 1
 fi
 
@@ -23,7 +23,7 @@ python -m pip install \
 
 pip check
 
-echo "running Pyomo tests (cuopt_direct / cuOpt-related)"
+rapids-logger "running Pyomo tests (cuopt_direct / cuOpt-related)"
 # Run only tests that reference cuopt (cuopt_direct solver)
 timeout 5m python -m pytest \
     --verbose \
