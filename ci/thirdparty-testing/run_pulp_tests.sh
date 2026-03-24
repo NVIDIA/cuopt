@@ -4,10 +4,10 @@
 
 set -e -u -o pipefail
 
-echo "building 'pulp' from source and running cuOpt tests"
+rapids-logger "building 'pulp' from source and running cuOpt tests"
 
 if [ -z "${PIP_CONSTRAINT:-}" ]; then
-    echo "PIP_CONSTRAINT is not set; ensure ci/test_wheel_cuopt.sh (or equivalent) has set it so cuopt wheels are used."
+    rapids-logger "PIP_CONSTRAINT is not set; ensure ci/test_wheel_cuopt.sh (or equivalent) has set it so cuopt wheels are used."
     exit 1
 fi
 
@@ -23,7 +23,7 @@ python -m pip install \
 
 pip check
 
-echo "running PuLP tests (cuOpt-related)"
+rapids-logger "running PuLP tests (cuOpt-related)"
 # PuLP uses pytest; run only tests that reference cuopt/CUOPT
 # Exit code 5 = no tests collected; then try run_tests.py which detects solvers (including cuopt)
 pytest_rc=0
@@ -34,7 +34,7 @@ timeout 5m python -m pytest \
     pulp/tests/ || pytest_rc=$?
 
 if [ "$pytest_rc" -eq 5 ]; then
-    echo "No pytest -k cuopt tests found; running PuLP run_tests.py (solver auto-detection, includes cuopt)"
+    rapids-logger "No pytest -k cuopt tests found; running PuLP run_tests.py (solver auto-detection, includes cuopt)"
     timeout 5m python pulp/tests/run_tests.py
     pytest_rc=$?
 fi
