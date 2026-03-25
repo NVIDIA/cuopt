@@ -3188,7 +3188,7 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::cut_generation_heurist
       const f_t dist_upper      = new_upper_j - x_j;
       const f_t dist_lower      = x_j;
       const bool between_bounds = x_j > 1e-6 && (new_upper_j == inf || dist_upper > 0.0);
-      if (between_bounds) { deltas_to_try.push_back(abs_aj); }
+      if (between_bounds && abs_aj > 1e-6) { deltas_to_try.push_back(abs_aj); }
     }
   }
   if (max_coeff > 1e-6 && max_coeff != 1.0) {
