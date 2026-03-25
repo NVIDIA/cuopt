@@ -909,7 +909,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   constexpr bool use_initial_pdlp_iterations = true;
   bool use_optimal_batch_size   = false;
   constexpr int batch_iteration_limit = 100000;
-  constexpr f_t pdlp_tolerance = 1e-6;
+  constexpr f_t pdlp_tolerance = 1e-5;
 
   rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
 

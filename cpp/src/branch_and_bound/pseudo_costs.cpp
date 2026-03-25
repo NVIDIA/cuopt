@@ -434,6 +434,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   const f_t elapsed_time = toc(start_time);
   if (elapsed_time > settings.time_limit) { return; }
 
+  const i_t effective_batch_pdlp = settings.sub_mip ? 0 : settings.mip_batch_pdlp_strong_branching;
+
   settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
                       settings.num_threads,
                       fractional.size());
@@ -449,10 +451,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
   auto pdlp_thread = std::thread([&]() {
     
-    if (settings.mip_batch_pdlp_strong_branching == 0)
+    if (effective_batch_pdlp == 0)
      return;
   
-    settings.log.printf(settings.mip_batch_pdlp_strong_branching == 2
+    settings.log.printf(effective_batch_pdlp == 2
       ? "Batch PDLP only for strong branching\n"
       : "Cooperative batch PDLP and Dual Simplex for strong branching\n");
 
@@ -494,7 +496,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       constexpr int warm_start_iteration_limit = 500000;
       ws_settings.iteration_limit      = warm_start_iteration_limit;
       ws_settings.time_limit = warm_start_remaining_time;
-      constexpr f_t pdlp_tolerance = 1e-6;
+      constexpr f_t pdlp_tolerance = 1e-5;
       ws_settings.tolerances.relative_dual_tolerance = pdlp_tolerance;
       ws_settings.tolerances.absolute_dual_tolerance = pdlp_tolerance;
       ws_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
@@ -502,7 +504,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       ws_settings.tolerances.relative_gap_tolerance = pdlp_tolerance;
       ws_settings.tolerances.absolute_gap_tolerance = pdlp_tolerance;
       ws_settings.inside_mip           = true;
-      if (settings.mip_batch_pdlp_strong_branching == 1) {
+      if (effective_batch_pdlp == 1) {
         ws_settings.concurrent_halt = &concurrent_halt;
       }
 
@@ -543,7 +545,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     if (concurrent_halt.load() == 1) { return; }
 
     pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-    if (settings.mip_batch_pdlp_strong_branching == 1) {
+    if (effective_batch_pdlp == 1) {
       pdlp_settings.concurrent_halt = &concurrent_halt;
       pdlp_settings.shared_sb_view  = sb_view;
     }
@@ -631,7 +633,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> ds_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   f_t dual_simplex_strong_branching_time = tic();
 
-  if (settings.mip_batch_pdlp_strong_branching != 2) {
+  if (effective_batch_pdlp != 2) {
 #pragma omp parallel num_threads(settings.num_threads)
     {
       i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
@@ -714,7 +716,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   if (ds_unset)      settings.log.printf(", %d unset/skipped", ds_unset);
   settings.log.printf("\n");
 
-  if (settings.mip_batch_pdlp_strong_branching != 0) {
+  if (effective_batch_pdlp != 0) {
     i_t pdlp_optimal_count = 0;
     for (i_t k = 0; k < fractional.size(); k++) {
       if (!std::isnan(pdlp_obj_down[k])) pdlp_optimal_count++;
@@ -724,7 +726,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     settings.log.printf(
       "Batch PDLP found %d/%d optimal solutions\n",
       pdlp_optimal_count,
-      fractional.size() * 2);
+      static_cast<int>(fractional.size() * 2));
   }
 
   i_t merged_from_ds = 0;
@@ -762,7 +764,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
   }
 
-  if (settings.mip_batch_pdlp_strong_branching != 0) {
+  
+  if (effective_batch_pdlp != 0) {
+    pc.pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root = (f_t(merged_from_pdlp) / f_t(fractional.size() * 2)) * 100.0;
+    settings.log.printf("Batch PDLP only for strong branching. Pourcent solved by batch PDLP at root: %f\n", pc.pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root);
     settings.log.printf(
       "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both (down/up)\n",
       merged_from_ds,
@@ -946,14 +951,22 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // This indicates that PDLP alone (not batched) couldn't even run at the root node
   // So it will most likely perform poorly compared to DS
   // It is also off if the number of candidate is very small
+  // If warm start could run but almost none of the BPDLP results were used, we also want to avoid using batch PDLP
   constexpr i_t min_num_candidates_for_pdlp = 5;
-  const bool use_pdlp = (rb_mode != 0) && (pdlp_warm_cache.populated) && unreliable_list.size() > min_num_candidates_for_pdlp;
+  constexpr f_t min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
+  const bool use_pdlp = (rb_mode != 0) && pdlp_warm_cache.populated && unreliable_list.size() > min_num_candidates_for_pdlp && pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root > min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp;
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
   }
-  if (rb_mode != 0 && unreliable_list.size() < min_num_candidates_for_pdlp) {
+  else if (rb_mode != 0 && unreliable_list.size() < min_num_candidates_for_pdlp) {
     log.printf("Not enough candidates to use batch PDLP, using DS only\n");
+  }
+  else if (rb_mode != 0 && pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root < 5.0) {
+    log.printf("Pourcent solved by batch PDLP at root is too low, using DS only\n");
+  }
+  else if (use_pdlp) {
+    log.printf("Using batch PDLP because populated, unreliable list size is %d (> %d), and pourcent solved by batch PDLP at root is %f%% (> %f%%)\n", static_cast<i_t>(unreliable_list.size()), min_num_candidates_for_pdlp, pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root, min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
   const int num_tasks          = std::max(max_num_tasks, 1);

@@ -416,6 +416,7 @@ struct batch_pdlp_warm_cache_t {
   f_t step_size{std::numeric_limits<f_t>::signaling_NaN()};
   f_t primal_weight{std::numeric_limits<f_t>::signaling_NaN()};
   i_t pdlp_iteration{-1};
+  f_t pourcent_solved_by_batch_pdlp_at_root{f_t(0.0)};
   bool populated{false};
 };
 
