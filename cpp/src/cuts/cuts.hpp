@@ -298,6 +298,7 @@ class cut_pool_t {
 
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
+  void check_for_duplicate_cuts();
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
@@ -464,7 +465,8 @@ class cut_generation_t {
                               csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<i_t>& new_slacks,
                               const std::vector<variable_type_t>& var_types,
-                              const std::vector<f_t>& xstar);
+                              const std::vector<f_t>& xstar,
+                              f_t start_time);
 
   // Generate clique cuts from conflict graph cliques
   bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,

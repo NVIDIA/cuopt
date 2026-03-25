@@ -588,8 +588,148 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
 }
 
 template <typename i_t, typename f_t>
+void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
+{
+  // Algorithm from Finding Duplicate Rows in a Linear Programming Model
+  // by J. A. Tomlin and J.S. Welch
+  // Operations Research Letters Volume 5, Number 1, June 1986
+  std::vector<f_t> divisors(cut_storage_.m, 0.0);
+  std::vector<i_t> sets(cut_storage_.m, 0);
+
+  csc_matrix_t<i_t, f_t> cut_storage_csc(0, 0, 1);
+  cut_storage_.to_compressed_col(cut_storage_csc);
+  i_t n = cut_storage_csc.n;
+  i_t m = cut_storage_csc.m;
+
+  const i_t sentinel = std::numeric_limits<i_t>::max();
+
+  i_t new_set = 1;
+  i_t remaining_potential_duplicates = cut_storage_.m;
+  for (i_t j = 0; j < n; j++) {
+    i_t r0 = -1;
+    i_t new_rows = 0;
+    i_t new_set_0 = new_set;
+    new_set++;
+    const i_t col_start = cut_storage_csc.col_start[j];
+    const i_t col_end = cut_storage_csc.col_start[j + 1];
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t r = cut_storage_csc.i[p];
+      const f_t a_rj = cut_storage_csc.x[p];
+      const f_t f_r = divisors[r];
+      if (sets[r] == 0) {
+        r0 = r;   // To enable use to find this new set later
+        sets[r] = new_set_0;
+        divisors[r] = a_rj;
+        new_rows++;
+      } else if (sets[r] < new_set_0) {
+        // Look over indices a_ij with i > r
+        for (i_t q = p + 1; q < col_end; q++) {
+          const i_t i = cut_storage_csc.i[q];
+          const f_t a_ij = cut_storage_csc.x[q];
+          if (sets[i] == sets[r]) {
+            // These two rows are currently in the same set
+            // Check to see if the coefficients still match
+            const f_t f_i = divisors[i];
+            const f_t val = (a_rj / f_r) * (f_i / a_ij);
+            const f_t epsilon = 1e-10;
+            if ((val >= 1.0 - epsilon && val <= 1.0 + epsilon)) {
+              sets[r] = new_set;
+              sets[i] = new_set;
+            }
+          }
+        }
+        if (sets[r] >= new_set_0) { // This is only true if a match was found inside the above loop
+          new_set++;
+        } else {
+          sets[r] = sentinel;
+          remaining_potential_duplicates--;
+          if (remaining_potential_duplicates == 0) {
+            break;
+          }
+        }
+      }
+    }
+    if (remaining_potential_duplicates == 0) {
+      break;
+    }
+    if (new_rows == 1)
+    {
+      sets[r0] = sentinel;
+      remaining_potential_duplicates--;
+      if (remaining_potential_duplicates == 0) {
+        break;
+      }
+    }
+  }
+
+  // The cuts are stored in the form: sum_j d_ij x_j >= rhs_i
+  // We now look for cuts that are duplicates of each other and remove them
+  std::vector<i_t> cuts_to_remove(m, 0);
+  i_t num_cuts_to_remove = 0;
+  for (i_t r = 0; r < m; r++) {
+    const i_t set_r = sets[r];
+    if (set_r > 0 && set_r < sentinel && cuts_to_remove[r] == 0) {
+      // This cut has a duplicate
+      for (i_t i = r + 1; i < m; i++) {
+        if (sets[i] == set_r) {
+          const f_t f_r = divisors[r];
+          const f_t f_i = divisors[i];
+          const f_t theta_r = rhs_storage_[r] / f_r;
+          const f_t theta_i = rhs_storage_[i] / f_i;
+          if (f_r > 0 && f_i > 0) {
+            // We have sum_j d_rj / f_r x_j >= rhs_r / f_r = theta_r
+            //    and  sum_j d_ij / f_i x_j >= rhs_i / f_i = theta_i
+            if (theta_r <= theta_i) {
+              // Cut i is either the same or stronger than cut r
+              if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
+              cuts_to_remove[r] = 1; // Remove row r
+            } else {
+              // theta_r > theta_i, so cut r is stricly stronger than cut i
+              if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
+              cuts_to_remove[i] = 1; // Remove row i
+            }
+          } else if (f_r < 0 && f_i < 0) {
+            // We have sum_j d_rj / f_r x_j <= rhs_r / f_r = theta_r
+            //    and  sum_j d_ij / f_i x_j <= rhs_i / f_i = theta_i
+            if (theta_r >= theta_i) {
+              // Cut i is either the same or stronger than cut r
+              if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
+              cuts_to_remove[r] = 1; // Remove row r
+            } else {
+              // theta_r < theta_i, so cut r is strictly stronger than cut i
+              if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
+              cuts_to_remove[i] = 1; // Remove row i
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (num_cuts_to_remove > 0) {
+    settings_.log.printf("Removing %d duplicate cuts\n", num_cuts_to_remove);
+    csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
+    cut_storage_.remove_rows(cuts_to_remove, new_cut_storage);
+    cut_storage_ = new_cut_storage;
+    i_t write = 0;
+    for (i_t i = 0; i < m; i++) {
+      if (cuts_to_remove[i] == 0) {
+        rhs_storage_[write] = rhs_storage_[i];
+        cut_type_[write]    = cut_type_[i];
+        cut_age_[write]     = cut_age_[i];
+        write++;
+      }
+    }
+    rhs_storage_.resize(write);
+    cut_type_.resize(write);
+    cut_age_.resize(write);
+  }
+}
+
+template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::score_cuts(std::vector<f_t>& x_relax)
 {
+  check_for_duplicate_cuts();
   cut_distances_.resize(cut_storage_.m, 0.0);
   cut_norms_.resize(cut_storage_.m, 0.0);
 
@@ -1669,7 +1809,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Knapsack cuts
   if (settings.knapsack_cuts != 0) {
     f_t cut_start_time = tic();
-    generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar);
+    generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (1 || cut_generation_time > 1.0) {
       settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
@@ -1719,10 +1859,12 @@ void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& xstar)
+  const std::vector<f_t>& xstar,
+  f_t start_time)
 {
   if (knapsack_generation_.num_knapsack_constraints() > 0) {
     for (i_t knapsack_row : knapsack_generation_.get_knapsack_constraints()) {
+      if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t knapsack_status = knapsack_generation_.generate_knapsack_cut(
         lp, settings, Arow, new_slacks, var_types, xstar, knapsack_row, cut);
