@@ -81,6 +81,54 @@ class cusparse_dn_mat_descr_wrapper_t {
   bool need_destruction_;
 };
 
+#if CUDA_VER_13_2_UP
+class cusparse_spmvop_descr_wrapper_t {
+ public:
+  cusparse_spmvop_descr_wrapper_t();
+  ~cusparse_spmvop_descr_wrapper_t();
+
+  cusparse_spmvop_descr_wrapper_t(const cusparse_spmvop_descr_wrapper_t& other);
+  cusparse_spmvop_descr_wrapper_t& operator=(cusparse_spmvop_descr_wrapper_t&& other);
+  cusparse_spmvop_descr_wrapper_t& operator=(const cusparse_spmvop_descr_wrapper_t& other) = delete;
+
+  void create(cusparseHandle_t handle,
+              cusparseOperation_t opA,
+              cusparseSpMatDescr_t matA,
+              cusparseDnVecDescr_t vecX,
+              cusparseDnVecDescr_t vecY,
+              cusparseDnVecDescr_t vecZ,
+              cudaDataType computeType,
+              void* buffer);
+
+  operator cusparseSpMVOpDescr_t() const;
+
+ private:
+  cusparseSpMVOpDescr_t descr_;
+  bool need_destruction_;
+};
+
+class cusparse_spmvop_plan_wrapper_t {
+ public:
+  cusparse_spmvop_plan_wrapper_t();
+  ~cusparse_spmvop_plan_wrapper_t();
+
+  cusparse_spmvop_plan_wrapper_t(const cusparse_spmvop_plan_wrapper_t& other);
+  cusparse_spmvop_plan_wrapper_t& operator=(cusparse_spmvop_plan_wrapper_t&& other);
+  cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
+
+  void create(cusparseHandle_t handle,
+                cusparseSpMVOpDescr_t descr,
+                char* lto_buffer,
+                size_t lto_buffer_size);
+
+  operator cusparseSpMVOpPlan_t() const;
+
+ private:
+  cusparseSpMVOpPlan_t plan_;
+  bool need_destruction_;
+};
+#endif
+
 template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
@@ -121,8 +169,6 @@ class cusparse_view_t {
                   const rmm::device_uvector<f_t>&,               // Empty just to init the const&
                   const rmm::device_uvector<i_t>&,               // Empty just to init the const&
                   const std::vector<pdlp_climber_strategy_t>&);  // Empty just to init the const&
-
-  ~cusparse_view_t();
 
   const bool batch_mode_{false};
 
@@ -181,11 +227,11 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
   
 #if CUDA_VER_13_2_UP
-  // SpMVOp descriptors and plans for A and A_T
-  cusparseSpMVOpDescr_t spmv_op_descr_A_{nullptr};
-  cusparseSpMVOpDescr_t spmv_op_descr_A_t_{nullptr};
-  cusparseSpMVOpPlan_t spmv_op_plan_A_{nullptr};
-  cusparseSpMVOpPlan_t spmv_op_plan_A_t_{nullptr};
+  // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
+  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_;
+  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_;
+  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_t_;
+  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_t_;
 #endif
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
