@@ -95,7 +95,10 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
   void compute_At_y();
   void compute_A_x();
+  void spmvop_At_y();
+  void spmvop_A_x();
 
+  void my_spmvop(f_t* alpha, f_t* A, f_t* x, f_t* beta, f_t* y, f_t* result);
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
