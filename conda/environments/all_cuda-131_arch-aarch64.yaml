@@ -28,11 +28,14 @@ dependencies:
 - gcc_linux-aarch64=14.*
 - ipython
 - jsonref==1.1.0
+- libabseil
 - libboost-devel
 - libcudss-dev >=0.7
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
+- libgrpc
+- libprotobuf
 - libraft-headers==26.4.*,>=0.0.0a0
 - librmm==26.4.*,>=0.0.0a0
 - make
@@ -60,6 +63,7 @@ dependencies:
 - pyyaml>=6.0.0
 - rapids-build-backend>=0.4.0,<0.5.0
 - rapids-logger==0.2.*,>=0.0.0a0
+- re2
 - requests
 - rmm==26.4.*,>=0.0.0a0
 - scikit-build-core>=0.11.0

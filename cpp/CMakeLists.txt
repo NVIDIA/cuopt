@@ -111,9 +111,14 @@ endif(BUILD_MSAN)
 
 # Note: -UNDEBUG is applied via CUOPT_CXX_FLAGS / CUOPT_CUDA_FLAGS (not add_definitions)
 # to avoid leaking into dependencies that are built in-tree.
+#
+# For CXX: -UNDEBUG is applied per-source-file (not target-wide) to exclude gRPC
+# infrastructure files. Those files include abseil headers, and abseil's shared library
+# on conda-forge doesn't export Mutex::Dtor() in NDEBUG builds (abseil-cpp#1624).
+# Keeping NDEBUG defined for gRPC files makes the header inline an empty Dtor(),
+# avoiding the missing symbol at runtime.
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
-  list(APPEND CUOPT_CXX_FLAGS -UNDEBUG)
   list(APPEND CUOPT_CUDA_FLAGS -UNDEBUG)
 endif(DEFINE_ASSERT)
 
@@ -346,6 +351,14 @@ set(CUOPT_SRC_FILES )
 add_subdirectory(src)
 if (HOST_LINEINFO)
   set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+endif()
+
+# Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
+# Must happen before gRPC files are appended to CUOPT_SRC_FILES.
+# Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
+if(DEFINE_ASSERT)
+  set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif()
 
 # Add gRPC mapper files and generated protobuf sources
