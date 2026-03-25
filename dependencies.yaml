@@ -304,6 +304,10 @@ dependencies:
           - bzip2
           - openssl
           - c-ares
+          - libgrpc
+          - libprotobuf
+          - libabseil
+          - re2
   test_cpp:
     common:
       - output_types: [conda]

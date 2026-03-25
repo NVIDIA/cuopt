@@ -29,14 +29,7 @@ cache:
         export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
         set +x
 
-        # Workaround for abseil-cpp#1624: Mutex::Dtor() not exported from shared libabseil on Linux.
-        # Build gRPC/Protobuf/Abseil from source to ensure consistent ABI and avoid symbol issues.
-        GRPC_INSTALL_DIR="${SRC_DIR}/grpc_install"
-
-        bash ./ci/utils/install_protobuf_grpc.sh --prefix="${GRPC_INSTALL_DIR}" --build-dir="${SRC_DIR}" --skip-deps
-
-        export CMAKE_PREFIX_PATH="${GRPC_INSTALL_DIR}:${CMAKE_PREFIX_PATH:-}"
-        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_PREFIX_PATH=${GRPC_INSTALL_DIR}\"
+        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
       secrets:
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
@@ -100,6 +93,10 @@ cache:
       - bzip2
       - openssl
       - c-ares
+      - libgrpc
+      - libprotobuf
+      - libabseil
+      - re2
 
 outputs:
   - package:
@@ -177,6 +174,10 @@ outputs:
         - openssl
         - c-ares
         - libuuid
+        - libgrpc
+        - libprotobuf
+        - libabseil
+        - re2
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
@@ -187,6 +188,9 @@ outputs:
         - openssl
         - c-ares
         - libuuid
+        - libgrpc
+        - libprotobuf
+        - libabseil
       ignore_run_exports:
         by_name:
           - cuda-nvtx
@@ -231,6 +235,9 @@ outputs:
         - libcusparse-dev
         - openssl
         - c-ares
+        - libgrpc
+        - libprotobuf
+        - libabseil
       run:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
