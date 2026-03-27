@@ -558,7 +558,7 @@ template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_norms,
                                                    const std::vector<f_t>& potential_solution,
                                                    f_t& repaired_obj,
-                                                   std::vector<f_t>& repaired_solution) const
+                                                   std::vector<f_t>& repaired_solution) 
 {
   bool feasible = false;
   repaired_obj  = std::numeric_limits<f_t>::quiet_NaN();
@@ -581,9 +581,10 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   i_t iter                               = 0;
   f_t lp_start_time                      = tic();
   simplex_solver_settings_t lp_settings  = settings_;
+  lp_settings.concurrent_halt = &node_concurrent_halt_;
   std::vector<variable_status_t> vstatus = root_vstatus_;
   lp_settings.set_log(false);
-  lp_settings.inside_mip           = true;
+  lp_settings.inside_mip           = 2;
   std::vector<f_t> leaf_edge_norms = edge_norms;
   // should probably set the cut off here lp_settings.cut_off
   dual::status_t lp_status = dual_phase2(
@@ -1332,6 +1333,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   assert(leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
   simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.concurrent_halt = &node_concurrent_halt_;
   lp_settings.set_log(false);
   if (original_lp_.objective_is_integral) {
     lp_settings.cut_off = std::ceil(upper_bound_ - settings_.integer_tol) + settings_.dual_tol;
@@ -1435,6 +1437,11 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     f_t upper_bound = upper_bound_;
     f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
+    if (rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      break;
+    }
+
     // This is based on three assumptions:
     // - The stack only contains sibling nodes, i.e., the current node and it sibling (if
     // applicable)
@@ -1466,6 +1473,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
+      break;
+    } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
       break;
     } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
       break;
@@ -1559,6 +1568,10 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
       continue;
     }
 
+    if (rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      break;
+    }
     if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
     if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
@@ -1635,6 +1648,12 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
     lower_bound            = get_lower_bound();
     abs_gap                = upper_bound_ - lower_bound;
     rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      solver_status_ = mip_status_t::OPTIMAL;
+      break;
+    }
 
     repair_heuristic_solutions();
 
@@ -2525,6 +2544,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   node_queue_.push(search_tree_.root.get_up_child());
 
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
+  node_concurrent_halt_ = 0;
 
   exploration_stats_.nodes_explored       = 0;
   exploration_stats_.nodes_unexplored     = 2;

@@ -120,7 +120,7 @@ class branch_and_bound_t {
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
                        f_t& repaired_obj,
-                       std::vector<f_t>& repaired_solution) const;
+                       std::vector<f_t>& repaired_solution);
 
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
@@ -206,6 +206,7 @@ class branch_and_bound_t {
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
+  std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts
