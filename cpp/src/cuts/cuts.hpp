@@ -77,8 +77,9 @@ struct probing_implied_bound_t {
   // For each position p in that range:
   //   zero_variables[p]    = i if variable y_i bounds were tightened
   //                          when x_j was fixed to 0 and constraints were propagated.
-  //   zero_lower_bound[p]  = tightened lower bound on y_i (i.e., x_j = 0  =>  y_i >= zero_lower_bound[p]).
-  //   zero_upper_bound[p]  = tightened upper bound on y_i (i.e., x_j = 0  =>  y_i <= zero_upper_bound[p]).
+  //   zero_lower_bound[p]  = tightened lower bound on y_i (i.e., x_j = 0  =>  y_i >=
+  //   zero_lower_bound[p]). zero_upper_bound[p]  = tightened upper bound on y_i (i.e., x_j = 0  =>
+  //   y_i <= zero_upper_bound[p]).
   //
   // The one arrays are analogous for probing x_j = 1.
   //
@@ -172,9 +173,13 @@ struct cut_info_t {
       num_cuts[static_cast<int>(cut_type)]++;
     }
   }
-  const char* cut_type_names[MAX_CUT_TYPE] = {
-    "Gomory        ", "MIR           ", "Knapsack      ", "Strong CG     ", "Clique        ", "Implied Bounds"};
-  std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
+  const char* cut_type_names[MAX_CUT_TYPE] = {"Gomory        ",
+                                              "MIR           ",
+                                              "Knapsack      ",
+                                              "Strong CG     ",
+                                              "Clique        ",
+                                              "Implied Bounds"};
+  std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
 template <typename i_t, typename f_t>
@@ -299,6 +304,7 @@ class cut_pool_t {
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
   void check_for_duplicate_cuts();
+
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
@@ -331,26 +337,25 @@ class knapsack_generation_t {
                         const std::vector<variable_type_t>& var_types);
 
   i_t generate_knapsack_cut(const lp_problem_t<i_t, f_t>& lp,
-                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                             csr_matrix_t<i_t, f_t>& Arow,
-                             const std::vector<i_t>& new_slacks,
-                             const std::vector<variable_type_t>& var_types,
-                             const std::vector<f_t>& xstar,
-                             i_t knapsack_row,
-                             inequality_t<i_t, f_t>& cut);
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            csr_matrix_t<i_t, f_t>& Arow,
+                            const std::vector<i_t>& new_slacks,
+                            const std::vector<variable_type_t>& var_types,
+                            const std::vector<f_t>& xstar,
+                            i_t knapsack_row,
+                            inequality_t<i_t, f_t>& cut);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
 
  private:
-  void restore_complemented(const std::vector<i_t>& complemented_variables) {
+  void restore_complemented(const std::vector<i_t>& complemented_variables)
+  {
     for (i_t j : complemented_variables) {
       is_complemented_[j] = 0;
     }
   }
-  bool is_minimal_cover(f_t cover_sum,
-                         f_t beta,
-                         const std::vector<f_t>& cover_coefficients);
+  bool is_minimal_cover(f_t cover_sum, f_t beta, const std::vector<f_t>& cover_coefficients);
 
   void minimal_cover_and_partition(const inequality_t<i_t, f_t>& knapsack_inequality,
                                    const inequality_t<i_t, f_t>& negated_base_cut,

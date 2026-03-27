@@ -603,34 +603,34 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
 
   const i_t sentinel = std::numeric_limits<i_t>::max();
 
-  i_t new_set = 1;
+  i_t new_set                        = 1;
   i_t remaining_potential_duplicates = cut_storage_.m;
   for (i_t j = 0; j < n; j++) {
-    i_t r0 = -1;
-    i_t new_rows = 0;
+    i_t r0        = -1;
+    i_t new_rows  = 0;
     i_t new_set_0 = new_set;
     new_set++;
     const i_t col_start = cut_storage_csc.col_start[j];
-    const i_t col_end = cut_storage_csc.col_start[j + 1];
+    const i_t col_end   = cut_storage_csc.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
-      const i_t r = cut_storage_csc.i[p];
+      const i_t r    = cut_storage_csc.i[p];
       const f_t a_rj = cut_storage_csc.x[p];
-      const f_t f_r = divisors[r];
+      const f_t f_r  = divisors[r];
       if (sets[r] == 0) {
-        r0 = r;   // To enable use to find this new set later
-        sets[r] = new_set_0;
+        r0          = r;  // To enable use to find this new set later
+        sets[r]     = new_set_0;
         divisors[r] = a_rj;
         new_rows++;
       } else if (sets[r] < new_set_0) {
         // Look over indices a_ij with i > r
         for (i_t q = p + 1; q < col_end; q++) {
-          const i_t i = cut_storage_csc.i[q];
+          const i_t i    = cut_storage_csc.i[q];
           const f_t a_ij = cut_storage_csc.x[q];
           if (sets[i] == sets[r]) {
             // These two rows are currently in the same set
             // Check to see if the coefficients still match
-            const f_t f_i = divisors[i];
-            const f_t val = (a_rj / f_r) * (f_i / a_ij);
+            const f_t f_i     = divisors[i];
+            const f_t val     = (a_rj / f_r) * (f_i / a_ij);
             const f_t epsilon = 1e-10;
             if ((val >= 1.0 - epsilon && val <= 1.0 + epsilon)) {
               sets[r] = new_set;
@@ -638,27 +638,20 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
             }
           }
         }
-        if (sets[r] >= new_set_0) { // This is only true if a match was found inside the above loop
+        if (sets[r] >= new_set_0) {  // This is only true if a match was found inside the above loop
           new_set++;
         } else {
           sets[r] = sentinel;
           remaining_potential_duplicates--;
-          if (remaining_potential_duplicates == 0) {
-            break;
-          }
+          if (remaining_potential_duplicates == 0) { break; }
         }
       }
     }
-    if (remaining_potential_duplicates == 0) {
-      break;
-    }
-    if (new_rows == 1)
-    {
+    if (remaining_potential_duplicates == 0) { break; }
+    if (new_rows == 1) {
       sets[r0] = sentinel;
       remaining_potential_duplicates--;
-      if (remaining_potential_duplicates == 0) {
-        break;
-      }
+      if (remaining_potential_duplicates == 0) { break; }
     }
   }
 
@@ -672,8 +665,8 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
       // This cut has a duplicate
       for (i_t i = r + 1; i < m; i++) {
         if (sets[i] == set_r) {
-          const f_t f_r = divisors[r];
-          const f_t f_i = divisors[i];
+          const f_t f_r     = divisors[r];
+          const f_t f_i     = divisors[i];
           const f_t theta_r = rhs_storage_[r] / f_r;
           const f_t theta_i = rhs_storage_[i] / f_i;
           if (f_r > 0 && f_i > 0) {
@@ -682,11 +675,11 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
             if (theta_r <= theta_i) {
               // Cut i is either the same or stronger than cut r
               if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[r] = 1; // Remove row r
+              cuts_to_remove[r] = 1;  // Remove row r
             } else {
               // theta_r > theta_i, so cut r is stricly stronger than cut i
               if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[i] = 1; // Remove row i
+              cuts_to_remove[i] = 1;  // Remove row i
             }
           } else if (f_r < 0 && f_i < 0) {
             // We have sum_j d_rj / f_r x_j <= rhs_r / f_r = theta_r
@@ -694,11 +687,11 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
             if (theta_r >= theta_i) {
               // Cut i is either the same or stronger than cut r
               if (cuts_to_remove[r] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[r] = 1; // Remove row r
+              cuts_to_remove[r] = 1;  // Remove row r
             } else {
               // theta_r < theta_i, so cut r is strictly stronger than cut i
               if (cuts_to_remove[i] == 0) { num_cuts_to_remove++; }
-              cuts_to_remove[i] = 1; // Remove row i
+              cuts_to_remove[i] = 1;  // Remove row i
             }
           }
         }
@@ -711,7 +704,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
     cut_storage_.remove_rows(cuts_to_remove, new_cut_storage);
     cut_storage_ = new_cut_storage;
-    i_t write = 0;
+    i_t write    = 0;
     for (i_t i = 0; i < m; i++) {
       if (cuts_to_remove[i] == 0) {
         rhs_storage_[write] = rhs_storage_[i];
@@ -852,12 +845,10 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   for (i_t i = 0; i < lp.num_rows; i++) {
     inequality_t<i_t, f_t> inequality(Arow, i, lp.rhs[i]);
     inequality_t<i_t, f_t> rational_inequality = inequality;
-    if (!rational_coefficients(var_types, inequality, rational_inequality)) {
-      continue;
-    }
+    if (!rational_coefficients(var_types, inequality, rational_inequality)) { continue; }
     inequality = rational_inequality;
 
-    const i_t row_len   = rational_inequality.size();
+    const i_t row_len = rational_inequality.size();
     if (row_len < 3) { continue; }
     bool is_knapsack = true;
     f_t sum_pos      = 0.0;
@@ -1004,9 +995,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
     if (!is_slack_[j]) {
-      const f_t xstar_j = is_complemented_[j] ? 1.0 - xstar[j] : xstar[j];
+      const f_t xstar_j      = is_complemented_[j] ? 1.0 - xstar[j] : xstar[j];
       complemented_xstar_[j] = xstar_j;
-      const f_t vj = std::min(1.0, std::max(0.0, 1.0 - xstar_j));
+      const f_t vj           = std::min(1.0, std::max(0.0, 1.0 - xstar_j));
       if (xstar_j < x_tol) {
         // if xstar_j is close to 0, then we can fix z to zero
         fixed_variables.push_back(j);
@@ -1045,14 +1036,20 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   } else {
     solution.clear();
   }
-  if (std::isnan(objective)) { restore_complemented(complemented_variables); return -1; }
+  if (std::isnan(objective)) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
   if (verbose) {
     settings.log.printf("objective %e objective_constant %e\n", objective, objective_constant);
   }
   f_t seperation_value = -objective + objective_constant;
   if (verbose) { settings.log.printf("seperation_value %e\n", seperation_value); }
   const f_t tol = 1e-6;
-  if (seperation_value >= 1.0 - tol) { restore_complemented(complemented_variables); return -1; }
+  if (seperation_value >= 1.0 - tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
 
   i_t cover_size = 0;
   for (i_t k = 0; k < solution.size(); k++) {
@@ -1078,7 +1075,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   // The cut is in the form: - sum_{j in cover} x_j >= -cover_size + 1
   // Which is equivalent to: sum_{j in cover} x_j <= cover_size - 1
 
-
   // Compute the minimal cover and partition the variables into C1 and C2
   inequality_t<i_t, f_t> minimal_cover_cut(lp.num_cols);
   std::vector<i_t> c1_partition;
@@ -1088,13 +1084,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
 
   // Lift the cut
   inequality_t<i_t, f_t> lifted_cut(lp.num_cols);
-  lift_knapsack_cut(knapsack_inequality,
-                    minimal_cover_cut,
-                    c1_partition,
-                    c2_partition,
-                    lifted_cut);
+  lift_knapsack_cut(knapsack_inequality, minimal_cover_cut, c1_partition, c2_partition, lifted_cut);
   lifted_cut.negate();
-
 
   // The cut is now in the form:
   // -\sum_{j in C} x_j - \sum_{j in F} alpha_j x_j >= -cover_size + 1
@@ -1116,7 +1107,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_knapsack_cut(
   f_t lifted_dot       = lifted_cut.vector.dot(xstar);
   f_t lifted_violation = lifted_dot - lifted_cut.rhs;
   if (verbose) {
-    settings.log.printf("Knapsack cut %d lifted violation %e < 0\n", knapsack_row, lifted_violation);
+    settings.log.printf(
+      "Knapsack cut %d lifted violation %e < 0\n", knapsack_row, lifted_violation);
   }
 
   if (lifted_violation >= -tol) {
@@ -1154,7 +1146,6 @@ bool knapsack_generation_t<i_t, f_t>::is_minimal_cover(f_t cover_sum,
     }
   }
   return minimal;
-
 }
 
 template <typename i_t, typename f_t>
@@ -1180,12 +1171,12 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
   score.reserve(base_cut.size());
 
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
-    const i_t j = knapsack_inequality.index(k);
+    const i_t j   = knapsack_inequality.index(k);
     workspace_[j] = knapsack_inequality.coeff(k);
   }
 
   for (i_t k = 0; k < base_cut.size(); k++) {
-    const i_t j = base_cut.index(k);
+    const i_t j       = base_cut.index(k);
     const f_t xstar_j = xstar[j];
     score.push_back((1.0 - xstar_j) / workspace_[j]);
     cover_indicies.push_back(j);
@@ -1201,7 +1192,8 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
     return;
   }
 
-  // We don't have a minimal cover. So sort the score from smallest to largest breaking ties by largest to smallest a_j
+  // We don't have a minimal cover. So sort the score from smallest to largest breaking ties by
+  // largest to smallest a_j
   std::vector<i_t> permuation(cover_indicies.size());
   std::iota(permuation.begin(), permuation.end(), 0);
   std::sort(permuation.begin(), permuation.end(), [&](i_t a, i_t b) {
@@ -1216,7 +1208,7 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
 
   const f_t beta = knapsack_inequality.rhs;
   for (i_t k = 0; k < permuation.size(); k++) {
-    const i_t h = permuation[k];
+    const i_t h   = permuation[k];
     const f_t a_j = cover_coefficients[h];
     if (cover_sum - a_j > beta) {
       // sum_{k in C} a_k - a_j > beta
@@ -1227,9 +1219,7 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
       cover_coefficients[h] = 0.0;
 
       is_minimal = is_minimal_cover(cover_sum, beta, cover_coefficients);
-      if (is_minimal) {
-        break;
-      }
+      if (is_minimal) { break; }
     } else {
       // C \ {j} is no longer a cover.
       continue;
@@ -1237,7 +1227,7 @@ void knapsack_generation_t<i_t, f_t>::minimal_cover_and_partition(
   }
 
   // Go through and correct cover_indicies and cover_coefficients
-  for (i_t k = 0; k < cover_coefficients.size(); ) {
+  for (i_t k = 0; k < cover_coefficients.size();) {
     if (cover_coefficients[k] == 0.0) {
       cover_indicies[k] = cover_indicies.back();
       cover_indicies.pop_back();
@@ -1292,15 +1282,16 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   for (i_t k = 0; k < knapsack_inequality.size(); k++) {
     const i_t j = knapsack_inequality.index(k);
     if (!is_marked_[j]) {
-      is_marked_[j] = 1;         // is_marked_[j] = 1 for all j in N
+      is_marked_[j] = 1;  // is_marked_[j] = 1 for all j in N
       marked_variables.push_back(j);
     }
   }
   for (i_t k = 0; k < base_cut.size(); k++) {
     const i_t j = base_cut.index(k);
     if (is_marked_[j]) {
-      is_marked_[j] = 0;         // is_marked_[j] = 1 for all j in N \ C
-      // OK to leave marked_variables unchanged as marked_variables will be a superset of all dirty is_marked
+      is_marked_[j] = 0;  // is_marked_[j] = 1 for all j in N \ C
+      // OK to leave marked_variables unchanged as marked_variables will be a superset of all dirty
+      // is_marked
     }
   }
   std::vector<i_t> remaining_variables;
@@ -1345,9 +1336,8 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   //
   // Assume the valid inequality
   // sum_{j in C} x_j + sum_{j in F} alpha_j * x_j <= |C| - 1
-  // has been obtained so far. We now add the variable x_k with k not in C union F to the inequality.
-  // So we have
-  // alpha_k * x_k + sum_{j in C} x_j + sum_{j in F} alpha_j * x_j <= |C| - 1
+  // has been obtained so far. We now add the variable x_k with k not in C union F to the
+  // inequality. So we have alpha_k * x_k + sum_{j in C} x_j + sum_{j in F} alpha_j * x_j <= |C| - 1
   //
   // Again, this is trivially satisfied when x_k = 0. And we can determine the max value of alpha_k
   // by solving the 0-1 knapsack problem:
@@ -1358,7 +1348,6 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   //
   // Let phi^star_k denote the optimal objective value of the knapsack problem.
   // The lifted coefficient alpha_k = |C| - 1 - phi^star_k
-
 
   // Construct weight and values for C
   std::vector<i_t> values;
@@ -1391,14 +1380,18 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   best_score_last_permutation(remaining_coefficients, permutation);
 
   while (permutation.size() > 0) {
-    const i_t h = permutation.back();
-    const i_t k = remaining_variables[h];
+    const i_t h   = permutation.back();
+    const i_t k   = remaining_variables[h];
     const f_t a_k = remaining_coefficients[h];
 
     f_t capacity = knapsack_inequality.rhs - a_k;
 
-    f_t objective = exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
-    if (std::isnan(objective)) { settings_.log.printf("lifting knapsack problem failed\n"); break; }
+    f_t objective =
+      exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
+    if (std::isnan(objective)) {
+      settings_.log.printf("lifting knapsack problem failed\n");
+      break;
+    }
 
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
 
@@ -1422,7 +1415,6 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
   for (i_t j : marked_variables) {
     is_marked_[j] = 0;
   }
-
 }
 
 template <typename i_t, typename f_t>
@@ -1609,14 +1601,11 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   const i_t n = weights.size();
 
   const bool verbose = false;
-  i_t sum_value     = std::accumulate(values.begin(), values.end(), 0);
+  i_t sum_value      = std::accumulate(values.begin(), values.end(), 0);
   if (verbose) { settings_.log.printf("sum value %d\n", sum_value); }
   const i_t max_size = 10000;
   if (sum_value <= 0.0 || sum_value >= max_size) {
-    if (verbose) {
-      settings_.log.printf("sum value %d is negative or too large\n",
-                           sum_value);
-    }
+    if (verbose) { settings_.log.printf("sum value %d is negative or too large\n", sum_value); }
     return std::numeric_limits<f_t>::quiet_NaN();
   }
 
@@ -1674,10 +1663,10 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 {
   if (probing_implied_bound_.zero_offsets.empty()) { return; }
 
-  const f_t tol    = 1e-4;
-  i_t num_cuts     = 0;
+  const f_t tol      = 1e-4;
+  i_t num_cuts       = 0;
   const i_t pib_cols = static_cast<i_t>(probing_implied_bound_.zero_offsets.size()) - 1;
-  const i_t n_cols = std::min(lp.num_cols, pib_cols);
+  const i_t n_cols   = std::min(lp.num_cols, pib_cols);
 
   for (i_t j = 0; j < n_cols; j++) {
     if (var_types[j] == variable_type_t::CONTINUOUS) { continue; }
@@ -1687,7 +1676,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
     const i_t zero_begin = probing_implied_bound_.zero_offsets[j];
     const i_t zero_end   = probing_implied_bound_.zero_offsets[j + 1];
     for (i_t p = zero_begin; p < zero_end; p++) {
-      const i_t i   = probing_implied_bound_.zero_variables[p];
+      const i_t i = probing_implied_bound_.zero_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
       const f_t u_i = lp.upper[i];
@@ -1696,10 +1685,10 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
       // Valid inequality: y_i <= b + (u_i - b)*x_j  or  -y_i + (u_i - b)*x_j >= -b
       const f_t b_ub = probing_implied_bound_.zero_upper_bound[p];
       if (b_ub < u_i - tol) {
-        const f_t coeff_j  = u_i - b_ub;
-        const f_t y_i      = xstar[i];
-        const f_t lhs_val  = -y_i + coeff_j * xstar_j;
-        const f_t rhs_val  = -b_ub;
+        const f_t coeff_j = u_i - b_ub;
+        const f_t y_i     = xstar[i];
+        const f_t lhs_val = -y_i + coeff_j * xstar_j;
+        const f_t rhs_val = -b_ub;
         if (lhs_val < rhs_val - tol) {
           inequality_t<i_t, f_t> cut;
           cut.push_back(i, -1.0);
@@ -1714,10 +1703,10 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
       // Valid inequality: y_i >= b - (b - l_i)*x_j  or  y_i + (b - l_i)*x_j >= b
       const f_t b_lb = probing_implied_bound_.zero_lower_bound[p];
       if (b_lb > l_i + tol) {
-        const f_t coeff_j  = b_lb - l_i;
-        const f_t y_i      = xstar[i];
-        const f_t lhs_val  = y_i + coeff_j * xstar_j;
-        const f_t rhs_val  = b_lb;
+        const f_t coeff_j = b_lb - l_i;
+        const f_t y_i     = xstar[i];
+        const f_t lhs_val = y_i + coeff_j * xstar_j;
+        const f_t rhs_val = b_lb;
         if (lhs_val < rhs_val - tol) {
           inequality_t<i_t, f_t> cut;
           cut.push_back(i, 1.0);
@@ -1733,7 +1722,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
     const i_t one_begin = probing_implied_bound_.one_offsets[j];
     const i_t one_end   = probing_implied_bound_.one_offsets[j + 1];
     for (i_t p = one_begin; p < one_end; p++) {
-      const i_t i   = probing_implied_bound_.one_variables[p];
+      const i_t i = probing_implied_bound_.one_variables[p];
       if (i == j) { continue; }
       const f_t l_i = lp.lower[i];
       const f_t u_i = lp.upper[i];
@@ -1742,10 +1731,10 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
       // Valid inequality: y_i <= u_i - (u_i - b)*x_j  or  -y_i - (u_i - b)*x_j >= -u_i
       const f_t b_ub = probing_implied_bound_.one_upper_bound[p];
       if (b_ub < u_i - tol) {
-        const f_t coeff_j  = -(u_i - b_ub);
-        const f_t y_i      = xstar[i];
-        const f_t lhs_val  = -y_i + coeff_j * xstar_j;
-        const f_t rhs_val  = -u_i;
+        const f_t coeff_j = -(u_i - b_ub);
+        const f_t y_i     = xstar[i];
+        const f_t lhs_val = -y_i + coeff_j * xstar_j;
+        const f_t rhs_val = -u_i;
         if (lhs_val < rhs_val - tol) {
           inequality_t<i_t, f_t> cut;
           cut.push_back(i, -1.0);
@@ -1760,9 +1749,9 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
       // Valid inequality: y_i >= l_i + (b - l_i)*x_j  or  y_i - (b - l_i)*x_j >= l_i
       const f_t b_lb = probing_implied_bound_.one_lower_bound[p];
       if (b_lb > l_i + tol) {
-        const f_t coeff_j  = -(b_lb - l_i);
-        const f_t lhs_val  = xstar[i] + coeff_j * xstar_j;
-        const f_t rhs_val  = l_i;
+        const f_t coeff_j = -(b_lb - l_i);
+        const f_t lhs_val = xstar[i] + coeff_j * xstar_j;
+        const f_t rhs_val = l_i;
         if (lhs_val < rhs_val - tol) {
           inequality_t<i_t, f_t> cut;
           cut.push_back(i, 1.0);
@@ -2747,10 +2736,9 @@ bool rational_approximation(f_t x,
 }
 
 template <typename i_t, typename f_t>
-bool rational_coefficients(
-  const std::vector<variable_type_t>& var_types,
-  const inequality_t<i_t, f_t>& input_inequality,
-  inequality_t<i_t, f_t>& rational_inequality)
+bool rational_coefficients(const std::vector<variable_type_t>& var_types,
+                           const inequality_t<i_t, f_t>& input_inequality,
+                           inequality_t<i_t, f_t>& rational_inequality)
 {
   rational_inequality = input_inequality;
 

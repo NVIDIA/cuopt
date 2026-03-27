@@ -558,7 +558,7 @@ template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_norms,
                                                    const std::vector<f_t>& potential_solution,
                                                    f_t& repaired_obj,
-                                                   std::vector<f_t>& repaired_solution) 
+                                                   std::vector<f_t>& repaired_solution)
 {
   bool feasible = false;
   repaired_obj  = std::numeric_limits<f_t>::quiet_NaN();
@@ -581,7 +581,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   i_t iter                               = 0;
   f_t lp_start_time                      = tic();
   simplex_solver_settings_t lp_settings  = settings_;
-  lp_settings.concurrent_halt = &node_concurrent_halt_;
+  lp_settings.concurrent_halt            = &node_concurrent_halt_;
   std::vector<variable_status_t> vstatus = root_vstatus_;
   lp_settings.set_log(false);
   lp_settings.inside_mip           = 2;
@@ -1333,7 +1333,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   assert(leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
   simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt = &node_concurrent_halt_;
+  lp_settings.concurrent_halt           = &node_concurrent_halt_;
   lp_settings.set_log(false);
   if (original_lp_.objective_is_integral) {
     lp_settings.cut_off = std::ceil(upper_bound_ - settings_.integer_tol) + settings_.dual_tol;
@@ -1651,7 +1651,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       node_concurrent_halt_ = 1;
-      solver_status_ = mip_status_t::OPTIMAL;
+      solver_status_        = mip_status_t::OPTIMAL;
       break;
     }
 

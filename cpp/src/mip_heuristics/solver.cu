@@ -203,22 +203,21 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Extract probing cache into CPU-only CSR struct for implied bounds cuts
     {
-      const i_t num_cols = branch_and_bound_problem.num_cols;
+      const i_t num_cols    = branch_and_bound_problem.num_cols;
       probing_implied_bound = dual_simplex::probing_implied_bound_t<i_t, f_t>(num_cols);
-      auto& pc       = dm.ls.constraint_prop.bounds_update.probing_cache.probing_cache;
+      auto& pc              = dm.ls.constraint_prop.bounds_update.probing_cache.probing_cache;
 
       // First pass: count entries per binary variable
       // Probing cache indices are in pre-trivial-presolve space; remap to post-presolve (B&B) space
       auto& rev_ids = op_problem_.reverse_original_ids;
-      i_t rev_size = static_cast<i_t>(rev_ids.size());
-      auto remap = [&](i_t raw_idx) -> i_t {
+      i_t rev_size  = static_cast<i_t>(rev_ids.size());
+      auto remap    = [&](i_t raw_idx) -> i_t {
         if (rev_size == 0) return raw_idx;
         if (raw_idx < 0 || raw_idx >= rev_size) return -1;
         return rev_ids[raw_idx];
       };
       auto is_bb_binary = [&](i_t j) {
-        return branch_and_bound_problem.lower[j] == 0.0 &&
-               branch_and_bound_problem.upper[j] == 1.0;
+        return branch_and_bound_problem.lower[j] == 0.0 && branch_and_bound_problem.upper[j] == 1.0;
       };
       auto bb_bounds_consistent = [&](i_t i, f_t b_lb, f_t b_ub) {
         return b_ub >= branch_and_bound_problem.lower[i] - 1e-6 &&
@@ -274,7 +273,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
           i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-          i_t p                                      = zero_cursor[j]++;
+          i_t p                                     = zero_cursor[j]++;
           probing_implied_bound.zero_variables[p]   = i;
           probing_implied_bound.zero_lower_bound[p] = bound.lb;
           probing_implied_bound.zero_upper_bound[p] = bound.ub;
@@ -283,7 +282,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
           i_t i = remap(imp_var);
           if (i < 0 || i >= num_cols) { continue; }
           if (!bb_bounds_consistent(i, bound.lb, bound.ub)) { continue; }
-          i_t p                                     = one_cursor[j]++;
+          i_t p                                    = one_cursor[j]++;
           probing_implied_bound.one_variables[p]   = i;
           probing_implied_bound.one_lower_bound[p] = bound.lb;
           probing_implied_bound.one_upper_bound[p] = bound.ub;
@@ -313,9 +312,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
-    branch_and_bound_settings.knapsack_cuts = context.settings.knapsack_cuts;
+    branch_and_bound_settings.knapsack_cuts      = context.settings.knapsack_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
-    branch_and_bound_settings.clique_cuts   = context.settings.clique_cuts;
+    branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.reduced_cost_strengthening =

@@ -146,8 +146,7 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     std::pair<i_t, i_t> constraint_range = A.get_constraint_range(i);
     if (constraint_range.second - constraint_range.first < 2) {
       CUOPT_LOG_DEBUG("Constraint %d has less than 2 variables, skipping", i);
-      if (problem.row_sense[i] == 'E' &&
-          ranged_constraint_counter < problem.num_range_rows &&
+      if (problem.row_sense[i] == 'E' && ranged_constraint_counter < problem.num_range_rows &&
           problem.range_rows[ranged_constraint_counter] == i) {
         ranged_constraint_counter++;
       }
@@ -164,8 +163,7 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     }
     // if all variables are binary, convert the constraint to a knapsack constraint
     if (!all_binary) {
-      if (problem.row_sense[i] == 'E' &&
-          ranged_constraint_counter < problem.num_range_rows &&
+      if (problem.row_sense[i] == 'E' && ranged_constraint_counter < problem.num_range_rows &&
           problem.range_rows[ranged_constraint_counter] == i) {
         ranged_constraint_counter++;
       }
