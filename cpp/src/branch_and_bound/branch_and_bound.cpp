@@ -1429,18 +1429,15 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
 
-  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET) {
+  f_t lower_bound = get_lower_bound();
+  f_t upper_bound = upper_bound_;
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap     = upper_bound - lower_bound;
+
+  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
+         rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
-
-    f_t lower_bound = node_ptr->lower_bound;
-    f_t upper_bound = upper_bound_;
-    f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
-
-    if (rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      break;
-    }
 
     // This is based on three assumptions:
     // - The stack only contains sibling nodes, i.e., the current node and it sibling (if
@@ -1448,9 +1445,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     // - The current node and its siblings uses the lower bound of the parent before solving the LP
     // relaxation
     // - The lower bound of the parent is lower or equal to its children
-    worker->lower_bound = lower_bound;
+    worker->lower_bound = node_ptr->lower_bound;
 
-    if (lower_bound > upper_bound) {
+    if (node_ptr->lower_bound > upper_bound) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
       search_tree_.update(node_ptr, node_status_t::FATHOMED);
       worker->recompute_basis  = true;
@@ -1521,6 +1518,27 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
         stack.push_front(node_ptr->get_down_child());
       }
     }
+
+    lower_bound = get_lower_bound();
+    upper_bound = upper_bound_;
+    rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+    abs_gap     = upper_bound - lower_bound;
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+    }
+  }
+
+  if (stack.size() > 0 &&
+      (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol)) {
+    // If the solver converged according to the gap rules, but we still have nodes to explore
+    // in the stack, then we should add all the pending nodes back to the heap so the lower
+    // bound of the solver is set to the correct value.
+    while (!stack.empty()) {
+      auto node = stack.front();
+      stack.pop_front();
+      node_queue_.push(node);
+    }
   }
 
   if (settings_.num_threads > 1) {
@@ -1553,14 +1571,17 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
   dive_stats.nodes_explored      = 0;
   dive_stats.nodes_unexplored    = 1;
 
-  while (stack.size() > 0 && solver_status_ == mip_status_t::UNSET && is_running_) {
+  f_t lower_bound = get_lower_bound();
+  f_t upper_bound = upper_bound_;
+  f_t rel_gap            = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap            = upper_bound - lower_bound;
+
+  while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
+         rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
-    f_t lower_bound     = node_ptr->lower_bound;
-    f_t upper_bound     = upper_bound_;
-    f_t rel_gap         = user_relative_gap(original_lp_, upper_bound, lower_bound);
-    worker->lower_bound = lower_bound;
+    worker->lower_bound = node_ptr->lower_bound;
 
     if (node_ptr->lower_bound > upper_bound) {
       worker->recompute_basis  = true;
@@ -1568,10 +1589,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
       continue;
     }
 
-    if (rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      break;
-    }
     if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
     if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
@@ -1605,6 +1622,15 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     // backtrack to a node that is has a depth of at most 5 levels lower than the current node).
     if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > diving_backtrack_limit) {
       stack.pop_back();
+    }
+
+    lower_bound = get_lower_bound();
+    upper_bound = upper_bound_;
+    rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+    abs_gap     = upper_bound - lower_bound;
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
     }
   }
 
@@ -1645,15 +1671,6 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
          rel_gap > settings_.relative_mip_gap_tol &&
          (active_workers_per_strategy_[0] > 0 || node_queue_.best_first_queue_size() > 0)) {
     bool launched_any_task = false;
-    lower_bound            = get_lower_bound();
-    abs_gap                = upper_bound_ - lower_bound;
-    rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::OPTIMAL;
-      break;
-    }
 
     repair_heuristic_solutions();
 
@@ -1754,6 +1771,16 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
       }
     }
 
+    lower_bound            = get_lower_bound();
+    abs_gap                = upper_bound_ - lower_bound;
+    rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::OPTIMAL;
+      break;
+    }
+
     // If no new task was launched in this iteration, suspend temporarily the
     // execution of the scheduler. As of 8/Jan/2026, GCC does not
     // implement taskyield, but LLVM does.
@@ -1773,10 +1800,6 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && node_queue_.best_first_queue_size() > 0) {
     bool launched_any_task = false;
-    lower_bound            = get_lower_bound();
-    abs_gap                = upper_bound_ - lower_bound;
-    rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
     repair_heuristic_solutions();
 
     f_t now = toc(exploration_stats_.start_time);
@@ -1814,6 +1837,16 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 
     worker.init_best_first(start_node.value(), original_lp_);
     plunge_with(&worker);
+
+    lower_bound = get_lower_bound();
+    abs_gap     = upper_bound_ - lower_bound;
+    rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::OPTIMAL;
+      break;
+    }
   }
 }
 
