@@ -995,7 +995,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // To avoid that we allow at least two iterations at first before checking (in practice 0 wasn't
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
-  if (total_pdlp_iterations_ <= 1) {
+  if (internal_solver_iterations_ <= 1) {
     print_termination_criteria(timer);
     return check_limits(timer);
   }
