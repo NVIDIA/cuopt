@@ -179,7 +179,7 @@ echo "Building Abseil (from gRPC submodule)..."
 cmake -S "${GRPC_SRC}/third_party/abseil-cpp" -B "${ABSL_BUILD}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    ${CMAKE_STD_FLAGS} \
+    "${CMAKE_STD_FLAGS[@]}" \
     -DABSL_PROPAGATE_CXX_STD=ON \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}"
 cmake --build "${ABSL_BUILD}" --parallel
