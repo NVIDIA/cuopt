@@ -117,7 +117,7 @@ Architecture:
 - Clone the repository:
 
 ```bash
-CUOPT_HOME=$(pwd)/cuopt
+export CUOPT_HOME=$(pwd)/cuopt
 git clone https://github.com/NVIDIA/cuopt.git $CUOPT_HOME
 cd $CUOPT_HOME
 ```
