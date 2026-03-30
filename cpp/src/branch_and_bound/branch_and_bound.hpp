@@ -14,6 +14,7 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <dual_simplex/concurrent_halt.hpp>
 
 #include <cuts/cuts.hpp>
 
