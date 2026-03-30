@@ -443,7 +443,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
       if (!simplex_solution_exists.load()) {
-        std::cout << "\n NO SIMPLEXSOLUTION EXISTS \n"<< std::endl;
         cuopt_assert(lp_result.get_primal_solution().size() == lp_optimal_solution.size(),
                      "LP optimal solution size mismatch");
         cuopt_assert(lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size(),

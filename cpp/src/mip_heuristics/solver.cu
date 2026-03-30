@@ -70,10 +70,7 @@ struct branch_and_bound_solution_helper_t {
                             std::vector<f_t>& dual_solution,
                             f_t objective)
   {
-    std::cout << "\n SETTING SIMPLEX SOLUTION \n" << std::endl;
     dm->set_simplex_solution(solution, dual_solution, objective);
-    std::cout << "\n SETTING SIMPLEX SOLUTION DONE \n" << std::endl;
-    
   }
 
   void node_processed_callback(const std::vector<f_t>& solution, f_t objective)

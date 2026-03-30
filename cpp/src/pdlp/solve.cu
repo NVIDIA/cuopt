@@ -1178,19 +1178,16 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   try {
     sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
   } catch (...) {
-    std::cout << "\n DEBUGGING: CAUGHT PDLP EXCEPTION \n" << std::endl;
     pdlp_exception                 = std::current_exception();
     *settings_pdlp.concurrent_halt = 1;
     try {
       std::rethrow_exception(pdlp_exception);
     } catch (const std::exception& e) {
-      std::cout << "\n DEBUGGING: CAUGHT PDLP EXCEPTION RETHROW 1\n" << std::endl;
       CUOPT_LOG_ERROR("PDLP exception in concurrent mode: %s", e.what());
     } catch (...) {
       std::cout << "\n DEBUGGING: CAUGHT PDLP EXCEPTION RETHROW 2\n" << std::endl;
     }
   }
-  std::cout << "\n DEBUGGING:AFTER TRY CATCH BLOCK \n" << std::endl;
 
   // Wait for dual simplex thread to finish
   if (!settings.inside_mip) { dual_simplex_thread.join(); }

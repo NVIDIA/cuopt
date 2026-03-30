@@ -2056,7 +2056,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                         nonbasic_list,
                                         edge_norms_);
   }
-  std::cout << "\n FINISHED SOLVE ROOT RELAXATION in BB\n" << std::endl;
   solving_root_relaxation_               = false;
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
   exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
@@ -2103,12 +2102,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
-  std::cout << "\n SETTING UNINITIALIZED STEEPEST EDGE NORMS in BB\n" << std::endl;
   set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
 
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
-  std::cout << "\n UNCRUSHING PRIMAL AND DUAL SOLUTION in BB\n" << std::endl;
   if (settings_.set_simplex_solution_callback != nullptr) {
     std::vector<f_t> original_x;
     uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);
@@ -2120,7 +2117,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                           root_relax_soln_.z,
                           original_dual,
                           original_z);
-    std::cout << "\n UNCRUSHING PRIMAL AND DUAL SOLUTION DONE in BB\n" << std::endl;
     settings_.set_simplex_solution_callback(
       original_x, original_dual, compute_user_objective(original_lp_, root_objective_));
   }
