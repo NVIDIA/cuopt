@@ -27,7 +27,7 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-static bool ds_is_valid_done(dual::status_t status)
+static bool is_dual_simplex_done(dual::status_t status)
 {
   return status == dual::status_t::DUAL_UNBOUNDED || status == dual::status_t::OPTIMAL ||
          status == dual::status_t::ITERATION_LIMIT || status == dual::status_t::CUTOFF;
@@ -158,8 +158,8 @@ void strong_branch_helper(i_t start,
       // Mark the subproblem as solved so that batch PDLP removes it from the batch
       if (sb_view.is_valid()) {
         // We could not mark as solved nodes hitting iteartion limit in DS
-        if ((branch == 0 && ds_is_valid_done(ds_status_down[k])) ||
-            (branch == 1 && ds_is_valid_done(ds_status_up[k]))) {
+        if ((branch == 0 && is_dual_simplex_done(ds_status_down[k])) ||
+            (branch == 1 && is_dual_simplex_done(ds_status_up[k]))) {
           sb_view.mark_solved(shared_idx);
           settings.log.printf(
             "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in "
@@ -381,6 +381,8 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   return mps_model;
 }
 
+enum class sb_source_t { DUAL_SIMPLEX, PDLP, NONE };
+
 // Merge a single strong branching result from Dual Simplex and PDLP.
 // Rules:
 //   1. If both found optimal   -> keep DS (higher quality vertex solution)
@@ -388,35 +390,40 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
 //   3. Else if one is optimal -> keep the optimal one
 //   4. Else if Dual Simplex hit iteration limit -> keep DS
 //   5. Else if none converged -> NaN (original objective)
-// Return {value, source} where source is 0 if Dual Simplex, 1 if PDLP, 2 if both
 template <typename i_t, typename f_t>
-static std::pair<f_t, i_t> merge_sb_result(f_t ds_val,
-                                           dual::status_t ds_status,
-                                           f_t pdlp_dual_obj,
-                                           bool pdlp_optimal)
+static std::pair<f_t, sb_source_t> merge_sb_result(f_t ds_val,
+                                                   dual::status_t ds_status,
+                                                   f_t pdlp_dual_obj,
+                                                   bool pdlp_optimal)
 {
   // Dual simplex always maintains dual feasibility, so OPTIMAL and ITERATION_LIMIT both qualify
 
   // Rule 1: Both optimal -> keep DS
-  if (ds_status == dual::status_t::OPTIMAL && pdlp_optimal) { return {ds_val, 0}; }
+  if (ds_status == dual::status_t::OPTIMAL && pdlp_optimal) {
+    return {ds_val, sb_source_t::DUAL_SIMPLEX};
+  }
 
   // Rule 2: Dual Simplex found infeasible -> declare infeasible
   if (ds_status == dual::status_t::DUAL_UNBOUNDED) {
-    return {std::numeric_limits<f_t>::infinity(), 0};
+    return {std::numeric_limits<f_t>::infinity(), sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 3: Only one converged -> keep that
-  if (ds_status == dual::status_t::OPTIMAL && !pdlp_optimal) { return {ds_val, 0}; }
-  if (pdlp_optimal && ds_status != dual::status_t::OPTIMAL) { return {pdlp_dual_obj, 1}; }
+  if (ds_status == dual::status_t::OPTIMAL && !pdlp_optimal) {
+    return {ds_val, sb_source_t::DUAL_SIMPLEX};
+  }
+  if (pdlp_optimal && ds_status != dual::status_t::OPTIMAL) {
+    return {pdlp_dual_obj, sb_source_t::PDLP};
+  }
 
   // Rule 4: Dual Simplex hit iteration limit or work limit or cutoff -> keep DS
   if (ds_status == dual::status_t::ITERATION_LIMIT || ds_status == dual::status_t::WORK_LIMIT ||
       ds_status == dual::status_t::CUTOFF) {
-    return {ds_val, 0};
+    return {ds_val, sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 5: None converged -> NaN
-  return {std::numeric_limits<f_t>::quiet_NaN(), 2};
+  return {std::numeric_limits<f_t>::quiet_NaN(), sb_source_t::NONE};
 }
 
 template <typename i_t, typename f_t>
@@ -766,9 +773,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     const auto [value_down, source_down] =
       merge_sb_result<i_t, f_t>(ds_obj_down[k], ds_status_down[k], pdlp_obj_down[k], pdlp_has_down);
     pc.strong_branch_down[k] = value_down;
-    if (source_down == 0)
+    if (source_down == sb_source_t::DUAL_SIMPLEX)
       merged_from_ds++;
-    else if (source_down == 1)
+    else if (source_down == sb_source_t::PDLP)
       merged_from_pdlp++;
     else
       merged_nan++;
@@ -779,7 +786,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
         fractional[k],
         ds_obj_down[k],
         pdlp_obj_down[k],
-        source_down == 0 ? "DS" : "PDLP");
+        source_down == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
     }
 
     bool ds_has_up   = ds_status_up[k] != dual::status_t::UNSET;
@@ -787,9 +794,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     const auto [value_up, source_up] =
       merge_sb_result<i_t, f_t>(ds_obj_up[k], ds_status_up[k], pdlp_obj_up[k], pdlp_has_up);
     pc.strong_branch_up[k] = value_up;
-    if (source_up == 0)
+    if (source_up == sb_source_t::DUAL_SIMPLEX)
       merged_from_ds++;
-    else if (source_up == 1)
+    else if (source_up == sb_source_t::PDLP)
       merged_from_pdlp++;
     else
       merged_nan++;
@@ -800,16 +807,16 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
         fractional[k],
         ds_obj_up[k],
         pdlp_obj_up[k],
-        source_up == 0 ? "DS" : "PDLP");
+        source_up == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
     }
   }
 
   if (effective_batch_pdlp != 0) {
-    pc.pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root =
+    pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root =
       (f_t(merged_from_pdlp) / f_t(fractional.size() * 2)) * 100.0;
     settings.log.printf(
-      "Batch PDLP only for strong branching. Pourcent solved by batch PDLP at root: %f\n",
-      pc.pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root);
+      "Batch PDLP only for strong branching. percent solved by batch PDLP at root: %f\n",
+      pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root);
     settings.log.printf(
       "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both "
       "(down/up)\n",
@@ -996,13 +1003,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // It is also off if the number of candidate is very small
   // If warm start could run but almost none of the BPDLP results were used, we also want to avoid
   // using batch PDLP
-  constexpr i_t min_num_candidates_for_pdlp                        = 5;
-  constexpr f_t min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
+  constexpr i_t min_num_candidates_for_pdlp                       = 5;
+  constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
   const bool use_pdlp = (rb_mode != 0) && !settings.sub_mip && !settings.deterministic &&
                         pdlp_warm_cache.populated &&
                         unreliable_list.size() > min_num_candidates_for_pdlp &&
-                        pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root >
-                          min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp;
+                        pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
+                          min_percent_solved_by_batch_pdlp_at_root_for_pdlp;
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
@@ -1013,16 +1020,16 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       "Batch PDLP reliability branching is disabled because deterministic mode is enabled\n");
   } else if (rb_mode != 0 && unreliable_list.size() < min_num_candidates_for_pdlp) {
     log.printf("Not enough candidates to use batch PDLP, using DS only\n");
-  } else if (rb_mode != 0 && pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root < 5.0) {
-    log.printf("Pourcent solved by batch PDLP at root is too low, using DS only\n");
+  } else if (rb_mode != 0 && pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root < 5.0) {
+    log.printf("Percent solved by batch PDLP at root is too low, using DS only\n");
   } else if (use_pdlp) {
     log.printf(
-      "Using batch PDLP because populated, unreliable list size is %d (> %d), and pourcent solved "
+      "Using batch PDLP because populated, unreliable list size is %d (> %d), and percent solved "
       "by batch PDLP at root is %f%% (> %f%%)\n",
       static_cast<i_t>(unreliable_list.size()),
       min_num_candidates_for_pdlp,
-      pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root,
-      min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp);
+      pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root,
+      min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
   const int num_tasks     = std::max(max_num_tasks, 1);
@@ -1216,7 +1223,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
             pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
             pseudo_cost_num_down[j]++;
             // Should be valid if were are already here
-            if (rb_mode == 1 && ds_is_valid_done(status)) { sb_view.mark_solved(i); }
+            if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(i); }
           }
         }
         pseudo_cost_mutex_down[j].unlock();
@@ -1259,7 +1266,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
             pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
             pseudo_cost_num_up[j]++;
             // Should be valid if were are already here
-            if (rb_mode == 1 && ds_is_valid_done(status)) { sb_view.mark_solved(shared_idx); }
+            if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(shared_idx); }
           }
         }
         pseudo_cost_mutex_up[j].unlock();
@@ -1314,7 +1321,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           merge_sb_result<i_t, f_t>(ds_obj_down[i], ds_status_down[i], pdlp_obj_down[i], true);
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
-        if (source == 1) {
+        if (source == sb_source_t::PDLP) {
           pseudo_cost_mutex_down[j].lock();
           if (pseudo_cost_num_down[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
@@ -1334,7 +1341,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           merge_sb_result<i_t, f_t>(ds_obj_up[i], ds_status_up[i], pdlp_obj_up[i], true);
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
-        if (source == 1) {
+        if (source == sb_source_t::PDLP) {
           pseudo_cost_mutex_up[j].lock();
           if (pseudo_cost_num_up[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
