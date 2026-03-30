@@ -34,10 +34,7 @@ struct shared_strong_branching_context_view_t {
 
   bool is_valid() const { return !solved.empty(); }
 
-  bool is_solved(i_t local_idx) const
-  {
-    return solved[local_idx].load() != 0;
-  }
+  bool is_solved(i_t local_idx) const { return solved[local_idx].load() != 0; }
 
   void mark_solved(i_t local_idx) const { solved[local_idx].store(1); }
 

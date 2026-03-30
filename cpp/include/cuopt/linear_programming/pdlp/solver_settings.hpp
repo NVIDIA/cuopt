@@ -149,12 +149,12 @@ class pdlp_solver_settings_t {
    * @param[in] initial_primal_weight Initial primal weight.
    */
   void set_initial_primal_weight(f_t initial_primal_weight);
-    /**
+  /**
    * @brief Set an initial pdlp iteration.
    *
    * @param[in] initial_pdlp_iteration Initial pdlp iteration.
    */
-   void set_initial_pdlp_iteration(i_t initial_pdlp_iteration);
+  void set_initial_pdlp_iteration(i_t initial_pdlp_iteration);
 
   /**
    * @brief Set the pdlp warm start data. This allows to restart PDLP with a
@@ -284,8 +284,8 @@ class pdlp_solver_settings_t {
   // concurrently i.e. if new_bounds.size() == 2, then 2 versions of the problem with updated bounds
   // will be solved concurrently
   std::vector<std::tuple<i_t, f_t, f_t>> new_bounds;
-  // By default to save memory and speed we don't store and copy each climber's primal and dual solutions
-  // We only retrieve termination statistics and the objective values
+  // By default to save memory and speed we don't store and copy each climber's primal and dual
+  // solutions We only retrieve termination statistics and the objective values
   bool generate_batch_primal_dual_solution{false};
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size

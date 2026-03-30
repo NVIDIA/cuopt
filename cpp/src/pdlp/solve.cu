@@ -904,19 +904,19 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
   // Hyper parameter than can be changed, I have put what I believe to be the best
-  constexpr bool pdlp_primal_dual_init    = true;
-  constexpr bool primal_weight_init       = true;
+  constexpr bool pdlp_primal_dual_init       = true;
+  constexpr bool primal_weight_init          = true;
   constexpr bool use_initial_pdlp_iterations = true;
-  bool use_optimal_batch_size   = false;
-  constexpr int batch_iteration_limit = 100000;
-  constexpr f_t pdlp_tolerance = 1e-5;
+  bool use_optimal_batch_size                = false;
+  constexpr int batch_iteration_limit        = 100000;
+  constexpr f_t pdlp_tolerance               = 1e-5;
 
   rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
 
   rmm::device_uvector<f_t> initial_primal(0, stream);
   rmm::device_uvector<f_t> initial_dual(0, stream);
-  f_t initial_step_size     = std::numeric_limits<f_t>::signaling_NaN();
-  f_t initial_primal_weight = std::numeric_limits<f_t>::signaling_NaN();
+  f_t initial_step_size      = std::numeric_limits<f_t>::signaling_NaN();
+  f_t initial_primal_weight  = std::numeric_limits<f_t>::signaling_NaN();
   i_t initial_pdlp_iteration = -1;
 
   cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
@@ -927,63 +927,61 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   const double memory_estimate = batch_pdlp_memory_estimator(problem, max_batch_size);
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
-  const double free_mem = static_cast<double>(st_free_mem);
+  const double free_mem  = static_cast<double>(st_free_mem);
   const double total_mem = static_cast<double>(st_total_mem);
 
-  #ifdef BATCH_VERBOSE_MODE
+#ifdef BATCH_VERBOSE_MODE
   std::cout << "Memory estimate: " << memory_estimate << std::endl;
   std::cout << "Free memory: " << free_mem << std::endl;
   std::cout << "Total memory: " << total_mem << std::endl;
-  #endif
+#endif
 
   if (memory_estimate > free_mem) {
     use_optimal_batch_size = true;
     // Decrement batch size iteratively until we find a batch size that fits
     while (memory_max_batch_size > 1) {
-      const double memory_estimate =
-        batch_pdlp_memory_estimator(problem, memory_max_batch_size);
+      const double memory_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size);
       if (memory_estimate <= free_mem) { break; }
-      #ifdef BATCH_VERBOSE_MODE
+#ifdef BATCH_VERBOSE_MODE
       std::cout << "Memory estimate: " << memory_estimate << std::endl;
       std::cout << "Memory max batch size: " << memory_max_batch_size << std::endl;
       std::cout << "Free memory: " << free_mem << std::endl;
       std::cout << "Total memory: " << total_mem << std::endl;
       std::cout << "--------------------------------" << std::endl;
-      #endif
+#endif
       memory_max_batch_size--;
     }
-    const double min_estimate =
-      batch_pdlp_memory_estimator(problem, memory_max_batch_size);
+    const double min_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size);
     if (min_estimate > free_mem) {
-      return optimization_problem_solution_t<i_t, f_t>(
-        pdlp_termination_status_t::NumericalError, stream);
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
+                                                       stream);
     }
   }
 
   size_t optimal_batch_size = use_optimal_batch_size
-                             ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
-                             : max_batch_size;
-  if (settings.sub_batch_size > 0) {
-    optimal_batch_size = settings.sub_batch_size;
-  }
+                                ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
+                                : max_batch_size;
+  if (settings.sub_batch_size > 0) { optimal_batch_size = settings.sub_batch_size; }
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
                "Optimal batch size should be between 1 and max batch size");
 
-  const bool warm_start_from_settings =
-    settings.has_initial_primal_solution() || settings.has_initial_dual_solution() ||
-    settings.get_initial_step_size().has_value() ||
-    settings.get_initial_primal_weight().has_value() ||
-    settings.get_initial_pdlp_iteration().has_value();
+  const bool warm_start_from_settings = settings.has_initial_primal_solution() ||
+                                        settings.has_initial_dual_solution() ||
+                                        settings.get_initial_step_size().has_value() ||
+                                        settings.get_initial_primal_weight().has_value() ||
+                                        settings.get_initial_pdlp_iteration().has_value();
 
   if (warm_start_from_settings) {
-    #ifdef BATCH_VERBOSE_MODE
+#ifdef BATCH_VERBOSE_MODE
     std::cout << "Using warm start from settings" << std::endl;
-    #endif
+#endif
     if (settings.has_initial_primal_solution() && pdlp_primal_dual_init) {
-      initial_primal = rmm::device_uvector<f_t>(settings.get_initial_primal_solution(), settings.get_initial_primal_solution().stream());
+      initial_primal = rmm::device_uvector<f_t>(settings.get_initial_primal_solution(),
+                                                settings.get_initial_primal_solution().stream());
     }
     if (settings.has_initial_dual_solution() && pdlp_primal_dual_init) {
-      initial_dual = rmm::device_uvector<f_t>(settings.get_initial_dual_solution(), settings.get_initial_dual_solution().stream());
+      initial_dual = rmm::device_uvector<f_t>(settings.get_initial_dual_solution(),
+                                              settings.get_initial_dual_solution().stream());
     }
     if (settings.get_initial_step_size().has_value() && pdlp_primal_dual_init) {
       initial_step_size = *settings.get_initial_step_size();
@@ -998,30 +996,33 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 
   // Only used in tests
   const bool collect_solutions = settings.generate_batch_primal_dual_solution;
-  
-  rmm::device_uvector<f_t> full_primal_solution((collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
-  rmm::device_uvector<f_t> full_dual_solution((collect_solutions) ? problem.get_n_constraints() * max_batch_size : 0, stream);
-  rmm::device_uvector<f_t> full_reduced_cost((collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
+
+  rmm::device_uvector<f_t> full_primal_solution(
+    (collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
+  rmm::device_uvector<f_t> full_dual_solution(
+    (collect_solutions) ? problem.get_n_constraints() * max_batch_size : 0, stream);
+  rmm::device_uvector<f_t> full_reduced_cost(
+    (collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
 
   std::vector<
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
     full_info;
   std::vector<pdlp_termination_status_t> full_status;
 
-  pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
-  const auto original_new_bounds                  = batch_settings.new_bounds;
-  batch_settings.method                           = cuopt::linear_programming::method_t::PDLP;
-  batch_settings.presolver                        = presolver_t::None;
-  batch_settings.pdlp_solver_mode                 = pdlp_solver_mode_t::Stable3;
-  batch_settings.detect_infeasibility             = false;
-  batch_settings.iteration_limit                  = batch_iteration_limit;
-  batch_settings.inside_mip                       = true;
-  batch_settings.tolerances.absolute_dual_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.relative_dual_tolerance = pdlp_tolerance;
+  pdlp_solver_settings_t<i_t, f_t> batch_settings     = settings;
+  const auto original_new_bounds                      = batch_settings.new_bounds;
+  batch_settings.method                               = cuopt::linear_programming::method_t::PDLP;
+  batch_settings.presolver                            = presolver_t::None;
+  batch_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable3;
+  batch_settings.detect_infeasibility                 = false;
+  batch_settings.iteration_limit                      = batch_iteration_limit;
+  batch_settings.inside_mip                           = true;
+  batch_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
+  batch_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
   batch_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
   batch_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.absolute_gap_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.relative_gap_tolerance = pdlp_tolerance;
+  batch_settings.tolerances.absolute_gap_tolerance    = pdlp_tolerance;
+  batch_settings.tolerances.relative_gap_tolerance    = pdlp_tolerance;
   if (initial_primal.size() > 0) {
     batch_settings.set_initial_primal_solution(
       initial_primal.data(), initial_primal.size(), initial_primal.stream());
@@ -1030,9 +1031,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     batch_settings.set_initial_dual_solution(
       initial_dual.data(), initial_dual.size(), initial_dual.stream());
   }
-  if (!std::isnan(initial_step_size)) {
-    batch_settings.set_initial_step_size(initial_step_size);
-  }
+  if (!std::isnan(initial_step_size)) { batch_settings.set_initial_step_size(initial_step_size); }
   if (initial_pdlp_iteration != -1) {
     batch_settings.set_initial_pdlp_iteration(initial_pdlp_iteration);
   }
@@ -1047,26 +1046,24 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
       original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
 
     if (settings.shared_sb_view.is_valid()) {
-      batch_settings.shared_sb_view =
-        settings.shared_sb_view.subview(i, current_batch_size);
+      batch_settings.shared_sb_view = settings.shared_sb_view.subview(i, current_batch_size);
     }
 
     auto sol = solve_lp(problem, batch_settings);
 
-    
     if (collect_solutions) {
       raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
-      sol.get_primal_solution().data(),
-      sol.get_primal_solution().size(),
-      stream);
+                 sol.get_primal_solution().data(),
+                 sol.get_primal_solution().size(),
+                 stream);
       raft::copy(full_dual_solution.data() + i * problem.get_n_constraints(),
-      sol.get_dual_solution().data(),
-      sol.get_dual_solution().size(),
-      stream);
+                 sol.get_dual_solution().data(),
+                 sol.get_dual_solution().size(),
+                 stream);
       raft::copy(full_reduced_cost.data() + i * problem.get_n_variables(),
-      sol.get_reduced_cost().data(),
-      sol.get_reduced_cost().size(),
-      stream);
+                 sol.get_reduced_cost().data(),
+                 sol.get_reduced_cost().size(),
+                 stream);
     }
     auto info = sol.get_additional_termination_informations();
     full_info.insert(full_info.end(), info.begin(), info.end());

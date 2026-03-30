@@ -779,18 +779,19 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
   // Sync external solved status into internal termination strategy before all_done() check
   if (settings_.shared_sb_view.is_valid()) {
     for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-      // If PDLP has solved it to optimality we want to keep it and resolved both solvers having solved the problem later
+      // If PDLP has solved it to optimality we want to keep it and resolved both solvers having
+      // solved the problem later
       if (current_termination_strategy_.is_done(
             current_termination_strategy_.get_termination_status(i)))
         continue;
       const i_t local_idx = climber_strategies_[i].original_index;
       if (settings_.shared_sb_view.is_solved(local_idx)) {
-        current_termination_strategy_.set_termination_status(i,
-          pdlp_termination_status_t::ConcurrentLimit);
+        current_termination_strategy_.set_termination_status(
+          i, pdlp_termination_status_t::ConcurrentLimit);
 #ifdef BATCH_VERBOSE_MODE
-        std::cout << "[COOP SB] DS already solved climber " << i << " (original_index "
-                  << local_idx << "), synced to ConcurrentLimit at step "
-                  << internal_solver_iterations_ << std::endl;
+        std::cout << "[COOP SB] DS already solved climber " << i << " (original_index " << local_idx
+                  << "), synced to ConcurrentLimit at step " << internal_solver_iterations_
+                  << std::endl;
 #endif
       }
     }
@@ -1863,7 +1864,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       &new_buf_size,
       stream_view_));
     current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.resize(new_buf_size,
-                                                                              stream_view_);
+                                                                               stream_view_);
 
     // Convergence info: A * batch_primal_solutions -> batch_tmp_duals
     RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
@@ -1879,7 +1880,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       &new_buf_size,
       stream_view_));
     current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.resize(new_buf_size,
-                                                                                  stream_view_);
+                                                                                   stream_view_);
   }
 
   // Rerun preprocess
@@ -2315,13 +2316,16 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   }
   if (settings_.get_initial_pdlp_iteration().has_value()) {
     total_pdlp_iterations_ = settings_.get_initial_pdlp_iteration().value();
-    // This is meaningless in batch mode since pdhg step is never used, set it just to avoid assertions
-    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_, stream_view_);
+    // This is meaningless in batch mode since pdhg step is never used, set it just to avoid
+    // assertions
+    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_,
+                                                               stream_view_);
     pdhg_solver_.total_pdhg_iterations_ = total_pdlp_iterations_;
-    // Reset the fixed point error since at this pdlp iteration it is expected to already be initialized to some value
+    // Reset the fixed point error since at this pdlp iteration it is expected to already be
+    // initialized to some value
     std::fill(restart_strategy_.initial_fixed_point_error_.begin(),
-    restart_strategy_.initial_fixed_point_error_.end(),
-    f_t(0.0));
+              restart_strategy_.initial_fixed_point_error_.end(),
+              f_t(0.0));
     std::fill(restart_strategy_.fixed_point_error_.begin(),
               restart_strategy_.fixed_point_error_.end(),
               f_t(0.0));
@@ -2472,8 +2476,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     if (is_major_iteration || artificial_restart_check_main_loop || error_occured ||
         is_conditional_major) {
       if (verbose) {
-          std::cout << "-------------------------------" << std::endl;
-          std::cout << internal_solver_iterations_ << std::endl;
+        std::cout << "-------------------------------" << std::endl;
+        std::cout << internal_solver_iterations_ << std::endl;
         raft::print_device_vector("step_size", step_size_.data(), step_size_.size(), std::cout);
         raft::print_device_vector(
           "primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);

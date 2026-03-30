@@ -1680,11 +1680,11 @@ TEST(pdlp_class, strong_branching_test)
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
 
-  auto solver_settings                                  = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method                                = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode                      = pdlp_solver_mode_t::Stable3;
-  solver_settings.presolver                             = cuopt::linear_programming::presolver_t::None;
-  solver_settings.generate_batch_primal_dual_solution   = true;
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  solver_settings.generate_batch_primal_dual_solution = true;
 
   const int n_fractional = fractional.size();
   const int batch_size   = n_fractional * 2;
@@ -2170,11 +2170,11 @@ TEST(pdlp_class, shared_sb_view_subbatch)
   const int n_fractional                = fractional.size();
   const int batch_size                  = n_fractional * 2;
 
-  auto solver_settings                   = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method                 = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode       = pdlp_solver_mode_t::Stable3;
-  solver_settings.presolver              = cuopt::linear_programming::presolver_t::None;
-  solver_settings.sub_batch_size         = 2;
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  solver_settings.sub_batch_size   = 2;
 
   shared_strong_branching_context_t<int, double> ctx(batch_size);
 
@@ -2227,9 +2227,7 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
   solver_settings.iteration_limit  = 1000000;
 
   for (int i = 0; i < n_fractional; ++i)
-    solver_settings.new_bounds.push_back({fractional[0],
-                                          -5,
-                                          -5});
+    solver_settings.new_bounds.push_back({fractional[0], -5, -5});
 
   for (int i = 0; i < n_fractional; ++i)
     solver_settings.new_bounds.push_back({fractional[i],
@@ -2266,7 +2264,9 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
     // Each entry should be either Optimal (PDLP solved it first) or ConcurrentLimit (DS marked it)
     EXPECT_TRUE(status == pdlp_termination_status_t::Optimal ||
                 status == pdlp_termination_status_t::ConcurrentLimit)
-      << "Entry " << i << " has unexpected status " << cuopt::linear_programming::optimization_problem_solution_t<int, double>::get_termination_status_string(status);
+      << "Entry " << i << " has unexpected status "
+      << cuopt::linear_programming::optimization_problem_solution_t<int, double>::
+           get_termination_status_string(status);
   }
 
   // All entries should end up marked solved
@@ -2298,9 +2298,7 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   solver_settings.iteration_limit  = 1000000;
 
   for (int i = 0; i < n_fractional; ++i)
-    solver_settings.new_bounds.push_back({fractional[0],
-                                          -5,
-                                          -5});
+    solver_settings.new_bounds.push_back({fractional[0], -5, -5});
 
   shared_strong_branching_context_t<int, double> ctx(batch_size);
 
@@ -2331,7 +2329,9 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
     auto status = solution.get_termination_status(i);
     // Each entry should be either Optimal (PDLP solved it first) or ConcurrentLimit (DS marked it)
     EXPECT_TRUE(status == pdlp_termination_status_t::ConcurrentLimit)
-      << "Entry " << i << " has unexpected status " << cuopt::linear_programming::optimization_problem_solution_t<int, double>::get_termination_status_string(status);
+      << "Entry " << i << " has unexpected status "
+      << cuopt::linear_programming::optimization_problem_solution_t<int, double>::
+           get_termination_status_string(status);
   }
 
   // All entries should end up marked solved

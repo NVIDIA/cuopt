@@ -125,9 +125,10 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::get_termination
 }
 
 template <typename i_t, typename f_t>
-void pdlp_termination_strategy_t<i_t, f_t>::set_termination_status(
-  i_t id, pdlp_termination_status_t status)
+void pdlp_termination_strategy_t<i_t, f_t>::set_termination_status(i_t id,
+                                                                   pdlp_termination_status_t status)
 {
+  cuopt_assert(id < termination_status_.size(), "id too big for batch size");
   termination_status_[id] = (i_t)status;
 }
 
