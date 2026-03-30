@@ -24,6 +24,11 @@ constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 // without B&B depending on PDLP types.
 template <typename i_t, typename f_t>
 struct root_relaxation_first_solution_t {
+  /// Inner PDLP/Barrier termination reported optimal (may still be pre-crossover).
+  bool is_optimal{false};
+  /// True only when vectors are an optimal root relaxation on a basis (dual simplex optimal
+  /// root, or equivalently post-crossover). False for PDLP/Barrier inner iterates before crossover.
+  bool has_optimal_basis_relaxation{false};
   std::vector<f_t> primal;
   std::vector<f_t> dual;
   std::vector<f_t> reduced_costs;
