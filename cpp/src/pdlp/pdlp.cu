@@ -777,7 +777,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
 #endif
 
   // Sync external solved status into internal termination strategy before all_done() check
-  if (settings_.shared_sb_view.is_valid()) {
+  if (sb_view_.is_valid()) {
     for (size_t i = 0; i < climber_strategies_.size(); ++i) {
       // If PDLP has solved it to optimality we want to keep it and resolved both solvers having
       // solved the problem later
@@ -785,7 +785,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
             current_termination_strategy_.get_termination_status(i)))
         continue;
       const i_t local_idx = climber_strategies_[i].original_index;
-      if (settings_.shared_sb_view.is_solved(local_idx)) {
+      if (sb_view_.is_solved(local_idx)) {
         current_termination_strategy_.set_termination_status(
           i, pdlp_termination_status_t::ConcurrentLimit);
 #ifdef BATCH_VERBOSE_MODE
@@ -844,9 +844,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
                              pdlp_termination_status_t::ConcurrentLimit);
-        if (settings_.shared_sb_view.is_valid()) {
-          settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
-        }
+        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
       current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -863,9 +861,9 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         std::move(batch_solution_to_return_.get_additional_termination_informations()),
         std::move(batch_solution_to_return_.get_terminations_status())};
     }
-    if (settings_.shared_sb_view.is_valid()) {
+    if (sb_view_.is_valid()) {
       for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-        settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
+        sb_view_.mark_solved(climber_strategies_[i].original_index);
       }
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -923,9 +921,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
                              pdlp_termination_status_t::ConcurrentLimit);
-        if (settings_.shared_sb_view.is_valid()) {
-          settings_.shared_sb_view.mark_solved(climber_strategies_[i].original_index);
-        }
+        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
     }
     if (to_remove.size() > 0) {

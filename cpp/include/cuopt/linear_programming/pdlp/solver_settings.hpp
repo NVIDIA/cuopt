@@ -17,8 +17,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
-
-#include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <span>
 
 namespace cuopt::linear_programming {
 
@@ -275,8 +274,8 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
-  // Shared strong branching context view for cooperative DS + PDLP
-  dual_simplex::shared_strong_branching_context_view_t<i_t, f_t> shared_sb_view;
+  // Shared strong branching solved flags for cooperative DS + PDLP
+  std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
   // Holds the information of new variable lower and upper bounds for each climber in the format:

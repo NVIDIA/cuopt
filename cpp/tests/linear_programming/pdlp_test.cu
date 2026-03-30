@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <mps_parser.hpp>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp.cuh>
@@ -45,8 +46,6 @@
 #include <sstream>
 #include <thread>
 #include <vector>
-
-#include <branch_and_bound/shared_strong_branching_context.hpp>
 
 namespace cuopt::linear_programming::test {
 
@@ -2057,7 +2056,7 @@ TEST(pdlp_class, shared_sb_context_unit)
 
   constexpr int N = 10;
   shared_strong_branching_context_t<int, double> ctx(N);
-  shared_strong_branching_context_view_t<int, double> view(std::span(ctx.solved));
+  shared_strong_branching_context_view_t<int, double> view(ctx.solved);
 
   EXPECT_TRUE(view.is_valid());
 
@@ -2127,14 +2126,14 @@ TEST(pdlp_class, shared_sb_view_batch_pre_solved)
                                           std::ceil(root_soln_x[i]),
                                           op_problem.get_variable_upper_bounds()[fractional[i]]});
 
-  shared_strong_branching_context_t<int, double> ctx(batch_size);
+  shared_strong_branching_context_t<int, double> shared_ctx(batch_size);
+  shared_strong_branching_context_view_t<int, double> sb_view(shared_ctx.solved);
 
   // Pre-mark entries 1 and 4 as solved (simulating DS)
-  ctx.solved[1].store(1);
-  ctx.solved[4].store(1);
+  sb_view.mark_solved(1);
+  sb_view.mark_solved(4);
 
-  solver_settings.shared_sb_view =
-    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+  solver_settings.shared_sb_solved = sb_view.solved;
 
   auto solution = solve_lp(&handle_, op_problem, solver_settings);
 
@@ -2152,7 +2151,7 @@ TEST(pdlp_class, shared_sb_view_batch_pre_solved)
 
   // All entries should now be marked solved in the shared context
   for (int i = 0; i < batch_size; ++i) {
-    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+    EXPECT_TRUE(sb_view.is_solved(i)) << "Entry " << i << " should be solved";
   }
 }
 
@@ -2176,14 +2175,14 @@ TEST(pdlp_class, shared_sb_view_subbatch)
   solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
   solver_settings.sub_batch_size   = 2;
 
-  shared_strong_branching_context_t<int, double> ctx(batch_size);
+  shared_strong_branching_context_t<int, double> shared_ctx(batch_size);
+  shared_strong_branching_context_view_t<int, double> sb_view(shared_ctx.solved);
 
   // Pre-mark one entry in each sub-batch of size 2: indices 1, 4
-  ctx.solved[1].store(1);
-  ctx.solved[4].store(1);
+  sb_view.mark_solved(1);
+  sb_view.mark_solved(4);
 
-  solver_settings.shared_sb_view =
-    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+  solver_settings.shared_sb_solved = sb_view.solved;
 
   auto solution = batch_pdlp_solve(&handle_, op_problem, fractional, root_soln_x, solver_settings);
 
@@ -2202,7 +2201,7 @@ TEST(pdlp_class, shared_sb_view_subbatch)
 
   // All should be marked solved
   for (int i = 0; i < batch_size; ++i) {
-    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+    EXPECT_TRUE(sb_view.is_solved(i)) << "Entry " << i << " should be solved";
   }
 }
 
@@ -2234,10 +2233,10 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
                                           std::ceil(root_soln_x[i]),
                                           op_problem.get_variable_upper_bounds()[fractional[i]]});
 
-  shared_strong_branching_context_t<int, double> ctx(batch_size);
+  shared_strong_branching_context_t<int, double> shared_ctx(batch_size);
+  shared_strong_branching_context_view_t<int, double> sb_view(shared_ctx.solved);
 
-  solver_settings.shared_sb_view =
-    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+  solver_settings.shared_sb_solved = sb_view.solved;
 
   optimization_problem_solution_t<int, double>* result_ptr = nullptr;
 
@@ -2250,7 +2249,7 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
   // Wait a bit then mark entries 0, 2, 4 as solved (simulating DS)
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   for (int i = 0; i < n_fractional; ++i)
-    ctx.solved[i].store(1);
+    sb_view.mark_solved(i);
 
   pdlp_thread.join();
 
@@ -2271,7 +2270,7 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
 
   // All entries should end up marked solved
   for (int i = 0; i < batch_size; ++i) {
-    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+    EXPECT_TRUE(sb_view.is_solved(i)) << "Entry " << i << " should be solved";
   }
 
   delete result_ptr;
@@ -2300,10 +2299,10 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   for (int i = 0; i < n_fractional; ++i)
     solver_settings.new_bounds.push_back({fractional[0], -5, -5});
 
-  shared_strong_branching_context_t<int, double> ctx(batch_size);
+  shared_strong_branching_context_t<int, double> shared_ctx(batch_size);
+  shared_strong_branching_context_view_t<int, double> sb_view(shared_ctx.solved);
 
-  solver_settings.shared_sb_view =
-    shared_strong_branching_context_view_t<int, double>(std::span(ctx.solved));
+  solver_settings.shared_sb_solved = sb_view.solved;
 
   optimization_problem_solution_t<int, double>* result_ptr = nullptr;
 
@@ -2316,7 +2315,7 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   // Wait a bit then mark entries 0, 2, 4 as solved (simulating DS)
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   for (int i = 0; i < n_fractional; ++i)
-    ctx.solved[i].store(1);
+    sb_view.mark_solved(i);
 
   pdlp_thread.join();
 
@@ -2336,7 +2335,7 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
 
   // All entries should end up marked solved
   for (int i = 0; i < batch_size; ++i) {
-    EXPECT_TRUE(ctx.solved[i].load() != 0) << "Entry " << i << " should be solved";
+    EXPECT_TRUE(sb_view.is_solved(i)) << "Entry " << i << " should be solved";
   }
 
   delete result_ptr;

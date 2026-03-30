@@ -1045,8 +1045,8 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
       original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
 
-    if (settings.shared_sb_view.is_valid()) {
-      batch_settings.shared_sb_view = settings.shared_sb_view.subview(i, current_batch_size);
+    if (!settings.shared_sb_solved.empty()) {
+      batch_settings.shared_sb_solved = settings.shared_sb_solved.subspan(i, current_batch_size);
     }
 
     auto sol = solve_lp(problem, batch_settings);

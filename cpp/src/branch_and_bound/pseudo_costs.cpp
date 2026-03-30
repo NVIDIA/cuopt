@@ -157,7 +157,7 @@ void strong_branch_helper(i_t start,
       }
       // Mark the subproblem as solved so that batch PDLP removes it from the batch
       if (sb_view.is_valid()) {
-        // We could not mark as solved nodes hitting iteartion limit in DS
+        // We could not mark as solved nodes hitting iteration limit in DS
         if ((branch == 0 && is_dual_simplex_done(ds_status_down[k])) ||
             (branch == 1 && is_dual_simplex_done(ds_status_up[k]))) {
           sb_view.mark_solved(shared_idx);
@@ -427,6 +427,299 @@ static std::pair<f_t, sb_source_t> merge_sb_result(f_t ds_val,
 }
 
 template <typename i_t, typename f_t>
+static void batch_pdlp_strong_branching_task(
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  i_t effective_batch_pdlp,
+  f_t start_time,
+  std::atomic<int>& concurrent_halt,
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<f_t>& root_soln,
+  const std::vector<i_t>& fractional,
+  f_t root_obj,
+  pseudo_costs_t<i_t, f_t>& pc,
+  shared_strong_branching_context_view_t<i_t, f_t>& sb_view,
+  std::vector<f_t>& pdlp_obj_down,
+  std::vector<f_t>& pdlp_obj_up)
+{
+  settings.log.printf(effective_batch_pdlp == 2
+                        ? "Batch PDLP only for strong branching\n"
+                        : "Cooperative batch PDLP and Dual Simplex for strong branching\n");
+
+  f_t start_batch = tic();
+  std::vector<f_t> original_root_soln_x;
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  const auto mps_model =
+    simplex_problem_to_mps_data_model(original_lp, new_slacks, root_soln, original_root_soln_x);
+
+  std::vector<f_t> fraction_values;
+
+  std::vector<f_t> original_root_soln_y, original_root_soln_z;
+  // TODO put back later once Chris has this part
+  /*uncrush_dual_solution(
+    original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y,
+    original_root_soln_z);*/
+
+  for (i_t k = 0; k < fractional.size(); k++) {
+    const i_t j = fractional[k];
+    fraction_values.push_back(original_root_soln_x[j]);
+  }
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  f_t batch_elapsed_time = toc(start_time);
+  const f_t warm_start_remaining_time =
+    std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+  if (warm_start_remaining_time <= 0.0) { return; }
+
+  assert(!pc.pdlp_warm_cache.populated && "PDLP warm cache should not be populated at this point");
+
+  if (!pc.pdlp_warm_cache.populated) {
+    pdlp_solver_settings_t<i_t, f_t> ws_settings;
+    ws_settings.method               = method_t::PDLP;
+    ws_settings.presolver            = presolver_t::None;
+    ws_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
+    ws_settings.detect_infeasibility = false;
+    // Since the warm start will be used over and over again we want to maximize the chance of
+    // convergeance Batch PDLP is very compute intensive so we want to minimize the number of
+    // iterations
+    constexpr int warm_start_iteration_limit         = 500000;
+    ws_settings.iteration_limit                      = warm_start_iteration_limit;
+    ws_settings.time_limit                           = warm_start_remaining_time;
+    constexpr f_t pdlp_tolerance                     = 1e-5;
+    ws_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
+    ws_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
+    ws_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
+    ws_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
+    ws_settings.tolerances.relative_gap_tolerance    = pdlp_tolerance;
+    ws_settings.tolerances.absolute_gap_tolerance    = pdlp_tolerance;
+    ws_settings.inside_mip                           = true;
+    if (effective_batch_pdlp == 1) { ws_settings.concurrent_halt = &concurrent_halt; }
+
+#ifdef BATCH_VERBOSE_MODE
+    auto start_time = std::chrono::high_resolution_clock::now();
+#endif
+
+    auto ws_solution = solve_lp(&pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, ws_settings);
+
+#ifdef BATCH_VERBOSE_MODE
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration =
+      std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    std::cout << "Original problem solved in " << duration << " milliseconds"
+              << " and iterations: "
+              << ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_ << std::endl;
+#endif
+
+    if (ws_solution.get_termination_status() == pdlp_termination_status_t::Optimal) {
+      auto& cache           = pc.pdlp_warm_cache;
+      const auto& ws_primal = ws_solution.get_primal_solution();
+      const auto& ws_dual   = ws_solution.get_dual_solution();
+      // Need to use the pc steam since the batch pdlp handle will get destroyed after the warm
+      // start
+      cache.initial_primal = rmm::device_uvector<f_t>(ws_primal, ws_primal.stream());
+      cache.initial_dual   = rmm::device_uvector<f_t>(ws_dual, ws_dual.stream());
+      cache.step_size      = ws_solution.get_pdlp_warm_start_data().initial_step_size_;
+      cache.primal_weight  = ws_solution.get_pdlp_warm_start_data().initial_primal_weight_;
+      cache.pdlp_iteration = ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
+      cache.populated      = true;
+
+      settings.log.printf(
+        "Cached PDLP warm start: primal=%zu dual=%zu step_size=%e primal_weight=%e iters=%d\n",
+        cache.initial_primal.size(),
+        cache.initial_dual.size(),
+        cache.step_size,
+        cache.primal_weight,
+        cache.pdlp_iteration);
+    } else {
+      settings.log.printf(
+        "PDLP warm start solve did not reach optimality (%s), skipping cache and batch PDLP\n",
+        ws_solution.get_termination_status_string().c_str());
+      return;
+    }
+  }
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+  if (effective_batch_pdlp == 1) {
+    pdlp_settings.concurrent_halt  = &concurrent_halt;
+    pdlp_settings.shared_sb_solved = sb_view.solved;
+  }
+
+  batch_elapsed_time = toc(start_time);
+  const f_t batch_remaining_time =
+    std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+  if (batch_remaining_time <= 0.0) { return; }
+  pdlp_settings.time_limit = batch_remaining_time;
+
+  if (pc.pdlp_warm_cache.populated) {
+    auto& cache = pc.pdlp_warm_cache;
+    pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
+                                              cache.initial_primal.size(),
+                                              cache.batch_pdlp_handle.get_stream());
+    pdlp_settings.set_initial_dual_solution(
+      cache.initial_dual.data(), cache.initial_dual.size(), cache.batch_pdlp_handle.get_stream());
+    pdlp_settings.set_initial_step_size(cache.step_size);
+    pdlp_settings.set_initial_primal_weight(cache.primal_weight);
+    pdlp_settings.set_initial_pdlp_iteration(cache.pdlp_iteration);
+  }
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  const auto solutions = batch_pdlp_solve(
+    &pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
+  f_t batch_pdlp_strong_branching_time = toc(start_batch);
+
+  // Fail safe in case the batch PDLP failed and produced no solutions
+  if (solutions.get_additional_termination_informations().size() != fractional.size() * 2) {
+    settings.log.printf("Batch PDLP failed and produced no solutions\n");
+    return;
+  }
+
+  // Find max iteration on how many are done accross the batch
+  i_t max_iterations = 0;
+  i_t amount_done    = 0;
+  for (i_t k = 0; k < solutions.get_additional_termination_informations().size(); k++) {
+    max_iterations = std::max(
+      max_iterations, solutions.get_additional_termination_information(k).number_of_steps_taken);
+    // TODO batch mode infeasible: should also count as done if infeasible
+    if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+      amount_done++;
+    }
+  }
+
+  settings.log.printf(
+    "Batch PDLP strong branching completed in %.2fs. Solved %d/%d with max %d iterations\n",
+    batch_pdlp_strong_branching_time,
+    amount_done,
+    fractional.size() * 2,
+    max_iterations);
+
+  for (i_t k = 0; k < fractional.size(); k++) {
+    f_t obj_down = (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal)
+                     ? solutions.get_dual_objective_value(k)
+                     : std::numeric_limits<f_t>::quiet_NaN();
+
+    f_t obj_up = (solutions.get_termination_status(k + fractional.size()) ==
+                  pdlp_termination_status_t::Optimal)
+                   ? solutions.get_dual_objective_value(k + fractional.size())
+                   : std::numeric_limits<f_t>::quiet_NaN();
+
+    pdlp_obj_down[k] = std::max(obj_down - root_obj, f_t(0.0));
+    pdlp_obj_up[k]   = std::max(obj_up - root_obj, f_t(0.0));
+  }
+}
+
+template <typename i_t, typename f_t>
+static void batch_pdlp_reliability_branching_task(
+  logger_t& log,
+  i_t rb_mode,
+  i_t num_candidates,
+  f_t start_time,
+  std::atomic<int>& concurrent_halt,
+  const lp_problem_t<i_t, f_t>& original_lp,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<f_t>& solution,
+  branch_and_bound_worker_t<i_t, f_t>* worker,
+  const std::vector<i_t>& candidate_vars,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  shared_strong_branching_context_view_t<i_t, f_t>& sb_view,
+  batch_pdlp_warm_cache_t<i_t, f_t>& pdlp_warm_cache,
+  std::vector<f_t>& pdlp_obj_down,
+  std::vector<f_t>& pdlp_obj_up)
+{
+  log.printf(rb_mode == 2 ? "RB batch PDLP only for %d candidates\n"
+                          : "RB cooperative batch PDLP and DS for %d candidates\n",
+             num_candidates);
+
+  f_t start_batch = tic();
+
+  std::vector<f_t> original_soln_x;
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  auto mps_model =
+    simplex_problem_to_mps_data_model(original_lp, new_slacks, solution, original_soln_x);
+  {
+    const i_t n_orig = original_lp.num_cols - new_slacks.size();
+    for (i_t j = 0; j < n_orig; j++) {
+      mps_model.variable_lower_bounds_[j] = worker->leaf_problem.lower[j];
+      mps_model.variable_upper_bounds_[j] = worker->leaf_problem.upper[j];
+    }
+  }
+
+  std::vector<f_t> fraction_values;
+  fraction_values.reserve(num_candidates);
+  for (i_t j : candidate_vars) {
+    fraction_values.push_back(original_soln_x[j]);
+  }
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  const f_t batch_elapsed_time = toc(start_time);
+  const f_t batch_remaining_time =
+    std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
+  if (batch_remaining_time <= 0.0) { return; }
+
+  pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
+  if (rb_mode == 1) {
+    pdlp_settings.concurrent_halt  = &concurrent_halt;
+    pdlp_settings.shared_sb_solved = sb_view.solved;
+  }
+  pdlp_settings.time_limit = batch_remaining_time;
+
+  if (pdlp_warm_cache.populated) {
+    auto& cache = pdlp_warm_cache;
+    pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
+                                              cache.initial_primal.size(),
+                                              cache.batch_pdlp_handle.get_stream());
+    pdlp_settings.set_initial_dual_solution(
+      cache.initial_dual.data(), cache.initial_dual.size(), cache.batch_pdlp_handle.get_stream());
+    pdlp_settings.set_initial_step_size(cache.step_size);
+    pdlp_settings.set_initial_primal_weight(cache.primal_weight);
+    pdlp_settings.set_initial_pdlp_iteration(cache.pdlp_iteration);
+  }
+
+  if (concurrent_halt.load() == 1) { return; }
+
+  const auto solutions = batch_pdlp_solve(
+    &pdlp_warm_cache.batch_pdlp_handle, mps_model, candidate_vars, fraction_values, pdlp_settings);
+
+  f_t batch_pdlp_time = toc(start_batch);
+
+  if (solutions.get_additional_termination_informations().size() !=
+      static_cast<size_t>(num_candidates) * 2) {
+    log.printf("RB batch PDLP failed and produced no solutions\n");
+    return;
+  }
+
+  i_t amount_done = 0;
+  for (i_t k = 0; k < num_candidates * 2; k++) {
+    if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+      amount_done++;
+    }
+  }
+
+  log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
+             batch_pdlp_time,
+             amount_done,
+             num_candidates * 2);
+
+  for (i_t k = 0; k < num_candidates; k++) {
+    if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+      pdlp_obj_down[k] = solutions.get_dual_objective_value(k);
+    }
+    if (solutions.get_termination_status(k + num_candidates) ==
+        pdlp_termination_status_t::Optimal) {
+      pdlp_obj_up[k] = solutions.get_dual_objective_value(k + num_candidates);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
                       f_t start_time,
@@ -450,7 +743,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   if (elapsed_time > settings.time_limit) { return; }
 
   const i_t effective_batch_pdlp =
-    (settings.sub_mip || settings.deterministic) ? 0 : settings.mip_batch_pdlp_strong_branching;
+    (settings.sub_mip || (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1))
+      ? 0
+      : settings.mip_batch_pdlp_strong_branching;
 
   if (settings.mip_batch_pdlp_strong_branching != 0 &&
       (settings.sub_mip || settings.deterministic)) {
@@ -464,200 +759,29 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
   // Cooperative DS + PDLP: shared context tracks which subproblems are solved
   shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * fractional.size());
-  shared_strong_branching_context_view_t<i_t, f_t> sb_view(std::span(shared_ctx.solved));
+  shared_strong_branching_context_view_t<i_t, f_t> sb_view(shared_ctx.solved);
 
   std::atomic<int> concurrent_halt{0};
 
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
 
-  auto pdlp_thread = std::thread([&]() {
-    if (effective_batch_pdlp == 0) return;
-
-    settings.log.printf(effective_batch_pdlp == 2
-                          ? "Batch PDLP only for strong branching\n"
-                          : "Cooperative batch PDLP and Dual Simplex for strong branching\n");
-
-    f_t start_batch = tic();
-    std::vector<f_t> original_root_soln_x;
-
-    if (concurrent_halt.load() == 1) { return; }
-
-    const auto mps_model =
-      simplex_problem_to_mps_data_model(original_lp, new_slacks, root_soln, original_root_soln_x);
-
-    std::vector<f_t> fraction_values;
-
-    std::vector<f_t> original_root_soln_y, original_root_soln_z;
-    // TODO put back later once Chris has this part
-    /*uncrush_dual_solution(
-      original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y,
-      original_root_soln_z);*/
-
-    for (i_t k = 0; k < fractional.size(); k++) {
-      const i_t j = fractional[k];
-      fraction_values.push_back(original_root_soln_x[j]);
-    }
-
-    if (concurrent_halt.load() == 1) { return; }
-
-    f_t batch_elapsed_time = toc(start_time);
-    const f_t warm_start_remaining_time =
-      std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
-    if (warm_start_remaining_time <= 0.0) { return; }
-
-    assert(!pc.pdlp_warm_cache.populated &&
-           "PDLP warm cache should not be populated at this point");
-
-    if (!pc.pdlp_warm_cache.populated) {
-      pdlp_solver_settings_t<i_t, f_t> ws_settings;
-      ws_settings.method               = method_t::PDLP;
-      ws_settings.presolver            = presolver_t::None;
-      ws_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
-      ws_settings.detect_infeasibility = false;
-      // Since the warm start will be used over and over again we want to maximize the chance of
-      // convergeance Batch PDLP is very compute intensive so we want to minimize the number of
-      // iterations
-      constexpr int warm_start_iteration_limit         = 500000;
-      ws_settings.iteration_limit                      = warm_start_iteration_limit;
-      ws_settings.time_limit                           = warm_start_remaining_time;
-      constexpr f_t pdlp_tolerance                     = 1e-5;
-      ws_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
-      ws_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
-      ws_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
-      ws_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
-      ws_settings.tolerances.relative_gap_tolerance    = pdlp_tolerance;
-      ws_settings.tolerances.absolute_gap_tolerance    = pdlp_tolerance;
-      ws_settings.inside_mip                           = true;
-      if (effective_batch_pdlp == 1) { ws_settings.concurrent_halt = &concurrent_halt; }
-
-#ifdef BATCH_VERBOSE_MODE
-      auto start_time = std::chrono::high_resolution_clock::now();
-#endif
-
-      auto ws_solution = solve_lp(&pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, ws_settings);
-
-#ifdef BATCH_VERBOSE_MODE
-      auto end_time = std::chrono::high_resolution_clock::now();
-      auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-      std::cout << "Original problem solved in " << duration << " milliseconds"
-                << " and iterations: "
-                << ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_ << std::endl;
-#endif
-
-      if (ws_solution.get_termination_status() == pdlp_termination_status_t::Optimal) {
-        auto& cache           = pc.pdlp_warm_cache;
-        const auto& ws_primal = ws_solution.get_primal_solution();
-        const auto& ws_dual   = ws_solution.get_dual_solution();
-        // Need to use the pc steam since the batch pdlp handle will get destroyed after the warm
-        // start
-        cache.initial_primal = rmm::device_uvector<f_t>(ws_primal, ws_primal.stream());
-        cache.initial_dual   = rmm::device_uvector<f_t>(ws_dual, ws_dual.stream());
-        cache.step_size      = ws_solution.get_pdlp_warm_start_data().initial_step_size_;
-        cache.primal_weight  = ws_solution.get_pdlp_warm_start_data().initial_primal_weight_;
-        cache.pdlp_iteration = ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
-        cache.populated      = true;
-
-        settings.log.printf(
-          "Cached PDLP warm start: primal=%zu dual=%zu step_size=%e primal_weight=%e iters=%d\n",
-          cache.initial_primal.size(),
-          cache.initial_dual.size(),
-          cache.step_size,
-          cache.primal_weight,
-          cache.pdlp_iteration);
-      } else {
-        settings.log.printf(
-          "PDLP warm start solve did not reach optimality (%s), skipping cache and batch PDLP\n",
-          ws_solution.get_termination_status_string().c_str());
-        return;
-      }
-    }
-
-    if (concurrent_halt.load() == 1) { return; }
-
-    pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-    if (effective_batch_pdlp == 1) {
-      pdlp_settings.concurrent_halt = &concurrent_halt;
-      pdlp_settings.shared_sb_view  = sb_view;
-    }
-
-    batch_elapsed_time = toc(start_time);
-    const f_t batch_remaining_time =
-      std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
-    if (batch_remaining_time <= 0.0) { return; }
-    pdlp_settings.time_limit = batch_remaining_time;
-
-    if (pc.pdlp_warm_cache.populated) {
-      auto& cache = pc.pdlp_warm_cache;
-      pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
-                                                cache.initial_primal.size(),
-                                                cache.batch_pdlp_handle.get_stream());
-      pdlp_settings.set_initial_dual_solution(
-        cache.initial_dual.data(), cache.initial_dual.size(), cache.batch_pdlp_handle.get_stream());
-      pdlp_settings.set_initial_step_size(cache.step_size);
-      pdlp_settings.set_initial_primal_weight(cache.primal_weight);
-      pdlp_settings.set_initial_pdlp_iteration(cache.pdlp_iteration);
-    }
-
-    if (concurrent_halt.load() == 1) { return; }
-
-    const auto solutions = batch_pdlp_solve(
-      &pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, fractional, fraction_values, pdlp_settings);
-    f_t batch_pdlp_strong_branching_time = toc(start_batch);
-
-    // Fail safe in case the batch PDLP failed and produced no solutions
-    if (solutions.get_additional_termination_informations().size() != fractional.size() * 2) {
-      settings.log.printf("Batch PDLP failed and produced no solutions\n");
-      return;
-    }
-
-    // Find max iteration on how many are done accross the batch
-    i_t max_iterations = 0;
-    i_t amount_done    = 0;
-    for (i_t k = 0; k < solutions.get_additional_termination_informations().size(); k++) {
-      max_iterations = std::max(
-        max_iterations, solutions.get_additional_termination_information(k).number_of_steps_taken);
-      // TODO batch mode infeasible: should also count as done if infeasible
-      if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-        amount_done++;
-      }
-    }
-
-    settings.log.printf(
-      "Batch PDLP strong branching completed in %.2fs. Solved %d/%d with max %d iterations\n",
-      batch_pdlp_strong_branching_time,
-      amount_done,
-      fractional.size() * 2,
-      max_iterations);
-
-    for (i_t k = 0; k < fractional.size(); k++) {
-      // Call BatchLP solver. Solve 2*fractional.size() subproblems.
-      // Let j = fractional[k]. We want to solve the two trial branching problems
-      // Branch down:
-      // minimize c^T x
-      // subject to lb <= A*x <= ub
-      // x_j <= floor(root_soln[j])
-      // l <= x < u
-      // Let the optimal objective value of thie problem be obj_down
-      f_t obj_down = (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal)
-                       ? solutions.get_dual_objective_value(k)
-                       : std::numeric_limits<f_t>::quiet_NaN();
-
-      // Branch up:
-      // minimize c^T x
-      // subject to lb <= A*x <= ub
-      // x_j >= ceil(root_soln[j])
-      // Let the optimal objective value of thie problem be obj_up
-      f_t obj_up = (solutions.get_termination_status(k + fractional.size()) ==
-                    pdlp_termination_status_t::Optimal)
-                     ? solutions.get_dual_objective_value(k + fractional.size())
-                     : std::numeric_limits<f_t>::quiet_NaN();
-
-      pdlp_obj_down[k] = std::max(obj_down - root_obj, f_t(0.0));
-      pdlp_obj_up[k]   = std::max(obj_up - root_obj, f_t(0.0));
-    }
-  });
+  if (effective_batch_pdlp != 0) {
+#pragma omp task default(shared)
+    batch_pdlp_strong_branching_task(settings,
+                                     effective_batch_pdlp,
+                                     start_time,
+                                     concurrent_halt,
+                                     original_lp,
+                                     new_slacks,
+                                     root_soln,
+                                     fractional,
+                                     root_obj,
+                                     pc,
+                                     sb_view,
+                                     pdlp_obj_down,
+                                     pdlp_obj_up);
+  }
 
   std::vector<dual::status_t> ds_status_down(fractional.size(), dual::status_t::UNSET);
   std::vector<dual::status_t> ds_status_up(fractional.size(), dual::status_t::UNSET);
@@ -712,7 +836,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     concurrent_halt.store(1);
   }
 
-  pdlp_thread.join();
+  if (effective_batch_pdlp != 0) {
+#pragma omp taskwait
+  }
 
   settings.log.printf("Strong branching took %.2fs\n", toc(dual_simplex_strong_branching_time));
 
@@ -1062,114 +1188,37 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Shared context for cooperative work-stealing (mode 1)
   // [0..num_candidates) = down, [num_candidates..2*num_candidates) = up
   shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * num_candidates);
-  shared_strong_branching_context_view_t<i_t, f_t> sb_view(std::span(shared_ctx.solved));
+  shared_strong_branching_context_view_t<i_t, f_t> sb_view(shared_ctx.solved);
 
   std::vector<f_t> pdlp_obj_down(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
 
   std::atomic<int> concurrent_halt{0};
-  std::thread pdlp_thread;
 
   if (use_pdlp) {
-    pdlp_thread = std::thread([&]() {
-      log.printf(rb_mode == 2 ? "RB batch PDLP only for %d candidates\n"
-                              : "RB cooperative batch PDLP and DS for %d candidates\n",
-                 num_candidates);
-
-      f_t start_batch = tic();
-
-      std::vector<f_t> original_soln_x;
-
-      if (concurrent_halt.load() == 1) { return; }
-
-      auto mps_model =
-        simplex_problem_to_mps_data_model(original_lp, new_slacks, solution, original_soln_x);
-      {
-        const i_t n_orig = original_lp.num_cols - new_slacks.size();
-        for (i_t j = 0; j < n_orig; j++) {
-          mps_model.variable_lower_bounds_[j] = worker->leaf_problem.lower[j];
-          mps_model.variable_upper_bounds_[j] = worker->leaf_problem.upper[j];
-        }
-      }
-
-      std::vector<f_t> fraction_values;
-      fraction_values.reserve(num_candidates);
-      for (i_t j : candidate_vars) {
-        fraction_values.push_back(original_soln_x[j]);
-      }
-
-      if (concurrent_halt.load() == 1) { return; }
-
-      const f_t batch_elapsed_time = toc(start_time);
-      const f_t batch_remaining_time =
-        std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
-      if (batch_remaining_time <= 0.0) { return; }
-
-      pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
-      if (rb_mode == 1) {
-        pdlp_settings.concurrent_halt = &concurrent_halt;
-        pdlp_settings.shared_sb_view  = sb_view;
-      }
-      pdlp_settings.time_limit = batch_remaining_time;
-
-      if (pdlp_warm_cache.populated) {
-        auto& cache = pdlp_warm_cache;
-        pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
-                                                  cache.initial_primal.size(),
-                                                  cache.batch_pdlp_handle.get_stream());
-        pdlp_settings.set_initial_dual_solution(cache.initial_dual.data(),
-                                                cache.initial_dual.size(),
-                                                cache.batch_pdlp_handle.get_stream());
-        pdlp_settings.set_initial_step_size(cache.step_size);
-        pdlp_settings.set_initial_primal_weight(cache.primal_weight);
-        pdlp_settings.set_initial_pdlp_iteration(cache.pdlp_iteration);
-      }
-
-      if (concurrent_halt.load() == 1) { return; }
-
-      const auto solutions = batch_pdlp_solve(&pdlp_warm_cache.batch_pdlp_handle,
-                                              mps_model,
-                                              candidate_vars,
-                                              fraction_values,
-                                              pdlp_settings);
-
-      f_t batch_pdlp_time = toc(start_batch);
-
-      if (solutions.get_additional_termination_informations().size() !=
-          static_cast<size_t>(num_candidates) * 2) {
-        log.printf("RB batch PDLP failed and produced no solutions\n");
-        return;
-      }
-
-      i_t amount_done = 0;
-      for (i_t k = 0; k < num_candidates * 2; k++) {
-        if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-          amount_done++;
-        }
-      }
-
-      log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
-                 batch_pdlp_time,
-                 amount_done,
-                 num_candidates * 2);
-
-      for (i_t k = 0; k < num_candidates; k++) {
-        if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-          pdlp_obj_down[k] = solutions.get_dual_objective_value(k);
-        }
-        if (solutions.get_termination_status(k + num_candidates) ==
-            pdlp_termination_status_t::Optimal) {
-          pdlp_obj_up[k] = solutions.get_dual_objective_value(k + num_candidates);
-        }
-      }
-    });
+#pragma omp task default(shared)
+    batch_pdlp_reliability_branching_task(log,
+                                          rb_mode,
+                                          num_candidates,
+                                          start_time,
+                                          concurrent_halt,
+                                          original_lp,
+                                          new_slacks,
+                                          solution,
+                                          worker,
+                                          candidate_vars,
+                                          settings,
+                                          sb_view,
+                                          pdlp_warm_cache,
+                                          pdlp_obj_down,
+                                          pdlp_obj_up);
   }
 
   if (toc(start_time) > settings.time_limit) {
     log.printf("Time limit reached\n");
     if (use_pdlp) {
       concurrent_halt.store(1);
-      pdlp_thread.join();
+#pragma omp taskwait
     }
     return branch_var;
   }
@@ -1307,7 +1356,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   //}
 
   if (use_pdlp) {
-    pdlp_thread.join();
+#pragma omp taskwait
 
     i_t pdlp_applied = 0;
     i_t pdlp_optimal = 0;
