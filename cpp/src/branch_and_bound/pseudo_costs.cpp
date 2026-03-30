@@ -442,7 +442,14 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   const f_t elapsed_time = toc(start_time);
   if (elapsed_time > settings.time_limit) { return; }
 
-  const i_t effective_batch_pdlp = settings.sub_mip ? 0 : settings.mip_batch_pdlp_strong_branching;
+  const i_t effective_batch_pdlp =
+    (settings.sub_mip || settings.deterministic) ? 0 : settings.mip_batch_pdlp_strong_branching;
+
+  if (settings.mip_batch_pdlp_strong_branching != 0 &&
+      (settings.sub_mip || settings.deterministic)) {
+    settings.log.printf(
+      "Batch PDLP strong branching is disabled because sub-MIP or deterministic mode is enabled\n");
+  }
 
   settings.log.printf("Strong branching using %d threads and %ld fractional variables\n",
                       settings.num_threads,
@@ -991,13 +998,19 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // using batch PDLP
   constexpr i_t min_num_candidates_for_pdlp                        = 5;
   constexpr f_t min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
-  const bool use_pdlp = (rb_mode != 0) && pdlp_warm_cache.populated &&
+  const bool use_pdlp = (rb_mode != 0) && !settings.sub_mip && !settings.deterministic &&
+                        pdlp_warm_cache.populated &&
                         unreliable_list.size() > min_num_candidates_for_pdlp &&
                         pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root >
                           min_pourcent_solved_by_batch_pdlp_at_root_for_pdlp;
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
+  } else if (rb_mode != 0 && settings.sub_mip) {
+    log.printf("Batch PDLP reliability branching is disabled because sub-MIP is enabled\n");
+  } else if (rb_mode != 0 && settings.deterministic) {
+    log.printf(
+      "Batch PDLP reliability branching is disabled because deterministic mode is enabled\n");
   } else if (rb_mode != 0 && unreliable_list.size() < min_num_candidates_for_pdlp) {
     log.printf("Not enough candidates to use batch PDLP, using DS only\n");
   } else if (rb_mode != 0 && pdlp_warm_cache.pourcent_solved_by_batch_pdlp_at_root < 5.0) {
