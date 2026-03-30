@@ -172,7 +172,7 @@ export CMAKE_PREFIX_PATH="${PREFIX}:${CMAKE_PREFIX_PATH:-}"
 # C++17+ and another in C++14, they will disagree on whether
 # `absl::string_view` is a typedef to `std::string_view` or Abseil's
 # own type, leading to link-time ABI mismatches.
-CMAKE_STD_FLAGS="-DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON"
+CMAKE_STD_FLAGS=("-DCMAKE_CXX_STANDARD=17" "-DCMAKE_CXX_STANDARD_REQUIRED=ON")
 
 echo ""
 echo "Building Abseil (from gRPC submodule)..."
