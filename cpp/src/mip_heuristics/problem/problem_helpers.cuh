@@ -398,27 +398,4 @@ static void csrsort_cusparse(rmm::device_uvector<f_t>& values,
   check_csr_representation(values, offsets, indices, handle_ptr, cols, rows);
 }
 
-template <typename i_t, typename f_t>
-static void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem)
-{
-  raft::common::nvtx::range scope("convert_greater_to_less");
-
-  auto* handle_ptr = problem.handle_ptr;
-
-  constexpr i_t TPB = 256;
-  kernel_convert_greater_to_less<i_t, f_t>
-    <<<problem.n_constraints, TPB, 0, handle_ptr->get_stream()>>>(
-      raft::device_span<f_t>(problem.coefficients.data(), problem.coefficients.size()),
-      raft::device_span<const i_t>(problem.offsets.data(), problem.offsets.size()),
-      raft::device_span<f_t>(problem.constraint_lower_bounds.data(),
-                             problem.constraint_lower_bounds.size()),
-      raft::device_span<f_t>(problem.constraint_upper_bounds.data(),
-                             problem.constraint_upper_bounds.size()));
-  RAFT_CHECK_CUDA(handle_ptr->get_stream());
-
-  problem.compute_transpose_of_problem();
-
-  handle_ptr->sync_stream();
-}
-
 }  // namespace cuopt::linear_programming::detail

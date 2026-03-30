@@ -323,5 +323,8 @@ class problem_t {
   std::vector<f_t> Q_values;
 };
 
+template <typename i_t, typename f_t>
+void convert_greater_to_less(detail::problem_t<i_t, f_t>& problem);
+
 }  // namespace linear_programming::detail
 }  // namespace cuopt
