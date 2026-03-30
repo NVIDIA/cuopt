@@ -190,7 +190,7 @@ echo "Building Protobuf (using installed Abseil)..."
 cmake -S "${GRPC_SRC}/third_party/protobuf" -B "${PROTOBUF_BUILD}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    ${CMAKE_STD_FLAGS} \
+    "${CMAKE_STD_FLAGS[@]}" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_ABSL_PROVIDER=package \
     -DCMAKE_PREFIX_PATH="${PREFIX}" \
