@@ -283,6 +283,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                      settings.tolerances.relative_tolerance,
                                      presolve_time_limit,
                                      settings.num_cpu_threads);
+
       if (!result.has_value()) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},
@@ -305,6 +306,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
+    }
+    if (run_presolve && settings.presolve_file != "") {
+      CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
+      presolve_result->reduced_problem.write_to_mps(settings.presolve_file);
     }
 
     auto sol = run_mip(problem, settings, timer);

@@ -6,6 +6,8 @@ Working with Incumbent Solutions Example
 
 This example demonstrates:
 - Using callbacks to receive intermediate solutions during MIP solving
+- Using Problem.getIncumbentValues() to extract variable values from
+  incumbent solutions
 - Tracking solution progress as the solver improves the solution
 - Accessing incumbent (best so far) solutions before final optimum
 - Custom callback class implementation
@@ -26,12 +28,11 @@ Problem:
         x, y are integers
 
 Expected Output:
-    Incumbent 1: [ 0. 58.], cost: 174.00
-    Incumbent 2: [36. 41.], cost: 303.00
+    Incumbent 1: x=36.0, y=41.0, cost: 303.00
 
     === Final Results ===
     Problem status: Optimal
-    Solve time: 0.16 seconds
+    Solve time: 0.27 seconds
     Final solution: x=36.0, y=41.0
     Final objective value: 303.00
 """
@@ -42,59 +43,52 @@ from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 from cuopt.linear_programming.internals import GetSolutionCallback
 
 
-# Create a callback class to receive incumbent solutions
 class IncumbentCallback(GetSolutionCallback):
-    """Callback to receive and track incumbent solutions during solving."""
+    """Callback to receive and track incumbent solutions during solving.
 
-    def __init__(self, user_data):
+    Uses Problem.getIncumbentValues() to extract variable values from the
+    raw incumbent solution array.
+    """
+
+    def __init__(self, problem, variables, user_data):
         super().__init__()
+        self.problem = problem
+        self.variables = variables
         self.solutions = []
         self.n_callbacks = 0
         self.user_data = user_data
 
     def get_solution(self, solution, solution_cost, solution_bound, user_data):
+        """Called whenever the solver finds a new incumbent solution."""
         assert user_data is self.user_data
-        """
-        Called whenever the solver finds a new incumbent solution.
-
-        Parameters
-        ----------
-        solution : array-like
-            The variable values of the incumbent solution
-        solution_cost : array-like
-            The objective value of the incumbent solution
-        solution_bound : array-like
-            The current best bound in user objective space
-        """
         self.n_callbacks += 1
 
-        # Store the incumbent solution
+        # Use getIncumbentValues to extract values for specific variables
+        values = self.problem.getIncumbentValues(solution, self.variables)
+
         incumbent = {
-            "solution": solution.tolist(),
+            "values": values,
             "cost": float(solution_cost[0]),
             "bound": float(solution_bound[0]),
             "iteration": self.n_callbacks,
-            "user_data": user_data,
         }
         self.solutions.append(incumbent)
 
-        print(
-            f"Incumbent {self.n_callbacks}: {incumbent['solution']}, "
-            f"cost: {incumbent['cost']:.2f}"
-        )
+        print(f"Incumbent {self.n_callbacks}:", end=" ")
+        for i, var in enumerate(self.variables):
+            print(f"{var.VariableName}={values[i]}", end=" ")
+        print(f"cost: {incumbent['cost']:.2f}")
 
 
 def main():
     """Run the incumbent solutions example."""
-    # Create a more complex MIP problem that will generate multiple incumbents
     problem = Problem("Incumbent Example")
 
     # Add integer variables
-    x = problem.addVariable(vtype=INTEGER)
-    y = problem.addVariable(vtype=INTEGER)
+    x = problem.addVariable(vtype=INTEGER, name="x")
+    y = problem.addVariable(vtype=INTEGER, name="y")
 
-    # Add constraints to create a problem that will generate multiple
-    # incumbents
+    # Add constraints
     problem.addConstraint(2 * x + 4 * y >= 230)
     problem.addConstraint(3 * x + 2 * y <= 190)
 
@@ -103,11 +97,9 @@ def main():
 
     # Configure solver settings with callback
     settings = SolverSettings()
-    # Set the incumbent callback
     user_data = {"source": "incumbent_solutions_example"}
-    incumbent_callback = IncumbentCallback(user_data)
+    incumbent_callback = IncumbentCallback(problem, [x, y], user_data)
     settings.set_mip_callback(incumbent_callback, user_data)
-    # Allow enough time to find multiple incumbents
     settings.set_parameter(CUOPT_TIME_LIMIT, 30)
 
     # Solve the problem
@@ -117,10 +109,11 @@ def main():
     print("\n=== Final Results ===")
     print(f"Problem status: {problem.Status.name}")
     print(f"Solve time: {problem.SolveTime:.2f} seconds")
-    print(f"Final solution: x={x.getValue()}, y={y.getValue()}")
-    print(f"Final objective value: {problem.ObjValue:.2f}")
+    print("Final solution: ", end=" ")
+    for i, var in enumerate(problem.getVariables()):
+        print(f"{var.VariableName}={var.getValue()} ", end=" ")
+    print(f"\nFinal objective value: {problem.ObjValue:.2f}")
 
-    # Display all incumbents found
     print(
         f"\nTotal incumbent solutions found: "
         f"{len(incumbent_callback.solutions)}"

@@ -633,22 +633,16 @@ dependencies:
           - matrix:
             packages:
               - *pylibraft_unsuffixed
+  # 'cuda_version' intentionally does not contain fallback entries... we want
+  # a loud error if an unsupported 'cuda' value is passed
   cuda_version:
     specific:
       - output_types: conda
         matrices:
           - matrix:
-              cuda: "12.0"
-            packages:
-              - cuda-version=12.0
-          - matrix:
               cuda: "12.2"
             packages:
               - cuda-version=12.2
-          - matrix:
-              cuda: "12.4"
-            packages:
-              - cuda-version=12.4
           - matrix:
               cuda: "12.5"
             packages:
@@ -669,6 +663,51 @@ dependencies:
               cuda: "13.1"
             packages:
               - cuda-version=13.1
+      - output_types: requirements
+        matrices:
+          # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
+          # (e.g. for DLFW and pip devcontainers)
+          - matrix:
+              use_cuda_wheels: "false"
+            packages:
+          - matrix:
+              arch: aarch64
+              cuda: "12.2"
+              use_cuda_wheels: "true"
+            packages:
+              # some components (like nvidia-cublas-cu12 and nvidia-cuda-nvcc-cu12) didn't have
+              # aarch64 wheels until CTK 12.3, so allow a slightly looser bound here
+              - cuda-toolkit>=12.2,<12.4
+          - matrix:
+              cuda: "12.2"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==12.2.*
+          - matrix:
+              cuda: "12.5"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==12.5.*
+          - matrix:
+              cuda: "12.8"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==12.8.*
+          - matrix:
+              cuda: "12.9"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==12.9.*
+          - matrix:
+              cuda: "13.0"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==13.0.*
+          - matrix:
+              cuda: "13.1"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==13.1.*
   cuda:
     common:
       - output_types: [conda]
@@ -682,37 +721,40 @@ dependencies:
 
   cuda_wheels:
     specific:
+      # cuOpt needs 'nvJitLink>={whatever-cuopt-was-built-against}' at runtime, and mixing
+      # old-CTK with new-nvJitLink is supported, so maintain 1 entry here per CUDA major.minor
+      # cuOpt is built against.
+      #
+      # nvJitLink has historically roughly followed the CTK's minor versioning scheme,
+      # but check at https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html
       - output_types: [requirements, pyproject]
         matrices:
-          - matrix:
-              cuda: "12.*"
-              use_cuda_wheels: "true"
-            packages:
-              - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvjitlink,nvtx]==12.*
-              - nvidia-cudss-cu12
-          - matrix:
-              cuda: "13.*"
-              use_cuda_wheels: "true"
-            packages:
-              - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvjitlink,nvtx]==13.*
-              - nvidia-cudss-cu13
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
           # (e.g. for DLFW and pip devcontainers)
           - matrix:
               use_cuda_wheels: "false"
-            packages: []
-          # if no matching matrix selectors passed, list the unsuffixed packages
+            packages:
+          - matrix:
+              cuda: "12.*"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
+              - nvidia-cudss-cu12
+              - nvidia-nvjitlink-cu12>=12.9,<13
+          - matrix:
+              cuda: "13.*"
+              use_cuda_wheels: "true"
+            packages:
+              - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
+              - &cudss_cu13 nvidia-cudss-cu13
+              - &nvjitlink_cu13 nvidia-nvjitlink>=13.0,<14
+          # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
           - matrix:
             packages:
-              - nvidia-cudart
-              - nvidia-cublas
-              - nvidia-cudss
-              - nvidia-curand
-              - nvidia-cusparse
-              - nvidia-nvjitlink
-              - nvidia-cusolver
-              - nvidia-nvtx
+              - *ctk_cu13
+              - *cudss_cu13
+              - *nvjitlink_cu13
   develop:
     common:
       - output_types: [conda, requirements]

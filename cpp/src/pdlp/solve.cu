@@ -1453,6 +1453,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
+    if (run_presolve && settings.presolve_file != "") {
+      CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
+      result->reduced_problem.write_to_mps(settings.presolve_file);
+    }
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
