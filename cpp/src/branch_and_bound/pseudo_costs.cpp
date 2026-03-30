@@ -676,9 +676,8 @@ static void batch_pdlp_reliability_branching_task(
 
   if (pdlp_warm_cache.populated) {
     auto& cache = pdlp_warm_cache;
-    pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
-                                              cache.initial_primal.size(),
-                                              batch_pdlp_handle.get_stream());
+    pdlp_settings.set_initial_primal_solution(
+      cache.initial_primal.data(), cache.initial_primal.size(), batch_pdlp_handle.get_stream());
     pdlp_settings.set_initial_dual_solution(
       cache.initial_dual.data(), cache.initial_dual.size(), batch_pdlp_handle.get_stream());
     pdlp_settings.set_initial_step_size(cache.step_size);
@@ -688,8 +687,8 @@ static void batch_pdlp_reliability_branching_task(
 
   if (concurrent_halt.load() == 1) { return; }
 
-  const auto solutions = batch_pdlp_solve(
-    &batch_pdlp_handle, mps_model, candidate_vars, fraction_values, pdlp_settings);
+  const auto solutions =
+    batch_pdlp_solve(&batch_pdlp_handle, mps_model, candidate_vars, fraction_values, pdlp_settings);
 
   f_t batch_pdlp_time = toc(start_batch);
 
