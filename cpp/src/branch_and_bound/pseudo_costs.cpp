@@ -664,6 +664,9 @@ static void batch_pdlp_reliability_branching_task(
     std::max(static_cast<f_t>(0.0), settings.time_limit - batch_elapsed_time);
   if (batch_remaining_time <= 0.0) { return; }
 
+  // One handle per batch PDLP since there can be concurrent calls
+  const raft::handle_t batch_pdlp_handle;
+
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
   if (rb_mode == 1) {
     pdlp_settings.concurrent_halt  = &concurrent_halt;
@@ -675,9 +678,9 @@ static void batch_pdlp_reliability_branching_task(
     auto& cache = pdlp_warm_cache;
     pdlp_settings.set_initial_primal_solution(cache.initial_primal.data(),
                                               cache.initial_primal.size(),
-                                              cache.batch_pdlp_handle.get_stream());
+                                              batch_pdlp_handle.get_stream());
     pdlp_settings.set_initial_dual_solution(
-      cache.initial_dual.data(), cache.initial_dual.size(), cache.batch_pdlp_handle.get_stream());
+      cache.initial_dual.data(), cache.initial_dual.size(), batch_pdlp_handle.get_stream());
     pdlp_settings.set_initial_step_size(cache.step_size);
     pdlp_settings.set_initial_primal_weight(cache.primal_weight);
     pdlp_settings.set_initial_pdlp_iteration(cache.pdlp_iteration);
@@ -686,7 +689,7 @@ static void batch_pdlp_reliability_branching_task(
   if (concurrent_halt.load() == 1) { return; }
 
   const auto solutions = batch_pdlp_solve(
-    &pdlp_warm_cache.batch_pdlp_handle, mps_model, candidate_vars, fraction_values, pdlp_settings);
+    &batch_pdlp_handle, mps_model, candidate_vars, fraction_values, pdlp_settings);
 
   f_t batch_pdlp_time = toc(start_batch);
 
@@ -1274,6 +1277,9 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
             // Should be valid if were are already here
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(i); }
           }
+        } else {
+          // Variable became reliable, make it as solved so that batch PDLP does not solve it again
+          if (rb_mode == 1) sb_view.mark_solved(i);
         }
         pseudo_cost_mutex_down[j].unlock();
       }
@@ -1317,6 +1323,9 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
             // Should be valid if were are already here
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(shared_idx); }
           }
+        } else {
+          // Variable became reliable, make it as solved so that batch PDLP does not solve it again
+          if (rb_mode == 1) sb_view.mark_solved(shared_idx);
         }
         pseudo_cost_mutex_up[j].unlock();
       }
