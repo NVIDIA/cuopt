@@ -77,4 +77,6 @@ timeout 30m ./ci/run_cuopt_pytests.sh --verbose --capture=no
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
     ./ci/thirdparty-testing/run_jump_tests.sh
     ./ci/thirdparty-testing/run_cvxpy_tests.sh
+    ./ci/thirdparty-testing/run_pulp_tests.sh
+    ./ci/thirdparty-testing/run_pyomo_tests.sh
 fi
