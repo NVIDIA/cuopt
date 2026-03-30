@@ -34,12 +34,21 @@ struct shared_strong_branching_context_view_t {
 
   bool is_valid() const { return !solved.empty(); }
 
-  bool is_solved(i_t local_idx) const { return solved[local_idx].load() != 0; }
+  bool is_solved(i_t local_idx) const
+  {
+    assert(local_idx < solved.size() && "local_idx out of bounds");
+    return solved[local_idx].load() != 0;
+  }
 
-  void mark_solved(i_t local_idx) const { solved[local_idx].store(1); }
+  void mark_solved(i_t local_idx) const
+  {
+    assert(local_idx < solved.size() && "local_idx out of bounds");
+    solved[local_idx].store(1);
+  }
 
   shared_strong_branching_context_view_t subview(i_t offset, i_t count) const
   {
+    assert(offset + count <= solved.size() && "subview out of bounds");
     return {solved.subspan(offset, count)};
   }
 };
