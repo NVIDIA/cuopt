@@ -193,7 +193,7 @@ To build all libraries and tests, simply run
 To run the C++ tests, run
 
 ```bash
-cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
@@ -205,7 +205,7 @@ To run python tests, run
 - To run `cuopt` tests:
 ```bash
 
-cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
