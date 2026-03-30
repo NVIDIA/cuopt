@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
+#include <dual_simplex/concurrent_halt.hpp>
 
 #include <dual_simplex/tic_toc.hpp>
 
@@ -269,7 +270,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
       entering_index = RATIO_TEST_TIME_LIMIT;
       return;
     }
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings_.concurrent_halt)) {
       entering_index = CONCURRENT_HALT_RETURN;
       return;
     }

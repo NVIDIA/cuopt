@@ -16,6 +16,7 @@
 #include <barrier/iterative_refinement.hpp>
 #include <barrier/sparse_cholesky.cuh>
 #include <barrier/sparse_matrix_kernels.cuh>
+#include <dual_simplex/concurrent_halt.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
@@ -289,7 +290,7 @@ class iteration_data_t {
     // Ignore Q matrix for now
     find_dense_columns(
       lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
 #ifdef PRINT_INFO
     for (i_t j : dense_columns_unordered) {
       settings.log.printf("Dense column %6d\n", j);
@@ -350,7 +351,7 @@ class iteration_data_t {
     inv_sqrt_diag.set_scalar(1.0);
     if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
 
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
 
     // Copy A into AD
     AD = lp.A;
@@ -396,22 +397,22 @@ class iteration_data_t {
     device_A.copy(host_A_CSR, lp.handle_ptr->get_stream());
     RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
     chol =
       std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(handle_ptr, settings, factorization_size);
     chol->set_positive_definite(false);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
     // Perform symbolic analysis
     symbolic_status = 0;
     if (use_augmented) {
       // Build the sparsity pattern of the augmented system
       form_augmented(true);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
       symbolic_status = chol->analyze(device_augmented);
     } else {
       form_adat(true);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
       symbolic_status = chol->analyze(device_ADAT);
     }
   }
@@ -581,7 +582,7 @@ class iteration_data_t {
                          span_x[i] *= span_scale[span_col_ind[i]];
                        });
     RAFT_CHECK_CUDA(stream_view_);
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings_.concurrent_halt)) { return; }
     if (first_call) {
       try {
         initialize_cusparse_data<i_t, f_t>(
@@ -591,7 +592,7 @@ class iteration_data_t {
         return;
       }
     }
-    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
+    if (concurrent_halt_is_set(settings_.concurrent_halt)) { return; }
 
     multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
     handle_ptr->sync_stream();
@@ -682,9 +683,7 @@ class iteration_data_t {
           dense_vector_t<i_t, f_t> M_col(AD.m);
           solve_status = chol->solve(U_col, M_col);
           if (solve_status != 0) { return solve_status; }
-          if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-            return CONCURRENT_HALT_RETURN;
-          }
+          if (concurrent_halt_is_set(settings_.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
           M.set_column(k, M_col);
 
           if (debug) {
@@ -701,9 +700,7 @@ class iteration_data_t {
         for (i_t k = 0; k < n_dense_columns; k++) {
           AD_dense.transpose_multiply(
             1.0, M.values.data() + k * M.m, 0.0, H.values.data() + k * H.m);
-          if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
-            return CONCURRENT_HALT_RETURN;
-          }
+          if (concurrent_halt_is_set(settings_.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
         }
 
         dense_vector_t<i_t, f_t> e(n_dense_columns);
@@ -1193,7 +1190,7 @@ class iteration_data_t {
         delta_nz[j] +=
           fill;  // Capture contributions from A(:, j). j will be encountered multiple times
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
     }
 
     int64_t sparse_nz_C = 0;
@@ -1233,7 +1230,7 @@ class iteration_data_t {
           delta_nz[j] + static_cast<int64_t>(
                           fill_estimate));  // Capture the estimated fill associated with column j
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      if (concurrent_halt_is_set(settings.concurrent_halt)) { return; }
     }
 
     int64_t estimated_nz_C = 0;
@@ -3429,7 +3426,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3458,7 +3455,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
     }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3557,7 +3554,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         settings.log.printf("Barrier time limit exceeded\n");
         return lp_status_t::TIME_LIMIT;
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (concurrent_halt_is_set(settings.concurrent_halt)) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
@@ -3568,7 +3565,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       i_t status = gpu_compute_search_direction(
         data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (concurrent_halt_is_set(settings.concurrent_halt)) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
@@ -3593,7 +3590,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         settings.log.printf("Barrier time limit exceeded\n");
         return lp_status_t::TIME_LIMIT;
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (concurrent_halt_is_set(settings.concurrent_halt)) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
@@ -3607,7 +3604,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       status = gpu_compute_search_direction(
         data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (concurrent_halt_is_set(settings.concurrent_halt)) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
@@ -3633,7 +3630,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         settings.log.printf("Barrier time limit exceeded\n");
         return lp_status_t::TIME_LIMIT;
       }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (concurrent_halt_is_set(settings.concurrent_halt)) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }

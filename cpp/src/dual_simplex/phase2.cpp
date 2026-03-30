@@ -8,6 +8,7 @@
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
+#include <dual_simplex/concurrent_halt.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/phase2.hpp>
@@ -1377,9 +1378,7 @@ i_t initialize_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Initialized %d of %d steepest edge norms in %.2fs\n", k, m, now);
     }
     if (toc(start_time) > settings.time_limit) { return -1; }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
   }
   work_estimate += 7 * m;
   return 0;
@@ -2784,6 +2783,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
     // Pricing
     i_t direction           = 0;
     i_t basic_leaving_index = -1;
@@ -3579,7 +3581,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
     if (now > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
 
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       return dual::status_t::CONCURRENT_LIMIT;
     }
   }

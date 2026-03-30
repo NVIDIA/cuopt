@@ -118,10 +118,11 @@ class branch_and_bound_t {
   i_t get_num_cols() const { return original_problem_.num_cols; }
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
-  void set_root_concurrent_halt(int value)
-  {
-    root_concurrent_halt_.store(value, std::memory_order_relaxed);
-  }
+  /** Tell concurrent root solvers to stop; pairs with acquire loads on the shared halt pointer. */
+  void signal_root_concurrent_halt() { concurrent_halt_signal(&root_concurrent_halt_); }
+  /** Clear halt after concurrent root threads have joined; no peers are reading the flag. */
+  void reset_root_concurrent_halt() { concurrent_halt_reset(&root_concurrent_halt_); }
+
   lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings,
                                     lp_solution_t<i_t, f_t>& root_relax_soln,
                                     std::vector<variable_status_t>& root_vstatus,

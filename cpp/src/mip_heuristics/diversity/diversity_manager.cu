@@ -17,6 +17,7 @@
 
 #include <utilities/scope_guard.hpp>
 
+#include <atomic>
 #include <memory>
 
 constexpr bool fj_only_run = false;
@@ -190,7 +191,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
   }
   bool run_probing_cache = !fj_only_run;
-  run_probing_cache = false;
+  run_probing_cache      = false;
   // Don't run probing cache in deterministic mode yet as neither B&B nor CPUFJ need it
   // and it doesn't make use of work units yet
   if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
@@ -424,12 +425,12 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   // resize because some constructor might be called before the presolve
   lp_state.resize(*problem_ptr, problem_ptr->handle_ptr->get_stream());
 
-  const bool bb_drives_root  = context.branch_and_bound_ptr != nullptr;
+  const bool bb_drives_root = context.branch_and_bound_ptr != nullptr;
   if (bb_drives_root) {
-    wait_for_branch_and_bound_first_root_relaxation(); 
+    wait_for_branch_and_bound_first_root_relaxation();
 
     clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
-  } 
+  }
 
   if (ls.lp_optimal_exists) {
     solution_t<i_t, f_t> lp_rounded_sol(*problem_ptr);
@@ -812,12 +813,14 @@ void diversity_manager_t<i_t, f_t>::set_simplex_solution(const std::vector<f_t>&
   {
     std::lock_guard<std::mutex> lock(relaxed_solution_mutex);
     simplex_solution_exists.store(true, std::memory_order_release);
-    global_concurrent_halt = 1;
+    global_concurrent_halt.store(1, std::memory_order_release);
     CUOPT_LOG_DEBUG("Setting concurrent halt for PDLP inside diversity manager");
     // it is safe to use lp_optimal_solution while executing the copy operation
     // the operations are ordered as long as they are on the same stream
-    raft::copy(
-      lp_optimal_solution.data(), solution.data(), solution.size(), context.handle_ptr->get_stream());
+    raft::copy(lp_optimal_solution.data(),
+               solution.data(),
+               solution.size(),
+               context.handle_ptr->get_stream());
     raft::copy(lp_dual_optimal_solution.data(),
                dual_solution.data(),
                dual_solution.size(),

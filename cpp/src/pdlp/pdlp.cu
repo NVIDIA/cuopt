@@ -37,6 +37,8 @@
 #include <thrust/extrema.h>
 #include <thrust/logical.h>
 
+#include <dual_simplex/concurrent_halt.hpp>
+
 #include <cmath>
 #include <optional>
 #include <unordered_set>
@@ -501,7 +503,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 
   // Check for concurrent limit (whenever caller provides a halt flag, e.g. B&B racing PDLP vs
   // Barrier)
-  if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
+  if (cuopt::linear_programming::dual_simplex::concurrent_halt_is_set(settings_.concurrent_halt)) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;

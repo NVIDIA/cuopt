@@ -1854,7 +1854,7 @@ void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossove
       settings_,
       exploration_stats_.start_time,
       get_root_concurrent_halt(),
-      [this]() { set_root_concurrent_halt(1); },
+      [this]() { signal_root_concurrent_halt(); },
       lp_settings.on_first_lp_solution_available,
       first_solver_mutex,
       first_solver_callback_done,
@@ -1877,9 +1877,7 @@ void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossove
       pdlp_root_num_gpus_,
       cuopt::linear_programming::method_t::PDLP);
     // Only call crossover if the result status is OPTIMAL
-    if (result.is_optimal) {
-      (void)do_crush_crossover(result, "PDLP", 2);
-    }
+    if (result.is_optimal) { (void)do_crush_crossover(result, "PDLP", 2); }
   });
 
   barrier_thread_out = std::thread([this, &lp_settings, do_crush_crossover]() {
@@ -1891,9 +1889,7 @@ void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossove
       cuopt::linear_programming::method_t::Barrier);
 
     // Only call crossover if the result status is OPTIMAL
-    if (result.is_optimal) {
-      (void)do_crush_crossover(result, "Barrier", 3);
-    }
+    if (result.is_optimal) { (void)do_crush_crossover(result, "Barrier", 3); }
   });
 }
 
@@ -1979,7 +1975,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       int expected       = 0;
       if (status == lp_status_t::OPTIMAL &&
           winner.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
-        set_root_concurrent_halt(1);
+        signal_root_concurrent_halt();
       }
     });
 
@@ -2005,9 +2001,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     join_guard.b = nullptr;
     join_guard.c = nullptr;
 
-    // Winner may have set concurrent_halt==1 to stop peer solvers. All threads are joined; reset
+    // Winner may have signaled concurrent halt to stop peer solvers. All threads are joined; reset
     // the flag for the rest of B&B (subsequent LP solves, etc.).
-    set_root_concurrent_halt(0);
+    reset_root_concurrent_halt();
 
     const int w   = winner.load(std::memory_order_acquire);
     use_pdlp_path = (w == 2 || w == 3);
@@ -2126,7 +2122,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
   settings_.log.printf("\n");
 
-  set_root_concurrent_halt(0);
+  reset_root_concurrent_halt();
   return root_status;
 }
 

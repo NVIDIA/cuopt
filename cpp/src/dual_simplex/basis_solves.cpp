@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <dual_simplex/basis_solves.hpp>
+#include <dual_simplex/concurrent_halt.hpp>
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
@@ -390,9 +391,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
                                  SU,
                                  S_perm_inv,
                                  work_estimate);
-        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-          return CONCURRENT_HALT_RETURN;
-        }
+        if (concurrent_halt_is_set(settings.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
         if (Srank < 0) { return Srank; }
         if (Srank != Sdim) {
           // Get the rank deficient columns
@@ -623,9 +622,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   rank =
     right_looking_lu(A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
   if (rank < 0) {
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
     return rank;
   }
   inverse_permutation(pinv, p);
@@ -646,9 +643,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
     }
     work_estimate += 3 * (m - rank);
   }
-  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-    return CONCURRENT_HALT_RETURN;
-  }
+  if (concurrent_halt_is_set(settings.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
   if (verbose) {
     printf("Right Lnz+Unz %d t %.3f\n", L.col_start[m] + U.col_start[m], toc(fact_start));
   }

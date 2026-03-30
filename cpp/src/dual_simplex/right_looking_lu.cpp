@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <dual_simplex/concurrent_halt.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <utilities/memory_instrumentation.hpp>
@@ -724,9 +725,7 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
 
   i_t pivots = 0;
   for (i_t k = 0; k < n; ++k) {
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      return CONCURRENT_HALT_RETURN;
-    }
+    if (concurrent_halt_is_set(settings.concurrent_halt)) { return CONCURRENT_HALT_RETURN; }
     if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
     // Find pivot that satisfies
     // abs(pivot) >= abstol,
@@ -1257,7 +1256,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
       last_print = tic();
     }
     if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Concurrent halt\n");
       return CONCURRENT_HALT_RETURN;
     }

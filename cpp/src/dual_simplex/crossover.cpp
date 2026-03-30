@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <dual_simplex/concurrent_halt.hpp>
 #include <dual_simplex/crossover.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
@@ -611,7 +612,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time exceeded\n");
       return TIME_LIMIT_RETURN;
     }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Concurrent halt\n");
       return CONCURRENT_HALT_RETURN;
     }
@@ -988,7 +989,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       settings.log.printf("Crossover time limit exceeded\n");
       return TIME_LIMIT_RETURN;
     }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Concurrent halt\n");
       return CONCURRENT_HALT_RETURN;
     }
@@ -1239,6 +1240,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     settings.log.printf("Aborting: initial basis selection\n");
     return return_to_status(rank);
   }
+  if (concurrent_halt_is_set(settings.concurrent_halt)) {
+    settings.log.printf("Concurrent halt (after initial basis selection)\n");
+    return crossover_status_t::CONCURRENT_LIMIT;
+  }
 
   i_t num_basic = 0;
   if (rank < m) {
@@ -1247,6 +1252,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   }
 
   for (i_t k = 0; k < candidate_columns.size(); k++) {
+    if ((k & 31) == 0 && concurrent_halt_is_set(settings.concurrent_halt)) {
+      settings.log.printf("Concurrent halt (candidate column loop)\n");
+      return crossover_status_t::CONCURRENT_LIMIT;
+    }
     const i_t j = candidate_columns[k];
     vstatus[j]  = vstatus_for_candidates[k];
     if (vstatus[j] == variable_status_t::BASIC) { num_basic++; }
@@ -1312,6 +1321,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
                          slacks_needed,
                          work_estimate);
   if (rank < 0) { return return_to_status(rank); }
+  if (concurrent_halt_is_set(settings.concurrent_halt)) {
+    settings.log.printf("Concurrent halt (after initial basis factorization)\n");
+    return crossover_status_t::CONCURRENT_LIMIT;
+  }
   if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -1352,7 +1365,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     settings.log.printf("Time limit exceeded\n");
     return crossover_status_t::TIME_LIMIT;
   }
-  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+  if (concurrent_halt_is_set(settings.concurrent_halt)) {
     settings.log.printf("Concurrent halt\n");
     return crossover_status_t::CONCURRENT_LIMIT;
   }
@@ -1408,13 +1421,17 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   } else if (dual_feasible && !primal_feasible) {
     i_t dual_iter = 0;
     std::vector<f_t> edge_norms;
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
+      settings.log.printf("Concurrent halt (before crossover dual phase2 cleanup)\n");
+      return crossover_status_t::CONCURRENT_LIMIT;
+    }
     dual::status_t status =
       dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
       return crossover_status_t::TIME_LIMIT;
     }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
       settings.log.printf("Concurrent halt\n");
       return crossover_status_t::CONCURRENT_LIMIT;
     }
@@ -1454,6 +1471,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t iter = 0;
     lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
     std::vector<f_t> junk;
+    if (concurrent_halt_is_set(settings.concurrent_halt)) {
+      settings.log.printf("Concurrent halt (before crossover dual phase1)\n");
+      return crossover_status_t::CONCURRENT_LIMIT;
+    }
     dual::status_t phase1_status = dual_phase2(
       1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, junk);
     if (phase1_status == dual::status_t::NUMERICAL ||
@@ -1570,13 +1591,17 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       dual::status_t status = dual::status_t::NUMERICAL;
       if (dual_infeas <= settings.dual_tol) {
         std::vector<f_t> edge_norms;
+        if (concurrent_halt_is_set(settings.concurrent_halt)) {
+          settings.log.printf("Concurrent halt (before crossover dual phase2 after phase1)\n");
+          return crossover_status_t::CONCURRENT_LIMIT;
+        }
         status = dual_phase2(
           2, iter == 0 ? 1 : 0, start_time, lp, settings, vstatus, solution, iter, edge_norms);
         if (toc(start_time) > settings.time_limit) {
           settings.log.printf("Time limit exceeded\n");
           return crossover_status_t::TIME_LIMIT;
         }
-        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+        if (concurrent_halt_is_set(settings.concurrent_halt)) {
           settings.log.printf("Concurrent halt\n");
           return crossover_status_t::CONCURRENT_LIMIT;
         }
@@ -1604,7 +1629,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   if (primal_feasible) { status = crossover_status_t::PRIMAL_FEASIBLE; }
   if (primal_feasible && dual_feasible) {
     status = crossover_status_t::OPTIMAL;
-    if (settings.concurrent_halt != nullptr) { *settings.concurrent_halt = 1; }
+    concurrent_halt_signal(settings.concurrent_halt);
   }
   return status;
 }
