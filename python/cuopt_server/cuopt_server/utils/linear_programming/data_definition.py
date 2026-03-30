@@ -451,13 +451,13 @@ class SolverConfig(BaseModel):
         "heuristics and branch and bound for MILP",
     )
     mip_batch_pdlp_strong_branching: Optional[int] = Field(
-        default=1,
+        default=0,
         description="Strong branching mode: 0 = Dual Simplex only, "
         "1 = cooperative work-stealing (DS + batch PDLP), "
         "2 = batch PDLP only.",
     )
     mip_batch_pdlp_reliability_branching: Optional[int] = Field(
-        default=1,
+        default=0,
         description="Reliability branching mode: 0 = Dual Simplex only, "
         "1 = cooperative work-stealing (DS + batch PDLP), "
         "2 = batch PDLP only.",

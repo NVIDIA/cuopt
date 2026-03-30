@@ -99,9 +99,9 @@ class mip_solver_settings_t {
   f_t cut_change_threshold       = -1.0;
   f_t cut_min_orthogonality      = 0.5;
   i_t mip_batch_pdlp_strong_branching{
-    1};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
+    0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching{
-    1};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
+    0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t num_gpus        = 1;
   bool log_to_console = true;
 
