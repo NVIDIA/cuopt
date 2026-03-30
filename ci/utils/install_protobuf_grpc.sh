@@ -203,7 +203,7 @@ echo "Building gRPC (using installed Abseil and Protobuf)..."
 cmake -S "${GRPC_SRC}" -B "${GRPC_BUILD}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    ${CMAKE_STD_FLAGS} \
+    "${CMAKE_STD_FLAGS[@]}" \
     -DgRPC_INSTALL=ON \
     -DgRPC_BUILD_TESTS=OFF \
     -DgRPC_BUILD_CODEGEN=ON \
