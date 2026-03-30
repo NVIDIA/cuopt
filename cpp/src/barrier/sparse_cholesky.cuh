@@ -131,6 +131,8 @@ std::size_t compute_hash(const f_t* arr, size_t size)
   return seed;
 }
 
+//#define USE_BARRIER_GREEN_CONTEXT
+
 template <typename i_t, typename f_t>
 class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
  public:
@@ -155,6 +157,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     cuda_error = cudaSuccess;
     status     = CUDSS_STATUS_SUCCESS;
 
+#ifdef USE_BARRIER_GREEN_CONTEXT
     if (CUDART_VERSION >= 13000 && settings_.concurrent_halt != nullptr &&
         settings_.num_gpus == 1) {
       cuGetErrorString_func = cuopt::detail::get_driver_entry_point("cuGetErrorString");
@@ -238,6 +241,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
                  &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
     }
+#endif
 
     auto cudss_device_idx   = handle_ptr_->get_device();
     auto cudss_device_count = 1;
@@ -363,6 +367,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
+ 
+#ifdef USE_BARRIER_GREEN_CONTEXT
 #if CUDART_VERSION >= 13000
     if (settings_.concurrent_halt != nullptr && settings_.num_gpus == 1) {
       auto cuStreamDestroy_func = cuopt::detail::get_driver_entry_point("cuStreamDestroy");
@@ -374,6 +380,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
       handle_ptr_->get_stream().synchronize();
     }
+#endif
 #endif
   }
 
