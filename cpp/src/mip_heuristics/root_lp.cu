@@ -42,6 +42,8 @@ copy_lp_result_to_root_solution(problem_t<i_t, f_t>* problem,
   result.objective      = problem->get_solver_obj_from_user_obj(lp_result.get_objective_value());
   result.user_objective = lp_result.get_objective_value();
   result.iterations     = lp_result.get_additional_termination_information().number_of_steps_taken;
+  result.is_optimal     = lp_result.get_termination_status() == pdlp_termination_status_t::Optimal;
+  result.has_optimal_basis_relaxation = false;  // crush/crossover not done yet
   return result;
 }
 
@@ -162,6 +164,12 @@ cuopt::linear_programming::dual_simplex::crossover_status_t run_crush_crossover_
   return status;
 }
 
+template <typename i_t, typename f_t>
+void convert_greater_to_less_2(problem_t<i_t, f_t>& problem)
+{
+  convert_greater_to_less(problem);
+}
+
 template cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<int, double>
 run_solver_for_root_lp<int, double>(
   problem_t<int, double>*, double, std::atomic<int>*, int, method_t);
@@ -188,6 +196,7 @@ run_crush_crossover_and_maybe_win<int, double>(
   double*,
   const char*,
   std::string*);
+template void convert_greater_to_less_2<int, double>(problem_t<int, double>&);
 
 #ifdef MIP_INSTANTIATION_FLOAT
 template cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<int, float>
@@ -215,5 +224,7 @@ run_crush_crossover_and_maybe_win<int, float>(
   float*,
   const char*,
   std::string*);
+
+template void convert_greater_to_less_2<int, float>(problem_t<int, float>&);
 #endif
 }  // namespace cuopt::linear_programming::detail

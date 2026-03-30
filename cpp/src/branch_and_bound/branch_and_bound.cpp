@@ -1876,7 +1876,10 @@ void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossove
       get_root_concurrent_halt(),
       pdlp_root_num_gpus_,
       cuopt::linear_programming::method_t::PDLP);
-    (void)do_crush_crossover(result, "PDLP", 2);
+    // Only call crossover if the result status is OPTIMAL
+    if (result.is_optimal) {
+      (void)do_crush_crossover(result, "PDLP", 2);
+    }
   });
 
   barrier_thread_out = std::thread([this, &lp_settings, do_crush_crossover]() {
@@ -1886,7 +1889,11 @@ void branch_and_bound_t<i_t, f_t>::run_concurrent_pdlp_and_barrier_with_crossove
       get_root_concurrent_halt(),
       pdlp_root_num_gpus_,
       cuopt::linear_programming::method_t::Barrier);
-    (void)do_crush_crossover(result, "Barrier", 3);
+
+    // Only call crossover if the result status is OPTIMAL
+    if (result.is_optimal) {
+      (void)do_crush_crossover(result, "Barrier", 3);
+    }
   });
 }
 
@@ -1928,6 +1935,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::atomic<int> winner{0};  // 0=none, 1=dual, 2=PDLP, 3=Barrier
 
   if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
+    convert_greater_to_less_2(*mip_problem_ptr_);
     // All three run in threads; main only starts them and joins. First to finish with OPTIMAL sets
     // winner and halt.
     std::mutex first_solver_mutex;

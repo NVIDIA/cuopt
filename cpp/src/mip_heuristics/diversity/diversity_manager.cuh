@@ -76,7 +76,8 @@ class diversity_manager_t {
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
 
-  // Called by B&B when first LP solution is available (PDLP/Barrier or dual simplex).
+  // Called when the first root LP vectors are available (PDLP/Barrier pre-crossover or dual-simplex
+  // root). has_optimal_basis_relaxation distinguishes basis-optimal roots from interior iterates.
   void on_first_lp_solution(
     cuopt::linear_programming::dual_simplex::root_relaxation_first_solution_t<i_t, f_t> const&
       result);
@@ -107,7 +108,8 @@ class diversity_manager_t {
   // atomic for signalling pdlp to stop
   std::atomic<int> global_concurrent_halt{0};
 
-  // First solution from B&B: wait for B&B to call on_first_lp_solution when run_bb and concurrent
+  // Sync with B&B root relaxation: on_first_lp_solution (PDLP/Barrier inner, or dual on main
+  // thread) or set_simplex_solution fills lp_*; run_solver waits on first_solution_cv_.
   std::mutex first_solution_mutex_;
   std::condition_variable first_solution_cv_;
   std::atomic<bool> first_solution_ready_{false};
@@ -118,6 +120,9 @@ class diversity_manager_t {
   bool run_only_bp_recombiner{false};
   bool run_only_fp_recombiner{false};
   bool run_only_sub_mip_recombiner{false};
+
+ private:
+  void wait_for_branch_and_bound_first_root_relaxation();
 };
 
 }  // namespace cuopt::linear_programming::detail

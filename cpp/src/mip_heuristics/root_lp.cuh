@@ -63,4 +63,8 @@ cuopt::linear_programming::dual_simplex::crossover_status_t run_crush_crossover_
   const char* this_solver_name,
   std::string* winner_solver_name_out);
 
+
+template <typename i_t, typename f_t>
+void convert_greater_to_less_2(detail::problem_t<i_t, f_t>& problem);
+
 }  // namespace cuopt::linear_programming::detail
