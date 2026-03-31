@@ -74,6 +74,7 @@
 #define CUOPT_NUM_CPU_THREADS                 "num_cpu_threads"
 #define CUOPT_NUM_GPUS                        "num_gpus"
 #define CUOPT_USER_PROBLEM_FILE               "user_problem_file"
+#define CUOPT_PRESOLVE_FILE                   "presolve_file"
 #define CUOPT_RANDOM_SEED                     "random_seed"
 #define CUOPT_PDLP_PRECISION                  "pdlp_precision"
 
