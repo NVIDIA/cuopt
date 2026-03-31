@@ -31,6 +31,7 @@
 - Fix a issue in barrier on problems containing variables with infinite lower bounds
 - Fix a bug where batch PDLP for strong branching was running on the problem without cuts
 - Fix errors with x + x*x, +x, -x in Python API
+- Update to the latest version of PSLP which includes bug fixes for incorrect infeasible classification
 
 
 ### Documentation (26.04)
