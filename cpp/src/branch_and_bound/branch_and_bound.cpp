@@ -2275,7 +2275,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
       if (num_cuts == 0) { break; }
       cut_info.record_cut_types(cut_types);
-#if 1
+#ifdef PRINT_CUT_POOL_TYPES
       cut_pool.print_cutpool_types();
       print_cut_types("In LP      ", cut_types, settings_);
       printf("Cut pool size: %d\n", cut_pool.pool_size());

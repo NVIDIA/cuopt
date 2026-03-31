@@ -510,7 +510,7 @@ std::vector<std::vector<int>> find_maximal_cliques_for_test(
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
 {
-  // TODO: Need to deduplicate cuts and only add if the cut is not already in the pool
+  // TODO: Add fast duplicate check and only add if the cut is not already in the pool
 
   for (i_t p = 0; p < cut.size(); p++) {
     const i_t j = cut.index(p);
@@ -700,7 +700,7 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
   }
 
   if (num_cuts_to_remove > 0) {
-    settings_.log.printf("Removing %d duplicate cuts\n", num_cuts_to_remove);
+    settings_.log.debug("Removing %d duplicate cuts\n", num_cuts_to_remove);
     csr_matrix_t<i_t, f_t> new_cut_storage(0, 0, 0);
     cut_storage_.remove_rows(cuts_to_remove, new_cut_storage);
     cut_storage_ = new_cut_storage;
