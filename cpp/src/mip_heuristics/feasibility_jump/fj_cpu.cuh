@@ -210,4 +210,13 @@ struct cpu_fj_thread_t : public cpu_worker_thread_base_t<cpu_fj_thread_t<i_t, f_
   fj_t<i_t, f_t>* fj_ptr{nullptr};
 };
 
+// Standalone CPUFJ init for running without full fj_t infrastructure (avoids GPU allocations).
+// Used for early CPUFJ during presolve.
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
+  problem_t<i_t, f_t>& problem,
+  solution_t<i_t, f_t>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings = fj_settings_t{});
+
 }  // namespace cuopt::linear_programming::detail
