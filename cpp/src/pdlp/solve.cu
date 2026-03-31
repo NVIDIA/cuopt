@@ -1180,13 +1180,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   } catch (...) {
     pdlp_exception                 = std::current_exception();
     *settings_pdlp.concurrent_halt = 1;
-    try {
-      std::rethrow_exception(pdlp_exception);
-    } catch (const std::exception& e) {
-      CUOPT_LOG_ERROR("PDLP exception in concurrent mode: %s", e.what());
-    } catch (...) {
-      std::cout << "\n DEBUGGING: CAUGHT PDLP EXCEPTION RETHROW 2\n" << std::endl;
-    }
+    std::rethrow_exception(pdlp_exception);
   }
 
   // Wait for dual simplex thread to finish
