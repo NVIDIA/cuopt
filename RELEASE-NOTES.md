@@ -8,6 +8,7 @@
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
 - Exposed parameters for tuning heuristics
+- Add support for Python 3.14
 
 ### Breaking Changes (26.04)
 
