@@ -306,9 +306,22 @@ class Solution:
         """
         return self.solve_time
 
+    def get_solved_by_pdlp(self):
+        from warnings import warn
+
+        warn(
+            "get_solved_by_pdlp() will be deprecated in 26.08. Use get_solved_by() instead. ",
+            DeprecationWarning,
+        )
+
+        """
+        Returns whether the problem was solved by PDLP or not.
+        """
+        return self.solved_by == SolverMethod.PDLP
+
     def get_solved_by(self):
         """
-        Returns whether the problem was solved by Dual Simplex(1), PDLP(2) or Barrier(3)
+        Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
         """
         return self.solved_by
 
