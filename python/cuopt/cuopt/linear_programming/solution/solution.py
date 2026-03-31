@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from cuopt.linear_programming.solver_settings.solver_settings import (
+    SolverMethod,
+)
 from cuopt.linear_programming.solver.solver_wrapper import (
     LPTerminationStatus,
     MILPTerminationStatus,
     ProblemCategory,
-    SolverMethod,
 )
 
 
@@ -118,7 +120,9 @@ class Solution:
     solve_time: Float64
         Solve time in seconds
     solved_by: enum
-        Whether the problem was solved by Dual Simplex(1), PDLP(2) or Barrier(3)
+        Note: Applicable to only LP
+        Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
+        by the solver using the values from SolverMethod.
     """
 
     def __init__(
