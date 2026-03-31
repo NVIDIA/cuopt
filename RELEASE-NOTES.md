@@ -15,7 +15,7 @@
 - Lift knapsack cuts
 - Improved numerics of mixed integer Gomory cuts
 - Improved reliability branching
-- Reduce time for Markowitz factorization in Dual Simplex
+- Reduce time for Markowitz factorization in dual simplex
 - Reduce time in dual push inside crossover
 - Reduce number of free variables in barrier
 
