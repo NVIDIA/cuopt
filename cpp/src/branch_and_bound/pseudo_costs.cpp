@@ -608,8 +608,8 @@ static void batch_pdlp_strong_branching_task(
                    ? solutions.get_dual_objective_value(k + fractional.size())
                    : std::numeric_limits<f_t>::quiet_NaN();
 
-    pdlp_obj_down[k] = std::max(obj_down - root_obj, f_t(0.0));
-    pdlp_obj_up[k]   = std::max(obj_up - root_obj, f_t(0.0));
+    pdlp_obj_down[k] = std::max(obj_down - original_lp.obj_constant - root_obj, f_t(0.0));
+    pdlp_obj_up[k]   = std::max(obj_up - original_lp.obj_constant - root_obj, f_t(0.0));
   }
 }
 
@@ -712,11 +712,12 @@ static void batch_pdlp_reliability_branching_task(
 
   for (i_t k = 0; k < num_candidates; k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-      pdlp_obj_down[k] = solutions.get_dual_objective_value(k);
+      pdlp_obj_down[k] = solutions.get_dual_objective_value(k) - original_lp.obj_constant;
     }
     if (solutions.get_termination_status(k + num_candidates) ==
         pdlp_termination_status_t::Optimal) {
-      pdlp_obj_up[k] = solutions.get_dual_objective_value(k + num_candidates);
+      pdlp_obj_up[k] =
+        solutions.get_dual_objective_value(k + num_candidates) - original_lp.obj_constant;
     }
   }
 }
@@ -1233,8 +1234,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t ds_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) \
-  shared(score_mutex, sb_view)
+#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) shared( \
+    score_mutex, sb_view, ds_obj_down, ds_obj_up, ds_status_down, ds_status_up, unreliable_list)
     for (i_t i = 0; i < num_candidates; ++i) {
       const i_t j = unreliable_list[i];
 
