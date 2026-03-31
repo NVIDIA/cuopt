@@ -23,7 +23,8 @@
 
 ### Bug Fixes (26.04)
 - Fix incorrect termination status and replace with UnboundedOrInfeasible
-- Fix a issue with Papilo crashing 
+- Fix a issue with Papilo's probing presolver crashing. Fix to be pushed upstream
+- Fix a issue with a missing stream sync in the probing cache that was causing a crash
 - Write quadratic terms out in MPS files
 - Fix a issue in MIP where cuOpt was taking a long time to terminate after optimal solution found
 - Fix a issue in barrier on problems containing variables with infinite lower bounds
