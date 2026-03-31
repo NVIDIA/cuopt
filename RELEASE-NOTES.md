@@ -15,7 +15,6 @@
 - Lift knapsack cuts
 - Improved numerics of mixed integer Gomory cuts
 - Improved reliability branching
-- Run crossover separately on PDLP and Barrier in concurrent mode for MIP root relaxation
 - Reduce time for Markowitz factorization in Dual Simplex
 - Reduce time in dual push inside crossover
 - Reduce number of free variables in barrier
