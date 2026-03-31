@@ -3,7 +3,7 @@
 ## Release Notes 26.04
 
 ### New Features (26.04)
-- Run no relaxation heuristics on the original problem (before presolve) 
+- Run no relaxation heuristics before presolve 
 - New MIP cuts: clique cuts and implied bounds cuts
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
