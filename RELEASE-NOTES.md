@@ -19,6 +19,7 @@
 - Reduce time for Markowitz factorization in dual simplex
 - Reduce time for dual push inside crossover
 - Reduce number of free variables in barrier
+- Add gap information to primal heuristics logs when root relaxation solve still running
 
 
 ### Bug Fixes (26.04)
@@ -29,6 +30,7 @@
 - Fix a issue in MIP where cuOpt was taking a long time to terminate after optimal solution found
 - Fix a issue in barrier on problems containing variables with infinite lower bounds
 - Fix a bug where batch PDLP for strong branching was running on the problem without cuts
+- Fix errors with x + x*x, +x, -x in Python API
 
 
 ### Documentation (26.04)
