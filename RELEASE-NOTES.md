@@ -11,6 +11,7 @@
 
 ### Improvements (26.04)
 - Generate more MIR and Knapsack cuts
+- Lift knapsack cuts
 - Improved numerics of mixed integer Gomory cuts
 - Improved reliability branching
 - Run crossover separately on PDLP and Barrier in concurrent mode for MIP root relaxation
