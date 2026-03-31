@@ -1,0 +1,349 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package cuopt.remote;
+
+// Import the existing message definitions
+import "cuopt_remote.proto";
+
+// =============================================================================
+// gRPC Service Definition
+// =============================================================================
+
+service CuOptRemoteService {
+  // -------------------------
+  // Async Job Management
+  // -------------------------
+
+  // Submit a new LP or MIP solve job (returns immediately with job_id).
+  // For problems that fit within gRPC max message size (~256 MiB default).
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+
+  // -------------------------
+  // Chunked Array Upload (for large problems exceeding unary message limit)
+  // -------------------------
+
+  // Start a chunked upload session. Sends problem metadata (scalars, settings, string arrays)
+  // in the header. Returns an upload_id for subsequent chunk calls.
+  rpc StartChunkedUpload(StartChunkedUploadRequest) returns (StartChunkedUploadResponse);
+
+  // Send one chunk of array data. Each chunk carries a slice of one numeric array,
+  // identified by ArrayFieldId. The server accumulates chunks by upload_id.
+  rpc SendArrayChunk(SendArrayChunkRequest) returns (SendArrayChunkResponse);
+
+  // Finalize a chunked upload and submit the assembled problem as a job.
+  // Returns the job_id, same as SubmitJob.
+  rpc FinishChunkedUpload(FinishChunkedUploadRequest) returns (SubmitJobResponse);
+
+  // -------------------------
+  // Job Status and Results
+  // -------------------------
+
+  // Check the status of a submitted job
+  rpc CheckStatus(StatusRequest) returns (StatusResponse);
+
+  // Get the result of a completed job (unary, for results that fit in one message)
+  rpc GetResult(GetResultRequest) returns (ResultResponse);
+
+  // -------------------------
+  // Chunked Result Download (for large results exceeding unary message limit)
+  // -------------------------
+
+  // Start a chunked download session. Returns result metadata (scalars, enums, strings)
+  // and array descriptors (field_id, total_elements, element_size) for the caller to
+  // fetch array data in subsequent GetResultChunk calls.
+  rpc StartChunkedDownload(StartChunkedDownloadRequest) returns (StartChunkedDownloadResponse);
+
+  // Get one chunk of result array data. Each call returns a slice of one array,
+  // identified by ResultFieldId. The client controls pacing.
+  rpc GetResultChunk(GetResultChunkRequest) returns (GetResultChunkResponse);
+
+  // Finalize a chunked download session and release server-side state.
+  rpc FinishChunkedDownload(FinishChunkedDownloadRequest) returns (FinishChunkedDownloadResponse);
+
+  // Delete a result from server memory
+  rpc DeleteResult(DeleteRequest) returns (DeleteResponse);
+
+  // Cancel a queued or running job
+  rpc CancelJob(CancelRequest) returns (CancelResponse);
+
+  // Wait for a job to complete (blocking, returns status only - use GetResult for solution)
+  rpc WaitForCompletion(WaitRequest) returns (WaitResponse);
+
+  // -------------------------
+  // Log Streaming
+  // -------------------------
+
+  // Stream log messages as they are produced (server-side streaming)
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogMessage);
+
+  // -------------------------
+  // Incumbent Solutions
+  // -------------------------
+
+  // Get any available incumbent solutions since a given index.
+  rpc GetIncumbents(IncumbentRequest) returns (IncumbentResponse);
+}
+
+// =============================================================================
+// Request Messages
+// =============================================================================
+
+// Request to submit a new job
+message SubmitJobRequest {
+  oneof job_data {
+    SolveLPRequest lp_request = 1;
+    SolveMIPRequest mip_request = 2;
+  }
+}
+
+// Response when job is submitted
+message SubmitJobResponse {
+  string job_id = 1;           // Unique job identifier
+  string message = 2;          // Optional message
+}
+
+// =============================================================================
+// Chunked Array Upload (for problems exceeding unary message limit)
+// =============================================================================
+
+// Header for chunked array uploads: carries scalars, settings, and small string arrays.
+// Numeric arrays are sent separately via SendArrayChunk RPCs.
+message ChunkedProblemHeader {
+  RequestHeader header = 1;
+
+  // Problem scalars
+  bool maximize = 2;
+  double objective_scaling_factor = 3;
+  double objective_offset = 4;
+  string problem_name = 5;
+  string objective_name = 6;
+
+  // String arrays (included here since they are rarely the size bottleneck)
+  repeated string variable_names = 7;
+  repeated string row_names = 8;
+
+  // Settings (one of LP or MIP)
+  oneof settings {
+    PDLPSolverSettings lp_settings = 20;
+    MIPSolverSettings mip_settings = 21;
+  }
+
+  // MIP-specific
+  bool enable_incumbents = 30;
+}
+
+// A chunk of typed array data for large problem transfers.
+// Each chunk carries a slice of one array field, identified by field_id.
+// The server pre-allocates the target array on the first chunk (using total_elements)
+// and copies each chunk's data at the given element_offset.
+message ArrayChunk {
+  ArrayFieldId field_id = 1;   // Which array this chunk belongs to
+  int64 element_offset = 2;    // Element index offset within the array
+  int64 total_elements = 3;    // Total elements in the complete array (for pre-allocation)
+  bytes data = 4;              // Raw bytes: sizeof(element_type) * elements_in_this_chunk
+}
+
+// Start a chunked upload: sends problem metadata and settings.
+// Problem category (LP/MIP) is derived from problem_header.header.problem_category.
+message StartChunkedUploadRequest {
+  ChunkedProblemHeader problem_header = 1;
+}
+
+message StartChunkedUploadResponse {
+  string upload_id = 1;
+  int64 max_message_bytes = 2;  // Server gRPC max message size hint
+}
+
+// Send one array chunk as part of an in-progress chunked upload.
+message SendArrayChunkRequest {
+  string upload_id = 1;
+  ArrayChunk chunk = 2;
+}
+
+message SendArrayChunkResponse {
+  string upload_id = 1;
+  int64 chunks_received = 2;  // Running count of chunks received for this upload
+}
+
+// Finalize a chunked upload and submit the assembled problem as a job.
+message FinishChunkedUploadRequest {
+  string upload_id = 1;
+}
+
+// Request to check job status
+message StatusRequest {
+  string job_id = 1;
+}
+
+// Request to get result
+message GetResultRequest {
+  string job_id = 1;
+}
+
+// Metadata about a single result array available for chunked download
+message ResultArrayDescriptor {
+  ResultFieldId field_id = 1;
+  int64 total_elements = 2;
+  int64 element_size_bytes = 3;   // 8 for double, 4 for int32, etc.
+}
+
+// Header for chunked result download - carries all scalar/enum/string fields
+// from LPSolution or MIPSolution. Array data is sent via GetResultChunk.
+message ChunkedResultHeader {
+  bool is_mip = 1;
+
+  // LP result scalars
+  PDLPTerminationStatus lp_termination_status = 10;
+  string error_message = 11;
+  double l2_primal_residual = 12;
+  double l2_dual_residual = 13;
+  double primal_objective = 14;
+  double dual_objective = 15;
+  double gap = 16;
+  int32 nb_iterations = 17;
+  double solve_time = 18;
+  bool solved_by_pdlp = 19;
+
+  // MIP result scalars
+  MIPTerminationStatus mip_termination_status = 30;
+  string mip_error_message = 31;
+  double mip_objective = 32;
+  double mip_gap = 33;
+  double solution_bound = 34;
+  double total_solve_time = 35;
+  double presolve_time = 36;
+  double max_constraint_violation = 37;
+  double max_int_violation = 38;
+  double max_variable_bound_violation = 39;
+  int32 nodes = 40;
+  int32 simplex_iterations = 41;
+
+  // LP warm start scalars (included in header since they are small)
+  double ws_initial_primal_weight = 60;
+  double ws_initial_step_size = 61;
+  int32 ws_total_pdlp_iterations = 62;
+  int32 ws_total_pdhg_iterations = 63;
+  double ws_last_candidate_kkt_score = 64;
+  double ws_last_restart_kkt_score = 65;
+  double ws_sum_solution_weight = 66;
+  int32 ws_iterations_since_last_restart = 67;
+
+  // Array metadata so client knows what to fetch
+  repeated ResultArrayDescriptor arrays = 50;
+}
+
+message StartChunkedDownloadRequest {
+  string job_id = 1;
+}
+
+message StartChunkedDownloadResponse {
+  string download_id = 1;
+  ChunkedResultHeader header = 2;
+  int64 max_message_bytes = 3;
+}
+
+message GetResultChunkRequest {
+  string download_id = 1;
+  ResultFieldId field_id = 2;
+  int64 element_offset = 3;
+  int64 max_elements = 4;
+}
+
+message GetResultChunkResponse {
+  string download_id = 1;
+  ResultFieldId field_id = 2;
+  int64 element_offset = 3;
+  int64 elements_in_chunk = 4;
+  bytes data = 5;
+}
+
+message FinishChunkedDownloadRequest {
+  string download_id = 1;
+}
+
+message FinishChunkedDownloadResponse {
+  string download_id = 1;
+}
+
+// Request to delete result
+message DeleteRequest {
+  string job_id = 1;
+}
+
+// DeleteResponse is defined in cuopt_remote.proto (imported above)
+
+// Request to cancel job
+message CancelRequest {
+  string job_id = 1;
+}
+
+// CancelResponse is defined in cuopt_remote.proto (imported above)
+
+// Request to wait for completion (blocking)
+message WaitRequest {
+  string job_id = 1;
+}
+
+// Response for wait (status only, no solution - use GetResult afterward)
+message WaitResponse {
+  JobStatus job_status = 1;
+  string message = 2;
+  int64 result_size_bytes = 3;  // Size of result payload when COMPLETED
+}
+
+// Request to stream logs
+message StreamLogsRequest {
+  string job_id = 1;
+  int64 from_byte = 2;         // Optional: start from this byte offset
+}
+
+// Individual log message (streamed)
+message LogMessage {
+  string line = 1;             // Single log line
+  int64 byte_offset = 2;       // Byte offset of this line in log file
+  bool job_complete = 3;       // True if this is the last message (job done)
+}
+
+// =============================================================================
+// Incumbent Solutions
+// =============================================================================
+
+message IncumbentRequest {
+  string job_id = 1;
+  int64 from_index = 2;        // Return incumbents starting from this index
+  int32 max_count = 3;         // Optional limit (0 or negative => no limit)
+}
+
+message Incumbent {
+  int64 index = 1;
+  double objective = 2;
+  repeated double assignment = 3;
+  string job_id = 4;
+}
+
+message IncumbentResponse {
+  repeated Incumbent incumbents = 1;
+  int64 next_index = 2;        // Next index the client should request
+  bool job_complete = 3;       // True if job is complete (no more incumbents)
+}
+
+// =============================================================================
+// Notes on gRPC Status Codes
+// =============================================================================
+//
+// gRPC uses standard status codes instead of custom ResponseStatus enum:
+//   OK (0) - Success
+//   CANCELLED (1) - Operation was cancelled
+//   UNKNOWN (2) - Unknown error
+//   INVALID_ARGUMENT (3) - Invalid request
+//   DEADLINE_EXCEEDED (4) - Timeout
+//   NOT_FOUND (5) - Job ID not found
+//   ALREADY_EXISTS (6) - Job already exists
+//   RESOURCE_EXHAUSTED (8) - Queue full, out of memory, etc.
+//   INTERNAL (13) - Internal server error
+//   UNAVAILABLE (14) - Server unavailable
+//
+// Errors are returned via gRPC Status with a message, not in response message.

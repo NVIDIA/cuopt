@@ -7,6 +7,7 @@ channels:
 dependencies:
 - breathe
 - bzip2
+- c-ares
 - c-compiler
 - ccache
 - clang-tools=20.1.4
@@ -27,11 +28,14 @@ dependencies:
 - gcc_linux-aarch64=14.*
 - ipython
 - jsonref==1.1.0
+- libabseil
 - libboost-devel
 - libcudss-dev >=0.7
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
+- libgrpc
+- libprotobuf
 - libraft-headers==26.4.*,>=0.0.0a0
 - librmm==26.4.*,>=0.0.0a0
 - make
@@ -45,6 +49,7 @@ dependencies:
 - numba>=0.60.0,<0.65.0
 - numpy>=1.23.5,<3.0
 - numpydoc
+- openssl
 - pandas>=2.0
 - pexpect
 - pip
@@ -58,6 +63,7 @@ dependencies:
 - pyyaml>=6.0.0
 - rapids-build-backend>=0.4.0,<0.5.0
 - rapids-logger==0.2.*,>=0.0.0a0
+- re2
 - requests
 - rmm==26.4.*,>=0.0.0a0
 - scikit-build-core>=0.11.0

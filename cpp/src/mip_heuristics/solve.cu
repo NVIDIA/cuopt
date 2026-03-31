@@ -63,129 +63,136 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
                                  timer_t& timer)
 {
-  raft::common::nvtx::range fun_scope("run_mip");
-  auto constexpr const running_mip = true;
+  try {
+    raft::common::nvtx::range fun_scope("run_mip");
+    auto constexpr const running_mip = true;
 
-  // TODO ask Akif and Alice how was this passed down?
-  auto hyper_params                                     = settings.hyper_params;
-  hyper_params.update_primal_weight_on_initial_solution = false;
-  hyper_params.update_step_size_on_initial_solution     = true;
-  if (settings.get_mip_callbacks().size() > 0) {
-    auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
-    if (problem.has_papilo_presolve_data()) {
-      callback_num_variables = problem.get_papilo_original_num_variables();
+    // TODO ask Akif and Alice how was this passed down?
+    auto hyper_params                                     = settings.hyper_params;
+    hyper_params.update_primal_weight_on_initial_solution = false;
+    hyper_params.update_step_size_on_initial_solution     = true;
+    if (settings.get_mip_callbacks().size() > 0) {
+      auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
+      if (problem.has_papilo_presolve_data()) {
+        callback_num_variables = problem.get_papilo_original_num_variables();
+      }
+      for (auto callback : settings.get_mip_callbacks()) {
+        callback->template setup<f_t>(callback_num_variables);
+      }
     }
-    for (auto callback : settings.get_mip_callbacks()) {
-      callback->template setup<f_t>(callback_num_variables);
-    }
-  }
-  // if the input problem is empty: early exit
-  if (problem.empty) {
-    detail::solution_t<i_t, f_t> solution(problem);
-    problem.preprocess_problem();
-    thrust::for_each(problem.handle_ptr->get_thrust_policy(),
-                     thrust::make_counting_iterator(0),
-                     thrust::make_counting_iterator(problem.n_variables),
-                     [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
-                       auto bounds = pb.variable_bounds[index];
-                       sol[index]  = pb.objective_coefficients[index] > 0 ? get_lower(bounds)
-                                                                          : get_upper(bounds);
-                     });
-    problem.post_process_solution(solution);
-    solution.compute_objective();  // just to ensure h_user_obj is set
-    auto stats = solver_stats_t<i_t, f_t>{};
-    stats.set_solution_bound(solution.get_user_objective());
-    // log the objective for scripts which need it
-    CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
-    for (auto callback : settings.get_mip_callbacks()) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto temp_sol(solution);
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        std::vector<f_t> user_objective_vec(1);
-        std::vector<f_t> user_bound_vec(1);
-        user_objective_vec[0] = solution.get_user_objective();
-        user_bound_vec[0]     = stats.get_solution_bound();
-        if (problem.has_papilo_presolve_data()) {
-          problem.papilo_uncrush_assignment(temp_sol.assignment);
+    // if the input problem is empty: early exit
+    if (problem.empty) {
+      detail::solution_t<i_t, f_t> solution(problem);
+      problem.preprocess_problem();
+      thrust::for_each(
+        problem.handle_ptr->get_thrust_policy(),
+        thrust::make_counting_iterator(0),
+        thrust::make_counting_iterator(problem.n_variables),
+        [sol = solution.assignment.data(), pb = problem.view()] __device__(i_t index) {
+          auto bounds = pb.variable_bounds[index];
+          sol[index] = pb.objective_coefficients[index] > 0 ? get_lower(bounds) : get_upper(bounds);
+        });
+      problem.post_process_solution(solution);
+      solution.compute_objective();  // just to ensure h_user_obj is set
+      auto stats = solver_stats_t<i_t, f_t>{};
+      stats.set_solution_bound(solution.get_user_objective());
+      // log the objective for scripts which need it
+      CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
+      for (auto callback : settings.get_mip_callbacks()) {
+        if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
+          auto temp_sol(solution);
+          auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
+          std::vector<f_t> user_objective_vec(1);
+          std::vector<f_t> user_bound_vec(1);
+          user_objective_vec[0] = solution.get_user_objective();
+          user_bound_vec[0]     = stats.get_solution_bound();
+          if (problem.has_papilo_presolve_data()) {
+            problem.papilo_uncrush_assignment(temp_sol.assignment);
+          }
+          std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
+          raft::copy(user_assignment_vec.data(),
+                     temp_sol.assignment.data(),
+                     temp_sol.assignment.size(),
+                     temp_sol.handle_ptr->get_stream());
+          solution.handle_ptr->sync_stream();
+          get_sol_callback->get_solution(user_assignment_vec.data(),
+                                         user_objective_vec.data(),
+                                         user_bound_vec.data(),
+                                         get_sol_callback->get_user_data());
         }
-        std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
-        raft::copy(user_assignment_vec.data(),
-                   temp_sol.assignment.data(),
-                   temp_sol.assignment.size(),
-                   temp_sol.handle_ptr->get_stream());
-        solution.handle_ptr->sync_stream();
-        get_sol_callback->get_solution(user_assignment_vec.data(),
-                                       user_objective_vec.data(),
-                                       user_bound_vec.data(),
-                                       get_sol_callback->get_user_data());
+      }
+      return solution.get_solution(true, stats, false);
+    }
+    // problem contains unpreprocessed data
+    detail::problem_t<i_t, f_t> scaled_problem(problem);
+
+    CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
+                   problem.presolve_data.objective_offset,
+                   problem.presolve_data.objective_scaling_factor);
+    CUOPT_LOG_INFO("Model fingerprint: 0x%x", problem.get_fingerprint());
+    cuopt_assert(problem.original_problem_ptr->get_n_variables() == scaled_problem.n_variables,
+                 "Size mismatch");
+    cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
+                 "Size mismatch");
+    detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
+      scaled_problem.handle_ptr,
+      scaled_problem,
+      hyper_params.default_l_inf_ruiz_iterations,
+      (f_t)hyper_params.default_alpha_pock_chambolle_rescaling,
+      scaled_problem.reverse_coefficients,
+      scaled_problem.reverse_offsets,
+      scaled_problem.reverse_constraints,
+      nullptr,
+      hyper_params,
+      running_mip);
+
+    cuopt_func_call(auto saved_problem = scaled_problem);
+    if (settings.mip_scaling) {
+      scaling.scale_problem();
+      if (settings.initial_solutions.size() > 0) {
+        for (const auto& initial_solution : settings.initial_solutions) {
+          scaling.scale_primal(*initial_solution);
+        }
       }
     }
-    return solution.get_solution(true, stats, false);
-  }
-  // problem contains unpreprocessed data
-  detail::problem_t<i_t, f_t> scaled_problem(problem);
+    // only call preprocess on scaled problem, so we can compute feasibility on the original problem
+    scaled_problem.preprocess_problem();
+    // cuopt_func_call((check_scaled_problem<i_t, f_t>(scaled_problem, saved_problem)));
+    detail::trivial_presolve(scaled_problem);
 
-  CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
-                 problem.presolve_data.objective_offset,
-                 problem.presolve_data.objective_scaling_factor);
-  CUOPT_LOG_INFO("Model fingerprint: 0x%x", problem.get_fingerprint());
-  cuopt_assert(problem.original_problem_ptr->get_n_variables() == scaled_problem.n_variables,
-               "Size mismatch");
-  cuopt_assert(problem.original_problem_ptr->get_n_constraints() == scaled_problem.n_constraints,
-               "Size mismatch");
-  detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
-    scaled_problem.handle_ptr,
-    scaled_problem,
-    hyper_params.default_l_inf_ruiz_iterations,
-    (f_t)hyper_params.default_alpha_pock_chambolle_rescaling,
-    scaled_problem.reverse_coefficients,
-    scaled_problem.reverse_offsets,
-    scaled_problem.reverse_constraints,
-    nullptr,
-    hyper_params,
-    running_mip);
-
-  cuopt_func_call(auto saved_problem = scaled_problem);
-  if (settings.mip_scaling) {
-    scaling.scale_problem();
-    if (settings.initial_solutions.size() > 0) {
-      for (const auto& initial_solution : settings.initial_solutions) {
-        scaling.scale_primal(*initial_solution);
-      }
+    detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, scaling, timer);
+    if (timer.check_time_limit()) {
+      CUOPT_LOG_INFO("Time limit reached before main solve");
+      detail::solution_t<i_t, f_t> sol(problem);
+      auto stats                 = solver.get_solver_stats();
+      stats.total_solve_time     = timer.elapsed_time();
+      sol.post_process_completed = true;
+      return sol.get_solution(false, stats, false);
     }
-  }
-  // only call preprocess on scaled problem, so we can compute feasibility on the original problem
-  scaled_problem.preprocess_problem();
-  // cuopt_func_call((check_scaled_problem<i_t, f_t>(scaled_problem, saved_problem)));
-  detail::trivial_presolve(scaled_problem);
+    auto scaled_sol                 = solver.run_solver();
+    bool is_feasible_before_scaling = scaled_sol.get_feasible();
+    scaled_sol.problem_ptr          = &problem;
+    if (settings.mip_scaling) { scaling.unscale_solutions(scaled_sol); }
+    // at this point we need to compute the feasibility on the original problem not the presolved
+    // one
+    bool is_feasible_after_unscaling = scaled_sol.compute_feasibility();
+    if (!scaled_problem.empty && is_feasible_before_scaling != is_feasible_after_unscaling) {
+      CUOPT_LOG_WARN(
+        "The feasibility does not match on scaled and unscaled problems. To overcome this issue, "
+        "please provide a more numerically stable problem.");
+    }
 
-  detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, scaling, timer);
-  if (timer.check_time_limit()) {
-    CUOPT_LOG_INFO("Time limit reached before main solve");
-    detail::solution_t<i_t, f_t> sol(problem);
-    auto stats             = solver.get_solver_stats();
-    stats.total_solve_time = timer.elapsed_time();
-    return sol.get_solution(false, stats, false);
-  }
-  auto scaled_sol                 = solver.run_solver();
-  bool is_feasible_before_scaling = scaled_sol.get_feasible();
-  scaled_sol.problem_ptr          = &problem;
-  if (settings.mip_scaling) { scaling.unscale_solutions(scaled_sol); }
-  // at this point we need to compute the feasibility on the original problem not the presolved one
-  bool is_feasible_after_unscaling = scaled_sol.compute_feasibility();
-  if (!scaled_problem.empty && is_feasible_before_scaling != is_feasible_after_unscaling) {
-    CUOPT_LOG_WARN(
-      "The feasibility does not match on scaled and unscaled problems. To overcome this issue, "
-      "please provide a more numerically stable problem.");
-  }
+    auto sol = scaled_sol.get_solution(
+      is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
 
-  auto sol = scaled_sol.get_solution(
-    is_feasible_before_scaling || is_feasible_after_unscaling, solver.get_solver_stats(), false);
-
-  int hidesol =
-    std::getenv("CUOPT_MIP_HIDE_SOLUTION") ? atoi(std::getenv("CUOPT_MIP_HIDE_SOLUTION")) : 0;
-  if (!hidesol) { detail::print_solution(scaled_problem.handle_ptr, sol.get_solution()); }
-  return sol;
+    int hidesol =
+      std::getenv("CUOPT_MIP_HIDE_SOLUTION") ? atoi(std::getenv("CUOPT_MIP_HIDE_SOLUTION")) : 0;
+    if (!hidesol) { detail::print_solution(scaled_problem.handle_ptr, sol.get_solution()); }
+    return sol;
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR("Unexpected error in run_mip: %s", e.what());
+    throw;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -371,6 +378,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     return mip_solution_t<i_t, f_t>{
       cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
       op_problem.get_handle_ptr()->get_stream()};
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR("Unexpected error in solve_mip: %s", e.what());
+    throw;
   }
 }
 
@@ -393,8 +403,6 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  CUOPT_LOG_INFO("solve_mip (CPU problem) - converting to GPU for local solve");
-
   // Create CUDA resources for the conversion
   rmm::cuda_stream stream;
   raft::handle_t handle(stream);
@@ -437,16 +445,12 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
       cuopt_expects(cpu_prob != nullptr,
                     error_type_t::ValidationError,
                     "Remote execution requires CPU memory backend");
-      CUOPT_LOG_INFO("Remote MIP solve requested");
       return solve_mip_remote(*cpu_prob, settings);
     }
 
     // Local execution - dispatch to appropriate overload based on problem type
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
-    if (cpu_prob != nullptr) {
-      // CPU problem: use CPU overload (converts to GPU, solves, converts solution back)
-      return solve_mip(*cpu_prob, settings);
-    }
+    if (cpu_prob != nullptr) { return solve_mip(*cpu_prob, settings); }
 
     // GPU problem: call GPU solver directly
     auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);

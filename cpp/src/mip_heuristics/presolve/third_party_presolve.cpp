@@ -5,6 +5,15 @@
  */
 /* clang-format on */
 
+// Papilo's ProbingView::reset() guards bounds restoration with #ifndef NDEBUG.
+// This causes invalid (-1) column indices due to bugs in the Probing presolver.
+// Force-include ProbingView.hpp with NDEBUG undefined so the restoration is compiled in.
+#ifdef NDEBUG
+#undef NDEBUG
+#include <papilo/core/ProbingView.hpp>
+#define NDEBUG
+#endif
+
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
@@ -432,6 +441,12 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
 
   const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
   const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
+
+  i_t ncols = papilo_problem.getNCols();
+  cuopt_assert(
+    std::all_of(
+      cols + start, cols + start + nnz, [ncols](i_t col) { return col >= 0 && col < ncols; }),
+    "Papilo produced invalid column indices in presolved matrix");
 
   op_problem.set_csr_constraint_matrix(
     &(coeffs[start]), nnz, &(cols[start]), nnz, offsets.data(), nrows + 1);
