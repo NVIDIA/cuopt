@@ -17,7 +17,8 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
-#include <span>
+
+#include <cuda/std/span>
 
 namespace cuopt::linear_programming {
 
@@ -275,7 +276,7 @@ class pdlp_solver_settings_t {
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
   // Shared strong branching solved flags for cooperative DS + PDLP
-  std::span<std::atomic<int>> shared_sb_solved;
+  cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
   // Holds the information of new variable lower and upper bounds for each climber in the format:
