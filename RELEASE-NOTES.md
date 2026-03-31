@@ -3,12 +3,27 @@
 ## Release Notes 26.04
 
 ### New Features (26.04)
+- Run no relaxation heuristics on the original problem (before presolve) 
+- New MIP cuts: clique cuts and implied bounds cuts
+- Add option for using Batch PDLP in reliability branching  
 
 ### Breaking Changes (26.04)
 
 ### Improvements (26.04)
+- Generate more MIR and Knapsack cuts
+- Improved reliability branching
+- Run crossover separately on PDLP and Barrier in concurrent mode for MIP root relaxation
+- Reduce time for Markowitz factorization in Dual Simplex
+- Reduce time in dual push inside crossover
+- Reduce number of free variables in barrier
+
 
 ### Bug Fixes (26.04)
+- Fix a issue with Papilo crashing 
+- Write quadratic terms out in MPS files
+- Fix a issue in MIP solver where cuOpt was taking a long time to terminate after optimal solution found
+- Fix an issue in barrier on problems with variables with infinite lower bounds
+
 
 ### Documentation (26.04)
 
