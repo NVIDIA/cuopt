@@ -26,18 +26,18 @@
 
 
 ### Bug Fixes (26.04)
-- Fix incorrect termination status and replace with UnboundedOrInfeasible
-- Fix a issue with Papilo's probing presolver crashing. Fix to be pushed upstream
-- Fix a issue with a missing stream sync in the probing cache that was causing a crash
-- Fix a issue in MIP leading to incorrect dual bound when nodes remain in the heap
-- Fix a issue in MIP where nodes with objective less than the incumbent objective value were incorrectly fathomed
-- Fix a issue in MIP where variables could violate their bounds in Feasibility Jump on the CPU
-- Fix a issue in MIP where a race condition could occur when sharing solutions between branch and bound and heuristics
-- Write quadratic terms out in MPS files
-- Fix a issue in MIP where cuOpt was taking a long time to terminate after optimal solution found
-- Fix a issue in barrier on problems containing variables with infinite lower bounds
-- Fix a bug where batch PDLP for strong branching was running on the problem without cuts
-- Fix errors with x + x*x, +x, -x in Python API
+- Fix a bug in LP/MIP where cuOpt reported incorrect termination status; we now correctly report UnboundedOrInfeasible
+- Fix a bug in MIP where Papilo's probing presolver crashed; fix will be pushed upstream
+- Fix a bug in MIP with a missing stream sync in the probing cache that was causing a crash
+- Fix a bug in MIP leading to incorrect dual bound when nodes remain in the heap
+- Fix a bug in MIP where nodes with objective less than the incumbent objective value were incorrectly fathomed
+- Fix a bug in MIP where variables could violate their bounds in Feasibility Jump on the CPU
+- Fix a bug in MIP where a race condition could occur when sharing solutions between branch and bound and heuristics
+- Fix a bug in QP where quadratic terms were not written out to MPS files
+- Fix a bug in MIP where cuOpt was taking a long time to terminate after optimal solution found
+- Fix a bug in LP/barrier on problems containing variables with infinite lower bounds
+- Fix a bug in MIP where batch PDLP for strong branching was running on the problem without cuts
+- Fix a bug in Python API when using x + x*x, +x, -x expressions
 - Update to the latest version of PSLP which includes bug fixes for incorrect infeasible classification
 
 
