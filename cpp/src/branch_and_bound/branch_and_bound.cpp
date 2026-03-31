@@ -1603,6 +1603,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       break;
+    } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
+      break;
     } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
       break;
     }

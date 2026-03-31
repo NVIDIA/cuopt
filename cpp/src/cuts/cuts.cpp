@@ -894,7 +894,7 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
     }
   }
 
-#if 1
+#ifdef PRINT_KNAPSACK_INFO
   i_t num_knapsack_constraints = knapsack_constraints_.size();
   settings.log.printf("Number of knapsack constraints %d\n", num_knapsack_constraints);
 #endif
@@ -1399,7 +1399,7 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
       settings_.log.debug("Lifted variable %d with alpha %g\n", k, alpha_k);
       F.push_back(k);
       alpha.push_back(alpha_k);
-      values.push_back(static_cast<i_t>(alpha_k));
+      values.push_back(static_cast<i_t>(std::round(alpha_k)));
       weights.push_back(a_k);
 
       lifted_cut.vector.i.push_back(k);
@@ -1798,8 +1798,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     f_t cut_start_time = tic();
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
-    if (1 || cut_generation_time > 1.0) {
-      settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
