@@ -1,5 +1,17 @@
 # Release Notes
 
+## Release Notes 26.04
+
+### New Features (26.04)
+
+### Breaking Changes (26.04)
+
+### Improvements (26.04)
+
+### Bug Fixes (26.04)
+
+### Documentation (26.04)
+
 ## Release Notes 26.02
 
 ### New Features (26.02)
