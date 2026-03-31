@@ -1,3 +1,6 @@
+# Default owner for paths with no later, more specific match
+*                  @nvidia/cuopt-infra-codeowners
+
 #cpp code owners
 cpp/               @nvidia/cuopt-engine-codeowners
 
