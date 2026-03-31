@@ -393,8 +393,6 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
-  CUOPT_LOG_INFO("solve_mip (CPU problem) - converting to GPU for local solve");
-
   // Create CUDA resources for the conversion
   rmm::cuda_stream stream;
   raft::handle_t handle(stream);
@@ -437,16 +435,12 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
       cuopt_expects(cpu_prob != nullptr,
                     error_type_t::ValidationError,
                     "Remote execution requires CPU memory backend");
-      CUOPT_LOG_INFO("Remote MIP solve requested");
       return solve_mip_remote(*cpu_prob, settings);
     }
 
     // Local execution - dispatch to appropriate overload based on problem type
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
-    if (cpu_prob != nullptr) {
-      // CPU problem: use CPU overload (converts to GPU, solves, converts solution back)
-      return solve_mip(*cpu_prob, settings);
-    }
+    if (cpu_prob != nullptr) { return solve_mip(*cpu_prob, settings); }
 
     // GPU problem: call GPU solver directly
     auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);

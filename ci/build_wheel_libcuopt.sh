@@ -17,6 +17,16 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
+# Install libuuid (needed by cuopt_grpc_server)
+if command -v dnf &> /dev/null; then
+    dnf install -y libuuid-devel
+elif command -v apt-get &> /dev/null; then
+    apt-get update && apt-get install -y uuid-dev
+fi
+
+# Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
+bash ci/utils/install_protobuf_grpc.sh
+
 export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
 
 # For pull requests we are enabling assert mode.

@@ -15,11 +15,12 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
    libcuopt         - build the cuopt C++ code
+   cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
    libmps_parser    - build the libmps_parser C++ code
    cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
@@ -358,8 +359,8 @@ if buildAll || hasArg libmps_parser; then
 fi
 
 ################################################################################
-# Configure, build, and install libcuopt
-if buildAll || hasArg libcuopt; then
+# Configure and build libcuopt (and optionally just the gRPC server)
+if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
     cd "${LIBCUOPT_BUILD_DIR}"
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
@@ -386,7 +387,10 @@ if buildAll || hasArg libcuopt; then
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp
     JFLAG="${PARALLEL_LEVEL:+-j${PARALLEL_LEVEL}}"
-    if hasArg -n; then
+    if hasArg cuopt_grpc_server && ! hasArg libcuopt && ! buildAll; then
+        # Build only the gRPC server (ninja resolves libcuopt as a dependency)
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} ${JFLAG}
+    elif hasArg -n; then
         # Manual make invocation to start its jobserver
         make ${JFLAG} -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
     else
