@@ -73,6 +73,7 @@ cache:
       - cmake ${{ cmake_version }}
       - make
       - ninja
+      - git
       - tbb-devel
       - zlib
       - bzip2
@@ -90,6 +91,12 @@ cache:
       - tbb-devel
       - zlib
       - bzip2
+      - openssl
+      - c-ares
+      - libgrpc
+      - libprotobuf
+      - libabseil
+      - re2
 
 outputs:
   - package:
@@ -164,6 +171,13 @@ outputs:
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
+        - openssl
+        - c-ares
+        - libuuid
+        - libgrpc
+        - libprotobuf
+        - libabseil
+        - re2
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
@@ -171,6 +185,12 @@ outputs:
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss
+        - openssl
+        - c-ares
+        - libuuid
+        - libgrpc
+        - libprotobuf
+        - libabseil
       ignore_run_exports:
         by_name:
           - cuda-nvtx
@@ -186,6 +206,7 @@ outputs:
         files:
           - lib/libcuopt.so
           - bin/cuopt_cli
+          - bin/cuopt_grpc_server
     about:
       homepage: ${{ load_from_file("python/cuopt/pyproject.toml").project.urls.Homepage }}
       license: ${{ load_from_file("python/cuopt/pyproject.toml").project.license }}
@@ -212,6 +233,11 @@ outputs:
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
+        - openssl
+        - c-ares
+        - libgrpc
+        - libprotobuf
+        - libabseil
       run:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}

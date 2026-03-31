@@ -105,6 +105,7 @@ class mip_solver_settings_t {
   std::string log_file;
   std::string sol_file;
   std::string user_problem_file;
+  std::string presolve_file;
 
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;

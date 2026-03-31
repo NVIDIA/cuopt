@@ -1453,6 +1453,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
+    if (run_presolve && settings.presolve_file != "") {
+      CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
+      result->reduced_problem.write_to_mps(settings.presolve_file);
+    }
 
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
@@ -1619,8 +1623,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
-  CUOPT_LOG_INFO("solve_lp (CPU problem) - converting to GPU for local solve");
-
   // Create CUDA resources for the conversion
   rmm::cuda_stream stream;
   raft::handle_t handle(stream);
@@ -1670,14 +1672,12 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     cuopt_expects(cpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "Remote execution requires CPU memory backend");
-    CUOPT_LOG_INFO("Remote LP solve requested");
-    return solve_lp_remote(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode);
+    return solve_lp_remote(*cpu_prob, settings);
   }
 
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
-    // CPU problem: use CPU overload (converts to GPU, solves, converts solution back)
     return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 

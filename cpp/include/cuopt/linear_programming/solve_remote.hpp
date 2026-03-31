@@ -34,9 +34,7 @@ struct mip_solver_settings_t;
 template <typename i_t, typename f_t>
 std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   cpu_optimization_problem_t<i_t, f_t> const& cpu_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool problem_checking     = true,
-  bool use_pdlp_solver_mode = true);
+  pdlp_solver_settings_t<i_t, f_t> const& settings);
 
 /**
  * @brief Solve MIP problem remotely (CPU backend)

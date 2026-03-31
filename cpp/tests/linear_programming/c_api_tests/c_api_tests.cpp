@@ -323,77 +323,233 @@ TEST(c_api, mip_solution_lp_methods) { EXPECT_EQ(test_mip_solution_lp_methods(),
 // =============================================================================
 // CPU-Only Execution Tests
 // These tests verify that cuOpt can run on a CPU-only host with remote execution
-// enabled. The remote solve stubs return dummy results.
+// enabled, forwarding solves to a real cuopt_grpc_server over gRPC.
+//
+// A single shared server is started once for all tests in this fixture
+// (SetUpTestSuite / TearDownTestSuite) to avoid per-test startup overhead.
 // =============================================================================
 
-// Helper to set environment variables for CPU-only mode
-class CPUOnlyTestEnvironment {
- public:
-  CPUOnlyTestEnvironment()
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <chrono>
+#include <thread>
+
+namespace {
+
+std::string find_in_path(const std::string& name)
+{
+  const char* path_env = std::getenv("PATH");
+  if (!path_env) return "";
+
+  std::string path_str(path_env);
+  std::string::size_type start = 0;
+  std::string::size_type end;
+
+  while ((end = path_str.find(':', start)) != std::string::npos || start < path_str.size()) {
+    std::string dir;
+    if (end != std::string::npos) {
+      dir   = path_str.substr(start, end - start);
+      start = end + 1;
+    } else {
+      dir   = path_str.substr(start);
+      start = path_str.size();
+    }
+    if (dir.empty()) continue;
+    std::string full_path = dir + "/" + name;
+    if (access(full_path.c_str(), X_OK) == 0) { return full_path; }
+  }
+  return "";
+}
+
+std::string find_server_binary()
+{
+  const char* env_path = std::getenv("CUOPT_GRPC_SERVER_PATH");
+  if (env_path && access(env_path, X_OK) == 0) { return env_path; }
+
+  std::string path_result = find_in_path("cuopt_grpc_server");
+  if (!path_result.empty()) { return path_result; }
+
+  std::vector<std::string> paths = {
+    "./cuopt_grpc_server",
+    "../cuopt_grpc_server",
+    "../../cuopt_grpc_server",
+    "./build/cuopt_grpc_server",
+    "../build/cuopt_grpc_server",
+  };
+  for (const auto& path : paths) {
+    if (access(path.c_str(), X_OK) == 0) { return path; }
+  }
+  return "";
+}
+
+bool tcp_connect_check(int port, int timeout_ms)
+{
+  auto start = std::chrono::steady_clock::now();
+  while (true) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return false;
+
+    struct sockaddr_in addr{};
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(port);
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0) {
+      close(sock);
+      return true;
+    }
+    close(sock);
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+    if (elapsed.count() >= timeout_ms) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+}
+
+}  // namespace
+
+class CpuOnlyWithServerTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite()
   {
-    // Save original values
-    const char* cuda_visible = getenv("CUDA_VISIBLE_DEVICES");
-    const char* remote_host  = getenv("CUOPT_REMOTE_HOST");
-    const char* remote_port  = getenv("CUOPT_REMOTE_PORT");
+    server_path_ = find_server_binary();
+    if (server_path_.empty()) {
+      skip_reason_ = "cuopt_grpc_server binary not found";
+      return;
+    }
 
-    orig_cuda_visible_ = cuda_visible ? cuda_visible : "";
-    orig_remote_host_  = remote_host ? remote_host : "";
-    orig_remote_port_  = remote_port ? remote_port : "";
-    cuda_was_set_      = (cuda_visible != nullptr);
-    host_was_set_      = (remote_host != nullptr);
-    port_was_set_      = (remote_port != nullptr);
+    port_                = 18500;
+    const char* env_base = std::getenv("CUOPT_TEST_PORT_BASE");
+    if (env_base) { port_ = std::atoi(env_base) + 500; }
 
-    // Set CPU-only environment
+    server_pid_ = fork();
+    if (server_pid_ < 0) {
+      skip_reason_ = "fork() failed";
+      return;
+    }
+
+    if (server_pid_ == 0) {
+      std::string port_str = std::to_string(port_);
+      std::string log_file = "/tmp/cuopt_c_api_test_server_" + port_str + ".log";
+      int fd               = open(log_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      if (fd >= 0) {
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        close(fd);
+      }
+      execl(server_path_.c_str(),
+            server_path_.c_str(),
+            "--port",
+            port_str.c_str(),
+            "--workers",
+            "1",
+            nullptr);
+      _exit(127);
+    }
+
+    if (!tcp_connect_check(port_, 15000)) {
+      skip_reason_ = "cuopt_grpc_server failed to start within 15 seconds";
+      kill(server_pid_, SIGKILL);
+      waitpid(server_pid_, nullptr, 0);
+      server_pid_ = -1;
+      return;
+    }
+
+    const char* cv     = getenv("CUDA_VISIBLE_DEVICES");
+    const char* rh     = getenv("CUOPT_REMOTE_HOST");
+    const char* rp     = getenv("CUOPT_REMOTE_PORT");
+    orig_cuda_visible_ = cv ? cv : "";
+    orig_remote_host_  = rh ? rh : "";
+    orig_remote_port_  = rp ? rp : "";
+    cuda_was_set_      = (cv != nullptr);
+    host_was_set_      = (rh != nullptr);
+    port_was_set_      = (rp != nullptr);
+
     setenv("CUDA_VISIBLE_DEVICES", "", 1);
     setenv("CUOPT_REMOTE_HOST", "localhost", 1);
-    setenv("CUOPT_REMOTE_PORT", "12345", 1);
+    setenv("CUOPT_REMOTE_PORT", std::to_string(port_).c_str(), 1);
   }
 
-  ~CPUOnlyTestEnvironment()
+  static void TearDownTestSuite()
   {
-    // Restore original values
     if (cuda_was_set_) {
       setenv("CUDA_VISIBLE_DEVICES", orig_cuda_visible_.c_str(), 1);
     } else {
       unsetenv("CUDA_VISIBLE_DEVICES");
     }
-
     if (host_was_set_) {
       setenv("CUOPT_REMOTE_HOST", orig_remote_host_.c_str(), 1);
     } else {
       unsetenv("CUOPT_REMOTE_HOST");
     }
-
     if (port_was_set_) {
       setenv("CUOPT_REMOTE_PORT", orig_remote_port_.c_str(), 1);
     } else {
       unsetenv("CUOPT_REMOTE_PORT");
     }
+
+    if (server_pid_ > 0) {
+      kill(server_pid_, SIGTERM);
+      int status;
+      int wait_ms = 0;
+      while (wait_ms < 5000) {
+        if (waitpid(server_pid_, &status, WNOHANG) != 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        wait_ms += 100;
+      }
+      if (waitpid(server_pid_, &status, WNOHANG) == 0) {
+        kill(server_pid_, SIGKILL);
+        waitpid(server_pid_, &status, 0);
+      }
+      server_pid_ = -1;
+    }
   }
 
- private:
-  std::string orig_cuda_visible_;
-  std::string orig_remote_host_;
-  std::string orig_remote_port_;
-  bool cuda_was_set_;
-  bool host_was_set_;
-  bool port_was_set_;
+  void SetUp() override
+  {
+    if (!skip_reason_.empty()) { GTEST_SKIP() << skip_reason_; }
+  }
+
+  static std::string server_path_;
+  static std::string skip_reason_;
+  static pid_t server_pid_;
+  static int port_;
+
+  static std::string orig_cuda_visible_;
+  static std::string orig_remote_host_;
+  static std::string orig_remote_port_;
+  static bool cuda_was_set_;
+  static bool host_was_set_;
+  static bool port_was_set_;
 };
 
-// TODO: Add numerical assertions once gRPC remote solver replaces the stub implementation.
-// Currently validates that the CPU-only C API path completes without errors.
-TEST(c_api_cpu_only, lp_solve)
+std::string CpuOnlyWithServerTest::server_path_;
+std::string CpuOnlyWithServerTest::skip_reason_;
+pid_t CpuOnlyWithServerTest::server_pid_ = -1;
+int CpuOnlyWithServerTest::port_         = 0;
+std::string CpuOnlyWithServerTest::orig_cuda_visible_;
+std::string CpuOnlyWithServerTest::orig_remote_host_;
+std::string CpuOnlyWithServerTest::orig_remote_port_;
+bool CpuOnlyWithServerTest::cuda_was_set_ = false;
+bool CpuOnlyWithServerTest::host_was_set_ = false;
+bool CpuOnlyWithServerTest::port_was_set_ = false;
+
+TEST_F(CpuOnlyWithServerTest, lp_solve)
 {
-  CPUOnlyTestEnvironment env;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   EXPECT_EQ(test_cpu_only_execution(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
-// TODO: Add numerical assertions once gRPC remote solver replaces the stub implementation.
-TEST(c_api_cpu_only, mip_solve)
+TEST_F(CpuOnlyWithServerTest, mip_solve)
 {
-  CPUOnlyTestEnvironment env;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string mip_file                    = rapidsDatasetRootDir + "/mip/bb_optimality.mps";
   EXPECT_EQ(test_cpu_only_mip_execution(mip_file.c_str()), CUOPT_SUCCESS);
