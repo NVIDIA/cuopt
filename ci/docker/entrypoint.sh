@@ -13,6 +13,8 @@
 #   CUOPT_SERVER_PORT  — listen port       (default: 5001)
 #   CUOPT_GPU_COUNT    — worker processes  (default: 1)
 #   CUOPT_GRPC_ARGS    — additional CLI flags passed verbatim
+#                        (e.g. "--tls --tls-cert server.crt --log-to-console")
+#                        See GRPC_SERVER_ARCHITECTURE.md for all available flags.
 
 set -e
 

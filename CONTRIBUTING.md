@@ -212,6 +212,14 @@ export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
 ```
+## gRPC Remote Execution
+
+cuOpt includes a gRPC-based remote execution system for running solves on a
+GPU server from a program using the API locally. Developer documentation lives in `docs/cuopt/grpc/`:
+
+- `GRPC_QUICK_START.md` — Start the server and solve remotely from Python, CLI, or C.
+- `GRPC_SERVER_ARCHITECTURE.md` — Server process model, IPC, threads, and job lifecycle.
+
 ## Debugging cuOpt
 
 ### Building in debug mode from source

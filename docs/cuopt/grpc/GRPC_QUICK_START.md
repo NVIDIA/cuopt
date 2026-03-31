@@ -148,6 +148,47 @@ new certs from the compromised CA and rotate to a new one, or deploy a
 reverse proxy (e.g., Envoy) in front of the server that supports CRL
 checking.
 
+### Docker
+
+The cuOpt container image includes both the Python REST server and the
+gRPC server. Use the `CUOPT_SERVER_TYPE` environment variable to select
+the gRPC server:
+
+```bash
+docker run --gpus all -p 5001:5001 \
+  -e CUOPT_SERVER_TYPE=grpc \
+  nvcr.io/nvidia/cuopt/cuopt:latest
+```
+
+Configure the gRPC server with these container environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CUOPT_SERVER_TYPE` | *(unset)* | Set to `grpc` to launch the gRPC server instead of the REST server |
+| `CUOPT_SERVER_PORT` | `5001` | gRPC listen port |
+| `CUOPT_GPU_COUNT` | `1` | Number of worker processes |
+| `CUOPT_GRPC_ARGS` | *(empty)* | Additional `cuopt_grpc_server` flags passed verbatim (space-separated) |
+
+`CUOPT_GRPC_ARGS` accepts any flag that `cuopt_grpc_server` supports.
+See `GRPC_SERVER_ARCHITECTURE.md` for the full list. For example, to
+enable TLS and console logging:
+
+```bash
+docker run --gpus all -p 5001:5001 \
+  -e CUOPT_SERVER_TYPE=grpc \
+  -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
+  -v ./certs:/certs:ro \
+  nvcr.io/nvidia/cuopt/cuopt:latest
+```
+
+You can also bypass the entrypoint and run the server directly:
+
+```bash
+docker run --gpus all -p 5001:5001 \
+  nvcr.io/nvidia/cuopt/cuopt:latest \
+  cuopt_grpc_server --port 5001 --workers 2
+```
+
 ## 2. Configure the Client (All Interfaces)
 
 Set these environment variables before running any cuOpt client.
@@ -244,5 +285,4 @@ gRPC server when they are set.
 
 ## Further Reading
 
-- `GRPC_INTERFACE.md` &mdash; Protocol details, chunked transfer, client config, message sizes.
 - `GRPC_SERVER_ARCHITECTURE.md` &mdash; Server process model, IPC, threads, job lifecycle.

@@ -8,7 +8,7 @@ The cuOpt gRPC server (`cuopt_grpc_server`) is a multi-process architecture desi
 - **Large Payloads**: Handles multi-GB problems and solutions
 - **Real-Time Feedback**: Log streaming and incumbent callbacks during solve
 
-For gRPC protocol and client API, see `GRPC_INTERFACE.md`. Server source files live under `cpp/src/grpc/server/`.
+Server source files live under `cpp/src/grpc/server/`.
 
 ## Process Model
 
