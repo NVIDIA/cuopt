@@ -326,7 +326,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (run_presolve && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
-      presolve_result->reduced_problem.write_to_mps(settings.presolve_file);
+      presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
 
     auto sol = run_mip(problem, settings, timer);
