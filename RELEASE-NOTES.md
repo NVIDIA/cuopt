@@ -29,6 +29,8 @@
 - Fix incorrect termination status and replace with UnboundedOrInfeasible
 - Fix a issue with Papilo's probing presolver crashing. Fix to be pushed upstream
 - Fix a issue with a missing stream sync in the probing cache that was causing a crash
+- Fix a issue in MIP leading to incorrect dual bound when nodes remain in the heap
+- Fix a issue in MIP where nodes with objective less than the incumbent objective value were incorrectly fathomed
 - Fix a issue in CPU Feasibility Jump where variables could violate their bounds
 - Write quadratic terms out in MPS files
 - Fix a issue in MIP where cuOpt was taking a long time to terminate after optimal solution found
