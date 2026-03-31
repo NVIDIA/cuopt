@@ -12,10 +12,12 @@
 ### Breaking Changes (26.04)
 
 ### Improvements (26.04)
-- Generate more MIR and Knapsack cuts
-- Lift knapsack cuts
-- Improved numerics of mixed integer Gomory cuts
 - Improved reliability branching
+- Generate more MIR and Knapsack cuts
+- Improve aggregation and complementation in MIR cuts
+- Use variable lower and variable upper bounds in MIR cuts
+- Improved numerics of mixed integer Gomory cuts
+- Lift knapsack cuts
 - Reduce time for Markowitz factorization in dual simplex
 - Reduce time for dual push inside crossover
 - Reduce number of free variables in barrier
