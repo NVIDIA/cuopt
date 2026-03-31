@@ -60,6 +60,7 @@ dependencies:
 - pytest-cov
 - pytest<9.0
 - python>=3.11,<3.15
+- pyyaml
 - pyyaml>=6.0.0
 - rapids-build-backend>=0.4.0,<0.5.0
 - rapids-logger==0.2.*,>=0.0.0a0

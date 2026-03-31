@@ -15,10 +15,11 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
+   codegen          - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
    libcuopt         - build the cuopt C++ code
    cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
    libmps_parser    - build the libmps_parser C++ code
@@ -359,12 +360,15 @@ if buildAll || hasArg libmps_parser; then
 fi
 
 ################################################################################
-# Regenerate gRPC codegen .inc files from the field registry
-if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+# Regenerate gRPC codegen .inc files from the field registry (explicit target only)
+if hasArg codegen; then
     echo "Regenerating codegen .inc files from field_registry.yaml..."
     python "${REPODIR}"/cpp/codegen/generate_conversions.py \
         --registry "${REPODIR}"/cpp/codegen/field_registry.yaml \
         --output-dir "${REPODIR}"/cpp/codegen/generated
+    cp "${REPODIR}"/cpp/codegen/generated/cuopt_remote_data.proto \
+       "${REPODIR}"/cpp/src/grpc/cuopt_remote_data.proto
+    echo "Done. Remember to commit the generated files."
 fi
 
 ################################################################################

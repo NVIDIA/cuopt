@@ -9,17 +9,23 @@ one-line YAML change.
 
 ```bash
 # Regenerate after editing field_registry.yaml
-python cpp/codegen/generate_conversions.py
+./build.sh codegen
+```
 
-# Or with explicit paths:
+This regenerates all `.inc` files and copies `cuopt_remote_data.proto` to
+`cpp/src/grpc/`. Commit the generated files before pushing — CI builds directly
+from the committed files and does not run the generator.
+
+You can also run the generator directly:
+
+```bash
 python cpp/codegen/generate_conversions.py \
     --registry cpp/codegen/field_registry.yaml \
     --output-dir cpp/codegen/generated
 ```
 
 The generator runs in ~100ms with no external dependencies beyond PyYAML (ships
-with conda). It runs automatically before every `libcuopt` or `cuopt_grpc_server`
-build via `build.sh`.
+with conda).
 
 ## File Layout
 
@@ -71,11 +77,11 @@ cpp/codegen/
     └── generated_array_field_element_size.inc
 ```
 
-The generated `.inc` files are committed to the repo so that builds work without
-running the generator. `build.sh` re-generates them before every `libcuopt` or
-`cuopt_grpc_server` build to keep them in sync. CMake adds
-`cpp/codegen/generated` to the include path for both targets, so the `.inc`
-files are found at compile time with no copy step.
+The generated `.inc` files are committed to the repo. After editing
+`field_registry.yaml`, run `./build.sh codegen` and commit the output before
+pushing. CI builds directly from the committed files — the generator does not
+run in CI. CMake adds `cpp/codegen/generated` to the include path for both
+targets, so the `.inc` files are found at compile time with no copy step.
 
 ---
 
