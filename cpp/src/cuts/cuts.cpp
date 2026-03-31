@@ -1389,14 +1389,14 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
     f_t objective =
       exact_knapsack_problem_integer_values_fraction_values(values, weights, capacity, solution);
     if (std::isnan(objective)) {
-      settings_.log.printf("lifting knapsack problem failed\n");
+      settings_.log.debug("lifting knapsack problem failed\n");
       break;
     }
 
     f_t alpha_k = std::max(0.0, cover_size - 1.0 - objective);
 
     if (alpha_k > 0.0) {
-      settings_.log.printf("Lifted variable %d with alpha %g\n", k, alpha_k);
+      settings_.log.debug("Lifted variable %d with alpha %g\n", k, alpha_k);
       F.push_back(k);
       alpha.push_back(alpha_k);
       values.push_back(static_cast<i_t>(alpha_k));
@@ -1409,8 +1409,6 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
     // Remove the variable from the permutation
     permutation.pop_back();
   }
-  settings_.log.printf("Lifted %ld variables\n", F.size());
-
   // Restore is_marked_
   for (i_t j : marked_variables) {
     is_marked_[j] = 0;
