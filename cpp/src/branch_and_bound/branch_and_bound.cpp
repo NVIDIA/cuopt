@@ -2520,13 +2520,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 
       if (cut_status != dual::status_t::OPTIMAL) {
-        settings_.log.printf("Numerical issue at root node. Resolving from scratch\n");
+        // Root relaxation was already optimal; this is reoptimization after adding cuts / bound
+        // changes (warm-started dual phase2), which can fail for numerical reasons unrelated to
+        // the initial Barrier/PDLP root solve.
+        settings_.log.printf(
+          "Dual phase2 after cuts did not reach optimal (status=%s, cut pass %d). "
+          "Resolving root LP from scratch.\n",
+          dual::status_to_string(cut_status).c_str(),
+          static_cast<int>(cut_pass));
+        basis_update_mpf_t<i_t, f_t> scratch_basis(original_lp_.num_rows, settings_.refactor_frequency);
         lp_status_t scratch_status =
           solve_linear_program_with_advanced_basis(original_lp_,
                                                    exploration_stats_.start_time,
                                                    lp_settings,
                                                    root_relax_soln_,
-                                                   basis_update,
+                                                   scratch_basis,
                                                    basic_list,
                                                    nonbasic_list,
                                                    root_vstatus_,
@@ -2536,8 +2544,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           cut_status = convert_lp_status_to_dual_status(scratch_status);
           exploration_stats_.total_lp_iters += root_relax_soln_.iterations;
           root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+          basis_update    = std::move(scratch_basis);
         } else {
-          settings_.log.printf("Cut status %s\n", dual::status_to_string(cut_status).c_str());
+          settings_.log.printf("Scratch resolve status %s; dual phase2 after cuts was %s\n",
+                               lp_status_to_string(scratch_status).c_str(),
+                               dual::status_to_string(cut_status).c_str());
 #ifdef WRITE_CUT_INFEASIBLE_MPS
           original_lp_.write_mps("cut_infeasible.mps");
 #endif
