@@ -39,6 +39,7 @@
 
 
 ### Documentation (26.04)
+- Update docs to clarify the usage of getIncumbentValues() in the Python API
 
 ## Release Notes 26.02
 
