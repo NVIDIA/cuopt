@@ -208,7 +208,7 @@ polling provides timeout protection and enables incumbent callbacks.
 
 ```cpp
 struct grpc_client_config_t {
-  std::string server_address = "localhost:8765";
+  std::string server_address = "localhost:5001";
   int poll_interval_ms       = 1000;
   int timeout_seconds        = 3600;  // Max wait for job completion (1 hour)
   bool stream_logs           = false; // Stream solver logs from server
@@ -280,7 +280,7 @@ config.incumbent_callback = [](int64_t idx, double obj, const auto& sol) {
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CUOPT_REMOTE_HOST` | `localhost` | Server hostname for remote solves |
-| `CUOPT_REMOTE_PORT` | `8765` | Server port for remote solves |
+| `CUOPT_REMOTE_PORT` | `5001` | Server port for remote solves |
 | `CUOPT_CHUNK_SIZE` | 16 MiB | Override `chunk_size_bytes` |
 | `CUOPT_MAX_MESSAGE_BYTES` | 256 MiB | Override `max_message_bytes` |
 | `CUOPT_GRPC_DEBUG` | `0` | Enable client debug/throughput logging (`0` or `1`) |
@@ -294,7 +294,7 @@ config.incumbent_callback = [](int64_t idx, double obj, const auto& sol) {
 ### Server-Side TLS
 
 ```bash
-./cuopt_grpc_server --port 8765 \
+./cuopt_grpc_server --port 5001 \
   --tls \
   --tls-cert server.crt \
   --tls-key server.key
@@ -305,7 +305,7 @@ config.incumbent_callback = [](int64_t idx, double obj, const auto& sol) {
 Server requires client certificate:
 
 ```bash
-./cuopt_grpc_server --port 8765 \
+./cuopt_grpc_server --port 5001 \
   --tls \
   --tls-cert server.crt \
   --tls-key server.key \

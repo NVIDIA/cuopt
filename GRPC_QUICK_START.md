@@ -18,13 +18,13 @@ same as a local solve &mdash; no API changes required.
 ### Basic (no TLS)
 
 ```bash
-cuopt_grpc_server --port 8765 --workers 1
+cuopt_grpc_server --port 5001 --workers 1
 ```
 
 ### TLS (server authentication)
 
 ```bash
-cuopt_grpc_server --port 8765 \
+cuopt_grpc_server --port 5001 \
   --tls \
   --tls-cert server.crt \
   --tls-key server.key
@@ -33,7 +33,7 @@ cuopt_grpc_server --port 8765 \
 ### mTLS (mutual authentication)
 
 ```bash
-cuopt_grpc_server --port 8765 \
+cuopt_grpc_server --port 5001 \
   --tls \
   --tls-cert server.crt \
   --tls-key server.key \
@@ -123,7 +123,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 **4. Start the server with your CA:**
 
 ```bash
-cuopt_grpc_server --port 8765 \
+cuopt_grpc_server --port 5001 \
   --tls \
   --tls-cert server.crt \
   --tls-key server.key \
@@ -135,7 +135,7 @@ cuopt_grpc_server --port 8765 \
 
 ```bash
 export CUOPT_REMOTE_HOST=server.example.com
-export CUOPT_REMOTE_PORT=8765
+export CUOPT_REMOTE_PORT=5001
 export CUOPT_TLS_ENABLED=1
 export CUOPT_TLS_ROOT_CERT=ca.crt          # verifies the server
 export CUOPT_TLS_CLIENT_CERT=client.crt    # proves client identity
@@ -157,7 +157,7 @@ They apply identically to the Python API, `cuopt_cli`, and the C API.
 
 ```bash
 export CUOPT_REMOTE_HOST=<server-hostname>
-export CUOPT_REMOTE_PORT=8765
+export CUOPT_REMOTE_PORT=5001
 ```
 
 When both `CUOPT_REMOTE_HOST` and `CUOPT_REMOTE_PORT` are set, every

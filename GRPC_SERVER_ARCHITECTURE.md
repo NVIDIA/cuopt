@@ -229,7 +229,7 @@ The `StreamLogs` RPC:
 ```bash
 cuopt_grpc_server [options]
 
-  -p, --port PORT              gRPC listen port (default: 8765)
+  -p, --port PORT              gRPC listen port (default: 5001)
   -w, --workers NUM            Number of worker processes (default: 1)
       --max-message-mb N       Max gRPC message size in MiB (default: 256; clamped to [4 KiB, ~2 GiB])
       --max-message-bytes N    Max gRPC message size in bytes (exact; min 4096)
