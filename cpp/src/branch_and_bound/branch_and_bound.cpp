@@ -1579,8 +1579,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
-  f_t rel_gap            = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t abs_gap            = upper_bound - lower_bound;
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap     = upper_bound - lower_bound;
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
@@ -1777,9 +1777,9 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
       }
     }
 
-    lower_bound            = get_lower_bound();
-    abs_gap                = upper_bound_ - lower_bound;
-    rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+    lower_bound = get_lower_bound();
+    abs_gap     = upper_bound_ - lower_bound;
+    rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       node_concurrent_halt_ = 1;
