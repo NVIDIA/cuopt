@@ -25,6 +25,7 @@
 - Write quadratic terms out in MPS files
 - Fix a issue in MIP solver where cuOpt was taking a long time to terminate after optimal solution found
 - Fix an issue in barrier on problems containing variables with infinite lower bounds
+- Fix a bug where batch PDLP for strong branching was running on the problem without cuts
 
 
 ### Documentation (26.04)
