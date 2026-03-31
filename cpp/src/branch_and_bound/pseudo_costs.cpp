@@ -768,78 +768,78 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
 
-  if (effective_batch_pdlp != 0) {
-#pragma omp task default(shared)
-    batch_pdlp_strong_branching_task(settings,
-                                     effective_batch_pdlp,
-                                     start_time,
-                                     concurrent_halt,
-                                     original_lp,
-                                     new_slacks,
-                                     root_soln,
-                                     fractional,
-                                     root_obj,
-                                     pc,
-                                     sb_view,
-                                     pdlp_obj_down,
-                                     pdlp_obj_up);
-  }
-
   std::vector<dual::status_t> ds_status_down(fractional.size(), dual::status_t::UNSET);
   std::vector<dual::status_t> ds_status_up(fractional.size(), dual::status_t::UNSET);
   std::vector<f_t> ds_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> ds_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
-  f_t dual_simplex_strong_branching_time = tic();
+  f_t dual_simplex_strong_branching_time;
 
-  if (effective_batch_pdlp != 2) {
 #pragma omp parallel num_threads(settings.num_threads)
+  {
+#pragma omp single nowait
     {
-      i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
-
-      // Here we are creating more tasks than the number of threads
-      // such that they can be scheduled dynamically to the threads.
-#pragma omp for schedule(dynamic, 1)
-      for (i_t k = 0; k < n; k++) {
-        i_t start = std::floor(k * fractional.size() / n);
-        i_t end   = std::floor((k + 1) * fractional.size() / n);
-
-        constexpr bool verbose = false;
-        if (verbose) {
-          settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
-                              omp_get_thread_num(),
-                              k,
-                              start,
-                              end,
-                              end - start);
-        }
-
-        strong_branch_helper(start,
-                             end,
-                             start_time,
-                             original_lp,
-                             settings,
-                             var_types,
-                             fractional,
-                             root_obj,
-                             root_soln,
-                             root_vstatus,
-                             edge_norms,
-                             pc,
-                             ds_obj_down,
-                             ds_obj_up,
-                             ds_status_down,
-                             ds_status_up,
-                             &concurrent_halt,
-                             sb_view);
+      if (effective_batch_pdlp != 0) {
+#pragma omp task
+        batch_pdlp_strong_branching_task(settings,
+                                         effective_batch_pdlp,
+                                         start_time,
+                                         concurrent_halt,
+                                         original_lp,
+                                         new_slacks,
+                                         root_soln,
+                                         fractional,
+                                         root_obj,
+                                         pc,
+                                         sb_view,
+                                         pdlp_obj_down,
+                                         pdlp_obj_up);
       }
+
+      dual_simplex_strong_branching_time = tic();
+
+      if (effective_batch_pdlp != 2) {
+        i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
+        // Here we are creating more tasks than the number of threads
+        // such that they can be scheduled dynamically to the threads.
+#pragma omp taskloop num_tasks(n)
+        for (i_t k = 0; k < n; k++) {
+          i_t start = std::floor(k * fractional.size() / n);
+          i_t end   = std::floor((k + 1) * fractional.size() / n);
+
+          constexpr bool verbose = false;
+          if (verbose) {
+            settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
+                                omp_get_thread_num(),
+                                k,
+                                start,
+                                end,
+                                end - start);
+          }
+
+          strong_branch_helper(start,
+                               end,
+                               start_time,
+                               original_lp,
+                               settings,
+                               var_types,
+                               fractional,
+                               root_obj,
+                               root_soln,
+                               root_vstatus,
+                               edge_norms,
+                               pc,
+                               ds_obj_down,
+                               ds_obj_up,
+                               ds_status_down,
+                               ds_status_up,
+                               &concurrent_halt,
+                               sb_view);
+        }
+      }
+
+      // DS done: signal PDLP to stop (time-limit or all work done) and wait
+      concurrent_halt.store(1);
     }
-
-    // DS done: signal PDLP to stop (time-limit or all work done) and wait
-    concurrent_halt.store(1);
-  }
-
-  if (effective_batch_pdlp != 0) {
-#pragma omp taskwait
   }
 
   settings.log.printf("Strong branching took %.2fs\n", toc(dual_simplex_strong_branching_time));
