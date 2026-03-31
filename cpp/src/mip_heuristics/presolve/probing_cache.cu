@@ -882,6 +882,11 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   bool early_exit                   = false;
   const size_t step_size            = min((size_t)2048, priority_indices.size());
 
+  // The pool buffers above were allocated on the main stream.
+  // Each OMP thread below uses its own stream, so we must ensure all allocations
+  // are visible before any per-thread kernel can reference that memory.
+  problem.handle_ptr->sync_stream();
+
 // Main parallel loop
 #pragma omp parallel num_threads(num_threads)
   {
