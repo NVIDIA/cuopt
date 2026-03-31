@@ -1638,6 +1638,115 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
 // Settings mapper round-trip tests (no mock stub / server required)
 // =============================================================================
 
+TEST(SettingsMapperTest, PDLPSettingsRoundTrip_AllFields)
+{
+  pdlp_solver_settings_t<int32_t, double> original;
+
+  // Tolerances
+  original.tolerances.absolute_gap_tolerance      = 1e-5;
+  original.tolerances.relative_gap_tolerance      = 1e-6;
+  original.tolerances.primal_infeasible_tolerance = 1e-11;
+  original.tolerances.dual_infeasible_tolerance   = 1e-12;
+  original.tolerances.absolute_dual_tolerance     = 2e-4;
+  original.tolerances.relative_dual_tolerance     = 3e-4;
+  original.tolerances.absolute_primal_tolerance   = 4e-4;
+  original.tolerances.relative_primal_tolerance   = 5e-4;
+
+  // Limits
+  original.time_limit      = 99.5;
+  original.iteration_limit = 50000;
+
+  // Solver configuration
+  original.log_to_console       = false;
+  original.detect_infeasibility = true;
+  original.strict_infeasibility = true;
+  original.pdlp_solver_mode     = pdlp_solver_mode_t::Fast1;
+  original.method               = method_t::Barrier;
+  original.presolver            = presolver_t::Papilo;
+  original.dual_postsolve       = false;
+  original.crossover            = true;
+  original.num_gpus             = 4;
+
+  original.per_constraint_residual    = true;
+  original.cudss_deterministic        = true;
+  original.folding                    = 2;
+  original.augmented                  = 1;
+  original.dualize                    = 0;
+  original.ordering                   = 3;
+  original.barrier_dual_initial_point = 1;
+  original.eliminate_dense_columns    = false;
+  original.save_best_primal_so_far    = true;
+  original.first_primal_feasible      = true;
+  original.pdlp_precision             = pdlp_precision_t::MixedPrecision;
+
+  cuopt::remote::PDLPSolverSettings proto;
+  map_pdlp_settings_to_proto(original, &proto);
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(proto, restored);
+
+  // Tolerances
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_gap_tolerance,
+                   original.tolerances.absolute_gap_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_gap_tolerance,
+                   original.tolerances.relative_gap_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.primal_infeasible_tolerance,
+                   original.tolerances.primal_infeasible_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.dual_infeasible_tolerance,
+                   original.tolerances.dual_infeasible_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_dual_tolerance,
+                   original.tolerances.absolute_dual_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_dual_tolerance,
+                   original.tolerances.relative_dual_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_primal_tolerance,
+                   original.tolerances.absolute_primal_tolerance);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_primal_tolerance,
+                   original.tolerances.relative_primal_tolerance);
+
+  // Limits
+  EXPECT_DOUBLE_EQ(restored.time_limit, original.time_limit);
+  EXPECT_EQ(restored.iteration_limit, original.iteration_limit);
+
+  // Solver configuration
+  EXPECT_EQ(restored.log_to_console, original.log_to_console);
+  EXPECT_EQ(restored.detect_infeasibility, original.detect_infeasibility);
+  EXPECT_EQ(restored.strict_infeasibility, original.strict_infeasibility);
+  EXPECT_EQ(restored.pdlp_solver_mode, original.pdlp_solver_mode);
+  EXPECT_EQ(restored.method, original.method);
+  EXPECT_EQ(static_cast<int>(restored.presolver), static_cast<int>(original.presolver));
+  EXPECT_EQ(restored.dual_postsolve, original.dual_postsolve);
+  EXPECT_EQ(restored.crossover, original.crossover);
+  EXPECT_EQ(restored.num_gpus, original.num_gpus);
+
+  EXPECT_EQ(restored.per_constraint_residual, original.per_constraint_residual);
+  EXPECT_EQ(restored.cudss_deterministic, original.cudss_deterministic);
+  EXPECT_EQ(restored.folding, original.folding);
+  EXPECT_EQ(restored.augmented, original.augmented);
+  EXPECT_EQ(restored.dualize, original.dualize);
+  EXPECT_EQ(restored.ordering, original.ordering);
+  EXPECT_EQ(restored.barrier_dual_initial_point, original.barrier_dual_initial_point);
+  EXPECT_EQ(restored.eliminate_dense_columns, original.eliminate_dense_columns);
+  EXPECT_EQ(restored.save_best_primal_so_far, original.save_best_primal_so_far);
+  EXPECT_EQ(restored.first_primal_feasible, original.first_primal_feasible);
+  EXPECT_EQ(static_cast<int>(restored.pdlp_precision), static_cast<int>(original.pdlp_precision));
+}
+
+TEST(SettingsMapperTest, PDLPSettings_IterationLimitSentinel)
+{
+  pdlp_solver_settings_t<int32_t, double> original;
+  original.iteration_limit = std::numeric_limits<int32_t>::max();
+
+  cuopt::remote::PDLPSolverSettings proto;
+  map_pdlp_settings_to_proto(original, &proto);
+  EXPECT_EQ(proto.iteration_limit(), -1) << "max() should serialize as -1 sentinel";
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  restored.iteration_limit = 999;
+  map_proto_to_pdlp_settings(proto, restored);
+  EXPECT_EQ(restored.iteration_limit, 999)
+    << "Sentinel -1 should leave iteration_limit unchanged (default)";
+}
+
 TEST(SettingsMapperTest, MIPSettingsRoundTrip_AllFields)
 {
   mip_solver_settings_t<int32_t, double> original;
@@ -1654,7 +1763,6 @@ TEST(SettingsMapperTest, MIPSettingsRoundTrip_AllFields)
   original.num_gpus                               = 2;
   original.mip_scaling                            = true;
 
-  // The 15 fields that were previously missing from the proto:
   original.work_limit                      = 100.0;
   original.node_limit                      = 5000;
   original.reliability_branching           = 3;

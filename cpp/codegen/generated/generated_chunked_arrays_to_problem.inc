@@ -83,6 +83,11 @@
     cpu_problem.set_objective_coefficients(c.data(), static_cast<i_t>(c.size()));
   }
 
+  auto b = get_doubles(cuopt::remote::FIELD_B);
+  if (!b.empty()) {
+    cpu_problem.set_constraint_bounds(b.data(), static_cast<i_t>(b.size()));
+  }
+
   auto variable_lower_bounds = get_doubles(cuopt::remote::FIELD_VARIABLE_LOWER_BOUNDS);
   if (!variable_lower_bounds.empty()) {
     cpu_problem.set_variable_lower_bounds(variable_lower_bounds.data(), static_cast<i_t>(variable_lower_bounds.size()));
@@ -93,6 +98,21 @@
     cpu_problem.set_variable_upper_bounds(variable_upper_bounds.data(), static_cast<i_t>(variable_upper_bounds.size()));
   }
 
+  auto constraint_lower_bounds = get_doubles(cuopt::remote::FIELD_CONSTRAINT_LOWER_BOUNDS);
+  if (!constraint_lower_bounds.empty()) {
+    cpu_problem.set_constraint_lower_bounds(constraint_lower_bounds.data(), static_cast<i_t>(constraint_lower_bounds.size()));
+  }
+
+  auto constraint_upper_bounds = get_doubles(cuopt::remote::FIELD_CONSTRAINT_UPPER_BOUNDS);
+  if (!constraint_upper_bounds.empty()) {
+    cpu_problem.set_constraint_upper_bounds(constraint_upper_bounds.data(), static_cast<i_t>(constraint_upper_bounds.size()));
+  }
+
+  auto row_types_str = get_bytes(cuopt::remote::FIELD_ROW_TYPES);
+  if (!row_types_str.empty()) {
+    cpu_problem.set_row_types(row_types_str.data(), static_cast<i_t>(row_types_str.size()));
+  }
+
   auto variable_types_ints = get_ints(cuopt::remote::FIELD_VARIABLE_TYPES);
   if (!variable_types_ints.empty()) {
     std::vector<var_t> variable_types;
@@ -101,23 +121,4 @@
       variable_types.push_back(from_proto_variable_type(static_cast<cuopt::remote::VariableType>(v)));
     }
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
-  }
-
-  auto constraint_lower_bounds = get_doubles(cuopt::remote::FIELD_CONSTRAINT_LOWER_BOUNDS);
-  auto constraint_upper_bounds = get_doubles(cuopt::remote::FIELD_CONSTRAINT_UPPER_BOUNDS);
-  if (!constraint_lower_bounds.empty()) {
-    cpu_problem.set_constraint_lower_bounds(constraint_lower_bounds.data(), static_cast<i_t>(constraint_lower_bounds.size()));
-  }
-  if (!constraint_upper_bounds.empty()) {
-    cpu_problem.set_constraint_upper_bounds(constraint_upper_bounds.data(), static_cast<i_t>(constraint_upper_bounds.size()));
-  }
-
-  auto b_vec = get_doubles(cuopt::remote::FIELD_B);
-  if (!b_vec.empty()) {
-    cpu_problem.set_constraint_bounds(b_vec.data(), static_cast<i_t>(b_vec.size()));
-  }
-
-  auto row_types_str = get_bytes(cuopt::remote::FIELD_ROW_TYPES);
-  if (!row_types_str.empty()) {
-    cpu_problem.set_row_types(row_types_str.data(), static_cast<i_t>(row_types_str.size()));
   }

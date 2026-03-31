@@ -1,31 +1,27 @@
 # Code Generation for gRPC Proto Definitions and C++ Conversion Code
 
-The code generator reads `field_registry.yaml` and produces C++ `.inc` files
-that are `#include`d directly into mapper source files. This eliminates the need
-to hand-write repetitive conversion code — adding or removing a field is a
-one-line YAML change.
+The code generator reads `field_registry.yaml` and produces `cuopt_remote_data.proto`
+and C++ `.inc` files that are `#include`d directly into mapper source files. This
+eliminates the need to hand-write repetitive conversion code or `.proto` definitions
+— adding or removing a field is a one-line YAML change.
 
 ## Quick Start
 
 ```bash
 # Regenerate after editing field_registry.yaml
-./build.sh codegen
-```
+python cpp/codegen/generate_conversions.py
 
-This regenerates all `.inc` files and copies `cuopt_remote_data.proto` to
-`cpp/src/grpc/`. Commit the generated files before pushing — CI builds directly
-from the committed files and does not run the generator.
-
-You can also run the generator directly:
-
-```bash
+# Or with explicit paths:
 python cpp/codegen/generate_conversions.py \
     --registry cpp/codegen/field_registry.yaml \
     --output-dir cpp/codegen/generated
 ```
 
 The generator runs in ~100ms with no external dependencies beyond PyYAML (ships
-with conda).
+with conda). The `--auto-number` and `--strip` options additionally require
+`ruamel.yaml` (listed in the project's development dependencies). It runs
+automatically before every `libcuopt` or `cuopt_grpc_server` build via
+`build.sh`.
 
 ## File Layout
 
@@ -33,7 +29,6 @@ with conda).
 cpp/codegen/
 ├── field_registry.yaml          # Source of truth for all fields
 ├── generate_conversions.py      # Generator script
-├── README.md                    # This file
 └── generated/                   # Output (committed, regenerated on build)
     ├── cuopt_remote_data.proto
     ├── generated_result_enums.proto.inc
@@ -77,11 +72,11 @@ cpp/codegen/
     └── generated_array_field_element_size.inc
 ```
 
-The generated `.inc` files are committed to the repo. After editing
-`field_registry.yaml`, run `./build.sh codegen` and commit the output before
-pushing. CI builds directly from the committed files — the generator does not
-run in CI. CMake adds `cpp/codegen/generated` to the include path for both
-targets, so the `.inc` files are found at compile time with no copy step.
+The generated `.inc` files are committed to the repo so that builds work without
+running the generator. `build.sh` re-generates them before every `libcuopt` or
+`cuopt_grpc_server` build to keep them in sync. CMake adds
+`cpp/codegen/generated` to the include path for both targets, so the `.inc`
+files are found at compile time with no copy step.
 
 ---
 
@@ -96,7 +91,7 @@ targets, so the `.inc` files are found at compile time with no copy step.
 | `mip_solution` | MIP solution scalar/array fields and constructor args |
 | `pdlp_settings` | PDLP solver settings field mappings |
 | `mip_settings` | MIP solver settings field mappings |
-| `optimization_problem` | Problem input scalar/array fields, setter groups, constraint bounds |
+| `optimization_problem` | Problem input scalar/array fields and setter groups |
 
 ---
 
@@ -203,7 +198,6 @@ collection.
 ```yaml
 lp_solution:
   cpp_type: "cpu_lp_solution_t<i_t, f_t>"
-  is_mip: false
 
   scalars: [...]
   arrays: [...]
@@ -216,7 +210,9 @@ lp_solution:
 | Property | Description |
 |---|---|
 | `cpp_type` | Fully-qualified C++ template type for the solution constructor |
-| `is_mip` | Boolean. Sets `ChunkedResultHeader.problem_category` to LP or MIP |
+
+The generator derives `ChunkedResultHeader.problem_category` (LP or MIP)
+automatically from the section name (`lp_solution` vs `mip_solution`).
 
 ### Scalars
 
@@ -306,25 +302,32 @@ Describes a conditional sub-object for PDLP warm start data:
 
 ```yaml
 warm_start:
-  check_getter: has_warm_start_data()      # predicate on the solution object
-  data_getter: get_cpu_pdlp_warm_start_data()   # accessor for the WS struct
-  detect_array: RESULT_WS_CURRENT_PRIMAL   # if this array is non-empty, WS is present
+  presence_check: has_warm_start_data()          # predicate on the solution object
+  getter: get_cpu_pdlp_warm_start_data()         # accessor for the WS struct
 
   scalars:
-  - ws_initial_primal_weight:
+  - initial_primal_weight_:
       field_num: 3000
-      member: initial_primal_weight_   # struct member (not a getter)
 
   arrays:
-  - ws_current_primal:
-      array_id: 3
+  - current_primal_solution_:
       field_num: 1
-      member: current_primal_solution_
+      array_id: 3
 ```
 
-Warm start scalars/arrays use `member` instead of `getter` because they are
-accessed as direct struct members on `cpu_pdlp_warm_start_data_t`, not via
-getter methods.
+| Property | Description |
+|---|---|
+| `presence_check` | C++ predicate expression to test if warm start data is present on the solution object |
+| `getter` | C++ expression to access the warm start struct |
+
+Warm start field names match the C++ struct member names directly (e.g.
+`initial_primal_weight_` maps to `ws.initial_primal_weight_`). The `member`
+attribute is only needed if the proto field name cannot match the C++ name
+due to ambiguity.
+
+Warm start detection during chunked deserialization is auto-derived: if the
+first array in the warm start section is present (non-empty), warm start data
+is considered present.
 
 ---
 
@@ -404,7 +407,6 @@ optimization_problem:
   scalars: [...]
   arrays: [...]
   setter_groups: { ... }
-  constraint_bounds: { ... }
 ```
 
 ### Scalars
@@ -483,8 +485,6 @@ setter_groups:
 
   quadratic_objective:
     setter: set_quadratic_objective_matrix
-    to_proto_condition: "cpu_problem.has_quadratic_objective()"
-    from_proto_condition: "pb_problem.q_values_size() > 0"
     fields: [Q_values, Q_indices, Q_offsets]
 ```
 
@@ -492,29 +492,13 @@ setter_groups:
 |---|---|
 | `setter` | C++ setter function name (called with all field arrays as arguments) |
 | `fields` | Ordered list of array field names that are passed to the setter |
-| `to_proto_condition` | C++ expression — if set, serialization is wrapped in this guard |
-| `from_proto_condition` | C++ expression — if set, deserialization is wrapped in this guard |
 
 Arrays that belong to a setter group are excluded from normal per-field
 deserialization and handled as a batch instead.
 
-### Constraint Bounds
-
-The `constraint_bounds` section handles the dual-path constraint format
-(lower/upper bounds vs. RHS + row types):
-
-```yaml
-constraint_bounds:
-  prefer_fields: [constraint_lower_bounds, constraint_upper_bounds]
-  fallback_rhs: b
-  fallback_row_types: row_types
-```
-
-During deserialization, if both `constraint_lower_bounds` and
-`constraint_upper_bounds` are present and have equal sizes, they are used
-directly. Otherwise, `b` (RHS) and `row_types` are used as fallback. These
-fields are excluded from normal per-field deserialization and handled by the
-constraint bounds logic instead.
+During deserialization, the generator automatically guards setter group calls
+by checking if the first field has data (e.g. `if (pb_problem.a_values_size() > 0)`).
+This is derived from the group structure — no explicit condition attribute is needed.
 
 ---
 
@@ -534,9 +518,23 @@ Run with `--auto-number` to fill in any missing `field_num` or `array_id`
 values. This requires `ruamel.yaml` (preserves YAML comments and formatting):
 
 ```bash
-pip install ruamel.yaml   # one-time
 python cpp/codegen/generate_conversions.py --auto-number
 ```
+
+### Stripping field numbers
+
+Run with `--strip` to remove all `field_num` and `array_id` values from
+`field_registry.yaml`. This is useful for reviewing pure field definitions
+without numbering clutter, or for forcing a full re-assignment via
+`--auto-number`:
+
+```bash
+python cpp/codegen/generate_conversions.py --strip
+python cpp/codegen/generate_conversions.py --auto-number
+```
+
+If all field numbers have been stripped, running the generator without
+`--auto-number` will produce an error.
 
 The numbering ranges:
 
@@ -704,3 +702,11 @@ If the C++ member is nested under `tolerances.`, just add it inside the
 ```
 
 The generator will access it as `settings.tolerances.my_new_tolerance`.
+
+---
+
+## Related Documentation
+
+- `GRPC_INTERFACE.md` — Chunked transfer protocol, message size limits, error handling.
+- `GRPC_SERVER_ARCHITECTURE.md` — Server process model, IPC, threads, job lifecycle.
+- `GRPC_QUICK_START.md` — Starting the server and solving remotely from Python, CLI, or C.

@@ -64,19 +64,17 @@
     const auto& _A_offsets = problem.get_constraint_matrix_offsets_host();
     chunk_typed_array(requests, cuopt::remote::FIELD_A_OFFSETS, _A_offsets, upload_id, chunk_size_bytes);
   }
-  if (problem.has_quadratic_objective()) {
-    {
-      const auto& _Q_values = problem.get_quadratic_objective_values_host();
-      chunk_typed_array(requests, cuopt::remote::FIELD_Q_VALUES, _Q_values, upload_id, chunk_size_bytes);
-    }
-    {
-      const auto& _Q_indices = problem.get_quadratic_objective_indices_host();
-      chunk_typed_array(requests, cuopt::remote::FIELD_Q_INDICES, _Q_indices, upload_id, chunk_size_bytes);
-    }
-    {
-      const auto& _Q_offsets = problem.get_quadratic_objective_offsets_host();
-      chunk_typed_array(requests, cuopt::remote::FIELD_Q_OFFSETS, _Q_offsets, upload_id, chunk_size_bytes);
-    }
+  {
+    const auto& _Q_values = problem.get_quadratic_objective_values_host();
+    chunk_typed_array(requests, cuopt::remote::FIELD_Q_VALUES, _Q_values, upload_id, chunk_size_bytes);
+  }
+  {
+    const auto& _Q_indices = problem.get_quadratic_objective_indices_host();
+    chunk_typed_array(requests, cuopt::remote::FIELD_Q_INDICES, _Q_indices, upload_id, chunk_size_bytes);
+  }
+  {
+    const auto& _Q_offsets = problem.get_quadratic_objective_offsets_host();
+    chunk_typed_array(requests, cuopt::remote::FIELD_Q_OFFSETS, _Q_offsets, upload_id, chunk_size_bytes);
   }
 
   return requests;

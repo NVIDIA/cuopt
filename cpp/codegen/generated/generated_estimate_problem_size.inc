@@ -16,10 +16,8 @@
   est += cpu_problem.get_constraint_upper_bounds_host().size() * sizeof(double);
   est += cpu_problem.get_row_types_host().size();
   est += cpu_problem.get_variable_types_host().size() * 4;
-  if (cpu_problem.has_quadratic_objective()) {
-    est += cpu_problem.get_quadratic_objective_values_host().size() * sizeof(double);
-    est += cpu_problem.get_quadratic_objective_indices_host().size() * 5;
-    est += cpu_problem.get_quadratic_objective_offsets_host().size() * 5;
-  }
+  est += cpu_problem.get_quadratic_objective_values_host().size() * sizeof(double);
+  est += cpu_problem.get_quadratic_objective_indices_host().size() * 5;
+  est += cpu_problem.get_quadratic_objective_offsets_host().size() * 5;
   est += 512;
   return est;

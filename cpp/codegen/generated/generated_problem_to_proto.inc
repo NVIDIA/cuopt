@@ -17,9 +17,7 @@
   }
   {
     auto _b = cpu_problem.get_constraint_bounds_host();
-    if (!_b.empty()) {
-      for (const auto& v : _b) pb_problem->add_b(static_cast<double>(v));
-    }
+    for (const auto& v : _b) pb_problem->add_b(static_cast<double>(v));
   }
   {
     auto _variable_lower_bounds = cpu_problem.get_variable_lower_bounds_host();
@@ -31,15 +29,11 @@
   }
   {
     auto _constraint_lower_bounds = cpu_problem.get_constraint_lower_bounds_host();
-    if (!_constraint_lower_bounds.empty()) {
-      for (const auto& v : _constraint_lower_bounds) pb_problem->add_constraint_lower_bounds(static_cast<double>(v));
-    }
+    for (const auto& v : _constraint_lower_bounds) pb_problem->add_constraint_lower_bounds(static_cast<double>(v));
   }
   {
     auto _constraint_upper_bounds = cpu_problem.get_constraint_upper_bounds_host();
-    if (!_constraint_upper_bounds.empty()) {
-      for (const auto& v : _constraint_upper_bounds) pb_problem->add_constraint_upper_bounds(static_cast<double>(v));
-    }
+    for (const auto& v : _constraint_upper_bounds) pb_problem->add_constraint_upper_bounds(static_cast<double>(v));
   }
   {
     auto _row_types = cpu_problem.get_row_types_host();
@@ -63,12 +57,15 @@
     auto _A_offsets = cpu_problem.get_constraint_matrix_offsets_host();
     for (const auto& v : _A_offsets) pb_problem->add_a_offsets(static_cast<int32_t>(v));
   }
-
-  if (cpu_problem.has_quadratic_objective()) {
-    const auto& _Q_values = cpu_problem.get_quadratic_objective_values_host();
+  {
+    auto _Q_values = cpu_problem.get_quadratic_objective_values_host();
     for (const auto& v : _Q_values) pb_problem->add_q_values(static_cast<double>(v));
-    const auto& _Q_indices = cpu_problem.get_quadratic_objective_indices_host();
+  }
+  {
+    auto _Q_indices = cpu_problem.get_quadratic_objective_indices_host();
     for (const auto& v : _Q_indices) pb_problem->add_q_indices(static_cast<int32_t>(v));
-    const auto& _Q_offsets = cpu_problem.get_quadratic_objective_offsets_host();
+  }
+  {
+    auto _Q_offsets = cpu_problem.get_quadratic_objective_offsets_host();
     for (const auto& v : _Q_offsets) pb_problem->add_q_offsets(static_cast<int32_t>(v));
   }

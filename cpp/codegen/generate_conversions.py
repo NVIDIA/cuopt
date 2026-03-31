@@ -966,9 +966,9 @@ def _gen_chunked_header(registry, obj_name, obj, indent="  "):
     """Generate body of populate_chunked_result_header_{lp,mip}()."""
     ind = indent
     lines = []
-    is_mip = obj.get("is_mip", False)
+    category = "MIP" if obj_name == "mip_solution" else "LP"
     lines.append(
-        f"{ind}header->set_problem_category(cuopt::remote::{'MIP' if is_mip else 'LP'});"
+        f"{ind}header->set_problem_category(cuopt::remote::{category});"
     )
 
     for entry in obj.get("scalars", []):
@@ -1232,7 +1232,6 @@ def _gen_problem_to_proto(registry, indent="  "):
             continue
         ftype = f.get("type", "repeated double")
         getter = _default_problem_getter(f, is_scalar=False)
-        conditional = f.get("conditional", False)
 
         enum_key = _is_repeated_enum(registry, ftype)
         if enum_key:
@@ -1240,33 +1239,14 @@ def _gen_problem_to_proto(registry, indent="  "):
             to_fn = _enum_to_proto_fn(enum_key, edef)
             lines.append(f"{ind}{{")
             lines.append(f"{ind}  auto _{name} = cpu_problem.{getter};")
-            if conditional:
-                lines.append(f"{ind}  if (!_{name}.empty()) {{")
-                lines.append(
-                    f"{ind}    for (const auto& v : _{name}) pb_problem->add_{pname}({to_fn}(v));"
-                )
-                lines.append(f"{ind}  }}")
-            else:
-                lines.append(
-                    f"{ind}  for (const auto& v : _{name}) pb_problem->add_{pname}({to_fn}(v));"
-                )
+            lines.append(
+                f"{ind}  for (const auto& v : _{name}) pb_problem->add_{pname}({to_fn}(v));"
+            )
             lines.append(f"{ind}}}")
         elif ftype == "repeated string":
-            if conditional:
-                lines.append(f"{ind}{{")
-                lines.append(
-                    f"{ind}  const auto& _{name} = cpu_problem.{getter};"
-                )
-                lines.append(f"{ind}  if (!_{name}.empty()) {{")
-                lines.append(
-                    f"{ind}    for (const auto& s : _{name}) pb_problem->add_{pname}(s);"
-                )
-                lines.append(f"{ind}  }}")
-                lines.append(f"{ind}}}")
-            else:
-                lines.append(
-                    f"{ind}for (const auto& s : cpu_problem.{getter}) pb_problem->add_{pname}(s);"
-                )
+            lines.append(
+                f"{ind}for (const auto& s : cpu_problem.{getter}) pb_problem->add_{pname}(s);"
+            )
         elif ftype == "bytes":
             lines.append(f"{ind}{{")
             lines.append(f"{ind}  auto _{name} = cpu_problem.{getter};")
@@ -1281,56 +1261,28 @@ def _gen_problem_to_proto(registry, indent="  "):
             var = f"_{name}"
             lines.append(f"{ind}{{")
             lines.append(f"{ind}  auto {var} = cpu_problem.{getter};")
-            if conditional:
-                lines.append(f"{ind}  if (!{var}.empty()) {{")
-                lines.append(
-                    f"{ind}    for (const auto& v : {var}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-                )
-                lines.append(f"{ind}  }}")
-            else:
-                lines.append(
-                    f"{ind}  for (const auto& v : {var}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-                )
+            lines.append(
+                f"{ind}  for (const auto& v : {var}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
+            )
             lines.append(f"{ind}}}")
 
-    # Setter groups (quadratic objective with condition)
+    # Setter groups
     for gname, gdef in setter_groups.items():
-        cond = gdef.get("to_proto_condition")
         fields = [
             _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
         ]
-        if not cond:
-            for f in fields:
-                if f is None:
-                    continue
-                pname = _proto_cpp_name(f["name"])
-                getter = _default_problem_getter(f, is_scalar=False)
-                ftype = f.get("type", "repeated double")
-                cast = _array_element_cast(ftype)
-                lines.append(f"{ind}{{")
-                lines.append(
-                    f"{ind}  auto _{f['name']} = cpu_problem.{getter};"
-                )
-                lines.append(
-                    f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-                )
-                lines.append(f"{ind}}}")
-        else:
-            lines.append("")
-            lines.append(f"{ind}if ({cond}) {{")
-            for f in fields:
-                if f is None:
-                    continue
-                pname = _proto_cpp_name(f["name"])
-                getter = _default_problem_getter(f, is_scalar=False)
-                ftype = f.get("type", "repeated double")
-                cast = _array_element_cast(ftype)
-                lines.append(
-                    f"{ind}  const auto& _{f['name']} = cpu_problem.{getter};"
-                )
-                lines.append(
-                    f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
-                )
+        for f in fields:
+            if f is None:
+                continue
+            pname = _proto_cpp_name(f["name"])
+            getter = _default_problem_getter(f, is_scalar=False)
+            ftype = f.get("type", "repeated double")
+            cast = _array_element_cast(ftype)
+            lines.append(f"{ind}{{")
+            lines.append(f"{ind}  auto _{f['name']} = cpu_problem.{getter};")
+            lines.append(
+                f"{ind}  for (const auto& v : _{f['name']}) pb_problem->add_{pname}(static_cast<{cast}>(v));"
+            )
             lines.append(f"{ind}}}")
 
     return "\n".join(lines)
@@ -1346,12 +1298,6 @@ def _gen_proto_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    cb = obj.get("constraint_bounds", {})
-    cb_fields = set(cb.get("prefer_fields", []))
-    cb_fields.add(cb.get("fallback_rhs", ""))
-    cb_fields.add(cb.get("fallback_row_types", ""))
-    cb_fields.discard("")
-
     # Scalars
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
@@ -1370,19 +1316,18 @@ def _gen_proto_to_problem(registry, indent="  "):
 
     lines.append("")
 
-    # Setter groups
+    # Setter groups — guard on first field having data
     for gname, gdef in setter_groups.items():
-        cond = gdef.get("from_proto_condition")
         setter_name = gdef["setter"]
         fields = [
             _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
         ]
-
-        if cond:
-            lines.append(f"{ind}if ({cond}) {{")
-            ii = ind + "  "
-        else:
-            ii = ind
+        first = next((f for f in fields if f is not None), None)
+        if first is None:
+            continue
+        first_pname = _proto_cpp_name(first["name"])
+        lines.append(f"{ind}if (pb_problem.{first_pname}_size() > 0) {{")
+        ii = ind + "  "
 
         for f in fields:
             if f is None:
@@ -1401,21 +1346,15 @@ def _gen_proto_to_problem(registry, indent="  "):
             args.append(f"{f['name']}.data()")
             args.append(f"static_cast<i_t>({f['name']}.size())")
         lines.append(f"{ii}cpu_problem.{setter_name}({', '.join(args)});")
-
-        if cond:
-            lines.append(f"{ind}}}")
+        lines.append(f"{ind}}}")
         lines.append("")
 
-    # Non-grouped, non-constraint-bounds arrays
+    # Non-grouped arrays
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         name = f["name"]
         pname = _proto_cpp_name(name)
-        if (
-            name in grouped_fields
-            or name in cb_fields
-            or f.get("skip_conversion")
-        ):
+        if name in grouped_fields or f.get("skip_conversion"):
             continue
         ftype = f.get("type", "repeated double")
         setter = _default_problem_setter(f)
@@ -1458,66 +1397,17 @@ def _gen_proto_to_problem(registry, indent="  "):
             lines.append(f"{ind}}}")
         elif ftype.startswith("repeated"):
             cpp_t = _array_cpp_type(ftype)
-            lines.append(f"{ind}{{")
+            guard = f.get("conditional")
+            open_brace = (
+                f"if (pb_problem.{pname}_size() > 0) {{" if guard else "{"
+            )
+            lines.append(f"{ind}{open_brace}")
             lines.append(
                 f"{ind}  std::vector<{cpp_t}> {name}(pb_problem.{pname}().begin(), pb_problem.{pname}().end());"
             )
             lines.append(
                 f"{ind}  cpu_problem.{setter}({name}.data(), static_cast<i_t>({name}.size()));"
             )
-            lines.append(f"{ind}}}")
-
-    lines.append("")
-
-    # Constraint bounds path
-    if cb:
-        prefer = cb.get("prefer_fields", [])
-        fb_rhs = cb.get("fallback_rhs")
-        fb_rt = cb.get("fallback_row_types")
-        if len(prefer) == 2:
-            pf0, pf1 = prefer
-            ppf0, ppf1 = _proto_cpp_name(pf0), _proto_cpp_name(pf1)
-            lines.append(
-                f"{ind}if (pb_problem.{ppf0}_size() > 0 && pb_problem.{ppf1}_size() > 0 &&"
-            )
-            lines.append(
-                f"{ind}    pb_problem.{ppf0}_size() == pb_problem.{ppf1}_size()) {{"
-            )
-            for pf in [pf0, pf1]:
-                ppf = _proto_cpp_name(pf)
-                lines.append(
-                    f"{ind}  std::vector<f_t> {pf}(pb_problem.{ppf}().begin(), pb_problem.{ppf}().end());"
-                )
-                lines.append(
-                    f"{ind}  cpu_problem.set_{pf}({pf}.data(), static_cast<i_t>({pf}.size()));"
-                )
-            if fb_rhs:
-                pfb_rhs = _proto_cpp_name(fb_rhs)
-                fb_f = _find_problem_field(obj, fb_rhs)
-                fb_setter = (
-                    _default_problem_setter(fb_f) if fb_f else f"set_{fb_rhs}"
-                )
-                lines.append(
-                    f"{ind}}} else if (pb_problem.{pfb_rhs}_size() > 0) {{"
-                )
-                lines.append(
-                    f"{ind}  std::vector<f_t> {fb_rhs}(pb_problem.{pfb_rhs}().begin(), pb_problem.{pfb_rhs}().end());"
-                )
-                lines.append(
-                    f"{ind}  cpu_problem.{fb_setter}({fb_rhs}.data(), static_cast<i_t>({fb_rhs}.size()));"
-                )
-                if fb_rt:
-                    pfb_rt = _proto_cpp_name(fb_rt)
-                    lines.append(
-                        f"{ind}  if (!pb_problem.{pfb_rt}().empty()) {{"
-                    )
-                    lines.append(
-                        f"{ind}    const std::string& {fb_rt}_str = pb_problem.{pfb_rt}();"
-                    )
-                    lines.append(
-                        f"{ind}    cpu_problem.set_{fb_rt}({fb_rt}_str.data(), static_cast<i_t>({fb_rt}_str.size()));"
-                    )
-                    lines.append(f"{ind}  }}")
             lines.append(f"{ind}}}")
 
     return "\n".join(lines)
@@ -1528,24 +1418,11 @@ def _gen_estimate_problem_size(registry, indent="  "):
     obj = registry.get("optimization_problem", {})
     ind = indent
     lines = [f"{ind}size_t est = 0;"]
-    setter_groups = obj.get("setter_groups", {})
 
-    cond_fields = {}
-    uncond_fields = []
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         if f.get("skip_conversion"):
             continue
-        group = f.get("setter_group")
-        cond = None
-        if group and group in setter_groups:
-            cond = setter_groups[group].get("to_proto_condition")
-        if cond:
-            cond_fields.setdefault(cond, []).append(f)
-        else:
-            uncond_fields.append(f)
-
-    for f in uncond_fields:
         ftype = f.get("type", "repeated double")
         getter = _default_problem_getter(f, is_scalar=False)
         if ftype == "repeated string":
@@ -1564,19 +1441,6 @@ def _gen_estimate_problem_size(registry, indent="  "):
             lines.append(
                 f"{ind}est += cpu_problem.{getter}.size() * sizeof(double);"
             )
-
-    for cond, fields in cond_fields.items():
-        lines.append(f"{ind}if ({cond}) {{")
-        for f in fields:
-            ftype = f.get("type", "repeated double")
-            getter = _default_problem_getter(f, is_scalar=False)
-            if "int32" in ftype:
-                lines.append(f"{ind}  est += cpu_problem.{getter}.size() * 5;")
-            else:
-                lines.append(
-                    f"{ind}  est += cpu_problem.{getter}.size() * sizeof(double);"
-                )
-        lines.append(f"{ind}}}")
 
     lines.append(f"{ind}est += 512;")
     lines.append(f"{ind}return est;")
@@ -1677,12 +1541,6 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    cb = obj.get("constraint_bounds", {})
-    cb_fields = set(cb.get("prefer_fields", []))
-    cb_fields.add(cb.get("fallback_rhs", ""))
-    cb_fields.add(cb.get("fallback_row_types", ""))
-    cb_fields.discard("")
-
     lines.append(f"{ind}map_chunked_header_to_problem(header, cpu_problem);")
     lines.append("")
 
@@ -1809,15 +1667,11 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
         lines.append(f"{ind}}}")
         lines.append("")
 
-    # Non-grouped, non-constraint-bounds arrays
+    # Non-grouped arrays
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         name = f["name"]
-        if (
-            name in grouped_fields
-            or name in cb_fields
-            or f.get("skip_conversion")
-        ):
+        if name in grouped_fields or f.get("skip_conversion"):
             continue
         ftype = f.get("type", "repeated double")
         afid = _field_array_id_name(f)
@@ -1870,63 +1724,6 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
         lines.append("")
-
-    # Constraint bounds path
-    if cb:
-        prefer = cb.get("prefer_fields", [])
-        fb_rhs = cb.get("fallback_rhs")
-        fb_rt = cb.get("fallback_row_types")
-        if len(prefer) == 2:
-            pf0, pf1 = prefer
-            f0 = _find_problem_field(obj, pf0)
-            f1 = _find_problem_field(obj, pf1)
-            afid0 = _field_array_id_name(f0) if f0 else None
-            afid1 = _field_array_id_name(f1) if f1 else None
-            lines.append(
-                f"{ind}auto {pf0} = get_doubles(cuopt::remote::{afid0});"
-            )
-            lines.append(
-                f"{ind}auto {pf1} = get_doubles(cuopt::remote::{afid1});"
-            )
-            lines.append(f"{ind}if (!{pf0}.empty()) {{")
-            lines.append(
-                f"{ind}  cpu_problem.set_{pf0}({pf0}.data(), static_cast<i_t>({pf0}.size()));"
-            )
-            lines.append(f"{ind}}}")
-            lines.append(f"{ind}if (!{pf1}.empty()) {{")
-            lines.append(
-                f"{ind}  cpu_problem.set_{pf1}({pf1}.data(), static_cast<i_t>({pf1}.size()));"
-            )
-            lines.append(f"{ind}}}")
-            lines.append("")
-
-        if fb_rhs:
-            fb_f = _find_problem_field(obj, fb_rhs)
-            afid_rhs = _field_array_id_name(fb_f) if fb_f else None
-            fb_setter = (
-                _default_problem_setter(fb_f) if fb_f else f"set_{fb_rhs}"
-            )
-            lines.append(
-                f"{ind}auto {fb_rhs}_vec = get_doubles(cuopt::remote::{afid_rhs});"
-            )
-            lines.append(f"{ind}if (!{fb_rhs}_vec.empty()) {{")
-            lines.append(
-                f"{ind}  cpu_problem.{fb_setter}({fb_rhs}_vec.data(), static_cast<i_t>({fb_rhs}_vec.size()));"
-            )
-            lines.append(f"{ind}}}")
-            lines.append("")
-
-        if fb_rt:
-            fb_rt_f = _find_problem_field(obj, fb_rt)
-            afid_rt = _field_array_id_name(fb_rt_f) if fb_rt_f else None
-            lines.append(
-                f"{ind}auto {fb_rt}_str = get_bytes(cuopt::remote::{afid_rt});"
-            )
-            lines.append(f"{ind}if (!{fb_rt}_str.empty()) {{")
-            lines.append(
-                f"{ind}  cpu_problem.set_{fb_rt}({fb_rt}_str.data(), static_cast<i_t>({fb_rt}_str.size()));"
-            )
-            lines.append(f"{ind}}}")
 
     return "\n".join(lines).rstrip()
 
@@ -2020,29 +1817,21 @@ def _gen_build_array_chunk_requests(registry, indent="  "):
 
     # Setter groups
     for gname, gdef in setter_groups.items():
-        cond = gdef.get("to_proto_condition")
-        if cond:
-            cond = cond.replace("cpu_problem.", "problem.")
         fields = [
             _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
         ]
-        if cond:
-            lines.append(f"{ind}if ({cond}) {{")
-            ii = ind + "  "
-        else:
-            ii = ind
         for f in fields:
             if f is None:
                 continue
             getter = _default_problem_getter(f, is_scalar=False)
             afid = _field_array_id_name(f)
-            lines.append(f"{ii}{{")
-            lines.append(f"{ii}  const auto& _{f['name']} = problem.{getter};")
+            lines.append(f"{ind}{{")
             lines.append(
-                f"{ii}  chunk_typed_array(requests, cuopt::remote::{afid}, _{f['name']}, upload_id, chunk_size_bytes);"
+                f"{ind}  const auto& _{f['name']} = problem.{getter};"
             )
-            lines.append(f"{ii}}}")
-        if cond:
+            lines.append(
+                f"{ind}  chunk_typed_array(requests, cuopt::remote::{afid}, _{f['name']}, upload_id, chunk_size_bytes);"
+            )
             lines.append(f"{ind}}}")
 
     lines.append("")
@@ -2098,10 +1887,18 @@ def _collect_settings_field_nums(entries):
 
 
 def _ruamel_insert(mapping, key, value):
-    """Insert a key into a ruamel CommentedMap at position 0 to avoid trailing-comment
-    displacement, falling back to plain dict assignment for non-ruamel types."""
-    if hasattr(mapping, "insert"):
+    """Add a key to a CommentedMap at its conventional position.
+
+    field_num goes first (position 0), array_id goes right after field_num,
+    everything else appends."""
+    if not hasattr(mapping, "insert"):
+        mapping[key] = value
+        return
+    if key == "field_num":
         mapping.insert(0, key, value)
+    elif key == "array_id":
+        pos = 1 if "field_num" in mapping else 0
+        mapping.insert(pos, key, value)
     else:
         mapping[key] = value
 
@@ -2143,6 +1940,10 @@ def _assign_to_field_list(entries, key_name, lo, hi, existing, label):
 def _assign_to_settings_fields(entries, lo, hi, existing, label):
     """Assign missing field_num to settings fields (handles nesting). Mutates in-place.
     hi=None means no upper bound."""
+    try:
+        from ruamel.yaml.comments import CommentedMap as _CMap
+    except ImportError:
+        _CMap = None
     next_num = max(existing) + 1 if existing else lo
     assigned = 0
     for entry in entries:
@@ -2157,7 +1958,10 @@ def _assign_to_settings_fields(entries, lo, hi, existing, label):
             assigned += sub_assigned
             next_num = max(existing) + 1 if existing else next_num
         elif val is None:
-            entry[name] = {"field_num": next_num}
+            if _CMap is not None:
+                entry[name] = _CMap([("field_num", next_num)])
+            else:
+                entry[name] = {"field_num": next_num}
             existing.add(next_num)
             next_num += 1
             assigned += 1
@@ -2175,7 +1979,10 @@ def _assign_to_settings_fields(entries, lo, hi, existing, label):
 
 def _normalize_bare_strings(entries):
     """Convert bare string entries in a field list to single-key dicts.
-    This lets the auto-numbering logic treat them uniformly."""
+    This lets the auto-numbering logic treat them uniformly.
+
+    Avoids modifying CommentedSeq comment attributes (ca.items) to prevent
+    corrupting ruamel.yaml's internal comment tracking on dump."""
     try:
         from ruamel.yaml.comments import CommentedMap
 
@@ -2192,10 +1999,81 @@ def _normalize_bare_strings(entries):
 
     for idx, entry in enumerate(entries):
         if isinstance(entry, str):
-            replacement = mk_outer(entry, mk_inner())
-            entries[idx] = replacement
-            if hasattr(entries, "ca") and idx in entries.ca.items:
-                del entries.ca.items[idx]
+            entries[idx] = mk_outer(entry, mk_inner())
+
+
+_STRIP_RE = re.compile(r"^ +(?:field_num|array_id): +\d+ *\n", re.MULTILINE)
+
+
+def strip_field_numbers_text(path):
+    """Remove field_num/array_id lines from the registry via text substitution.
+
+    Pure text operation — guaranteed to preserve all comments and formatting.
+    Returns the number of lines removed."""
+    with open(path) as f:
+        original = f.read()
+    stripped, count = _STRIP_RE.subn("", original)
+    if count > 0:
+        with open(path, "w") as f:
+            f.write(stripped)
+    return count
+
+
+def _dump_and_verify(ryaml, data, path):
+    """Dump YAML data to a string buffer, verify comments survived, then write.
+
+    Never truncates the original file until the output is validated."""
+    from io import StringIO
+
+    with open(path) as f:
+        original = f.read()
+    original_comments = [
+        line for line in original.splitlines() if line.lstrip().startswith("#")
+    ]
+
+    buf = StringIO()
+    ryaml.dump(data, buf)
+    written = buf.getvalue()
+    written_comments = [
+        line for line in written.splitlines() if line.lstrip().startswith("#")
+    ]
+
+    if len(written_comments) < len(original_comments):
+        print(
+            f"ERROR: comment loss detected in {path} "
+            f"({len(original_comments)} → {len(written_comments)} comment lines). "
+            f"File not modified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    with open(path, "w") as f:
+        f.write(written)
+
+
+def _registry_has_field_numbers(registry):
+    """Check if the registry has at least one field_num or array_id assigned."""
+    for section_key in list(registry.keys()):
+        section = registry.get(section_key)
+        if not isinstance(section, dict):
+            continue
+        for list_key in ["scalars", "arrays"]:
+            for nums in [
+                _collect_field_nums(section.get(list_key, []), "field_num"),
+                _collect_field_nums(section.get(list_key, []), "array_id"),
+            ]:
+                if nums:
+                    return True
+        if "fields" in section:
+            if _collect_settings_field_nums(section["fields"]):
+                return True
+        sub = section.get("warm_start")
+        if isinstance(sub, dict):
+            for list_key in ["scalars", "arrays"]:
+                for key in ["field_num", "array_id"]:
+                    if _collect_field_nums(sub.get(list_key, []), key):
+                        return True
+    return False
 
 
 def auto_assign_field_numbers(data):
@@ -2397,7 +2275,21 @@ def main():
         help="Auto-assign missing field_num and array_id values, writing "
         "them back to the registry YAML (preserves comments/formatting).",
     )
+    parser.add_argument(
+        "--strip",
+        action="store_true",
+        help="Remove all field_num and array_id values from the registry YAML "
+        "and exit. Useful before committing a minimal registry.",
+    )
     args = parser.parse_args()
+
+    if args.strip:
+        n = strip_field_numbers_text(args.registry)
+        if n > 0:
+            print(f"  stripped {n} field number(s) from {args.registry}")
+        else:
+            print("  no field numbers to strip")
+        sys.exit(0)
 
     if args.auto_number:
         try:
@@ -2410,21 +2302,28 @@ def main():
             )
             sys.exit(1)
 
-        ryaml = YAML()
+        ryaml = YAML(typ="rt")
         ryaml.preserve_quotes = True
         with open(args.registry) as f:
             rt_data = ryaml.load(f)
 
         n = auto_assign_field_numbers(rt_data)
         if n > 0:
-            with open(args.registry, "w") as f:
-                ryaml.dump(rt_data, f)
+            _dump_and_verify(ryaml, rt_data, args.registry)
             print(f"  auto-numbered {n} field(s) in {args.registry}")
         else:
             print("  all field numbers already assigned")
 
     with open(args.registry) as f:
         registry = yaml.safe_load(f)
+
+    if not _registry_has_field_numbers(registry):
+        print(
+            "ERROR: Registry has no field_num or array_id values assigned.\n"
+            "Run with --auto-number to assign them before generating.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     outdir = args.output_dir
 

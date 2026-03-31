@@ -9,10 +9,12 @@
   cpu_problem.set_objective_offset(pb_problem.objective_offset());
   cpu_problem.set_problem_category(from_proto_problem_category(pb_problem.problem_category()));
 
-  std::vector<f_t> A_values(pb_problem.a_values().begin(), pb_problem.a_values().end());
-  std::vector<i_t> A_indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
-  std::vector<i_t> A_offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
-  cpu_problem.set_csr_constraint_matrix(A_values.data(), static_cast<i_t>(A_values.size()), A_indices.data(), static_cast<i_t>(A_indices.size()), A_offsets.data(), static_cast<i_t>(A_offsets.size()));
+  if (pb_problem.a_values_size() > 0) {
+    std::vector<f_t> A_values(pb_problem.a_values().begin(), pb_problem.a_values().end());
+    std::vector<i_t> A_indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
+    std::vector<i_t> A_offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
+    cpu_problem.set_csr_constraint_matrix(A_values.data(), static_cast<i_t>(A_values.size()), A_indices.data(), static_cast<i_t>(A_indices.size()), A_offsets.data(), static_cast<i_t>(A_offsets.size()));
+  }
 
   if (pb_problem.q_values_size() > 0) {
     std::vector<f_t> Q_values(pb_problem.q_values().begin(), pb_problem.q_values().end());
@@ -33,6 +35,10 @@
     std::vector<f_t> c(pb_problem.c().begin(), pb_problem.c().end());
     cpu_problem.set_objective_coefficients(c.data(), static_cast<i_t>(c.size()));
   }
+  if (pb_problem.b_size() > 0) {
+    std::vector<f_t> b(pb_problem.b().begin(), pb_problem.b().end());
+    cpu_problem.set_constraint_bounds(b.data(), static_cast<i_t>(b.size()));
+  }
   {
     std::vector<f_t> variable_lower_bounds(pb_problem.variable_lower_bounds().begin(), pb_problem.variable_lower_bounds().end());
     cpu_problem.set_variable_lower_bounds(variable_lower_bounds.data(), static_cast<i_t>(variable_lower_bounds.size()));
@@ -41,6 +47,18 @@
     std::vector<f_t> variable_upper_bounds(pb_problem.variable_upper_bounds().begin(), pb_problem.variable_upper_bounds().end());
     cpu_problem.set_variable_upper_bounds(variable_upper_bounds.data(), static_cast<i_t>(variable_upper_bounds.size()));
   }
+  if (pb_problem.constraint_lower_bounds_size() > 0) {
+    std::vector<f_t> constraint_lower_bounds(pb_problem.constraint_lower_bounds().begin(), pb_problem.constraint_lower_bounds().end());
+    cpu_problem.set_constraint_lower_bounds(constraint_lower_bounds.data(), static_cast<i_t>(constraint_lower_bounds.size()));
+  }
+  if (pb_problem.constraint_upper_bounds_size() > 0) {
+    std::vector<f_t> constraint_upper_bounds(pb_problem.constraint_upper_bounds().begin(), pb_problem.constraint_upper_bounds().end());
+    cpu_problem.set_constraint_upper_bounds(constraint_upper_bounds.data(), static_cast<i_t>(constraint_upper_bounds.size()));
+  }
+  if (!pb_problem.row_types().empty()) {
+    const std::string& row_types_str = pb_problem.row_types();
+    cpu_problem.set_row_types(row_types_str.data(), static_cast<i_t>(row_types_str.size()));
+  }
   if (pb_problem.variable_types_size() > 0) {
     std::vector<var_t> variable_types;
     variable_types.reserve(pb_problem.variable_types_size());
@@ -48,19 +66,4 @@
       variable_types.push_back(from_proto_variable_type(static_cast<cuopt::remote::VariableType>(v)));
     }
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
-  }
-
-  if (pb_problem.constraint_lower_bounds_size() > 0 && pb_problem.constraint_upper_bounds_size() > 0 &&
-      pb_problem.constraint_lower_bounds_size() == pb_problem.constraint_upper_bounds_size()) {
-    std::vector<f_t> constraint_lower_bounds(pb_problem.constraint_lower_bounds().begin(), pb_problem.constraint_lower_bounds().end());
-    cpu_problem.set_constraint_lower_bounds(constraint_lower_bounds.data(), static_cast<i_t>(constraint_lower_bounds.size()));
-    std::vector<f_t> constraint_upper_bounds(pb_problem.constraint_upper_bounds().begin(), pb_problem.constraint_upper_bounds().end());
-    cpu_problem.set_constraint_upper_bounds(constraint_upper_bounds.data(), static_cast<i_t>(constraint_upper_bounds.size()));
-  } else if (pb_problem.b_size() > 0) {
-    std::vector<f_t> b(pb_problem.b().begin(), pb_problem.b().end());
-    cpu_problem.set_constraint_bounds(b.data(), static_cast<i_t>(b.size()));
-    if (!pb_problem.row_types().empty()) {
-      const std::string& row_types_str = pb_problem.row_types();
-      cpu_problem.set_row_types(row_types_str.data(), static_cast<i_t>(row_types_str.size()));
-    }
   }

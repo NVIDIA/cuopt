@@ -16,6 +16,7 @@ target_include_directories(GRPC_CLIENT_TEST
     "${CUOPT_SOURCE_DIR}/include"
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/client"
+    "${CUOPT_SOURCE_DIR}/codegen/generated"
     "${CUOPT_TEST_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}"  # For grpc_client_test_helper.hpp
     "${CMAKE_BINARY_DIR}"  # For generated protobuf headers

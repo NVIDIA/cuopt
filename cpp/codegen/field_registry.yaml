@@ -44,7 +44,6 @@
 #
 # Per-section:
 #   cpp_type           – C++ type this section maps to
-#   is_mip             – true => MIP variant of a solution/problem type
 #   constructor_args   – mapping of constructor parameter names to field sources
 #   presence_check     – predicate expression to test if optional data is present
 #   getter             – (per-section) expression to access the section's C++ data
@@ -131,7 +130,6 @@ enums:
 # ─────────────────────────────────────────────────────────────────────────────
 lp_solution:
   cpp_type: "cpu_lp_solution_t<i_t, f_t>"
-  is_mip: false
 
   scalars:
   - lp_termination_status:
@@ -248,7 +246,6 @@ lp_solution:
 # ─────────────────────────────────────────────────────────────────────────────
 mip_solution:
   cpp_type: "cpu_mip_solution_t<i_t, f_t>"
-  is_mip: true
 
   scalars:
   - mip_termination_status:
@@ -637,11 +634,4 @@ optimization_problem:
       fields: [A_values, A_indices, A_offsets]
     quadratic_objective:
       setter: set_quadratic_objective_matrix
-      to_proto_condition: "cpu_problem.has_quadratic_objective()"
-      from_proto_condition: "pb_problem.q_values_size() > 0"
       fields: [Q_values, Q_indices, Q_offsets]
-
-  constraint_bounds:
-    prefer_fields: [constraint_lower_bounds, constraint_upper_bounds]
-    fallback_rhs: b
-    fallback_row_types: row_types
