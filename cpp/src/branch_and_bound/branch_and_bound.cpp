@@ -1472,6 +1472,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       solver_status_ = mip_status_t::TIME_LIMIT;
       break;
     } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
+      stack.push_front(node_ptr);
       break;
     } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
       break;
@@ -1528,6 +1529,11 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       node_concurrent_halt_ = 1;
     }
   }
+
+  lower_bound = get_lower_bound();
+  upper_bound = upper_bound_;
+  rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  abs_gap     = upper_bound - lower_bound;
 
   if (stack.size() > 0 &&
       (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol)) {
