@@ -183,6 +183,7 @@ int run_single_file(const std::string& file_path,
       auto solution     = cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
     }
   } catch (const std::exception& e) {
+    fprintf(stderr, "cuopt_cli error: %s\n", e.what());
     CUOPT_LOG_ERROR("Error: %s", e.what());
     return -1;
   }

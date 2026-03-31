@@ -30,7 +30,6 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t()
 {
-  CUOPT_LOG_DEBUG("cpu_optimization_problem_t constructor: Using CPU backend");
 }
 
 // ==============================================================================
