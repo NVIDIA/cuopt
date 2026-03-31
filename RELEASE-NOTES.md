@@ -5,7 +5,8 @@
 ### New Features (26.04)
 - Run no relaxation heuristics on the original problem (before presolve) 
 - New MIP cuts: clique cuts and implied bounds cuts
-- Add option for using Batch PDLP in reliability branching  
+- Add option for using Batch PDLP in reliability branching
+- Add UnboundedOrInfeasible termination status
 
 ### Breaking Changes (26.04)
 
@@ -21,6 +22,7 @@
 
 
 ### Bug Fixes (26.04)
+- Fix incorrect termination status and replace with UnboundedOrInfeasible
 - Fix a issue with Papilo crashing 
 - Write quadratic terms out in MPS files
 - Fix a issue in MIP solver where cuOpt was taking a long time to terminate after optimal solution found
