@@ -7,6 +7,7 @@
 - New MIP cuts: clique cuts and implied bounds cuts
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
+- Exposed parameters for tuning heuristics
 
 ### Breaking Changes (26.04)
 
