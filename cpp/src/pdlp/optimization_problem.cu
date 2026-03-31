@@ -808,6 +808,18 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());
   }
 
+  if (!Q_values_.empty()) {
+    // Only the symmetrized matrix is stored in the optimization_problem_t
+    const bool is_symmetrized = true;
+    data_model_view.set_quadratic_objective_matrix(Q_values_.data(),
+                                                   static_cast<i_t>(Q_values_.size()),
+                                                   Q_indices_.data(),
+                                                   static_cast<i_t>(Q_indices_.size()),
+                                                   Q_offsets_.data(),
+                                                   static_cast<i_t>(Q_offsets_.size()),
+                                                   is_symmetrized);
+  }
+
   cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
 }
 
