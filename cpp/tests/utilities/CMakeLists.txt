@@ -5,3 +5,6 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp)
+
+# Opt-in SIGSEGV for validating core dump collection (CUOPT_TEST_COREDUMP=1)
+ConfigureTest(COREDUMP_SANITY_TEST coredump_sanity_test.cpp)
