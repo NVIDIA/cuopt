@@ -53,7 +53,8 @@
 
 #include <rmm/cuda_stream.hpp>
 
-#include <thread>  // For std::thread
+#include <exception>
+#include <thread>
 
 #define CUOPT_LOG_CONDITIONAL_INFO(condition, ...) \
   if ((condition)) { CUOPT_LOG_INFO(__VA_ARGS__); }
@@ -1149,13 +1150,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       auto barrier_handle                  = raft::handle_t(barrier_stream);
       auto barrier_problem                 = dual_simplex_problem;
       barrier_problem.handle_ptr           = &barrier_handle;
-
       run_barrier_thread<i_t, f_t>(std::ref(barrier_problem),
                                    std::ref(settings_pdlp),
                                    std::ref(sol_barrier_ptr),
                                    std::ref(timer));
     };
-
     if (settings.num_gpus > 1) {
       problem.handle_ptr->sync_stream();
       raft::device_setter device_setter(1);  // Scoped variable
@@ -1169,8 +1168,20 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (settings.num_gpus > 1) {
     CUOPT_LOG_DEBUG("PDLP device: %d", raft::device_setter::get_current_device());
   }
-  // Run pdlp in the main thread
-  auto sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
+
+  // Run pdlp in the main thread.
+  // Must join all spawned threads before leaving this scope, even on exception,
+  // because destroying a joinable std::thread calls std::terminate().
+  std::exception_ptr pdlp_exception;
+  optimization_problem_solution_t<i_t, f_t> sol_pdlp{pdlp_termination_status_t::NumericalError,
+                                                     problem.handle_ptr->get_stream()};
+  try {
+    sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
+  } catch (...) {
+    pdlp_exception                 = std::current_exception();
+    *settings_pdlp.concurrent_halt = 1;
+    std::rethrow_exception(pdlp_exception);
+  }
 
   // Wait for dual simplex thread to finish
   if (!settings.inside_mip) { dual_simplex_thread.join(); }

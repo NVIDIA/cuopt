@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,9 +8,11 @@
 #pragma once
 
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/mps_data_model.hpp>
 
 #include <stdarg.h>
 #include <limits>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,9 +33,15 @@ class mps_writer_t {
    * @brief Ctor. Takes a data model view as input and writes it out as a MPS formatted file
    *
    * @param[in] problem Data model view to write
-   * @param[in] file Path to the MPS file to write
    */
   mps_writer_t(const data_model_view_t<i_t, f_t>& problem);
+
+  /**
+   * @brief Ctor. Takes a data model as input and writes it out as a MPS formatted file
+   *
+   * @param[in] problem Data model to write
+   */
+  mps_writer_t(const mps_data_model_t<i_t, f_t>& problem);
 
   /**
    * @brief Writes the problem to an MPS formatted file
@@ -43,7 +51,13 @@ class mps_writer_t {
   void write(const std::string& mps_file_path);
 
  private:
+  // Owned view (created when constructing from mps_data_model_t)
+  std::unique_ptr<data_model_view_t<i_t, f_t>> owned_view_;
+  // Reference to the view (either external or owned)
   const data_model_view_t<i_t, f_t>& problem_;
+
+  // Helper to create view from data model
+  static data_model_view_t<i_t, f_t> create_view(const mps_data_model_t<i_t, f_t>& model);
 };  // class mps_writer_t
 
 }  // namespace cuopt::mps_parser
