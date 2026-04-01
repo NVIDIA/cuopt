@@ -2784,6 +2784,13 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
+
+    if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
+
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
+
     // Pricing
     i_t direction           = 0;
     i_t basic_leaving_index = -1;
@@ -3575,12 +3582,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
     if (work_unit_context && work_unit_context->global_work_units_elapsed >= settings.work_limit) {
       return dual::status_t::WORK_LIMIT;
-    }
-
-    if (now > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      return dual::status_t::CONCURRENT_LIMIT;
     }
   }
   if (iter >= iter_limit) { status = dual::status_t::ITERATION_LIMIT; }
