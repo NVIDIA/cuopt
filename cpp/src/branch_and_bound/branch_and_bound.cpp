@@ -205,7 +205,11 @@ std::string user_mip_gap(f_t obj_value, f_t lower_bound)
   } else {
     constexpr int BUFFER_LEN = 32;
     char buffer[BUFFER_LEN];
-    snprintf(buffer, BUFFER_LEN - 1, "%5.1f%%", user_mip_gap * 100);
+    if (user_mip_gap > 1e-3) {
+      snprintf(buffer, BUFFER_LEN - 1, "%5.1f%%", user_mip_gap * 100);
+    } else {
+      snprintf(buffer, BUFFER_LEN - 1, "%5.2f%%", user_mip_gap * 100);
+    }
     return std::string(buffer);
   }
 }
