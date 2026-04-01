@@ -460,7 +460,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
 
     // y <- y + step_length * delta_y
     // Optimized: Only update non-zero elements from sparse representation
-    for (i_t nnz_idx = 0; nnz_idx < delta_y_sparse.i.size(); ++nnz_idx) {
+    for (i_t nnz_idx = 0; nnz_idx < static_cast<i_t>(delta_y_sparse.i.size()); ++nnz_idx) {
       const i_t i = delta_y_sparse.i[nnz_idx];
       y[i] += step_length * delta_y_sparse.x[nnz_idx];
     }
