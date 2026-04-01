@@ -28,6 +28,9 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
+template <typename i_t, typename f_t>
+class early_cpufj_t;
+
 // Aggregate structure containing the global context of the solving process for convenience:
 // The current problem, user settings, raft handle and statistics objects
 template <typename i_t, typename f_t>
@@ -35,7 +38,7 @@ struct mip_solver_context_t {
   explicit mip_solver_context_t(raft::handle_t const* handle_ptr_,
                                 problem_t<i_t, f_t>* problem_ptr_,
                                 mip_solver_settings_t<i_t, f_t> settings_,
-                                pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling)
+                                pdlp_initial_scaling_strategy_t<i_t, f_t>* scaling)
     : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_), scaling(scaling)
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
@@ -53,7 +56,7 @@ struct mip_solver_context_t {
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
-  pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling;
+  pdlp_initial_scaling_strategy_t<i_t, f_t>* scaling;  // nullptr when not available (early FJ)
   solver_stats_t<i_t, f_t> stats;
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)
@@ -61,6 +64,14 @@ struct mip_solver_context_t {
 
   // synchronization every 5 seconds for deterministic mode
   work_unit_scheduler_t work_unit_scheduler_{5.0};
+
+  early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
+  // Best objective from early heuristics, in user-space.
+  // Must be converted to the target solver-space before use:
+  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_cutoff)
+  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_cutoff)
+  // Use std::isfinite() to check whether a valid cutoff exists.
+  f_t initial_cutoff{std::numeric_limits<f_t>::infinity()};
 };
 
 }  // namespace cuopt::linear_programming::detail

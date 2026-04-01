@@ -266,8 +266,9 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
   solution_t<i_t, f_t> temp_sol(sol);
   problem_ptr->post_process_assignment(temp_sol.assignment);
   if (context.settings.mip_scaling) {
+    cuopt_assert(context.scaling != nullptr, "");
     rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
-    context.scaling.unscale_solutions(temp_sol.assignment, dummy);
+    context.scaling->unscale_solutions(temp_sol.assignment, dummy);
   }
   if (problem_ptr->has_papilo_presolve_data()) {
     problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
@@ -344,7 +345,10 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                  incumbent_assignment.size(),
                  sol.handle_ptr->get_stream());
 
-      if (context.settings.mip_scaling) { context.scaling.scale_solutions(incumbent_assignment); }
+      if (context.settings.mip_scaling) {
+        cuopt_assert(context.scaling != nullptr, "");
+        context.scaling->scale_solutions(incumbent_assignment);
+      }
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
       if (!is_valid) { return; }
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
