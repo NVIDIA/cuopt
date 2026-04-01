@@ -723,11 +723,11 @@ static void batch_pdlp_reliability_branching_task(
 
   for (i_t k = 0; k < num_candidates; k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-      pdlp_obj_down[k] = std::max(solutions.get_dual_objective_value(k), f_t(0.0));
+      pdlp_obj_down[k] = solutions.get_dual_objective_value(k);
     }
     if (solutions.get_termination_status(k + num_candidates) ==
         pdlp_termination_status_t::Optimal) {
-      pdlp_obj_up[k] = std::max(solutions.get_dual_objective_value(k + num_candidates), f_t(0.0));
+      pdlp_obj_up[k] = solutions.get_dual_objective_value(k + num_candidates);
     }
   }
 }
