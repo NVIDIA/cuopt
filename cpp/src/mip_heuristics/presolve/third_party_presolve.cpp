@@ -19,13 +19,20 @@
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
 
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++11-narrowing"
+#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
+#else
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wnarrowing"
 #endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#else
 #pragma GCC diagnostic pop
 #endif
 #include <mip_heuristics/mip_constants.hpp>

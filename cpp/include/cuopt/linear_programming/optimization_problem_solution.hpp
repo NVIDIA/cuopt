@@ -90,9 +90,9 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     return result;
   }
 
-  f_t get_objective_value(i_t id = 0) const override { return solution_.get_objective_value(id); }
+  f_t get_objective_value(i_t id) const override { return solution_.get_objective_value(id); }
 
-  f_t get_dual_objective_value(i_t id = 0) const override
+  f_t get_dual_objective_value(i_t id) const override
   {
     return solution_.get_dual_objective_value(id);
   }

@@ -132,9 +132,9 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   i_t get_reduced_cost_size() const override { return reduced_cost_.size(); }
 
-  f_t get_objective_value(i_t = 0) const override { return primal_objective_; }
+  f_t get_objective_value(i_t) const override { return primal_objective_; }
 
-  f_t get_dual_objective_value(i_t = 0) const override { return dual_objective_; }
+  f_t get_dual_objective_value(i_t) const override { return dual_objective_; }
 
   pdlp_termination_status_t get_termination_status(i_t = 0) const override
   {

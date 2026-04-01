@@ -17,6 +17,7 @@
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
+#include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -48,7 +49,7 @@ mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
     context(op_problem.handle_ptr,
             const_cast<problem_t<i_t, f_t>*>(&op_problem),
             solver_settings,
-            scaling),
+            &scaling),
     timer_(timer)
 {
   init_handler(op_problem.handle_ptr);
@@ -117,6 +118,23 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                                  ? std::numeric_limits<f_t>::infinity()
                                  : presolve_time_limit;
   bool presolve_success      = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
+
+  // Stop early CPUFJ after cuopt presolve (probing cache) but before main solve
+  if (context.early_cpufj_ptr) {
+    context.early_cpufj_ptr->stop();
+    if (context.early_cpufj_ptr->solution_found()) {
+      // Compare in user-space (representation-invariant) to pick the tighter cutoff.
+      f_t cpufj_user_obj = context.early_cpufj_ptr->get_best_user_objective();
+      bool should_update =
+        !std::isfinite(context.initial_cutoff) ||
+        (context.problem_ptr->maximize ? cpufj_user_obj > context.initial_cutoff
+                                       : cpufj_user_obj < context.initial_cutoff);
+      if (should_update) { context.initial_cutoff = cpufj_user_obj; }
+      CUOPT_LOG_INFO("Early CPUFJ found incumbent with user-space objective %g during presolve",
+                     cpufj_user_obj);
+    }
+  }
+
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
@@ -271,7 +289,20 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       timer_.get_tic_start(),
       context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
-    auto* stats_ptr              = &context.stats;
+
+    // Convert initial_cutoff from user-space to B&B's internal objective space.
+    // context.problem_ptr is the post-trivial-presolve problem, whose get_solver_obj_from_user_obj
+    // produces values in the same space as B&B node lower bounds.
+    if (std::isfinite(context.initial_cutoff)) {
+      f_t bb_cutoff = context.problem_ptr->get_solver_obj_from_user_obj(context.initial_cutoff);
+      branch_and_bound->set_initial_cutoff(bb_cutoff);
+      dm.population.best_feasible_objective = bb_cutoff;
+      CUOPT_LOG_INFO("B&B using initial cutoff %.6e (user-space: %.6e) from early heuristics",
+                     bb_cutoff,
+                     context.initial_cutoff);
+    }
+
+    auto* stats_ptr = &context.stats;
     branch_and_bound->set_user_bound_callback(
       [stats_ptr](f_t user_bound) { stats_ptr->set_solution_bound(user_bound); });
 
