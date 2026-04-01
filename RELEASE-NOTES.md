@@ -3,11 +3,11 @@
 ## Release Notes 26.04
 
 ### New Features (26.04)
-- Run no relaxation heuristics before presolve 
-- New MIP cuts: clique cuts and implied bounds cuts
+- Run no-relaxation heuristics before presolve 
+- Add new MIP cuts: clique cuts and implied bounds cuts
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
-- Exposed parameters for tuning heuristics
+- Expose` parameters for tuning heuristics
 - Add support for Python 3.14
 
 ### Breaking Changes (26.04)
