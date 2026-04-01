@@ -126,3 +126,115 @@ When the user gives **problem text**, classify every sentence and then summarize
 Result: Parameters = 3 factories, 500 units target. Constraints = produce exactly 500 (implicit from "plans to produce"). Decisions = production allocation across factories, overtime amounts. Objective = minimize cost.
 
 **Implicit-objective example:** A problem that asks to "determine the production plan" (or similar) and gives cost components (e.g. workshop, inspection, sales) but does not state "minimize" or "maximize" → **Objective is implicit: minimize total cost**. Always state it explicitly: "The objective is to minimize total cost."
+
+---
+
+<!-- skill-evolution:start — piecewise-linear with integer totals -->
+## Piecewise-linear objectives with integer production
+
+When modeling **concave piecewise-linear** profit/cost functions (e.g. decreasing marginal profit for bulk sales), the standard approach uses continuous segment variables with upper bounds equal to each segment's width. For a maximization with concave profit, the solver fills higher-profit segments first naturally.
+
+**Gotcha:** If the quantity being produced is discrete (pieces, units, items), the **total production** variable must be **INTEGER**, even though segment variables can remain **CONTINUOUS**. Without this, the LP relaxation may yield a fractional total that produces a different (higher or lower) objective than the true integer optimum.
+
+### Pattern
+
+```
+x_total  — INTEGER (total production of a product)
+s1, s2, … — CONTINUOUS (amount sold in each price segment, bounded by segment width)
+
+Link: x_total = s1 + s2 + …
+Resource constraints use x_total.
+Objective uses segment variables × segment profit rates.
+```
+<!-- skill-evolution:end -->
+
+<!-- skill-evolution:start — cutting stock waste = total area minus useful area -->
+## Cutting stock / trim loss problems
+
+In cutting stock problems, **waste area** includes both **trim loss** (unused width within each cutting pattern) and **over-production** (excess strips produced beyond demand). Minimizing only trim loss (waste width × length per pattern) ignores over-production and yields an incorrect objective.
+
+### Correct objective
+
+Since the total useful area demanded is a constant, minimizing waste is equivalent to minimizing total material area consumed:
+
+```
+minimize  sum_j (roll_width_j × x_j)
+```
+
+where `x_j` is the length cut using pattern `j`. The waste area is then:
+
+```
+waste = total_material_area − required_useful_area
+```
+
+where `required_useful_area = sum_i (order_width_i × order_length_i)`.
+
+### Gotcha
+
+Using `sum_j (waste_width_j × x_j)` as the objective only captures trim loss — the unused strip within each pattern. It does **not** penalize over-production of an order. The solver will over-produce narrow orders to fill patterns efficiently, but that excess material is still waste. Always use total material area as the objective.
+<!-- skill-evolution:end -->
+## Goal programming (preemptive / lexicographic)
+<!-- skill-evolution:start — goal programming section -->
+
+Goal programming optimizes multiple objectives in priority order. Implement it as **sequential solves** — one per priority level.
+
+### Formulation pattern
+
+1. **Hard constraints** — capacity limits, non-negativity, etc. These hold in every phase.
+2. **Goal constraints** — for each goal, introduce deviation variables (d⁻ for underachievement, d⁺ for overachievement) and write an equality: `expression + d⁻ − d⁺ = target`.
+3. **Solve sequentially by priority:**
+   - Phase 1: minimize (or maximize) the relevant deviation for the highest-priority goal.
+   - Phase k: fix all higher-priority deviations at their optimal values, then optimize priority k's deviation.
+
+### Variable types in goal programming
+
+Deviation variables (d⁻, d⁺) and slack/idle-time variables are always **continuous**. However, **decision variables must still be INTEGER when they represent discrete/countable quantities** (units produced, vehicles, workers, etc.). Do not let the presence of continuous deviation variables cause you to make all variables continuous — the integrality of decision variables directly affects feasibility and objective values.
+
+---
+
+<!-- skill-evolution:start — inventory capacity must bound stock-after-purchase -->
+## Multi-period inventory / purchasing models
+
+In problems with buying, selling, and warehouse capacity over multiple periods, decide which capacity constraints to include based on the problem's timing assumptions.
+
+### Pattern
+
+For each period *t* with inventory balance `stock[t] = stock[t-1] + buy[t] - sell[t]`:
+
+- **End-of-period capacity** (variable bound): `stock[t] <= capacity` — always needed.
+- **After-purchase capacity** (explicit constraint): `stock[t-1] + buy[t] <= capacity` — prevents buying more than the warehouse can hold before any sales occur within the period.
+
+### When to include the after-purchase constraint
+
+- **Include it** when the problem states or implies that purchases are received before sales happen within a period (sequential operations), or when the warehouse physically cannot exceed capacity at any instant.
+- **Omit it** when buying and selling are concurrent within a period (common in textbook trading/inventory problems) and the capacity applies only to end-of-period stock. Many classic problems only constrain end-of-period inventory.
+
+**Key interaction with the sell constraint:** If the model already has `sell[t] <= stock[t-1]` (grain bought this period cannot be sold this period), the model is bounded even without the after-purchase constraint. The sell constraint prevents unbounded buy-sell cycling. The after-purchase constraint is then an additional physical restriction, not a mathematical necessity.
+
+**Default:** If the problem does not specify timing within a period, use **only** end-of-period capacity (`stock[t] <= capacity`). Add the after-purchase constraint only if the problem explicitly requires it.
+<!-- skill-evolution:end -->
+
+<!-- skill-evolution:start — blending with shared mixing tank (intermediate processing) -->
+## Blending with shared mixing / intermediate processing
+
+In some blending problems, a subset of raw materials must be **mixed together first** (e.g., in a mixing tank) before being allocated to different products. The resulting intermediate has a **uniform composition** — you cannot independently assign different raw materials to different products.
+
+### Why the standard blending LP is wrong here
+
+The standard blending LP uses variables `x[i][j]` (amount of raw material `i` in product `j`) and freely allocates each raw material to each product. When raw materials share a mixing step, the proportions of those raw materials must be **identical** in every product that receives the intermediate. This proportionality constraint is **bilinear** (`x[A,1]*x[B,2] = x[B,1]*x[A,2]`) and cannot be directly expressed in an LP.
+
+### Linearization strategies
+
+1. **Single-product allocation:** If analysis shows the intermediate is profitable in only one product, allocate all intermediate to that product (set intermediate allocation to other products to zero). The proportionality constraint becomes trivially satisfied. This is the most common case — check profitability of intermediate in each product before attempting a general split.
+
+2. **Parametric over intermediate concentration:** Fix the sulfur/quality concentration of the intermediate as a parameter `σ`. For each fixed `σ`, the problem is a standard LP (intermediate becomes a virtual raw material with known properties). Solve for a grid of `σ` values or use the structure to find the optimum analytically.
+
+3. **Scenario enumeration:** When only 2–3 products exist, enumerate which products receive the intermediate (all-to-A, all-to-B, split). For each scenario with a single recipient, the LP is standard. For split scenarios, use strategy 2.
+
+### Profitability check
+
+Before formulating, check whether using the intermediate in each product is profitable:
+- Compare the **minimum cost per ton** of the intermediate (using cheapest feasible raw material mix) against each product's **selling price**.
+- If `cost_intermediate > sell_price[j]` for some product `j`, the intermediate should not be allocated to product `j`. Raw material C (or other direct inputs) alone may also be unprofitable if `cost_C > sell_price[j]`.
+- This analysis often eliminates the need for a bilinear split entirely.
+<!-- skill-evolution:end -->

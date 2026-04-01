@@ -209,7 +209,24 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   if (time_limit == 0.) return solution.get_feasible();
 
   timer_t timer(time_limit);
-
+  const auto old_n_cstr_weights      = in_fj.cstr_weights.size();
+  const auto expected_n_cstr_weights = static_cast<size_t>(solution.problem_ptr->n_constraints);
+  // in case this is the first time run, resize
+  if (old_n_cstr_weights != expected_n_cstr_weights) {
+    in_fj.cstr_weights.resize(solution.problem_ptr->n_constraints,
+                              solution.handle_ptr->get_stream());
+    cuopt_assert(in_fj.cstr_weights.size() == expected_n_cstr_weights,
+                 "Constraint weights must match constraint count after resize");
+    // Initialize only newly grown entries; shrinking does not need initialization.
+    if (old_n_cstr_weights < expected_n_cstr_weights) {
+      cuopt_assert(old_n_cstr_weights <= in_fj.cstr_weights.size(),
+                   "Constraint weight fill start must be within range");
+      thrust::uninitialized_fill(solution.handle_ptr->get_thrust_policy(),
+                                 in_fj.cstr_weights.begin() + old_n_cstr_weights,
+                                 in_fj.cstr_weights.end(),
+                                 1.);
+    }
+  }
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
   for (auto& cpu_fj : ls_cpu_fj) {

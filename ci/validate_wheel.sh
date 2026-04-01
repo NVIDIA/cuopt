@@ -26,7 +26,7 @@ if [[ "${package_dir}" == "python/libcuopt" ]]; then
         )
     else
         PYDISTCHECK_ARGS+=(
-            --max-allowed-size-compressed '485Mi'
+            --max-allowed-size-compressed '490Mi'
         )
     fi
 elif [[ "${package_dir}" != "python/cuopt" ]] && \

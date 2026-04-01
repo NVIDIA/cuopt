@@ -193,7 +193,7 @@ if __name__ == "__main__":
         "--mip-gap", type=float, default=0.01, help="MIP gap tolerance"
     )
     parser.add_argument(
-        "--compare", action="store_true", help="Compare 1% vs 0.1% gap"
+        "--compare", action="store_true", help="Compare 1%% vs 0.1%% gap"
     )
     parser.add_argument(
         "--known-optimal",

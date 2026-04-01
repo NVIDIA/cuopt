@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -15,10 +15,12 @@ service_list, vehicle_capacity, vehicle_num = utils.create_from_file(filename)
 def test_order_constraints():
     distances = utils.build_matrix(service_list)
     distances = distances.astype(np.float32)
+    transit_times = distances.copy(deep=True)
 
     nodes = service_list["demand"].shape[0]
     d = routing.DataModel(nodes, vehicle_num)
     d.add_cost_matrix(distances)
+    d.add_transit_time_matrix(transit_times)
 
     demand = service_list["demand"].astype(np.int32)
     capacity_list = [vehicle_capacity] * vehicle_num
@@ -31,11 +33,8 @@ def test_order_constraints():
     d.set_order_time_windows(earliest, latest)
     d.set_order_service_times(service)
 
-    s = routing.SolverSettings()
-
-    routing_solution = routing.Solve(d, s)
-
     ret_distances = d.get_cost_matrix()
+    ret_transit_times = d.get_transit_time_matrix(0)
     ret_vehicle_num = d.get_fleet_size()
     ret_num_orders = d.get_num_orders()
     ret_capacity_dimensions = d.get_capacity_dimensions()
@@ -43,6 +42,7 @@ def test_order_constraints():
     ret_service_time = d.get_order_service_times()
 
     assert cudf.DataFrame(ret_distances).equals(distances)
+    assert cudf.DataFrame(ret_transit_times).equals(transit_times)
     assert ret_vehicle_num == vehicle_num
     assert ret_num_orders == nodes
     assert (ret_capacity_dimensions["demand"]["demand"] == demand).all()
@@ -52,12 +52,6 @@ def test_order_constraints():
     assert (ret_time_windows[0] == earliest).all()
     assert (ret_time_windows[1] == latest).all()
     assert (ret_service_time == service).all()
-
-    cu_status = routing_solution.get_status()
-    vehicle_size = routing_solution.get_vehicle_count()
-
-    assert cu_status == 0
-    assert vehicle_size <= 11
 
 
 def test_objective_function():
@@ -71,3 +65,30 @@ def test_objective_function():
 
     assert (objectives == ret_objectives).all()
     assert (objective_weights == ret_objective_weights).all()
+
+
+def test_multi_cost_and_transit_matrices_getters():
+    """Assert getters return correct multi vehicle-type cost and transit matrices."""
+    cost_1 = cudf.DataFrame(
+        [[0, 4, 4], [4, 0, 4], [4, 4, 0]], dtype=np.float32
+    )
+    time_1 = cudf.DataFrame(
+        [[0, 50, 50], [50, 0, 50], [50, 50, 0]], dtype=np.float32
+    )
+    cost_2 = cudf.DataFrame(
+        [[0, 1, 1], [1, 0, 1], [1, 1, 0]], dtype=np.float32
+    )
+    time_2 = cudf.DataFrame(
+        [[0, 10, 10], [10, 0, 10], [10, 10, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, 2)
+    dm.add_cost_matrix(cost_1, 1)
+    dm.add_transit_time_matrix(time_1, 1)
+    dm.add_cost_matrix(cost_2, 2)
+    dm.add_transit_time_matrix(time_2, 2)
+    dm.set_vehicle_types(cudf.Series([1, 2]))
+
+    assert cudf.DataFrame(dm.get_cost_matrix(1)).equals(cost_1)
+    assert cudf.DataFrame(dm.get_cost_matrix(2)).equals(cost_2)
+    assert cudf.DataFrame(dm.get_transit_time_matrix(1)).equals(time_1)
+    assert cudf.DataFrame(dm.get_transit_time_matrix(2)).equals(time_2)

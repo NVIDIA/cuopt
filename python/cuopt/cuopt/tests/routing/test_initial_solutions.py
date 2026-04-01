@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
@@ -77,8 +77,12 @@ def test_initial_solutions(flag):
         d.add_capacity_dimension("demand", demand, capacities)
     d.set_order_locations(order_loc)
     if flag == TestOption.SKIP_DEPOTS:
-        d.set_skip_first_trips(cudf.Series([1, 1, 1, 1, 1]))
-        d.set_drop_return_trips(cudf.Series([1, 1, 1, 1, 1]))
+        skip_first = cudf.Series([1, 1, 1, 1, 1])
+        drop_return = cudf.Series([1, 1, 1, 1, 1])
+        d.set_skip_first_trips(skip_first)
+        d.set_drop_return_trips(drop_return)
+        assert (d.get_skip_first_trips() == skip_first).all()
+        assert (d.get_drop_return_trips() == drop_return).all()
     if flag == TestOption.BREAKS:
         d.add_break_dimension(
             cudf.Series([0] * vehicle_num),
@@ -121,6 +125,14 @@ def test_initial_solutions(flag):
         sol_offsets = cudf.Series([0, 4])
 
     d.add_initial_solutions(vehicle_ids, routes, types, sol_offsets)
+    ret_initial = d.get_initial_solutions()
+    assert len(ret_initial) == 4
+    ret_sizes = sorted(len(x) for x in ret_initial)
+    expected_sizes = sorted(
+        [len(vehicle_ids), len(routes), len(types), len(sol_offsets)]
+    )
+    assert ret_sizes == expected_sizes
+
     s.set_time_limit(1)
     routing_solution = routing.Solve(d, s)
 

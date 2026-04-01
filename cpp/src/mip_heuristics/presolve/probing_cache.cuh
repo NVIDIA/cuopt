@@ -87,7 +87,9 @@ class probing_cache_t {
                                      f_t first_probe,
                                      f_t second_probe,
                                      f_t integrality_tolerance);
-
+  // add the results of probing cache to secondary CG structure if not already in a gub constraint.
+  // use the same activity computation that we will use in BP rounding.
+  // use GUB constraints to find fixings in bulk rounding
   std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
   std::mutex probing_cache_mutex;
 };

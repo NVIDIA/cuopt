@@ -32,8 +32,16 @@
 
 #include <omp.h>
 
+#include <atomic>
 #include <functional>
+#include <future>
+#include <memory>
 #include <vector>
+
+namespace cuopt::linear_programming::detail {
+template <typename i_t, typename f_t>
+struct clique_table_t;
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -68,7 +76,8 @@ class branch_and_bound_t {
  public:
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
-                     f_t start_time);
+                     f_t start_time,
+                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -106,7 +115,19 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
-  bool stop_for_time_limit(mip_solution_t<i_t, f_t>& solution);
+  // Set a cutoff bound from an external source (e.g., early FJ during presolve).
+  // Used for node pruning and reduced cost strengthening but NOT for gap computation.
+  // Unlike upper_bound_, this does not imply a verified incumbent solution exists.
+  //
+  // IMPORTANT: `bound` must be in B&B's internal objective space, i.e. the space of
+  // original_lp_ where:  user_obj = obj_scale * (internal_obj + obj_constant).
+  // The caller (solver.cu) converts from user-space via
+  //   problem_ptr->get_solver_obj_from_user_obj(user_cutoff)
+  // which accounts for both the presolve objective offset and maximization.
+  void set_initial_cutoff(f_t bound) { initial_cutoff_ = bound; }
+
+  // Effective cutoff for node pruning: min of verified incumbent and external cutoff.
+  f_t get_cutoff() const { return std::min(upper_bound_.load(), initial_cutoff_); }
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
@@ -141,6 +162,9 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
+  std::atomic<bool> signal_extend_cliques_{false};
 
   work_limit_context_t work_unit_context_{"B&B"};
 
@@ -169,8 +193,12 @@ class branch_and_bound_t {
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
 
-  // Global variable for upper bound
+  // Verified incumbent bound (only set when B&B has an actual integer-feasible solution).
   omp_atomic_t<f_t> upper_bound_;
+
+  // External cutoff from early heuristics (for pruning only, no verified solution).
+  // Must be in B&B internal objective space (see set_initial_cutoff).
+  f_t initial_cutoff_{std::numeric_limits<f_t>::infinity()};
 
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
@@ -190,6 +218,8 @@ class branch_and_bound_t {
   lp_solution_t<i_t, f_t> root_crossover_soln_;
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
+  omp_atomic_t<f_t> root_lp_current_lower_bound_;
+  omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   bool is_root_solution_set{false};

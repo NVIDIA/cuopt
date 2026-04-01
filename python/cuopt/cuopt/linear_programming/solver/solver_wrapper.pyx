@@ -516,10 +516,13 @@ def Solve(py_data_model_obj, settings, mip=False):
     )
     data_model_obj.set_data_model_view()
 
-    return create_solution(move(call_solve(
-        data_model_obj.c_data_model_view.get(),
-        unique_solver_settings.get(),
-    )), data_model_obj)
+    cdef unique_ptr[solver_ret_t] sol_ret_ptr
+    with nogil:
+        sol_ret_ptr = move(call_solve(
+            data_model_obj.c_data_model_view.get(),
+            unique_solver_settings.get(),
+        ))
+    return create_solution(move(sol_ret_ptr), data_model_obj)
 
 
 cdef set_and_insert_vector(
@@ -544,9 +547,9 @@ def BatchSolve(py_data_model_list, settings):
 
     cdef pair[
         vector[unique_ptr[solver_ret_t]],
-        double] batch_solve_result = (
-        move(call_batch_solve(data_model_views, unique_solver_settings.get())) # noqa
-    )
+        double] batch_solve_result
+    with nogil:
+        batch_solve_result = move(call_batch_solve(data_model_views, unique_solver_settings.get()))  # noqa
 
     cdef vector[unique_ptr[solver_ret_t]] c_solutions = (
         move(batch_solve_result.first)

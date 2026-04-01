@@ -10,6 +10,7 @@
 #include <dual_simplex/sparse_vector.hpp>
 
 #include <dual_simplex/types.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 // #include <thrust/for_each.h>
 // #include <thrust/iterator/counting_iterator.h>
@@ -657,6 +658,12 @@ i_t csr_matrix_t<i_t, f_t>::check_matrix(std::string matrix_name) const
   return 0;
 }
 
+template <typename i_t, typename f_t>
+std::pair<i_t, i_t> csr_matrix_t<i_t, f_t>::get_constraint_range(i_t cstr_idx) const
+{
+  return std::make_pair(this->row_start[cstr_idx], this->row_start[cstr_idx + 1]);
+}
+
 // x <- x + alpha * A(:, j)
 template <typename i_t, typename f_t>
 void scatter_dense(const csc_matrix_t<i_t, f_t>& A, i_t j, f_t alpha, std::vector<f_t>& x)
@@ -931,6 +938,12 @@ f_t sparse_dot(const std::vector<i_t>& xind,
   }
   return dot;
 }
+
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
+// Minimal float instantiation for LP usage
+template class csc_matrix_t<int, float>;
+template class csr_matrix_t<int, float>;
+#endif
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class csc_matrix_t<int, double>;

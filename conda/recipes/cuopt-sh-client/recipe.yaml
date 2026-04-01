@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -26,10 +26,10 @@ build:
 requirements:
   host:
     - pip
-    - python =${{ py_version }}
+    - python-gil =${{ py_version }}
     - setuptools>=77.0.0
   run:
-    - msgpack-python =1.1.0
+    - msgpack-python =1.1.2
     - python
     - requests
 

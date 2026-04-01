@@ -5,18 +5,34 @@
  */
 /* clang-format on */
 
+// Papilo's ProbingView::reset() guards bounds restoration with #ifndef NDEBUG.
+// This causes invalid (-1) column indices due to bugs in the Probing presolver.
+// Force-include ProbingView.hpp with NDEBUG undefined so the restoration is compiled in.
+#ifdef NDEBUG
+#undef NDEBUG
+#include <papilo/core/ProbingView.hpp>
+#define NDEBUG
+#endif
+
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
 
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++11-narrowing"
+#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
+#else
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wnarrowing"
 #endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#else
 #pragma GCC diagnostic pop
 #endif
 #include <mip_heuristics/mip_constants.hpp>
@@ -432,6 +448,13 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
 
   const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
   const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
+
+  i_t ncols = papilo_problem.getNCols();
+  cuopt_assert(
+    std::all_of(
+      cols + start, cols + start + nnz, [ncols](i_t col) { return col >= 0 && col < ncols; }),
+    "Papilo produced invalid column indices in presolved matrix");
+
   op_problem.set_csr_constraint_matrix(
     &(coeffs[start]), nnz, &(cols[start]), nnz, offsets.data(), nrows + 1);
 
@@ -535,7 +558,7 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
                           f_t absolute_tolerance,
                           f_t relative_tolerance,
-                          double time_limit,
+                          f_t time_limit,
                           bool dual_postsolve,
                           i_t num_cpu_threads)
 {
@@ -572,24 +595,30 @@ template <typename i_t, typename f_t>
 std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
   optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit)
 {
-  f_t original_obj_offset = op_problem.get_objective_offset();
-  auto ctx                = build_and_run_pslp_presolver(op_problem, maximize_, time_limit);
+  if constexpr (std::is_same_v<f_t, double>) {
+    double original_obj_offset = op_problem.get_objective_offset();
+    auto ctx                   = build_and_run_pslp_presolver(op_problem, maximize_, time_limit);
 
-  // Free previously allocated presolver and settings
-  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
-  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+    // Free previously allocated presolver and settings if they exist
+    if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+    if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
 
-  pslp_presolver_ = ctx.presolver;
-  pslp_stgs_      = ctx.settings;
+    pslp_presolver_ = ctx.presolver;
+    pslp_stgs_      = ctx.settings;
 
-  if (ctx.status == PresolveStatus_::INFEASIBLE || ctx.status == PresolveStatus_::UNBNDORINFEAS) {
+    if (ctx.status == PresolveStatus_::INFEASIBLE || ctx.status == PresolveStatus_::UNBNDORINFEAS) {
+      return std::nullopt;
+    }
+
+    auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
+      pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
+    opt_problem.set_problem_name(op_problem.get_problem_name());
+    return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
+  } else {
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
     return std::nullopt;
   }
-
-  auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
-    pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
-
-  return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
 }
 
 template <typename i_t, typename f_t>
@@ -625,7 +654,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
   CUOPT_LOG_INFO("Calling Papilo presolver (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
-  set_presolve_methods<f_t>(papilo_presolver, category, dual_postsolve);
+  set_presolve_methods(papilo_presolver, category, dual_postsolve);
   set_presolve_options<i_t, f_t>(papilo_presolver,
                                  category,
                                  absolute_tolerance,
@@ -633,7 +662,7 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                                  time_limit,
                                  dual_postsolve,
                                  num_cpu_threads);
-  set_presolve_parameters<f_t>(
+  set_presolve_parameters(
     papilo_presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
 
   // Disable papilo logs
@@ -701,12 +730,14 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   }
 
   if (status_to_skip) { return; }
+
   std::vector<f_t> primal_sol_vec_h(primal_solution.size());
   raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
   std::vector<f_t> dual_sol_vec_h(dual_solution.size());
   raft::copy(dual_sol_vec_h.data(), dual_solution.data(), dual_solution.size(), stream_view);
   std::vector<f_t> reduced_costs_vec_h(reduced_costs.size());
   raft::copy(reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+
   papilo::Solution<f_t> reduced_sol(primal_sol_vec_h);
   if (dual_postsolve) {
     reduced_sol.dual         = dual_sol_vec_h;
@@ -738,26 +769,34 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& prima
                                                  rmm::device_uvector<f_t>& reduced_costs,
                                                  rmm::cuda_stream_view stream_view)
 {
-  std::vector<f_t> h_primal_solution(primal_solution.size());
-  std::vector<f_t> h_dual_solution(dual_solution.size());
-  std::vector<f_t> h_reduced_costs(reduced_costs.size());
-  raft::copy(h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
-  raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
-  raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+  if constexpr (std::is_same_v<f_t, double>) {
+    // PSLP uses double internally, so we can use the data directly
+    std::vector<double> h_primal_solution(primal_solution.size());
+    std::vector<double> h_dual_solution(dual_solution.size());
+    std::vector<double> h_reduced_costs(reduced_costs.size());
+    raft::copy(
+      h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
+    raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
+    raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+    stream_view.synchronize();
 
-  postsolve(
-    pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
+    postsolve(
+      pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
 
-  auto uncrushed_sol = pslp_presolver_->sol;
-  int n_cols         = uncrushed_sol->dim_x;
-  int n_rows         = uncrushed_sol->dim_y;
+    auto uncrushed_sol = pslp_presolver_->sol;
+    int n_cols         = uncrushed_sol->dim_x;
+    int n_rows         = uncrushed_sol->dim_y;
 
-  primal_solution.resize(n_cols, stream_view);
-  dual_solution.resize(n_rows, stream_view);
-  reduced_costs.resize(n_cols, stream_view);
-  raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
-  raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
-  raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
+    primal_solution.resize(n_cols, stream_view);
+    dual_solution.resize(n_rows, stream_view);
+    reduced_costs.resize(n_cols, stream_view);
+    raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
+    raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
+    raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
+  } else {
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
+  }
 
   stream_view.synchronize();
 }
@@ -799,7 +838,7 @@ void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* pt
   delete ptr;
 }
 
-#if MIP_INSTANTIATE_FLOAT
+#if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template struct papilo_postsolve_deleter<float>;
 template class third_party_presolve_t<int, float>;
 #endif

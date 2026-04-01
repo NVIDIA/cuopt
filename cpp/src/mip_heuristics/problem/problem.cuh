@@ -24,6 +24,7 @@
 
 #include <utilities/macros.cuh>
 
+#include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
 #include <raft/util/cuda_dev_essentials.cuh>
@@ -36,6 +37,9 @@
 namespace cuopt {
 
 namespace linear_programming::detail {
+
+template <typename i_t, typename f_t>
+struct clique_table_t;
 
 template <typename i_t, typename f_t>
 class solution_t;
@@ -94,7 +98,14 @@ class problem_t {
   void preprocess_problem();
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
-                               bool resize_to_original_problem = true);
+                               bool resize_to_original_problem,
+                               rmm::cuda_stream_view stream);
+  void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
+                               bool resize_to_original_problem = true)
+  {
+    post_process_assignment(
+      current_assignment, resize_to_original_problem, handle_ptr->get_stream());
+  }
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void set_papilo_presolve_data(const third_party_presolve_t<i_t, f_t>* presolver_ptr,
                                 std::vector<i_t> reduced_to_original,
@@ -119,8 +130,12 @@ class problem_t {
   bool is_integer(f_t val) const;
   bool integer_equal(f_t val1, f_t val2) const;
 
+  std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+  void set_constraints_from_host_user_problem(
+    const cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem);
 
   uint32_t get_fingerprint() const;
 

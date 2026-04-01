@@ -27,6 +27,9 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
+template <typename i_t, typename f_t>
+class early_cpufj_t;
+
 // Aggregate structure containing the global context of the solving process for convenience:
 // The current problem, user settings, raft handle and statistics objects
 template <typename i_t, typename f_t>
@@ -58,6 +61,14 @@ struct mip_solver_context_t {
 
   // synchronization every 5 seconds for deterministic mode
   work_unit_scheduler_t work_unit_scheduler_{5.0};
+
+  early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
+  // Best objective from early heuristics, in user-space.
+  // Must be converted to the target solver-space before use:
+  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_cutoff)
+  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_cutoff)
+  // Use std::isfinite() to check whether a valid cutoff exists.
+  f_t initial_cutoff{std::numeric_limits<f_t>::infinity()};
 };
 
 }  // namespace cuopt::linear_programming::detail
