@@ -1844,7 +1844,7 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
     rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      solver_status_        = mip_status_t::OPTIMAL;
+      solver_status_ = mip_status_t::OPTIMAL;
       break;
     }
   }
