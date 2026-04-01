@@ -203,12 +203,12 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
     cdef unique_ptr[solver_ret_t] call_solve(
         data_model_view_t[int, double]* data_model,
         solver_settings_t[int, double]* solver_settings,
-    ) except +
+    ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa
         vector[data_model_view_t[int, double] *] data_models,
         solver_settings_t[int, double]* solver_settings,
-    ) except +
+    ) except + nogil
 
 # Variant helper functions — Cython can't call std::get directly, so we use
 # inline C++ helpers to extract the GPU/CPU alternatives from inner variants.

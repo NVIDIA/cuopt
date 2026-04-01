@@ -115,6 +115,20 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
+  // Set a cutoff bound from an external source (e.g., early FJ during presolve).
+  // Used for node pruning and reduced cost strengthening but NOT for gap computation.
+  // Unlike upper_bound_, this does not imply a verified incumbent solution exists.
+  //
+  // IMPORTANT: `bound` must be in B&B's internal objective space, i.e. the space of
+  // original_lp_ where:  user_obj = obj_scale * (internal_obj + obj_constant).
+  // The caller (solver.cu) converts from user-space via
+  //   problem_ptr->get_solver_obj_from_user_obj(user_cutoff)
+  // which accounts for both the presolve objective offset and maximization.
+  void set_initial_cutoff(f_t bound) { initial_cutoff_ = bound; }
+
+  // Effective cutoff for node pruning: min of verified incumbent and external cutoff.
+  f_t get_cutoff() const { return std::min(upper_bound_.load(), initial_cutoff_); }
+
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
@@ -179,8 +193,12 @@ class branch_and_bound_t {
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
 
-  // Global variable for upper bound
+  // Verified incumbent bound (only set when B&B has an actual integer-feasible solution).
   omp_atomic_t<f_t> upper_bound_;
+
+  // External cutoff from early heuristics (for pruning only, no verified solution).
+  // Must be in B&B internal objective space (see set_initial_cutoff).
+  f_t initial_cutoff_{std::numeric_limits<f_t>::infinity()};
 
   // Global variable for incumbent. The incumbent should be updated with the upper bound
   mip_solution_t<i_t, f_t> incumbent_;
