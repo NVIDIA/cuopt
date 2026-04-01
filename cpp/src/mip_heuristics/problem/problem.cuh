@@ -98,7 +98,14 @@ class problem_t {
   void preprocess_problem();
   bool pre_process_assignment(rmm::device_uvector<f_t>& assignment);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
-                               bool resize_to_original_problem = true);
+                               bool resize_to_original_problem,
+                               rmm::cuda_stream_view stream);
+  void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
+                               bool resize_to_original_problem = true)
+  {
+    post_process_assignment(
+      current_assignment, resize_to_original_problem, handle_ptr->get_stream());
+  }
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void set_papilo_presolve_data(const third_party_presolve_t<i_t, f_t>* presolver_ptr,
                                 std::vector<i_t> reduced_to_original,

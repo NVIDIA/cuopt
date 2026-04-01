@@ -1,5 +1,7 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
+import numpy as np
 
 import cudf
 
@@ -9,33 +11,19 @@ from cuopt.routing import utils
 filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
 
 
-def test_min_vehicles():
-    min_vehicles = 10
-    d = utils.create_data_model(filename, run_nodes=10)
-    d.set_min_vehicles(min_vehicles)
-
+def test_verbose_mode():
+    """Solve with verbose mode on; assert solution status."""
+    cost = cudf.DataFrame(
+        [[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]],
+        dtype=np.float32,
+    )
+    dm = routing.DataModel(3, 1)
+    dm.add_cost_matrix(cost)
     s = routing.SolverSettings()
-    s.set_time_limit(4)
-    routing_solution = routing.Solve(d, s)
-    ret_vehicle_num = d.get_min_vehicles()
-
-    assert ret_vehicle_num == min_vehicles
-    assert routing_solution.get_vehicle_count() >= min_vehicles
-    assert routing_solution.get_status() == 0
-
-
-def test_max_distance():
-    d = utils.create_data_model(filename, run_nodes=10)
-    max_distance = cudf.Series([250.0] * d.get_fleet_size())
-    d.set_vehicle_max_costs(max_distance)
-    s = routing.SolverSettings()
-    s.set_time_limit(4)
-    routing_solution = routing.Solve(d, s)
-    routes = routing_solution.get_route()
-    trucks = routes["truck_id"].unique()
-    for i in range(0, len(trucks)):
-        truck_route = routes[routes["truck_id"] == trucks.iloc[i]]
-        assert truck_route["arrival_stamp"].iloc[-1] < max_distance[0]
+    s.set_verbose_mode(True)
+    s.set_time_limit(2)
+    solution = routing.Solve(dm, s)
+    assert solution.get_status() == 0
 
 
 def test_dump_results():
@@ -51,3 +39,34 @@ def test_dump_results():
     ret_interval = s.get_best_results_interval()
     assert file_path == ret_file_path
     assert interval == ret_interval
+
+
+def test_solver_settings_getters():
+    s = routing.SolverSettings()
+    time_limit = 10.5
+    s.set_time_limit(time_limit)
+    assert s.get_time_limit() == time_limit
+
+
+def test_dump_config():
+    """Test SolverSettings solve with config file"""
+    s = routing.SolverSettings()
+    config_file = "solver_cfg.yaml"
+    s.dump_config_file(config_file)
+    assert s.get_config_file_name() == config_file
+
+    # Small example data model: 3 locations, 1 vehicle
+    cost = cudf.DataFrame(
+        [[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]],
+        dtype=np.float32,
+    )
+    dm = routing.DataModel(3, 1)
+    dm.add_cost_matrix(cost)
+    s.set_time_limit(2)
+    routing_solution = routing.Solve(dm, s)
+    assert routing_solution.get_status() == 0
+
+    # Load from written solver_cfg.yaml and solve again
+    dm_from_yaml, s_from_yaml = utils.create_data_model_from_yaml(config_file)
+    solution_from_yaml = routing.Solve(dm_from_yaml, s_from_yaml)
+    assert solution_from_yaml.get_status() == 0

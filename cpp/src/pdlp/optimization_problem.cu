@@ -66,7 +66,6 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
     variable_types_(0, stream_view_)
 {
   raft::common::nvtx::range fun_scope("optimization problem construction");
-  CUOPT_LOG_INFO("optimization_problem_t constructor: Using GPU backend");
 }
 
 template <typename i_t, typename f_t>

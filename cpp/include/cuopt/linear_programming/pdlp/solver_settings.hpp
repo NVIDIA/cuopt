@@ -245,6 +245,7 @@ class pdlp_solver_settings_t {
   std::string log_file{""};
   std::string sol_file{""};
   std::string user_problem_file{""};
+  std::string presolve_file{""};
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};

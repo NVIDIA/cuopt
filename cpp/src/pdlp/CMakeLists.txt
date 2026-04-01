@@ -11,7 +11,6 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/backend_selection.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/problem_checking.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solve.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/solve_remote.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdlp.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/pdhg.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_solution.cu

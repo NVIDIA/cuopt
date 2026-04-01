@@ -5,18 +5,34 @@
  */
 /* clang-format on */
 
+// Papilo's ProbingView::reset() guards bounds restoration with #ifndef NDEBUG.
+// This causes invalid (-1) column indices due to bugs in the Probing presolver.
+// Force-include ProbingView.hpp with NDEBUG undefined so the restoration is compiled in.
+#ifdef NDEBUG
+#undef NDEBUG
+#include <papilo/core/ProbingView.hpp>
+#define NDEBUG
+#endif
+
 #include <PSLP/PSLP_sol.h>
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
 
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++11-narrowing"
+#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
+#else
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wnarrowing"
 #endif
 #include <papilo/core/Presolve.hpp>
 #include <papilo/core/ProblemBuilder.hpp>
-#if !defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#else
 #pragma GCC diagnostic pop
 #endif
 #include <mip_heuristics/mip_constants.hpp>
@@ -432,6 +448,12 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
 
   const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
   const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
+
+  i_t ncols = papilo_problem.getNCols();
+  cuopt_assert(
+    std::all_of(
+      cols + start, cols + start + nnz, [ncols](i_t col) { return col >= 0 && col < ncols; }),
+    "Papilo produced invalid column indices in presolved matrix");
 
   op_problem.set_csr_constraint_matrix(
     &(coeffs[start]), nnz, &(cols[start]), nnz, offsets.data(), nrows + 1);

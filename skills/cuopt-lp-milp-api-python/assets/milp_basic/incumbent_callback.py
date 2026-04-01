@@ -13,20 +13,19 @@ from cuopt.linear_programming.internals import GetSolutionCallback
 
 
 class IncumbentCallback(GetSolutionCallback):
-    def __init__(self, user_data):
+    def __init__(self, problem, variables, user_data):
         super().__init__()
+        self.problem = problem
+        self.variables = variables
         self.n_callbacks = 0
         self.user_data = user_data
 
     def get_solution(self, solution, solution_cost, solution_bound, user_data):
         self.n_callbacks += 1
-        sol = (
-            solution.tolist()
-            if hasattr(solution, "tolist")
-            else list(solution)
-        )
+        values = self.problem.getIncumbentValues(solution, self.variables)
         cost = float(solution_cost[0])
-        print(f"Incumbent {self.n_callbacks}: {sol}, cost: {cost:.2f}")
+        vals_str = ", ".join(f"{float(v)}" for v in values)
+        print(f"Incumbent {self.n_callbacks}: [{vals_str}], cost: {cost:.2f}")
 
 
 def main():
@@ -39,7 +38,8 @@ def main():
 
     user_data = {"source": "incumbent_callback"}
     settings = SolverSettings()
-    settings.set_mip_callback(IncumbentCallback(user_data), user_data)
+    callback = IncumbentCallback(problem, [x, y], user_data)
+    settings.set_mip_callback(callback, user_data)
     settings.set_parameter(CUOPT_TIME_LIMIT, 30)
     problem.solve(settings)
 
