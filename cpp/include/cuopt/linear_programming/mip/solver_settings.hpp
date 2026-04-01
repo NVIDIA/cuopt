@@ -94,6 +94,7 @@ class mip_solver_settings_t {
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;
   i_t clique_cuts               = -1;
+  i_t implied_bound_cuts        = -1;
   i_t strong_chvatal_gomory_cuts      = -1;
   i_t reduced_cost_strengthening      = -1;
   f_t cut_change_threshold            = -1.0;

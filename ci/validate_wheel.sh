@@ -22,11 +22,11 @@ PYDISTCHECK_ARGS=(
 if [[ "${package_dir}" == "python/libcuopt" ]]; then
     if [[ "${RAPIDS_CUDA_MAJOR}" == "12" ]]; then
         PYDISTCHECK_ARGS+=(
-            --max-allowed-size-compressed '645Mi'
+            --max-allowed-size-compressed '650Mi'
         )
     else
         PYDISTCHECK_ARGS+=(
-            --max-allowed-size-compressed '490Mi'
+            --max-allowed-size-compressed '495Mi'
         )
     fi
 elif [[ "${package_dir}" != "python/cuopt" ]] && \

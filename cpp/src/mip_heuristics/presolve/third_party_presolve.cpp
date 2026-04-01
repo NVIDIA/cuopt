@@ -679,9 +679,18 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
                  op_problem.get_n_constraints() - papilo_problem.getNRows(),
                  op_problem.get_n_variables() - papilo_problem.getNCols(),
                  op_problem.get_nnz() - papilo_problem.getConstraintMatrix().getNnz());
-  CUOPT_LOG_INFO("Presolved problem: %d constraints, %d variables, %d nonzeros",
+
+  i_t n_integer = 0;
+  {
+    auto col_flags = papilo_problem.getColFlags();
+    for (size_t i = 0; i < col_flags.size(); i++) {
+      if (col_flags[i].test(papilo::ColFlag::kIntegral)) n_integer++;
+    }
+  }
+  CUOPT_LOG_INFO("Presolved problem: %d constraints, %d variables (%d integer), %d nonzeros",
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
+                 n_integer,
                  papilo_problem.getConstraintMatrix().getNnz());
 
   // Check if presolve found the optimal solution (problem fully reduced)

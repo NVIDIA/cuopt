@@ -706,7 +706,8 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -745,7 +746,8 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {

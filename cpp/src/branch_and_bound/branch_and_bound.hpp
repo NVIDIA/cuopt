@@ -77,6 +77,7 @@ class branch_and_bound_t {
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
+                     const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
                      std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
@@ -133,7 +134,7 @@ class branch_and_bound_t {
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
                        f_t& repaired_obj,
-                       std::vector<f_t>& repaired_solution) const;
+                       std::vector<f_t>& repaired_solution);
 
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
@@ -162,6 +163,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
   std::atomic<bool> signal_extend_cliques_{false};
@@ -222,6 +224,7 @@ class branch_and_bound_t {
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
+  std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts
