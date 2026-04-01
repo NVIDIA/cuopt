@@ -281,9 +281,15 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                edge_norms,
                                                work_unit_context);
     }
-    constexpr bool primal_cleanup = false;
+    constexpr bool primal_cleanup = true;
     if (status == dual::status_t::OPTIMAL && primal_cleanup) {
+      settings.log.printf("Running primal cleanup\n");
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
+      // TODO: We need to update ft if the basis changed
+    }
+    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
+      settings.log.printf("Setting concurrent halt to 1 inside_mip\n");
+      *settings.concurrent_halt = 1;
     }
     if (status == dual::status_t::OPTIMAL) {
       std::vector<f_t> unscaled_x(lp.num_cols);

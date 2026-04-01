@@ -21,7 +21,6 @@ namespace {
 template <typename i_t, typename f_t>
 void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                                    const std::vector<f_t>& z,
                                     std::vector<variable_status_t>& vstatus,
                                     std::vector<f_t>& x)
 {
@@ -158,7 +157,9 @@ i_t ratio_test(const lp_problem_t<i_t, f_t>& lp,
                std::vector<f_t>& x,
                std::vector<f_t>& delta_x,
                f_t& step_length,
-               i_t& basic_leaving)
+               i_t& basic_leaving,
+               i_t entering_index,
+               i_t direction)
 {
   const i_t m             = lp.num_rows;
   const i_t n             = lp.num_cols;
@@ -166,28 +167,53 @@ i_t ratio_test(const lp_problem_t<i_t, f_t>& lp,
   i_t leaving_index       = -1;
   f_t min_val             = inf;
   constexpr f_t pivot_tol = 1e-8;
+
+  // Entering variable can hit its opposite bound: limit step by that
+  if (direction > 0 && lp.upper[entering_index] < inf) {
+    const f_t limit = lp.upper[entering_index] - x[entering_index];
+    if (limit >= 0 && limit < min_val) {
+      min_val = limit;
+      leaving_index = -1;  // no basic leaves; will be handled by caller
+      basic_leaving = -1;
+    }
+  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
+    const f_t limit = x[entering_index] - lp.lower[entering_index];
+    if (limit >= 0 && limit < min_val) {
+      min_val = limit;
+      leaving_index = -1;
+      basic_leaving = -1;
+    }
+  }
+
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
     if (delta_x[j] == 0.0) { continue; }
-    if (lp.lower[j] > -inf && x[j] >= lp.lower[j] && delta_x[j] < -pivot_tol) {
+    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
       // xj + step * delta_x[j] >= lp.lower[j]
       // step * delta_x[j] >= lp.lower[j] - x[j]
       // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
       const f_t neum = lp.lower[j] - x[j];
       f_t ratio      = neum / delta_x[j];
-      if (ratio < min_val) {
+      // Already below lower and moving further (delta_x < 0): cap step at 0
+      if (x[j] < lp.lower[j]) { ratio = 0; }
+      if (ratio >= 0 && ratio < min_val) {
         min_val       = ratio;
         basic_leaving = k;
         leaving_index = j;
       }
     }
-    if (lp.upper[j] < inf && x[j] <= lp.upper[j] && delta_x[j] > pivot_tol) {
+    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
       // xj + step * delta_x[j] <= lp.upper[j]
       // step * delta_x[j] <= lp.upper[j] - x[j]
       // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
       const f_t neum = lp.upper[j] - x[j];
       f_t ratio      = neum / delta_x[j];
-      if (ratio < min_val) {
+      // If x[j] > upper (slightly infeasible), ratio < 0; skip so we don't use it.
+      // But if we're already above upper and would move further (delta_x > 0), cap step at 0.
+      if (x[j] > lp.upper[j]) {
+        ratio = 0;
+      }
+      if (ratio >= 0 && ratio < min_val) {
         min_val       = ratio;
         basic_leaving = k;
         leaving_index = j;
@@ -207,7 +233,7 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
   const i_t n    = lp.num_cols;
   f_t primal_inf = 0;
   for (i_t j = 0; j < n; ++j) {
-    if (x[j] < lp.lower[j]) {
+    if (x[j] < lp.lower[j] - settings.primal_tol) {
       // x_j < l_j => -x_j > -l_j => -x_j + l_j > 0
       const f_t infeas = -x[j] + lp.lower[j];
       primal_inf += infeas;
@@ -221,7 +247,7 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                            vstatus[j]);
       }
     }
-    if (x[j] > lp.upper[j]) {
+    if (x[j] > lp.upper[j] + settings.primal_tol) {
       // x_j > u_j => x_j - u_j > 0
       const f_t infeas = x[j] - lp.upper[j];
       primal_inf += infeas;
@@ -239,12 +265,69 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
   return primal_inf;
 }
 
+template <typename i_t, typename f_t>
+void compute_phase1_objective(const lp_problem_t<i_t, f_t>& lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              const std::vector<f_t>& x,
+                              std::vector<f_t>& objective)
+{
+  const i_t n = lp.num_cols;
+  for (i_t j = 0; j < n; ++j) {
+    if (x[j] < lp.lower[j] - settings.primal_tol) {
+      objective[j] = -1.0;
+    } else if (x[j] > lp.upper[j] + settings.primal_tol) {
+      objective[j] = 1.0;
+    } else {
+      objective[j] = 0.0;
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const std::vector<f_t>& objective,
+                            const std::vector<i_t>& basic_list,
+                            const std::vector<i_t>& nonbasic_list,
+                            basis_update_t<i_t, f_t>& ft,
+                            std::vector<f_t>& c_basic,
+                            std::vector<f_t>& y,
+                            std::vector<f_t>& z)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  // Solve for y such that B'*y = c_B
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    c_basic[k]  = objective[j];
+  }
+  ft.b_transpose_solve(c_basic, y);
+  // zN = cN - N'*y
+  for (i_t k = 0; k < n - m; k++) {
+    const i_t j = nonbasic_list[k];
+    // z_j <- c_j
+    z[j] = objective[j];
+
+    // z_j <- z_j - A(:, j)'*y
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    f_t dot             = 0.0;
+    for (i_t p = col_start; p < col_end; ++p) {
+      dot += lp.A.x[p] * y[lp.A.i[p]];
+    }
+    z[j] -= dot;
+  }
+  // zB = 0
+  for (i_t k = 0; k < m; ++k) {
+    z[basic_list[k]] = 0.0;
+  }
+}
+
 }  // namespace
 
 // Note this implementation of primal simplex is experimental
 // It is meant only to serve as a method to remove the perturbation to the objective
 // after dual simplex has found a primal feasible solution
-// The implementation currently cycles. So is not enabled at this time.
 template <typename i_t, typename f_t>
 primal::status_t primal_phase2(i_t phase,
                                f_t start_time,
@@ -308,6 +391,7 @@ primal::status_t primal_phase2(i_t phase,
                              slacks_needed,
                              work_estimate);
   if (rank == CONCURRENT_HALT_RETURN) {
+    settings.log.printf("Concurrent halt in primal phase2\n");
     return primal::status_t::CONCURRENT_LIMIT;
   } else if (rank == TIME_LIMIT_RETURN) {
     return primal::status_t::TIME_LIMIT;
@@ -352,45 +436,7 @@ primal::status_t primal_phase2(i_t phase,
     }
   }
   reorder_basic_list(q, basic_list);
-  reorder_basic_list(q, basic_list);
   basis_update_t ft(L, U, p);
-
-  std::vector<f_t> c_basic(m);
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    c_basic[k]  = lp.objective[j];
-  }
-
-  // Solve B'*y = cB
-  ft.b_transpose_solve(c_basic, y);
-  settings.log.printf(
-    "|| y || %e || cB || %e\n", vector_norm_inf<i_t, f_t>(y), vector_norm_inf<i_t, f_t>(c_basic));
-
-  // zN = cN - N'*y
-  for (i_t k = 0; k < n - m; k++) {
-    const i_t j = nonbasic_list[k];
-    // z_j <- c_j
-    z[j] = lp.objective[j];
-
-    // z_j <- z_j - A(:, j)'*y
-    const i_t col_start = lp.A.col_start[j];
-    const i_t col_end   = lp.A.col_start[j + 1];
-    f_t dot             = 0.0;
-    for (i_t p = col_start; p < col_end; ++p) {
-      dot += lp.A.x[p] * y[lp.A.i[p]];
-    }
-    z[j] -= dot;
-  }
-  // zB = 0
-  for (i_t k = 0; k < m; ++k) {
-    z[basic_list[k]] = 0.0;
-  }
-  settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z));
-
-  set_primal_variables_on_bounds(lp, settings, z, vstatus, x);
-
-  const f_t init_dual_inf = dual_infeasibility(lp, vstatus, z);
-  settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf);
 
   std::vector<f_t> rhs = lp.rhs;
   // rhs = b - sum_{j : x_j = l_j} A(:, j) l(j) - sum_{j : x_j = u_j} A(:, j) *
@@ -412,6 +458,7 @@ primal::status_t primal_phase2(i_t phase,
     const i_t j = basic_list[k];
     x[j]        = xB[k];
   }
+  set_primal_variables_on_bounds(lp, settings, vstatus, x);
   settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x));
 
   std::vector<f_t> residual = lp.rhs;
@@ -420,6 +467,23 @@ primal::status_t primal_phase2(i_t phase,
   if (primal_residual > 1e-6) { settings.log.printf("|| A*x - b || %e\n", primal_residual); }
   f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
   settings.log.printf("Initial primal infeasibility %e\n", primal_inf);
+
+  std::vector<f_t> objective = lp.objective;
+  const f_t primal_tol = settings.primal_tol;
+  if (primal_inf > primal_tol) {
+    // We are primal infeasible. Switch to phase 1
+    compute_phase1_objective(lp, settings, x, objective);
+    phase = 1;
+  } else {
+    phase = 2;
+  }
+
+  std::vector<f_t> c_basic(m);
+  compute_dual_variables(lp, settings, objective, basic_list, nonbasic_list, ft, c_basic, y, z);
+  settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z));
+
+  const f_t init_dual_inf = dual_infeasibility(lp, vstatus, z);
+  settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf);
 
   const i_t iter_limit = iter + 1000;
   std::vector<f_t> delta_y(m);
@@ -434,16 +498,33 @@ primal::status_t primal_phase2(i_t phase,
     i_t entering_index =
       phase2_pricing(lp, z, nonbasic_list, vstatus, direction, nonbasic_entering, dual_inf);
     if (entering_index == -1) {
+      if (phase == 2) {
       f_t obj        = compute_objective(lp, x);
       f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
       settings.log.printf(
-        "Optimal solution found. Objective %e. Dual infeas %e. Primal "
+        "Optimal solution found. Objective %+.16e. Dual infeas %e. Primal "
         "infeasibility %e. Iterations %d\n",
         compute_user_objective(lp, obj),
         dual_inf,
         primal_inf,
         iter);
       return primal::status_t::OPTIMAL;
+      } else {
+        primal_inf = primal_infeasibility(lp, settings, vstatus, x);
+
+        if (primal_inf > primal_tol) {
+          settings.log.printf("Primal infeasibility %e. No entering\n", primal_inf);
+          return primal::status_t::NUMERICAL;
+        } else {
+          // Restore the objective to the original objective
+          objective = lp.objective;
+          phase     = 2;
+          settings.log.printf("Switching to phase 2\n");
+          compute_dual_variables(lp, settings, objective, basic_list, nonbasic_list, ft, c_basic, y, z);
+          iter++;
+          continue;
+        }
+      }
     }
 
     std::vector<f_t> scaled_delta_xB(m);
@@ -473,70 +554,104 @@ primal::status_t primal_phase2(i_t phase,
 
     i_t basic_leaving;
     f_t step_length;
-    i_t leaving_index = ratio_test(lp, vstatus, basic_list, x, delta_x, step_length, basic_leaving);
-    if (leaving_index == -1) {
+    i_t leaving_index = ratio_test(lp,
+                                   vstatus,
+                                   basic_list,
+                                   x,
+                                   delta_x,
+                                   step_length,
+                                   basic_leaving,
+                                   entering_index,
+                                   direction);
+    if (leaving_index == -1 && step_length >= inf) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
       return primal::status_t::PRIMAL_UNBOUNDED;
     }
-    assert(step_length >= 0.0);
 
-    // Update the primal variables
+    const bool basis_updated = (leaving_index != -1);
     for (i_t j = 0; j < n; ++j) {
       x[j] += step_length * delta_x[j];
     }
-
-    // Update the factorization
-    ft.update(utilde, basic_leaving);
-
-    // Update the basis
-    basic_list[basic_leaving]        = entering_index;
-    nonbasic_list[nonbasic_entering] = leaving_index;
-    vstatus[entering_index]          = variable_status_t::BASIC;
-    if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
-    } else if (direction == 1) {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_LOWER;
-    } else {
-      vstatus[leaving_index] = variable_status_t::NONBASIC_UPPER;
-    }
-
-    // Solve for y such that B'*y = c_B
-    for (i_t k = 0; k < m; ++k) {
-      const i_t j = basic_list[k];
-      c_basic[k]  = lp.objective[j];
-    }
-    ft.b_transpose_solve(y, c_basic);
-    // zN = cN - N'*y
-    for (i_t k = 0; k < n - m; k++) {
-      const i_t j = nonbasic_list[k];
-      // z_j <- c_j
-      z[j] = lp.objective[j];
-
-      // z_j <- z_j - A(:, j)'*y
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      f_t dot             = 0.0;
-      for (i_t p = col_start; p < col_end; ++p) {
-        dot += lp.A.x[p] * y[lp.A.i[p]];
+    if (basis_updated) {
+      assert(step_length >= 0.0);
+      basic_list[basic_leaving]        = entering_index;
+      nonbasic_list[nonbasic_entering] = leaving_index;
+      vstatus[entering_index]          = variable_status_t::BASIC;
+      if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
+        vstatus[leaving_index] = variable_status_t::NONBASIC_FIXED;
+      } else if (delta_x[leaving_index] < 0) {
+        vstatus[leaving_index] = variable_status_t::NONBASIC_LOWER;
+      } else {
+        vstatus[leaving_index] = variable_status_t::NONBASIC_UPPER;
       }
-      z[j] -= dot;
-    }
-    // zB = 0
-    for (i_t k = 0; k < m; ++k) {
-      z[basic_list[k]] = 0.0;
+
+      bool should_refactor = ft.num_updates() > settings.refactor_frequency;
+      if (!should_refactor) {
+        i_t recommend_refactor = ft.update(utilde, basic_leaving);
+        should_refactor        = recommend_refactor == 1;
+      }
+      if (should_refactor) {
+        i_t rank = factorize_basis(lp.A,
+                                   settings,
+                                   basic_list,
+                                   start_time,
+                                   L,
+                                   U,
+                                   p,
+                                   pinv,
+                                   q,
+                                   deficient,
+                                   slacks_needed,
+                                   work_estimate);
+        if (rank == CONCURRENT_HALT_RETURN) { return primal::status_t::CONCURRENT_LIMIT; }
+        if (rank == TIME_LIMIT_RETURN) { return primal::status_t::TIME_LIMIT; }
+        if (rank < 0) {
+          settings.log.printf("Failed to refactor basis. Iteration %d\n", iter);
+          return primal::status_t::NUMERICAL;
+        }
+        if (rank != m) {
+          settings.log.printf("Failed to refactor basis. rank %d m %d\n", rank, m);
+          return primal::status_t::NUMERICAL;
+        }
+        reorder_basic_list(q, basic_list);
+        ft.reset(L, U, p);
+      }
+    } else {
+      if (direction > 0) {
+        vstatus[entering_index] = variable_status_t::NONBASIC_UPPER;
+        x[entering_index]       = lp.upper[entering_index];
+      } else {
+        vstatus[entering_index] = variable_status_t::NONBASIC_LOWER;
+        x[entering_index]       = lp.lower[entering_index];
+      }
     }
 
-    const f_t obj        = compute_objective(lp, x);
+    // Check if we need to switch to phase 1
     const f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
-    settings.log.printf("%3d %.10e %.2e %.2e %.2e %d %d\n",
+    if (primal_inf > primal_tol) {
+      compute_phase1_objective(lp, settings, x, objective);
+      phase = 1;
+    } else if (phase == 1) {
+      objective = lp.objective;
+      phase     = 2;
+    }
+
+    if (basis_updated || primal_inf > primal_tol) {
+      compute_dual_variables(lp, settings, objective, basic_list, nonbasic_list, ft, c_basic, y, z);
+    }
+
+    const f_t obj      = compute_objective(lp, x);
+    dual_inf = dual_infeasibility(lp, vstatus, z);
+    settings.log.printf("%3d %.10e %8.2e %8.2e %8.2e %8d %8d %d %.2f\n",
                         iter,
                         compute_user_objective(lp, obj),
                         primal_inf,
                         dual_inf,
-                        step_length,
+                        step_length == 0.0 ? 0.0 : step_length,
                         entering_index,
-                        leaving_index);
-
+                        leaving_index,
+                        phase,
+                        toc(start_time));
     iter++;
   }
 

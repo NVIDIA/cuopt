@@ -2348,6 +2348,9 @@ void prepare_optimality(i_t info,
         perturbation = 0.0;
       } else {
         settings.log.printf("Failed to remove perturbation of %.2e.\n", perturbation);
+        settings.log.printf("Unperturbed dual infeasibility: %.2e\n", dual_infeas);
+        settings.log.printf("Objective: %+.16e\n", sol.user_objective);
+        settings.log.printf("Num updates: %d\n", ft.num_updates());
       }
     }
   }
@@ -3596,10 +3599,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           dense_delta_z,
                           100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
       ft.print_stats();
-    }
-    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
-      settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
-      *settings.concurrent_halt = 1;
     }
   }
   return status;
