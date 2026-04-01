@@ -458,10 +458,6 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
   scale_objective(op_problem_scaled_);
 
   if (n_rows == 0 || nnz <= 0) { return; }
-  cuopt_assert(constraint_lower_bounds.size() == static_cast<size_t>(n_rows),
-               "constraint_lower_bounds must be provided for row scaling");
-  cuopt_assert(constraint_upper_bounds.size() == static_cast<size_t>(n_rows),
-               "constraint_upper_bounds must be provided for row scaling");
   cuopt_assert(constraint_bounds.size() == size_t{0} ||
                  constraint_bounds.size() == static_cast<size_t>(n_rows),
                "constraint_bounds must be empty or have one value per constraint");
