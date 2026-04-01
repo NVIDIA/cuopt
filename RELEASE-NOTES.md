@@ -22,7 +22,7 @@
 - Reduce time for Markowitz factorization in dual simplex
 - Reduce time for dual push inside crossover
 - Reduce number of free variables in barrier
-- Add gap information to primal heuristics logs when root relaxation solve still running
+- Add gap information to primal heuristics logs when root relaxation is still solving
 
 
 ### Bug Fixes (26.04)
