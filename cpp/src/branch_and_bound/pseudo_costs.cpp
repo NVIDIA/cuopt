@@ -69,13 +69,15 @@ void strong_branch_helper(i_t start,
       const i_t shared_idx = (branch == 0) ? k : k + static_cast<i_t>(fractional.size());
       // Batch PDLP has already solved this subproblem, skip it
       if (sb_view.is_valid() && sb_view.is_solved(shared_idx)) {
-        settings.log.printf(
-          "[COOP SB] DS thread %d skipping variable %d branch %s (shared_idx %d): already solved "
-          "by PDLP\n",
-          thread_id,
-          j,
-          branch == 0 ? "down" : "up",
-          shared_idx);
+        if (verbose) {
+          settings.log.printf(
+            "[COOP SB] DS thread %d skipping variable %d branch %s (shared_idx %d): already solved "
+            "by PDLP\n",
+            thread_id,
+            j,
+            branch == 0 ? "down" : "up",
+            shared_idx);
+        }
         continue;
       }
 
@@ -161,13 +163,15 @@ void strong_branch_helper(i_t start,
         if ((branch == 0 && is_dual_simplex_done(dual_simplex_status_down[k])) ||
             (branch == 1 && is_dual_simplex_done(dual_simplex_status_up[k]))) {
           sb_view.mark_solved(shared_idx);
-          settings.log.printf(
-            "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in "
-            "shared context\n",
-            thread_id,
-            j,
-            branch == 0 ? "down" : "up",
-            shared_idx);
+          if (verbose) {
+            settings.log.printf(
+              "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in "
+              "shared context\n",
+              thread_id,
+              j,
+              branch == 0 ? "down" : "up",
+              shared_idx);
+          }
         }
       }
       if (toc(start_time) > settings.time_limit || *concurrent_halt == 1) { break; }
@@ -444,6 +448,8 @@ static void batch_pdlp_strong_branching_task(
   std::vector<f_t>& pdlp_obj_down,
   std::vector<f_t>& pdlp_obj_up)
 {
+  constexpr bool verbose = false;
+
   settings.log.printf(effective_batch_pdlp == 2
                         ? "Batch PDLP only for strong branching\n"
                         : "Cooperative batch PDLP and Dual Simplex for strong branching\n");
@@ -500,20 +506,20 @@ static void batch_pdlp_strong_branching_task(
     ws_settings.inside_mip                           = true;
     if (effective_batch_pdlp == 1) { ws_settings.concurrent_halt = &concurrent_halt; }
 
-#ifdef BATCH_VERBOSE_MODE
     auto start_time = std::chrono::high_resolution_clock::now();
-#endif
 
     auto ws_solution = solve_lp(&pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, ws_settings);
 
-#ifdef BATCH_VERBOSE_MODE
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    std::cout << "Original problem solved in " << duration << " milliseconds"
-              << " and iterations: "
-              << ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_ << std::endl;
-#endif
+    if (verbose) {
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+      settings.log.printf(
+        "Original problem solved in %d milliseconds"
+        " and iterations: %d\n",
+        duration,
+        ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_);
+    }
 
     if (ws_solution.get_termination_status() == pdlp_termination_status_t::Optimal) {
       auto& cache           = pc.pdlp_warm_cache;
@@ -528,17 +534,21 @@ static void batch_pdlp_strong_branching_task(
       cache.pdlp_iteration = ws_solution.get_pdlp_warm_start_data().total_pdlp_iterations_;
       cache.populated      = true;
 
-      settings.log.printf(
-        "Cached PDLP warm start: primal=%zu dual=%zu step_size=%e primal_weight=%e iters=%d\n",
-        cache.initial_primal.size(),
-        cache.initial_dual.size(),
-        cache.step_size,
-        cache.primal_weight,
-        cache.pdlp_iteration);
+      if (verbose) {
+        settings.log.printf(
+          "Cached PDLP warm start: primal=%zu dual=%zu step_size=%e primal_weight=%e iters=%d\n",
+          cache.initial_primal.size(),
+          cache.initial_dual.size(),
+          cache.step_size,
+          cache.primal_weight,
+          cache.pdlp_iteration);
+      }
     } else {
-      settings.log.printf(
-        "PDLP warm start solve did not reach optimality (%s), skipping cache and batch PDLP\n",
-        ws_solution.get_termination_status_string().c_str());
+      if (verbose) {
+        settings.log.printf(
+          "PDLP warm start solve did not reach optimality (%s), skipping cache and batch PDLP\n",
+          ws_solution.get_termination_status_string().c_str());
+      }
       return;
     }
   }
@@ -577,7 +587,7 @@ static void batch_pdlp_strong_branching_task(
 
   // Fail safe in case the batch PDLP failed and produced no solutions
   if (solutions.get_additional_termination_informations().size() != fractional.size() * 2) {
-    settings.log.printf("Batch PDLP failed and produced no solutions\n");
+    if (verbose) { settings.log.printf("Batch PDLP failed and produced no solutions\n"); }
     return;
   }
 
@@ -593,12 +603,14 @@ static void batch_pdlp_strong_branching_task(
     }
   }
 
-  settings.log.printf(
-    "Batch PDLP strong branching completed in %.2fs. Solved %d/%d with max %d iterations\n",
-    batch_pdlp_strong_branching_time,
-    amount_done,
-    fractional.size() * 2,
-    max_iterations);
+  if (verbose) {
+    settings.log.printf(
+      "Batch PDLP strong branching completed in %.2fs. Solved %d/%d with max %d iterations\n",
+      batch_pdlp_strong_branching_time,
+      amount_done,
+      fractional.size() * 2,
+      max_iterations);
+  }
 
   for (i_t k = 0; k < fractional.size(); k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
@@ -735,6 +747,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<f_t>& edge_norms,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
+  constexpr bool verbose = false;
+
   pc.resize(original_lp.num_cols);
   pc.strong_branch_down.assign(fractional.size(), 0);
   pc.strong_branch_up.assign(fractional.size(), 0);
@@ -743,6 +757,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   const f_t elapsed_time = toc(start_time);
   if (elapsed_time > settings.time_limit) { return; }
 
+  // 0: no batch PDLP, 1: cooperative batch PDLP and DS, 2: batch PDLP only
   const i_t effective_batch_pdlp =
     (settings.sub_mip || (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1))
       ? 0
@@ -837,47 +852,51 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       }
 
       // DS done: signal PDLP to stop (time-limit or all work done) and wait
-      concurrent_halt.store(1);
+      if (effective_batch_pdlp == 1) { concurrent_halt.store(1); }
     }
   }
 
-  settings.log.printf("Strong branching took %.2fs\n", toc(dual_simplex_strong_branching_time));
+  settings.log.printf("Strong branching completed in %.2fs\n",
+                      toc(dual_simplex_strong_branching_time));
 
-  // Collect Dual Simplex statistics
-  i_t dual_simplex_optimal = 0, dual_simplex_infeasible = 0, dual_simplex_iter_limit = 0;
-  i_t dual_simplex_numerical = 0, dual_simplex_cutoff = 0, dual_simplex_time_limit = 0;
-  i_t dual_simplex_concurrent = 0, dual_simplex_work_limit = 0, dual_simplex_unset = 0;
-  const i_t total_subproblems = fractional.size() * 2;
-  for (i_t k = 0; k < fractional.size(); k++) {
-    for (auto st : {dual_simplex_status_down[k], dual_simplex_status_up[k]}) {
-      switch (st) {
-        case dual::status_t::OPTIMAL: dual_simplex_optimal++; break;
-        case dual::status_t::DUAL_UNBOUNDED: dual_simplex_infeasible++; break;
-        case dual::status_t::ITERATION_LIMIT: dual_simplex_iter_limit++; break;
-        case dual::status_t::NUMERICAL: dual_simplex_numerical++; break;
-        case dual::status_t::CUTOFF: dual_simplex_cutoff++; break;
-        case dual::status_t::TIME_LIMIT: dual_simplex_time_limit++; break;
-        case dual::status_t::CONCURRENT_LIMIT: dual_simplex_concurrent++; break;
-        case dual::status_t::WORK_LIMIT: dual_simplex_work_limit++; break;
-        case dual::status_t::UNSET: dual_simplex_unset++; break;
+  if (verbose) {
+    // Collect Dual Simplex statistics
+    i_t dual_simplex_optimal = 0, dual_simplex_infeasible = 0, dual_simplex_iter_limit = 0;
+    i_t dual_simplex_numerical = 0, dual_simplex_cutoff = 0, dual_simplex_time_limit = 0;
+    i_t dual_simplex_concurrent = 0, dual_simplex_work_limit = 0, dual_simplex_unset = 0;
+    const i_t total_subproblems = fractional.size() * 2;
+    for (i_t k = 0; k < fractional.size(); k++) {
+      for (auto st : {dual_simplex_status_down[k], dual_simplex_status_up[k]}) {
+        switch (st) {
+          case dual::status_t::OPTIMAL: dual_simplex_optimal++; break;
+          case dual::status_t::DUAL_UNBOUNDED: dual_simplex_infeasible++; break;
+          case dual::status_t::ITERATION_LIMIT: dual_simplex_iter_limit++; break;
+          case dual::status_t::NUMERICAL: dual_simplex_numerical++; break;
+          case dual::status_t::CUTOFF: dual_simplex_cutoff++; break;
+          case dual::status_t::TIME_LIMIT: dual_simplex_time_limit++; break;
+          case dual::status_t::CONCURRENT_LIMIT: dual_simplex_concurrent++; break;
+          case dual::status_t::WORK_LIMIT: dual_simplex_work_limit++; break;
+          case dual::status_t::UNSET: dual_simplex_unset++; break;
+        }
       }
     }
+
+    settings.log.printf("Dual Simplex: %d/%d optimal, %d infeasible, %d iter-limit",
+                        dual_simplex_optimal,
+                        total_subproblems,
+                        dual_simplex_infeasible,
+                        dual_simplex_iter_limit);
+    if (dual_simplex_cutoff) settings.log.printf(", %d cutoff", dual_simplex_cutoff);
+    if (dual_simplex_time_limit) settings.log.printf(", %d time-limit", dual_simplex_time_limit);
+    if (dual_simplex_numerical) settings.log.printf(", %d numerical", dual_simplex_numerical);
+    if (dual_simplex_concurrent)
+      settings.log.printf(", %d concurrent-halt", dual_simplex_concurrent);
+    if (dual_simplex_work_limit) settings.log.printf(", %d work-limit", dual_simplex_work_limit);
+    if (dual_simplex_unset) settings.log.printf(", %d unset/skipped", dual_simplex_unset);
+    settings.log.printf("\n");
   }
 
-  settings.log.printf("Dual Simplex: %d/%d optimal, %d infeasible, %d iter-limit",
-                      dual_simplex_optimal,
-                      total_subproblems,
-                      dual_simplex_infeasible,
-                      dual_simplex_iter_limit);
-  if (dual_simplex_cutoff) settings.log.printf(", %d cutoff", dual_simplex_cutoff);
-  if (dual_simplex_time_limit) settings.log.printf(", %d time-limit", dual_simplex_time_limit);
-  if (dual_simplex_numerical) settings.log.printf(", %d numerical", dual_simplex_numerical);
-  if (dual_simplex_concurrent) settings.log.printf(", %d concurrent-halt", dual_simplex_concurrent);
-  if (dual_simplex_work_limit) settings.log.printf(", %d work-limit", dual_simplex_work_limit);
-  if (dual_simplex_unset) settings.log.printf(", %d unset/skipped", dual_simplex_unset);
-  settings.log.printf("\n");
-
-  if (effective_batch_pdlp != 0) {
+  if (effective_batch_pdlp != 0 && verbose) {
     i_t pdlp_optimal_count = 0;
     for (i_t k = 0; k < fractional.size(); k++) {
       if (!std::isnan(pdlp_obj_down[k])) pdlp_optimal_count++;
@@ -906,7 +925,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       merged_from_pdlp++;
     else
       merged_nan++;
-    if (dual_simplex_has_down && pdlp_has_down) {
+    if (dual_simplex_has_down && pdlp_has_down && verbose) {
       solved_by_both_down++;
       settings.log.printf(
         "[COOP SB] Merge: variable %d DOWN solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
@@ -927,7 +946,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       merged_from_pdlp++;
     else
       merged_nan++;
-    if (dual_simplex_has_up && pdlp_has_up) {
+    if (dual_simplex_has_up && pdlp_has_up && verbose) {
       solved_by_both_up++;
       settings.log.printf(
         "[COOP SB] Merge: variable %d UP solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
@@ -941,17 +960,19 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   if (effective_batch_pdlp != 0) {
     pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root =
       (f_t(merged_from_pdlp) / f_t(fractional.size() * 2)) * 100.0;
-    settings.log.printf(
-      "Batch PDLP only for strong branching. percent solved by batch PDLP at root: %f\n",
-      pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root);
-    settings.log.printf(
-      "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both "
-      "(down/up)\n",
-      merged_from_ds,
-      merged_from_pdlp,
-      merged_nan,
-      solved_by_both_down,
-      solved_by_both_up);
+    if (verbose) {
+      settings.log.printf(
+        "Batch PDLP only for strong branching. percent solved by batch PDLP at root: %f\n",
+        pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root);
+      settings.log.printf(
+        "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both "
+        "(down/up)\n",
+        merged_from_ds,
+        merged_from_pdlp,
+        merged_nan,
+        solved_by_both_down,
+        solved_by_both_up);
+    }
   }
 
   pc.update_pseudo_costs_from_strong_branching(fractional, root_soln);
