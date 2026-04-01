@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -148,7 +148,8 @@ void data_model_view_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_va
                                                                  const i_t* Q_indices,
                                                                  i_t size_indices,
                                                                  const i_t* Q_offsets,
-                                                                 i_t size_offsets)
+                                                                 i_t size_offsets,
+                                                                 const bool is_symmetrized)
 {
   if (size_values != 0) {
     mps_parser_expects(
@@ -167,6 +168,8 @@ void data_model_view_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_va
   mps_parser_expects(
     size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
   Q_objective_offsets_ = span<i_t const>(Q_offsets, size_offsets);
+
+  is_Q_symmetrized_ = is_symmetrized;
 }
 
 template <typename i_t, typename f_t>
@@ -344,6 +347,12 @@ template <typename i_t, typename f_t>
 bool data_model_view_t<i_t, f_t>::has_quadratic_objective() const noexcept
 {
   return Q_objective_.size() > 0;
+}
+
+template <typename i_t, typename f_t>
+bool data_model_view_t<i_t, f_t>::is_Q_symmetrized() const noexcept
+{
+  return is_Q_symmetrized_;
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
