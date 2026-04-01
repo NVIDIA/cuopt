@@ -10,6 +10,13 @@ fi
 
 set -euo pipefail
 
+_CUOPT_CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ci/cuopt_coredumps.sh
+source "${_CUOPT_CI_DIR}/cuopt_coredumps.sh"
+cuopt_enable_coredumps
+trap 'cuopt_collect_coredumps || true' EXIT
+unset _CUOPT_CI_DIR
+
 . /opt/conda/etc/profile.d/conda.sh
 
 rapids-logger "Configuring conda strict channel priority"
