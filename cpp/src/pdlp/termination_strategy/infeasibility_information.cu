@@ -24,6 +24,8 @@
 #include <raft/linalg/unary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
 
+#include <thrust/iterator/transform_output_iterator.h>
+
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
