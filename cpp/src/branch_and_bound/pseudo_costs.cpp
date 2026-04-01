@@ -46,10 +46,10 @@ void strong_branch_helper(i_t start,
                           const std::vector<variable_status_t>& root_vstatus,
                           const std::vector<f_t>& edge_norms,
                           pseudo_costs_t<i_t, f_t>& pc,
-                          std::vector<f_t>& ds_obj_down,
-                          std::vector<f_t>& ds_obj_up,
-                          std::vector<dual::status_t>& ds_status_down,
-                          std::vector<dual::status_t>& ds_status_up,
+                          std::vector<f_t>& dual_simplex_obj_down,
+                          std::vector<f_t>& dual_simplex_obj_up,
+                          std::vector<dual::status_t>& dual_simplex_status_down,
+                          std::vector<dual::status_t>& dual_simplex_status_up,
                           std::atomic<int>* concurrent_halt,
                           shared_strong_branching_context_view_t<i_t, f_t>& sb_view)
 {
@@ -125,9 +125,9 @@ void strong_branch_helper(i_t start,
       }
 
       if (branch == 0) {
-        pc.strong_branch_down[k] = std::max(obj - root_obj, 0.0);
-        ds_obj_down[k]           = std::max(obj - root_obj, 0.0);
-        ds_status_down[k]        = status;
+        pc.strong_branch_down[k]    = std::max(obj - root_obj, 0.0);
+        dual_simplex_obj_down[k]    = std::max(obj - root_obj, 0.0);
+        dual_simplex_status_down[k] = status;
         if (verbose) {
           settings.log.printf("Thread id %2d remaining %d variable %d branch %d obj %e time %.2f\n",
                               thread_id,
@@ -138,9 +138,9 @@ void strong_branch_helper(i_t start,
                               toc(start_time));
         }
       } else {
-        pc.strong_branch_up[k] = std::max(obj - root_obj, 0.0);
-        ds_obj_up[k]           = std::max(obj - root_obj, 0.0);
-        ds_status_up[k]        = status;
+        pc.strong_branch_up[k]    = std::max(obj - root_obj, 0.0);
+        dual_simplex_obj_up[k]    = std::max(obj - root_obj, 0.0);
+        dual_simplex_status_up[k] = status;
         if (verbose) {
           settings.log.printf(
             "Thread id %2d remaining %d variable %d branch %d obj %e change down %e change up %e "
@@ -150,16 +150,16 @@ void strong_branch_helper(i_t start,
             j,
             branch,
             obj,
-            ds_obj_down[k],
-            ds_obj_up[k],
+            dual_simplex_obj_down[k],
+            dual_simplex_obj_up[k],
             toc(start_time));
         }
       }
       // Mark the subproblem as solved so that batch PDLP removes it from the batch
       if (sb_view.is_valid()) {
         // We could not mark as solved nodes hitting iteration limit in DS
-        if ((branch == 0 && is_dual_simplex_done(ds_status_down[k])) ||
-            (branch == 1 && is_dual_simplex_done(ds_status_up[k]))) {
+        if ((branch == 0 && is_dual_simplex_done(dual_simplex_status_down[k])) ||
+            (branch == 1 && is_dual_simplex_done(dual_simplex_status_up[k]))) {
           sb_view.mark_solved(shared_idx);
           settings.log.printf(
             "[COOP SB] DS thread %d solved variable %d branch %s (shared_idx %d), marking in "
@@ -391,35 +391,36 @@ enum class sb_source_t { DUAL_SIMPLEX, PDLP, NONE };
 //   4. Else if Dual Simplex hit iteration limit -> keep DS
 //   5. Else if none converged -> NaN (original objective)
 template <typename i_t, typename f_t>
-static std::pair<f_t, sb_source_t> merge_sb_result(f_t ds_val,
-                                                   dual::status_t ds_status,
+static std::pair<f_t, sb_source_t> merge_sb_result(f_t dual_simplex_val,
+                                                   dual::status_t dual_simplex_status,
                                                    f_t pdlp_dual_obj,
                                                    bool pdlp_optimal)
 {
   // Dual simplex always maintains dual feasibility, so OPTIMAL and ITERATION_LIMIT both qualify
 
   // Rule 1: Both optimal -> keep DS
-  if (ds_status == dual::status_t::OPTIMAL && pdlp_optimal) {
-    return {ds_val, sb_source_t::DUAL_SIMPLEX};
+  if (dual_simplex_status == dual::status_t::OPTIMAL && pdlp_optimal) {
+    return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 2: Dual Simplex found infeasible -> declare infeasible
-  if (ds_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (dual_simplex_status == dual::status_t::DUAL_UNBOUNDED) {
     return {std::numeric_limits<f_t>::infinity(), sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 3: Only one converged -> keep that
-  if (ds_status == dual::status_t::OPTIMAL && !pdlp_optimal) {
-    return {ds_val, sb_source_t::DUAL_SIMPLEX};
+  if (dual_simplex_status == dual::status_t::OPTIMAL && !pdlp_optimal) {
+    return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
-  if (pdlp_optimal && ds_status != dual::status_t::OPTIMAL) {
+  if (pdlp_optimal && dual_simplex_status != dual::status_t::OPTIMAL) {
     return {pdlp_dual_obj, sb_source_t::PDLP};
   }
 
   // Rule 4: Dual Simplex hit iteration limit or work limit or cutoff -> keep DS
-  if (ds_status == dual::status_t::ITERATION_LIMIT || ds_status == dual::status_t::WORK_LIMIT ||
-      ds_status == dual::status_t::CUTOFF) {
-    return {ds_val, sb_source_t::DUAL_SIMPLEX};
+  if (dual_simplex_status == dual::status_t::ITERATION_LIMIT ||
+      dual_simplex_status == dual::status_t::WORK_LIMIT ||
+      dual_simplex_status == dual::status_t::CUTOFF) {
+    return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 5: None converged -> NaN
@@ -712,12 +713,14 @@ static void batch_pdlp_reliability_branching_task(
 
   for (i_t k = 0; k < num_candidates; k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-      pdlp_obj_down[k] = solutions.get_dual_objective_value(k) - original_lp.obj_constant;
+      pdlp_obj_down[k] =
+        std::max(solutions.get_dual_objective_value(k) - original_lp.obj_constant, f_t(0.0));
     }
     if (solutions.get_termination_status(k + num_candidates) ==
         pdlp_termination_status_t::Optimal) {
       pdlp_obj_up[k] =
-        solutions.get_dual_objective_value(k + num_candidates) - original_lp.obj_constant;
+        std::max(solutions.get_dual_objective_value(k + num_candidates) - original_lp.obj_constant,
+                 f_t(0.0));
     }
   }
 }
@@ -769,10 +772,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
 
-  std::vector<dual::status_t> ds_status_down(fractional.size(), dual::status_t::UNSET);
-  std::vector<dual::status_t> ds_status_up(fractional.size(), dual::status_t::UNSET);
-  std::vector<f_t> ds_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
-  std::vector<f_t> ds_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+  std::vector<dual::status_t> dual_simplex_status_down(fractional.size(), dual::status_t::UNSET);
+  std::vector<dual::status_t> dual_simplex_status_up(fractional.size(), dual::status_t::UNSET);
+  std::vector<f_t> dual_simplex_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+  std::vector<f_t> dual_simplex_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   f_t dual_simplex_strong_branching_time;
 
 #pragma omp parallel num_threads(settings.num_threads)
@@ -829,10 +832,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                root_vstatus,
                                edge_norms,
                                pc,
-                               ds_obj_down,
-                               ds_obj_up,
-                               ds_status_down,
-                               ds_status_up,
+                               dual_simplex_obj_down,
+                               dual_simplex_obj_up,
+                               dual_simplex_status_down,
+                               dual_simplex_status_up,
                                &concurrent_halt,
                                sb_view);
         }
@@ -846,37 +849,37 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   settings.log.printf("Strong branching took %.2fs\n", toc(dual_simplex_strong_branching_time));
 
   // Collect Dual Simplex statistics
-  i_t ds_optimal = 0, ds_infeasible = 0, ds_iter_limit = 0;
-  i_t ds_numerical = 0, ds_cutoff = 0, ds_time_limit = 0;
-  i_t ds_concurrent = 0, ds_work_limit = 0, ds_unset = 0;
+  i_t dual_simplex_optimal = 0, dual_simplex_infeasible = 0, dual_simplex_iter_limit = 0;
+  i_t dual_simplex_numerical = 0, dual_simplex_cutoff = 0, dual_simplex_time_limit = 0;
+  i_t dual_simplex_concurrent = 0, dual_simplex_work_limit = 0, dual_simplex_unset = 0;
   const i_t total_subproblems = fractional.size() * 2;
   for (i_t k = 0; k < fractional.size(); k++) {
-    for (auto st : {ds_status_down[k], ds_status_up[k]}) {
+    for (auto st : {dual_simplex_status_down[k], dual_simplex_status_up[k]}) {
       switch (st) {
-        case dual::status_t::OPTIMAL: ds_optimal++; break;
-        case dual::status_t::DUAL_UNBOUNDED: ds_infeasible++; break;
-        case dual::status_t::ITERATION_LIMIT: ds_iter_limit++; break;
-        case dual::status_t::NUMERICAL: ds_numerical++; break;
-        case dual::status_t::CUTOFF: ds_cutoff++; break;
-        case dual::status_t::TIME_LIMIT: ds_time_limit++; break;
-        case dual::status_t::CONCURRENT_LIMIT: ds_concurrent++; break;
-        case dual::status_t::WORK_LIMIT: ds_work_limit++; break;
-        case dual::status_t::UNSET: ds_unset++; break;
+        case dual::status_t::OPTIMAL: dual_simplex_optimal++; break;
+        case dual::status_t::DUAL_UNBOUNDED: dual_simplex_infeasible++; break;
+        case dual::status_t::ITERATION_LIMIT: dual_simplex_iter_limit++; break;
+        case dual::status_t::NUMERICAL: dual_simplex_numerical++; break;
+        case dual::status_t::CUTOFF: dual_simplex_cutoff++; break;
+        case dual::status_t::TIME_LIMIT: dual_simplex_time_limit++; break;
+        case dual::status_t::CONCURRENT_LIMIT: dual_simplex_concurrent++; break;
+        case dual::status_t::WORK_LIMIT: dual_simplex_work_limit++; break;
+        case dual::status_t::UNSET: dual_simplex_unset++; break;
       }
     }
   }
 
   settings.log.printf("Dual Simplex: %d/%d optimal, %d infeasible, %d iter-limit",
-                      ds_optimal,
+                      dual_simplex_optimal,
                       total_subproblems,
-                      ds_infeasible,
-                      ds_iter_limit);
-  if (ds_cutoff) settings.log.printf(", %d cutoff", ds_cutoff);
-  if (ds_time_limit) settings.log.printf(", %d time-limit", ds_time_limit);
-  if (ds_numerical) settings.log.printf(", %d numerical", ds_numerical);
-  if (ds_concurrent) settings.log.printf(", %d concurrent-halt", ds_concurrent);
-  if (ds_work_limit) settings.log.printf(", %d work-limit", ds_work_limit);
-  if (ds_unset) settings.log.printf(", %d unset/skipped", ds_unset);
+                      dual_simplex_infeasible,
+                      dual_simplex_iter_limit);
+  if (dual_simplex_cutoff) settings.log.printf(", %d cutoff", dual_simplex_cutoff);
+  if (dual_simplex_time_limit) settings.log.printf(", %d time-limit", dual_simplex_time_limit);
+  if (dual_simplex_numerical) settings.log.printf(", %d numerical", dual_simplex_numerical);
+  if (dual_simplex_concurrent) settings.log.printf(", %d concurrent-halt", dual_simplex_concurrent);
+  if (dual_simplex_work_limit) settings.log.printf(", %d work-limit", dual_simplex_work_limit);
+  if (dual_simplex_unset) settings.log.printf(", %d unset/skipped", dual_simplex_unset);
   settings.log.printf("\n");
 
   if (effective_batch_pdlp != 0) {
@@ -897,10 +900,10 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   i_t solved_by_both_down = 0;
   i_t solved_by_both_up   = 0;
   for (i_t k = 0; k < fractional.size(); k++) {
-    bool ds_has_down   = ds_status_down[k] != dual::status_t::UNSET;
-    bool pdlp_has_down = !std::isnan(pdlp_obj_down[k]);
-    const auto [value_down, source_down] =
-      merge_sb_result<i_t, f_t>(ds_obj_down[k], ds_status_down[k], pdlp_obj_down[k], pdlp_has_down);
+    bool dual_simplex_has_down           = dual_simplex_status_down[k] != dual::status_t::UNSET;
+    bool pdlp_has_down                   = !std::isnan(pdlp_obj_down[k]);
+    const auto [value_down, source_down] = merge_sb_result<i_t, f_t>(
+      dual_simplex_obj_down[k], dual_simplex_status_down[k], pdlp_obj_down[k], pdlp_has_down);
     pc.strong_branch_down[k] = value_down;
     if (source_down == sb_source_t::DUAL_SIMPLEX)
       merged_from_ds++;
@@ -908,20 +911,20 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       merged_from_pdlp++;
     else
       merged_nan++;
-    if (ds_has_down && pdlp_has_down) {
+    if (dual_simplex_has_down && pdlp_has_down) {
       solved_by_both_down++;
       settings.log.printf(
         "[COOP SB] Merge: variable %d DOWN solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
         fractional[k],
-        ds_obj_down[k],
+        dual_simplex_obj_down[k],
         pdlp_obj_down[k],
         source_down == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
     }
 
-    bool ds_has_up   = ds_status_up[k] != dual::status_t::UNSET;
-    bool pdlp_has_up = !std::isnan(pdlp_obj_up[k]);
-    const auto [value_up, source_up] =
-      merge_sb_result<i_t, f_t>(ds_obj_up[k], ds_status_up[k], pdlp_obj_up[k], pdlp_has_up);
+    bool dual_simplex_has_up         = dual_simplex_status_up[k] != dual::status_t::UNSET;
+    bool pdlp_has_up                 = !std::isnan(pdlp_obj_up[k]);
+    const auto [value_up, source_up] = merge_sb_result<i_t, f_t>(
+      dual_simplex_obj_up[k], dual_simplex_status_up[k], pdlp_obj_up[k], pdlp_has_up);
     pc.strong_branch_up[k] = value_up;
     if (source_up == sb_source_t::DUAL_SIMPLEX)
       merged_from_ds++;
@@ -929,12 +932,12 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       merged_from_pdlp++;
     else
       merged_nan++;
-    if (ds_has_up && pdlp_has_up) {
+    if (dual_simplex_has_up && pdlp_has_up) {
       solved_by_both_up++;
       settings.log.printf(
         "[COOP SB] Merge: variable %d UP solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
         fractional[k],
-        ds_obj_up[k],
+        dual_simplex_obj_up[k],
         pdlp_obj_up[k],
         source_up == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
     }
@@ -1226,16 +1229,22 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     return branch_var;
   }
 
-  std::vector<f_t> ds_obj_down(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
-  std::vector<f_t> ds_obj_up(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
-  std::vector<dual::status_t> ds_status_down(num_candidates, dual::status_t::UNSET);
-  std::vector<dual::status_t> ds_status_up(num_candidates, dual::status_t::UNSET);
+  std::vector<f_t> dual_simplex_obj_down(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
+  std::vector<f_t> dual_simplex_obj_up(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
+  std::vector<dual::status_t> dual_simplex_status_down(num_candidates, dual::status_t::UNSET);
+  std::vector<dual::status_t> dual_simplex_status_up(num_candidates, dual::status_t::UNSET);
 
-  f_t ds_start_time = tic();
+  f_t dual_simplex_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) shared( \
-    score_mutex, sb_view, ds_obj_down, ds_obj_up, ds_status_down, ds_status_up, unreliable_list)
+#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) \
+  shared(score_mutex,                                                                \
+           sb_view,                                                                  \
+           dual_simplex_obj_down,                                                    \
+           dual_simplex_obj_up,                                                      \
+           dual_simplex_status_down,                                                 \
+           dual_simplex_status_up,                                                   \
+           unreliable_list)
     for (i_t i = 0; i < num_candidates; ++i) {
       const i_t j = unreliable_list[i];
 
@@ -1267,8 +1276,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
                             reliability_branching_settings.lower_max_lp_iter,
                             strong_branching_lp_iter);
 
-          ds_obj_down[i]    = obj;
-          ds_status_down[i] = status;
+          dual_simplex_obj_down[i]    = obj;
+          dual_simplex_status_down[i] = status;
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = solution[j] - std::floor(solution[j]);
@@ -1313,8 +1322,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
                             reliability_branching_settings.lower_max_lp_iter,
                             strong_branching_lp_iter);
 
-          ds_obj_up[i]    = obj;
-          ds_status_up[i] = status;
+          dual_simplex_obj_up[i]    = obj;
+          dual_simplex_status_up[i] = status;
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(solution[j]) - solution[j];
@@ -1345,22 +1354,23 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     concurrent_halt.store(1);
   }
 
-  f_t ds_elapsed = toc(ds_start_time);
+  f_t dual_simplex_elapsed = toc(dual_simplex_start_time);
 
   // TODO put back
   // if (rb_mode != 2) {
   //  if (rb_mode == 1) {
   //    log.printf(
   //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed, %d skipped
-  //      (PDLP) in %.2fs\n", num_candidates, ds_optimal.load(), num_candidates * 2,
-  //      ds_infeasible.load(), num_candidates * 2,
-  //      ds_failed.load(), num_candidates * 2,
-  //      ds_skipped.load(), ds_elapsed);
+  //      (PDLP) in %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
+  //      dual_simplex_infeasible.load(), num_candidates * 2,
+  //      dual_simplex_failed.load(), num_candidates * 2,
+  //      dual_simplex_skipped.load(), dual_simplex_elapsed);
   //  } else {
   //    log.printf(
   //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed in
-  //      %.2fs\n", num_candidates, ds_optimal.load(), num_candidates * 2, ds_infeasible.load(),
-  //      num_candidates * 2, ds_failed.load(), num_candidates * 2, ds_elapsed);
+  //      %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
+  //      dual_simplex_infeasible.load(), num_candidates * 2, dual_simplex_failed.load(),
+  //      num_candidates * 2, dual_simplex_elapsed);
   //  }
   //}
 
@@ -1375,8 +1385,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       // Down: check if PDLP should override DS
       if (!std::isnan(pdlp_obj_down[i])) {
         pdlp_optimal++;
-        const auto [merged_obj, source] =
-          merge_sb_result<i_t, f_t>(ds_obj_down[i], ds_status_down[i], pdlp_obj_down[i], true);
+        const auto [merged_obj, source] = merge_sb_result<i_t, f_t>(
+          dual_simplex_obj_down[i], dual_simplex_status_down[i], pdlp_obj_down[i], true);
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
         if (source == sb_source_t::PDLP) {
@@ -1395,8 +1405,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       // Up: check if PDLP should override DS
       if (!std::isnan(pdlp_obj_up[i])) {
         pdlp_optimal++;
-        const auto [merged_obj, source] =
-          merge_sb_result<i_t, f_t>(ds_obj_up[i], ds_status_up[i], pdlp_obj_up[i], true);
+        const auto [merged_obj, source] = merge_sb_result<i_t, f_t>(
+          dual_simplex_obj_up[i], dual_simplex_status_up[i], pdlp_obj_up[i], true);
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
         if (source == sb_source_t::PDLP) {
