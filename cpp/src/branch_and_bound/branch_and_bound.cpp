@@ -1525,10 +1525,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     upper_bound = upper_bound_;
     rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
     abs_gap     = upper_bound - lower_bound;
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-    }
   }
 
   lower_bound = get_lower_bound();
@@ -1637,10 +1633,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     upper_bound = upper_bound_;
     rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
     abs_gap     = upper_bound - lower_bound;
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-    }
   }
 
   worker_pool_.return_worker_to_pool(worker);
@@ -1852,7 +1844,6 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
     rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
       solver_status_        = mip_status_t::OPTIMAL;
       break;
     }
