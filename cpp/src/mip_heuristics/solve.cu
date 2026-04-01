@@ -441,7 +441,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       early_gpufj.reset();  // Free GPU memory
     }
 
-    if (early_cpufj && run_presolve && presolve_result.has_value()) {
+    if (early_cpufj && run_presolve && presolve_result_opt.has_value()) {
       early_cpufj->stop();
       if (early_cpufj->solution_found()) {
         CUOPT_LOG_INFO("Early CPUFJ (original) found incumbent with objective %.6e",
@@ -454,7 +454,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
-    if (run_presolve && settings.presolve_file != "") {
+    if (run_presolve && presolve_result_opt.has_value() && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
