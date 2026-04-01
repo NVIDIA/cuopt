@@ -320,9 +320,10 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   // Set objective coefficients
   mps_model.set_objective_coefficients(lp.objective.data(), n);
 
-  // Set objective scaling and offset
-  mps_model.set_objective_scaling_factor(lp.obj_scale);
-  mps_model.set_objective_offset(lp.obj_constant);
+  // The LP is already in minimization form (objective negated for max problems).
+  // Pass identity scaling so PDLP returns the raw DS-space objective directly.
+  mps_model.set_objective_scaling_factor(f_t(1.0));
+  mps_model.set_objective_offset(f_t(0.0));
 
   // Set variable bounds
   mps_model.set_variable_lower_bounds(lp.lower.data(), n);
@@ -376,7 +377,7 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
 
   mps_model.set_constraint_lower_bounds(constraint_lower.data(), m);
   mps_model.set_constraint_upper_bounds(constraint_upper.data(), m);
-  mps_model.set_maximize(lp.obj_scale < 0);
+  mps_model.set_maximize(false);
 
   return mps_model;
 }
@@ -600,17 +601,14 @@ static void batch_pdlp_strong_branching_task(
     max_iterations);
 
   for (i_t k = 0; k < fractional.size(); k++) {
-    f_t obj_down = (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal)
-                     ? solutions.get_dual_objective_value(k)
-                     : std::numeric_limits<f_t>::quiet_NaN();
-
-    f_t obj_up = (solutions.get_termination_status(k + fractional.size()) ==
-                  pdlp_termination_status_t::Optimal)
-                   ? solutions.get_dual_objective_value(k + fractional.size())
-                   : std::numeric_limits<f_t>::quiet_NaN();
-
-    pdlp_obj_down[k] = std::max(obj_down - original_lp.obj_constant - root_obj, f_t(0.0));
-    pdlp_obj_up[k]   = std::max(obj_up - original_lp.obj_constant - root_obj, f_t(0.0));
+    if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
+      pdlp_obj_down[k] = std::max(solutions.get_dual_objective_value(k) - root_obj, f_t(0.0));
+    }
+    if (solutions.get_termination_status(k + fractional.size()) ==
+        pdlp_termination_status_t::Optimal) {
+      pdlp_obj_up[k] =
+        std::max(solutions.get_dual_objective_value(k + fractional.size()) - root_obj, f_t(0.0));
+    }
   }
 }
 
@@ -713,14 +711,11 @@ static void batch_pdlp_reliability_branching_task(
 
   for (i_t k = 0; k < num_candidates; k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
-      pdlp_obj_down[k] =
-        std::max(solutions.get_dual_objective_value(k) - original_lp.obj_constant, f_t(0.0));
+      pdlp_obj_down[k] = std::max(solutions.get_dual_objective_value(k), f_t(0.0));
     }
     if (solutions.get_termination_status(k + num_candidates) ==
         pdlp_termination_status_t::Optimal) {
-      pdlp_obj_up[k] =
-        std::max(solutions.get_dual_objective_value(k + num_candidates) - original_lp.obj_constant,
-                 f_t(0.0));
+      pdlp_obj_up[k] = std::max(solutions.get_dual_objective_value(k + num_candidates), f_t(0.0));
     }
   }
 }
