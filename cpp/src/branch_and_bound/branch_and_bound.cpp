@@ -1031,7 +1031,9 @@ struct deterministic_bfs_policy_t
                                                 const std::vector<i_t>& fractional,
                                                 const std::vector<f_t>& x) override
   {
-    i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x);
+    logger_t log;
+    log.log  = false;
+    i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x, log);
     auto dir = martin_criteria(x[var], this->bnb.root_relax_soln_.x[var]);
     return {var, dir};
   }
@@ -1040,8 +1042,10 @@ struct deterministic_bfs_policy_t
                                  const std::vector<i_t>& fractional,
                                  const std::vector<f_t>& x) override
   {
+    logger_t log;
+    log.log = false;
     node->objective_estimate =
-      this->worker.pc_snapshot.obj_estimate(fractional, x, node->lower_bound);
+      this->worker.pc_snapshot.obj_estimate(fractional, x, node->lower_bound, log);
   }
 
   void on_node_completed(mip_node_t<i_t, f_t>* node,
@@ -1106,25 +1110,23 @@ struct deterministic_diving_policy_t
                                                 const std::vector<i_t>& fractional,
                                                 const std::vector<f_t>& x) override
   {
+    logger_t log;
+    log.log = false;
+
     switch (this->worker.diving_type) {
       case search_strategy_t::PSEUDOCOST_DIVING:
-        return this->worker.variable_selection_from_snapshot(fractional, x);
+        return pseudocost_diving(
+          this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::LINE_SEARCH_DIVING:
-        if (this->worker.root_solution) {
-          logger_t log;
-          log.log = false;
-          return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
-        }
-        return this->worker.variable_selection_from_snapshot(fractional, x);
+        return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::GUIDED_DIVING:
-        return this->worker.guided_variable_selection(fractional, x);
+        return guided_diving(
+          this->worker.pc_snapshot, fractional, x, this->worker.incumbent_snapshot, log);
 
       case search_strategy_t::COEFFICIENT_DIVING: {
-        logger_t log;
-        log.log = false;
-        return coefficient_diving<i_t, f_t>(this->bnb.original_lp_,
+        return coefficient_diving<i_t, f_t>(this->worker.leaf_problem,
                                             fractional,
                                             x,
                                             this->bnb.var_up_locks_,
@@ -1132,7 +1134,7 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
-      default: return this->worker.variable_selection_from_snapshot(fractional, x);
+      default: CUOPT_LOG_ERROR("Invalid diving method!"); return {-1, rounding_direction_t::NONE};
     }
   }
 
@@ -3318,11 +3320,12 @@ template <typename PoolT>
 void branch_and_bound_t<i_t, f_t>::deterministic_broadcast_snapshots(
   PoolT& pool, const std::vector<f_t>& incumbent_snapshot)
 {
-  deterministic_snapshot_t<i_t, f_t> snap;
-  snap.upper_bound    = upper_bound_.load();
-  snap.total_lp_iters = exploration_stats_.total_lp_iters.load();
-  snap.incumbent      = incumbent_snapshot;
-  snap.pc_snapshot    = pc_.create_snapshot();
+  deterministic_snapshot_t<i_t, f_t> snap{
+    .upper_bound    = upper_bound_,
+    .pc_snapshot    = pc_,
+    .incumbent      = incumbent_snapshot,
+    .total_lp_iters = exploration_stats_.total_lp_iters,
+  };
 
   for (auto& worker : pool) {
     worker.set_snapshots(snap);

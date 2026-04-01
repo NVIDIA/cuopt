@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <branch_and_bound/constants.hpp>
+
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
@@ -29,9 +31,11 @@ enum class node_status_t : int {
   NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
 
-enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
-
-bool inactive_status(node_status_t status);
+inline bool inactive_status(node_status_t status)
+{
+  return (status == node_status_t::FATHOMED || status == node_status_t::INTEGER_FEASIBLE ||
+          status == node_status_t::INFEASIBLE || status == node_status_t::NUMERICAL);
+}
 
 template <typename i_t, typename f_t>
 class mip_node_t {

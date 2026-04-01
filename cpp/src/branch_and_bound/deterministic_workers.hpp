@@ -58,7 +58,7 @@ struct deterministic_snapshot_t {
   f_t upper_bound;
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
   std::vector<f_t> incumbent;
-  i_t total_lp_iters;
+  int64_t total_lp_iters;
 };
 
 template <typename i_t, typename f_t, typename Derived>
@@ -90,7 +90,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
                               const std::vector<variable_type_t>& var_types,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::string& context_name)
-    : base_t(id, original_lp, Arow, var_types, settings), work_context(context_name)
+    : base_t(id, original_lp, Arow, var_types, settings), work_context(context_name), pc_snapshot(1)
   {
     work_context.deterministic = true;
   }
@@ -341,22 +341,6 @@ class deterministic_diving_worker_t
     this->integer_solutions.push_back(
       {objective, solution, depth, this->worker_id, this->next_solution_seq++});
     ++this->total_integer_solutions;
-  }
-
-  branch_variable_t<i_t> variable_selection_from_snapshot(const std::vector<i_t>& fractional,
-                                                          const std::vector<f_t>& solution) const
-  {
-    assert(root_solution != nullptr);
-    return this->pc_snapshot.pseudocost_diving(fractional, solution, *root_solution);
-  }
-
-  branch_variable_t<i_t> guided_variable_selection(const std::vector<i_t>& fractional,
-                                                   const std::vector<f_t>& solution) const
-  {
-    if (this->incumbent_snapshot.empty()) {
-      return variable_selection_from_snapshot(fractional, solution);
-    }
-    return this->pc_snapshot.guided_diving(fractional, solution, this->incumbent_snapshot);
   }
 };
 

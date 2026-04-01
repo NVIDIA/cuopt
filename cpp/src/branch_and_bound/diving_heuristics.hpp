@@ -22,15 +22,15 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& root_solution,
                                           logger_t& log);
 
-template <typename i_t, typename f_t>
-branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
+template <typename i_t, typename f_t, branch_and_bound_mode_t Mode>
+branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
                                          const std::vector<i_t>& fractional,
                                          const std::vector<f_t>& solution,
                                          const std::vector<f_t>& root_solution,
                                          logger_t& log);
 
-template <typename i_t, typename f_t>
-branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
+template <typename i_t, typename f_t, branch_and_bound_mode_t Mode>
+branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
                                      const std::vector<i_t>& fractional,
                                      const std::vector<f_t>& solution,
                                      const std::vector<f_t>& incumbent,

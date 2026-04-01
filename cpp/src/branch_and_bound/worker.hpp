@@ -7,35 +7,18 @@
 
 #pragma once
 
+#include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
-#include <dual_simplex/phase2.hpp>
 
 #include <utilities/pcgenerator.hpp>
 
-#include <array>
 #include <deque>
-#include <mutex>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
-
-constexpr int num_search_strategies = 5;
-
-// Indicate the search and variable selection algorithms used by each thread
-// in B&B (See [1]).
-//
-// [1] T. Achterberg, “Constraint Integer Programming,” PhD, Technischen Universität Berlin,
-// Berlin, 2007. doi: 10.14279/depositonce-1634.
-enum search_strategy_t : int {
-  BEST_FIRST         = 0,  // Best-First + Plunging.
-  PSEUDOCOST_DIVING  = 1,  // Pseudocost diving (9.2.5)
-  LINE_SEARCH_DIVING = 2,  // Line search diving (9.2.4)
-  GUIDED_DIVING      = 3,  // Guided diving (9.2.3).
-  COEFFICIENT_DIVING = 4   // Coefficient diving (9.2.1)
-};
 
 template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
