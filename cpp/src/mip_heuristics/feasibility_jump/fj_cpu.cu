@@ -1414,10 +1414,8 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 }
 
 template <typename i_t, typename f_t>
-bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
+static bool cpufj_solve_loop(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
 {
-  raft::common::nvtx::range scope("fj_cpu");
-
   i_t local_mins       = 0;
   auto loop_start      = std::chrono::high_resolution_clock::now();
   auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
@@ -1519,8 +1517,7 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
     if (fj_cpu.iterations % fj_cpu.log_interval == 0) {
       CUOPT_LOG_TRACE(
         "%sCPUFJ iteration: %d/%d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, "
-        "maxw "
-        "%g",
+        "maxw %g",
         fj_cpu.log_prefix.c_str(),
         fj_cpu.iterations,
         fj_cpu.settings.iteration_limit != std::numeric_limits<i_t>::max()
@@ -1549,15 +1546,10 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
     if (fj_cpu.iterations % 100 == 0 && fj_cpu.iterations > 0) {
       // Collect memory statistics
       auto [loads, stores] = fj_cpu.memory_aggregator.collect();
-
-      double biased_work = (loads + stores) * fj_cpu.work_unit_bias / 1e10;
+      double biased_work   = (loads + stores) * fj_cpu.work_unit_bias / 1e10;
       fj_cpu.work_units_elapsed += biased_work;
 
       if (fj_cpu.producer_sync != nullptr) { fj_cpu.producer_sync->notify_progress(); }
-
-      CUOPT_LOG_TRACE("CPUFJ work units: %f incumbent %g",
-                      fj_cpu.work_units_elapsed.load(std::memory_order_relaxed),
-                      fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective));
     }
 
     cuopt_func_call(sanity_checks(fj_cpu));
@@ -1582,6 +1574,13 @@ bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_l
 }
 
 template <typename i_t, typename f_t>
+bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
+{
+  raft::common::nvtx::range scope("fj_cpu");
+  return cpufj_solve_loop(fj_cpu, in_time_limit);
+}
+
+template <typename i_t, typename f_t>
 cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
 {
   this->request_termination();
@@ -1590,8 +1589,7 @@ cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
 template <typename i_t, typename f_t>
 void cpu_fj_thread_t<i_t, f_t>::run_worker()
 {
-  bool solution_found   = fj_ptr->cpu_solve(*fj_cpu, time_limit);
-  cpu_fj_solution_found = solution_found;
+  cpu_fj_solution_found = cpufj_solve_loop(*fj_cpu, time_limit);
 }
 
 template <typename i_t, typename f_t>
@@ -1613,14 +1611,43 @@ void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
   fj_cpu->halted = true;
 }
 
+template <typename i_t, typename f_t>
+std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
+  problem_t<i_t, f_t>& problem,
+  solution_t<i_t, f_t>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings)
+{
+  raft::common::nvtx::range scope("init_fj_cpu_standalone");
+
+  auto fj_cpu = std::make_unique<fj_cpu_climber_t<i_t, f_t>>(preemption_flag);
+
+  std::vector<f_t> default_weights(problem.n_constraints, 1.0);
+  init_fj_cpu(*fj_cpu, solution, default_weights, default_weights, 0.0);
+  fj_cpu->settings      = settings;
+  fj_cpu->settings.seed = cuopt::seed_generator::get_seed();
+
+  return fj_cpu;
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template class fj_t<int, float>;
 template class cpu_fj_thread_t<int, float>;
+template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
+  problem_t<int, float>& problem,
+  solution_t<int, float>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template class fj_t<int, double>;
 template class cpu_fj_thread_t<int, double>;
+template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
+  problem_t<int, double>& problem,
+  solution_t<int, double>& solution,
+  std::atomic<bool>& preemption_flag,
+  fj_settings_t settings);
 #endif
 
 }  // namespace cuopt::linear_programming::detail
