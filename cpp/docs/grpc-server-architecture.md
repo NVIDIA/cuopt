@@ -1,8 +1,15 @@
-# Server Architecture
+# NVIDIA cuOpt gRPC server architecture
 
-## Overview
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
 
-The cuOpt gRPC server (`cuopt_grpc_server`) is a multi-process architecture designed for:
+> **Audience:** cuOpt contributors and advanced integrators debugging the server.
+>
+> End users should start with the cuOpt documentation **gRPC remote execution** section — Quick start, **Advanced configuration** (flags, TLS, Docker, client env vars), and the short **gRPC server behavior** overview (`docs/cuopt/source/cuopt-grpc/grpc-server-architecture.md` in this repository). Those pages intentionally omit the C++-level detail below.
+
+The NVIDIA cuOpt gRPC server (`cuopt_grpc_server`) is a multi-process architecture designed for:
 - **Isolation**: Each solve runs in a separate worker process for fault tolerance
 - **Parallelism**: Multiple workers can process jobs concurrently
 - **Large Payloads**: Handles multi-GB problems and solutions
@@ -244,6 +251,20 @@ TLS Options:
       --tls-root PATH          Root CA certificate (for client verification)
       --require-client-cert    Require client certificate (mTLS)
 ```
+
+### NVIDIA cuOpt container image
+
+When you use the official NVIDIA cuOpt container **without** an explicit command, the entrypoint chooses between the Python REST server and `cuopt_grpc_server`. User-facing Docker and client configuration is documented in `docs/cuopt/source/cuopt-grpc/advanced.rst` in this repository (the published **Advanced configuration** page).
+
+When **`CUOPT_SERVER_TYPE=grpc`**, the entrypoint maps:
+
+| Variable | Role |
+|----------|------|
+| `CUOPT_SERVER_PORT` | Passed as `--port` (default `5001`). |
+| `CUOPT_GPU_COUNT` | When set, passed as `--workers`. When unset, `--workers` is omitted and the server uses its default worker count. |
+| `CUOPT_GRPC_ARGS` | Optional whitespace-separated **extra** `cuopt_grpc_server` flags (TLS, message limits, logging, and so on). Each token becomes one argv word; embedded spaces inside a single flag value are not supported through this variable—invoke `cuopt_grpc_server` directly if you need complex quoting. |
+
+Any flag listed in *Configuration options* above can be supplied on the host CLI or inside `CUOPT_GRPC_ARGS`.
 
 ## Fault Tolerance
 

@@ -127,7 +127,7 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> # Method 1: directly set bounds
     >>> # Set lower bounds to -infinity and upper bounds to b
-    >>> constraint_lower_bounds = np.array([np.NINF, np.NINF],
+    >>> constraint_lower_bounds = np.array([-np.inf, -np.inf],
     >>>                                       dtype=np.float64)
     >>> constraint_upper_bounds = np.array(b, dtype=np.float64)
     >>> data_model.set_constraint_lower_bounds(constraint_lower_bounds)
@@ -136,7 +136,7 @@ class DataModel(data_model_wrapper.DataModel):
     >>>
     >>> # Set variable lower and upper bounds
     >>> variable_lower_bounds = np.array([0.0, 0.0], dtype=np.float64)
-    >>> variable_upper_bounds = np.array([2.0, np.PINF], dtype=np.float64)
+    >>> variable_upper_bounds = np.array([2.0, np.inf], dtype=np.float64)
     >>> data_model.set_variable_lower_bounds(variable_lower_bounds)
     >>> data_model.set_variable_upper_bounds(variable_upper_bounds)
     """
