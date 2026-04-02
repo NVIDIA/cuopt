@@ -288,7 +288,7 @@ TEST_F(SolutionInterfaceTest, termination_status_int_values)
   optimization_problem_solution_interface_t<int, double>* base = &sol;
 
   int status = base->get_termination_status_int();
-  EXPECT_EQ(status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ(status, CUOPT_TERMINATION_STATUS_OPTIMAL);
 }
 
 // =============================================================================

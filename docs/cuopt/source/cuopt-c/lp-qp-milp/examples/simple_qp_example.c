@@ -30,22 +30,24 @@
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERIMINATION_STATUS_OPTIMAL:
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
       return "Optimal";
-    case CUOPT_TERIMINATION_STATUS_INFEASIBLE:
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
       return "Infeasible";
-    case CUOPT_TERIMINATION_STATUS_UNBOUNDED:
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
       return "Unbounded";
-    case CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT:
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
       return "Iteration limit";
-    case CUOPT_TERIMINATION_STATUS_TIME_LIMIT:
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
       return "Time limit";
-    case CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR:
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
       return "Numerical error";
-    case CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE:
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
       return "Primal feasible";
-    case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE:
+      return "Unbounded or infeasible";
     default:
       return "Unknown";
   }

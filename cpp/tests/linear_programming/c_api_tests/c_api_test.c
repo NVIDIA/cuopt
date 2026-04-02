@@ -38,21 +38,21 @@ int check_problem(cuOptOptimizationProblem problem,
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERIMINATION_STATUS_OPTIMAL:
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
       return "Optimal";
-    case CUOPT_TERIMINATION_STATUS_INFEASIBLE:
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
       return "Infeasible";
-    case CUOPT_TERIMINATION_STATUS_UNBOUNDED:
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
       return "Unbounded";
-    case CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT:
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
       return "Iteration limit";
-    case CUOPT_TERIMINATION_STATUS_TIME_LIMIT:
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
       return "Time limit";
-    case CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR:
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
       return "Numerical error";
-    case CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE:
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
       return "Primal feasible";
-    case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
   }
   return "Unknown";
@@ -428,9 +428,9 @@ cuopt_int_t burglar_problem()
     printf("Error getting termination status\n");
     goto DONE;
   }
-  if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL) {
+  if (termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL) {
     printf("Error: expected termination status to be %d, but got %d\n",
-           CUOPT_TERIMINATION_STATUS_OPTIMAL,
+           CUOPT_TERMINATION_STATUS_OPTIMAL,
            termination_status);
     status = -1;
     goto DONE;
@@ -898,9 +898,9 @@ cuopt_int_t test_infeasible_problem()
     printf("Error getting termination status\n");
     goto DONE;
   }
-  if (termination_status != CUOPT_TERIMINATION_STATUS_INFEASIBLE) {
+  if (termination_status != CUOPT_TERMINATION_STATUS_INFEASIBLE) {
     printf("Error: expected termination status to be %d, but got %d\n",
-           CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+           CUOPT_TERMINATION_STATUS_INFEASIBLE,
            termination_status);
     status = -1;
     goto DONE;
@@ -1151,9 +1151,9 @@ cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
     printf("Error getting termination status: %d\n", status);
     goto DONE;
   }
-  if (termination_status != CUOPT_TERIMINATION_STATUS_INFEASIBLE) {
+  if (termination_status != CUOPT_TERMINATION_STATUS_INFEASIBLE) {
     printf("Error: expected termination status to be %d, but got %d\n",
-           CUOPT_TERIMINATION_STATUS_INFEASIBLE,
+           CUOPT_TERMINATION_STATUS_INFEASIBLE,
            termination_status);
     status = CUOPT_VALIDATION_ERROR;
     goto DONE;
@@ -1442,7 +1442,7 @@ cuopt_int_t test_write_problem(const char* input_filename, const char* output_fi
 
   printf("Termination status: %d, Objective: %f\n", termination_status, objective_value);
 
-  if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL) {
+  if (termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL) {
     printf("Expected optimal status\n");
     status = -1;
     goto DONE;
@@ -1700,9 +1700,9 @@ cuopt_int_t test_deterministic_bb(const char* filename,
       goto DONE;
     }
 
-    if (termination_status != CUOPT_TERIMINATION_STATUS_OPTIMAL &&
-        termination_status != CUOPT_TERIMINATION_STATUS_TIME_LIMIT &&
-        termination_status != CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND) {
+    if (termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL &&
+        termination_status != CUOPT_TERMINATION_STATUS_TIME_LIMIT &&
+        termination_status != CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND) {
       printf("Run %d: status=%s (%d), unexpected termination status\n",
              run,
              termination_status_to_string(termination_status),

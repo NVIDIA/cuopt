@@ -364,6 +364,8 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
         return pdlp_termination_status_t::IterationLimit;
       case dual_simplex::lp_status_t::CONCURRENT_LIMIT:
         return pdlp_termination_status_t::ConcurrentLimit;
+      case dual_simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE:
+        return pdlp_termination_status_t::UnboundedOrInfeasible;
       default: return pdlp_termination_status_t::NumericalError;
     }
   };
@@ -464,9 +466,11 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
 
-  if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
-                                              status == dual_simplex::lp_status_t::UNBOUNDED ||
-                                              status == dual_simplex::lp_status_t::INFEASIBLE)) {
+  if (settings.concurrent_halt != nullptr &&
+      (status == dual_simplex::lp_status_t::OPTIMAL ||
+       status == dual_simplex::lp_status_t::UNBOUNDED ||
+       status == dual_simplex::lp_status_t::INFEASIBLE ||
+       status == dual_simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE)) {
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
@@ -536,9 +540,11 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Dual simplex finished in %.2f seconds", timer.elapsed_time());
 
-  if (settings.concurrent_halt != nullptr && (status == dual_simplex::lp_status_t::OPTIMAL ||
-                                              status == dual_simplex::lp_status_t::UNBOUNDED ||
-                                              status == dual_simplex::lp_status_t::INFEASIBLE)) {
+  if (settings.concurrent_halt != nullptr &&
+      (status == dual_simplex::lp_status_t::OPTIMAL ||
+       status == dual_simplex::lp_status_t::UNBOUNDED ||
+       status == dual_simplex::lp_status_t::INFEASIBLE ||
+       status == dual_simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE)) {
     // We finished. Tell PDLP to stop if it is still running.
     *settings.concurrent_halt = 1;
   }
@@ -1414,7 +1420,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
 
-    // Declare result at outer scope so that result->reduced_problem (which may be
+    // Declare result at outer scope so that result.reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> result;
 
@@ -1433,9 +1439,18 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                 settings.tolerances.absolute_primal_tolerance,
                                 settings.tolerances.relative_primal_tolerance,
                                 presolve_time_limit);
-      if (!result.has_value()) {
+      if (result->status == detail::third_party_presolve_status_t::INFEASIBLE) {
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+      }
+      if (result->status == detail::third_party_presolve_status_t::UNBNDORINFEAS) {
+        return optimization_problem_solution_t<i_t, f_t>(
+          pdlp_termination_status_t::UnboundedOrInfeasible,
+          op_problem.get_handle_ptr()->get_stream());
+      }
+      if (result->status == detail::third_party_presolve_status_t::UNBOUNDED) {
+        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
+                                                         op_problem.get_handle_ptr()->get_stream());
       }
 
       // Handle case where presolve completely solved the problem (reduced to 0 rows/cols)

@@ -106,6 +106,8 @@ cdef extern from "cuopt/linear_programming/mip/solver_solution.hpp" namespace "c
         Infeasible "cuopt::linear_programming::mip_termination_status_t::Infeasible" # noqa
         Unbounded "cuopt::linear_programming::mip_termination_status_t::Unbounded" # noqa
         TimeLimit "cuopt::linear_programming::mip_termination_status_t::TimeLimit" # noqa
+        WorkLimit "cuopt::linear_programming::mip_termination_status_t::WorkLimit" # noqa
+        UnboundedOrInfeasible "cuopt::linear_programming::mip_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
 cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
@@ -119,6 +121,7 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "
         TimeLimit "cuopt::linear_programming::pdlp_termination_status_t::TimeLimit" # noqa
         ConcurrentLimit "cuopt::linear_programming::pdlp_termination_status_t::ConcurrentLimit" # noqa
         PrimalFeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalFeasible" # noqa
+        UnboundedOrInfeasible "cuopt::linear_programming::pdlp_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
 cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace "cuopt::cython": # noqa

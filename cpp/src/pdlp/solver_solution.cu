@@ -316,8 +316,12 @@ std::string optimization_problem_solution_t<i_t, f_t>::get_termination_status_st
     case pdlp_termination_status_t::NumericalError: return "A numerical error was encountered.";
     case pdlp_termination_status_t::PrimalFeasible: return "Primal Feasible";
     case pdlp_termination_status_t::ConcurrentLimit: return "Concurrent Limit";
-    default: return "Unknown cuOpt status";
+    case pdlp_termination_status_t::UnboundedOrInfeasible: return "UnboundedOrInfeasible";
+    case pdlp_termination_status_t::NoTermination:
+      return "NoTermination";
+      // Do not implement default case to trigger compile time error if new enum is added
   }
+  return std::string();
 }
 
 template <typename i_t, typename f_t>

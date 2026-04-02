@@ -2784,6 +2784,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
+
     // Pricing
     i_t direction           = 0;
     i_t basic_leaving_index = -1;
@@ -2889,6 +2890,12 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                  sol);
       status = dual::status_t::OPTIMAL;
       break;
+    }
+
+    if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
+
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
     }
 
     // BTran
@@ -3597,7 +3604,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
       ft.print_stats();
     }
-    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
+    if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
       settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
       *settings.concurrent_halt = 1;
     }

@@ -764,6 +764,7 @@ LP_STATUS_NAMES = frozenset(
         "IterationLimit",
         "TimeLimit",
         "PrimalFeasible",
+        "UnboundedOrInfeasible",
     }
 )
 
@@ -778,6 +779,7 @@ MILP_STATUS_NAMES = frozenset(
         "Infeasible",
         "Unbounded",
         "TimeLimit",
+        "UnboundedOrInfeasible",
     }
 )
 

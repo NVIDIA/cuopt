@@ -24,13 +24,14 @@
 namespace cuopt::linear_programming {
 
 enum class mip_termination_status_t : int8_t {
-  NoTermination = CUOPT_TERIMINATION_STATUS_NO_TERMINATION,
-  Optimal       = CUOPT_TERIMINATION_STATUS_OPTIMAL,
-  FeasibleFound = CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND,
-  Infeasible    = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
-  Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
-  TimeLimit     = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
-  WorkLimit     = CUOPT_TERIMINATION_STATUS_WORK_LIMIT,
+  NoTermination         = CUOPT_TERMINATION_STATUS_NO_TERMINATION,
+  Optimal               = CUOPT_TERMINATION_STATUS_OPTIMAL,
+  FeasibleFound         = CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND,
+  Infeasible            = CUOPT_TERMINATION_STATUS_INFEASIBLE,
+  Unbounded             = CUOPT_TERMINATION_STATUS_UNBOUNDED,
+  TimeLimit             = CUOPT_TERMINATION_STATUS_TIME_LIMIT,
+  WorkLimit             = CUOPT_TERMINATION_STATUS_WORK_LIMIT,
+  UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE,
 };
 
 template <typename i_t, typename f_t>
