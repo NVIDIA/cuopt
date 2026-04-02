@@ -1442,7 +1442,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 
     f_t lower_bound = node_ptr->lower_bound;
     f_t upper_bound = upper_bound_;
-    f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
     // This is based on three assumptions:
     // - The stack only contains sibling nodes, i.e., the current node and it sibling (if
@@ -1559,7 +1558,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
 
     f_t lower_bound     = node_ptr->lower_bound;
     f_t upper_bound     = upper_bound_;
-    f_t rel_gap         = user_relative_gap(original_lp_, upper_bound, lower_bound);
     worker->lower_bound = lower_bound;
 
     if (node_ptr->lower_bound > get_cutoff()) {
@@ -2904,7 +2902,6 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_bfs_loop(
       worker.current_node = node;
 
       f_t upper_bound = worker.local_upper_bound;
-      f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, node->lower_bound);
       if (node->lower_bound > upper_bound) {
         worker.current_node = nullptr;
         worker.record_fathomed(node, node->lower_bound);
@@ -3693,7 +3690,6 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     stack.pop_front();
 
     // Prune check using snapshot upper bound
-    f_t rel_gap = user_relative_gap(original_lp_, worker.local_upper_bound, node_ptr->lower_bound);
     if (node_ptr->lower_bound > worker.local_upper_bound) {
       worker.recompute_bounds_and_basis = true;
       continue;

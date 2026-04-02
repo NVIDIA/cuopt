@@ -87,12 +87,6 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
-    auto constexpr const running_mip = true;
-
-    // TODO ask Akif and Alice how was this passed down?
-    auto hyper_params                                     = settings.hyper_params;
-    hyper_params.update_primal_weight_on_initial_solution = false;
-    hyper_params.update_step_size_on_initial_solution     = true;
     if (settings.get_mip_callbacks().size() > 0) {
       auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
       if (problem.has_papilo_presolve_data()) {
@@ -147,28 +141,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     }
     // problem contains unpreprocessed data
     detail::problem_t<i_t, f_t> scaled_problem(problem);
-
-    detail::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
-      scaled_problem.handle_ptr,
-      scaled_problem,
-      hyper_params.default_l_inf_ruiz_iterations,
-      (f_t)hyper_params.default_alpha_pock_chambolle_rescaling,
-      scaled_problem.reverse_coefficients,
-      scaled_problem.reverse_offsets,
-      scaled_problem.reverse_constraints,
-      nullptr,
-      hyper_params,
-      running_mip);
-
     cuopt_func_call(auto saved_problem = scaled_problem);
-    if (settings.mip_scaling) {
-      scaling.scale_problem();
-      if (settings.initial_solutions.size() > 0) {
-        for (const auto& initial_solution : settings.initial_solutions) {
-          scaling.scale_primal(*initial_solution);
-        }
-      }
-    }
     CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                    problem.presolve_data.objective_offset,
                    problem.presolve_data.objective_scaling_factor);
@@ -227,12 +200,14 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
     }
 
-    auto presolved_sol            = solver.run_solver();
+    auto presolved_sol = solver.run_solver();
+    CUOPT_LOG_INFO("Presolved solution objective: %f", presolved_sol.get_user_objective());
     bool is_feasible_on_presolved = presolved_sol.get_feasible();
     presolved_sol.problem_ptr     = &problem;
     // at this point we need to compute the feasibility on the original problem not the presolved
     // one
     bool is_feasible_on_original = presolved_sol.compute_feasibility();
+    CUOPT_LOG_INFO("Original solution objective: %f", presolved_sol.get_user_objective());
     if (!scaled_problem.empty && is_feasible_on_presolved != is_feasible_on_original) {
       CUOPT_LOG_WARN(
         "The feasibility does not match on presolved and original problems. To overcome this "
