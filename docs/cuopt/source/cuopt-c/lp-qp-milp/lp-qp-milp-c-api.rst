@@ -276,3 +276,4 @@ These constants define the termination status received from the :c:func:`cuOptGe
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE

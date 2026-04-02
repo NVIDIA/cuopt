@@ -13,15 +13,26 @@
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERMINATION_STATUS_OPTIMAL: return "Optimal";
-    case CUOPT_TERMINATION_STATUS_INFEASIBLE: return "Infeasible";
-    case CUOPT_TERMINATION_STATUS_UNBOUNDED: return "Unbounded";
-    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT: return "Iteration limit";
-    case CUOPT_TERMINATION_STATUS_TIME_LIMIT: return "Time limit";
-    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR: return "Numerical error";
-    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE: return "Primal feasible";
-    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND: return "Feasible found";
-    default: return "Unknown";
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
+      return "Primal feasible";
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
+      return "Feasible found";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE:
+      return "Unbounded or infeasible";
+    default:
+      return "Unknown";
   }
 }
 
@@ -87,10 +98,17 @@ cuopt_int_t solve_mps_file(const char* filename)
     goto DONE;
   }
 
-  status = cuOptGetObjectiveValue(solution, &objective_value);
-  if (status != CUOPT_SUCCESS) {
-    printf("Error getting objective value: %d\n", status);
-    goto DONE;
+  const int has_primal_solution =
+    termination_status == CUOPT_TERMINATION_STATUS_OPTIMAL ||
+    termination_status == CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE ||
+    termination_status == CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND;
+
+  if (has_primal_solution) {
+    status = cuOptGetObjectiveValue(solution, &objective_value);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error getting objective value: %d\n", status);
+      goto DONE;
+    }
   }
 
   // Print results
@@ -104,11 +122,13 @@ cuopt_int_t solve_mps_file(const char* filename)
   printf("Objective value: %f\n", objective_value);
 
   // Get and print solution variables
+  if (has_primal_solution) {
   solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
   status          = cuOptGetPrimalSolution(solution, solution_values);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solution values: %d\n", status);
     goto DONE;
+  }
   }
 
   printf("\nSolution: \n");
@@ -117,7 +137,9 @@ cuopt_int_t solve_mps_file(const char* filename)
   }
 
 DONE:
-  free(solution_values);
+  if (solution_values != NULL) {
+    free(solution_values);
+  }
   cuOptDestroyProblem(&problem);
   cuOptDestroySolverSettings(&settings);
   cuOptDestroySolution(&solution);

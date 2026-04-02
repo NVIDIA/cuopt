@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -249,13 +249,15 @@ class data_model_view_t {
    * @param[in] Q_offsets Device memory pointer to offsets of the CSR representation of the
    * quadratic objective matrix
    * @param size_offsets Size of the Q_offsets array
+   * @param is_symmetrized Whether the quadratic objective matrix is a symmetrized matrix
    */
   void set_quadratic_objective_matrix(const f_t* Q_values,
                                       i_t size_values,
                                       const i_t* Q_indices,
                                       i_t size_indices,
                                       const i_t* Q_offsets,
-                                      i_t size_offsets);
+                                      i_t size_offsets,
+                                      const bool is_symmetrized = false);
 
   /**
    * @brief Get the sense value (false:minimize, true:maximize)
@@ -406,6 +408,13 @@ class data_model_view_t {
    */
   bool has_quadratic_objective() const noexcept;
 
+  /**
+   * @brief Check if the quadratic objective matrix is a symmetrized matrix
+   *
+   * @return bool
+   */
+  bool is_Q_symmetrized() const noexcept;
+
  private:
   bool maximize_{false};
   span<f_t const> A_;
@@ -434,7 +443,7 @@ class data_model_view_t {
   span<f_t const> Q_objective_;
   span<i_t const> Q_objective_indices_;
   span<i_t const> Q_objective_offsets_;
-
+  bool is_Q_symmetrized_{false};
 };  // class data_model_view_t
 
 }  // namespace cuopt::mps_parser

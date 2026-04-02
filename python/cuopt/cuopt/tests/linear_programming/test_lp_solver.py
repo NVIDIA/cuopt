@@ -7,7 +7,11 @@ import cuopt_mps_parser
 import numpy as np
 import pytest
 
-from cuopt.linear_programming import data_model, solver, solver_settings
+from cuopt.linear_programming import (
+    data_model,
+    solver,
+    solver_settings,
+)
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
@@ -36,6 +40,12 @@ from cuopt.linear_programming.solver.solver_wrapper import (
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
     SolverMethod,
+    SolverSettings,
+)
+from cuopt.linear_programming.problem import (
+    Problem,
+    CONTINUOUS,
+    MINIMIZE,
 )
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
@@ -723,6 +733,22 @@ def test_write_files():
                 assert float(line.split()[-1]) == pytest.approx(80)
 
     os.remove("afiro.sol")
+
+
+def test_unbounded_problem():
+    problem = Problem("unbounded")
+    x = problem.addVariable(lb=0.0, vtype=CONTINUOUS, name="x")
+    y = problem.addVariable(lb=0.0, vtype=CONTINUOUS, name="y")
+
+    problem.addConstraint(-1 * x + 2 * y <= 0, name="c1")
+
+    problem.setObjective(-1 * x - 1 * y, sense=MINIMIZE)
+
+    settings = SolverSettings()
+
+    problem.solve(settings)
+
+    assert problem.Status.name == "UnboundedOrInfeasible"
 
 
 def test_pdlp_precision_single():

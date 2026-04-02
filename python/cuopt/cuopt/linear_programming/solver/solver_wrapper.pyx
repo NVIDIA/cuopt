@@ -81,6 +81,7 @@ class MILPTerminationStatus(IntEnum):
     Infeasible = mip_termination_status_t.Infeasible
     Unbounded = mip_termination_status_t.Unbounded
     TimeLimit = mip_termination_status_t.TimeLimit
+    UnboundedOrInfeasible = mip_termination_status_t.UnboundedOrInfeasible
 
 
 class LPTerminationStatus(IntEnum):
@@ -92,6 +93,7 @@ class LPTerminationStatus(IntEnum):
     IterationLimit = pdlp_termination_status_t.IterationLimit
     TimeLimit = pdlp_termination_status_t.TimeLimit
     PrimalFeasible = pdlp_termination_status_t.PrimalFeasible
+    UnboundedOrInfeasible = pdlp_termination_status_t.UnboundedOrInfeasible
 
 
 class ErrorStatus(IntEnum):

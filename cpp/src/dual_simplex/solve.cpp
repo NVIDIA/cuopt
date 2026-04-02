@@ -212,10 +212,12 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual::status_t::NUMERICAL ||
-      phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (phase1_status == dual::status_t::NUMERICAL) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
+  }
+  if (phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
   if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
@@ -312,7 +314,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
     if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
   } else {
-    // Dual infeasible -> Primal unbounded
+    // Dual infeasible -> Primal unbounded or infeasible
     settings.log.printf("Dual infeasible\n");
     original_solution.objective = -inf;
     if (lp.obj_scale == 1.0) {
@@ -323,7 +325,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       original_solution.user_objective = inf;
     }
     original_solution.iterations = iter;
-    return lp_status_t::UNBOUNDED;
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   return lp_status;
 }
@@ -706,7 +708,8 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -745,7 +748,8 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {

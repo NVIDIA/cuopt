@@ -354,7 +354,6 @@ TEST(vehicle_breaks, non_uniform_breaks)
     order_service[i]   = route.service_time_h[i + 1];
   }
   int num_v_type_1 = vehicle_num / 2;
-  int num_v_type_2 = vehicle_num - num_v_type_1;
   int num_breaks   = 3;
 
   // Type 1: [40,50]/5, [100,120]/20, [170,180]/10
