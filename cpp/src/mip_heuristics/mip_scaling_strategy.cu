@@ -18,6 +18,7 @@
 #include <thrust/count.h>
 #include <thrust/fill.h>
 #include <thrust/functional.h>
+#include <thrust/inner_product.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/permutation_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
@@ -352,6 +353,52 @@ void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>
 }
 
 template <typename i_t, typename f_t>
+rmm::device_uvector<std::int64_t> capture_pre_scaling_integer_gcd(
+  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  rmm::device_uvector<std::uint8_t>& temp_storage,
+  size_t temp_storage_bytes,
+  rmm::cuda_stream_view stream_view)
+{
+  const i_t n_rows = op_problem.get_n_constraints();
+  rmm::device_uvector<std::int64_t> gcd(static_cast<size_t>(n_rows), stream_view);
+  compute_row_integer_gcd(op_problem, temp_storage, temp_storage_bytes, gcd, stream_view);
+  return gcd;
+}
+
+template <typename i_t, typename f_t>
+void assert_integer_coefficient_integrality(
+  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  rmm::device_uvector<std::uint8_t>& temp_storage,
+  size_t temp_storage_bytes,
+  const rmm::device_uvector<std::int64_t>& pre_scaling_gcd,
+  rmm::cuda_stream_view stream_view)
+{
+  const auto* handle_ptr = op_problem.get_handle_ptr();
+  const i_t n_rows       = op_problem.get_n_constraints();
+  rmm::device_uvector<std::int64_t> post_scaling_gcd(static_cast<size_t>(n_rows), stream_view);
+  compute_row_integer_gcd(
+    op_problem, temp_storage, temp_storage_bytes, post_scaling_gcd, stream_view);
+
+  i_t broken_rows = thrust::inner_product(
+    handle_ptr->get_thrust_policy(),
+    pre_scaling_gcd.begin(),
+    pre_scaling_gcd.end(),
+    post_scaling_gcd.begin(),
+    i_t(0),
+    thrust::plus<i_t>{},
+    [] __device__(std::int64_t pre_gcd, std::int64_t post_gcd) -> i_t {
+      return (pre_gcd > std::int64_t{0} && post_gcd == std::int64_t{0}) ? i_t(1) : i_t(0);
+    });
+
+  if (broken_rows > 0) {
+    CUOPT_LOG_WARN("MIP row scaling: %d rows lost integer coefficient integrality after scaling",
+                   broken_rows);
+  }
+  cuopt_assert(broken_rows == 0,
+               "MIP scaling must preserve integer coefficients for integer variables");
+}
+
+template <typename i_t, typename f_t>
 mip_scaling_strategy_t<i_t, f_t>::mip_scaling_strategy_t(
   typename mip_scaling_strategy_t<i_t, f_t>::optimization_problem_type_t& op_problem_scaled)
   : handle_ptr_(op_problem_scaled.get_handle_ptr()),
@@ -503,6 +550,10 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                                           stream_view_);
 
   rmm::device_uvector<std::uint8_t> temp_storage(temp_storage_bytes, stream_view_);
+
+  cuopt_func_call(auto pre_scaling_gcd = capture_pre_scaling_integer_gcd(
+                    op_problem_scaled_, temp_storage, temp_storage_bytes, stream_view_));
+
   compute_big_m_skip_rows(op_problem_scaled_,
                           temp_storage,
                           temp_storage_bytes,
@@ -769,6 +820,9 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                  n_rows,
                  big_m_rows,
                  previous_row_log2_spread);
+
+  cuopt_func_call(assert_integer_coefficient_integrality(
+    op_problem_scaled_, temp_storage, temp_storage_bytes, pre_scaling_gcd, stream_view_));
 
   const f_t post_max_coeff         = thrust::transform_reduce(handle_ptr_->get_thrust_policy(),
                                                       matrix_values.begin(),
