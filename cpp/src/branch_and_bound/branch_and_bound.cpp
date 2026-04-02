@@ -174,14 +174,15 @@ f_t sgn(f_t x)
   return x < 0 ? -1 : 1;
 }
 
-template <typename f_t>
-f_t relative_gap(f_t obj_value, f_t lower_bound)
+template <typename i_t, typename f_t>
+f_t compute_user_abs_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
 {
-  f_t user_mip_gap = obj_value == 0.0
-                       ? (lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
-                       : std::abs(obj_value - lower_bound) / std::abs(obj_value);
-  if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
-  return user_mip_gap;
+  // if objective scale is positive, it is a minimization problem so the gap should be positive
+  // if objective scale is negative, it is a maximization problem so the gap should again be
+  // positive the constants cancel each other out
+  f_t gap = lp.obj_scale * (obj_value - lower_bound);
+  if (gap < 0.) { CUOPT_LOG_ERROR("Gap is negative %e", gap); }
+  return gap;
 }
 
 template <typename i_t, typename f_t>
@@ -191,15 +192,15 @@ f_t user_relative_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower
   f_t user_lower_bound = compute_user_objective(lp, lower_bound);
   f_t user_mip_gap     = user_obj == 0.0
                            ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
-                           : std::abs(user_obj - user_lower_bound) / std::abs(user_obj);
+                           : compute_user_abs_gap(lp, obj_value, lower_bound) / std::abs(user_obj);
   if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
   return user_mip_gap;
 }
 
-template <typename f_t>
-std::string user_mip_gap(f_t obj_value, f_t lower_bound)
+template <typename i_t, typename f_t>
+std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
 {
-  const f_t user_mip_gap = relative_gap(obj_value, lower_bound);
+  const f_t user_mip_gap = user_relative_gap(lp, obj_value, lower_bound);
   if (user_mip_gap == std::numeric_limits<f_t>::infinity()) {
     return "   -  ";
   } else {
@@ -313,7 +314,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
   if (is_running_) {
     f_t user_obj         = compute_user_objective(original_lp_, obj);
     f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
-    std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
+    std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, get_lower_bound());
 
     settings_.log.printf(
       "H                            %+13.6e    %+10.6e                               %s %9.2f\n",
@@ -325,7 +326,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
     if (solving_root_relaxation_.load()) {
       f_t user_obj         = compute_user_objective(original_lp_, obj);
       f_t user_lower       = root_lp_current_lower_bound_.load();
-      std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
+      std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, get_lower_bound());
       settings_.log.printf(
         "New solution from primal heuristics. Objective %+.6e. Gap %s. Time %.2f\n",
         user_obj,
@@ -350,7 +351,7 @@ void branch_and_bound_t<i_t, f_t>::report(
   const f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
   const f_t iters            = static_cast<f_t>(exploration_stats_.total_lp_iters);
   const f_t iter_node        = nodes_explored > 0 ? iters / nodes_explored : iters;
-  const std::string user_gap = user_mip_gap<f_t>(user_obj, user_lower);
+  const std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, lower_bound);
   if (work_time >= 0) {
     settings_.log.printf(
       "%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f %9.2f\n",
@@ -1631,8 +1632,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 #endif
 
   f_t lower_bound     = get_lower_bound();
-  f_t abs_gap         = std::abs(compute_user_objective(original_lp_, upper_bound_.load()) -
-                         compute_user_objective(original_lp_, lower_bound));
+  f_t abs_gap         = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap         = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   i_t last_node_depth = 0;
   i_t last_int_infeas = 0;
@@ -1642,8 +1642,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
          (active_workers_per_strategy_[0] > 0 || node_queue_.best_first_queue_size() > 0)) {
     bool launched_any_task = false;
     lower_bound            = get_lower_bound();
-    abs_gap                = std::abs(compute_user_objective(original_lp_, upper_bound_.load()) -
-                       compute_user_objective(original_lp_, lower_bound));
+    abs_gap                = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
     rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
     repair_heuristic_solutions();
@@ -1758,16 +1757,14 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   branch_and_bound_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_);
 
   f_t lower_bound = get_lower_bound();
-  f_t abs_gap     = std::abs(compute_user_objective(original_lp_, upper_bound_.load()) -
-                         compute_user_objective(original_lp_, lower_bound));
+  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && node_queue_.best_first_queue_size() > 0) {
     bool launched_any_task = false;
     lower_bound            = get_lower_bound();
-    abs_gap                = std::abs(compute_user_objective(original_lp_, upper_bound_.load()) -
-                       compute_user_objective(original_lp_, lower_bound));
+    abs_gap                = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
     rel_gap                = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
     repair_heuristic_solutions();
@@ -2418,8 +2415,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       report(' ', obj, root_objective_, 0, num_fractional);
 
       f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
-      f_t abs_gap = std::abs(compute_user_objective(original_lp_, upper_bound_.load()) -
-                             compute_user_objective(original_lp_, root_objective_));
+      f_t abs_gap = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
       if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
         set_solution_at_root(solution, cut_info);
         set_final_solution(solution, root_objective_);
@@ -3020,7 +3016,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
 
   f_t lower_bound = deterministic_compute_lower_bound();
   f_t upper_bound = upper_bound_.load();
-  f_t abs_gap     = upper_bound - lower_bound;
+  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
 
   if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
@@ -3059,7 +3055,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
 
   f_t obj              = compute_user_objective(original_lp_, upper_bound);
   f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
-  std::string gap_user = user_mip_gap<f_t>(obj, user_lower);
+  std::string gap_user = user_mip_gap<i_t, f_t>(original_lp_, upper_bound, lower_bound);
 
   std::string idle_workers;
   i_t idle_count = 0;

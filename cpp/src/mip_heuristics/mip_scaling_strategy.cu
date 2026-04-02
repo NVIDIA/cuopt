@@ -585,7 +585,7 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
                         return rhs_norm;
                       });
 
-    // Fix A+C: median-based target norm excluding big-M rows (robust to outliers)
+    // Fix A+C: median-based target norm excluding big-M rows and zero-RHS rows (robust to outliers)
     constexpr double neg_inf_sentinel = -1.0e300;
     thrust::transform(handle_ptr_->get_thrust_policy(),
                       thrust::make_zip_iterator(thrust::make_tuple(
@@ -593,13 +593,17 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
                       thrust::make_zip_iterator(thrust::make_tuple(
                         row_inf_norm.end(), row_rhs_magnitude.end(), row_skip_scaling.end())),
                       ref_log2_values.begin(),
-                      [neg_inf_sentinel] __device__(auto row_info) -> double {
+                      [] __device__(auto row_info) -> double {
                         const f_t row_norm = thrust::get<0>(row_info);
                         const f_t rhs_norm = thrust::get<1>(row_info);
                         const i_t is_big_m = thrust::get<2>(row_info);
-                        if (is_big_m) { return neg_inf_sentinel - 1.0; }
+                        if (is_big_m || rhs_norm == f_t(0)) {
+                          return -std::numeric_limits<double>::infinity();
+                        }
                         const f_t reference_norm = row_norm > rhs_norm ? row_norm : rhs_norm;
-                        if (reference_norm <= f_t(0)) { return neg_inf_sentinel - 1.0; }
+                        if (reference_norm <= f_t(0)) {
+                          return -std::numeric_limits<double>::infinity();
+                        }
                         return log2(static_cast<double>(reference_norm));
                       });
     thrust::sort(handle_ptr_->get_thrust_policy(), ref_log2_values.begin(), ref_log2_values.end());
@@ -627,18 +631,21 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
       thrust::make_zip_iterator(thrust::make_tuple(row_inf_norm.begin(),
                                                    row_skip_scaling.begin(),
                                                    row_integer_gcd.begin(),
-                                                   cumulative_scaling.begin())),
+                                                   cumulative_scaling.begin(),
+                                                   row_rhs_magnitude.begin())),
       thrust::make_zip_iterator(thrust::make_tuple(row_inf_norm.end(),
                                                    row_skip_scaling.end(),
                                                    row_integer_gcd.end(),
-                                                   cumulative_scaling.end())),
+                                                   cumulative_scaling.end(),
+                                                   row_rhs_magnitude.end())),
       iteration_scaling.begin(),
       [target_norm] __device__(auto row_info) -> f_t {
         const f_t row_norm               = thrust::get<0>(row_info);
         const i_t is_big_m               = thrust::get<1>(row_info);
         const std::int64_t row_coeff_gcd = thrust::get<2>(row_info);
         const f_t cum_scale              = thrust::get<3>(row_info);
-        if (row_norm == f_t(0)) { return f_t(1); }
+        const f_t rhs_norm               = thrust::get<4>(row_info);
+        if (row_norm == f_t(0) || rhs_norm == f_t(0)) { return f_t(1); }
 
         const f_t desired_scaling = target_norm / row_norm;
         if (!isfinite(desired_scaling) || desired_scaling <= f_t(0)) { return f_t(1); }
