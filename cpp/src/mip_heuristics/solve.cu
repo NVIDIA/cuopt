@@ -200,14 +200,12 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
     }
 
-    auto presolved_sol = solver.run_solver();
-    CUOPT_LOG_INFO("Presolved solution objective: %f", presolved_sol.get_user_objective());
+    auto presolved_sol            = solver.run_solver();
     bool is_feasible_on_presolved = presolved_sol.get_feasible();
     presolved_sol.problem_ptr     = &problem;
     // at this point we need to compute the feasibility on the original problem not the presolved
     // one
     bool is_feasible_on_original = presolved_sol.compute_feasibility();
-    CUOPT_LOG_INFO("Original solution objective: %f", presolved_sol.get_user_objective());
     if (!scaled_problem.empty && is_feasible_on_presolved != is_feasible_on_original) {
       CUOPT_LOG_WARN(
         "The feasibility does not match on presolved and original problems. To overcome this "
