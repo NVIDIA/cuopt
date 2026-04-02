@@ -104,8 +104,8 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
 @pytest.mark.parametrize(
     "file_name",
     [
-        # ("/mip/swath1.mps"),  # Disabled: https://github.com/NVIDIA/cuopt/issues/967 (PDLP concurrent / incumbent callbacks).
-        # ("/mip/neos5-free-bound.mps"),  # Disabled: https://github.com/NVIDIA/cuopt/issues/967 (PDLP concurrent / incumbent callbacks).
+        ("/mip/swath1.mps"),
+        ("/mip/neos5-free-bound.mps"),
     ],
 )
 def test_incumbent_get_callback(file_name):
@@ -115,8 +115,8 @@ def test_incumbent_get_callback(file_name):
 @pytest.mark.parametrize(
     "file_name",
     [
-        # ("/mip/swath1.mps"),  # Disabled: https://github.com/NVIDIA/cuopt/issues/967 (PDLP concurrent / incumbent callbacks).
-        # ("/mip/neos5-free-bound.mps"),  # Disabled: https://github.com/NVIDIA/cuopt/issues/967 (PDLP concurrent / incumbent callbacks).
+        ("/mip/swath1.mps"),
+        ("/mip/neos5-free-bound.mps"),
     ],
 )
 def test_incumbent_get_set_callback(file_name):

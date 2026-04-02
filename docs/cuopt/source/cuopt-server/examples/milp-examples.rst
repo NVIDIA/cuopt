@@ -65,6 +65,8 @@ The incumbent solution can be retrieved using a callback function as follows:
 
 .. note::
     Incumbent solution callback is only applicable to MILP.
+    The callback bound can be ``None`` when the solver has found an incumbent
+    but no finite global bound is available yet.
 
 :download:`incumbent_callback_example.py <milp/examples/incumbent_callback_example.py>`
 

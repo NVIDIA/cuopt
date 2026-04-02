@@ -1187,17 +1187,21 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                       std::ref(sol_dual_simplex_ptr),
                                       std::ref(timer));
   }
-  dual_simplex::user_problem_t<i_t, f_t> barrier_problem = dual_simplex_problem;
-  // Create a thread for barrier
+  // Create a thread for barrier.
+  // The barrier handle is owned here so that its destructor runs on the
+  // main thread after PDLP finishes. cublasDestroy internally calls cudaDeviceSynchronize, which
+  // is globally forbidden while any stream is in graph capture mode.
+  std::unique_ptr<raft::handle_t> barrier_handle_ptr;
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_barrier_ptr;
   auto barrier_thread = std::thread([&]() {
     auto call_barrier_thread = [&]() {
       rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-      auto barrier_handle                  = raft::handle_t(barrier_stream);
+      barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
       auto barrier_problem                 = dual_simplex_problem;
-      barrier_problem.handle_ptr           = &barrier_handle;
+      barrier_problem.handle_ptr           = barrier_handle_ptr.get();
+
       run_barrier_thread<i_t, f_t>(std::ref(barrier_problem),
                                    std::ref(settings_pdlp),
                                    std::ref(sol_barrier_ptr),
@@ -1235,6 +1239,9 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   if (!settings.inside_mip) { dual_simplex_thread.join(); }
 
   barrier_thread.join();
+  // At this point, it is safe to destroy the barrier context since we're outside of any PDLP graph
+  // capture.
+  barrier_handle_ptr.reset();
 
   // copy the dual simplex solution to the device
   auto sol_dual_simplex =
