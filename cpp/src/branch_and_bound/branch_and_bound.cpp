@@ -271,6 +271,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   original_problem_.A.print_matrix();
 #endif
 
+  convert_greater_to_less_2(*mip_problem_ptr_);
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_, dualize_info);
   full_variable_types(original_problem_, original_lp_, var_types_);
@@ -1931,9 +1932,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::atomic<int> winner{0};  // 0=none, 1=dual, 2=PDLP, 3=Barrier
 
   if (enable_concurrent_lp_root_solve_ && mip_problem_ptr_ != nullptr) {
-    convert_greater_to_less_2(*mip_problem_ptr_);
-    // All three run in threads; main only starts them and joins. First to finish with OPTIMAL sets
-    // winner and halt.
+    // convert_greater_to_less_2(*mip_problem_ptr_);
+    //  All three run in threads; main only starts them and joins. First to finish with OPTIMAL sets
+    //  winner and halt.
     std::mutex first_solver_mutex;
     bool first_solver_callback_done = false;
     run_concurrent_pdlp_and_barrier_with_crossover(lp_settings,
@@ -2528,7 +2529,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           "Resolving root LP from scratch.\n",
           dual::status_to_string(cut_status).c_str(),
           static_cast<int>(cut_pass));
-        basis_update_mpf_t<i_t, f_t> scratch_basis(original_lp_.num_rows, settings_.refactor_frequency);
+        basis_update_mpf_t<i_t, f_t> scratch_basis(original_lp_.num_rows,
+                                                   settings_.refactor_frequency);
         lp_status_t scratch_status =
           solve_linear_program_with_advanced_basis(original_lp_,
                                                    exploration_stats_.start_time,
