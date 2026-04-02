@@ -479,7 +479,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
                  "LP optimal solution contains non-finite values");
     ls.lp_optimal_exists = true;
     if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
-      set_new_user_bound(lp_result.get_objective_value());
+      solution_t<i_t, f_t> lp_sol(*problem_ptr);
+      lp_sol.copy_new_assignment(lp_optimal_solution);
+      const bool consider_integrality = false;
+      lp_sol.compute_feasibility(consider_integrality);
+      if (lp_sol.get_feasible()) { set_new_user_bound(lp_result.get_objective_value()); }
     } else if (lp_result.get_termination_status() == pdlp_termination_status_t::PrimalInfeasible) {
       CUOPT_LOG_ERROR("Problem is primal infeasible, continuing anyway!");
       ls.lp_optimal_exists = false;
