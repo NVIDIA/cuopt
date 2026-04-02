@@ -213,7 +213,7 @@ int run_single_file(std::string file_path,
   settings.tolerances.absolute_tolerance = 1e-6;
   settings.presolver                     = cuopt::linear_programming::presolver_t::Default;
   settings.reliability_branching         = reliability_branching;
-  settings.mip_scaling                   = true;
+  settings.mip_scaling                   = CUOPT_MIP_SCALING_ON;
   settings.clique_cuts                   = -1;
   settings.seed                          = 42;
   cuopt::linear_programming::benchmark_info_t benchmark_info;

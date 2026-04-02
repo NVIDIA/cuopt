@@ -441,9 +441,15 @@ class SolverConfig(BaseModel):
         "<br>"
         "Note: Not supported for MILP. ",
     )
-    mip_scaling: Optional[bool] = Field(
-        default=True,
-        description="Set True to enable MIP scaling, False to disable.",
+    mip_scaling: Optional[int] = Field(
+        default=1,
+        description="MIP scaling mode:"
+        "<br>"
+        "- 0: No scaling"
+        "<br>"
+        "- 1: Full scaling (objective + row), default"
+        "<br>"
+        "- 2: Row scaling only (no objective scaling)",
     )
     mip_heuristics_only: Optional[bool] = Field(
         default=False,

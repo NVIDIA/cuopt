@@ -442,7 +442,7 @@ size_t dry_run_cub(const cuopt::linear_programming::optimization_problem_t<i_t, 
 }
 
 template <typename i_t, typename f_t>
-void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
+void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
 {
   raft::common::nvtx::range fun_scope("mip_scale_problem");
 
@@ -455,7 +455,11 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem()
   const i_t n_cols              = op_problem_scaled_.get_n_variables();
   const i_t nnz                 = op_problem_scaled_.get_nnz();
 
-  scale_objective(op_problem_scaled_);
+  if (do_objective_scaling) {
+    scale_objective(op_problem_scaled_);
+  } else {
+    CUOPT_LOG_INFO("MIP_OBJ_SCALING skipped: disabled by user setting");
+  }
 
   if (n_rows == 0 || nnz <= 0) { return; }
   cuopt_assert(constraint_bounds.size() == size_t{0} ||

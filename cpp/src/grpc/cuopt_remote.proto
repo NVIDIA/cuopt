@@ -162,7 +162,7 @@ message MIPSolverSettings {
   int32 num_cpu_threads = 12;
   int32 num_gpus = 13;
   int32 presolver = 14;
-  bool mip_scaling = 15;
+  int32 mip_scaling = 15;
 }
 
 // LP solve request

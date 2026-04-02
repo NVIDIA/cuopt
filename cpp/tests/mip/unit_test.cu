@@ -226,12 +226,12 @@ TEST(ErrorTest, TestError)
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, bool, bool, cuopt::linear_programming::mip_termination_status_t>> {};
+      std::tuple<bool, int, bool, cuopt::linear_programming::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
-  bool scaling                     = std::get<1>(GetParam());
+  int scaling                      = std::get<1>(GetParam());
   bool heuristics_only             = std::get<2>(GetParam());
   auto expected_termination_status = std::get<3>(GetParam());
 
@@ -252,7 +252,7 @@ TEST_P(MILPTestParams, TestSampleMILP)
 TEST_P(MILPTestParams, TestSingleVarMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
-  bool scaling                     = std::get<1>(GetParam());
+  int scaling                      = std::get<1>(GetParam());
   bool heuristics_only             = std::get<2>(GetParam());
   auto expected_termination_status = std::get<3>(GetParam());
 
@@ -274,13 +274,21 @@ TEST_P(MILPTestParams, TestSingleVarMILP)
 INSTANTIATE_TEST_SUITE_P(
   MILPTests,
   MILPTestParams,
-  testing::Values(
-    std::make_tuple(true, true, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      false, true, false, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      true, false, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      false, false, false, cuopt::linear_programming::mip_termination_status_t::Optimal)));
+  testing::Values(std::make_tuple(true,
+                                  CUOPT_MIP_SCALING_ON,
+                                  true,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(false,
+                                  CUOPT_MIP_SCALING_ON,
+                                  false,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(true,
+                                  CUOPT_MIP_SCALING_OFF,
+                                  true,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(false,
+                                  CUOPT_MIP_SCALING_OFF,
+                                  false,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal)));
 
 }  // namespace cuopt::linear_programming::test

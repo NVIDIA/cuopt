@@ -21,7 +21,7 @@ class mip_scaling_strategy_t {
   using optimization_problem_type_t = cuopt::linear_programming::optimization_problem_t<i_t, f_t>;
   explicit mip_scaling_strategy_t(optimization_problem_type_t& op_problem_scaled);
 
-  void scale_problem();
+  void scale_problem(bool scale_objective = true);
 
  private:
   raft::handle_t const* handle_ptr_{nullptr};
