@@ -177,10 +177,9 @@ f_t sgn(f_t x)
 template <typename i_t, typename f_t>
 f_t compute_user_abs_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
 {
-  // if objective scale is positive, it is a minimization problem so the gap should be positive
-  // if objective scale is negative, it is a maximization problem so the gap should again be
-  // positive the constants cancel each other out
-  f_t gap = lp.obj_scale * (obj_value - lower_bound);
+  // abs_gap = |user_obj - user_lower| = |obj_scale| * |obj_value - lower_bound|
+  // obj_constant cancels out in the subtraction; obj_scale sign must be removed via abs
+  f_t gap = std::abs(lp.obj_scale) * (obj_value - lower_bound);
   if (gap < 0.) { CUOPT_LOG_ERROR("Gap is negative %e", gap); }
   return gap;
 }
