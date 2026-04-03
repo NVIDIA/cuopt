@@ -265,12 +265,13 @@ void rins_t<i_t, f_t>::run_rins()
     std::min(current_mip_gap, (f_t)settings.target_mip_gap);
   branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
   branch_and_bound_settings.num_threads = 1;
-  branch_and_bound_settings.reliability_branching = 0;
-  branch_and_bound_settings.max_cut_passes        = 0;
-  branch_and_bound_settings.clique_cuts           = 0;
-  branch_and_bound_settings.sub_mip               = 1;
-  branch_and_bound_settings.log.log               = false;
-  branch_and_bound_settings.log.log_prefix        = "[RINS] ";
+  branch_and_bound_settings.reliability_branching                    = 0;
+  branch_and_bound_settings.max_cut_passes                           = 0;
+  branch_and_bound_settings.clique_cuts                              = 0;
+  branch_and_bound_settings.sub_mip                                  = 1;
+  branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
+  branch_and_bound_settings.log.log                                  = false;
+  branch_and_bound_settings.log.log_prefix                           = "[RINS] ";
   branch_and_bound_settings.solution_callback = [&rins_solution_queue](std::vector<f_t>& solution,
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);

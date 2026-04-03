@@ -103,6 +103,7 @@ class mip_solver_settings_t {
     0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
   i_t mip_batch_pdlp_reliability_branching{
     0};  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
+  i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus        = 1;
   bool log_to_console = true;
 

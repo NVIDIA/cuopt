@@ -106,11 +106,12 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
       branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
       branch_and_bound_settings.num_threads = 1;
-      branch_and_bound_settings.reliability_branching = 0;
-      branch_and_bound_settings.max_cut_passes        = 0;
-      branch_and_bound_settings.clique_cuts           = 0;
-      branch_and_bound_settings.sub_mip               = 1;
-      branch_and_bound_settings.solution_callback     = [this](std::vector<f_t>& solution,
+      branch_and_bound_settings.reliability_branching                    = 0;
+      branch_and_bound_settings.max_cut_passes                           = 0;
+      branch_and_bound_settings.clique_cuts                              = 0;
+      branch_and_bound_settings.sub_mip                                  = 1;
+      branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
+      branch_and_bound_settings.solution_callback = [this](std::vector<f_t>& solution,
                                                            f_t objective) {
         this->solution_callback(solution, objective);
       };

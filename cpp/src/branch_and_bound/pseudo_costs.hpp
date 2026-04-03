@@ -406,6 +406,11 @@ struct reliability_branching_settings_t {
   // Only used when `reliable_threshold` is negative
   i_t max_reliable_threshold = 5;
   i_t min_reliable_threshold = 1;
+
+  // Estimate the objective change of each fractional variable
+  // using a single pivot of dual simplex. Then rank the candidates
+  // based on this estimation.
+  bool rank_candidates_with_dual_pivot = true;
 };
 
 template <typename i_t, typename f_t>
@@ -429,7 +434,8 @@ class pseudo_costs_t {
       pseudo_cost_num_down(num_variables),
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
-      pseudo_cost_mutex_down(num_variables)
+      pseudo_cost_mutex_down(num_variables),
+      AT(1, 1, 1)
   {
   }
 
@@ -487,13 +493,12 @@ class pseudo_costs_t {
                          const std::vector<f_t>& solution,
                          logger_t& log);
 
-  i_t reliable_variable_selection(mip_node_t<i_t, f_t>* node_ptr,
+  i_t reliable_variable_selection(const mip_node_t<i_t, f_t>* node_ptr,
                                   const std::vector<i_t>& fractional,
-                                  const std::vector<f_t>& solution,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings,
-                                  const std::vector<variable_type_t>& var_types,
                                   branch_and_bound_worker_t<i_t, f_t>* worker,
+                                  const std::vector<variable_type_t>& var_types,
                                   const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
+                                  const simplex_solver_settings_t<i_t, f_t>& settings,
                                   f_t upper_bound,
                                   int max_num_tasks,
                                   logger_t& log,
@@ -521,6 +526,7 @@ class pseudo_costs_t {
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
 
+  csc_matrix_t<i_t, f_t> AT;  // Transpose of the constraint matrix A
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_down;
   std::vector<omp_atomic_t<i_t>> pseudo_cost_num_up;
@@ -541,13 +547,15 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       f_t start_time,
                       const std::vector<i_t>& new_slacks,
                       const std::vector<variable_type_t>& var_types,
-                      const std::vector<f_t>& root_soln,
-                      const std::vector<f_t>& root_soln_y,
-                      const std::vector<f_t>& root_soln_z,
+                      const lp_solution_t<i_t, f_t>& root_solution,
                       const std::vector<i_t>& fractional,
                       f_t root_obj,
+                      f_t upper_bound,
                       const std::vector<variable_status_t>& root_vstatus,
                       const std::vector<f_t>& edge_norms,
+                      const std::vector<i_t>& basic_list,
+                      const std::vector<i_t>& nonbasic_list,
+                      basis_update_mpf_t<i_t, f_t>& basis_factors,
                       pseudo_costs_t<i_t, f_t>& pc);
 
 }  // namespace cuopt::linear_programming::dual_simplex

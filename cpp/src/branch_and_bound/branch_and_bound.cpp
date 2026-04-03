@@ -840,11 +840,10 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
       if (settings_.reliability_branching != 0) {
         branch_var = pc_.reliable_variable_selection(node_ptr,
                                                      fractional,
-                                                     solution,
-                                                     settings_,
-                                                     var_types_,
                                                      worker,
+                                                     var_types_,
                                                      exploration_stats_,
+                                                     settings_,
                                                      upper_bound_,
                                                      worker_pool_.num_idle_workers(),
                                                      log,
@@ -1178,7 +1177,6 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
   dual::status_t lp_status,
   Policy& policy)
 {
-  constexpr f_t inf                      = std::numeric_limits<f_t>::infinity();
   const f_t abs_fathom_tol               = settings_.absolute_mip_gap_tol / 10;
   lp_problem_t<i_t, f_t>& leaf_problem   = worker->leaf_problem;
   lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
@@ -2501,6 +2499,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
+  original_lp_.A.transpose(pc_.AT);
   {
     raft::common::nvtx::range scope_sb("BB::strong_branching");
     strong_branching<i_t, f_t>(original_lp_,
@@ -2508,13 +2507,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                exploration_stats_.start_time,
                                new_slacks_,
                                var_types_,
-                               root_relax_soln_.x,
-                               root_relax_soln_.y,
-                               root_relax_soln_.z,
+                               root_relax_soln_,
                                fractional,
                                root_objective_,
+                               upper_bound_,
                                root_vstatus_,
                                edge_norms_,
+                               basic_list,
+                               nonbasic_list,
+                               basis_update,
                                pc_);
   }
 
