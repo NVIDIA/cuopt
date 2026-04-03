@@ -848,7 +848,8 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 // Compute in double as some cases overflow when using size_t
 template <typename i_t, typename f_t>
 static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>& problem,
-                                          double trial_batch_size)
+                                          double trial_batch_size,
+                                          bool collect_solutions = false)
 {
   double total_memory = 0.0;
   // In PDLP we store the scaled version of the problem which contains all of those
@@ -893,10 +894,12 @@ static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>
   total_memory += trial_batch_size * problem.get_n_variables() * sizeof(f_t);
   total_memory += trial_batch_size * problem.get_n_constraints() * sizeof(f_t);
 
-  // Data for the solution
-  total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
-  total_memory += problem.get_n_constraints() * trial_batch_size * sizeof(f_t);
-  total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
+  // Data for the solution (only allocated when collect_solutions is true)
+  if (collect_solutions) {
+    total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
+    total_memory += problem.get_n_constraints() * trial_batch_size * sizeof(f_t);
+    total_memory += problem.get_n_variables() * trial_batch_size * sizeof(f_t);
+  }
 
   // Add a 70% overhead to make sure we have enough memory considering other parts of the solver may
   // need memory later while the batch PDLP is running
@@ -931,7 +934,8 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   size_t memory_max_batch_size = max_batch_size;
 
   // Check if we don't hit the limit using max_batch_size
-  const double memory_estimate = batch_pdlp_memory_estimator(problem, max_batch_size);
+  const bool collect_solutions  = settings.generate_batch_primal_dual_solution;
+  const double memory_estimate = batch_pdlp_memory_estimator(problem, max_batch_size, collect_solutions);
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
   const double free_mem  = static_cast<double>(st_free_mem);
@@ -947,7 +951,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     use_optimal_batch_size = true;
     // Decrement batch size iteratively until we find a batch size that fits
     while (memory_max_batch_size > 1) {
-      const double memory_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size);
+      const double memory_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size, collect_solutions);
       if (memory_estimate <= free_mem) { break; }
 #ifdef BATCH_VERBOSE_MODE
       std::cout << "Memory estimate: " << memory_estimate << std::endl;
@@ -958,7 +962,7 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 #endif
       memory_max_batch_size--;
     }
-    const double min_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size);
+    const double min_estimate = batch_pdlp_memory_estimator(problem, memory_max_batch_size, collect_solutions);
     if (min_estimate > free_mem) {
       return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
                                                        stream);
@@ -1000,9 +1004,6 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
       initial_pdlp_iteration = *settings.get_initial_pdlp_iteration();
     }
   }
-
-  // Only used in tests
-  const bool collect_solutions = settings.generate_batch_primal_dual_solution;
 
   rmm::device_uvector<f_t> full_primal_solution(
     (collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
