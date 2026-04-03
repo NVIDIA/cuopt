@@ -8,7 +8,7 @@
 - Add support for FP32 and mixed precision in PDLP
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
-- Expose` parameters for tuning heuristics
+- Expose parameters for tuning heuristics
 - Add support for Python 3.14
 - Add support for writing presolved model to a file
 
