@@ -10,6 +10,7 @@
 - Add UnboundedOrInfeasible termination status
 - Expose` parameters for tuning heuristics
 - Add support for Python 3.14
+- Add support for writing presolved model to a file
 
 ### Breaking Changes (26.04)
 - The solved_by_pdlp field in the Python LP solution object was changed to solved_by 
