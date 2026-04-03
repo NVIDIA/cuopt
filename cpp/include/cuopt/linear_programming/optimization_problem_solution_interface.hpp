@@ -291,10 +291,10 @@ class lp_solution_interface_t : public optimization_problem_solution_interface_t
   virtual i_t get_num_iterations(i_t id = 0) const = 0;
 
   /**
-   * @brief Check if solved by PDLP
-   * @return true if solved by PDLP
+   * @brief Method used for solving the LP.
+   * @return the method used for solving the LP.
    */
-  virtual bool is_solved_by_pdlp(i_t id = 0) const = 0;
+  virtual method_t solved_by(i_t id = 0) const = 0;
 
   /**
    * @brief Get PDLP warm start data (GPU solutions only)

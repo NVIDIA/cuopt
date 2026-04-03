@@ -840,11 +840,12 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         batch_solution_to_return_
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
-                             pdlp_termination_status_t::ConcurrentLimit);
-        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
+        if (current_termination_strategy_.get_termination_status(i) !=
+            pdlp_termination_status_t::ConcurrentLimit) {
+          batch_solution_to_return_
+            .get_additional_termination_informations()[climber_strategies_[i].original_index]
+            .solved_by = method_t::PDLP;
+        }
       }
       current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -917,10 +918,12 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         batch_solution_to_return_
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
-                             pdlp_termination_status_t::ConcurrentLimit);
+        if (current_termination_strategy_.get_termination_status(i) !=
+            pdlp_termination_status_t::ConcurrentLimit) {
+          batch_solution_to_return_
+            .get_additional_termination_informations()[climber_strategies_[i].original_index]
+            .solved_by = method_t::PDLP;
+        }
         if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
     }

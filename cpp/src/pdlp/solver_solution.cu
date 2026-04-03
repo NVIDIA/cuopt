@@ -168,12 +168,12 @@ void optimization_problem_solution_t<i_t, f_t>::write_additional_termination_sta
   myfile << "\t\"Additional termination information\" : { " << std::endl;
   myfile << "\t\"Number of steps taken\" : " << termination_stats.number_of_steps_taken << ","
          << std::endl;
-  if (termination_stats.solved_by_pdlp) {
+  if (termination_stats.solved_by == method_t::PDLP) {
     myfile << "\t\"Total number of attempted steps\" : "
            << termination_stats.total_number_of_attempted_steps << "," << std::endl;
   }
   myfile << "\t\"Total solve time\" : " << termination_stats.solve_time;
-  if (termination_stats.solved_by_pdlp) {
+  if (termination_stats.solved_by == method_t::PDLP) {
     myfile << "," << std::endl;
     myfile << "\t\t\"Convergence measures\" : { " << std::endl;
     myfile << "\t\t\t\"Absolute primal residual\" : " << termination_stats.l2_primal_residual << ","

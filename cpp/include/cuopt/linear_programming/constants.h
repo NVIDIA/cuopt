@@ -132,6 +132,7 @@
 #define CUOPT_METHOD_PDLP         1
 #define CUOPT_METHOD_DUAL_SIMPLEX 2
 #define CUOPT_METHOD_BARRIER      3
+#define CUOPT_METHOD_UNSET        4
 
 /* @brief PDLP precision mode constants */
 #define CUOPT_PDLP_DEFAULT_PRECISION -1

@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -89,8 +90,8 @@ class optimization_problem_solution_t : public base_solution_t {
     /** Solve time in seconds */
     double solve_time{std::numeric_limits<double>::signaling_NaN()};
 
-    /** Whether the problem was solved by PDLP or Dual Simplex */
-    bool solved_by_pdlp{false};
+    /** Whether the problem was solved by PDLP, Barrier or Dual Simplex */
+    method_t solved_by = method_t::Unset;
   };
 
   /**

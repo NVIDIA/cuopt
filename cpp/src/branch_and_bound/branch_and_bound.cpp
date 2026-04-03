@@ -1974,18 +1974,21 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms);
       user_objective = root_crossover_soln_.user_objective;
       iter           = root_crossover_soln_.iterations;
-      solver_name    = "Barrier/PDLP and Crossover";
+      solver_name    = method_to_string(root_relax_solved_by);
+
     } else {
-      root_status    = root_status_future.get();
-      user_objective = root_relax_soln_.user_objective;
-      iter           = root_relax_soln_.iterations;
-      solver_name    = "Dual Simplex";
+      root_status          = root_status_future.get();
+      user_objective       = root_relax_soln_.user_objective;
+      iter                 = root_relax_soln_.iterations;
+      root_relax_solved_by = DualSimplex;
+      solver_name          = "Dual Simplex";
     }
   } else {
-    root_status    = root_status_future.get();
-    user_objective = root_relax_soln_.user_objective;
-    iter           = root_relax_soln_.iterations;
-    solver_name    = "Dual Simplex";
+    root_status          = root_status_future.get();
+    user_objective       = root_relax_soln_.user_objective;
+    iter                 = root_relax_soln_.iterations;
+    root_relax_solved_by = DualSimplex;
+    solver_name          = "Dual Simplex";
   }
 
   settings_.log.printf("\n");

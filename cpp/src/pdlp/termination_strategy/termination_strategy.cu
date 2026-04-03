@@ -605,8 +605,10 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
                &infeasibility_information_view.dual_ray_linear_objective[i],
                1,
                stream_view_);
-    term_stats_vector[i].solved_by_pdlp =
-      (termination_status[i] != pdlp_termination_status_t::ConcurrentLimit);
+
+    if (termination_status[i] != pdlp_termination_status_t::ConcurrentLimit) {
+      term_stats_vector[i].solved_by = method_t::PDLP;
+    }
   }
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));

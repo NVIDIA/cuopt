@@ -1038,7 +1038,7 @@ TEST(pdlp_class, run_empty_matrix_dual_simplex)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, op_problem, solver_settings);
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
-  EXPECT_FALSE(solution.get_additional_termination_information().solved_by_pdlp);
+  EXPECT_EQ(solution.get_additional_termination_information().solved_by, method_t::DualSimplex);
 }
 
 TEST(pdlp_class, test_max)

@@ -52,9 +52,11 @@ enum pdlp_solver_mode_t : int {
  * @brief Enum representing the different methods that can be used to solve the
  * linear programming problem.
  *
- * Concurrent: Use both PDLP and DualSimplex in parallel.
+ * Concurrent: Use PDLP, Barrier and DualSimplex in parallel.
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
+ * Barrier: Use the barrier method
+ * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
  */
@@ -62,8 +64,21 @@ enum method_t : int {
   Concurrent  = CUOPT_METHOD_CONCURRENT,
   PDLP        = CUOPT_METHOD_PDLP,
   DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
-  Barrier     = CUOPT_METHOD_BARRIER
+  Barrier     = CUOPT_METHOD_BARRIER,
+  Unset       = CUOPT_METHOD_UNSET
 };
+
+/// Returns the corresponding string from the enum `method_t`.
+inline std::string method_to_string(method_t method)
+{
+  switch (method) {
+    case method_t::DualSimplex: return "Dual Simplex";
+    case method_t::PDLP: return "PDLP";
+    case method_t::Barrier: return "Barrier";
+    case method_t::Concurrent: return "Concurrent";
+    default: return "Unset";
+  }
+}
 
 /**
  * @brief Enum representing the PDLP precision modes.

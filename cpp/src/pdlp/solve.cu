@@ -351,7 +351,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   f_t duration,
   f_t norm_user_objective,
   f_t norm_rhs,
-  i_t method)
+  method_t method)
 {
   auto to_termination_status = [](dual_simplex::lp_status_t status) {
     switch (status) {
@@ -389,7 +389,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   std::vector<
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
     info(1);
-  info[0].solved_by_pdlp                  = false;
+  info[0].solved_by                       = method;
   info[0].primal_objective                = solution.user_objective;
   info[0].dual_objective                  = solution.user_objective;
   info[0].gap                             = 0.0;
@@ -420,7 +420,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
       termination_status != pdlp_termination_status_t::TimeLimit &&
       termination_status != pdlp_termination_status_t::ConcurrentLimit) {
     CUOPT_LOG_INFO("%s Solve status %s",
-                   method == 0 ? "Dual Simplex" : "Barrier",
+                   method == method_t::DualSimplex ? "Dual Simplex" : "Barrier",
                    sol.get_termination_status_string().c_str());
   }
 
@@ -494,7 +494,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
                                   std::get<2>(sol_dual_simplex),
                                   std::get<3>(sol_dual_simplex),
                                   std::get<4>(sol_dual_simplex),
-                                  1);
+                                  method_t::Barrier);
 }
 
 template <typename i_t, typename f_t>
@@ -568,7 +568,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
                                   std::get<2>(sol_dual_simplex),
                                   std::get<3>(sol_dual_simplex),
                                   std::get<4>(sol_dual_simplex),
-                                  0);
+                                  method_t::DualSimplex);
 }
 
 #if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
@@ -670,7 +670,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
     di.max_dual_ray_infeasibility      = static_cast<double>(fi.max_dual_ray_infeasibility);
     di.dual_ray_linear_objective       = static_cast<double>(fi.dual_ray_linear_objective);
     di.solve_time                      = fi.solve_time;
-    di.solved_by_pdlp                  = fi.solved_by_pdlp;
+    di.solved_by                       = fi.solved_by;
     term_infos.push_back(di);
   }
 
@@ -1252,7 +1252,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                  std::get<2>(*sol_dual_simplex_ptr),
                                  std::get<3>(*sol_dual_simplex_ptr),
                                  std::get<4>(*sol_dual_simplex_ptr),
-                                 0)
+                                 method_t::DualSimplex)
       : optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::ConcurrentLimit,
                                                   problem.handle_ptr->get_stream()};
 
@@ -1263,7 +1263,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
                                               std::get<2>(*sol_barrier_ptr),
                                               std::get<3>(*sol_barrier_ptr),
                                               std::get<4>(*sol_barrier_ptr),
-                                              1);
+                                              method_t::Barrier);
 
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
