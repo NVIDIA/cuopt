@@ -109,7 +109,7 @@ class mip_solver_settings_t {
 
   /** Initial primal solutions */
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
-  int mip_scaling = CUOPT_MIP_SCALING_ON;
+  int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
   /**
    * @brief Determinism mode for MIP solver.

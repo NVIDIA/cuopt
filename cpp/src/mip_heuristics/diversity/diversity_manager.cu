@@ -422,7 +422,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     convert_greater_to_less(*problem_ptr);
 
     f_t absolute_tolerance = context.settings.tolerances.absolute_tolerance;
-    // f_t tolerance_divisor  = 100.;
 
     pdlp_solver_settings_t<i_t, f_t> pdlp_settings{};
     pdlp_settings.tolerances.absolute_dual_tolerance = absolute_tolerance;
@@ -431,15 +430,15 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     pdlp_settings.tolerances.absolute_primal_tolerance = absolute_tolerance;
     pdlp_settings.tolerances.relative_primal_tolerance =
       context.settings.tolerances.relative_tolerance;
-    pdlp_settings.time_limit            = lp_time_limit;
-    pdlp_settings.first_primal_feasible = false;
-    pdlp_settings.concurrent_halt       = &global_concurrent_halt;
-    pdlp_settings.method                = method_t::Concurrent;
-    pdlp_settings.inside_mip            = true;
-    pdlp_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable2;
-    pdlp_settings.num_gpus              = context.settings.num_gpus;
-    pdlp_settings.presolver             = presolver_t::None;
-    // pdlp_settings.per_constraint_residual = true;
+    pdlp_settings.time_limit              = lp_time_limit;
+    pdlp_settings.first_primal_feasible   = false;
+    pdlp_settings.concurrent_halt         = &global_concurrent_halt;
+    pdlp_settings.method                  = method_t::Concurrent;
+    pdlp_settings.inside_mip              = true;
+    pdlp_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable2;
+    pdlp_settings.num_gpus                = context.settings.num_gpus;
+    pdlp_settings.presolver               = presolver_t::None;
+    pdlp_settings.per_constraint_residual = true;
     set_pdlp_solver_mode(pdlp_settings);
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
