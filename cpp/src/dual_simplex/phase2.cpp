@@ -3571,7 +3571,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           sum_perturb,
                           now);
       if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback) {
-        settings.dual_simplex_objective_callback(user_obj);
+        settings.dual_simplex_objective_callback(obj);
       }
     }
 
