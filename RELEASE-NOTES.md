@@ -5,6 +5,7 @@
 ### New Features (26.04)
 - Run no-relaxation heuristics before presolve 
 - Add new MIP cuts: clique cuts and implied bounds cuts
+- Add support for FP32 and mixed precision in PDLP
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
 - Expose` parameters for tuning heuristics
@@ -19,6 +20,7 @@
 - Use variable lower and variable upper bounds in MIR cuts
 - Improved numerics of mixed integer Gomory cuts
 - Lift knapsack cuts
+- Use objective function integrality when pruning node
 - Reduce time for Markowitz factorization in dual simplex
 - Reduce time for dual push inside crossover
 - Reduce number of free variables in barrier
