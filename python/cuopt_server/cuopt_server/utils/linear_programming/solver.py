@@ -7,6 +7,10 @@ import time
 
 from fastapi import HTTPException
 
+from cuopt_server.utils.linear_programming.data_definition import (
+    get_solver_config_value,
+)
+
 from cuopt import linear_programming
 from cuopt.linear_programming.internals import (
     GetSolutionCallback,
@@ -157,11 +161,7 @@ def create_solver(LP_data, warmstart_data):
     if LP_data.solver_config is not None:
         solver_config = LP_data.solver_config
         for param in solver_params:
-            param_value = None
-            if param.endswith("tolerance"):
-                param_value = getattr(solver_config.tolerances, param, None)
-            else:
-                param_value = getattr(solver_config, param, None)
+            param_value = get_solver_config_value(solver_config, param)
             if param_value is not None and param_value != "":
                 solver_settings.set_parameter(param, param_value)
 
@@ -172,12 +172,13 @@ def create_solver(LP_data, warmstart_data):
             lp_time_limit = float(os.environ.get("CUOPT_LP_TIME_LIMIT_SEC"))
         except Exception:
             lp_time_limit = None
-        if solver_config.time_limit is None:
+        req_time_limit = get_solver_config_value(solver_config, "time_limit")
+        if req_time_limit is None:
             time_limit = lp_time_limit
         elif lp_time_limit:
-            time_limit = min(solver_config.time_limit, lp_time_limit)
+            time_limit = min(req_time_limit, lp_time_limit)
         else:
-            time_limit = solver_config.time_limit
+            time_limit = req_time_limit
         if time_limit is not None:
             logging.debug(f"setting LP time limit to {time_limit}sec")
             solver_settings.set_parameter("time_limit", time_limit)
@@ -188,14 +189,15 @@ def create_solver(LP_data, warmstart_data):
             )
         except Exception:
             lp_iteration_limit = None
-        if solver_config.iteration_limit is None:
+        req_iter_limit = get_solver_config_value(
+            solver_config, "iteration_limit"
+        )
+        if req_iter_limit is None:
             iteration_limit = lp_iteration_limit
         elif lp_iteration_limit:
-            iteration_limit = min(
-                solver_config.iteration_limit, lp_iteration_limit
-            )
+            iteration_limit = min(req_iter_limit, lp_iteration_limit)
         else:
-            iteration_limit = solver_config.iteration_limit
+            iteration_limit = req_iter_limit
         if iteration_limit is not None:
             logging.debug(f"setting LP iteration limit to {iteration_limit}")
             solver_settings.set_parameter("iteration_limit", iteration_limit)
@@ -203,10 +205,14 @@ def create_solver(LP_data, warmstart_data):
         if warmstart_data is not None:
             solver_settings.set_pdlp_warm_start_data(warmstart_data)
 
-        if solver_config.user_problem_file != "":
+        user_problem_file = get_solver_config_value(
+            solver_config, "user_problem_file"
+        )
+        if user_problem_file not in (None, ""):
             warnings.append(ignored_warning("user_problem_file"))
 
-        if solver_config.solution_file != "":
+        solution_file = get_solver_config_value(solver_config, "solution_file")
+        if solution_file not in (None, ""):
             warnings.append(ignored_warning("solution_file"))
 
     return warnings, solver_settings

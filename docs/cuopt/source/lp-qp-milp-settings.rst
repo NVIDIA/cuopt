@@ -9,6 +9,9 @@ Please refer to examples in :doc:`C </cuopt-c/lp-qp-milp/index>` and :doc:`Serve
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
 
+.. note::
+   **Self-hosted REST service (LP/MILP).** In JSON requests, ``solver_config`` accepts every solver parameter name the engine registers. The authoritative snake_case strings are the values of the ``CUOPT_*`` macros in the ``cpp/include/cuopt/linear_programming/constants.h`` header shipped with cuOpt (the Python service forwards those keys to the solver). Human-readable descriptions and defaults are on this page. The :doc:`open-api` schema only highlights the ``tolerances`` object shape explicitly; other keys are still valid. Use a nested ``tolerances`` map for tolerance fields where that matches the examples below, or the same names as top-level keys when convenient—either way resolves to the same solver settings.
+
 Parameters common to LP/MILP
 ----------------------------
 

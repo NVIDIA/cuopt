@@ -4,7 +4,7 @@ Transition Guide for Change in Features
 
 In addition to the quality improvements,  some new features were added, and some features were deprecated to improve user experience. For any questions, please reach out to the cuOpt team through github issues.
 
-Parameter/option statuses are listed below, they express how each of these options are affected:
+Parameter/option statuses used in this guide mean the following:
 
   **New** - A new feature has been added.
 
@@ -16,10 +16,13 @@ Parameter/option statuses are listed below, they express how each of these optio
 
   **Removed** - These features were deprecated in a previous release and completely removed in this one.
 
-For all solver_configs fields, see the LP/QP/MILP settings guide :doc:`lp-qp-milp-settings` or the service openapi spec :doc:`open-api`.
+Release 26.04
+--------------
 
-Changes to solver_configs.tolerances
-------------------------------------
+- **LP/MILP self-hosted REST:** The canonical parameter list and semantics are in :doc:`lp-qp-milp-settings`. The :doc:`open-api` schema is intentionally non-exhaustive for ``solver_config``; pass-through keys use the same snake_case names as in the user guide. The **Historical** sections below (25.05 alignment) document older service field renames for clients upgrading saved requests.
+
+Historical: self-hosted service ``solver_configs.tolerances`` (25.05 alignment)
+-------------------------------------------------------------------------------
 
 The following fields are **Deprecated** in ``solver_configs.tolerances`` for the service:
 
@@ -54,8 +57,8 @@ The following fields are **New** in ``solver_configs.tolerances`` for the servic
 - mip_absolute_tolerance
 - mip_relative_tolerance
 
-Changes to solver_configs
--------------------------
+Historical: self-hosted service ``solver_configs`` top-level fields (25.05 alignment)
+------------------------------------------------------------------------------------
 
 The following fields are **Deprecated** in ``solver_configs`` for the service:
 

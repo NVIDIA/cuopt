@@ -3,11 +3,11 @@
 
 import copy
 import json
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import jsonref
 import numpy as np
-from pydantic import BaseModel, Extra, Field, PlainValidator
+from pydantic import BaseModel, ConfigDict, Extra, Field, PlainValidator
 from typing_extensions import Annotated
 
 from ..._version import __version_major_minor__
@@ -319,259 +319,52 @@ class InitialSolution(StrictModel):
     )
 
 
-class Tolerances(BaseModel):
-    optimality: float = Field(
-        default=None,
-        description="absolute and relative tolerance on the primal feasibility, dual feasibility, and gap",  # noqa
-    )
-    absolute_primal_tolerance: float = Field(
-        default=None, description="Absolute primal tolerance"
-    )
-    absolute_dual_tolerance: float = Field(
-        default=None,
-        description="Absolute dual tolerance NOTE: Only applicable to LP",
-    )
-    absolute_gap_tolerance: float = Field(
-        default=None,
-        description="Absolute gap tolerance NOTE: Only applicable to LP",
-    )
-    relative_primal_tolerance: float = Field(
-        default=None, description="Relative primal tolerance"
-    )
-    relative_dual_tolerance: float = Field(
-        default=None,
-        description="Relative dual tolerance NOTE: Only applicable to LP",
-    )
-    relative_gap_tolerance: float = Field(
-        default=None,
-        description="Relative gap tolerance NOTE: Only applicable to LP",
-    )
-    primal_infeasible_tolerance: float = Field(
-        default=None,
-        description="Primal infeasible tolerance NOTE: Only applicable to LP",
-    )
-    dual_infeasible_tolerance: float = Field(
-        default=None,
-        description="Dual infeasible tolerance NOTE: Only applicable to LP",
-    )
-    mip_integrality_tolerance: float = Field(
-        default=None,
-        description="NOTE: Only applicable to MILP. Integrality tolerance.",
-    )
-    mip_absolute_gap: float = Field(
-        default=None,
-        description="MIP gap absolute tolerance NOTE: Only applicable to MILP",
-    )
-    mip_relative_gap: float = Field(
-        default=None,
-        description="MIP gap relative tolerance NOTE: Only applicable to MILP",
-    )
-    mip_absolute_tolerance: float = Field(
-        default=None, description="MIP absolute tolerance"
-    )
-    mip_relative_tolerance: float = Field(
-        default=None, description="MIP relative tolerance"
-    )
-
-
 class SolverConfig(BaseModel):
-    tolerances: Optional[Tolerances] = Field(
-        default=Tolerances(),
-        description="Note: Not supported for MILP."
-        "absolute is fixed to 1e-4, relative is fixed for 1e-6 and integrality is fixed for 1e-4.",  # noqa
+    """
+    LP/MILP solver options for self-hosted REST requests.
+
+    Keys are passed through to the engine (see ``create_solver`` in
+    ``cuopt_server.utils.linear_programming.solver``). Descriptions and
+    defaults are documented in the User Guide (*LP, QP, and MILP Settings*).
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "description": (
+                "Solver parameters for LP and MILP. The service accepts every "
+                "parameter name registered by the cuOpt engine (snake_case "
+                "strings as in "
+                "``cpp/include/cuopt/linear_programming/constants.h`` without "
+                "the ``CUOPT_`` macro). Human-readable documentation lives in "
+                "**LP, QP, and MILP Settings**. Keys not listed in this schema "
+                "are still forwarded to the solver. Optional nested tolerance "
+                "fields may be supplied either under ``tolerances`` (recommended) "
+                "or as top-level keys, depending on the parameter."
+            ),
+        },
     )
-    infeasibility_detection: Optional[bool] = Field(
-        default=False,
-        examples=[True],
-        description=" Detect and leave if the problem "
-        "is detected as infeasible."
-        "<br>"
-        "Note: Not supported for MILP. ",
-    )
-    time_limit: Optional[float] = Field(
+
+    tolerances: Optional[Dict[str, Any]] = Field(
         default=None,
-        examples=[10],
-        description="Time limit in seconds after "
-        "which the solver will return the current solution. "
-        "Mandatory in case of MILP. "
-        "<br>"
-        "LP: Solver runs until optimality is reached within the time limit. "
-        "If it does, it will return and will not wait for the entire duration "
-        "of the time limit."
-        "<br>"
-        "MILP: Solver runs the entire duration of the time limit to search "
-        "for a better solution.",
+        description=(
+            "Optional map of tolerance parameters (for example "
+            "``optimality``, ``absolute_primal_tolerance``, ``mip_absolute_gap``). "
+            "See **LP, QP, and MILP Settings** in the User Guide."
+        ),
     )
-    iteration_limit: Optional[int] = Field(
-        default=None,
-        description="Iteration limit after which the solver "
-        "will return the current solution"
-        "<br>"
-        "Note: Not supported for MILP. ",
-    )
-    pdlp_solver_mode: Optional[int] = Field(
-        default=4,
-        description="Solver mode to use for PDLP:"
-        "<br>"
-        "- Stable1: 0, Legacy stable mode"
-        "<br>"
-        "- Stable2: 1, Legacy stable mode"
-        "<br>"
-        "- Methodical1: 2, Takes slower individual steps, "
-        "but fewer are needed to converge"
-        "<br>"
-        "- Fast1: 3, Fastest mode, but with less success in convergence"
-        "<br>"
-        "- Stable3: 4, Best overall mode from experiments; "
-        "balances speed and convergence success"
-        "<br>"
-        "Note: Not supported for MILP. ",
-    )
-    method: Optional[int] = Field(
-        default=0,
-        description="Method to use:"
-        "<br>"
-        "- Concurrent: 0, Concurrent method"
-        "<br>"
-        "- PDLP: 1, PDLP method"
-        "<br>"
-        "- Dual Simplex: 2, Dual Simplex method"
-        "<br>"
-        "- Barrier: 3, Barrier method"
-        "<br>"
-        "Note: Not supported for MILP. ",
-    )
-    mip_scaling: Optional[bool] = Field(
-        default=True,
-        description="Set True to enable MIP scaling, False to disable.",
-    )
-    mip_heuristics_only: Optional[bool] = Field(
-        default=False,
-        description="Set True to run heuristics only, False to run "
-        "heuristics and branch and bound for MILP",
-    )
-    mip_batch_pdlp_strong_branching: Optional[int] = Field(
-        default=0,
-        description="Set 1 to enable batch PDLP strong branching "
-        "in the MIP solver, 0 to disable.",
-    )
-    num_cpu_threads: Optional[int] = Field(
-        default=None,
-        description="Set the number of CPU threads to use for branch and bound.",  # noqa
-    )
-    num_gpus: Optional[int] = Field(
-        default=None,
-        description="Set the number of GPUs to use for LP solve.",
-    )
-    augmented: Optional[int] = Field(
-        default=-1,
-        description="Set the types of system solved by the barrier solver."
-        " -1 for automatic, 0 for ADAT, 1 for augmented system",
-    )
-    folding: Optional[int] = Field(
-        default=-1,
-        description="Set if folding should be used on a linear program."
-        " -1 for automatic, 0 to not fold, 1 to force folding",
-    )
-    dualize: Optional[int] = Field(
-        default=-1,
-        description="Set if dualization should be used on a linear program."
-        " -1 for automatic, 0 to turn off dualization, 1 to force dualization",
-    )
-    ordering: Optional[int] = Field(
-        default=-1,
-        description="Set the type of ordering to use for the barrier solver."
-        "-1 for automatic, 0 to use cuDSS default ordering, 1 to use AMD",
-    )
-    barrier_dual_initial_point: Optional[int] = Field(
-        default=-1,
-        description="Set the type of dual initial point to use for the barrier"
-        "solver. -1 for automatic, 0 to use Lustig, Marsten, and Shanno"
-        "initial point, 1 to use initial point from a dual least squares"
-        "problem",
-    )
-    eliminate_dense_columns: Optional[bool] = Field(
-        default=True,
-        description="Set if dense columns should be eliminated from the "
-        "constraint matrix in the barrier solver. "
-        "True to eliminate, False to not eliminate",
-    )
-    cudss_deterministic: Optional[bool] = Field(
-        default=False,
-        description="Set if cuDSS should use deterministic mode. "
-        "True to use deterministic mode, False to not use deterministic mode",
-    )
-    crossover: Optional[bool] = Field(
-        default=False,
-        description="Set True to use crossover, False to not use crossover.",
-    )
-    presolve: Optional[int] = Field(
-        default=None,
-        description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "  # noqa
-        "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
-        "Default is 1 for MIP problems and 2 for LP problems.",
-    )
-    dual_postsolve: Optional[bool] = Field(
-        default=None,
-        description="Set True to enable dual postsolve, False to disable dual postsolve. "  # noqa
-        "Dual postsolve can improve solve time at the expense of not having "
-        "access to the dual solution. "
-        "Default is True for LP problems when presolve is enabled. "
-        "This is not relevant for MIP problems.",
-    )
-    log_to_console: Optional[bool] = Field(
-        default=True,
-        description="Set True to write logs to console, False to "
-        "not write logs to console.",
-    )
-    strict_infeasibility: Optional[bool] = Field(
-        default=False,
-        description=" controls the strict infeasibility "
-        "mode in PDLP. When true if either the current or "
-        "the average solution is detected as infeasible, "
-        "PDLP will stop. When false both the current and "
-        "average solution need to be detected as infeasible "
-        "for PDLP to stop.",
-    )
-    user_problem_file: Optional[str] = Field(
-        default="",
-        description="Ignored by the service but included "
-        "for dataset compatibility",
-    )
-    per_constraint_residual: Optional[bool] = Field(
-        default=False,
-        description="Controls whether PDLP should compute the "
-        "primal & dual residual per constraint instead of globally.",
-    )
-    save_best_primal_so_far: Optional[bool] = Field(
-        default=False,
-        description="controls whether PDLP should save the "
-        "best primal solution so far. "
-        "With this parameter set to true, PDLP will always "
-        "prioritize a primal feasible "
-        "to a non primal feasible. "
-        "If a new primal feasible is found, the one with the "
-        "best primal objective will be kept. "
-        "If no primal feasible was found, the one "
-        "with the lowest primal residual will be kept. "
-        "If two have the same primal residual, "
-        "the one with the best objective will be kept.",
-    )
-    first_primal_feasible: Optional[bool] = Field(
-        default=False,
-        description="Controls whether PDLP should stop when "
-        "the first primal feasible solution is found.",
-    )
-    log_file: Optional[str] = Field(
-        default="",
-        description="Ignored by the service but included "
-        "for dataset compatibility",
-    )
-    solution_file: Optional[str] = Field(
-        default="",
-        description="Ignored by the service but included "
-        "for dataset compatibility",
-    )
+
+
+def get_solver_config_value(solver_config: SolverConfig, param: str) -> Any:
+    """Resolve *param* from nested ``tolerances`` and/or top-level ``solver_config`` keys."""
+    tol = solver_config.tolerances
+    if isinstance(tol, dict) and param in tol and tol[param] is not None:
+        return tol[param]
+    if tol is not None and not isinstance(tol, dict):
+        nested = getattr(tol, param, None)
+        if nested is not None:
+            return nested
+    return getattr(solver_config, param, None)
 
 
 class LPData(StrictModel):

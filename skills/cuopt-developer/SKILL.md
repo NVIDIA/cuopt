@@ -269,14 +269,14 @@ rmm::device_uvector<int> data(100, stream);
 
 1. Add to settings struct in `cpp/include/cuopt/`
 2. Expose in Python bindings `python/cuopt/`
-3. Add to server schema if applicable
+3. Extend server LP/MILP passthrough if needed: ``SolverConfig`` in ``python/cuopt_server/cuopt_server/utils/linear_programming/data_definition.py`` allows extra keys that match engine parameters (see ``get_parameter_names()`` / ``constants.h``); no OpenAPI hand-edit required
 4. Add tests
 5. Update documentation
 
 ### Adding a Server Endpoint
 
 1. Add route in `python/cuopt_server/cuopt_server/webserver.py`
-2. Update OpenAPI spec `docs/cuopt/source/cuopt_spec.yaml`
+2. Regenerate OpenAPI when needed: ``docs/cuopt/source/cuopt_spec.yaml`` is produced by Sphinx ``conf.py`` from the FastAPI app (not maintained by hand)
 3. Add tests in `python/cuopt_server/tests/`
 4. Update documentation
 
