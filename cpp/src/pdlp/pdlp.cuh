@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 
@@ -138,6 +139,8 @@ class pdlp_solver_t {
   rmm::cuda_stream_view stream_view_;
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
+  dual_simplex::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{
+    settings_.shared_sb_solved};
 
   problem_t<i_t, f_t>* problem_ptr;
   // Combined bounds in op_problem_scaled_ will only be scaled if

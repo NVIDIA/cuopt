@@ -891,14 +891,19 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       }
     }
 
+    std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
     for (i_t j = 0; j < problem.num_cols; j++) {
       if (lower_bounds_removed[j]) {
         i_t col_start = problem.A.col_start[j];
         i_t col_end   = problem.A.col_start[j + 1];
         for (i_t p = col_start; p < col_end; p++) {
-          i_t i   = problem.A.i[p];
-          f_t aij = problem.A.x[p];
-          problem.rhs[i] -= aij * problem.lower[j];
+          i_t i                 = problem.A.i[p];
+          f_t aij               = problem.A.x[p];
+          f_t val               = -aij * problem.lower[j];
+          f_t y                 = val - kahan_compensation[i];
+          f_t t                 = problem.rhs[i] + y;
+          kahan_compensation[i] = (t - problem.rhs[i]) - y;
+          problem.rhs[i]        = t;
         }
         problem.obj_constant += old_objective[j] * problem.lower[j];
         problem.upper[j] -= problem.lower[j];
@@ -1496,13 +1501,15 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_lower_bounds.size() > 0) {
-    settings.log.printf("Post-solve: Handling removed lower bounds %d\n",
-                        presolve_info.removed_lower_bounds.size());
+    i_t num_lower_bounds = 0;
+
     // We removed some lower bounds so we need to map the crushed solution back to the original
     // variables
     for (i_t j = 0; j < input_x.size(); j++) {
+      if (presolve_info.removed_lower_bounds[j] != 0.0) { num_lower_bounds++; }
       input_x[j] += presolve_info.removed_lower_bounds[j];
     }
+    settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
   }
   assert(uncrushed_x.size() == input_x.size());
   assert(uncrushed_y.size() == input_y.size());

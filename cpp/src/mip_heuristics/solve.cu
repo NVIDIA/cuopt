@@ -152,6 +152,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                  "Size mismatch");
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
+    scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
     detail::trivial_presolve(scaled_problem);
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
@@ -289,7 +290,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
-    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result;
+    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
     detail::problem_t<i_t, f_t> problem(
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
@@ -361,7 +362,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       detail::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      double presolve_time_limit = std::min(0.1 * time_limit, 60.0);
+      const auto& hp = settings.heuristic_params;
+      double presolve_time_limit =
+        std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
       if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
         presolve_time_limit = std::numeric_limits<double>::infinity();
       }
@@ -375,22 +378,32 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                      presolve_time_limit,
                                      settings.num_cpu_threads);
 
-      if (!result.has_value()) {
+      if (result.status == detail::third_party_presolve_status_t::INFEASIBLE) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
-      presolve_result.emplace(std::move(*result));
+      if (result.status == detail::third_party_presolve_status_t::UNBNDORINFEAS) {
+        return mip_solution_t<i_t, f_t>(mip_termination_status_t::UnboundedOrInfeasible,
+                                        solver_stats_t<i_t, f_t>{},
+                                        op_problem.get_handle_ptr()->get_stream());
+      }
+      if (result.status == detail::third_party_presolve_status_t::UNBOUNDED) {
+        return mip_solution_t<i_t, f_t>(mip_termination_status_t::Unbounded,
+                                        solver_stats_t<i_t, f_t>{},
+                                        op_problem.get_handle_ptr()->get_stream());
+      }
+      presolve_result_opt.emplace(std::move(result));
 
-      problem = detail::problem_t<i_t, f_t>(presolve_result->reduced_problem);
+      problem = detail::problem_t<i_t, f_t>(presolve_result_opt->reduced_problem);
       problem.set_papilo_presolve_data(presolver.get(),
-                                       presolve_result->reduced_to_original_map,
-                                       presolve_result->original_to_reduced_map,
+                                       presolve_result_opt->reduced_to_original_map,
+                                       presolve_result_opt->original_to_reduced_map,
                                        op_problem.get_n_variables());
-      problem.set_implied_integers(presolve_result->implied_integer_indices);
+      problem.set_implied_integers(presolve_result_opt->implied_integer_indices);
       presolve_time = timer.elapsed_time();
-      if (presolve_result->implied_integer_indices.size() > 0) {
-        CUOPT_LOG_INFO("%d implied integers", presolve_result->implied_integer_indices.size());
+      if (presolve_result_opt->implied_integer_indices.size() > 0) {
+        CUOPT_LOG_INFO("%d implied integers", presolve_result_opt->implied_integer_indices.size());
       }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
     }
@@ -405,7 +418,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       early_gpufj.reset();  // Free GPU memory
     }
 
-    if (early_cpufj && run_presolve && presolve_result.has_value()) {
+    if (early_cpufj && run_presolve && presolve_result_opt.has_value()) {
       early_cpufj->stop();
       if (early_cpufj->solution_found()) {
         CUOPT_LOG_INFO("Early CPUFJ (original) found incumbent with objective %.6e",
@@ -418,9 +431,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
     }
-    if (run_presolve && settings.presolve_file != "") {
+    if (run_presolve && presolve_result_opt.has_value() && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
-      presolve_result->reduced_problem.write_to_mps(settings.presolve_file);
+      presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
 
     // early_best_user_obj is in user-space.

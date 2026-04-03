@@ -126,8 +126,8 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  std::array<cpu_fj_thread_t<i_t, f_t>, 8> ls_cpu_fj;
-  std::array<cpu_fj_thread_t<i_t, f_t>, 1> scratch_cpu_fj;
+  std::vector<std::unique_ptr<cpu_fj_thread_t<i_t, f_t>>> ls_cpu_fj;
+  std::vector<std::unique_ptr<cpu_fj_thread_t<i_t, f_t>>> scratch_cpu_fj;
   cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
   cpu_fj_thread_t<i_t, f_t> deterministic_cpu_fj;
   problem_t<i_t, f_t> problem_with_objective_cut;

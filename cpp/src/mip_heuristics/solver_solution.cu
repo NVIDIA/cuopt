@@ -137,8 +137,9 @@ std::string mip_solution_t<i_t, f_t>::get_termination_status_string(
     case mip_termination_status_t::Infeasible: return "Infeasible";
     case mip_termination_status_t::TimeLimit: return "TimeLimit";
     case mip_termination_status_t::WorkLimit: return "WorkLimit";
-    case mip_termination_status_t::Unbounded:
-      return "Unbounded";
+    case mip_termination_status_t::Unbounded: return "Unbounded";
+    case mip_termination_status_t::UnboundedOrInfeasible:
+      return "UnboundedOrInfeasible";
       // Do not implement default case to trigger compile time error if new enum is added
   }
   return std::string();

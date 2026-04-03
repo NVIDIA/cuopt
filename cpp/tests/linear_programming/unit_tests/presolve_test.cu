@@ -137,7 +137,7 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get the postsolved primal solution
   auto h_primal_solution = host_copy(solution.get_primal_solution(), handle_.get_stream());
@@ -181,7 +181,7 @@ TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get postsolved solutions
   auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());
@@ -231,7 +231,7 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());
 
@@ -285,8 +285,8 @@ TEST(pslp_presolve, compare_with_no_presolve)
     solve_lp(&handle_, mps_data_model, settings_pslp);
 
   // Both should be optimal
-  EXPECT_EQ((int)solution_no_presolve.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_EQ((int)solution_pslp.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution_no_presolve.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution_pslp.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Objective values should match
   double obj_no_presolve =
@@ -336,7 +336,7 @@ TEST(pslp_presolve, postsolve_reduced_costs)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get postsolved reduced costs
   auto h_reduced_costs = host_copy(solution.get_reduced_cost(), handle_.get_stream());
@@ -370,7 +370,7 @@ TEST(pslp_presolve, postsolve_multiple_problems)
     optimization_problem_solution_t<int, double> solution =
       solve_lp(&handle_, mps_data_model, solver_settings);
 
-    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL)
+    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL)
       << "Problem " << name << " should be optimal";
 
     auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());

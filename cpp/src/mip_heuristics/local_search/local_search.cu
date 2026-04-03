@@ -46,13 +46,16 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
     rng(cuopt::seed_generator::get_seed()),
     problem_with_objective_cut(*context.problem_ptr, context.problem_ptr->handle_ptr)
 {
-  for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.fj_ptr = &fj;
+  const int n_cpufj = context.settings.heuristic_params.num_cpufj_threads;
+  for (int i = 0; i < n_cpufj; ++i) {
+    ls_cpu_fj.push_back(std::make_unique<cpu_fj_thread_t<i_t, f_t>>());
+    ls_cpu_fj.back()->fj_ptr = &fj;
   }
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.fj_ptr = &fj;
-  }
+  scratch_cpu_fj.push_back(std::make_unique<cpu_fj_thread_t<i_t, f_t>>());
+  scratch_cpu_fj.back()->fj_ptr   = &fj;
   scratch_cpu_fj_on_lp_opt.fj_ptr = &fj;
+
+  fj.settings.n_of_minimums_for_exit = context.settings.heuristic_params.n_of_minimums_for_exit;
 }
 
 static double local_search_best_obj       = std::numeric_limits<double>::max();
@@ -72,7 +75,8 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
                0.0);
   solution.clamp_within_bounds();
   i_t counter = 0;
-  for (auto& cpu_fj : scratch_cpu_fj) {
+  for (auto& cpu_fj_ptr : scratch_cpu_fj) {
+    auto& cpu_fj = *cpu_fj_ptr;
     if (counter > 0) solution.assign_random_within_bounds(0.4);
     cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(solution,
                                                       default_weights,
@@ -100,8 +104,8 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
     counter++;
   };
 
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.start_cpu_solver();
+  for (auto& cpu_fj_ptr : scratch_cpu_fj) {
+    cpu_fj_ptr->start_cpu_solver();
   }
 }
 
@@ -141,8 +145,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
-  for (auto& cpu_fj : scratch_cpu_fj) {
-    cpu_fj.request_termination();
+  for (auto& cpu_fj_ptr : scratch_cpu_fj) {
+    cpu_fj_ptr->request_termination();
   }
   scratch_cpu_fj_on_lp_opt.request_termination();
 }
@@ -229,7 +233,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   }
   auto h_weights          = cuopt::host_copy(in_fj.cstr_weights, solution.handle_ptr->get_stream());
   auto h_objective_weight = in_fj.objective_weight.value(solution.handle_ptr->get_stream());
-  for (auto& cpu_fj : ls_cpu_fj) {
+  for (auto& cpu_fj_ptr : ls_cpu_fj) {
+    auto& cpu_fj  = *cpu_fj_ptr;
     cpu_fj.fj_cpu = cpu_fj.fj_ptr->create_cpu_climber(solution,
                                                       h_weights,
                                                       h_weights,
@@ -242,8 +247,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   auto solution_copy = solution;
 
   // Start CPU solver in background thread
-  for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.start_cpu_solver();
+  for (auto& cpu_fj_ptr : ls_cpu_fj) {
+    cpu_fj_ptr->start_cpu_solver();
   }
 
   // Run GPU solver and measure execution time
@@ -252,8 +257,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   in_fj.solve(solution);
 
   // Stop CPU solver
-  for (auto& cpu_fj : ls_cpu_fj) {
-    cpu_fj.stop_cpu_solver();
+  for (auto& cpu_fj_ptr : ls_cpu_fj) {
+    cpu_fj_ptr->stop_cpu_solver();
   }
 
   auto gpu_fj_end        = std::chrono::high_resolution_clock::now();
@@ -263,13 +268,13 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();
   // // Wait for CPU solver to finish
-  for (auto& cpu_fj : ls_cpu_fj) {
-    bool cpu_sol_found = cpu_fj.wait_for_cpu_solver();
+  for (auto& cpu_fj_ptr : ls_cpu_fj) {
+    bool cpu_sol_found = cpu_fj_ptr->wait_for_cpu_solver();
     if (cpu_sol_found) {
-      f_t cpu_obj = cpu_fj.fj_cpu->h_best_objective;
+      f_t cpu_obj = cpu_fj_ptr->fj_cpu->h_best_objective;
       if (cpu_obj < best_cpu_obj) {
         best_cpu_obj = cpu_obj;
-        solution_cpu.copy_new_assignment(cpu_fj.fj_cpu->h_best_assignment);
+        solution_cpu.copy_new_assignment(cpu_fj_ptr->fj_cpu->h_best_assignment);
         solution_cpu.compute_feasibility();
       }
     }
@@ -686,8 +691,9 @@ void local_search_t<i_t, f_t>::reset_alpha_and_run_recombiners(
   f_t& best_objective)
 {
   raft::common::nvtx::range fun_scope("reset_alpha_and_run_recombiners");
-  constexpr i_t iterations_for_stagnation          = 3;
-  constexpr i_t max_iterations_without_improvement = 8;
+  const auto& hp                               = context.settings.heuristic_params;
+  const i_t iterations_for_stagnation          = hp.stagnation_trigger;
+  const i_t max_iterations_without_improvement = hp.max_iterations_without_improvement;
   population_ptr->add_external_solutions_to_population();
   if (population_ptr->current_size() > 1 &&
       i - last_improved_iteration > iterations_for_stagnation) {

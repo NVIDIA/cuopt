@@ -30,6 +30,8 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+
 #include <omp.h>
 
 #include <atomic>
@@ -77,6 +79,7 @@ class branch_and_bound_t {
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
+                     const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
                      std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
@@ -88,7 +91,8 @@ class branch_and_bound_t {
                                     const std::vector<f_t>& reduced_costs,
                                     f_t objective,
                                     f_t user_objective,
-                                    i_t iterations)
+                                    i_t iterations,
+                                    method_t method)
   {
     if (!is_root_solution_set) {
       root_crossover_soln_.x              = primal;
@@ -98,6 +102,7 @@ class branch_and_bound_t {
       root_crossover_soln_.objective      = objective;
       root_crossover_soln_.user_objective = user_objective;
       root_crossover_soln_.iterations     = iterations;
+      root_relax_solved_by                = method;
       root_crossover_solution_set_.store(true, std::memory_order_release);
     }
   }
@@ -133,7 +138,7 @@ class branch_and_bound_t {
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
                        f_t& repaired_obj,
-                       std::vector<f_t>& repaired_solution) const;
+                       std::vector<f_t>& repaired_solution);
 
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
@@ -162,6 +167,7 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
   std::atomic<bool> signal_extend_cliques_{false};
@@ -216,12 +222,14 @@ class branch_and_bound_t {
   f_t root_objective_;
   lp_solution_t<i_t, f_t> root_relax_soln_;
   lp_solution_t<i_t, f_t> root_crossover_soln_;
+  method_t root_relax_solved_by{Unset};
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
+  std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts
