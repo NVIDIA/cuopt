@@ -329,8 +329,8 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
       toc(exploration_stats_.start_time));
   } else {
     if (solving_root_relaxation_.load()) {
-      f_t user_obj         = compute_user_objective(original_lp_, obj);
-      f_t user_lower       = root_lp_current_lower_bound_.load();
+      f_t user_obj   = compute_user_objective(original_lp_, obj);
+      f_t user_lower = compute_user_objective(original_lp_, root_lp_current_lower_bound_.load());
       std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, get_lower_bound());
       settings_.log.printf(
         "New solution from primal heuristics. Objective %+.6e. Gap %s. Time %.2f\n",
