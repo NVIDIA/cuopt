@@ -1177,13 +1177,14 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     i_t solved_by_both   = 0;
     for (i_t k = 0; k < fractional.size(); k++) {
       for (i_t branch = 0; branch < 2; branch++) {
-        const bool is_down       = (branch == 0);
-        f_t& sb_dest             = is_down ? pc.strong_branch_down[k] : pc.strong_branch_up[k];
-        f_t ds_obj               = is_down ? dual_simplex_obj_down[k] : dual_simplex_obj_up[k];
-        dual::status_t ds_status = is_down ? dual_simplex_status_down[k] : dual_simplex_status_up[k];
-        f_t pdlp_obj             = is_down ? pdlp_obj_down[k] : pdlp_obj_up[k];
-        bool pdlp_has            = !std::isnan(pdlp_obj);
-        bool ds_has              = ds_status != dual::status_t::UNSET;
+        const bool is_down = (branch == 0);
+        f_t& sb_dest       = is_down ? pc.strong_branch_down[k] : pc.strong_branch_up[k];
+        f_t ds_obj         = is_down ? dual_simplex_obj_down[k] : dual_simplex_obj_up[k];
+        dual::status_t ds_status =
+          is_down ? dual_simplex_status_down[k] : dual_simplex_status_up[k];
+        f_t pdlp_obj  = is_down ? pdlp_obj_down[k] : pdlp_obj_up[k];
+        bool pdlp_has = !std::isnan(pdlp_obj);
+        bool ds_has   = ds_status != dual::status_t::UNSET;
 
         const auto [value, source] =
           merge_sb_result<i_t, f_t>(ds_obj, ds_status, pdlp_obj, pdlp_has);
@@ -1414,11 +1415,11 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   constexpr i_t min_num_candidates_for_pdlp                       = 5;
   constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
   // Batch PDLP is either forced or we use the heuristic to decide if it should be used
-  const bool use_pdlp = (rb_mode == 2) || (rb_mode != 0 && !settings.sub_mip && !settings.deterministic &&
-                        pdlp_warm_cache.populated &&
-                        unreliable_list.size() > min_num_candidates_for_pdlp &&
-                        pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
-                          min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
+  const bool use_pdlp = (rb_mode == 2) || (rb_mode != 0 && !settings.sub_mip &&
+                                           !settings.deterministic && pdlp_warm_cache.populated &&
+                                           unreliable_list.size() > min_num_candidates_for_pdlp &&
+                                           pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
+                                             min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
