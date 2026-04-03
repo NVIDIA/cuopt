@@ -14,7 +14,9 @@
 #   CUOPT_GPU_COUNT    — worker processes  (default: 1)
 #   CUOPT_GRPC_ARGS    — additional CLI flags passed verbatim
 #                        (e.g. "--tls --tls-cert server.crt --log-to-console")
-#                        See GRPC_SERVER_ARCHITECTURE.md for all available flags.
+#                        See docs/cuopt/source/cuopt-grpc/advanced.rst (flags/env);
+#                        cpp/docs/grpc-server-architecture.md for contributor IPC details.
+#                        for all available flags.
 
 set -e
 

@@ -3,6 +3,7 @@
 This document serves as a guide for contributors to cuOpt C++ code. Developers should also refer
 to these additional files for further documentation of cuOpt best practices.
 
+* [gRPC server architecture](grpc-server-architecture.md) — full `cuopt_grpc_server` IPC, source file map, and streaming internals (end-user summary lives under `docs/cuopt/source/cuopt-grpc/`).
 * [Documentation Guide](TODO) for guidelines on documenting cuOpt code.
 * [Testing Guide](TODO) for guidelines on writing unit tests.
 * [Benchmarking Guide](TODO) for guidelines on writing unit benchmarks.

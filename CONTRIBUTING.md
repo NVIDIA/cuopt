@@ -214,11 +214,14 @@ pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
 ```
 ## gRPC Remote Execution
 
-cuOpt includes a gRPC-based remote execution system for running solves on a
-GPU server from a program using the API locally. Developer documentation lives in `docs/cuopt/grpc/`:
+NVIDIA cuOpt includes a gRPC-based remote execution system for running solves on a
+GPU server from a program using the API locally. User documentation lives under `docs/cuopt/source/cuopt-grpc/` (Sphinx **gRPC remote execution** section):
 
-- `GRPC_QUICK_START.md` — Start the server and solve remotely from Python, CLI, or C.
-- `GRPC_SERVER_ARCHITECTURE.md` — Server process model, IPC, threads, and job lifecycle.
+- `quick-start.rst` — Install/Docker/selector, how remote execution works, minimal LP and CLI examples (default C bundle).
+- `advanced.rst` — TLS, tuning, limitations, troubleshooting.
+- `examples.rst`, `api.rst` — Sample patterns and RPC overview.
+- `docs/cuopt/source/cuopt-grpc/grpc-server-architecture.md` — Short **gRPC server behavior** page in user docs.
+- `cpp/docs/grpc-server-architecture.md` — Full contributor reference (IPC, C++ source map, streaming).
 
 ## Debugging cuOpt
 
