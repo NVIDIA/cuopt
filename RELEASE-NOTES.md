@@ -12,7 +12,8 @@
 - Add support for Python 3.14
 
 ### Breaking Changes (26.04)
-
+- The solved_by_pdlp field in the Python LP solution object was changed to solved_by 
+    
 ### Improvements (26.04)
 - Improved reliability branching
 - Generate more MIR and Knapsack cuts
