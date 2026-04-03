@@ -83,7 +83,7 @@ struct linear_programming_ret_t {
   double gap_{};
   int nb_iterations_{};
   double solve_time_{};
-  bool solved_by_pdlp_{};
+  linear_programming::method_t solved_by_{};
 
   bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
 };

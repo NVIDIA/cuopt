@@ -200,7 +200,7 @@ def create_lp_response(response_dict):
                 nb_iterations=sol["lp_statistics"]["nb_iterations"],
                 primal_objective=sol["primal_objective"],
                 dual_objective=sol["dual_objective"],
-                solved_by_pdlp=sol["solved_by_pdlp"],
+                solved_by=sol["solved_by"],
             )
         return status, solution_obj
 

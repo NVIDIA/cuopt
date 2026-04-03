@@ -237,7 +237,7 @@ class lp_solution_interface_t : public optimization_problem_solution_interface_t
    * @brief Get solve time
    * @return Total solve time in seconds
    */
-  virtual f_t get_solve_time() const = 0;
+  virtual f_t get_solve_time() const override = 0;
 
   /**
    * @brief Get primal objective value
@@ -291,10 +291,10 @@ class lp_solution_interface_t : public optimization_problem_solution_interface_t
   virtual i_t get_num_iterations(i_t id = 0) const = 0;
 
   /**
-   * @brief Check if solved by PDLP
-   * @return true if solved by PDLP
+   * @brief Method used for solving the LP.
+   * @return the method used for solving the LP.
    */
-  virtual bool is_solved_by_pdlp(i_t id = 0) const = 0;
+  virtual method_t solved_by(i_t id = 0) const = 0;
 
   /**
    * @brief Get PDLP warm start data (GPU solutions only)
@@ -391,31 +391,31 @@ class mip_solution_interface_t : public optimization_problem_solution_interface_
    * @brief Get solution as host vector
    * @return Host vector of solution
    */
-  virtual std::vector<f_t> get_solution_host() const = 0;
+  virtual std::vector<f_t> get_solution_host() const override = 0;
 
   /**
    * @brief Get objective value
    * @return Objective value
    */
-  virtual f_t get_objective_value() const = 0;
+  virtual f_t get_objective_value() const override = 0;
 
   /**
    * @brief Get solve time
    * @return Total solve time in seconds
    */
-  virtual f_t get_solve_time() const = 0;
+  virtual f_t get_solve_time() const override = 0;
 
   /**
    * @brief Get MIP gap
    * @return MIP gap
    */
-  virtual f_t get_mip_gap() const = 0;
+  virtual f_t get_mip_gap() const override = 0;
 
   /**
    * @brief Get solution bound
    * @return Solution bound
    */
-  virtual f_t get_solution_bound() const = 0;
+  virtual f_t get_solution_bound() const override = 0;
 
   /**
    * @brief Get termination status

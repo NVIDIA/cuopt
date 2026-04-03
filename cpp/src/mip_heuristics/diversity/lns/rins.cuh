@@ -43,11 +43,8 @@ struct rins_settings_t {
   int nodes_after_later_improvement = 200;
   double min_fixrate                = 0.3;
   double max_fixrate                = 0.8;
-  double default_fixrate            = 0.5;
   double min_fractional_ratio       = 0.3;
   double min_time_limit             = 3.;
-  double max_time_limit             = 20.;
-  double default_time_limit         = 3.;
   double target_mip_gap             = 0.03;
   bool objective_cut                = true;
 };

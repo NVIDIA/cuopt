@@ -493,10 +493,10 @@ class SolutionData(StrictModel):
         default=None,
         description=("Returns the engine solve time in seconds"),
     )
-    solved_by_pdlp: bool = Field(
+    solved_by: int = Field(
         default=None,
         description=(
-            "Returns whether problem was solved by PDLP or Dual Simplex"
+            "Returns whether problem was solved by PDLP, Barrier or Dual Simplex"
         ),
     )
     primal_objective: float = Field(
@@ -550,6 +550,7 @@ LP_STATUS_NAMES = frozenset(
         "IterationLimit",
         "TimeLimit",
         "PrimalFeasible",
+        "UnboundedOrInfeasible",
     }
 )
 
@@ -564,6 +565,7 @@ MILP_STATUS_NAMES = frozenset(
         "Infeasible",
         "Unbounded",
         "TimeLimit",
+        "UnboundedOrInfeasible",
     }
 )
 

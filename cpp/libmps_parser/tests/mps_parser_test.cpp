@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,10 +8,12 @@
 #include <utilities/common_utils.hpp>
 
 #include <mps_parser.hpp>
+#include <mps_parser/mps_writer.hpp>
 #include <mps_parser/parser.hpp>
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <sstream>
@@ -890,6 +892,239 @@ TEST(qps_parser, test_qps_files)
     const auto& Q_values = parsed_data.get_quadratic_objective_values();
     EXPECT_GT(Q_values.size(), 0) << "Quadratic objective should have non-zero elements";
   }
+}
+
+// ================================================================================================
+// MPS Round-Trip Tests (Read -> Write -> Read -> Compare)
+// ================================================================================================
+
+// Helper function to compare two data models
+template <typename i_t, typename f_t>
+void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
+                         const mps_data_model_t<i_t, f_t>& reloaded,
+                         f_t tol = 1e-9)
+{
+  // Compare basic dimensions
+  EXPECT_EQ(original.get_n_variables(), reloaded.get_n_variables());
+  EXPECT_EQ(original.get_n_constraints(), reloaded.get_n_constraints());
+
+  // Compare objective coefficients
+  auto orig_c   = original.get_objective_coefficients();
+  auto reload_c = reloaded.get_objective_coefficients();
+  ASSERT_EQ(orig_c.size(), reload_c.size());
+  for (size_t i = 0; i < orig_c.size(); ++i) {
+    EXPECT_NEAR(orig_c[i], reload_c[i], tol) << "Objective coefficient mismatch at index " << i;
+  }
+
+  // Compare constraint matrix values
+  auto orig_A   = original.get_constraint_matrix_values();
+  auto reload_A = reloaded.get_constraint_matrix_values();
+  ASSERT_EQ(orig_A.size(), reload_A.size());
+  for (size_t i = 0; i < orig_A.size(); ++i) {
+    EXPECT_NEAR(orig_A[i], reload_A[i], tol) << "Constraint matrix value mismatch at index " << i;
+  }
+
+  // Compare constraint matrix indices
+  auto orig_A_idx   = original.get_constraint_matrix_indices();
+  auto reload_A_idx = reloaded.get_constraint_matrix_indices();
+  ASSERT_EQ(orig_A_idx.size(), reload_A_idx.size());
+  for (size_t i = 0; i < orig_A_idx.size(); ++i) {
+    EXPECT_EQ(orig_A_idx[i], reload_A_idx[i]) << "Constraint matrix index mismatch at index " << i;
+  }
+
+  // Compare constraint matrix offsets
+  auto orig_A_off   = original.get_constraint_matrix_offsets();
+  auto reload_A_off = reloaded.get_constraint_matrix_offsets();
+  ASSERT_EQ(orig_A_off.size(), reload_A_off.size());
+  for (size_t i = 0; i < orig_A_off.size(); ++i) {
+    EXPECT_EQ(orig_A_off[i], reload_A_off[i]) << "Constraint matrix offset mismatch at index " << i;
+  }
+
+  // Compare variable bounds
+  auto orig_lb   = original.get_variable_lower_bounds();
+  auto reload_lb = reloaded.get_variable_lower_bounds();
+  ASSERT_EQ(orig_lb.size(), reload_lb.size());
+  for (size_t i = 0; i < orig_lb.size(); ++i) {
+    if (std::isinf(orig_lb[i]) && std::isinf(reload_lb[i])) {
+      EXPECT_EQ(std::signbit(orig_lb[i]), std::signbit(reload_lb[i]))
+        << "Variable lower bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_lb[i], reload_lb[i], tol) << "Variable lower bound mismatch at index " << i;
+    }
+  }
+
+  auto orig_ub   = original.get_variable_upper_bounds();
+  auto reload_ub = reloaded.get_variable_upper_bounds();
+  ASSERT_EQ(orig_ub.size(), reload_ub.size());
+  for (size_t i = 0; i < orig_ub.size(); ++i) {
+    if (std::isinf(orig_ub[i]) && std::isinf(reload_ub[i])) {
+      EXPECT_EQ(std::signbit(orig_ub[i]), std::signbit(reload_ub[i]))
+        << "Variable upper bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_ub[i], reload_ub[i], tol) << "Variable upper bound mismatch at index " << i;
+    }
+  }
+
+  // Compare constraint bounds
+  auto orig_cl   = original.get_constraint_lower_bounds();
+  auto reload_cl = reloaded.get_constraint_lower_bounds();
+  ASSERT_EQ(orig_cl.size(), reload_cl.size());
+  for (size_t i = 0; i < orig_cl.size(); ++i) {
+    if (std::isinf(orig_cl[i]) && std::isinf(reload_cl[i])) {
+      EXPECT_EQ(std::signbit(orig_cl[i]), std::signbit(reload_cl[i]))
+        << "Constraint lower bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_cl[i], reload_cl[i], tol)
+        << "Constraint lower bound mismatch at index " << i;
+    }
+  }
+
+  auto orig_cu   = original.get_constraint_upper_bounds();
+  auto reload_cu = reloaded.get_constraint_upper_bounds();
+  ASSERT_EQ(orig_cu.size(), reload_cu.size());
+  for (size_t i = 0; i < orig_cu.size(); ++i) {
+    if (std::isinf(orig_cu[i]) && std::isinf(reload_cu[i])) {
+      EXPECT_EQ(std::signbit(orig_cu[i]), std::signbit(reload_cu[i]))
+        << "Constraint upper bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_cu[i], reload_cu[i], tol)
+        << "Constraint upper bound mismatch at index " << i;
+    }
+  }
+
+  // Compare quadratic objective if present
+  EXPECT_EQ(original.has_quadratic_objective(), reloaded.has_quadratic_objective());
+  if (original.has_quadratic_objective() && reloaded.has_quadratic_objective()) {
+    auto orig_Q       = original.get_quadratic_objective_values();
+    auto orig_Q_idx   = original.get_quadratic_objective_indices();
+    auto orig_Q_off   = original.get_quadratic_objective_offsets();
+    auto reload_Q     = reloaded.get_quadratic_objective_values();
+    auto reload_Q_idx = reloaded.get_quadratic_objective_indices();
+    auto reload_Q_off = reloaded.get_quadratic_objective_offsets();
+
+    // Compare Q matrix structure and values
+    ASSERT_EQ(orig_Q.size(), reload_Q.size()) << "Q values size mismatch";
+    ASSERT_EQ(orig_Q_idx.size(), reload_Q_idx.size()) << "Q indices size mismatch";
+    ASSERT_EQ(orig_Q_off.size(), reload_Q_off.size()) << "Q offsets size mismatch";
+
+    for (size_t i = 0; i < orig_Q.size(); ++i) {
+      EXPECT_NEAR(orig_Q[i], reload_Q[i], tol) << "Q value mismatch at index " << i;
+    }
+    for (size_t i = 0; i < orig_Q_idx.size(); ++i) {
+      EXPECT_EQ(orig_Q_idx[i], reload_Q_idx[i]) << "Q index mismatch at index " << i;
+    }
+    for (size_t i = 0; i < orig_Q_off.size(); ++i) {
+      EXPECT_EQ(orig_Q_off[i], reload_Q_off[i]) << "Q offset mismatch at index " << i;
+    }
+  }
+}
+
+TEST(mps_roundtrip, linear_programming_basic)
+{
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/good-mps-1.mps";
+  std::string temp_file = "/tmp/mps_roundtrip_lp_test.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, true);
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, linear_programming_with_bounds)
+{
+  if (!file_exists("linear_programming/lp_model_with_var_bounds.mps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/lp_model_with_var_bounds.mps";
+  std::string temp_file = "/tmp/mps_roundtrip_lp_bounds_test.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, quadratic_programming_qp_test_1)
+{
+  if (!file_exists("quadratic_programming/QP_Test_1.qps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps";
+  std::string temp_file = "/tmp/mps_roundtrip_qp_test_1.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, quadratic_programming_qp_test_2)
+{
+  if (!file_exists("quadratic_programming/QP_Test_2.qps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps";
+  std::string temp_file = "/tmp/mps_roundtrip_qp_test_2.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
 }
 
 }  // namespace cuopt::mps_parser

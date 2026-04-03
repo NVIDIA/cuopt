@@ -8,7 +8,9 @@
 #include <mps_parser/mps_writer.hpp>
 
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/mps_data_model.hpp>
 #include <utilities/error.hpp>
+#include <utilities/sparse_matrix_helpers.hpp>
 
 #include <cmath>
 #include <fstream>
@@ -16,11 +18,98 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 
 namespace cuopt::mps_parser {
 
 template <typename i_t, typename f_t>
 mps_writer_t<i_t, f_t>::mps_writer_t(const data_model_view_t<i_t, f_t>& problem) : problem_(problem)
+{
+}
+
+template <typename i_t, typename f_t>
+data_model_view_t<i_t, f_t> mps_writer_t<i_t, f_t>::create_view(
+  const mps_data_model_t<i_t, f_t>& model)
+{
+  data_model_view_t<i_t, f_t> view;
+
+  // Set basic data
+  view.set_maximize(model.get_sense());
+
+  // Constraint matrix
+  const auto& A_values  = model.get_constraint_matrix_values();
+  const auto& A_indices = model.get_constraint_matrix_indices();
+  const auto& A_offsets = model.get_constraint_matrix_offsets();
+  if (!A_values.empty()) {
+    view.set_csr_constraint_matrix(A_values.data(),
+                                   static_cast<i_t>(A_values.size()),
+                                   A_indices.data(),
+                                   static_cast<i_t>(A_indices.size()),
+                                   A_offsets.data(),
+                                   static_cast<i_t>(A_offsets.size()));
+  }
+
+  // Constraint bounds
+  const auto& b = model.get_constraint_bounds();
+  if (!b.empty()) { view.set_constraint_bounds(b.data(), static_cast<i_t>(b.size())); }
+
+  // Objective coefficients
+  const auto& c = model.get_objective_coefficients();
+  if (!c.empty()) { view.set_objective_coefficients(c.data(), static_cast<i_t>(c.size())); }
+
+  view.set_objective_scaling_factor(model.get_objective_scaling_factor());
+  view.set_objective_offset(model.get_objective_offset());
+
+  // Variable bounds
+  const auto& lb = model.get_variable_lower_bounds();
+  const auto& ub = model.get_variable_upper_bounds();
+  if (!lb.empty()) { view.set_variable_lower_bounds(lb.data(), static_cast<i_t>(lb.size())); }
+  if (!ub.empty()) { view.set_variable_upper_bounds(ub.data(), static_cast<i_t>(ub.size())); }
+
+  // Variable types
+  const auto& var_types = model.get_variable_types();
+  if (!var_types.empty()) {
+    view.set_variable_types(var_types.data(), static_cast<i_t>(var_types.size()));
+  }
+
+  // Row types
+  const auto& row_types = model.get_row_types();
+  if (!row_types.empty()) {
+    view.set_row_types(row_types.data(), static_cast<i_t>(row_types.size()));
+  }
+
+  // Constraint bounds (lower/upper)
+  const auto& cl = model.get_constraint_lower_bounds();
+  const auto& cu = model.get_constraint_upper_bounds();
+  if (!cl.empty()) { view.set_constraint_lower_bounds(cl.data(), static_cast<i_t>(cl.size())); }
+  if (!cu.empty()) { view.set_constraint_upper_bounds(cu.data(), static_cast<i_t>(cu.size())); }
+
+  // Names
+  view.set_problem_name(model.get_problem_name());
+  view.set_objective_name(model.get_objective_name());
+  view.set_variable_names(model.get_variable_names());
+  view.set_row_names(model.get_row_names());
+
+  // Quadratic objective
+  const auto& Q_values  = model.get_quadratic_objective_values();
+  const auto& Q_indices = model.get_quadratic_objective_indices();
+  const auto& Q_offsets = model.get_quadratic_objective_offsets();
+  if (!Q_values.empty()) {
+    view.set_quadratic_objective_matrix(Q_values.data(),
+                                        static_cast<i_t>(Q_values.size()),
+                                        Q_indices.data(),
+                                        static_cast<i_t>(Q_indices.size()),
+                                        Q_offsets.data(),
+                                        static_cast<i_t>(Q_offsets.size()));
+  }
+
+  return view;
+}
+
+template <typename i_t, typename f_t>
+mps_writer_t<i_t, f_t>::mps_writer_t(const mps_data_model_t<i_t, f_t>& problem)
+  : owned_view_(std::make_unique<data_model_view_t<i_t, f_t>>(create_view(problem))),
+    problem_(*owned_view_)
 {
 }
 
@@ -276,6 +365,64 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
           variable_types[j] == 'I') {
         mps_file << " " << upper_bound_str << " BOUND1    " << col_name << " "
                  << variable_upper_bounds[j] << "\n";
+      }
+    }
+  }
+
+  // QUADOBJ section for quadratic objective terms (if present)
+  // MPS format: QUADOBJ stores upper triangular elements (row <= col)
+  // MPS uses (1/2) x^T H x, cuOpt uses x^T Q x
+  // For equivalence: H[i,j] = Q[i,j] + Q[j,i] (works for both diagonal and off-diagonal)
+  // We symmetrize Q first (H = Q + Q^T), then extract upper triangular
+  if (problem_.has_quadratic_objective()) {
+    auto Q_values_span  = problem_.get_quadratic_objective_values();
+    auto Q_indices_span = problem_.get_quadratic_objective_indices();
+    auto Q_offsets_span = problem_.get_quadratic_objective_offsets();
+
+    // Copy span data to local vectors for indexed access
+    std::vector<f_t> Q_values(Q_values_span.data(), Q_values_span.data() + Q_values_span.size());
+    std::vector<i_t> Q_indices(Q_indices_span.data(),
+                               Q_indices_span.data() + Q_indices_span.size());
+    std::vector<i_t> Q_offsets(Q_offsets_span.data(),
+                               Q_offsets_span.data() + Q_offsets_span.size());
+
+    if (Q_values.size() > 0) {
+      // Symmetrize Q: compute H = Q + Q^T
+      std::vector<f_t> H_values;
+      std::vector<i_t> H_indices;
+      std::vector<i_t> H_offsets;
+
+      if (problem_.is_Q_symmetrized()) {
+        H_values  = std::move(Q_values);
+        H_indices = std::move(Q_indices);
+        H_offsets = std::move(Q_offsets);
+      } else {
+        cuopt::symmetrize_csr<i_t, f_t>(
+          Q_values, Q_indices, Q_offsets, H_values, H_indices, H_offsets);
+      }
+
+      i_t n_rows = static_cast<i_t>(H_offsets.size()) - 1;
+
+      mps_file << "QUADOBJ\n";
+
+      // Write upper triangular entries from symmetric H
+      for (i_t i = 0; i < n_rows; ++i) {
+        std::string row_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
+                                 ? problem_.get_variable_names()[i]
+                                 : "C" + std::to_string(i);
+
+        for (i_t p = H_offsets[i]; p < H_offsets[i + 1]; ++p) {
+          i_t j = H_indices[p];
+          f_t v = H_values[p];
+
+          // Only write upper triangular (i <= j)
+          if (i <= j && v != f_t(0)) {
+            std::string col_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
+                                     ? problem_.get_variable_names()[j]
+                                     : "C" + std::to_string(j);
+            mps_file << "    " << row_name << " " << col_name << " " << v << "\n";
+          }
+        }
       }
     }
   }

@@ -95,7 +95,7 @@ cuopt::cython::linear_programming_ret_t gpu_lp_solution_t<i_t, f_t>::to_linear_p
     ret.gap_                = term_info.gap;
     ret.nb_iterations_      = term_info.number_of_steps_taken;
     ret.solve_time_         = term_info.solve_time;
-    ret.solved_by_pdlp_     = term_info.solved_by_pdlp;
+    ret.solved_by_          = term_info.solved_by;
   }
 
   return ret;
@@ -181,7 +181,7 @@ cpu_lp_solution_t<i_t, f_t>::to_cpu_linear_programming_ret_t()
   ret.gap_                = gap_;
   ret.nb_iterations_      = num_iterations_;
   ret.solve_time_         = solve_time_;
-  ret.solved_by_pdlp_     = solved_by_pdlp_;
+  ret.solved_by_          = solved_by_;
 
   return ret;
 }

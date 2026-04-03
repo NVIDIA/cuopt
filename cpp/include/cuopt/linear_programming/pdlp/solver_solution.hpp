@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -25,15 +26,16 @@ namespace cuopt::linear_programming {
 
 // Possible reasons for terminating
 enum class pdlp_termination_status_t : int8_t {
-  NoTermination    = CUOPT_TERIMINATION_STATUS_NO_TERMINATION,
-  NumericalError   = CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR,
-  Optimal          = CUOPT_TERIMINATION_STATUS_OPTIMAL,
-  PrimalInfeasible = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
-  DualInfeasible   = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
-  IterationLimit   = CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT,
-  TimeLimit        = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
-  PrimalFeasible   = CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE,
-  ConcurrentLimit  = CUOPT_TERIMINATION_STATUS_CONCURRENT_LIMIT
+  NoTermination         = CUOPT_TERMINATION_STATUS_NO_TERMINATION,
+  NumericalError        = CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR,
+  Optimal               = CUOPT_TERMINATION_STATUS_OPTIMAL,
+  PrimalInfeasible      = CUOPT_TERMINATION_STATUS_INFEASIBLE,
+  DualInfeasible        = CUOPT_TERMINATION_STATUS_UNBOUNDED,
+  IterationLimit        = CUOPT_TERMINATION_STATUS_ITERATION_LIMIT,
+  TimeLimit             = CUOPT_TERMINATION_STATUS_TIME_LIMIT,
+  PrimalFeasible        = CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE,
+  ConcurrentLimit       = CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT,
+  UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE
 };
 
 /**
@@ -88,8 +90,8 @@ class optimization_problem_solution_t : public base_solution_t {
     /** Solve time in seconds */
     double solve_time{std::numeric_limits<double>::signaling_NaN()};
 
-    /** Whether the problem was solved by PDLP or Dual Simplex */
-    bool solved_by_pdlp{false};
+    /** Whether the problem was solved by PDLP, Barrier or Dual Simplex */
+    method_t solved_by = method_t::Unset;
   };
 
   /**

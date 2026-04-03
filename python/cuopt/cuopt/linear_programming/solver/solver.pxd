@@ -29,6 +29,13 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "
         Fast1 "cuopt::linear_programming::pdlp_solver_mode_t::Fast1" # noqa
         Stable3 "cuopt::linear_programming::pdlp_solver_mode_t::Stable3" # noqa
 
+    ctypedef enum method_t "cuopt::linear_programming::method_t": # noqa
+        Concurrent "cuopt::linear_programming::method_t::Concurrent" # noqa
+        PDLP "cuopt::linear_programming::method_t::PDLP" # noqa
+        DualSimplex "cuopt::linear_programming::method_t::DualSimplex" # noqa
+        Barrier "cuopt::linear_programming::method_t::Barrier" # noqa
+        Unset "cuopt::linear_programming::method_t::Unset" # noqa
+
 cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
 
     cdef cppclass solver_settings_t[i_t, f_t]:
@@ -106,6 +113,8 @@ cdef extern from "cuopt/linear_programming/mip/solver_solution.hpp" namespace "c
         Infeasible "cuopt::linear_programming::mip_termination_status_t::Infeasible" # noqa
         Unbounded "cuopt::linear_programming::mip_termination_status_t::Unbounded" # noqa
         TimeLimit "cuopt::linear_programming::mip_termination_status_t::TimeLimit" # noqa
+        WorkLimit "cuopt::linear_programming::mip_termination_status_t::WorkLimit" # noqa
+        UnboundedOrInfeasible "cuopt::linear_programming::mip_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
 cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
@@ -119,6 +128,7 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "
         TimeLimit "cuopt::linear_programming::pdlp_termination_status_t::TimeLimit" # noqa
         ConcurrentLimit "cuopt::linear_programming::pdlp_termination_status_t::ConcurrentLimit" # noqa
         PrimalFeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalFeasible" # noqa
+        UnboundedOrInfeasible "cuopt::linear_programming::pdlp_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
 cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace "cuopt::cython": # noqa
@@ -175,7 +185,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         double gap_
         int nb_iterations_
         double solve_time_
-        bool solved_by_pdlp_
+        method_t solved_by_
         bool is_gpu()
 
     # Unified MIP solution struct — solution_ variant accessed via helpers
@@ -203,12 +213,12 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
     cdef unique_ptr[solver_ret_t] call_solve(
         data_model_view_t[int, double]* data_model,
         solver_settings_t[int, double]* solver_settings,
-    ) except +
+    ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa
         vector[data_model_view_t[int, double] *] data_models,
         solver_settings_t[int, double]* solver_settings,
-    ) except +
+    ) except + nogil
 
 # Variant helper functions — Cython can't call std::get directly, so we use
 # inline C++ helpers to extract the GPU/CPU alternatives from inner variants.

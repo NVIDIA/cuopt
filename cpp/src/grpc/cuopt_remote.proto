@@ -202,7 +202,7 @@ message LPSolution {
   double gap = 24;
   int32 nb_iterations = 25;
   double solve_time = 26;
-  bool solved_by_pdlp = 27;
+  int32 solved_by = 27;
 }
 
 enum PDLPTerminationStatus {

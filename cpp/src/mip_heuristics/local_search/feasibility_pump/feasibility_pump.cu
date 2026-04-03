@@ -43,7 +43,7 @@ feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
     fj(fj_),
     // fj_tree(fj_tree_),
     line_segment_search(line_segment_search_),
-    cycle_queue(*context.problem_ptr),
+    cycle_queue(*context.problem_ptr, context.settings.heuristic_params.cycle_detection_length),
     constraint_prop(constraint_prop_),
     last_rounding(context.problem_ptr->n_variables, context.problem_ptr->handle_ptr->get_stream()),
     last_projection(context.problem_ptr->n_variables,
@@ -208,7 +208,8 @@ bool feasibility_pump_t<i_t, f_t>::linear_project_onto_polytope(solution_t<i_t, 
   const double lp_tolerance =
     get_tolerance_from_ratio(ratio_of_set_integers, context.settings.tolerances.absolute_tolerance);
   temp_p.check_problem_representation(true);
-  f_t time_limit     = longer_lp_run ? 5. : 1.;
+  const f_t rlp_base = context.settings.heuristic_params.relaxed_lp_time_limit;
+  f_t time_limit     = longer_lp_run ? 5. * rlp_base : rlp_base;
   time_limit         = std::max(0.05, std::min(time_limit, timer.remaining_time() / 10.));
   static f_t lp_time = 0;
   static i_t n_calls = 0;

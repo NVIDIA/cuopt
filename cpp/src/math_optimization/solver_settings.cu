@@ -5,9 +5,16 @@
  */
 /* clang-format on */
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace cuopt::linear_programming {
 
@@ -16,9 +23,10 @@ namespace {
 bool string_to_int(const std::string& value, int& result)
 {
   try {
-    result = std::stoi(value);
-    return true;
-  } catch (const std::invalid_argument& e) {
+    size_t pos = 0;
+    result     = std::stoi(value, &pos);
+    return pos == value.size();
+  } catch (const std::exception&) {
     return false;
   }
 }
@@ -27,12 +35,30 @@ template <typename f_t>
 bool string_to_float(const std::string& value, f_t& result)
 {
   try {
-    if constexpr (std::is_same_v<f_t, float>) { result = std::stof(value); }
-    if constexpr (std::is_same_v<f_t, double>) { result = std::stod(value); }
-    return true;
-  } catch (const std::invalid_argument& e) {
+    size_t pos = 0;
+    if constexpr (std::is_same_v<f_t, float>) { result = std::stof(value, &pos); }
+    if constexpr (std::is_same_v<f_t, double>) { result = std::stod(value, &pos); }
+    if (std::isnan(result)) { return false; }
+    return pos == value.size();
+  } catch (const std::exception&) {
     return false;
   }
+}
+
+std::string quote_if_needed(const std::string& s)
+{
+  bool needs_quoting = s.empty() || s.find(' ') != std::string::npos ||
+                       s.find('"') != std::string::npos || s.find('\t') != std::string::npos;
+  if (!needs_quoting) return s;
+  std::string out = "\"";
+  for (char c : s) {
+    if (c == '"')
+      out += "\\\"";
+    else
+      out += c;
+  }
+  out += '"';
+  return out;
 }
 
 bool string_to_bool(const std::string& value, bool& result)
@@ -75,7 +101,18 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_PRIMAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.primal_infeasible_tolerance, f_t(0.0), f_t(1e-1), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
     {CUOPT_DUAL_INFEASIBLE_TOLERANCE, &pdlp_settings.tolerances.dual_infeasible_tolerance, f_t(0.0), f_t(1e-1), std::max(f_t(1e-10), std::numeric_limits<f_t>::epsilon())},
     {CUOPT_MIP_CUT_CHANGE_THRESHOLD, &mip_settings.cut_change_threshold, f_t(-1.0), std::numeric_limits<f_t>::infinity(), f_t(-1.0)},
-    {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)}
+    {CUOPT_MIP_CUT_MIN_ORTHOGONALITY, &mip_settings.cut_min_orthogonality, f_t(0.0), f_t(1.0), f_t(0.5)},
+    // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO, &mip_settings.heuristic_params.presolve_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for presolve"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME, &mip_settings.heuristic_params.presolve_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(60.0), "hard cap on presolve seconds"},
+    {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},
+    {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME, &mip_settings.heuristic_params.root_lp_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(15.0), "hard cap on root LP seconds"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &mip_settings.heuristic_params.rins_time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(3.0), "per-call RINS sub-MIP time"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT, &mip_settings.heuristic_params.rins_max_time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(20.0), "ceiling for RINS adaptive time budget"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE, &mip_settings.heuristic_params.rins_fix_rate, f_t(0.0), f_t(1.0), f_t(0.5), "RINS variable fix rate"},
+    {CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT, &mip_settings.heuristic_params.initial_infeasibility_weight, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1000.0), "constraint violation penalty seed"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT, &mip_settings.heuristic_params.relaxed_lp_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1.0), "base relaxed LP time cap in heuristics"},
+    {CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT, &mip_settings.heuristic_params.related_vars_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(30.0), "time for related-variable structure build"},
    };
 
   // Int parameters
@@ -95,17 +132,28 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_KNAPSACK_CUTS, &mip_settings.knapsack_cuts, -1, 1, -1},
     {CUOPT_MIP_CLIQUE_CUTS, &mip_settings.clique_cuts, -1, 1, -1},
+    {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
-    {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 1, 0},
+    {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 2, 0},
+    {CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING, &mip_settings.mip_batch_pdlp_reliability_branching, 0, 2, 0},
+    {CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT, &mip_settings.strong_branching_simplex_iteration_limit, -1,std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&pdlp_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
-    {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION}
+    {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION},
+    // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE, &mip_settings.heuristic_params.population_size, 1, std::numeric_limits<i_t>::max(), 32, "max solutions in pool"},
+    {CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS, &mip_settings.heuristic_params.num_cpufj_threads, 0, std::numeric_limits<i_t>::max(), 8, "parallel CPU FJ climbers"},
+    {CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER, &mip_settings.heuristic_params.stagnation_trigger, 1, std::numeric_limits<i_t>::max(), 3, "FP loops w/o improvement before recombination"},
+    {CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT, &mip_settings.heuristic_params.max_iterations_without_improvement, 1, std::numeric_limits<i_t>::max(), 8, "diversity step depth after stagnation"},
+    {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
+    {CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS, &mip_settings.heuristic_params.enabled_recombiners, 0, 15, 15, "bitmask: 1=BP 2=FP 4=LS 8=SubMIP"},
+    {CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH, &mip_settings.heuristic_params.cycle_detection_length, 1, std::numeric_limits<i_t>::max(), 30, "FP assignment cycle ring buffer length"},
   };
 
     // Bool parameters
@@ -473,6 +521,111 @@ const std::vector<std::string> solver_settings_t<i_t, f_t>::get_parameter_names(
     parameter_names.push_back(param.param_name);
   }
   return parameter_names;
+}
+
+template <typename i_t, typename f_t>
+void solver_settings_t<i_t, f_t>::load_parameters_from_file(const std::string& path)
+{
+  cuopt_expects(!std::filesystem::is_directory(path) && std::filesystem::exists(path),
+                error_type_t::ValidationError,
+                "Parameter config: not a valid file: %s",
+                path.c_str());
+  std::ifstream file(path);
+  cuopt_expects(file.is_open(),
+                error_type_t::ValidationError,
+                "Parameter config: cannot open: %s",
+                path.c_str());
+  std::string line;
+  while (std::getline(file, line)) {
+    auto first_non_ws = std::find_if_not(line.begin(), line.end(), ::isspace);
+    if (first_non_ws == line.end() || *first_non_ws == '#') continue;
+    line.erase(line.begin(), first_non_ws);
+
+    std::istringstream iss(line);
+    std::string key;
+    cuopt_expects(iss >> key >> std::ws && iss.get() == '=',
+                  error_type_t::ValidationError,
+                  "Parameter config: bad line: %s",
+                  line.c_str());
+    iss >> std::ws;
+    cuopt_expects(!iss.eof(),
+                  error_type_t::ValidationError,
+                  "Parameter config: missing value: %s",
+                  line.c_str());
+    std::string val;
+    if (iss.peek() == '"') {
+      iss.get();
+      val.clear();
+      char ch;
+      bool closed = false;
+      while (iss.get(ch)) {
+        if (ch == '\\' && iss.peek() == '"') {
+          iss.get(ch);
+          val += '"';
+        } else if (ch == '"') {
+          closed = true;
+          break;
+        } else {
+          val += ch;
+        }
+      }
+      cuopt_expects(closed,
+                    error_type_t::ValidationError,
+                    "Parameter config: unterminated quote: %s",
+                    line.c_str());
+    } else {
+      iss >> val;
+    }
+    std::string trailing;
+    cuopt_expects(!bool(iss >> trailing),
+                  error_type_t::ValidationError,
+                  "Parameter config: trailing junk: %s",
+                  line.c_str());
+    try {
+      set_parameter_from_string(key, val);
+    } catch (const std::invalid_argument& e) {
+      cuopt_expects(false, error_type_t::ValidationError, "Parameter config: %s", e.what());
+    }
+  }
+  CUOPT_LOG_INFO("Parameters loaded from: %s", path.c_str());
+}
+
+template <typename i_t, typename f_t>
+bool solver_settings_t<i_t, f_t>::dump_parameters_to_file(const std::string& path,
+                                                          bool hyperparameters_only) const
+{
+  std::ofstream file(path);
+  if (!file.is_open()) {
+    CUOPT_LOG_ERROR("Cannot open file for writing: %s", path.c_str());
+    return false;
+  }
+  file << "# cuOpt parameter configuration (auto-generated)\n";
+  file << "# Uncomment and change the values you wish to override.\n\n";
+  for (const auto& p : int_parameters) {
+    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
+    if (p.description && p.description[0] != '\0')
+      file << "# " << p.description << " (int, range: [" << p.min_value << ", " << p.max_value
+           << "])\n";
+    file << "# " << p.param_name << " = " << *p.value_ptr << "\n\n";
+  }
+  for (const auto& p : float_parameters) {
+    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
+    if (p.description && p.description[0] != '\0')
+      file << "# " << p.description << " (double, range: [" << p.min_value << ", " << p.max_value
+           << "])\n";
+    file << "# " << p.param_name << " = " << *p.value_ptr << "\n\n";
+  }
+  for (const auto& p : bool_parameters) {
+    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
+    if (p.description && p.description[0] != '\0') file << "# " << p.description << " (bool)\n";
+    file << "# " << p.param_name << " = " << (*p.value_ptr ? "true" : "false") << "\n\n";
+  }
+  for (const auto& p : string_parameters) {
+    if (hyperparameters_only && p.param_name.find("hyper_") == std::string::npos) continue;
+    if (p.description && p.description[0] != '\0') file << "# " << p.description << " (string)\n";
+    file << "# " << p.param_name << " = " << quote_if_needed(*p.value_ptr) << "\n\n";
+  }
+  return true;
 }
 
 #if MIP_INSTANTIATE_FLOAT
