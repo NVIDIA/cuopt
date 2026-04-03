@@ -288,9 +288,8 @@ On SIGINT/SIGTERM:
 
 When `CancelJob` is called:
 1. Set `job_queue[slot].cancelled = true`
-2. Worker checks the flag before starting the solve
-3. If cancelled, worker stores CANCELLED result and skips to the next job
-4. If the solve has already started, it runs to completion (no mid-solve cancellation)
+2. If the job is **queued** (no worker yet): the worker checks the flag before starting and skips to the next job
+3. If the job is **running** (worker has claimed it): the worker process is killed with `SIGKILL`, the worker-monitor thread detects the exit and posts a `RESULT_CANCELLED` status, and a replacement worker is spawned automatically
 
 ## Memory Management
 
@@ -310,7 +309,7 @@ When `CancelJob` is called:
 - Each worker needs a GPU (or shares with others)
 - Too many workers: GPU memory contention
 - Too few workers: Underutilized when jobs queue
-- Recommendation: 1-2 workers per GPU
+- Recommendation: 1 worker per GPU. Higher values are possible depending on the problems being solved but there is no specific guidance at this time
 
 ### Pipe Buffering
 

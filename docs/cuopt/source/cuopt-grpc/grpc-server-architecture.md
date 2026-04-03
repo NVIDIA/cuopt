@@ -28,16 +28,16 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 │  │   └─────────────────┘        └─────────────────────┘            │ │
 │  └─────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
-               │                                        ▲           
-               │ fork()                                 │           
-               ▼                                        │           
-     ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      
-     │  Worker 0       │  │  Worker 1       │  │  Worker N       │      
-     │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │      
-     │  │ GPU Solve │  │  │  │ GPU Solve │  │  │  │ GPU Solve │  │      
-     │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │      
-     │  (separate proc)│  │  (separate proc)│  │  (separate proc)│      
-     └─────────────────┘  └─────────────────┘  └─────────────────┘      
+               │                                        ▲
+               │ fork()                                 │
+               ▼                                        │
+     ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+     │  Worker 0       │  │  Worker 1       │  │  Worker N       │
+     │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │
+     │  │ GPU Solve │  │  │  │ GPU Solve │  │  │  │ GPU Solve │  │
+     │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │
+     │  (separate proc)│  │  (separate proc)│  │  (separate proc)│
+     └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
 ## Job lifecycle (summary)
@@ -64,12 +64,12 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 |-------|--------|
 | Log files | Per-job solver logs under `/tmp/cuopt_logs/job_<job_id>.log` (used by log streaming). |
 | Default caps | Up to **100** queued jobs and **100** stored results (server compile-time limits). |
-| Workers | Aim for roughly **1–2 worker processes per GPU**; more workers can increase GPU memory contention. |
+| Workers | Recommended: **1 worker process per GPU**. Higher values are possible depending on the problems being solved but there is no specific guidance at this time. |
 
 ## Fault tolerance and cancellation
 
 - If a **worker process crashes**, jobs it was running are marked **FAILED**; the server can spawn replacement workers (see contributor doc for details).
-- **`CancelJob`** is honored **before** the solve starts. If the solver has already started, the run continues to completion (**no mid-solve cancellation**).
+- **`CancelJob`** cancels **queued** jobs immediately (the worker skips them). If the solver has already started, the **worker process is killed** and the job is marked **CANCELLED**; a replacement worker is spawned automatically.
 
 ## Further reading
 

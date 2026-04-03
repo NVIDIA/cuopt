@@ -112,21 +112,21 @@
       pip: {
         stable: {
           cu12:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" +
+            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" +
             V +
             ".*'",
           cu13:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" +
+            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" +
             V +
             ".*'",
         },
         nightly: {
           cu12:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" +
+            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" +
             V_NEXT +
             ".*'",
           cu13:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" +
+            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" +
             V_NEXT +
             ".*'",
         },
@@ -134,11 +134,11 @@
       conda: {
         stable: {
           cu12:
-            "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
+            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
             ".* cuda-version=12.9",
           cu13:
-            "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
+            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
             ".* cuda-version=13.0",
         },
