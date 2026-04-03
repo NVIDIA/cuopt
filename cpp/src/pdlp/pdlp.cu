@@ -846,6 +846,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
             .get_additional_termination_informations()[climber_strategies_[i].original_index]
             .solved_by = method_t::PDLP;
         }
+        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
       current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
