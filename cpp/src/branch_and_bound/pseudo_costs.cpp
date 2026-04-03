@@ -1170,70 +1170,58 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                         static_cast<int>(fractional.size() * 2));
   }
 
-  i_t merged_from_ds      = 0;
-  i_t merged_from_pdlp    = 0;
-  i_t merged_nan          = 0;
-  i_t solved_by_both_down = 0;
-  i_t solved_by_both_up   = 0;
-  for (i_t k = 0; k < fractional.size(); k++) {
-    bool dual_simplex_has_down           = dual_simplex_status_down[k] != dual::status_t::UNSET;
-    bool pdlp_has_down                   = !std::isnan(pdlp_obj_down[k]);
-    const auto [value_down, source_down] = merge_sb_result<i_t, f_t>(
-      dual_simplex_obj_down[k], dual_simplex_status_down[k], pdlp_obj_down[k], pdlp_has_down);
-    pc.strong_branch_down[k] = value_down;
-    if (source_down == sb_source_t::DUAL_SIMPLEX)
-      merged_from_ds++;
-    else if (source_down == sb_source_t::PDLP)
-      merged_from_pdlp++;
-    else
-      merged_nan++;
-    if (dual_simplex_has_down && pdlp_has_down && verbose) {
-      solved_by_both_down++;
-      settings.log.printf(
-        "[COOP SB] Merge: variable %d DOWN solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
-        fractional[k],
-        dual_simplex_obj_down[k],
-        pdlp_obj_down[k],
-        source_down == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
-    }
-
-    bool dual_simplex_has_up         = dual_simplex_status_up[k] != dual::status_t::UNSET;
-    bool pdlp_has_up                 = !std::isnan(pdlp_obj_up[k]);
-    const auto [value_up, source_up] = merge_sb_result<i_t, f_t>(
-      dual_simplex_obj_up[k], dual_simplex_status_up[k], pdlp_obj_up[k], pdlp_has_up);
-    pc.strong_branch_up[k] = value_up;
-    if (source_up == sb_source_t::DUAL_SIMPLEX)
-      merged_from_ds++;
-    else if (source_up == sb_source_t::PDLP)
-      merged_from_pdlp++;
-    else
-      merged_nan++;
-    if (dual_simplex_has_up && pdlp_has_up && verbose) {
-      solved_by_both_up++;
-      settings.log.printf(
-        "[COOP SB] Merge: variable %d UP solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
-        fractional[k],
-        dual_simplex_obj_up[k],
-        pdlp_obj_up[k],
-        source_up == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
-    }
-  }
-
   if (effective_batch_pdlp != 0) {
+    i_t merged_from_ds   = 0;
+    i_t merged_from_pdlp = 0;
+    i_t merged_nan       = 0;
+    i_t solved_by_both   = 0;
+    for (i_t k = 0; k < fractional.size(); k++) {
+      for (i_t branch = 0; branch < 2; branch++) {
+        const bool is_down       = (branch == 0);
+        f_t& sb_dest             = is_down ? pc.strong_branch_down[k] : pc.strong_branch_up[k];
+        f_t ds_obj               = is_down ? dual_simplex_obj_down[k] : dual_simplex_obj_up[k];
+        dual::status_t ds_status = is_down ? dual_simplex_status_down[k] : dual_simplex_status_up[k];
+        f_t pdlp_obj             = is_down ? pdlp_obj_down[k] : pdlp_obj_up[k];
+        bool pdlp_has            = !std::isnan(pdlp_obj);
+        bool ds_has              = ds_status != dual::status_t::UNSET;
+
+        const auto [value, source] =
+          merge_sb_result<i_t, f_t>(ds_obj, ds_status, pdlp_obj, pdlp_has);
+
+        if (source == sb_source_t::PDLP || effective_batch_pdlp == 2) { sb_dest = value; }
+
+        if (source == sb_source_t::DUAL_SIMPLEX)
+          merged_from_ds++;
+        else if (source == sb_source_t::PDLP)
+          merged_from_pdlp++;
+        else
+          merged_nan++;
+
+        if (ds_has && pdlp_has && verbose) {
+          solved_by_both++;
+          settings.log.printf(
+            "[COOP SB] Merge: variable %d %s solved by BOTH (DS=%e PDLP=%e) -> kept %s\n",
+            fractional[k],
+            is_down ? "DOWN" : "UP",
+            ds_obj,
+            pdlp_obj,
+            source == sb_source_t::DUAL_SIMPLEX ? "DS" : "PDLP");
+        }
+      }
+    }
+
     pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root =
       (f_t(merged_from_pdlp) / f_t(fractional.size() * 2)) * 100.0;
     if (verbose) {
       settings.log.printf(
-        "Batch PDLP only for strong branching. percent solved by batch PDLP at root: %f\n",
+        "Batch PDLP for strong branching. Percent solved by batch PDLP at root: %f\n",
         pc.pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root);
       settings.log.printf(
-        "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d/%d solved by both "
-        "(down/up)\n",
+        "Merged results: %d from DS, %d from PDLP, %d unresolved (NaN), %d solved by both\n",
         merged_from_ds,
         merged_from_pdlp,
         merged_nan,
-        solved_by_both_down,
-        solved_by_both_up);
+        solved_by_both);
     }
   }
 
