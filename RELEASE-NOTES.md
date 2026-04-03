@@ -38,6 +38,7 @@
 - Fix a bug in MIP where variables could violate their bounds in Feasibility Jump on the CPU
 - Fix a bug in MIP where a race condition could occur when sharing solutions between branch and bound and heuristics
 - Fix a bug in MIP where the solver was not respecting the time limit
+- Fix a bug in MIP where the solver terminated at the end of the root relaxation solve
 - Fix a bug in QP where quadratic terms were not written out to MPS files
 - Fix a bug in MIP where cuOpt was taking a long time to terminate after optimal solution found
 - Fix a bug in LP/barrier on problems containing variables with infinite lower bounds
