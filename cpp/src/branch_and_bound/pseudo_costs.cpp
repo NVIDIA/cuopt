@@ -1141,8 +1141,6 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
           case dual::status_t::UNSET: dual_simplex_unset++; break;
         }
       }
-      settings.log.printf("Strong branching completed in %.2fs\n",
-                          toc(strong_branching_start_time));
     }
 
     settings.log.printf("Dual Simplex: %d/%d optimal, %d infeasible, %d iter-limit",
