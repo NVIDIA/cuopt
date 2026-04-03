@@ -34,7 +34,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 
 namespace cuopt::linear_programming::detail {
@@ -494,70 +493,6 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
 {
   raft::common::nvtx::range fun_scope("mip_scale_problem");
 
-  int scaling_config_id = -1;
-  if (const char* env = std::getenv("CUOPT_CONFIG_ID")) { scaling_config_id = std::atoi(env); }
-
-  // CUOPT_CONFIG_ID mapping (pairs are repeats of the same config):
-  //  0- 1: A — coefficient-only target (no RHS in reference_norm)
-  //  2- 3: B — consistent reference (use RHS in desired_scaling denominator too)
-  //  4- 5: C — magnitude guard (stop iteration if predicted max coeff > original)
-  //  6- 7: D — include zero-RHS rows in target and scaling
-  //  8- 9: A+D
-  // 10-11: A+C+D
-  // 12-13: B+D
-  // 14-15: A+C
-  // 16-17: scale-down-only (cap max_scaling at 1 for all rows)
-  // 18-19: A + scale-down-only
-  //    -1: baseline (current behavior, default when env var is unset)
-  bool use_rhs_in_target  = true;
-  bool use_rhs_in_desired = false;
-  bool skip_zero_rhs      = true;
-  bool magnitude_guard    = false;
-  bool scale_down_only    = false;
-
-  int config_group = scaling_config_id >= 0 ? scaling_config_id / 2 : -1;
-  switch (config_group) {
-    case -1: break;
-    case 0: use_rhs_in_target = false; break;
-    case 1: use_rhs_in_desired = true; break;
-    case 2: magnitude_guard = true; break;
-    case 3: skip_zero_rhs = false; break;
-    case 4:
-      use_rhs_in_target = false;
-      skip_zero_rhs     = false;
-      break;
-    case 5:
-      use_rhs_in_target = false;
-      magnitude_guard   = true;
-      skip_zero_rhs     = false;
-      break;
-    case 6:
-      use_rhs_in_desired = true;
-      skip_zero_rhs      = false;
-      break;
-    case 7:
-      use_rhs_in_target = false;
-      magnitude_guard   = true;
-      break;
-    case 8: scale_down_only = true; break;
-    case 9:
-      use_rhs_in_target = false;
-      scale_down_only   = true;
-      break;
-    default: break;
-  }
-
-  CUOPT_LOG_INFO(
-    "MIP_SCALING config_id=%d config_group=%d rhs_in_target=%d rhs_in_desired=%d skip_zero_rhs=%d "
-    "magnitude_guard=%d scale_down_only=%d",
-    scaling_config_id,
-    config_group,
-    static_cast<int>(use_rhs_in_target),
-    static_cast<int>(use_rhs_in_desired),
-    static_cast<int>(skip_zero_rhs),
-    static_cast<int>(magnitude_guard),
-    static_cast<int>(scale_down_only));
-
   auto& matrix_values           = op_problem_scaled_.get_constraint_matrix_values();
   auto& matrix_offsets          = op_problem_scaled_.get_constraint_matrix_offsets();
   auto& constraint_bounds       = op_problem_scaled_.get_constraint_bounds();
@@ -636,15 +571,12 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                  row_scaling_max_iterations,
                  big_m_rows);
 
-  f_t original_max_coeff = f_t(0);
-  if (magnitude_guard) {
-    original_max_coeff = thrust::transform_reduce(handle_ptr_->get_thrust_policy(),
-                                                  matrix_values.begin(),
-                                                  matrix_values.end(),
-                                                  abs_value_transform_t<f_t>{},
-                                                  f_t(0),
-                                                  max_op_t<f_t>{});
-  }
+  f_t original_max_coeff = thrust::transform_reduce(handle_ptr_->get_thrust_policy(),
+                                                    matrix_values.begin(),
+                                                    matrix_values.end(),
+                                                    abs_value_transform_t<f_t>{},
+                                                    f_t(0),
+                                                    max_op_t<f_t>{});
 
   double previous_row_log2_spread = std::numeric_limits<double>::infinity();
   for (int iteration = 0; iteration < row_scaling_max_iterations; ++iteration) {
@@ -715,7 +647,6 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                         return rhs_norm;
                       });
 
-    // Fix A+C: median-based target norm excluding big-M rows and zero-RHS rows (robust to outliers)
     constexpr double neg_inf_sentinel = -1.0e300;
     thrust::transform(handle_ptr_->get_thrust_policy(),
                       thrust::make_zip_iterator(thrust::make_tuple(
@@ -723,21 +654,14 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                       thrust::make_zip_iterator(thrust::make_tuple(
                         row_inf_norm.end(), row_rhs_magnitude.end(), row_skip_scaling.end())),
                       ref_log2_values.begin(),
-                      [use_rhs_in_target, skip_zero_rhs] __device__(auto row_info) -> double {
+                      [] __device__(auto row_info) -> double {
                         const f_t row_norm = thrust::get<0>(row_info);
                         const f_t rhs_norm = thrust::get<1>(row_info);
                         const i_t is_big_m = thrust::get<2>(row_info);
                         if (is_big_m) { return -std::numeric_limits<double>::infinity(); }
-                        if (skip_zero_rhs && rhs_norm == f_t(0)) {
-                          return -std::numeric_limits<double>::infinity();
-                        }
-                        const f_t reference_norm = use_rhs_in_target
-                                                     ? (row_norm > rhs_norm ? row_norm : rhs_norm)
-                                                     : row_norm;
-                        if (reference_norm <= f_t(0)) {
-                          return -std::numeric_limits<double>::infinity();
-                        }
-                        return log2(static_cast<double>(reference_norm));
+                        if (rhs_norm == f_t(0)) { return -std::numeric_limits<double>::infinity(); }
+                        if (row_norm <= f_t(0)) { return -std::numeric_limits<double>::infinity(); }
+                        return log2(static_cast<double>(row_norm));
                       });
     thrust::sort(handle_ptr_->get_thrust_policy(), ref_log2_values.begin(), ref_log2_values.end());
     auto valid_begin_iter = thrust::lower_bound(handle_ptr_->get_thrust_policy(),
@@ -772,18 +696,16 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                                                    cumulative_scaling.end(),
                                                    row_rhs_magnitude.end())),
       iteration_scaling.begin(),
-      [target_norm, use_rhs_in_desired, skip_zero_rhs, scale_down_only] __device__(
-        auto row_info) -> f_t {
+      [target_norm] __device__(auto row_info) -> f_t {
         const f_t row_norm               = thrust::get<0>(row_info);
         const i_t is_big_m               = thrust::get<1>(row_info);
         const std::int64_t row_coeff_gcd = thrust::get<2>(row_info);
         const f_t cum_scale              = thrust::get<3>(row_info);
         const f_t rhs_norm               = thrust::get<4>(row_info);
         if (row_norm == f_t(0)) { return f_t(1); }
-        if (skip_zero_rhs && rhs_norm == f_t(0)) { return f_t(1); }
+        if (rhs_norm == f_t(0)) { return f_t(1); }
 
-        const f_t scaling_ref = (use_rhs_in_desired && rhs_norm > row_norm) ? rhs_norm : row_norm;
-        const f_t desired_scaling = target_norm / scaling_ref;
+        const f_t desired_scaling = target_norm / row_norm;
         if (!isfinite(desired_scaling) || desired_scaling <= f_t(0)) { return f_t(1); }
 
         f_t min_scaling = is_big_m ? static_cast<f_t>(row_scaling_big_m_soft_min_factor)
@@ -791,12 +713,9 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
         f_t max_scaling = is_big_m ? static_cast<f_t>(row_scaling_big_m_soft_max_factor)
                                    : static_cast<f_t>(row_scaling_max_factor);
 
-        // Fix B: prevent scaling UP rows that are already numerically large
         if (!is_big_m && row_norm >= static_cast<f_t>(big_m_abs_threshold)) {
           if (max_scaling > f_t(1)) { max_scaling = f_t(1); }
         }
-
-        if (scale_down_only && max_scaling > f_t(1)) { max_scaling = f_t(1); }
 
         const f_t cum_lower = static_cast<f_t>(cumulative_row_scaling_min) / cum_scale;
         const f_t cum_upper = static_cast<f_t>(cumulative_row_scaling_max) / cum_scale;
@@ -862,20 +781,18 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
       valid_count);
     if (scaled_rows == 0) { break; }
 
-    if (magnitude_guard) {
-      f_t predicted_max = thrust::inner_product(handle_ptr_->get_thrust_policy(),
-                                                row_inf_norm.begin(),
-                                                row_inf_norm.end(),
-                                                iteration_scaling.begin(),
-                                                f_t(0),
-                                                max_op_t<f_t>{},
-                                                thrust::multiplies<f_t>{});
-      if (predicted_max > original_max_coeff) {
-        CUOPT_LOG_INFO("MIP_SCALING magnitude guard: predicted_max=%g > original_max=%g, stopping",
-                       static_cast<double>(predicted_max),
-                       static_cast<double>(original_max_coeff));
-        break;
-      }
+    f_t predicted_max = thrust::inner_product(handle_ptr_->get_thrust_policy(),
+                                              row_inf_norm.begin(),
+                                              row_inf_norm.end(),
+                                              iteration_scaling.begin(),
+                                              f_t(0),
+                                              max_op_t<f_t>{},
+                                              thrust::multiplies<f_t>{});
+    if (predicted_max > original_max_coeff) {
+      CUOPT_LOG_INFO("MIP_SCALING magnitude guard: predicted_max=%g > original_max=%g, stopping",
+                     static_cast<double>(predicted_max),
+                     static_cast<double>(original_max_coeff));
+      break;
     }
 
     thrust::transform(
