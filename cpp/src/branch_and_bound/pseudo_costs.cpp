@@ -1403,6 +1403,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     return branch_var;
   }
 
+  // 0: no batch PDLP, 1: cooperative batch PDLP and DS, 2: batch PDLP only
   const i_t rb_mode = settings.mip_batch_pdlp_reliability_branching;
   // We don't use batch PDLP in reliability branching if the PDLP warm start data was not filled
   // This indicates that PDLP alone (not batched) couldn't even run at the root node
@@ -1412,11 +1413,12 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // using batch PDLP
   constexpr i_t min_num_candidates_for_pdlp                       = 5;
   constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
-  const bool use_pdlp = (rb_mode != 0) && !settings.sub_mip && !settings.deterministic &&
+  // Batch PDLP is either forced or we use the heuristic to decide if it should be used
+  const bool use_pdlp = (rb_mode == 2) || (rb_mode != 0 && !settings.sub_mip && !settings.deterministic &&
                         pdlp_warm_cache.populated &&
                         unreliable_list.size() > min_num_candidates_for_pdlp &&
                         pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
-                          min_percent_solved_by_batch_pdlp_at_root_for_pdlp;
+                          min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
