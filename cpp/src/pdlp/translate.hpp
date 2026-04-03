@@ -9,8 +9,6 @@
 
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
-#include <mip_heuristics/problem/problem.cuh>
-
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 
