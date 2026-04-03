@@ -107,6 +107,7 @@ struct simplex_solver_settings_t {
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
       mip_batch_pdlp_strong_branching(0),
+      mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
       reliability_branching(-1),
