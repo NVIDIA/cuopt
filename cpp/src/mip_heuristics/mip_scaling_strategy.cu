@@ -310,14 +310,14 @@ void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>
 
   if (!std::isfinite(static_cast<double>(min_abs_obj)) || min_abs_obj <= f_t(0) ||
       max_abs_obj <= f_t(0)) {
-    CUOPT_LOG_INFO("MIP_OBJ_SCALING skipped: no finite nonzero objective coefficients");
+    CUOPT_LOG_DEBUG("MIP_OBJ_SCALING skipped: no finite nonzero objective coefficients");
     return;
   }
 
   if (static_cast<double>(min_abs_obj) >= min_abs_objective_coefficient_threshold) {
-    CUOPT_LOG_INFO("MIP_OBJ_SCALING skipped: min_abs_coeff=%g already above threshold=%g",
-                   static_cast<double>(min_abs_obj),
-                   min_abs_objective_coefficient_threshold);
+    CUOPT_LOG_DEBUG("MIP_OBJ_SCALING skipped: min_abs_coeff=%g already above threshold=%g",
+                    static_cast<double>(min_abs_obj),
+                    min_abs_objective_coefficient_threshold);
     return;
   }
 
@@ -326,9 +326,9 @@ void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>
 
   double post_max = static_cast<double>(max_abs_obj) * scale;
   if (post_max > 1.0e6) {
-    CUOPT_LOG_INFO("MIP_OBJ_SCALING skipped: would push max_coeff from %g to %g (limit 1e6)",
-                   static_cast<double>(max_abs_obj),
-                   post_max);
+    CUOPT_LOG_DEBUG("MIP_OBJ_SCALING skipped: would push max_coeff from %g to %g (limit 1e6)",
+                    static_cast<double>(max_abs_obj),
+                    post_max);
     return;
   }
 
@@ -344,7 +344,7 @@ void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>
   op_problem.set_objective_scaling_factor(old_sf / scale_f);
   op_problem.set_objective_offset(old_off * scale_f);
 
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "MIP_OBJ_SCALING applied: min_abs_coeff=%g max_abs_coeff=%g scale=%g new_scaling_factor=%g",
     static_cast<double>(min_abs_obj),
     static_cast<double>(max_abs_obj),
@@ -505,7 +505,7 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
   if (do_objective_scaling) {
     scale_objective(op_problem_scaled_);
   } else {
-    CUOPT_LOG_INFO("MIP_OBJ_SCALING skipped: disabled by user setting");
+    CUOPT_LOG_DEBUG("MIP_OBJ_SCALING skipped: disabled by user setting");
   }
 
   if (n_rows == 0 || nnz <= 0) { return; }
@@ -565,11 +565,11 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
   i_t big_m_rows = thrust::count(
     handle_ptr_->get_thrust_policy(), row_skip_scaling.begin(), row_skip_scaling.end(), i_t(1));
 
-  CUOPT_LOG_INFO("MIP row scaling start: rows=%d cols=%d max_iterations=%d soft_big_m_rows=%d",
-                 n_rows,
-                 n_cols,
-                 row_scaling_max_iterations,
-                 big_m_rows);
+  CUOPT_LOG_DEBUG("MIP row scaling start: rows=%d cols=%d max_iterations=%d soft_big_m_rows=%d",
+                  n_rows,
+                  n_cols,
+                  row_scaling_max_iterations,
+                  big_m_rows);
 
   f_t original_max_coeff = thrust::transform_reduce(handle_ptr_->get_thrust_policy(),
                                                     matrix_values.begin(),
@@ -615,9 +615,9 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
     const double row_log2_spread =
       thrust::get<3>(row_norm_log2_stats) - thrust::get<2>(row_norm_log2_stats);
     if (iteration == 0 && row_log2_spread <= row_scaling_min_initial_log2_spread) {
-      CUOPT_LOG_INFO("MIP row scaling skipped: initial_log2_spread=%g threshold=%g",
-                     row_log2_spread,
-                     row_scaling_min_initial_log2_spread);
+      CUOPT_LOG_DEBUG("MIP row scaling skipped: initial_log2_spread=%g threshold=%g",
+                      row_log2_spread,
+                      row_scaling_min_initial_log2_spread);
       break;
     }
     if (std::isfinite(previous_row_log2_spread)) {
@@ -771,7 +771,7 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                        iteration_scaling.begin(),
                        iteration_scaling.end(),
                        [] __device__(f_t row_scale) -> bool { return row_scale != f_t(1); });
-    CUOPT_LOG_INFO(
+    CUOPT_LOG_DEBUG(
       "MIP_SCALING_METRICS iteration=%d log2_spread=%g target_norm=%g scaled_rows=%d "
       "valid_rows=%d",
       iteration,
@@ -789,9 +789,9 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
                                               max_op_t<f_t>{},
                                               thrust::multiplies<f_t>{});
     if (predicted_max > original_max_coeff) {
-      CUOPT_LOG_INFO("MIP_SCALING magnitude guard: predicted_max=%g > original_max=%g, stopping",
-                     static_cast<double>(predicted_max),
-                     static_cast<double>(original_max_coeff));
+      CUOPT_LOG_DEBUG("MIP_SCALING magnitude guard: predicted_max=%g > original_max=%g, stopping",
+                      static_cast<double>(predicted_max),
+                      static_cast<double>(original_max_coeff));
       break;
     }
 
@@ -832,10 +832,10 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
     }
   }
 
-  CUOPT_LOG_INFO("MIP_SCALING_SUMMARY rows=%d bigm_rows=%d final_spread=%g",
-                 n_rows,
-                 big_m_rows,
-                 previous_row_log2_spread);
+  CUOPT_LOG_DEBUG("MIP_SCALING_SUMMARY rows=%d bigm_rows=%d final_spread=%g",
+                  n_rows,
+                  big_m_rows,
+                  previous_row_log2_spread);
 
   cuopt_func_call(assert_integer_coefficient_integrality(
     op_problem_scaled_, temp_storage, temp_storage_bytes, pre_scaling_gcd, stream_view_));
@@ -867,7 +867,6 @@ void mip_scaling_strategy_t<i_t, f_t>::scale_problem(bool do_objective_scaling)
   }
 
   CUOPT_LOG_INFO("MIP row scaling completed");
-  op_problem_scaled_.print_scaling_information();
 }
 
 #define INSTANTIATE(F_TYPE) template class mip_scaling_strategy_t<int, F_TYPE>;
