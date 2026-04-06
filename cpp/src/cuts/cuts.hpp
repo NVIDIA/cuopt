@@ -39,7 +39,8 @@ enum cut_type_t : int8_t {
   CHVATAL_GOMORY         = 3,
   CLIQUE                 = 4,
   IMPLIED_BOUND          = 5,
-  MAX_CUT_TYPE           = 6
+  FLOW_COVER             = 6,
+  MAX_CUT_TYPE           = 7
 };
 
 template <typename f_t>
@@ -178,7 +179,8 @@ struct cut_info_t {
                                               "Knapsack      ",
                                               "Strong CG     ",
                                               "Clique        ",
-                                              "Implied Bounds"};
+                                              "Implied Bounds",
+                                              "Flow Cover    "};
   std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
@@ -345,8 +347,20 @@ class knapsack_generation_t {
                             i_t knapsack_row,
                             inequality_t<i_t, f_t>& cut);
 
+  i_t generate_flow_cover_cut(const lp_problem_t<i_t, f_t>& lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              csr_matrix_t<i_t, f_t>& Arow,
+                              const std::vector<i_t>& new_slacks,
+                              const std::vector<variable_type_t>& var_types,
+                              const std::vector<f_t>& xstar,
+                              i_t flow_cover_row,
+                              inequality_t<i_t, f_t>& cut);
+
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
+
+  i_t num_flow_cover_constraints() const { return flow_cover_constraints_.size(); }
+  const std::vector<i_t>& get_flow_cover_constraints() const { return flow_cover_constraints_; }
 
  private:
   void restore_complemented(const std::vector<i_t>& complemented_variables)
@@ -389,6 +403,7 @@ class knapsack_generation_t {
 
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
+  std::vector<i_t> flow_cover_constraints_;
   std::vector<i_t> is_complemented_;
   std::vector<i_t> is_marked_;
   std::vector<f_t> workspace_;
@@ -472,6 +487,15 @@ class cut_generation_t {
                               const std::vector<variable_type_t>& var_types,
                               const std::vector<f_t>& xstar,
                               f_t start_time);
+
+  // Generate all flow cover cuts
+  void generate_flow_cover_cuts(const lp_problem_t<i_t, f_t>& lp,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                csr_matrix_t<i_t, f_t>& Arow,
+                                const std::vector<i_t>& new_slacks,
+                                const std::vector<variable_type_t>& var_types,
+                                const std::vector<f_t>& xstar,
+                                f_t start_time);
 
   // Generate clique cuts from conflict graph cliques
   bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,

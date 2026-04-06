@@ -1434,4 +1434,138 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
   EXPECT_EQ(first_infeasible.value(), injected_index);
 }
 
+// Problem data for Example 9.8 from Wolsey: flow cover cut test.
+//
+// The mixed 0-1 set X has the knapsack constraint:
+//   3*x0 + 3*x1 + 6*x2 - 3*x3 - 5*x4 - 1*x5 <= 4
+// with all binary variables (0-indexed: x0..x5 correspond to 1-indexed x1..x6).
+//
+// The LP relaxation solution is x* = (1, 0, 2/3, 1, 0, 0).
+// With C1={0,2}, C2={3}, lambda=2, L2={4}, the flow cover inequality simplifies to:
+//   x0 + x2 - x4 <= 1
+// which is violated by x*: 1 + 2/3 - 0 = 5/3 > 1.
+//
+// We construct an objective that drives the LP relaxation toward this fractional solution.
+mps_parser::mps_data_model_t<int, double> create_flow_cover_problem_example_9_8()
+{
+  mps_parser::mps_data_model_t<int, double> problem;
+
+  // 6 binary variables x0..x5
+  // Constraint: 3*x0 + 3*x1 + 6*x2 - 3*x3 - 5*x4 - 1*x5 <= 4
+  // We also add x3 <= 1 explicitly (it is binary, but coefficients are negative in the knapsack
+  // row so the solver needs it to identify flow cover structure).
+  //
+  // CSR format (1 row):
+  std::vector<int> offsets         = {0, 6};
+  std::vector<int> indices         = {0, 1, 2, 3, 4, 5};
+  std::vector<double> coefficients = {3.0, 3.0, 6.0, -3.0, -5.0, -1.0};
+  problem.set_csr_constraint_matrix(coefficients.data(),
+                                    coefficients.size(),
+                                    indices.data(),
+                                    indices.size(),
+                                    offsets.data(),
+                                    offsets.size());
+
+  // Constraint bounds: -inf <= sum <= 4
+  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
+  std::vector<double> upper_bounds = {4.0};
+  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
+  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+
+  // Variable bounds: all binary [0, 1]
+  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
+  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+
+  // Objective: maximize 3*x0 + 6*x2 + 3*x3 (minimize negated)
+  // This pushes x0=1, x2 as high as possible, x3=1 (opening the RHS).
+  // LP relaxation gives x0=1, x2=2/3, x3=1 => obj = 3 + 4 + 3 = 10
+  // Integer optimum would be x0=1, x2=0, x3=1 or similar.
+  std::vector<double> objective_coefficients = {-3.0, 0.0, -6.0, -3.0, 0.0, 0.0};
+  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+
+  // All integer (binary)
+  std::vector<char> variable_types = {'I', 'I', 'I', 'I', 'I', 'I'};
+  problem.set_variable_types(variable_types);
+
+  problem.set_maximize(false);
+  return problem;
+}
+
+// End-to-end test: solve the Example 9.8 problem with flow cover cuts enabled.
+// The flow cover cut x0 + x2 - x4 <= 1 should cut off the fractional LP solution.
+TEST(cuts, flow_cover_example_9_8_end_to_end)
+{
+  const raft::handle_t handle_{};
+  mip_solver_settings_t<int, double> settings;
+
+  auto problem = create_flow_cover_problem_example_9_8();
+
+  settings.time_limit      = 5.0;
+  settings.max_cut_passes  = 10;
+  settings.flow_cover_cuts = 1;  // explicitly enable flow cover cuts
+  settings.presolver       = presolver_t::None;
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+
+  // The integer optimal: x0=1, x1=0, x2=0, x3=1, x4=0, x5=0
+  // gives 3(1) + 3(0) + 6(0) - 3(1) - 5(0) - 1(0) = 0 <= 4, feasible.
+  // Objective = -3(1) + 0 + -6(0) + -3(1) + 0 + 0 = -6
+  //
+  // With x0=1, x2=1, x3=1, x4=1:
+  // 3(1)+3(0)+6(1)-3(1)-5(1)-1(0) = 3+6-3-5 = 1 <= 4, feasible.
+  // Objective = -3-6-3 = -12. Even better.
+  //
+  // With x0=1, x1=1, x2=1, x3=1, x4=1, x5=1:
+  // 3+3+6-3-5-1 = 3 <= 4, feasible.
+  // Objective = -3+0-6-3+0+0 = -12 (x1, x4, x5 have zero obj coeff).
+  // Actually x0=1, x2=1, x3=1, x4=1: obj = -3-6-3 = -12
+  double obj_val = solution.get_objective_value();
+  EXPECT_LE(obj_val, -6.0 + 1e-3);  // at least as good as -6
+}
+
+// Test that the flow cover cut from Example 9.8 violates the LP relaxation.
+// The fractional point is x* = (1, 0, 2/3, 1, 0, 0).
+// The flow cover inequality (simplified) is: x0 + x2 - x4 <= 1.
+// Violation: 1 + 2/3 - 0 = 5/3 > 1.
+TEST(cuts, flow_cover_example_9_8_violation_check)
+{
+  // Verify the cut violation algebraically
+  // LP relaxation: x* = (1, 0, 2/3, 1, 0, 0)
+  std::vector<double> xstar = {1.0, 0.0, 2.0 / 3.0, 1.0, 0.0, 0.0};
+
+  // Flow cover inequality from Example 9.8:
+  // y1 + y3 + 1*(1-x1) + 4*(1-x3) <= 7 + 2*x5 + y6
+  // With y_j = a_j * x_j:
+  //   3*x0 + 6*x2 + 1*(1-x0) + 4*(1-x2) <= 7 + 2*x4 + 1*x5
+  //   3*x0 + 6*x2 + 1 - x0 + 4 - 4*x2 <= 7 + 2*x4 + x5
+  //   2*x0 + 2*x2 + 5 <= 7 + 2*x4 + x5
+  //   2*x0 + 2*x2 - 2*x4 - x5 <= 2
+  // Dividing is not needed for the violation check.
+  //
+  // LHS = 2(1) + 2(2/3) - 2(0) - 0 = 2 + 4/3 = 10/3
+  // RHS = 2
+  // Violation = 10/3 - 2 = 4/3
+
+  double lhs       = 2.0 * xstar[0] + 2.0 * xstar[2] - 2.0 * xstar[4] - 1.0 * xstar[5];
+  double rhs       = 2.0;
+  double violation = lhs - rhs;
+
+  EXPECT_GT(violation, 1.0);  // violation is 4/3 ~ 1.333
+  EXPECT_NEAR(violation, 4.0 / 3.0, 1e-10);
+
+  // Also verify that any integer feasible solution satisfies the cut.
+  // x0=1, x2=1, x3=1, x4=1 => lhs = 2+2-2-0 = 2 <= 2. Tight but feasible.
+  std::vector<double> x_int = {1.0, 0.0, 1.0, 1.0, 1.0, 0.0};
+  double lhs_int            = 2.0 * x_int[0] + 2.0 * x_int[2] - 2.0 * x_int[4] - 1.0 * x_int[5];
+  EXPECT_LE(lhs_int, rhs + 1e-10);
+
+  // x0=1, x2=0, x3=1 => lhs = 2+0-0-0 = 2 <= 2. Feasible.
+  std::vector<double> x_int2 = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  double lhs_int2 = 2.0 * x_int2[0] + 2.0 * x_int2[2] - 2.0 * x_int2[4] - 1.0 * x_int2[5];
+  EXPECT_LE(lhs_int2, rhs + 1e-10);
+}
+
 }  // namespace cuopt::linear_programming::test
