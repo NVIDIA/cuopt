@@ -17,8 +17,8 @@
 #      no edits here — e.g. test_foo.sh → conda-foo-tests, test_wheel_bar.sh → wheel-bar-tests).
 # Then CUDA / Python / arch / build_type from RAPIDS CI env.
 #
-# Shells: source this file from repo ci/ scripts, then call cuopt_enable_coredumps and trap
-# cuopt_collect_coredumps on EXIT.
+# Test drivers: source ci/utils/cuopt_coredumps.sh from a sibling ci/test_*.sh, then call
+# cuopt_coredumps_ci_setup (enable + EXIT trap).
 
 # Set in cuopt_enable_coredumps; collect reuses when non-empty.
 CUOPT_GDB_CORE_ARTIFACT_DIR=
@@ -200,4 +200,10 @@ cuopt_collect_coredumps() {
       echo "cuOpt coredumps: ${n_after} file(s) in ${dest}"
     fi
   fi
+}
+
+# Standard CI wiring for ci/test_*.sh: call once after sourcing this file.
+cuopt_coredumps_ci_setup() {
+  cuopt_enable_coredumps
+  trap 'cuopt_collect_coredumps || true' EXIT
 }

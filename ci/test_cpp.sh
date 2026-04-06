@@ -5,12 +5,9 @@
 
 set -euo pipefail
 
-_CUOPT_CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=ci/cuopt_coredumps.sh
-source "${_CUOPT_CI_DIR}/cuopt_coredumps.sh"
-cuopt_enable_coredumps
-trap 'cuopt_collect_coredumps || true' EXIT
-unset _CUOPT_CI_DIR
+# shellcheck source=ci/utils/cuopt_coredumps.sh
+source "$(dirname "${BASH_SOURCE[0]}")/utils/cuopt_coredumps.sh"
+cuopt_coredumps_ci_setup
 
 . /opt/conda/etc/profile.d/conda.sh
 
@@ -59,6 +56,16 @@ export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
 rapids-logger "Run gtests"
 timeout 40m ./ci/run_ctests.sh
+
+# Optional core-dump path check: no compiled binary — child bash sends itself SIGSEGV.
+# Child exits 139; || true keeps this script running so the EXIT trap can collect cores.
+# For normal CI, leave unset and set CUOPT_CI_COREDUMP_PROBE=1 only when probing artifacts.
+CUOPT_CI_COREDUMP_PROBE=1
+if [[ "${CUOPT_CI_COREDUMP_PROBE:-}" == 1 ]]; then
+  rapids-logger "CUOPT_CI_COREDUMP_PROBE: child bash SIGSEGV (core dump artifact check)"
+  bash -c 'kill -SEGV $$' || true
+  sleep 0.2
+fi
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
