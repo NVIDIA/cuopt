@@ -16,7 +16,6 @@ source "${_CUOPT_CI_DIR}/cuopt_coredumps.sh"
 cuopt_enable_coredumps
 trap 'cuopt_collect_coredumps || true' EXIT
 unset _CUOPT_CI_DIR
-cuopt_coredump_smoke_fail_job_if_enabled
 
 # Use rapids-logger in CI; fall back to echo for local testing
 if command -v rapids-logger &>/dev/null; then

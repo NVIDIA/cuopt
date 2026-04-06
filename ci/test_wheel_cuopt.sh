@@ -11,7 +11,6 @@ source "${_CUOPT_CI_DIR}/cuopt_coredumps.sh"
 cuopt_enable_coredumps
 trap 'cuopt_collect_coredumps || true' EXIT
 unset _CUOPT_CI_DIR
-cuopt_coredump_smoke_fail_job_if_enabled
 
 # sets up a constraints file for 'pip' and puts its location in an exported variable PIP_EXPORT,
 # so those constraints will affect all future 'pip install' calls
