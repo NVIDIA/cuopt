@@ -7,6 +7,8 @@
 
 #ifdef CUOPT_ENABLE_GRPC
 
+#include "../cuopt_default_grpc_port.h"
+
 #include <grpcpp/grpcpp.h>
 #include "cuopt_remote.pb.h"
 #include "cuopt_remote_service.grpc.pb.h"
@@ -156,7 +158,7 @@ struct JobWaiter {
 // =============================================================================
 
 struct ServerConfig {
-  int port            = 5001;
+  int port            = cuopt_default_grpc_port;
   int num_workers     = 1;
   bool verbose        = true;
   bool log_to_console = false;

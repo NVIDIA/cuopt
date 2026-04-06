@@ -65,7 +65,10 @@ int main(int argc, char** argv)
 
   argparse::ArgumentParser program("cuopt_grpc_server", version_string);
 
-  program.add_argument("-p", "--port").help("Listen port").default_value(5001).scan<'i', int>();
+  program.add_argument("-p", "--port")
+    .help("Listen port")
+    .default_value(cuopt_default_grpc_port)
+    .scan<'i', int>();
 
   program.add_argument("-w", "--workers")
     .help("Number of worker processes")

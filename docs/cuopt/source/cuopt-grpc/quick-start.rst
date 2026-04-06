@@ -10,7 +10,7 @@ Quick start
 
 .. note::
 
-   **Problem types (gRPC remote):** **LP**, **MILP**, and **QP** are supported today. **Routing** (VRP, TSP, PDP) over this path is **not** available yet; support is planned for an **upcoming** release. For remote routing today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`. This guide is **not** the REST server—see :doc:`../cuopt-server/index` for HTTP/JSON.
+   **Problem types (gRPC remote):** **LP**, **MILP**, and **QP** are supported today. **Routing** (VRP, TSP, PDP) over this path is **not** available;  For remote routing, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`. This guide is **not** the REST server—see :doc:`../cuopt-server/index` for HTTP/JSON.
 
 How remote execution works
 ==========================
@@ -84,6 +84,7 @@ Minimal Python example (LP)
 ============================
 
 The script is the same for **local** or **remote** solves: with the exports above, the client library forwards to ``cuopt_grpc_server``; without them, the solve runs locally (where a GPU is available).
+Please make sure the server is running before running the client.
 
 :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`
 
@@ -114,6 +115,7 @@ Minimal ``cuopt_cli`` example (LP)
 ==================================
 
 The same **LP** is available as MPS. With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set as above, ``cuopt_cli`` forwards the solve to the remote server; unset them for a **local** run (GPU on that machine).
+Please make sure the server is running before running the client.
 
 :download:`remote_lp_demo.mps <examples/remote_lp_demo.mps>`
 
