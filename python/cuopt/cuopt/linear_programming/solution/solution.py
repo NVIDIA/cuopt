@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from cuopt.linear_programming.solver_settings.solver_settings import (
+    SolverMethod,
+)
 from cuopt.linear_programming.solver.solver_wrapper import (
     LPTerminationStatus,
     MILPTerminationStatus,
@@ -116,8 +119,10 @@ class Solution:
         Time used for pre-solve
     solve_time: Float64
         Solve time in seconds
-    solved_by_pdlp: bool
-        Whether the problem was solved by PDLP or Dual Simplex
+    solved_by: enum
+        Note: Applicable to only LP
+        Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
+        by the solver using the values from SolverMethod.
     """
 
     def __init__(
@@ -154,7 +159,7 @@ class Solution:
         dual_objective=0.0,
         gap=0.0,
         nb_iterations=0,
-        solved_by_pdlp=None,
+        solved_by=SolverMethod.Unset,
         mip_gap=0.0,
         solution_bound=0.0,
         presolve_time=0.0,
@@ -196,7 +201,7 @@ class Solution:
         self.primal_objective = primal_objective
         self.dual_objective = dual_objective
         self.solve_time = solve_time
-        self.solved_by_pdlp = solved_by_pdlp
+        self.solved_by = SolverMethod(solved_by)
         self.vars = vars
         self.lp_stats = {
             "primal_residual": primal_residual,
@@ -302,10 +307,23 @@ class Solution:
         return self.solve_time
 
     def get_solved_by_pdlp(self):
+        from warnings import warn
+
+        warn(
+            "get_solved_by_pdlp() will be deprecated in 26.08. Use get_solved_by() instead. ",
+            DeprecationWarning,
+        )
+
         """
-        Returns whether the problem was solved by PDLP or Dual Simplex
+        Returns whether the problem was solved by PDLP or not.
         """
-        return self.solved_by_pdlp
+        return self.solved_by == SolverMethod.PDLP
+
+    def get_solved_by(self):
+        """
+        Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
+        """
+        return self.solved_by
 
     def get_vars(self):
         """

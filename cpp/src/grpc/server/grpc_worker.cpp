@@ -378,7 +378,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
                                                 term_info.l2_dual_residual,
                                                 term_info.gap,
                                                 term_info.number_of_steps_taken,
-                                                term_info.solved_by_pdlp,
+                                                term_info.solved_by,
                                                 std::move(cpu_ws));
 
     populate_chunked_result_header_lp(cpu_solution, &sr.header);

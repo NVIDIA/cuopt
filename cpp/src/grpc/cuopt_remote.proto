@@ -172,7 +172,7 @@ message MIPSolverSettings {
   int32 num_cpu_threads = 10;
   int32 num_gpus = 11;
   int32 presolver = 12;
-  bool mip_scaling = 13;
+  int32 mip_scaling = 13;
 
   // Additional limits
   double work_limit = 14;
@@ -237,7 +237,7 @@ message LPSolution {
   double gap = 1006;
   int32 nb_iterations = 1007;
   double solve_time = 1008;
-  bool solved_by_pdlp = 1009;
+  int32 solved_by = 1009;
 }
 
 enum PDLPTerminationStatus {

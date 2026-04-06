@@ -78,6 +78,28 @@ if(CMAKE_COMPILER_IS_GNUCXX)
   list(APPEND CUOPT_CXX_FLAGS -Werror -Wno-error=deprecated-declarations)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
+# Papilo pulls in Boost.Multiprecision float128 support, which expects quadmath.h from the GCC
+# toolchain internals. Conda clang ships libquadmath, but does not surface the matching GCC
+# internal include directory by default. Add it late in the search order so clang still prefers its
+# own builtin intrinsic headers.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} --print-file-name=libquadmath.a
+    OUTPUT_VARIABLE CUOPT_QUADMATH_LIB
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  if(IS_ABSOLUTE "${CUOPT_QUADMATH_LIB}")
+    get_filename_component(CUOPT_QUADMATH_LIBDIR "${CUOPT_QUADMATH_LIB}" DIRECTORY)
+    set(CUOPT_QUADMATH_INCLUDEDIR "${CUOPT_QUADMATH_LIBDIR}/include")
+
+    if(EXISTS "${CUOPT_QUADMATH_INCLUDEDIR}/quadmath.h")
+      message(STATUS "Adding clang fallback include for quadmath: ${CUOPT_QUADMATH_INCLUDEDIR}")
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-idirafter${CUOPT_QUADMATH_INCLUDEDIR}>")
+    endif()
+  endif()
+endif()
+
 # To use sanitizer with cuda runtime, one must follow a few steps:
 # 1. Run the binary with env var set: LD_PRELOAD="$(gcc -print-file-name=libasan.so)" ASAN_OPTIONS='protect_shadow_gap=0:replace_intrin=0'
 # 2. (Optional) To run with a debugger (gdb or cuda-gdb) use the additional ASAN option alloc_dealloc_mismatch=0
@@ -116,7 +138,8 @@ endif(BUILD_MSAN)
 # infrastructure files. Those files include abseil headers, and abseil's shared library
 # on conda-forge doesn't export Mutex::Dtor() in NDEBUG builds (abseil-cpp#1624).
 # Keeping NDEBUG defined for gRPC files makes the header inline an empty Dtor(),
-# avoiding the missing symbol at runtime.
+# avoiding the missing symbol at runtime.  Additionally, gRPC files are always
+# compiled with -DNDEBUG (see below) so Debug builds also avoid the missing symbol.
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
   list(APPEND CUOPT_CUDA_FLAGS -UNDEBUG)
@@ -204,6 +227,12 @@ if (FETCH_RAPIDS)
   include(cmake/thirdparty/get_cccl.cmake)
   include(cmake/thirdparty/get_rmm.cmake)
   include(cmake/thirdparty/get_raft.cmake)
+  # Source-built RMM can hide out-of-line utility symbols such as
+  # rmm::align_up / rmm::get_current_cuda_device when built with hidden visibility on clang.
+  # Force default visibility on the fetched rmm target until this is fixed upstream/figured out.
+  if(TARGET rmm)
+    set_target_properties(rmm PROPERTIES CXX_VISIBILITY_PRESET default)
+  endif()
 else()
   find_package(CCCL REQUIRED)
   find_package(RMM REQUIRED)
@@ -362,7 +391,7 @@ if(DEFINE_ASSERT)
 endif()
 
 # Add gRPC mapper files and generated protobuf sources
-list(APPEND CUOPT_SRC_FILES
+set(GRPC_INFRA_FILES
   ${PROTO_SRCS}
   ${GRPC_PROTO_SRCS}
   ${GRPC_SERVICE_SRCS}
@@ -373,6 +402,15 @@ list(APPEND CUOPT_SRC_FILES
   src/grpc/client/grpc_client.cpp
   src/grpc/client/solve_remote.cpp
 )
+list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
+
+# Always keep NDEBUG defined for gRPC infrastructure files so that abseil
+# headers inline Mutex::Dtor() instead of emitting an external call.
+# The conda-forge abseil shared library is built with NDEBUG and does not
+# export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
+# at runtime with "undefined symbol: absl::…::Mutex::Dtor".
+set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+  APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}
@@ -415,9 +453,13 @@ add_library(cuopt::cuopt ALIAS cuopt)
 # - include paths ---------------------------------------------------------------------------------
 message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
-target_include_directories(cuopt SYSTEM PRIVATE
+# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
+target_include_directories(cuopt PRIVATE
   "${papilo_SOURCE_DIR}/src"
   "${papilo_BINARY_DIR}"
+)
+
+target_include_directories(cuopt SYSTEM PRIVATE
   "${pslp_SOURCE_DIR}/include"
 )
 

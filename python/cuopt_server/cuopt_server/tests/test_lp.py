@@ -88,7 +88,7 @@ def get_std_data_for_milp():
     data = get_std_data_for_lp()
     data["variable_types"] = ["I", "C"]
     data["maximize"] = True
-    data["solver_config"]["mip_scaling"] = False
+    data["solver_config"]["mip_scaling"] = 0
     return data
 
 
@@ -107,10 +107,10 @@ def test_sample_lp(cuoptproc):  # noqa
 @pytest.mark.parametrize(
     "maximize, scaling, expected_status, heuristics_only",
     [
-        (True, True, MILPTerminationStatus.Optimal.name, True),
-        (False, True, MILPTerminationStatus.Optimal.name, False),
-        (True, False, MILPTerminationStatus.Optimal.name, True),
-        (False, False, MILPTerminationStatus.Optimal.name, False),
+        (True, 1, MILPTerminationStatus.Optimal.name, True),
+        (False, 1, MILPTerminationStatus.Optimal.name, False),
+        (True, 0, MILPTerminationStatus.Optimal.name, True),
+        (False, 0, MILPTerminationStatus.Optimal.name, False),
     ],
 )
 def test_sample_milp(

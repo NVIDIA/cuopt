@@ -1852,14 +1852,14 @@ TEST(MapperRoundtrip, LPSolutionAllFields)
                                           std::move(dual),
                                           std::move(reduced_cost),
                                           pdlp_termination_status_t::Optimal,
-                                          -464.753,  // primal_objective
-                                          -464.0,    // dual_objective
-                                          1.23,      // solve_time
-                                          1e-8,      // l2_primal_residual
-                                          2e-8,      // l2_dual_residual
-                                          3e-8,      // gap
-                                          500,       // num_iterations
-                                          true);     // solved_by_pdlp
+                                          -464.753,         // primal_objective
+                                          -464.0,           // dual_objective
+                                          1.23,             // solve_time
+                                          1e-8,             // l2_primal_residual
+                                          2e-8,             // l2_dual_residual
+                                          3e-8,             // gap
+                                          500,              // num_iterations
+                                          method_t::PDLP);  // solved_by
 
   cuopt::remote::LPSolution pb;
   map_lp_solution_to_proto(orig, &pb);
@@ -1879,7 +1879,7 @@ TEST(MapperRoundtrip, LPSolutionAllFields)
   EXPECT_DOUBLE_EQ(restored.get_l2_dual_residual(), 2e-8);
   EXPECT_DOUBLE_EQ(restored.get_gap(), 3e-8);
   EXPECT_EQ(restored.get_num_iterations(), 500);
-  EXPECT_EQ(restored.is_solved_by_pdlp(), true);
+  EXPECT_EQ(restored.solved_by(), method_t::PDLP);
 
   auto restored_primal = restored.get_primal_solution_host();
   ASSERT_EQ(restored_primal.size(), 3u);

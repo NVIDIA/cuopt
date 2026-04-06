@@ -152,8 +152,8 @@ void test_elim_var_solution(std::string test_instance)
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
   // the solution might not be feasible per row as we are getting the result of pdlp
-  bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
-  EXPECT_EQ((int)result_1.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERMINATION_STATUS_OPTIMAL;
+  EXPECT_EQ((int)result_1.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
   standardized_problem.post_process_solution(solution_1);
   solution_1.problem_ptr = &original_problem;
   auto opt_sol_1         = solution_1.get_solution(sol_1_feasible, solver_stats_t<int, double>{});
@@ -181,8 +181,8 @@ void test_elim_var_solution(std::string test_instance)
   // run the problem through pdlp
   auto result_2 = detail::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
   solution_2.compute_feasibility();
-  bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
-  EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERMINATION_STATUS_OPTIMAL;
+  EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
   sub_problem.post_process_solution(solution_2);
   solution_2.problem_ptr = &original_problem;
   auto opt_sol_2         = solution_2.get_solution(sol_2_feasible, solver_stats_t<int, double>{});

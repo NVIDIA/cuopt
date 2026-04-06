@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
@@ -36,21 +36,21 @@
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERIMINATION_STATUS_OPTIMAL:
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
       return "Optimal";
-    case CUOPT_TERIMINATION_STATUS_INFEASIBLE:
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
       return "Infeasible";
-    case CUOPT_TERIMINATION_STATUS_UNBOUNDED:
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
       return "Unbounded";
-    case CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT:
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
       return "Iteration limit";
-    case CUOPT_TERIMINATION_STATUS_TIME_LIMIT:
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
       return "Time limit";
-    case CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR:
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
       return "Numerical error";
-    case CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE:
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
       return "Primal feasible";
-    case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
     default:
       return "Unknown";
@@ -60,8 +60,8 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
 cuopt_int_t solve_mps_file(const char* filename)
 {
   cuOptOptimizationProblem problem = NULL;
-  cuOptSolverSettings settings = NULL;
-  cuOptSolution solution = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
   cuopt_int_t status;
   cuopt_float_t time;
   cuopt_int_t termination_status;
@@ -129,13 +129,15 @@ cuopt_int_t solve_mps_file(const char* filename)
   printf("\nResults:\n");
   printf("--------\n");
   printf("Number of variables: %d\n", num_variables);
-  printf("Termination status: %s (%d)\n", termination_status_to_string(termination_status), termination_status);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
   printf("Solve time: %f seconds\n", time);
   printf("Objective value: %f\n", objective_value);
 
   // Get and print solution variables
   solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
-  status = cuOptGetPrimalSolution(solution, solution_values);
+  status          = cuOptGetPrimalSolution(solution, solution_values);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solution values: %d\n", status);
     goto DONE;
@@ -158,7 +160,8 @@ DONE:
   return status;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
   if (argc != 2) {
     printf("Usage: %s <mps_file_path>\n", argv[0]);
     return 1;

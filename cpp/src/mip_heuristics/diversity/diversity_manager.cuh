@@ -68,6 +68,7 @@ class diversity_manager_t {
                         timer_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
+  void consume_staged_simplex_solution(lp_state_t<i_t, f_t>& lp_state);
   void set_simplex_solution(const std::vector<f_t>& solution,
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
@@ -79,6 +80,9 @@ class diversity_manager_t {
   rmm::device_uvector<f_t> lp_optimal_solution;
   rmm::device_uvector<f_t> lp_dual_optimal_solution;
   std::atomic<bool> simplex_solution_exists{false};
+  std::vector<f_t> staged_simplex_solution;
+  std::vector<f_t> staged_simplex_dual_solution;
+  f_t staged_simplex_objective{std::numeric_limits<f_t>::infinity()};
   local_search_t<i_t, f_t> ls;
   cuopt::timer_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;

@@ -210,7 +210,7 @@ message ChunkedResultHeader {
   double gap = 1006;
   int32 nb_iterations = 1007;
   double solve_time = 1008;
-  bool solved_by_pdlp = 1009;
+  int32 solved_by = 1009;
 
   // MIP result scalars (2000-range, same as MIPSolution)
   MIPTerminationStatus mip_termination_status = 2000;

@@ -12,6 +12,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <mps_parser/parser.hpp>
@@ -77,16 +78,7 @@ static fj_state_t run_fj(std::string test_instance,
   // run the problem constructor of MIP, so that we do bounds standardization
   detail::problem_t<int, double> problem(op_problem);
   problem.preprocess_problem();
-  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
-  detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
-                                                               problem,
-                                                               10,
-                                                               1.0,
-                                                               pdhg_solver,
-                                                               problem.reverse_coefficients,
-                                                               problem.reverse_offsets,
-                                                               problem.reverse_constraints,
-                                                               true);
+  detail::mip_scaling_strategy_t<int, double> scaling(problem);
 
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 30.;

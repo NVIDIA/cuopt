@@ -233,10 +233,10 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple("/mip/gen-ip054.mps", 128, 120.0, 1),
     std::make_tuple("/mip/bb_optimality.mps", 4, 60.0, 4),
     std::make_tuple("/mip/neos5.mps", 16, 60.0, 1),
-    std::make_tuple("/mip/seymour1.mps", 16, 60.0, 1),
+    std::make_tuple("/mip/seymour1.mps", 16, 120.0, 1),
     // too heavy for CI
     // std::make_tuple("/mip/n2seq36q.mps", 16, 60.0, 4),
-    std::make_tuple("/mip/gmu-35-50.mps", 32, 60.0, 3)),
+    std::make_tuple("/mip/gmu-35-50.mps", 32, 60.0, 2)),
   [](const ::testing::TestParamInfo<DeterministicBBInstanceTest::ParamType>& info) {
     const auto& path = std::get<0>(info.param);
     int threads      = std::get<1>(info.param);

@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include <raft/util/cuda_utils.cuh>
-
 #include <cuda/cmath>
 
 namespace cuopt::linear_programming::detail {

@@ -87,7 +87,7 @@ static std::unique_ptr<cpu_lp_solution_t<int, double>> make_cpu_lp_solution(bool
                                                             /*l2_dual_residual=*/2e-8,
                                                             /*gap=*/0.5,
                                                             /*num_iterations=*/100,
-                                                            /*solved_by_pdlp=*/true);
+                                                            /*solved_by=*/method_t::PDLP);
   }
 
   cpu_pdlp_warm_start_data_t<int, double> ws;
@@ -120,7 +120,7 @@ static std::unique_ptr<cpu_lp_solution_t<int, double>> make_cpu_lp_solution(bool
                                                           /*l2_dual_residual=*/2e-8,
                                                           /*gap=*/0.5,
                                                           /*num_iterations=*/100,
-                                                          /*solved_by_pdlp=*/true,
+                                                          /*solved_by=*/method_t::PDLP,
                                                           std::move(ws));
 }
 
@@ -167,7 +167,7 @@ static gpu_lp_solution_t<int, double> make_gpu_lp_solution()
   term_stats[0].l2_dual_residual      = 2e-8;
   term_stats[0].gap                   = 0.5;
   term_stats[0].number_of_steps_taken = 100;
-  term_stats[0].solved_by_pdlp        = true;
+  term_stats[0].solved_by             = method_t::PDLP;
 
   std::vector<pdlp_termination_status_t> term_status = {pdlp_termination_status_t::Optimal};
 
@@ -288,7 +288,7 @@ TEST_F(SolutionInterfaceTest, termination_status_int_values)
   optimization_problem_solution_interface_t<int, double>* base = &sol;
 
   int status = base->get_termination_status_int();
-  EXPECT_EQ(status, CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ(status, CUOPT_TERMINATION_STATUS_OPTIMAL);
 }
 
 // =============================================================================
