@@ -11,7 +11,7 @@
 - Expose parameters for tuning heuristics
 - Add support for Python 3.14
 - Add support for writing presolved model to a file
-- gRPC based remote execution support on python, C and CLI interface for LP,MILP and QP
+- gRPC based remote execution support on python, C and CLI interface for LP, MILP and QP
 
 ### Breaking Changes (26.04)
 - The solved_by_pdlp field in the Python LP solution object was changed to solved_by
@@ -71,6 +71,7 @@
 
 - The signatures of the solution callbacks have changed for the Python API
 - To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically
+- Drop support for Python 3.10
 
 ### Improvements (26.02)
 
@@ -85,6 +86,8 @@
 - Use explicit `cudaStream_t` with `cub::DeviceTransform` and non-blocking streams for GPU control
 - Enable barrier LP tests, add regression testing, and add SonarQube static analysis
 - Added parameter for specifying the random seed used by the solver
+- Refactoring agentic skills to follow standard skill structure and add developer skills
+- Adding skill to evolve skills
 
 ### Bug Fixes (26.02)
 
