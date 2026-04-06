@@ -19,7 +19,7 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
 .. note::
 
-   Routing over gRPC is planned for an upcoming release. For remote routing today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and :doc:`Examples <../cuopt-server/examples/index>`.
+   Routing solve over gRPC is not supported. For solving routing problems remotely today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and :doc:`Examples <../cuopt-server/examples/index>`.
 
 Where to find examples
 ======================
