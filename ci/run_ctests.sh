@@ -25,11 +25,7 @@ shopt -s nullglob
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
     echo "Running gtest ${test_name}"
-    if ! "${gt}" "$@"; then
-      _g_rc=$?
-      echo "ERROR: gtest ${test_name} failed (exit ${_g_rc}); stopping run_ctests.sh" >&2
-      exit "${_g_rc}"
-    fi
+    "${gt}" "$@"
 done
 shopt -u nullglob
 
