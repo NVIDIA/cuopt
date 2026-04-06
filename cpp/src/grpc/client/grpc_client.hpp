@@ -95,10 +95,6 @@ struct grpc_client_config_t {
   // Controlled by CUOPT_GRPC_DEBUG env var (0|1). Default: off.
   bool enable_debug_log = false;
 
-  // Log FNV-1a hashes of uploaded/downloaded data on both client and server.
-  // Comparing the two hashes confirms data was not corrupted in transit.
-  bool enable_transfer_hash = false;
-
   // Override for the chunked upload threshold (bytes). Normally computed
   // automatically as 75% of max_message_bytes.  Set to 0 to force chunked
   // upload for all problems, or a positive value to override.  -1 = auto.

@@ -26,9 +26,11 @@ Run ``cuopt_grpc_server --help`` for the full list. Typical flags (also passable
      -w, --workers NUM            Number of worker processes (default: 1)
          --max-message-mb N       Max gRPC message size in MiB (default: 256; clamped to [4 KiB, ~2 GiB])
          --max-message-bytes N    Max gRPC message size in bytes (exact; min 4096)
-         --enable-transfer-hash   Log data hashes for streaming transfers (for testing)
+         --chunk-timeout N        Per-chunk timeout in seconds for streaming (0=disabled, default: 60)
          --log-to-console         Echo solver logs to server console
+     -v, --verbose                Increase verbosity (default: on)
      -q, --quiet                  Reduce verbosity (verbose is the default)
+         --server-log PATH        Path to server operational log file (in addition to console)
 
    TLS Options:
          --tls                    Enable TLS encryption

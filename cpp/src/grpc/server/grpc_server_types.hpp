@@ -167,7 +167,6 @@ struct ServerConfig {
   // Clamped at startup to [kServerMinMessageBytes, kServerMaxMessageBytes].
   int64_t max_message_bytes = 256LL * 1024 * 1024;  // 256 MiB
   int chunk_timeout_seconds = 60;                   // 0 = disabled
-  bool enable_transfer_hash = false;
   bool enable_tls           = false;
   bool require_client       = false;
   std::string tls_cert_path;

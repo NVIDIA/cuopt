@@ -20,26 +20,26 @@ Server source files live under `cpp/src/grpc/server/`.
 ## Process Model
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────────────┐
 │                        Main Server Process                          │
-│                                                                      │
+│                                                                     │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
 │  │  gRPC       │  │  Job         │  │  Background Threads         │ │
 │  │  Service    │  │  Tracker     │  │  - Result retrieval         │ │
 │  │  Handler    │  │  (job status,│  │  - Incumbent retrieval      │ │
 │  │             │  │   results)   │  │  - Worker monitor           │ │
 │  └─────────────┘  └──────────────┘  └─────────────────────────────┘ │
-│         │                                        ▲                   │
-│         │ shared memory                         │ pipes              │
-│         ▼                                        │                   │
+│         │                                        ▲                  │
+│         │ shared memory                          │ pipes            │
+│         ▼                                        │                  │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                    Shared Memory Queues                          ││
+│  │                    Shared Memory Queues                         ││
 │  │   ┌─────────────────┐        ┌─────────────────────┐            ││
 │  │   │  Job Queue      │        │  Result Queue       │            ││
 │  │   │  (MAX_JOBS=100) │        │  (MAX_RESULTS=100)  │            ││
 │  │   └─────────────────┘        └─────────────────────┘            ││
 │  └─────────────────────────────────────────────────────────────────┘│
-└────────────────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────────────┘
          │                                        ▲
          │ fork()                                 │
          ▼                                        │
@@ -68,19 +68,19 @@ Each worker has dedicated pipes for data transfer:
 
 ```cpp
 struct WorkerPipes {
-  int to_worker_fd;               // Main → Worker: job data (server writes)
-  int from_worker_fd;             // Worker → Main: result data (server reads)
-  int worker_read_fd;             // Worker end of input pipe (worker reads)
-  int worker_write_fd;            // Worker end of output pipe (worker writes)
-  int incumbent_from_worker_fd;   // Worker → Main: incumbent solutions (server reads)
-  int worker_incumbent_write_fd;  // Worker end of incumbent pipe (worker writes)
+  int to_worker_fd;               // Main   -> Worker: server writes job data
+  int from_worker_fd;             // Worker -> Main: server reads result data
+  int worker_read_fd;             // Main   -> Worker: worker reads job data
+  int worker_write_fd;            // Worker -> Main: worker writes result data
+  int incumbent_from_worker_fd;   // Worker -> Main: server reads incumbent solutions
+  int worker_incumbent_write_fd;  // Worker -> Main: worker writes incumbent solutions
 };
 ```
 
 **Why pipes instead of shared memory for data?**
 - Pipes handle backpressure naturally (blocking writes)
 - No need to manage large shared memory segments
-- Works well with streaming uploads (data flows through)
+- Simpler lifecycle: data is consumed by the worker read and requires no explicit cleanup
 
 ### Source File Roles
 
@@ -88,23 +88,26 @@ All paths below are under `cpp/src/grpc/server/`.
 
 | File | Role |
 |------|------|
-| `grpc_server_main.cpp` | `main()`, `print_usage()`, argument parsing, shared-memory init, gRPC server run/stop. |
-| `grpc_service_impl.cpp` | `CuOptRemoteServiceImpl`: all 14 RPC handlers (SubmitJob, CheckStatus, GetResult, chunked upload/download, StreamLogs, GetIncumbents, CancelJob, DeleteResult, WaitForCompletion, Status probe). Uses mappers and job_management to enqueue jobs and trigger pipe I/O. |
+| `grpc_server_main.cpp` | `main()`, argument parsing (via argparse), shared-memory init, gRPC server run/stop. |
+| `grpc_service_impl.cpp` | `CuOptRemoteServiceImpl`: all 14 RPC handlers (SubmitJob, CheckStatus, GetResult, StartChunkedUpload, SendArrayChunk, FinishChunkedUpload, StartChunkedDownload, GetResultChunk, FinishChunkedDownload, StreamLogs, GetIncumbents, CancelJob, DeleteResult, WaitForCompletion). Uses mappers and job_management to enqueue jobs and trigger pipe I/O. |
 | `grpc_server_types.hpp` | Shared structs (e.g. `JobQueueEntry`, `ResultQueueEntry`, `ServerConfig`, `JobInfo`), enums, globals (atomics, mutexes, condition variables), and forward declarations used across server .cpp files. |
+| `grpc_server_logger.hpp` | Server operational logger declaration (`server_logger()`, `init_server_logger()`) and `SERVER_LOG_*` convenience macros built on `rapids_logger`. Separate from the solver logger. |
+| `grpc_server_logger.cpp` | Server logger implementation: constructs a `rapids_logger::logger` with configurable console/file sinks and verbose/quiet levels. Created before `fork()` so both main and worker processes share the same output. |
 | `grpc_field_element_size.hpp` | Maps `cuopt::remote::ArrayFieldId` to element byte size; used by pipe deserialization and chunked logic. |
-| `grpc_pipe_serialization.hpp` | Streaming pipe I/O: write/read individual length-prefixed protobuf messages (ChunkedProblemHeader, ChunkedResultHeader, ArrayChunk) directly to/from pipe fds. Avoids large intermediate buffers. Also serializes SubmitJobRequest for unary pipe transfer. |
+| `grpc_pipe_io.cpp` | Low-level pipe I/O primitives: `write_to_pipe()` (blocking retry loop) and `read_from_pipe()` (poll-based timeout + blocking read). Used by all higher-level pipe functions. |
+| `grpc_pipe_serialization.hpp` | Protobuf-level pipe serialization: write/read length-prefixed protobuf messages and raw arrays to/from pipe fds. Also serializes `SubmitJobRequest` for unary pipe transfer. Defines `kPipeBufferSize` and `kMaxProtobufMessageBytes`. |
 | `grpc_incumbent_proto.hpp` | Build `Incumbent` proto from (job_id, objective, assignment) and parse it back; used by worker when pushing incumbents and by main when reading from the incumbent pipe. |
-| `grpc_worker.cpp` | `worker_process(worker_index)`: loop over job queue, receive job data via pipe (unary or chunked), call solver, send result (and optionally incumbents) back. Contains `IncumbentPipeCallback` and `store_simple_result`. |
-| `grpc_worker_infra.cpp` | Pipe creation/teardown, `spawn_worker` / `spawn_workers`, `wait_for_workers`, `mark_worker_jobs_failed`, `cleanup_shared_memory`. |
-| `grpc_server_threads.cpp` | `worker_monitor_thread`, `result_retrieval_thread`, `incumbent_retrieval_thread`, `session_reaper_thread`. |
-| `grpc_job_management.cpp` | Low-level pipe read/write, `send_job_data_pipe` / `recv_job_data_pipe`, `submit_job_async`, `check_job_status`, `cancel_job`, `generate_job_id`, log-dir helpers. |
+| `grpc_worker.cpp` | `worker_process(worker_index)`: loop over job queue, receive job data via pipe (unary or chunked), call solver, send result (and optionally incumbents) back. Contains `IncumbentPipeCallback`, `store_simple_result`, and `publish_result`. |
+| `grpc_worker_infra.cpp` | Pipe creation/teardown, `spawn_worker` / `spawn_workers` / `spawn_single_worker`, `wait_for_workers`, `mark_worker_jobs_failed`, `cleanup_shared_memory`. |
+| `grpc_server_threads.cpp` | `worker_monitor_thread`, `result_retrieval_thread` (also dispatches job data to workers), `incumbent_retrieval_thread`, `session_reaper_thread`. |
+| `grpc_job_management.cpp` | Pipe-level send/recv (`send_job_data_pipe`, `recv_job_data_pipe`, `send_incumbent_pipe`, `recv_incumbent_pipe`), `submit_job_async`, `submit_chunked_job_async`, `check_job_status`, `cancel_job`, `generate_job_id`, log-dir helpers. |
 
 ### Large Payload Handling
 
 For large problems uploaded via chunked gRPC RPCs:
 
 1. Server holds chunked upload state in memory (`ChunkedUploadState`: header + array chunks per `upload_id`).
-2. When `FinishChunkedUpload` is called, the header and chunks are stored in `pending_chunked_data`. The data dispatch thread streams them directly to the worker pipe as individual length-prefixed protobuf messages — no intermediate blob is created.
+2. When `FinishChunkedUpload` is called, the header and chunks are stored in `pending_chunked_data`. The result retrieval thread (which also handles job dispatch) streams them directly to the worker pipe as individual length-prefixed protobuf messages — no intermediate blob is created.
 3. Worker reads the streamed messages from the pipe, reassembles arrays, runs the solver, and writes the result (and optionally incumbents) back via pipes using the same streaming format.
 4. Main process result-retrieval thread reads the streamed result messages from the pipe and stores the result for `GetResult` or chunked download.
 
@@ -119,11 +122,11 @@ No disk spooling: chunked data is kept in memory in the main process until forwa
 ```text
 Client                     Server                      Worker
    │                          │                           │
-   │─── SubmitJob ──────────►│                           │
+   │─── SubmitJob ──────────► │                           │
    │                          │ Create job entry          │
    │                          │ Store problem data        │
    │                          │ job_queue[slot].ready=true│
-   │◄── job_id ──────────────│                           │
+   │◄── job_id ────────────── │                           │
 ```
 
 ### 2. Processing
@@ -133,14 +136,14 @@ Client                     Server                      Worker
    │                          │                           │
    │                          │                           │ Poll job_queue
    │                          │                           │ Claim job (CAS)
-   │                          │◄─────────────────────────│ Read problem via pipe
+   │                          │ ── job data via pipe ───> │
    │                          │                           │
    │                          │                           │ Convert CPU→GPU
    │                          │                           │ solve_lp/solve_mip
    │                          │                           │ Convert GPU→CPU
    │                          │                           │
-   │                          │ result_queue[slot].ready │◄──────────────────
-   │                          │◄── result data via pipe ─│
+   │                          │ result_queue[slot].ready  │ (worker sets flag)
+   │                          │ <── result data via pipe ─│
 ```
 
 ### 3. Result Retrieval
@@ -180,8 +183,16 @@ Client                     Worker
 
 ### Result Retrieval Thread
 
+This thread handles both job dispatch and result retrieval:
+
+**Job dispatch** (first scan):
+- Scans `job_queue` for claimed jobs with `data_sent == false`
+- Sends job data to the worker's pipe (unary or chunked)
+- Marks `data_sent = true` on success
+
+**Result retrieval** (second scan):
 - Monitors `result_queue` for completed jobs
-- Reads result data from worker pipes
+- Reads streamed result data from worker pipes
 - Updates `job_tracker` with results
 - Notifies waiting clients (via condition variable)
 
@@ -240,9 +251,11 @@ cuopt_grpc_server [options]
   -w, --workers NUM            Number of worker processes (default: 1)
       --max-message-mb N       Max gRPC message size in MiB (default: 256; clamped to [4 KiB, ~2 GiB])
       --max-message-bytes N    Max gRPC message size in bytes (exact; min 4096)
-      --enable-transfer-hash   Log data hashes for streaming transfers (for testing)
+      --chunk-timeout N        Per-chunk timeout in seconds for streaming (0=disabled, default: 60)
       --log-to-console         Echo solver logs to server console
+  -v, --verbose                Increase verbosity (default: on)
   -q, --quiet                  Reduce verbosity (verbose is the default)
+      --server-log PATH        Path to server operational log file (in addition to console)
 
 TLS Options:
       --tls                    Enable TLS encryption
@@ -326,11 +339,22 @@ When `CancelJob` is called:
 
 ## File Locations
 
+### POSIX Shared Memory
+
+These names are passed to `shm_open()` and live under `/dev/shm/` (a kernel tmpfs), not on the regular filesystem. Writable on virtually all Linux systems and standard container runtimes.
+
+| Name | Purpose |
+|------|---------|
+| `/cuopt_job_queue` | Job metadata (slots, flags, job IDs) |
+| `/cuopt_result_queue` | Result metadata (status, error messages) |
+| `/cuopt_control` | Server control (shutdown flag, worker count) |
+
+### Filesystem
+
 | Path | Purpose |
 |------|---------|
 | `/tmp/cuopt_logs/` | Per-job solver log files |
-| `/cuopt_job_queue` | Shared memory (job metadata) |
-| `/cuopt_result_queue` | Shared memory (result metadata) |
-| `/cuopt_control` | Shared memory (server control) |
+
+The log directory is hardcoded. `ensure_log_dir_exists()` calls `mkdir()` but does not check the return value — if the process lacks write permission on `/tmp`, log file creation will silently fail.
 
 Chunked upload state is held in memory in the main process (no upload directory).
