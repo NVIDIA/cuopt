@@ -7,9 +7,12 @@
 # ${RAPIDS_ARTIFACTS_DIR}/${CUOPT_GDB_CORE_ARTIFACT_DIR} so rapids-upload-artifacts-dir
 # uploads them to S3 as:
 #   {rapids-matrix-prefix}.{cuopt-gdb-cores_JOB_cudaVER_pyVER_arch_BUILDTYPE}
-# (tarball of that directory). The trailing segment includes a job label, resolved in order:
+# RAPIDS rapids-upload-to-s3 tgz-streams each directory (gzip-compressed tar); the object
+# name often has no .tar.gz suffix in listings, but downloads are still archives. Very small
+# sizes (~100 B) usually mean an almost-empty archive (no core files landed on disk). The
+# trailing segment includes a job label, resolved in order:
 #   1) CUOPT_CI_JOB_LABEL if set (workflow/setter can export the real GitHub job id).
-#   2) GITHUB_JOB if it looks like a caller job id (not generic RAPIDS callee ids such as tests).
+#   2) GITHUB_JOB if it looks like a caller job id (not generic RAPIDS callee ids such as tests/test).
 #   3) The ci/test_*.sh that sourced this file: label derived by naming rules (new drivers need
 #      no edits here — e.g. test_foo.sh → conda-foo-tests, test_wheel_bar.sh → wheel-bar-tests).
 # Then CUDA / Python / arch / build_type from RAPIDS CI env.
@@ -25,10 +28,12 @@
 # Set in cuopt_enable_coredumps; collect reuses when non-empty.
 CUOPT_GDB_CORE_ARTIFACT_DIR=
 
-# Reusable RAPIDS workflows often run a job literally named "tests" / "build" — not unique.
+# Reusable RAPIDS workflows often use non-unique job ids ("tests", "test", "build", …).
+# GITHUB_JOB=test (singular) is common; treating it as meaningful produced labels like
+# "test" and hid script-based names (wheel-cuopt-tests, conda-cpp-tests).
 cuopt__github_job_is_generic() {
   case "${1:-}" in
-    "" | tests | build | compute-matrix | prepare | package) return 0 ;;
+    "" | test | tests | build | compute-matrix | prepare | package) return 0 ;;
     *) return 1 ;;
   esac
 }
