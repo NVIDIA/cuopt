@@ -29,7 +29,6 @@ message OptimizationProblem {
   bool maximize = 3;
   double objective_scaling_factor = 4;
   double objective_offset = 5;
-  ProblemCategory problem_category = 6;
 
   // Variable and row names (optional)
   repeated string variable_names = 7;
