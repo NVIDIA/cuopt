@@ -21,13 +21,11 @@ else
     exit 1
 fi
 
-shopt -s nullglob
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
     echo "Running gtest ${test_name}"
     "${gt}" "$@"
 done
-shopt -u nullglob
 
 # Run C_API_TEST with CPU memory for local solves (excluding time limit tests)
 if [ -x "${GTEST_DIR}/C_API_TEST" ]; then
