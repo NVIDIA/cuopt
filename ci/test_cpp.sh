@@ -51,19 +51,14 @@ pushd "${RAPIDS_DATASET_ROOT_DIR}"
 ./get_test_data.sh
 popd
 
+EXITCODE=0
+trap "EXITCODE=1" ERR
 set +e
-
 # Run gtests from libcuopt-tests package
 export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
 rapids-logger "Run gtests"
 timeout 40m ./ci/run_ctests.sh
-EXITCODE=$?
-set -e
 
-if [[ "${EXITCODE}" -ne 0 ]]; then
-  rapids-logger "run_ctests.sh failed (exit ${EXITCODE}); skipping remaining steps"
-fi
-
-rapids-logger "Test script exiting with value: ${EXITCODE}"
-exit "${EXITCODE}"
+rapids-logger "Test script exiting with value: $EXITCODE"
+exit ${EXITCODE}
