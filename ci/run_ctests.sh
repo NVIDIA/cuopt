@@ -38,11 +38,17 @@ else
   echo "Skipping COREDUMP_SANITY_TEST (binary not found)"
 fi
 
+shopt -s nullglob
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
     echo "Running gtest ${test_name}"
-    "${gt}" "$@"
+    if ! "${gt}" "$@"; then
+      _g_rc=$?
+      echo "ERROR: gtest ${test_name} failed (exit ${_g_rc}); stopping run_ctests.sh" >&2
+      exit "${_g_rc}"
+    fi
 done
+shopt -u nullglob
 
 # Run C_API_TEST with CPU memory for local solves (excluding time limit tests)
 if [ -x "${GTEST_DIR}/C_API_TEST" ]; then

@@ -11,6 +11,7 @@ source "${_CUOPT_CI_DIR}/cuopt_coredumps.sh"
 cuopt_enable_coredumps
 trap 'cuopt_collect_coredumps || true' EXIT
 unset _CUOPT_CI_DIR
+cuopt_coredump_smoke_fail_job_if_enabled
 
 . /opt/conda/etc/profile.d/conda.sh
 
@@ -51,8 +52,6 @@ pushd "${RAPIDS_DATASET_ROOT_DIR}"
 ./get_test_data.sh
 popd
 
-EXITCODE=0
-trap "EXITCODE=1" ERR
 set +e
 
 # Run gtests from libcuopt-tests package
@@ -60,6 +59,12 @@ export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
 rapids-logger "Run gtests"
 timeout 40m ./ci/run_ctests.sh
+EXITCODE=$?
+set -e
 
-rapids-logger "Test script exiting with value: $EXITCODE"
-exit ${EXITCODE}
+if [[ "${EXITCODE}" -ne 0 ]]; then
+  rapids-logger "run_ctests.sh failed (exit ${EXITCODE}); skipping remaining steps"
+fi
+
+rapids-logger "Test script exiting with value: ${EXITCODE}"
+exit "${EXITCODE}"
