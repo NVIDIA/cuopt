@@ -10,7 +10,7 @@ Quick start
 
 .. note::
 
-   **Problem types (gRPC remote):** **LP**, **MILP**, and **QP** are supported today. **Routing** (VRP, TSP, PDP) over this path is **not** available yet; support is planned for an **upcoming** release. For remote routing today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`. This guide is **not** the REST server—see :doc:`../cuopt-server/index` for HTTP/JSON.
+   **Problem types (gRPC remote):** **LP**, **MILP**, and **QP** are supported today. **Routing** (VRP, TSP, PDP) over this path is **not** available;  For remote routing, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`. This guide is **not** the REST server—see :doc:`../cuopt-server/index` for HTTP/JSON.
 
 How remote execution works
 ==========================
