@@ -230,7 +230,12 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
                            ? static_cast<presolver_t>(pv)
                            : presolver_t::Default;
   }
-  settings.mip_scaling = pb_settings.mip_scaling();
+  {
+    auto sv              = pb_settings.mip_scaling();
+    settings.mip_scaling = (sv >= CUOPT_MIP_SCALING_OFF && sv <= CUOPT_MIP_SCALING_NO_OBJECTIVE)
+                             ? sv
+                             : CUOPT_MIP_SCALING_ON;
+  }
 }
 
 // Explicit template instantiations

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -91,12 +91,12 @@ TEST(ServerTest, TestSampleLP)
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, bool, bool, cuopt::linear_programming::mip_termination_status_t>> {};
+      std::tuple<bool, int, bool, cuopt::linear_programming::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
-  bool scaling                     = std::get<1>(GetParam());
+  int scaling                      = std::get<1>(GetParam());
   bool heuristics_only             = std::get<2>(GetParam());
   auto expected_termination_status = std::get<3>(GetParam());
 
@@ -104,9 +104,9 @@ TEST_P(MILPTestParams, TestSampleMILP)
   auto problem = create_std_milp_problem(maximize);
 
   cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
-  settings.set_time_limit(5);
-  settings.set_mip_scaling(scaling);
-  settings.set_heuristics_only(heuristics_only);
+  settings.time_limit      = 5;
+  settings.mip_scaling     = scaling;
+  settings.heuristics_only = heuristics_only;
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
@@ -117,13 +117,21 @@ INSTANTIATE_TEST_SUITE_P(
   MILPTests,
   MILPTestParams,
   testing::Values(
-    std::make_tuple(
-      true, true, true, cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
-    std::make_tuple(
-      false, true, false, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      true, false, true, cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
-    std::make_tuple(
-      false, false, false, cuopt::linear_programming::mip_termination_status_t::Optimal)));
+    std::make_tuple(true,
+                    CUOPT_MIP_SCALING_ON,
+                    true,
+                    cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+    std::make_tuple(false,
+                    CUOPT_MIP_SCALING_ON,
+                    false,
+                    cuopt::linear_programming::mip_termination_status_t::Optimal),
+    std::make_tuple(true,
+                    CUOPT_MIP_SCALING_OFF,
+                    true,
+                    cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+    std::make_tuple(false,
+                    CUOPT_MIP_SCALING_OFF,
+                    false,
+                    cuopt::linear_programming::mip_termination_status_t::Optimal)));
 
 }  // namespace cuopt::linear_programming::test

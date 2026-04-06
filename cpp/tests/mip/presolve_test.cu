@@ -45,11 +45,12 @@ TEST(problem, find_implied_integers)
                                  1e-12,
                                  20,
                                  1);
-  ASSERT_TRUE(result.has_value());
+  ASSERT_NE(result.status, detail::third_party_presolve_status_t::INFEASIBLE);
+  ASSERT_NE(result.status, detail::third_party_presolve_status_t::UNBNDORINFEAS);
 
-  auto problem = detail::problem_t<int, double>(result->reduced_problem);
-  problem.set_implied_integers(result->implied_integer_indices);
-  ASSERT_TRUE(result->implied_integer_indices.size() > 0);
+  auto problem = detail::problem_t<int, double>(result.reduced_problem);
+  problem.set_implied_integers(result.implied_integer_indices);
+  ASSERT_TRUE(result.implied_integer_indices.size() > 0);
   auto var_types = host_copy(problem.variable_types, handle_.get_stream());
   // Find the index of the one continuous variable
   auto it = std::find_if(var_types.begin(), var_types.end(), [](var_t var_type) {

@@ -9,7 +9,9 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
+#include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mps_parser/parser.hpp>
+#include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -226,12 +228,12 @@ TEST(ErrorTest, TestError)
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, bool, bool, cuopt::linear_programming::mip_termination_status_t>> {};
+      std::tuple<bool, int, bool, cuopt::linear_programming::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
-  bool scaling                     = std::get<1>(GetParam());
+  int scaling                      = std::get<1>(GetParam());
   bool heuristics_only             = std::get<2>(GetParam());
   auto expected_termination_status = std::get<3>(GetParam());
 
@@ -252,7 +254,7 @@ TEST_P(MILPTestParams, TestSampleMILP)
 TEST_P(MILPTestParams, TestSingleVarMILP)
 {
   bool maximize                    = std::get<0>(GetParam());
-  bool scaling                     = std::get<1>(GetParam());
+  int scaling                      = std::get<1>(GetParam());
   bool heuristics_only             = std::get<2>(GetParam());
   auto expected_termination_status = std::get<3>(GetParam());
 
@@ -274,13 +276,165 @@ TEST_P(MILPTestParams, TestSingleVarMILP)
 INSTANTIATE_TEST_SUITE_P(
   MILPTests,
   MILPTestParams,
-  testing::Values(
-    std::make_tuple(true, true, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      false, true, false, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      true, false, true, cuopt::linear_programming::mip_termination_status_t::Optimal),
-    std::make_tuple(
-      false, false, false, cuopt::linear_programming::mip_termination_status_t::Optimal)));
+  testing::Values(std::make_tuple(true,
+                                  CUOPT_MIP_SCALING_ON,
+                                  true,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(false,
+                                  CUOPT_MIP_SCALING_ON,
+                                  false,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(true,
+                                  CUOPT_MIP_SCALING_OFF,
+                                  true,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
+                  std::make_tuple(false,
+                                  CUOPT_MIP_SCALING_OFF,
+                                  false,
+                                  cuopt::linear_programming::mip_termination_status_t::Optimal)));
+
+// ---------------------------------------------------------------------------
+// Scaling integrality preservation test
+// ---------------------------------------------------------------------------
+
+static mps_parser::mps_data_model_t<int, double> create_wide_spread_milp()
+{
+  mps_parser::mps_data_model_t<int, double> problem;
+
+  // 6 rows, 4 variables (x0=INT, x1=INT, x2=INT, x3=CONT)
+  // Coefficient spread: ~log2(100000/1) ≈ 17, well above the 12-threshold.
+  // clang-format off
+  std::vector<double> values = {
+    3.0, 7.0, 2.0, 1.5,          // row 0: small ints + cont
+    100000.0, 50000.0, 25000.0, 999.9, // row 1: large ints + cont
+    5.0, 11.0, 13.0, 0.3,        // row 2: small primes + cont
+    60000.0, 30000.0, 9000.0, 42.42,   // row 3: large + cont
+    1.0, 1.0, 1.0, 0.0,          // row 4: unit row (no cont)
+    8.0, 4.0, 6.0, 3.14          // row 5: small ints + cont
+  };
+  // clang-format on
+  std::vector<int> indices = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
+                              0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+  std::vector<int> offsets = {0, 4, 8, 12, 16, 20, 24};
+  problem.set_csr_constraint_matrix(
+    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
+
+  std::vector<double> cl = {0, 0, 0, 0, 0, 0};
+  std::vector<double> cu = {1e6, 1e8, 1e4, 1e8, 100, 1e4};
+  problem.set_constraint_lower_bounds(cl.data(), cl.size());
+  problem.set_constraint_upper_bounds(cu.data(), cu.size());
+
+  std::vector<double> vl = {0, 0, 0, 0};
+  std::vector<double> vu = {1000, 1000, 1000, 1e6};
+  problem.set_variable_lower_bounds(vl.data(), vl.size());
+  problem.set_variable_upper_bounds(vu.data(), vu.size());
+
+  std::vector<double> obj = {1.0, 2.0, 3.0, 0.5};
+  problem.set_objective_coefficients(obj.data(), obj.size());
+  problem.set_maximize(false);
+
+  std::vector<char> var_types = {'I', 'I', 'I', 'C'};
+  problem.set_variable_types(var_types);
+
+  return problem;
+}
+
+TEST(ScalingIntegrity, IntegerCoefficientsPreservedAfterScaling)
+{
+  raft::handle_t handle;
+  auto mps_problem = create_wide_spread_milp();
+  auto op_problem  = mps_data_model_to_optimization_problem(&handle, mps_problem);
+  problem_checking_t<int, double>::check_problem_representation(op_problem);
+
+  const int nnz = op_problem.get_nnz();
+
+  auto pre_values =
+    cuopt::host_copy(op_problem.get_constraint_matrix_values(), handle.get_stream());
+  auto col_indices =
+    cuopt::host_copy(op_problem.get_constraint_matrix_indices(), handle.get_stream());
+  auto var_types = cuopt::host_copy(op_problem.get_variable_types(), handle.get_stream());
+  handle.sync_stream();
+
+  std::vector<bool> was_integer(nnz, false);
+  for (int k = 0; k < nnz; ++k) {
+    int col = col_indices[k];
+    if (var_types[col] == var_t::INTEGER) {
+      double abs_val = std::abs(pre_values[k]);
+      if (abs_val > 0.0 &&
+          std::abs(abs_val - std::round(abs_val)) <= 1e-6 * std::max(1.0, abs_val)) {
+        was_integer[k] = true;
+      }
+    }
+  }
+
+  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  scaling.scale_problem();
+
+  auto post_values =
+    cuopt::host_copy(op_problem.get_constraint_matrix_values(), handle.get_stream());
+  handle.sync_stream();
+
+  int violations = 0;
+  for (int k = 0; k < nnz; ++k) {
+    if (!was_integer[k]) { continue; }
+    double abs_val  = std::abs(post_values[k]);
+    double frac_err = std::abs(abs_val - std::round(abs_val));
+    double rel_tol  = 1e-6 * std::max(1.0, abs_val);
+    if (frac_err > rel_tol) {
+      ++violations;
+      ADD_FAILURE() << "Coefficient [" << k << "] col=" << col_indices[k] << " was integer ("
+                    << pre_values[k] << ") but after scaling is " << post_values[k]
+                    << " (frac_err=" << frac_err << ")";
+    }
+  }
+  EXPECT_EQ(violations, 0) << violations << " integer coefficients lost integrality after scaling";
+}
+
+TEST(ScalingIntegrity, NoObjectiveScalingPreservesIntegerCoefficients)
+{
+  raft::handle_t handle;
+  auto mps_problem = create_wide_spread_milp();
+  auto op_problem  = mps_data_model_to_optimization_problem(&handle, mps_problem);
+  problem_checking_t<int, double>::check_problem_representation(op_problem);
+
+  const int nnz = op_problem.get_nnz();
+
+  auto pre_values =
+    cuopt::host_copy(op_problem.get_constraint_matrix_values(), handle.get_stream());
+  auto col_indices =
+    cuopt::host_copy(op_problem.get_constraint_matrix_indices(), handle.get_stream());
+  auto var_types = cuopt::host_copy(op_problem.get_variable_types(), handle.get_stream());
+  handle.sync_stream();
+
+  std::vector<bool> was_integer(nnz, false);
+  for (int k = 0; k < nnz; ++k) {
+    int col = col_indices[k];
+    if (var_types[col] == var_t::INTEGER) {
+      double abs_val = std::abs(pre_values[k]);
+      if (abs_val > 0.0 &&
+          std::abs(abs_val - std::round(abs_val)) <= 1e-6 * std::max(1.0, abs_val)) {
+        was_integer[k] = true;
+      }
+    }
+  }
+
+  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  scaling.scale_problem(/*scale_objective=*/false);
+
+  auto post_values =
+    cuopt::host_copy(op_problem.get_constraint_matrix_values(), handle.get_stream());
+  handle.sync_stream();
+
+  int violations = 0;
+  for (int k = 0; k < nnz; ++k) {
+    if (!was_integer[k]) { continue; }
+    double abs_val  = std::abs(post_values[k]);
+    double frac_err = std::abs(abs_val - std::round(abs_val));
+    double rel_tol  = 1e-6 * std::max(1.0, abs_val);
+    if (frac_err > rel_tol) { ++violations; }
+  }
+  EXPECT_EQ(violations, 0) << violations
+                           << " integer coefficients lost integrality after scaling (no-obj mode)";
+}
 
 }  // namespace cuopt::linear_programming::test

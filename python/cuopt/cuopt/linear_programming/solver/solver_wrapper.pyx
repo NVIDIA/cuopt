@@ -62,6 +62,7 @@ import cudf
 
 from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
+    SolverMethod,
     SolverSettings,
 )
 from cuopt.utilities import InputValidationError, series_from_buf
@@ -80,6 +81,7 @@ class MILPTerminationStatus(IntEnum):
     Infeasible = mip_termination_status_t.Infeasible
     Unbounded = mip_termination_status_t.Unbounded
     TimeLimit = mip_termination_status_t.TimeLimit
+    UnboundedOrInfeasible = mip_termination_status_t.UnboundedOrInfeasible
 
 
 class LPTerminationStatus(IntEnum):
@@ -91,6 +93,7 @@ class LPTerminationStatus(IntEnum):
     IterationLimit = pdlp_termination_status_t.IterationLimit
     TimeLimit = pdlp_termination_status_t.TimeLimit
     PrimalFeasible = pdlp_termination_status_t.PrimalFeasible
+    UnboundedOrInfeasible = pdlp_termination_status_t.UnboundedOrInfeasible
 
 
 class ErrorStatus(IntEnum):
@@ -477,7 +480,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 lp_ptr.dual_objective_,
                 lp_ptr.gap_,
                 lp_ptr.nb_iterations_,
-                lp_ptr.solved_by_pdlp_,
+                lp_ptr.solved_by_,
             )
         else:
             return Solution(
@@ -496,7 +499,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 dual_objective=lp_ptr.dual_objective_,
                 gap=lp_ptr.gap_,
                 nb_iterations=lp_ptr.nb_iterations_,
-                solved_by_pdlp=lp_ptr.solved_by_pdlp_,
+                solved_by=lp_ptr.solved_by_,
             )
 
 
@@ -516,10 +519,13 @@ def Solve(py_data_model_obj, settings, mip=False):
     )
     data_model_obj.set_data_model_view()
 
-    return create_solution(move(call_solve(
-        data_model_obj.c_data_model_view.get(),
-        unique_solver_settings.get(),
-    )), data_model_obj)
+    cdef unique_ptr[solver_ret_t] sol_ret_ptr
+    with nogil:
+        sol_ret_ptr = move(call_solve(
+            data_model_obj.c_data_model_view.get(),
+            unique_solver_settings.get(),
+        ))
+    return create_solution(move(sol_ret_ptr), data_model_obj)
 
 
 cdef set_and_insert_vector(
@@ -544,9 +550,9 @@ def BatchSolve(py_data_model_list, settings):
 
     cdef pair[
         vector[unique_ptr[solver_ret_t]],
-        double] batch_solve_result = (
-        move(call_batch_solve(data_model_views, unique_solver_settings.get())) # noqa
-    )
+        double] batch_solve_result
+    with nogil:
+        batch_solve_result = move(call_batch_solve(data_model_views, unique_solver_settings.get()))  # noqa
 
     cdef vector[unique_ptr[solver_ret_t]] c_solutions = (
         move(batch_solve_result.first)

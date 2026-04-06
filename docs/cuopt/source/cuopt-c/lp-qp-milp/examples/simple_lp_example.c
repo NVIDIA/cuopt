@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
@@ -37,21 +37,21 @@
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERIMINATION_STATUS_OPTIMAL:
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
       return "Optimal";
-    case CUOPT_TERIMINATION_STATUS_INFEASIBLE:
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
       return "Infeasible";
-    case CUOPT_TERIMINATION_STATUS_UNBOUNDED:
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
       return "Unbounded";
-    case CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT:
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
       return "Iteration limit";
-    case CUOPT_TERIMINATION_STATUS_TIME_LIMIT:
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
       return "Time limit";
-    case CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR:
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
       return "Numerical error";
-    case CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE:
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
       return "Primal feasible";
-    case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
     default:
       return "Unknown";
@@ -62,8 +62,8 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
 cuopt_int_t test_simple_lp()
 {
   cuOptOptimizationProblem problem = NULL;
-  cuOptSolverSettings settings = NULL;
-  cuOptSolution solution = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
 
   /* Solve the following LP:
      minimize -0.2*x1 + 0.1*x2
@@ -73,18 +73,18 @@ cuopt_int_t test_simple_lp()
      x1, x2 >= 0
   */
 
-  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_variables   = 2;
   cuopt_int_t num_constraints = 2;
-  cuopt_int_t nnz = 4;
+  cuopt_int_t nnz             = 4;
 
   // CSR format constraint matrix
   // https://docs.nvidia.com/nvpl/latest/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr
   // From the constraints:
   // 3.0*x1 + 4.0*x2 <= 5.4
   // 2.7*x1 + 10.1*x2 <= 4.9
-  cuopt_int_t row_offsets[] = {0, 2, 4};
+  cuopt_int_t row_offsets[]    = {0, 2, 4};
   cuopt_int_t column_indices[] = {0, 1, 0, 1};
-  cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
+  cuopt_float_t values[]       = {3.0, 4.0, 2.7, 10.1};
 
   // Objective coefficients
   // From the objective function: minimize -0.2*x1 + 0.1*x2
@@ -119,19 +119,19 @@ cuopt_int_t test_simple_lp()
 
   // Create the problem
   status = cuOptCreateRangedProblem(num_constraints,
-                                   num_variables,
-                                   CUOPT_MINIMIZE,
-                                   0.0,            // objective offset
-                                   objective_coefficients,
-                                   row_offsets,
-                                   column_indices,
-                                   values,
-                                   constraint_lower_bounds,
-                                   constraint_upper_bounds,
-                                   var_lower_bounds,
-                                   var_upper_bounds,
-                                   variable_types,
-                                   &problem);
+                                    num_variables,
+                                    CUOPT_MINIMIZE,
+                                    0.0,  // objective offset
+                                    objective_coefficients,
+                                    row_offsets,
+                                    column_indices,
+                                    values,
+                                    constraint_lower_bounds,
+                                    constraint_upper_bounds,
+                                    var_lower_bounds,
+                                    var_upper_bounds,
+                                    variable_types,
+                                    &problem);
   if (status != CUOPT_SUCCESS) {
     printf("Error creating problem: %d\n", status);
     goto DONE;
@@ -180,7 +180,9 @@ cuopt_int_t test_simple_lp()
   // Print results
   printf("\nResults:\n");
   printf("--------\n");
-  printf("Termination status: %s (%d)\n", termination_status_to_string(termination_status), termination_status);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
   printf("Solve time: %f seconds\n", time);
   printf("Objective value: %f\n", objective_value);
 
@@ -211,7 +213,8 @@ DONE:
   return status;
 }
 
-int main() {
+int main()
+{
   // Run the test
   cuopt_int_t status = test_simple_lp();
 

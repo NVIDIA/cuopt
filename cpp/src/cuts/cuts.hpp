@@ -38,7 +38,8 @@ enum cut_type_t : int8_t {
   KNAPSACK               = 2,
   CHVATAL_GOMORY         = 3,
   CLIQUE                 = 4,
-  MAX_CUT_TYPE           = 5
+  IMPLIED_BOUND          = 5,
+  MAX_CUT_TYPE           = 6
 };
 
 template <typename f_t>
@@ -61,6 +62,47 @@ cut_gap_closure_t<f_t> compute_cut_gap_closure(f_t objective_reference,
   const f_t gap_closed_ratio = initial_gap > eps ? gap_closed / initial_gap : static_cast<f_t>(0.0);
   return {initial_gap, final_gap, gap_closed, gap_closed_ratio};
 }
+
+template <typename i_t, typename f_t>
+struct probing_implied_bound_t {
+  // Probing implications stored in CSR format, indexed by binary variable x_j.
+  //
+  // "zero" = implications discovered when probing x_j = 0.
+  // "one"  = implications discovered when probing x_j = 1.
+  //
+  // For a binary variable x_j, the range
+  //   zero_offsets[j] .. zero_offsets[j+1]
+  // indexes into the flat arrays zero_variables, zero_lower_bound, zero_upper_bound.
+  //
+  // For each position p in that range:
+  //   zero_variables[p]    = i if variable y_i bounds were tightened
+  //                          when x_j was fixed to 0 and constraints were propagated.
+  //   zero_lower_bound[p]  = tightened lower bound on y_i (i.e., x_j = 0  =>  y_i >=
+  //   zero_lower_bound[p]). zero_upper_bound[p]  = tightened upper bound on y_i (i.e., x_j = 0  =>
+  //   y_i <= zero_upper_bound[p]).
+  //
+  // The one arrays are analogous for probing x_j = 1.
+  //
+  // Non-binary variables have empty ranges (zero_offsets[j] == zero_offsets[j+1]).
+  // Offsets vectors have size num_cols + 1.
+
+  probing_implied_bound_t() = default;
+
+  probing_implied_bound_t(i_t num_cols)
+    : zero_offsets(num_cols + 1, 0), one_offsets(num_cols + 1, 0)
+  {
+  }
+
+  std::vector<i_t> zero_offsets;
+  std::vector<i_t> zero_variables;
+  std::vector<f_t> zero_lower_bound;
+  std::vector<f_t> zero_upper_bound;
+
+  std::vector<i_t> one_offsets;
+  std::vector<i_t> one_variables;
+  std::vector<f_t> one_lower_bound;
+  std::vector<f_t> one_upper_bound;
+};
 
 template <typename i_t, typename f_t>
 struct inequality_t {
@@ -131,9 +173,13 @@ struct cut_info_t {
       num_cuts[static_cast<int>(cut_type)]++;
     }
   }
-  const char* cut_type_names[MAX_CUT_TYPE] = {
-    "Gomory   ", "MIR      ", "Knapsack ", "Strong CG", "Clique   "};
-  std::array<i_t, MAX_CUT_TYPE> num_cuts = {0};
+  const char* cut_type_names[MAX_CUT_TYPE] = {"Gomory        ",
+                                              "MIR           ",
+                                              "Knapsack      ",
+                                              "Strong CG     ",
+                                              "Clique        ",
+                                              "Implied Bounds"};
+  std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
 template <typename i_t, typename f_t>
@@ -257,6 +303,8 @@ class cut_pool_t {
 
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
+  void check_for_duplicate_cuts();
+
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
@@ -288,19 +336,40 @@ class knapsack_generation_t {
                         const std::vector<i_t>& new_slacks,
                         const std::vector<variable_type_t>& var_types);
 
-  i_t generate_knapsack_cuts(const lp_problem_t<i_t, f_t>& lp,
-                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                             csr_matrix_t<i_t, f_t>& Arow,
-                             const std::vector<i_t>& new_slacks,
-                             const std::vector<variable_type_t>& var_types,
-                             const std::vector<f_t>& xstar,
-                             i_t knapsack_row,
-                             inequality_t<i_t, f_t>& cut);
+  i_t generate_knapsack_cut(const lp_problem_t<i_t, f_t>& lp,
+                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            csr_matrix_t<i_t, f_t>& Arow,
+                            const std::vector<i_t>& new_slacks,
+                            const std::vector<variable_type_t>& var_types,
+                            const std::vector<f_t>& xstar,
+                            i_t knapsack_row,
+                            inequality_t<i_t, f_t>& cut);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
 
  private:
+  void restore_complemented(const std::vector<i_t>& complemented_variables)
+  {
+    for (i_t j : complemented_variables) {
+      is_complemented_[j] = 0;
+    }
+  }
+  bool is_minimal_cover(f_t cover_sum, f_t beta, const std::vector<f_t>& cover_coefficients);
+
+  void minimal_cover_and_partition(const inequality_t<i_t, f_t>& knapsack_inequality,
+                                   const inequality_t<i_t, f_t>& negated_base_cut,
+                                   const std::vector<f_t>& xstar,
+                                   inequality_t<i_t, f_t>& minimal_cover_cut,
+                                   std::vector<i_t>& c1_partition,
+                                   std::vector<i_t>& c2_partition);
+
+  void lift_knapsack_cut(const inequality_t<i_t, f_t>& knapsack_inequality,
+                         const inequality_t<i_t, f_t>& base_cut,
+                         const std::vector<i_t>& c1_partition,
+                         const std::vector<i_t>& c2_partition,
+                         inequality_t<i_t, f_t>& lifted_cut);
+
   // Generate a heuristic solution to the 0-1 knapsack problem
   f_t greedy_knapsack_problem(const std::vector<f_t>& values,
                               const std::vector<f_t>& weights,
@@ -313,8 +382,17 @@ class knapsack_generation_t {
                              f_t rhs,
                              std::vector<f_t>& solution);
 
+  f_t exact_knapsack_problem_integer_values_fraction_values(const std::vector<i_t>& values,
+                                                            const std::vector<f_t>& weights,
+                                                            f_t rhs,
+                                                            std::vector<f_t>& solution);
+
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
+  std::vector<i_t> is_complemented_;
+  std::vector<i_t> is_marked_;
+  std::vector<f_t> workspace_;
+  std::vector<f_t> complemented_xstar_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
@@ -336,12 +414,14 @@ class cut_generation_t {
     const std::vector<i_t>& new_slacks,
     const std::vector<variable_type_t>& var_types,
     const user_problem_t<i_t, f_t>& user_problem,
+    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
     std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
     std::atomic<bool>* signal_extend                                                    = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       user_problem_(user_problem),
+      probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
       clique_table_future_(clique_table_future),
       signal_extend_(signal_extend)
@@ -390,7 +470,8 @@ class cut_generation_t {
                               csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<i_t>& new_slacks,
                               const std::vector<variable_type_t>& var_types,
-                              const std::vector<f_t>& xstar);
+                              const std::vector<f_t>& xstar,
+                              f_t start_time);
 
   // Generate clique cuts from conflict graph cliques
   bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
@@ -400,9 +481,17 @@ class cut_generation_t {
                             const std::vector<f_t>& reduced_costs,
                             f_t start_time);
 
+  // Generate implied bounds cuts from probing implications
+  void generate_implied_bound_cuts(const lp_problem_t<i_t, f_t>& lp,
+                                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                                   const std::vector<variable_type_t>& var_types,
+                                   const std::vector<f_t>& xstar,
+                                   f_t start_time);
+
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
   std::atomic<bool>* signal_extend_{nullptr};
@@ -464,19 +553,6 @@ template <typename i_t, typename f_t>
 class mixed_integer_gomory_cut_t {
  public:
   mixed_integer_gomory_cut_t() {}
-
-  bool rational_coefficients(const std::vector<variable_type_t>& var_types,
-                             const inequality_t<i_t, f_t>& input_inequality,
-                             inequality_t<i_t, f_t>& rational_inequality);
-
- private:
-  bool rational_approximation(f_t x,
-                              int64_t max_denominator,
-                              int64_t& numerator,
-                              int64_t& denominator);
-
-  int64_t gcd(const std::vector<int64_t>& integers);
-  int64_t lcm(const std::vector<int64_t>& integers);
 };
 
 template <typename i_t, typename f_t>

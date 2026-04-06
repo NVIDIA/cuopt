@@ -46,7 +46,7 @@ struct user_problem_t {
   std::vector<std::string> row_names;
   std::vector<std::string> col_names;
   f_t obj_constant;
-  f_t obj_scale;  // 1.0 for min, -1.0 for max
+  f_t obj_scale;  // positive for min, netagive for max
   bool objective_is_integral{false};
   std::vector<variable_type_t> var_types;
   std::vector<i_t> Q_offsets;

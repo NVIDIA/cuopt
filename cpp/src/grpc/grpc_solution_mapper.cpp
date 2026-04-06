@@ -110,7 +110,7 @@ void map_lp_solution_to_proto(const cpu_lp_solution_t<i_t, f_t>& solution,
   pb_solution->set_gap(solution.get_gap());
   pb_solution->set_nb_iterations(solution.get_num_iterations());
   pb_solution->set_solve_time(solution.get_solve_time());
-  pb_solution->set_solved_by_pdlp(solution.is_solved_by_pdlp());
+  pb_solution->set_solved_by(static_cast<int32_t>(solution.solved_by()));
 
   if (solution.has_warm_start_data()) {
     auto* pb_ws    = pb_solution->mutable_warm_start_data();
@@ -157,15 +157,15 @@ cpu_lp_solution_t<i_t, f_t> map_proto_to_lp_solution(const cuopt::remote::LPSolu
   std::vector<f_t> reduced_cost(pb_solution.reduced_cost().begin(),
                                 pb_solution.reduced_cost().end());
 
-  auto status   = from_proto_pdlp_status(pb_solution.termination_status());
-  auto obj      = static_cast<f_t>(pb_solution.primal_objective());
-  auto dual_obj = static_cast<f_t>(pb_solution.dual_objective());
-  auto solve_t  = pb_solution.solve_time();
-  auto l2_pr    = static_cast<f_t>(pb_solution.l2_primal_residual());
-  auto l2_dr    = static_cast<f_t>(pb_solution.l2_dual_residual());
-  auto g        = static_cast<f_t>(pb_solution.gap());
-  auto iters    = static_cast<i_t>(pb_solution.nb_iterations());
-  auto by_pdlp  = pb_solution.solved_by_pdlp();
+  auto status    = from_proto_pdlp_status(pb_solution.termination_status());
+  auto obj       = static_cast<f_t>(pb_solution.primal_objective());
+  auto dual_obj  = static_cast<f_t>(pb_solution.dual_objective());
+  auto solve_t   = pb_solution.solve_time();
+  auto l2_pr     = static_cast<f_t>(pb_solution.l2_primal_residual());
+  auto l2_dr     = static_cast<f_t>(pb_solution.l2_dual_residual());
+  auto g         = static_cast<f_t>(pb_solution.gap());
+  auto iters     = static_cast<i_t>(pb_solution.nb_iterations());
+  auto solved_by = static_cast<method_t>(pb_solution.solved_by());
 
   if (pb_solution.has_warm_start_data()) {
     const auto& pb_ws = pb_solution.warm_start_data();
@@ -211,7 +211,7 @@ cpu_lp_solution_t<i_t, f_t> map_proto_to_lp_solution(const cuopt::remote::LPSolu
                                        l2_dr,
                                        g,
                                        iters,
-                                       by_pdlp,
+                                       solved_by,
                                        std::move(ws));
   }
 
@@ -226,7 +226,7 @@ cpu_lp_solution_t<i_t, f_t> map_proto_to_lp_solution(const cuopt::remote::LPSolu
                                      l2_dr,
                                      g,
                                      iters,
-                                     by_pdlp);
+                                     solved_by);
 }
 
 template <typename i_t, typename f_t>
@@ -354,7 +354,7 @@ void populate_chunked_result_header_lp(const cpu_lp_solution_t<i_t, f_t>& soluti
   header->set_gap(solution.get_gap());
   header->set_nb_iterations(solution.get_num_iterations());
   header->set_solve_time(solution.get_solve_time());
-  header->set_solved_by_pdlp(solution.is_solved_by_pdlp());
+  header->set_solved_by(static_cast<int32_t>(solution.solved_by()));
 
   const auto& primal       = solution.get_primal_solution_host();
   const auto& dual         = solution.get_dual_solution_host();
@@ -551,15 +551,15 @@ cpu_lp_solution_t<i_t, f_t> chunked_result_to_lp_solution(
   auto dual         = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_DUAL_SOLUTION);
   auto reduced_cost = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_REDUCED_COST);
 
-  auto status   = from_proto_pdlp_status(h.lp_termination_status());
-  auto obj      = static_cast<f_t>(h.primal_objective());
-  auto dual_obj = static_cast<f_t>(h.dual_objective());
-  auto solve_t  = h.solve_time();
-  auto l2_pr    = static_cast<f_t>(h.l2_primal_residual());
-  auto l2_dr    = static_cast<f_t>(h.l2_dual_residual());
-  auto g        = static_cast<f_t>(h.gap());
-  auto iters    = static_cast<i_t>(h.nb_iterations());
-  auto by_pdlp  = h.solved_by_pdlp();
+  auto status    = from_proto_pdlp_status(h.lp_termination_status());
+  auto obj       = static_cast<f_t>(h.primal_objective());
+  auto dual_obj  = static_cast<f_t>(h.dual_objective());
+  auto solve_t   = h.solve_time();
+  auto l2_pr     = static_cast<f_t>(h.l2_primal_residual());
+  auto l2_dr     = static_cast<f_t>(h.l2_dual_residual());
+  auto g         = static_cast<f_t>(h.gap());
+  auto iters     = static_cast<i_t>(h.nb_iterations());
+  auto solved_by = static_cast<method_t>(h.solved_by());
 
   auto ws_primal = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_CURRENT_PRIMAL);
   if (!ws_primal.empty()) {
@@ -598,7 +598,7 @@ cpu_lp_solution_t<i_t, f_t> chunked_result_to_lp_solution(
                                        l2_dr,
                                        g,
                                        iters,
-                                       by_pdlp,
+                                       solved_by,
                                        std::move(ws));
   }
 
@@ -613,7 +613,7 @@ cpu_lp_solution_t<i_t, f_t> chunked_result_to_lp_solution(
                                      l2_dr,
                                      g,
                                      iters,
-                                     by_pdlp);
+                                     solved_by);
 }
 
 template <typename i_t, typename f_t>

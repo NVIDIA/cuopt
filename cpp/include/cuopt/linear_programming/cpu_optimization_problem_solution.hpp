@@ -46,7 +46,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       l2_dual_residual_(std::numeric_limits<f_t>::signaling_NaN()),
       gap_(std::numeric_limits<f_t>::signaling_NaN()),
       num_iterations_(0),
-      solved_by_pdlp_(false)
+      solved_by_(Unset)
   {
   }
 
@@ -65,7 +65,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                     f_t l2_dual_residual,
                     f_t gap,
                     i_t num_iterations,
-                    bool solved_by_pdlp)
+                    method_t solved_by)
     : primal_solution_(std::move(primal_solution)),
       dual_solution_(std::move(dual_solution)),
       reduced_cost_(std::move(reduced_cost)),
@@ -78,7 +78,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       l2_dual_residual_(l2_dual_residual),
       gap_(gap),
       num_iterations_(num_iterations),
-      solved_by_pdlp_(solved_by_pdlp)
+      solved_by_(solved_by)
   {
   }
 
@@ -97,7 +97,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                     f_t l2_dual_residual,
                     f_t gap,
                     i_t num_iterations,
-                    bool solved_by_pdlp,
+                    method_t solved_by,
                     cpu_pdlp_warm_start_data_t<i_t, f_t>&& warmstart_data)
     : primal_solution_(std::move(primal_solution)),
       dual_solution_(std::move(dual_solution)),
@@ -111,7 +111,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
       l2_dual_residual_(l2_dual_residual),
       gap_(gap),
       num_iterations_(num_iterations),
-      solved_by_pdlp_(solved_by_pdlp),
+      solved_by_(solved_by),
       pdlp_warm_start_data_(std::move(warmstart_data))
   {
   }
@@ -132,9 +132,9 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   i_t get_reduced_cost_size() const override { return reduced_cost_.size(); }
 
-  f_t get_objective_value(i_t = 0) const override { return primal_objective_; }
+  f_t get_objective_value(i_t) const override { return primal_objective_; }
 
-  f_t get_dual_objective_value(i_t = 0) const override { return dual_objective_; }
+  f_t get_dual_objective_value(i_t) const override { return dual_objective_; }
 
   pdlp_termination_status_t get_termination_status(i_t = 0) const override
   {
@@ -149,7 +149,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
 
   i_t get_num_iterations(i_t = 0) const override { return num_iterations_; }
 
-  bool is_solved_by_pdlp(i_t = 0) const override { return solved_by_pdlp_; }
+  method_t solved_by(i_t = 0) const override { return solved_by_; }
 
   const pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data() const override
   {
@@ -266,7 +266,7 @@ class cpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
   f_t l2_dual_residual_;
   f_t gap_;
   i_t num_iterations_;
-  bool solved_by_pdlp_;
+  method_t solved_by_;
 
   // PDLP warm start data (embedded struct, CPU-backed using std::vector)
   cpu_pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
