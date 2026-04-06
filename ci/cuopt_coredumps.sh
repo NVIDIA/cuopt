@@ -119,7 +119,8 @@ cuopt_enable_coredumps() {
   local ws base pattern
   ws="${GITHUB_WORKSPACE:-${PWD}}"
   base="${RAPIDS_ARTIFACTS_DIR:-${ws}/artifacts}"
-  export CUOPT_CI_JOB_LABEL="$(cuopt__resolve_ci_job_label)"
+  CUOPT_CI_JOB_LABEL="$(cuopt__resolve_ci_job_label)"
+  export CUOPT_CI_JOB_LABEL
   CUOPT_GDB_CORE_ARTIFACT_DIR="$(cuopt__gdb_core_artifact_basename)"
   export CUOPT_GDB_CORE_ARTIFACT_DIR
   export CUOPT_COREDUMP_DIR="${base}/${CUOPT_GDB_CORE_ARTIFACT_DIR}"
