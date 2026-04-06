@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: Build, Test and Publish cuopt images
+name: Build, test, and publish cuOpt container images
 
 on:
   workflow_call:
@@ -160,7 +160,7 @@ jobs:
         run: bash ci/docker/create_multiarch_manifest.sh
 
   test-images:
-    name: Test images
+    name: Test cuOpt container images
     needs: [build-cuopt-multiarch-manifest, compute-matrix]
     secrets: inherit
     strategy:

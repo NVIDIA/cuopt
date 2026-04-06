@@ -10,7 +10,7 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 
-name: Test images
+name: Test cuOpt container images
 
 on:
   workflow_call:
