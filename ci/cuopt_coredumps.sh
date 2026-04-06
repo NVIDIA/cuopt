@@ -17,13 +17,8 @@
 #      no edits here — e.g. test_foo.sh → conda-foo-tests, test_wheel_bar.sh → wheel-bar-tests).
 # Then CUDA / Python / arch / build_type from RAPIDS CI env.
 #
-# Coredump smoke (fails the job immediately after setup so you can verify artifacts):
-#   • On GitHub Actions (GITHUB_ACTIONS=true): runs unless CUOPT_CI_COREDUMP_SMOKE is 0|false|no|off.
-#   • Elsewhere: runs only if CUOPT_CI_COREDUMP_SMOKE is 1|true|yes|on (local ad-hoc testing).
-#   cuopt_coredump_smoke_fail_job_if_enabled SIGSEGVs a child, EXIT trap collects cores, exit 139.
-#
 # Shells: source this file from repo ci/ scripts, then call cuopt_enable_coredumps and trap
-# cuopt_collect_coredumps on EXIT, then cuopt_coredump_smoke_fail_job_if_enabled.
+# cuopt_collect_coredumps on EXIT.
 
 # Set in cuopt_enable_coredumps; collect reuses when non-empty.
 CUOPT_GDB_CORE_ARTIFACT_DIR=
@@ -162,35 +157,6 @@ cuopt_enable_coredumps() {
       echo "WARNING: core_pattern pipes to a collector; files may not land in ${CUOPT_COREDUMP_DIR}" >&2
     fi
   fi
-}
-
-# Deliberate SIGSEGV in a subprocess, then exit so CI fails and EXIT trap still runs collection.
-cuopt_coredump_smoke_fail_job_if_enabled() {
-  case "${CUOPT_CI_COREDUMP_SMOKE:-}" in
-    0 | false | FALSE | no | NO | off | OFF) return 0 ;;
-  esac
-
-  local run_smoke=0
-  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-    run_smoke=1
-  fi
-  case "${CUOPT_CI_COREDUMP_SMOKE:-}" in
-    1 | true | TRUE | yes | YES | on | ON) run_smoke=1 ;;
-  esac
-  if [[ "${run_smoke}" -eq 0 ]]; then
-    return 0
-  fi
-
-  if declare -F rapids-logger &>/dev/null; then
-    rapids-logger "Coredump smoke: SIGSEGV in child bash (GITHUB_ACTIONS=${GITHUB_ACTIONS:-unset}, CUOPT_CI_COREDUMP_SMOKE=${CUOPT_CI_COREDUMP_SMOKE:-unset}); exiting 139"
-  else
-    echo "Coredump smoke: SIGSEGV child; exiting 139 (GITHUB_ACTIONS=${GITHUB_ACTIONS:-unset})" >&2
-  fi
-  # Crash the child only: if the main script died from SIGSEGV, the EXIT trap would not run.
-  bash -c 'kill -SEGV "$$"' || true
-  # Brief pause so the kernel can finish writing the core file before the parent exits.
-  sleep 0.2
-  exit 139
 }
 
 cuopt_collect_coredumps() {

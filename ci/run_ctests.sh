@@ -21,23 +21,6 @@ else
     exit 1
 fi
 
-# Run first: intentional SIGSEGV to validate core dump collection (ci/cuopt_coredumps.sh).
-# Expect a non-zero exit (e.g. 139). The same binary is invoked again in the loop without
-# CUOPT_TEST_COREDUMP and skips the fatal case.
-if [[ -x "${GTEST_DIR}/COREDUMP_SANITY_TEST" ]]; then
-  echo "Running COREDUMP_SANITY_TEST with CUOPT_TEST_COREDUMP=1 (expected fatal signal)"
-  set +e
-  CUOPT_TEST_COREDUMP=1 "${GTEST_DIR}/COREDUMP_SANITY_TEST" "$@"
-  _coredump_ret=$?
-  set -e
-  if [[ "${_coredump_ret}" -eq 0 ]]; then
-    echo "ERROR: COREDUMP_SANITY_TEST exited 0 with CUOPT_TEST_COREDUMP=1; expected crash" >&2
-    exit 1
-  fi
-else
-  echo "Skipping COREDUMP_SANITY_TEST (binary not found)"
-fi
-
 shopt -s nullglob
 for gt in "${GTEST_DIR}"/*_TEST; do
     test_name=$(basename "${gt}")
