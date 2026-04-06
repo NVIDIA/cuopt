@@ -3,7 +3,7 @@
 ## Release Notes 26.04
 
 ### New Features (26.04)
-- Run no-relaxation heuristics before presolve 
+- Run no-relaxation heuristics before presolve
 - Add new MIP cuts: clique cuts and implied bounds cuts
 - Add support for FP32 and mixed precision in PDLP
 - Add option for using Batch PDLP in reliability branching
@@ -13,8 +13,8 @@
 - Add support for writing presolved model to a file
 
 ### Breaking Changes (26.04)
-- The solved_by_pdlp field in the Python LP solution object was changed to solved_by 
-    
+- The solved_by_pdlp field in the Python LP solution object was changed to solved_by
+
 ### Improvements (26.04)
 - Improved reliability branching
 - Generate more MIR and Knapsack cuts
