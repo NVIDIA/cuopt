@@ -11,6 +11,7 @@
 - Expose parameters for tuning heuristics
 - Add support for Python 3.14
 - Add support for writing presolved model to a file
+- gRPC based remote execution support on python, C and CLI interface
 
 ### Breaking Changes (26.04)
 - The solved_by_pdlp field in the Python LP solution object was changed to solved_by
