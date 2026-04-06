@@ -84,7 +84,7 @@ Minimal Python example (LP)
 ============================
 
 The script is the same for **local** or **remote** solves: with the exports above, the client library forwards to ``cuopt_grpc_server``; without them, the solve runs locally (where a GPU is available).
-Please make sure the server is running before running the client. 
+Please make sure the server is running before running the client.
 
 :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`
 
@@ -115,7 +115,7 @@ Minimal ``cuopt_cli`` example (LP)
 ==================================
 
 The same **LP** is available as MPS. With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set as above, ``cuopt_cli`` forwards the solve to the remote server; unset them for a **local** run (GPU on that machine).
-Please make sure the server is running before running the client. 
+Please make sure the server is running before running the client.
 
 :download:`remote_lp_demo.mps <examples/remote_lp_demo.mps>`
 

@@ -54,8 +54,7 @@ void grpc_test_mark_as_connected(class grpc_client_t& client);
  * - Result retrieval uses chunked download for results exceeding max_message_bytes.
  */
 struct grpc_client_config_t {
-  std::string server_address =
-    std::string("localhost:") + std::to_string(cuopt_default_grpc_port);
+  std::string server_address = std::string("localhost:") + std::to_string(cuopt_default_grpc_port);
   int poll_interval_ms       = 1000;   // How often to poll for job status
   int timeout_seconds        = 0;      // Max time to wait for job completion (0 = no limit)
   bool stream_logs           = false;  // Whether to stream logs from server
