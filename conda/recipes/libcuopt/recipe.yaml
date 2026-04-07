@@ -93,7 +93,7 @@ cache:
       - bzip2
       - openssl
       - c-ares
-      - libgrpc
+      - libgrpc >=1.78.0,<1.80.0a0
       - libprotobuf
       - libabseil
       - re2
@@ -127,14 +127,22 @@ outputs:
         - bzip2
       ignore_run_exports:
         by_name:
+          - c-ares
           - cuda-nvtx
           - cuda-version
-          - libcurand
+          - libabseil
+          - libboost
           - libcudss
+          - libcurand
           - libcusparse
+          - libgrpc
+          - libprotobuf
           - librmm
-          - libzlib
           - libbz2
+          - libzlib
+          - openssl
+          - re2
+          - tbb
     tests:
     - package_contents:
         files:
@@ -174,10 +182,11 @@ outputs:
         - openssl
         - c-ares
         - libuuid
-        - libgrpc
+        - libgrpc >=1.78.0,<1.80.0a0
         - libprotobuf
         - libabseil
         - re2
+        - tbb-devel
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
         - ${{ pin_subpackage("libmps-parser", exact=True) }}
@@ -188,9 +197,10 @@ outputs:
         - openssl
         - c-ares
         - libuuid
-        - libgrpc
+        - libgrpc >=1.78.0,<1.80.0a0
         - libprotobuf
         - libabseil
+        - tbb
       ignore_run_exports:
         by_name:
           - cuda-nvtx
@@ -235,7 +245,7 @@ outputs:
         - libcusparse-dev
         - openssl
         - c-ares
-        - libgrpc
+        - libgrpc >=1.78.0,<1.80.0a0
         - libprotobuf
         - libabseil
       run:

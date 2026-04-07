@@ -34,7 +34,7 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
-- libgrpc
+- libgrpc >=1.78.0,<1.80.0a0
 - libprotobuf
 - libraft-headers==26.4.*,>=0.0.0a0
 - librmm==26.4.*,>=0.0.0a0
