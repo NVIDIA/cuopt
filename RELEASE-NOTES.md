@@ -8,22 +8,22 @@
 - Add support for FP32 and mixed precision in PDLP
 - Add option for using Batch PDLP in reliability branching
 - Add UnboundedOrInfeasible termination status
-- Expose parameters for tuning heuristics
+- Expose settings for tuning heuristics
 - Add support for Python 3.14
 - Add support for writing presolved model to a file
-- gRPC based remote execution support on python, C and CLI interface for LP, MILP and QP
+- gRPC based remote execution support on Python, C and CLI interface for LP/QP and MIP
 
 ### Breaking Changes (26.04)
 - The solved_by_pdlp field in the Python LP solution object was changed to solved_by
 
 ### Improvements (26.04)
-- Improved reliability branching
+- Improve reliability branching by better ranking of unreliable variables
 - Generate more MIR and Knapsack cuts
 - Improve aggregation and complementation in MIR cuts
 - Use variable lower and variable upper bounds in MIR cuts
-- Improved numerics of mixed integer Gomory cuts
+- Improve numerics of mixed integer Gomory cuts
 - Lift knapsack cuts
-- Improved row and objective scaling for MIP
+- Improve row and objective scaling for MIP
 - Use objective function integrality when pruning node
 - Reduce time for Markowitz factorization in dual simplex
 - Reduce time for dual push inside crossover
