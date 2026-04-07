@@ -435,7 +435,7 @@ class pseudo_costs_t {
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
       pseudo_cost_mutex_down(num_variables),
-      AT(1, 1, 1)
+      Arow(1, 1, 1)
   {
   }
 
@@ -526,7 +526,7 @@ class pseudo_costs_t {
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
 
-  csc_matrix_t<i_t, f_t> AT;  // Transpose of the constraint matrix A
+  csr_matrix_t<i_t, f_t> Arow;
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_down;
   std::vector<omp_atomic_t<i_t>> pseudo_cost_num_up;

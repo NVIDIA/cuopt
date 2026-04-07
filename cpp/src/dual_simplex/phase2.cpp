@@ -130,11 +130,11 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
+void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
                      const sparse_vector_t<i_t, f_t>& delta_y,
                      i_t leaving_index,
                      i_t direction,
-                     const std::vector<i_t>& nonbasic_mark,
+                     const std::vector<i_t>& nonbasic_end,
                      std::vector<i_t>& delta_z_mark,
                      std::vector<i_t>& delta_z_indices,
                      std::vector<f_t>& delta_z,
@@ -143,29 +143,24 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
   // delta_zN = - N'*delta_y
   const i_t nz_delta_y   = delta_y.i.size();
   size_t nnz_processed   = 0;
-  size_t nonbasic_marked = 0;
   for (i_t k = 0; k < nz_delta_y; k++) {
     const i_t i         = delta_y.i[k];
     const f_t delta_y_i = delta_y.x[k];
     if (std::abs(delta_y_i) < 1e-12) { continue; }
-    const i_t row_start = A_transpose.col_start[i];
-    const i_t row_end   = A_transpose.col_start[i + 1];
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_end   = nonbasic_end[i] + 1;
     nnz_processed += row_end - row_start;
     for (i_t p = row_start; p < row_end; ++p) {
-      const i_t j = A_transpose.i[p];
-      if (nonbasic_mark[j] >= 0) {
-        delta_z[j] -= delta_y_i * A_transpose.x[p];
-        nonbasic_marked++;
-        if (!delta_z_mark[j]) {
-          delta_z_mark[j] = 1;
-          delta_z_indices.push_back(j);
-        }
+      const i_t j = Arow.j[p];
+      delta_z[j] -= delta_y_i * Arow.x[p];
+      if (!delta_z_mark[j]) {
+        delta_z_mark[j] = 1;
+        delta_z_indices.push_back(j);
       }
     }
   }
   work_estimate += 4 * nz_delta_y;
-  work_estimate += 2 * nnz_processed;
-  work_estimate += 3 * nonbasic_marked;
+  work_estimate += 4 * nnz_processed;
   work_estimate += 2 * delta_z_indices.size();
 
   // delta_zB = sigma*ei
@@ -203,6 +198,102 @@ void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
   }
   if (error_check > 1e-6) { printf("delta_z error %e\n", error_check); }
 #endif
+}
+
+template <typename i_t, typename f_t>
+void compute_initial_nonbasic_end(const std::vector<i_t>& basic_mark,
+                                  csr_matrix_t<i_t, f_t>& Arow,
+                                  std::vector<i_t>& nonbasic_end)
+{
+  i_t m = Arow.m;
+  // Swap coefficients so that all coefficients for nonbasic variables in row i
+  // appear from Arow.row_start[i] to nonbasic_end[i]
+  for (i_t i = 0; i < m; i++) {
+    i_t lo = Arow.row_start[i];
+    i_t hi = Arow.row_start[i + 1] - 1;
+    while (lo <= hi) {
+      const i_t j = Arow.j[lo];
+      if (basic_mark[j] >= 0) {
+        // Swap coefficients
+        std::swap(Arow.j[lo], Arow.j[hi]);
+        std::swap(Arow.x[lo], Arow.x[hi]);
+        hi--;
+      } else {
+        lo++;
+      }
+    }
+    nonbasic_end[i] = hi;
+  }
+}
+
+template <typename i_t, typename f_t>
+void update_Arow(i_t leaving,
+                         i_t entering,
+                         const csc_matrix_t<i_t, f_t>& A,
+                         std::vector<i_t>& row_mark,
+                         std::vector<i_t>& nonbasic_end,
+                         csr_matrix_t<i_t, f_t>& Arow,
+                         f_t& work_estimate)
+{
+  // Update the Arow matrix to reflect the new basis. So
+  // that the coefficients for all nonbasic variables in row i
+  // appear in Arow.row_start[i] to nonbasic_end[i].
+  // Swap the coefficients for the leaving and entering variables
+  // The leaving variable is now nonbasic, the entering variable is now basic
+  row_mark.clear();
+  const i_t col_start_enter = A.col_start[entering];
+  const i_t col_end_enter = A.col_start[entering + 1];
+  for (i_t p = col_start_enter; p < col_end_enter; p++) {
+    const i_t i = A.i[p];
+    row_mark.push_back(i);
+  }
+  work_estimate += 2*(col_end_enter - col_start_enter);
+
+  // Move the coefficients for the entering variable to the end of the nonbasics
+  // And decrement the nonbasic count for the row
+  for (i_t i: row_mark) {
+    const i_t row_start = Arow.row_start[i];
+    const i_t nb_end = nonbasic_end[i];
+    for (i_t p = row_start; p <= nb_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == entering) {
+        std::swap(Arow.j[p], Arow.j[nb_end]);
+        std::swap(Arow.x[p], Arow.x[nb_end]);
+        nonbasic_end[i]--;
+        break;
+      }
+    }
+    work_estimate += nb_end - row_start;
+  }
+  work_estimate += 2*row_mark.size();
+
+  row_mark.clear();
+  const i_t col_start_leave = A.col_start[leaving];
+  const i_t col_end_leave = A.col_start[leaving + 1];
+  for (i_t p = col_start_leave; p < col_end_leave; p++) {
+    const i_t i = A.i[p];
+    row_mark.push_back(i);
+  }
+  work_estimate += 2*(col_end_leave - col_start_leave);
+
+
+  // Move the coefficient for the leaving variable to the end of the nonbasics
+  // And increment the nonbasic count for the row
+  for (i_t i: row_mark) {
+    const i_t nb_end = nonbasic_end[i];
+    const i_t row_end = Arow.row_start[i + 1];
+    for (i_t p = nb_end + 1; p < row_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == leaving) {
+        std::swap(Arow.j[p], Arow.j[nb_end + 1]);
+        std::swap(Arow.x[p], Arow.x[nb_end + 1]);
+        nonbasic_end[i]++;
+        break;
+      }
+    }
+    work_estimate += row_end - nb_end;
+  }
+  work_estimate += 2*row_mark.size();
 }
 
 namespace phase2 {
@@ -1480,8 +1571,10 @@ i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t
                                         const basis_update_mpf_t<i_t, f_t>& ft,
                                         i_t basic_leaving_index,
                                         i_t entering_index,
+                                        i_t leaving_index,
                                         std::vector<f_t>& steepest_edge_norms)
 {
+#if 0
   sparse_vector_t<i_t, f_t> es_sparse(m, 1);
   es_sparse.i[0] = basic_leaving_index;
   es_sparse.x[0] = -1.0;
@@ -1489,6 +1582,16 @@ i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t
   ft.b_transpose_solve(es_sparse, delta_ys_sparse);
   steepest_edge_norms[entering_index] = delta_ys_sparse.norm2_squared();
 
+  if (std::abs(steepest_edge_norms[entering_index] - steepest_edge_norms[leaving_index]) > 1e-1) {
+  settings.log.printf("Steepest edge norm %e for entering %d. Leaving %d norm %e. Diff %e\n",
+                      steepest_edge_norms[entering_index],
+                      entering_index,
+                      leaving_index,
+                      steepest_edge_norms[leaving_index],
+                      std::abs(steepest_edge_norms[entering_index] - steepest_edge_norms[leaving_index]));
+  }
+#endif
+ steepest_edge_norms[entering_index] = steepest_edge_norms[leaving_index];
 #ifdef STEEPEST_EDGE_DEBUG
   settings.log.printf("Steepest edge norm %e for entering j %d at i %d\n",
                       steepest_edge_norms[entering_index],
@@ -2408,6 +2511,7 @@ class phase2_timers_t {
       se_norms_time(0),
       se_entering_time(0),
       lu_update_time(0),
+      lu_factorization_time(0),
       perturb_time(0),
       vector_time(0),
       objective_time(0),
@@ -2431,7 +2535,7 @@ class phase2_timers_t {
   {
     if (!record_time) { return; }
     const f_t total_time = bfrt_time + pricing_time + btran_time + ftran_time + flip_time +
-                           delta_z_time + lu_update_time + se_norms_time + se_entering_time +
+                           delta_z_time + lu_update_time  + lu_factorization_time + se_norms_time + se_entering_time +
                            perturb_time + vector_time + objective_time + update_infeasibility_time;
     // clang-format off
     settings.log.printf("BFRT time       %.2fs %4.1f%\n", bfrt_time, 100.0 * bfrt_time / total_time);
@@ -2441,6 +2545,7 @@ class phase2_timers_t {
     settings.log.printf("Flip time       %.2fs %4.1f%\n", flip_time, 100.0 * flip_time / total_time);
     settings.log.printf("Delta_z time    %.2fs %4.1f%\n", delta_z_time, 100.0 * delta_z_time / total_time);
     settings.log.printf("LU update time  %.2fs %4.1f%\n", lu_update_time, 100.0 * lu_update_time / total_time);
+    settings.log.printf("LU factor time  %.2fs %4.1f%\n", lu_factorization_time, 100.0 * lu_factorization_time / total_time);
     settings.log.printf("SE norms time   %.2fs %4.1f%\n", se_norms_time, 100.0 * se_norms_time / total_time);
     settings.log.printf("SE enter time   %.2fs %4.1f%\n", se_entering_time, 100.0 * se_entering_time / total_time);
     settings.log.printf("Perturb time    %.2fs %4.1f%\n", perturb_time, 100.0 * perturb_time / total_time);
@@ -2459,6 +2564,7 @@ class phase2_timers_t {
   f_t se_norms_time;
   f_t se_entering_time;
   f_t lu_update_time;
+  f_t lu_factorization_time;
   f_t perturb_time;
   f_t vector_time;
   f_t objective_time;
@@ -2561,6 +2667,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::bound_info(lp, settings);
   phase2_work_estimate += 2 * n;
 
+  f_t refactor_work = 0.0;
+  f_t solve_work = 0.0;
+
   if (initialize_basis) {
     PHASE2_NVTX_RANGE("DualSimplex::init_basis");
     std::vector<i_t> superbasic_list;
@@ -2573,8 +2682,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);
 
+    f_t refactor_start_work = ft.work_estimate();
     i_t refactor_status = ft.refactor_basis(
       lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+    refactor_work = ft.work_estimate() - refactor_start_work;
     if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
     if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
     if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
@@ -2735,9 +2846,14 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
 #endif
 
-  csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
-  lp.A.transpose(A_transpose);
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
+  lp.A.to_compressed_row(Arow);
   phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
+  std::vector<i_t> nonbasic_end(m);
+  std::vector<i_t> row_mark;
+  row_mark.reserve(m);
+  compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+  phase2_work_estimate += lp.A.col_start[lp.A.n];
 
   f_t obj = compute_objective(lp, x);
   phase2_work_estimate += 2 * n;
@@ -2749,7 +2865,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t num_refactors         = 0;
   i_t total_bound_flips     = 0;
   f_t delta_y_nz_percentage = 0.0;
-  phase2::phase2_timers_t<i_t, f_t> timers(false);
+  phase2::phase2_timers_t<i_t, f_t> timers(true);
 
   // Sparse vectors for main loop (declared outside loop for instrumentation)
   sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
@@ -2781,6 +2897,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                         0.0,
                         toc(start_time));
   }
+  i_t iterations_since_refactor = 0;
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
@@ -2903,11 +3020,13 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     timers.start_timer();
     delta_y_sparse.clear();
     UTsol_sparse.clear();
+    f_t btran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::btran");
       phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
     }
     timers.btran_time += timers.stop_timer();
+    solve_work += (ft.work_estimate() - btran_start_work);
 
     const f_t steepest_edge_norm_check = delta_y_sparse.norm2_squared();
     phase2_work_estimate += 2 * delta_y_sparse.i.size();
@@ -2939,11 +3058,11 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       PHASE2_NVTX_RANGE("DualSimplex::delta_z");
       if (use_transpose) {
         sparse_delta_z++;
-        compute_delta_z(A_transpose,
+        compute_delta_z(Arow,
                         delta_y_sparse,
                         leaving_index,
                         direction,
-                        nonbasic_mark,
+                        nonbasic_end,
                         delta_z_mark,
                         delta_z_indices,
                         delta_z,
@@ -3278,6 +3397,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     utilde_sparse.clear();
     scaled_delta_xB_sparse.clear();
     rhs_sparse.from_csc_column(lp.A, entering_index);
+    f_t ftran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::ftran");
       if (phase2::compute_delta_x(lp,
@@ -3299,7 +3419,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
         return dual::status_t::NUMERICAL;
       }
     }
-
+    solve_work += (ft.work_estimate() - ftran_start_work);
     timers.ftran_time += timers.stop_timer();
 
 #ifdef CHECK_PRIMAL_STEP
@@ -3310,6 +3430,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
 
     timers.start_timer();
+    f_t se_norms_start_work = ft.work_estimate();
     const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
                                                                         basic_list,
                                                                         ft,
@@ -3331,6 +3452,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
     assert(steepest_edge_status == 0);
     timers.se_norms_time += timers.stop_timer();
+    solve_work += (ft.work_estimate() - se_norms_start_work);
 
     timers.start_timer();
     // x <- x + delta_x
@@ -3432,6 +3554,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     basic_mark[leaving_index]              = -1;
     basic_mark[entering_index]             = basic_leaving_index;
 
+    update_Arow(leaving_index, entering_index, lp.A, row_mark, nonbasic_end, Arow, phase2_work_estimate);
+
 #ifdef CHECK_BASIC_INFEASIBILITIES
     phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
 #endif
@@ -3440,22 +3564,33 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     // Refactor or update the basis factorization
     {
       PHASE2_NVTX_RANGE("DualSimplex::basis_update");
-      bool should_refactor = ft.num_updates() > settings.refactor_frequency;
+      iterations_since_refactor++;
+      bool should_refactor = (ft.num_updates() > 100 && solve_work > refactor_work) || (ft.num_updates() > 1000);
+      //settings.log.printf("Solve work %e refactor work %e iterations since refactor %d\n", solve_work, refactor_work, iterations_since_refactor);
       if (!should_refactor) {
         i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
 #ifdef CHECK_UPDATE
         phase2::check_update(lp, settings, ft, basic_list, basic_leaving_index);
 #endif
         should_refactor = recommend_refactor == 1;
+        timers.lu_update_time += timers.stop_timer();
+        timers.start_timer();
       }
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
       phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 6);
 #endif
       if (should_refactor) {
+        settings.log.printf(
+          "Refactoring basis. Iteration %d solve work %e refactor work %e updates %d\n",
+          iter,
+          solve_work,
+          refactor_work,
+          ft.num_updates());
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
-        bool should_recompute_x = true;  // Need for numerically difficult problems like cbs-cta
+        bool should_recompute_x = true;  // Needed for numerically difficult problems like cbs-cta
+        f_t refactor_start_work = ft.work_estimate();
         i_t refactor_status     = ft.refactor_basis(
           lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
         if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
@@ -3488,9 +3623,11 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
           settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
         }
+        refactor_work = ft.work_estimate() - refactor_start_work;
 
         phase2::reset_basis_mark(
           basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+        compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
         if (should_recompute_x) {
           std::vector<f_t> unperturbed_x(n);
           phase2_work_estimate += n;
@@ -3514,16 +3651,18 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                                          infeasibility_indices,
                                                          primal_infeasibility);
         phase2_work_estimate += 4 * m + 2 * n;
+        iterations_since_refactor = 0;
+        solve_work = 0.0;
       }
 #ifdef CHECK_BASIC_INFEASIBILITIES
       phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
 #endif
     }
-    timers.lu_update_time += timers.stop_timer();
+    timers.lu_factorization_time += timers.stop_timer();
 
     timers.start_timer();
     phase2::compute_steepest_edge_norm_entering(
-      settings, m, ft, basic_leaving_index, entering_index, delta_y_steepest_edge);
+      settings, m, ft, basic_leaving_index, entering_index, leaving_index, delta_y_steepest_edge);
     timers.se_entering_time += timers.stop_timer();
 
 #ifdef STEEPEST_EDGE_DEBUG
@@ -3653,15 +3792,19 @@ template void compute_reduced_cost_update<int, double>(const lp_problem_t<int, d
                                                        std::vector<double>& delta_z,
                                                        double& work_estimate);
 
-template void compute_delta_z<int, double>(const csc_matrix_t<int, double>& A_transpose,
+template void compute_delta_z<int, double>(const csr_matrix_t<int, double>& Arow,
                                            const sparse_vector_t<int, double>& delta_y,
                                            int leaving_index,
                                            int direction,
-                                           const std::vector<int>& nonbasic_mark,
+                                           const std::vector<int>& nonbasic_end,
                                            std::vector<int>& delta_z_mark,
                                            std::vector<int>& delta_z_indices,
                                            std::vector<double>& delta_z,
                                            double& work_estimate);
+
+template void compute_initial_nonbasic_end<int, double>(const std::vector<int>& basic_mark,
+                                                        csr_matrix_t<int, double>& Arow,
+                                                        std::vector<int>& nonbasic_end);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex
