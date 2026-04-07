@@ -74,7 +74,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Diving-specific snapshots (ignored by BFS workers)
   std::vector<f_t> incumbent_snapshot;
-  i_t total_lp_iters_snapshot{0};
+  int64_t total_lp_iters_snapshot{0};
 
   std::vector<queued_integer_solution_t<i_t, f_t>> integer_solutions;
   int next_solution_seq{0};

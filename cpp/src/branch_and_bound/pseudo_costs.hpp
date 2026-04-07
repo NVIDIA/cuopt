@@ -144,7 +144,7 @@ class pseudo_costs_t {
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
       pseudo_cost_mutex_down(num_variables),
-      AT(1, 1, 1),
+      AT(std::make_shared<csc_matrix_t<i_t, f_t>>(1, 1, 1)),
       pdlp_warm_cache(std::make_shared<batch_pdlp_warm_cache_t<i_t, f_t>>())
   {
   }
@@ -214,7 +214,7 @@ class pseudo_costs_t {
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
 
-  csc_matrix_t<i_t, f_t> AT;  // Transpose of the constraint matrix A
+  std::shared_ptr<csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
   std::vector<float_type> pseudo_cost_sum_up;
   std::vector<float_type> pseudo_cost_sum_down;
   std::vector<int_type> pseudo_cost_num_up;
@@ -245,6 +245,9 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
   pseudo_cost_snapshot_t& operator=(
     const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
   {
+    Base::AT              = other.AT;
+    Base::pdlp_warm_cache = other.pdlp_warm_cache;
+
     i_t n = other.pseudo_cost_num_down.size();
     Base::pseudo_cost_num_down.resize(n);
     Base::pseudo_cost_num_up.resize(n);
@@ -264,6 +267,8 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
   pseudo_cost_snapshot_t& operator=(const Base& other)
   {
     if (this != &other) {
+      Base::AT                   = other.AT;
+      Base::pdlp_warm_cache      = other.pdlp_warm_cache;
       Base::pseudo_cost_num_down = other.pseudo_cost_num_down;
       Base::pseudo_cost_num_up   = other.pseudo_cost_num_up;
       Base::pseudo_cost_sum_down = other.pseudo_cost_sum_down;

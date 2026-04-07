@@ -1055,7 +1055,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           basic_list,
                                           nonbasic_list,
                                           fractional,
-                                          pc.AT,
+                                          *pc.AT,
                                           basis_factors,
                                           strong_branch_down,
                                           strong_branch_up);
@@ -1245,9 +1245,9 @@ f_t pseudo_costs_t<i_t, f_t, BnBMode>::calculate_pseudocost_score(
 {
   constexpr f_t eps = 1e-6;
   i_t num_up        = pseudo_cost_num_up[j];
-  i_t sum_up        = pseudo_cost_sum_up[j];
+  f_t sum_up        = pseudo_cost_sum_up[j];
   i_t num_down      = pseudo_cost_num_down[j];
-  i_t sum_down      = pseudo_cost_sum_down[j];
+  f_t sum_down      = pseudo_cost_sum_down[j];
   f_t pc_up         = num_up > 0 ? sum_up / num_up : averages.up_avg;
   f_t pc_down       = num_down > 0 ? sum_down / num_down : averages.down_avg;
   f_t f_down        = solution[j] - std::floor(solution[j]);
@@ -1282,17 +1282,14 @@ pseudo_cost_averages_t<i_t, f_t> pseudo_costs_t<i_t, f_t, BnBMode>::compute_aver
   f_t pseudo_cost_up_avg   = 0.0;
 
   for (size_t j = 0; j < pseudo_cost_sum_down.size(); ++j) {
-    if (pseudo_cost_num_down[j] > 0) {
+    if (pseudo_cost_num_down[j] > 0 && std::isfinite(pseudo_cost_sum_down[j])) {
       ++num_initialized_down;
-      if (std::isfinite(pseudo_cost_sum_down[j])) {
-        pseudo_cost_down_avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
-      }
+      pseudo_cost_down_avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
     }
-    if (pseudo_cost_num_up[j] > 0) {
+
+    if (pseudo_cost_num_up[j] > 0 && std::isfinite(pseudo_cost_sum_up[j])) {
       ++num_initialized_up;
-      if (std::isfinite(pseudo_cost_sum_up[j])) {
-        pseudo_cost_up_avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
-      }
+      pseudo_cost_up_avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
     }
   }
 
@@ -1504,7 +1501,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
           objective_change_estimate_t<f_t> estimate =
             single_pivot_objective_change_estimate(worker->leaf_problem,
                                                    settings,
-                                                   AT,
+                                                   *AT,
                                                    node_ptr->vstatus,
                                                    j,
                                                    basic_map[j],

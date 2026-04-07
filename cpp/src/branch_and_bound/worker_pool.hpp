@@ -80,17 +80,6 @@ class branch_and_bound_worker_pool_t {
 
   i_t num_idle_workers() { return num_idle_workers_; }
 
-  void broadcast_root_bounds_change()
-  {
-    if (is_initialized) {
-      for (i_t i = 0; i < workers_.size(); ++i) {
-        if (workers_[i]->search_strategy == BEST_FIRST && workers_[i]->is_active) {
-          workers_[i]->start_bounds_updated = true;
-        }
-      }
-    }
-  }
-
  private:
   // Worker pool
   std::vector<std::unique_ptr<branch_and_bound_worker_t<i_t, f_t>>> workers_;
