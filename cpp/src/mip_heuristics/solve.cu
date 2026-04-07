@@ -287,7 +287,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     // Reformulate semi-continuous variables (x = 0 OR L <= x <= U) before Papilo presolve.
     // Uses GPU bounds propagation to derive tight upper bounds for SC vars with infinite UB.
-    detail::reformulate_semi_continuous(op_problem, settings);
+    // Track n_orig so that auxiliary binary variables added by reformulation can be stripped
+    // from the solution before returning it to the caller.
+    const i_t n_orig_before_sc = op_problem.get_n_variables();
+    const bool had_sc          = detail::reformulate_semi_continuous(op_problem, settings);
 
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
@@ -558,6 +561,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
     }
+
+    // Strip auxiliary binary variables that were injected by SC reformulation.
+    // The caller only knows about the original n_orig_before_sc variables.
+    if (had_sc && sol.get_solution().size() > static_cast<size_t>(n_orig_before_sc)) {
+      sol.get_solution().resize(n_orig_before_sc, op_problem.get_handle_ptr()->get_stream());
+    }
+
     return sol;
   } catch (const cuopt::logic_error& e) {
     CUOPT_LOG_ERROR("Error in solve_mip: %s", e.what());
