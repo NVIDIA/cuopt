@@ -740,8 +740,6 @@ if(BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
 
 endif()
 
-option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
-if(BUILD_LP_BENCHMARKS)
   add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
 
   set_target_properties(solve_LP
@@ -766,7 +764,35 @@ if(BUILD_LP_BENCHMARKS)
   if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
     target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
   endif()
-endif()
+
+  add_executable(obbt_experiment ../benchmarks/linear_programming/cuopt/obbt_experiement.cu)
+
+  set_target_properties(obbt_experiment
+    PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CUDA_STANDARD 20
+    CUDA_STANDARD_REQUIRED ON
+    CXX_SCAN_FOR_MODULES OFF
+  )
+
+  target_compile_options(obbt_experiment
+    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+  )
+  target_link_libraries(obbt_experiment
+    PUBLIC
+    cuopt
+    OpenMP::OpenMP_CXX
+    PRIVATE
+  )
+  target_include_directories(obbt_experiment
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+    target_link_options(obbt_experiment PRIVATE -Wl,--enable-new-dtags)
+  endif()
 
 # ##################################################################################################
 # - cuopt_grpc_server - gRPC-based remote server --------------------------------------------------
@@ -830,6 +856,40 @@ install(TARGETS cuopt_grpc_server
 )
 
 message(STATUS "Building cuopt_grpc_server (gRPC-based remote solve server)")
+#add_executable(strong_branching_benchmark ../benchmarks/linear_programming/cuopt/strong_branching_benchmark.cu)
+#
+#  set_target_properties(strong_branching_benchmark
+#    PROPERTIES
+#    CXX_STANDARD 20
+#    CXX_STANDARD_REQUIRED ON
+#    CUDA_STANDARD 20
+#    CUDA_STANDARD_REQUIRED ON
+#    CXX_SCAN_FOR_MODULES OFF
+#  )
+#
+#  target_compile_options(strong_branching_benchmark
+#    PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+#    "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+#  )
+#  target_link_libraries(strong_branching_benchmark
+#    PUBLIC
+#    cuopt
+#    OpenMP::OpenMP_CXX
+#    PRIVATE
+#  )
+#  if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+#    target_link_options(strong_branching_benchmark PRIVATE -Wl,--enable-new-dtags)
+#  endif()
+#    target_include_directories(strong_branching_benchmark
+#    PRIVATE
+#    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+#  )
+#  target_include_directories(strong_branching_benchmark
+#  PRIVATE
+#  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+#)
+
+
 
 # ##################################################################################################
 # - CPack has to be the last item in the cmake file-------------------------------------------------
