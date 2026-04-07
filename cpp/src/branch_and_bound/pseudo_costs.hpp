@@ -71,7 +71,6 @@ struct branch_variable_t {
   rounding_direction_t direction;
 };
 
-
 template <typename i_t, typename f_t>
 struct batch_pdlp_warm_cache_t {
   const raft::handle_t batch_pdlp_handle{};
@@ -110,32 +109,32 @@ struct pseudo_cost_update_t {
 };
 
 // `BnBMode` specify how we control the memory accesses:
-// - If `BnBMode == branch_and_bound_mode_t::REGULAR`, then we assume that this object is shared
+// - If `BnBMode == branch_and_bound_mode_t::PARALLEL`, then we assume that this object is shared
 // among the B&B threads, and thus, require atomics and mutexes to avoid data races.
 //  - If `BnBMode == branch_and_bound_mode_t::DETERMINISTIC`, then each thread has it own pseudocost
 // snapshot, hence, we can disable all atomics and mutexes.
-// `BnBMode` is automatically set depending if it is a `pseudo_costs_t` (REGULAR)
+// `BnBMode` is automatically set depending if it is a `pseudo_costs_t` (PARALLEL)
 // or a `pseudo_costs_snapshot_t` (DETERMINISTIC).
 template <typename i_t,
           typename f_t,
-          branch_and_bound_mode_t BnBMode = branch_and_bound_mode_t::REGULAR>
+          branch_and_bound_mode_t BnBMode = branch_and_bound_mode_t::PARALLEL>
 class pseudo_costs_t {
  public:
   // Define the types used for storing the pseudocost of each variable.
   // Disable or enable atomics depending on if we are in REGULAR or DETERMINISTIC modes
   using float_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::REGULAR, omp_atomic_t<f_t>, f_t>;
+    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<f_t>, f_t>;
 
   using int_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::REGULAR, omp_atomic_t<i_t>, i_t>;
+    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<i_t>, i_t>;
 
   // Counting the number of LP iterations might require more than an int32 can hold.
-  using int64_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::REGULAR, omp_atomic_t<int64_t>, int64_t>;
+  using int64_type = std::
+    conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<int64_t>, int64_t>;
 
   // Disable or enable mutexes depending on if we are in REGULAR or DETERMINISTIC modes
   using mutex_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::REGULAR, omp_mutex_t, fake_omp_mutex_t>;
+    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_mutex_t, fake_omp_mutex_t>;
 
   explicit pseudo_costs_t(i_t num_variables)
     : pseudo_cost_sum_down(num_variables),
@@ -144,7 +143,8 @@ class pseudo_costs_t {
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
       pseudo_cost_mutex_down(num_variables),
-      AT(1, 1, 1)
+      AT(1, 1, 1),
+      pdlp_warm_cache(std::make_shared<batch_pdlp_warm_cache_t<i_t, f_t>>())
   {
   }
 
@@ -222,7 +222,7 @@ class pseudo_costs_t {
   std::vector<mutex_type> pseudo_cost_mutex_down;
   int64_type strong_branching_lp_iter = 0;
 
-  batch_pdlp_warm_cache_t<i_t, f_t> pdlp_warm_cache;
+  std::shared_ptr<batch_pdlp_warm_cache_t<i_t, f_t>> pdlp_warm_cache;
 };
 
 template <typename i_t,
@@ -234,7 +234,7 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
 
   pseudo_cost_snapshot_t(i_t num_variables) : Base(num_variables) {};
 
-  pseudo_cost_snapshot_t(const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::REGULAR>& other)
+  pseudo_cost_snapshot_t(const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
     : Base(1)
   {
     *this = other;
@@ -242,7 +242,7 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
 
   pseudo_cost_snapshot_t(const Base& other) : Base(1) { *this = other; }
   pseudo_cost_snapshot_t& operator=(
-    const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::REGULAR>& other)
+    const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
   {
     i_t n = other.pseudo_cost_num_down.size();
     Base::pseudo_cost_num_down.resize(n);

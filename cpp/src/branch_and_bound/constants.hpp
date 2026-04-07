@@ -26,6 +26,6 @@ enum search_strategy_t : int {
 
 enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 
-enum class branch_and_bound_mode_t { REGULAR = 0, DETERMINISTIC = 1 };
+enum class branch_and_bound_mode_t { PARALLEL = 0, DETERMINISTIC = 1 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

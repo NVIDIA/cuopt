@@ -56,8 +56,8 @@ class branch_and_bound_worker_t {
 
   pcgenerator_t rng;
 
-  bool recompute_basis                    = true;
-  bool recompute_bounds                   = true;
+  bool recompute_basis  = true;
+  bool recompute_bounds = true;
 
   branch_and_bound_worker_t(i_t worker_id,
                             const lp_problem_t<i_t, f_t>& original_lp,
@@ -99,9 +99,8 @@ class branch_and_bound_worker_t {
                    const lp_problem_t<i_t, f_t>& original_lp,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    internal_node = node->detach_copy();
+    internal_node   = node->detach_copy();
     start_node      = &internal_node;
-
     start_lower     = original_lp.lower;
     start_upper     = original_lp.upper;
     search_strategy = type;
