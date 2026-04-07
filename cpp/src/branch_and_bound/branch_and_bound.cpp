@@ -180,7 +180,7 @@ f_t compute_user_abs_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   // abs_gap = |user_obj - user_lower| = |obj_scale| * |obj_value - lower_bound|
   // obj_constant cancels out in the subtraction; obj_scale sign must be removed via abs
   f_t gap = std::abs(lp.obj_scale) * (obj_value - lower_bound);
-  if (gap < -1e-4) { CUOPT_LOG_ERROR("Gap is negative %e", gap); }
+  if (gap < -1e-4) { CUOPT_LOG_DEBUG("Gap is negative %e", gap); }
   return gap;
 }
 
