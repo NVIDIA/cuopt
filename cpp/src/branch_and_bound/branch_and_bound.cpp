@@ -1122,8 +1122,13 @@ struct deterministic_diving_policy_t
         return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::GUIDED_DIVING:
-        return guided_diving(
-          this->worker.pc_snapshot, fractional, x, this->worker.incumbent_snapshot, log);
+        if (this->worker.incumbent_snapshot.empty()) {
+          return pseudocost_diving(
+            this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
+        } else {
+          return guided_diving(
+            this->worker.pc_snapshot, fractional, x, this->worker.incumbent_snapshot, log);
+        }
 
       case search_strategy_t::COEFFICIENT_DIVING: {
         return coefficient_diving<i_t, f_t>(this->worker.leaf_problem,
