@@ -243,14 +243,14 @@ BoundType convert(std::string_view str)
     return LowerBoundIntegerVariable;
   } else if (str == "UI") {
     return UpperBoundIntegerVariable;
-  } else if (str == "LC") {
-    return SemiContiniousVariable;
+  } else if (str == "SC" || str == "LC") {
+    return SemiContinuousVariable;
   } else {
     mps_parser_expects(false,
                        error_type_t::ValidationError,
                        "Invalid variable bound type found in BOUNDS section! Bound type=%s",
                        std::string(str).c_str());
-    return SemiContiniousVariable;
+    return SemiContinuousVariable;
   }
 }
 
@@ -1430,11 +1430,14 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       var_types[var_id] = 'I';
       break;
-    case SemiContiniousVariable:
-      mps_parser_expects(false,
-                         error_type_t::ValidationError,
-                         "Unsupported semi continous bound type found! Line=%s",
-                         std::string(line).c_str());
+    case SemiContinuousVariable:
+      // SC bound type: value is the upper bound U.
+      // Per CPLEX convention, if no LO bound was set (lower bound is 0), use 1.0 as L.
+      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+      if (!bounds_defined_for_var_id.count(var_id) || variable_lower_bounds[var_id] == f_t(0)) {
+        variable_lower_bounds[var_id] = f_t(1);
+      }
+      var_types[var_id] = 'S';
       break;
     default:
       mps_parser_expects(false,

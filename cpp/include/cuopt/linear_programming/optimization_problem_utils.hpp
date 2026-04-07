@@ -87,9 +87,14 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
   if (!char_variable_types.empty()) {
     std::vector<var_t> enum_variable_types(char_variable_types.size());
     for (size_t i = 0; i < char_variable_types.size(); ++i) {
-      enum_variable_types[i] = (char_variable_types[i] == 'I' || char_variable_types[i] == 'B')
-                                 ? var_t::INTEGER
-                                 : var_t::CONTINUOUS;
+      const char c = char_variable_types[i];
+      if (c == 'I' || c == 'B') {
+        enum_variable_types[i] = var_t::INTEGER;
+      } else if (c == 'S') {
+        enum_variable_types[i] = var_t::SEMI_CONTINUOUS;
+      } else {
+        enum_variable_types[i] = var_t::CONTINUOUS;
+      }
     }
     problem->set_variable_types(enum_variable_types.data(), enum_variable_types.size());
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types

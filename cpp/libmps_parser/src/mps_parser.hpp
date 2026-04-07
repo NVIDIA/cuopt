@@ -41,7 +41,7 @@ enum BoundType {
   BinaryVariable,
   LowerBoundIntegerVariable,
   UpperBoundIntegerVariable,
-  SemiContiniousVariable,
+  SemiContinuousVariable,
 };  // enum BoundType
 
 /**

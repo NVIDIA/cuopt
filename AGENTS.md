@@ -19,6 +19,7 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 - `skills/routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
 - `skills/qp-formulation/` — QP: minimize-only, escalate (beta)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
+- `skills/semi-continuous-formulation/` — Semi-continuous variables: x = 0 or L ≤ x ≤ U, MILP reformulation, MPS SC/SI types, big-M
 
 ### API (implementation; one interface per skill)
 - `skills/cuopt-installation-api-python/`
