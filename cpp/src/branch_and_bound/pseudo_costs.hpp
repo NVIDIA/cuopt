@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/worker.hpp>
 
