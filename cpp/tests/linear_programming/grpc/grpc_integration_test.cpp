@@ -355,8 +355,6 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
     if (config.timeout_seconds == 3600) { config.timeout_seconds = 60; }
 
-    config.enable_transfer_hash = true;
-
     auto client = std::make_unique<grpc_client_t>(config);
     if (!client->connect()) { return nullptr; }
     return client;
@@ -519,7 +517,7 @@ class DefaultServerTests : public GrpcIntegrationTestBase {
   {
     s_port_   = get_test_port();
     s_server_ = std::make_unique<ServerProcess>();
-    ASSERT_TRUE(s_server_->start(s_port_, {"--enable-transfer-hash"}))
+    ASSERT_TRUE(s_server_->start(s_port_, {}))
       << "Failed to start shared default server on port " << s_port_;
   }
 
@@ -1586,8 +1584,7 @@ class TlsServerTests : public GrpcIntegrationTestBase {
                                      "--tls-key",
                                      g_tls_certs_dir + "/server.key",
                                      "--tls-root",
-                                     g_tls_certs_dir + "/ca.crt",
-                                     "--enable-transfer-hash"};
+                                     g_tls_certs_dir + "/ca.crt"};
 
     if (!s_server_->start(s_port_, args)) {
       s_server_.reset();
@@ -1688,8 +1685,7 @@ class MtlsServerTests : public GrpcIntegrationTestBase {
                                      g_tls_certs_dir + "/server.key",
                                      "--tls-root",
                                      g_tls_certs_dir + "/ca.crt",
-                                     "--require-client-cert",
-                                     "--enable-transfer-hash"};
+                                     "--require-client-cert"};
 
     if (!s_server_->start(s_port_, args)) {
       s_server_.reset();
