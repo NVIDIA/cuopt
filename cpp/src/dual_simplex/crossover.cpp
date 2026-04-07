@@ -612,7 +612,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       return TIME_LIMIT_RETURN;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      settings.log.printf("Dual simplex halted inside crossover dual push loop\n");
       return CONCURRENT_HALT_RETURN;
     }
   }
@@ -989,7 +989,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       return TIME_LIMIT_RETURN;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      settings.log.printf("Dual simplex halted inside crossover primal push loop\n");
       return CONCURRENT_HALT_RETURN;
     }
   }
@@ -1353,7 +1353,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     return crossover_status_t::TIME_LIMIT;
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-    settings.log.printf("Concurrent halt\n");
+    settings.log.printf("Dual simplex halted in crossover after basis reorder (before FTran/BTran)\n");
     return crossover_status_t::CONCURRENT_LIMIT;
   }
 
@@ -1415,7 +1415,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       return crossover_status_t::TIME_LIMIT;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      settings.log.printf("Dual simplex halted in crossover after dual_phase2 refinement\n");
       return crossover_status_t::CONCURRENT_LIMIT;
     }
     primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
@@ -1577,7 +1577,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
           return crossover_status_t::TIME_LIMIT;
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-          settings.log.printf("Concurrent halt\n");
+          settings.log.printf("Dual simplex halted in crossover during iterative dual_phase2 refinement\n");
           return crossover_status_t::CONCURRENT_LIMIT;
         }
         solution.iterations += iter;

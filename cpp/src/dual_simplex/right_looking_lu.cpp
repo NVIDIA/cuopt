@@ -1258,7 +1258,7 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     }
     if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      settings.log.printf("Dual simplex halted inside right-looking LU factorization (fill-in loop)\n");
       return CONCURRENT_HALT_RETURN;
     }
   }
