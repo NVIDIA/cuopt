@@ -383,7 +383,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   f_t barrier_presolve_start = tic();
   printf("Barrier wrapper: presolve begin : %.2fs\n", toc(start_time));
   fflush(stdout);
-  const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
+  i_t ok;
+  {
+    raft::common::nvtx::range scope("BarrierWrapper::Presolve");
+    ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
+  }
   printf("Barrier wrapper: presolve end   : %.2fs elapsed %.2fs status %d\n",
          toc(start_time),
          toc(barrier_presolve_start),
@@ -406,7 +410,10 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   f_t barrier_scaling_start = tic();
   printf("Barrier wrapper: scaling begin  : %.2fs\n", toc(start_time));
   fflush(stdout);
-  column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales);
+  {
+    raft::common::nvtx::range scope("BarrierWrapper::Scaling");
+    column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales);
+  }
   printf("Barrier wrapper: scaling end    : %.2fs elapsed %.2fs\n",
          toc(start_time),
          toc(barrier_scaling_start));
@@ -435,8 +442,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   f_t barrier_ctor_start = tic();
   printf("Barrier wrapper: ctor begin     : %.2fs\n", toc(start_time));
   fflush(stdout);
-  auto barrier_solver =
-    std::make_unique<barrier_solver_t<i_t, f_t>>(barrier_lp, presolve_info, barrier_settings);
+  std::unique_ptr<barrier_solver_t<i_t, f_t>> barrier_solver;
+  {
+    raft::common::nvtx::range scope("BarrierWrapper::Ctor");
+    barrier_solver =
+      std::make_unique<barrier_solver_t<i_t, f_t>>(barrier_lp, presolve_info, barrier_settings);
+  }
   printf("Barrier wrapper: ctor end       : %.2fs elapsed %.2fs\n",
          toc(start_time),
          toc(barrier_ctor_start));
@@ -444,8 +455,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
   printf("Barrier wrapper: solve begin    : %.2fs\n", toc(start_time));
   fflush(stdout);
-  lp_status_t barrier_status =
-    barrier_solver->solve(start_time, barrier_solver_settings, barrier_solution);
+  lp_status_t barrier_status;
+  {
+    raft::common::nvtx::range scope("BarrierWrapper::Solve");
+    barrier_status = barrier_solver->solve(start_time, barrier_solver_settings, barrier_solution);
+  }
   printf("Barrier wrapper: solve end      : %.2fs status %d\n",
          toc(start_time),
          static_cast<int>(barrier_status));

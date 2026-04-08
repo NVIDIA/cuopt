@@ -32,6 +32,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/macros.cuh>
+#include <utilities/scope_guard.hpp>
 
 #include <numeric>
 
@@ -3523,10 +3524,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
+    raft::common::nvtx::push_range("BarrierSolve::IterationDataLifetime");
+    auto data_lifetime_scope = cuopt::scope_guard([&]() { raft::common::nvtx::pop_range(); });
     f_t data_ctor_start = tic();
     printf("Barrier solve: data ctor begin: %.2fs\n", toc(start_time));
     fflush(stdout);
+    raft::common::nvtx::push_range("BarrierSolve::IterationDataCtorFull");
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
+    raft::common::nvtx::pop_range();
     printf("Barrier solve: data ctor end  : %.2fs elapsed %.2fs halt=%d indef=%d symbolic=%d\n",
            toc(start_time),
            toc(data_ctor_start),
@@ -3549,14 +3554,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t vector_setup_start = tic();
     printf("Barrier solve: vec init begin : %.2fs\n", toc(start_time));
     fflush(stdout);
-    data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
-    data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
-    data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
-    data.cusparse_h_             = data.cusparse_view_.create_vector(data.d_h_);
-    data.cusparse_dx_residual_   = data.cusparse_view_.create_vector(data.d_dx_residual_);
-    data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
-    data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
-    data.restrict_u_.resize(num_upper_bounds);
+    {
+      raft::common::nvtx::range scope("BarrierSolve::VectorInit");
+      data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
+      data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
+      data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
+      data.cusparse_h_             = data.cusparse_view_.create_vector(data.d_h_);
+      data.cusparse_dx_residual_   = data.cusparse_view_.create_vector(data.d_dx_residual_);
+      data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
+      data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
+      data.restrict_u_.resize(num_upper_bounds);
+    }
     printf("Barrier solve: vec init end   : %.2fs elapsed %.2fs\n",
            toc(start_time),
            toc(vector_setup_start));
@@ -3570,7 +3578,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t initial_point_start = tic();
     printf("Barrier solve: initial begin  : %.2fs\n", toc(start_time));
     fflush(stdout);
-    i_t initial_status = initial_point(data);
+    i_t initial_status;
+    {
+      raft::common::nvtx::range scope("BarrierSolve::InitialPoint");
+      initial_status = initial_point(data);
+    }
     printf("Barrier solve: initial end    : %.2fs elapsed %.2fs status %d halt=%d\n",
            toc(start_time),
            toc(initial_point_start),
@@ -3594,7 +3606,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t residual_init_start = tic();
     printf("Barrier solve: residual begin : %.2fs\n", toc(start_time));
     fflush(stdout);
-    compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
+    {
+      raft::common::nvtx::range scope("BarrierSolve::ResidualInit");
+      compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
+    }
     printf("Barrier solve: residual end   : %.2fs elapsed %.2fs\n",
            toc(start_time),
            toc(residual_init_start));

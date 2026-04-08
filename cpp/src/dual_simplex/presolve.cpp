@@ -13,6 +13,10 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <utilities/scope_guard.hpp>
+
+#include <raft/core/nvtx.hpp>
+
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -820,6 +824,12 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
   f_t presolve_start = tic();
+  auto maybe_nvtx_scope = [&](const char* name) {
+    if (settings.barrier_presolve) { raft::common::nvtx::push_range(name); }
+    return cuopt::scope_guard([&]() {
+      if (settings.barrier_presolve) { raft::common::nvtx::pop_range(); }
+    });
+  };
   if (settings.barrier_presolve) {
     printf("Barrier presolve: enter       : %.2fs\n", 0.0);
     fflush(stdout);
@@ -848,6 +858,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
   }
   if (settings.barrier_presolve && nonzero_lower_bounds > 0) {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::ShiftLowerBounds");
     f_t lower_bound_start = tic();
     printf("Barrier presolve: shift lb begin : %.2fs count %d\n",
            toc(presolve_start),
@@ -930,6 +941,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   f_t empty_row_scan_start = tic();
   i_t num_empty_rows = 0;
   {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::EmptyRowScan");
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
     problem.A.to_compressed_row(Arow);
     for (i_t i = 0; i < problem.num_rows; i++) {
@@ -944,6 +956,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     fflush(stdout);
   }
   if (num_empty_rows > 0) {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::EmptyRowRemove");
     f_t empty_row_remove_start = tic();
     settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
     i_t i = remove_empty_rows(problem, row_sense, num_empty_rows, presolve_info);
@@ -960,6 +973,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   f_t empty_col_scan_start = tic();
   i_t num_empty_cols = 0;
   {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::EmptyColScan");
     for (i_t j = 0; j < problem.num_cols; ++j) {
       if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
     }
@@ -972,6 +986,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     fflush(stdout);
   }
   if (num_empty_cols > 0) {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::EmptyColRemove");
     f_t empty_col_remove_start = tic();
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
     remove_empty_cols(problem, num_empty_cols, presolve_info);
@@ -992,6 +1007,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   problem.Q.check_matrix("Before free variable expansion");
 
   if (settings.barrier_presolve && free_variables > 0) {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::FreeVariableExpansion");
     f_t free_var_start = tic();
     printf("Barrier presolve: free var begin : %.2fs count %d\n",
            toc(presolve_start),
@@ -1148,6 +1164,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0) {
+    auto nvtx_scope = maybe_nvtx_scope("BarrierPresolve::Folding");
     f_t folding_start = tic();
     printf("Barrier presolve: folding begin  : %.2fs\n", toc(presolve_start));
     fflush(stdout);
