@@ -3,20 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Derives CUOPT_TEST_COMPONENTS from changed-files env vars
-# (CUOPT_ROUTING_CHANGED, CUOPT_LP_CHANGED, CUOPT_MIP_CHANGED, CUOPT_SHARED_CHANGED).
+# (CUOPT_ROUTING_CHANGED, CUOPT_LP_CHANGED, CUOPT_MIP_CHANGED).
 #
 # When none of these env vars are set (e.g. nightly / non-PR builds),
 # defaults to "all" so every test runs.
 #
-# When CUOPT_SHARED_CHANGED is true, shared infrastructure changed and all
-# component tests must run, so CUOPT_TEST_COMPONENTS is set to "all".
-#
 # Usage:  source ./ci/utils/derive_test_components.sh
 
-if [[ -z "${CUOPT_ROUTING_CHANGED:-}" && -z "${CUOPT_LP_CHANGED:-}" && -z "${CUOPT_MIP_CHANGED:-}" && -z "${CUOPT_SHARED_CHANGED:-}" ]]; then
-    export CUOPT_TEST_COMPONENTS="all"
-elif [[ "${CUOPT_SHARED_CHANGED:-}" == "true" ]]; then
-    # Shared infrastructure changed — run everything
+if [[ -z "${CUOPT_ROUTING_CHANGED:-}" && -z "${CUOPT_LP_CHANGED:-}" && -z "${CUOPT_MIP_CHANGED:-}" ]]; then
     export CUOPT_TEST_COMPONENTS="all"
 else
     components=""

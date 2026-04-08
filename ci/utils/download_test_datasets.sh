@@ -5,7 +5,7 @@
 # Downloads test datasets based on CUOPT_TEST_COMPONENTS.
 # Sources derive_test_components.sh to set CUOPT_TEST_COMPONENTS if not already set.
 #
-# Usage:  source ./ci/download_test_datasets.sh
+# Usage:  source ./ci/utils/download_test_datasets.sh
 #
 # Optional env vars:
 #   CUOPT_ROUTING_DATASET_ARGS  — extra args for routing get_test_data.sh (e.g. "--solomon --tsp")
@@ -23,24 +23,16 @@ fi
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
-_log() {
-    if command -v rapids-logger &>/dev/null; then
-        rapids-logger "$1"
-    else
-        echo "$1"
-    fi
-}
-
 if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"lp"* ]]; then
     ./datasets/linear_programming/download_pdlp_test_dataset.sh
 else
-    _log "Skipping LP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+    echo "Skipping LP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
 fi
 
 if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"mip"* ]]; then
     ./datasets/mip/download_miplib_test_dataset.sh
 else
-    _log "Skipping MIP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+    echo "Skipping MIP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
 fi
 
 if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"routing"* ]]; then
@@ -49,5 +41,5 @@ if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"rou
     ./get_test_data.sh ${CUOPT_ROUTING_DATASET_ARGS:-}
     popd
 else
-    _log "Skipping routing dataset downloads (not needed for components: ${CUOPT_TEST_COMPONENTS})"
+    echo "Skipping routing dataset downloads (not needed for components: ${CUOPT_TEST_COMPONENTS})"
 fi
