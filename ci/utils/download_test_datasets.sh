@@ -17,7 +17,7 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
 # Derive CUOPT_TEST_COMPONENTS from changed-files env vars (no-op if already set)
 if [[ -z "${CUOPT_TEST_COMPONENTS:-}" ]]; then
-    source "${SCRIPT_DIR}/../derive_test_components.sh"
+    source "${SCRIPT_DIR}/derive_test_components.sh"
 fi
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"

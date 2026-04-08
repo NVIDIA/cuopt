@@ -11,7 +11,7 @@
 # When CUOPT_SHARED_CHANGED is true, shared infrastructure changed and all
 # component tests must run, so CUOPT_TEST_COMPONENTS is set to "all".
 #
-# Usage:  source ./ci/derive_test_components.sh
+# Usage:  source ./ci/utils/derive_test_components.sh
 
 if [[ -z "${CUOPT_ROUTING_CHANGED:-}" && -z "${CUOPT_LP_CHANGED:-}" && -z "${CUOPT_MIP_CHANGED:-}" && -z "${CUOPT_SHARED_CHANGED:-}" ]]; then
     export CUOPT_TEST_COMPONENTS="all"

@@ -10,7 +10,7 @@
 # block scalar (>-) so this invocation is one physical line to Actions but readable:
 #
 #   script: >-
-#     ci/run_with_pr_changed_components.sh
+#     ci/utils/run_with_pr_changed_components.sh
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_routing }}
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_lp }}
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_mip }}
@@ -27,5 +27,5 @@ export CUOPT_MIP_CHANGED="${3}"
 export CUOPT_SHARED_CHANGED="${4}"
 shift 4
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 exec bash "$@"
