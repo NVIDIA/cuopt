@@ -22,7 +22,7 @@ class worker_pool_t {
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<variable_type_t>& var_type,
             const simplex_solver_settings_t<i_t, f_t>& settings,
-            const i_t rng_offset)
+            const uint64_t rng_offset = 0)
   {
     workers_.resize(num_workers);
     num_idle_workers_ = num_workers;

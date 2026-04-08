@@ -1664,7 +1664,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 
   const i_t num_bfs_workers    = max_num_workers_per_type[BEST_FIRST];
   const i_t num_diving_workers = num_workers - num_bfs_workers;
-  bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_, 0);
+  bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_);
   diving_worker_pool_.init(
     num_diving_workers, original_lp_, Arow_, var_types_, settings_, num_bfs_workers);
   active_workers_per_strategy_.fill(0);
@@ -1814,7 +1814,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
-  bfs_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_, 0);
+  bfs_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_);
 
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);

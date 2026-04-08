@@ -67,7 +67,7 @@ class branch_and_bound_worker_t {
                             const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<variable_type_t>& var_type,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                            const i_t rng_offset)
+                            const uint64_t rng_offset = 0)
     : worker_id(worker_id),
       search_strategy(BEST_FIRST),
       is_active(false),
@@ -80,8 +80,8 @@ class branch_and_bound_worker_t {
       node_presolver(leaf_problem, Arow, {}, var_type),
       bounds_changed(original_lp.num_cols, false),
       start_node(nullptr),
-      rng(settings.random_seed + pcgenerator_t::default_seed + worker_id,
-          rng_offset + pcgenerator_t::default_stream ^ worker_id)
+      rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
+          pcgenerator_t::default_stream ^ (worker_id + rng_offset))
   {
   }
 
