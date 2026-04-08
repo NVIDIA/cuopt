@@ -407,7 +407,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
     problem.set_variable_types(var_types.data(), 2);
 
     std::vector<double> con_lb = {1.0};
-    std::vector<double> con_ub = {1e20};
+    std::vector<double> con_ub = {std::numeric_limits<double>::infinity()};
     problem.set_constraint_lower_bounds(con_lb.data(), 1);
     problem.set_constraint_upper_bounds(con_ub.data(), 1);
 
