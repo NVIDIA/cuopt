@@ -193,8 +193,8 @@ class deterministic_bfs_worker_t
       plunge_stack.pop_front();
       return node;
     }
-    auto node_opt = backlog.pop();
-    return node_opt.has_value() ? node_opt.value() : nullptr;
+
+    return !backlog.empty() ? backlog.pop() : nullptr;
   }
 
   size_t queue_size() const

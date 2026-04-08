@@ -35,34 +35,22 @@ class worker_pool_t {
     is_initialized = true;
   }
 
-  // Here, we are assuming that the scheduler is the only
-  // thread that can retrieve/pop an idle worker.
-  WorkerType* get_idle_worker()
+  WorkerType* pop_idle_worker()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (idle_workers_.empty()) {
       return nullptr;
     } else {
       i_t idx = idle_workers_.front();
+      idle_workers_.pop_front();
+      num_idle_workers_--;
       return workers_[idx].get();
     }
   }
-
-  // Here, we are assuming that the scheduler is the only
-  // thread that can retrieve/pop an idle worker.
-  void pop_idle_worker()
-  {
-    std::lock_guard<omp_mutex_t> lock(mutex_);
-    if (!idle_workers_.empty()) {
-      idle_workers_.pop_front();
-      num_idle_workers_--;
-    }
-  }
-
   void return_worker_to_pool(WorkerType* worker)
   {
     worker->is_active = false;
-    std::lock_guard<omp_mutex_t> lock(mutex_);
+    std::lock_guard lock(mutex_);
     idle_workers_.push_back(worker->worker_id);
     num_idle_workers_++;
   }
@@ -73,13 +61,23 @@ class worker_pool_t {
 
     if (is_initialized) {
       for (i_t i = 0; i < workers_.size(); ++i) {
-        if (workers_[i]->is_active) {
-          lower_bound = std::min(workers_[i]->lower_bound.load(), lower_bound);
-        }
+        lower_bound = std::min(workers_[i]->get_lower_bound(), lower_bound);
       }
     }
 
     return lower_bound;
+  }
+
+  WorkerType* get_worker(i_t id) { return workers_[id].get(); }
+
+  std::vector<WorkerType*> get_active_workers()
+  {
+    std::vector<WorkerType*> active_workers;
+    for (i_t i = 0; i < workers_.size(); ++i) {
+      if (workers_[i]->is_active) { active_workers.push_back(workers_[i].get()); }
+    }
+
+    return active_workers;
   }
 
   i_t num_idle_workers() const { return num_idle_workers_; }

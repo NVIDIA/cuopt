@@ -18,6 +18,8 @@
 #include <deque>
 #include <vector>
 
+#include "node_queue.hpp"
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -41,6 +43,8 @@ class branch_and_bound_worker_t {
   omp_atomic_t<search_strategy_t> search_strategy;
   omp_atomic_t<bool> is_active;
   omp_atomic_t<f_t> lower_bound;
+  omp_atomic_t<i_t> node_depth;
+  omp_atomic_t<i_t> integer_infeasible;
 
   lp_problem_t<i_t, f_t> leaf_problem;
   lp_solution_t<i_t, f_t> leaf_solution;
@@ -55,7 +59,6 @@ class branch_and_bound_worker_t {
 
   std::vector<f_t> start_lower;
   std::vector<f_t> start_upper;
-  mip_node_t<i_t, f_t>* start_node;
 
   pcgenerator_t rng;
 
@@ -67,7 +70,7 @@ class branch_and_bound_worker_t {
                             const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<variable_type_t>& var_type,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                            const uint64_t rng_offset = 0)
+                            uint64_t rng_offset = 0)
     : worker_id(worker_id),
       search_strategy(BEST_FIRST),
       is_active(false),
@@ -79,7 +82,6 @@ class branch_and_bound_worker_t {
       nonbasic_list(),
       node_presolver(leaf_problem, Arow, {}, var_type),
       bounds_changed(original_lp.num_cols, false),
-      start_node(nullptr),
       rng(settings.random_seed + pcgenerator_t::default_seed + rng_offset + worker_id,
           pcgenerator_t::default_stream ^ (worker_id + rng_offset))
   {
@@ -112,18 +114,38 @@ template <typename i_t, typename f_t>
 class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
  public:
   using Base = branch_and_bound_worker_t<i_t, f_t>;
-  using Base::Base;
-
-  // Set the `start_node` for best-first search.
-  void init(mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
+  bfs_worker_t(i_t worker_id,
+               const lp_problem_t<i_t, f_t>& original_lp,
+               const csr_matrix_t<i_t, f_t>& Arow,
+               const std::vector<variable_type_t>& var_type,
+               const simplex_solver_settings_t<i_t, f_t>& settings,
+               uint64_t rng_offset = 0)
+    : Base(worker_id, original_lp, Arow, var_type, settings, rng_offset)
   {
-    Base::start_node      = node;
     Base::start_lower     = original_lp.lower;
     Base::start_upper     = original_lp.upper;
     Base::search_strategy = BEST_FIRST;
-    Base::lower_bound     = node->lower_bound;
-    Base::is_active       = true;
   }
+
+  f_t get_lower_bound()
+  {
+    f_t lower_bound = std::numeric_limits<f_t>::infinity();
+
+    if (Base::is_active) {
+      if (node_queue.best_first_queue_size() > 0) {
+        node_queue.lock();
+        mip_node_t<i_t, f_t>* node = node_queue.bfs_top();
+        if (node) { lower_bound = node->lower_bound; }
+        node_queue.unlock();
+      }
+
+      lower_bound = std::min(lower_bound, Base::lower_bound.load());
+    }
+
+    return lower_bound;
+  }
+
+  node_queue_t<i_t, f_t> node_queue;
 };
 
 template <typename i_t, typename f_t>
@@ -140,8 +162,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
             const lp_problem_t<i_t, f_t>& original_lp,
             const simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    internal_node         = node->detach_copy();
-    Base::start_node      = &internal_node;
+    start_node            = node->detach_copy();
     Base::start_lower     = original_lp.lower;
     Base::start_upper     = original_lp.upper;
     Base::search_strategy = type;
@@ -154,14 +175,12 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
       settings, Base::bounds_changed, Base::start_lower, Base::start_upper);
   }
 
- protected:
-  // For diving, we need to store the full node instead of
-  // of just a pointer, since it is not stored in the tree anymore.
-  // To keep the same interface across all worker types,
-  // this will be used as a temporary storage and
-  // will be pointed by `start_node`.
-  // For exploration, this will not be used.
-  mip_node_t<i_t, f_t> internal_node;
+  f_t get_lower_bound()
+  {
+    return Base::is_active ? Base::lower_bound.load() : std::numeric_limits<f_t>::infinity();
+  }
+
+  mip_node_t<i_t, f_t> start_node;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

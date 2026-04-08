@@ -235,9 +235,6 @@ class branch_and_bound_t {
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
 
-  // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue_;
-
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
@@ -250,6 +247,8 @@ class branch_and_bound_t {
 
   // Worker pool dedicated to diving
   diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
+
+  pcgenerator_t rng_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -291,10 +290,14 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  void start_bfs_worker(mip_node_t<i_t, f_t>* start_node);
+
+  void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
+
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_with(bfs_worker_t<i_t, f_t>* worker);
+  void plunge_with(bfs_worker_t<i_t, f_t>* worker, mip_node_t<i_t, f_t>* start_node);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.

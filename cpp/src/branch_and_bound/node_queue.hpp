@@ -44,10 +44,8 @@ class heap_t {
     std::push_heap(buffer.begin(), buffer.end(), comp);
   }
 
-  std::optional<T> pop()
+  T pop()
   {
-    if (buffer.empty()) return std::nullopt;
-
     std::pop_heap(buffer.begin(), buffer.end(), comp);
     T node = std::move(buffer.back());
     buffer.pop_back();
@@ -109,58 +107,59 @@ class node_queue_t {
  public:
   void push(mip_node_t<i_t, f_t>* new_node)
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    std::lock_guard lock(mutex);
     auto entry = std::make_shared<heap_entry_t>(new_node);
     best_first_heap.push(entry);
     diving_heap.push(entry);
   }
 
-  std::optional<mip_node_t<i_t, f_t>*> pop_best_first()
+  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
+  // `unlock()` afterward.
+  mip_node_t<i_t, f_t>* pop_best_first()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    if (best_first_heap.empty()) { return nullptr; }
     auto entry = best_first_heap.pop();
-
-    if (entry.has_value()) { return std::exchange(entry.value()->node, nullptr); }
-
-    return std::nullopt;
+    return std::exchange(entry->node, nullptr);
   }
 
-  std::optional<mip_node_t<i_t, f_t>*> pop_diving()
+  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
+  // `unlock()` afterward.
+  mip_node_t<i_t, f_t>* pop_diving()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
-
     while (!diving_heap.empty()) {
-      auto entry = diving_heap.pop();
-
-      if (entry.has_value()) {
-        if (auto node_ptr = entry.value()->node; node_ptr != nullptr) { return node_ptr; }
-      }
+      auto entry    = diving_heap.pop();
+      auto node_ptr = entry->node;
+      if (node_ptr != nullptr) { return node_ptr; }
     }
 
-    return std::nullopt;
+    return nullptr;
   }
+
+  void lock() { mutex.lock(); }
+  void unlock() { mutex.unlock(); }
 
   i_t diving_queue_size()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    std::lock_guard lock(mutex);
     return diving_heap.size();
   }
 
   i_t best_first_queue_size()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    std::lock_guard lock(mutex);
     return best_first_heap.size();
   }
 
   f_t get_lower_bound()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    std::lock_guard lock(mutex);
     return best_first_heap.empty() ? inf : best_first_heap.top()->lower_bound;
   }
 
+  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
+  // `unlock()` afterward.
   mip_node_t<i_t, f_t>* bfs_top()
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
     return best_first_heap.empty() ? nullptr : best_first_heap.top()->node;
   }
 };
