@@ -82,6 +82,129 @@ class nvtx_range_guard {
   bool active_;
 };
 
+template <typename i_t, typename f_t>
+void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
+                                 const std::vector<i_t>& basic_list,
+                                 const std::vector<i_t>& nonbasic_list,
+                                 const std::vector<f_t>& delta_y,
+                                 i_t leaving_index,
+                                 i_t direction,
+                                 std::vector<i_t>& delta_z_mark,
+                                 std::vector<i_t>& delta_z_indices,
+                                 std::vector<f_t>& delta_z,
+                                 f_t& work_estimate)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+
+  size_t nnzs_processed = 0;
+  // delta_zB = sigma*ei
+  for (i_t k = 0; k < m; k++) {
+    const i_t j = basic_list[k];
+    delta_z[j]  = 0;
+  }
+  work_estimate += 2 * m;
+  delta_z[leaving_index] = direction;
+  // delta_zN = -N'*delta_y
+  const i_t num_nonbasic = n - m;
+  for (i_t k = 0; k < num_nonbasic; k++) {
+    const i_t j = nonbasic_list[k];
+    // z_j <- -A(:, j)'*delta_y
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    f_t dot             = 0.0;
+    for (i_t p = col_start; p < col_end; ++p) {
+      dot += lp.A.x[p] * delta_y[lp.A.i[p]];
+    }
+    nnzs_processed += col_end - col_start;
+
+    delta_z[j] = -dot;
+    if (dot != 0.0) {
+      delta_z_indices.push_back(j);  // Note delta_z_indices has n elements reserved
+      delta_z_mark[j] = 1;
+    }
+  }
+  work_estimate += 3 * num_nonbasic;
+  work_estimate += 3 * nnzs_processed;
+  work_estimate += 2 * delta_z_indices.size();
+}
+
+template <typename i_t, typename f_t>
+void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
+                     const sparse_vector_t<i_t, f_t>& delta_y,
+                     i_t leaving_index,
+                     i_t direction,
+                     const std::vector<i_t>& nonbasic_mark,
+                     std::vector<i_t>& delta_z_mark,
+                     std::vector<i_t>& delta_z_indices,
+                     std::vector<f_t>& delta_z,
+                     f_t& work_estimate)
+{
+  // delta_zN = - N'*delta_y
+  const i_t nz_delta_y   = delta_y.i.size();
+  size_t nnz_processed   = 0;
+  size_t nonbasic_marked = 0;
+  for (i_t k = 0; k < nz_delta_y; k++) {
+    const i_t i         = delta_y.i[k];
+    const f_t delta_y_i = delta_y.x[k];
+    if (std::abs(delta_y_i) < 1e-12) { continue; }
+    const i_t row_start = A_transpose.col_start[i];
+    const i_t row_end   = A_transpose.col_start[i + 1];
+    nnz_processed += row_end - row_start;
+    for (i_t p = row_start; p < row_end; ++p) {
+      const i_t j = A_transpose.i[p];
+      if (nonbasic_mark[j] >= 0) {
+        delta_z[j] -= delta_y_i * A_transpose.x[p];
+        nonbasic_marked++;
+        if (!delta_z_mark[j]) {
+          delta_z_mark[j] = 1;
+          delta_z_indices.push_back(j);
+        }
+      }
+    }
+  }
+  work_estimate += 4 * nz_delta_y;
+  work_estimate += 2 * nnz_processed;
+  work_estimate += 3 * nonbasic_marked;
+  work_estimate += 2 * delta_z_indices.size();
+
+  // delta_zB = sigma*ei
+  delta_z[leaving_index] = direction;
+
+#ifdef CHECK_CHANGE_IN_REDUCED_COST
+  const i_t m = A_transpose.n;
+  const i_t n = A_transpose.m;
+  std::vector<f_t> delta_y_dense(m);
+  delta_y.to_dense(delta_y_dense);
+  std::vector<f_t> delta_z_check(n);
+  std::vector<i_t> delta_z_mark_check(n, 0);
+  std::vector<i_t> delta_z_indices_check;
+  phase2::compute_reduced_cost_update(lp,
+                                      basic_list,
+                                      nonbasic_list,
+                                      delta_y_dense,
+                                      leaving_index,
+                                      direction,
+                                      delta_z_mark_check,
+                                      delta_z_indices_check,
+                                      delta_z_check,
+                                      work_estimate);
+  f_t error_check = 0.0;
+  for (i_t k = 0; k < n; ++k) {
+    const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
+    if (diff > 1e-6) {
+      printf("delta_z error %d transpose %e no transpose %e diff %e\n",
+             k,
+             delta_z[k],
+             delta_z_check[k],
+             diff);
+    }
+    error_check = std::max(error_check, diff);
+  }
+  if (error_check > 1e-6) { printf("delta_z error %e\n", error_check); }
+#endif
+}
+
 namespace phase2 {
 
 // Computes vectors farkas_y, farkas_zl, farkas_zu that satisfy
@@ -320,129 +443,6 @@ void initial_perturbation(const lp_problem_t<i_t, f_t>& lp,
                       sum_perturb,
                       num_perturb,
                       n);
-}
-
-template <typename i_t, typename f_t>
-void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
-                                 const std::vector<i_t>& basic_list,
-                                 const std::vector<i_t>& nonbasic_list,
-                                 const std::vector<f_t>& delta_y,
-                                 i_t leaving_index,
-                                 i_t direction,
-                                 std::vector<i_t>& delta_z_mark,
-                                 std::vector<i_t>& delta_z_indices,
-                                 std::vector<f_t>& delta_z,
-                                 f_t& work_estimate)
-{
-  const i_t m = lp.num_rows;
-  const i_t n = lp.num_cols;
-
-  size_t nnzs_processed = 0;
-  // delta_zB = sigma*ei
-  for (i_t k = 0; k < m; k++) {
-    const i_t j = basic_list[k];
-    delta_z[j]  = 0;
-  }
-  work_estimate += 2 * m;
-  delta_z[leaving_index] = direction;
-  // delta_zN = -N'*delta_y
-  const i_t num_nonbasic = n - m;
-  for (i_t k = 0; k < num_nonbasic; k++) {
-    const i_t j = nonbasic_list[k];
-    // z_j <- -A(:, j)'*delta_y
-    const i_t col_start = lp.A.col_start[j];
-    const i_t col_end   = lp.A.col_start[j + 1];
-    f_t dot             = 0.0;
-    for (i_t p = col_start; p < col_end; ++p) {
-      dot += lp.A.x[p] * delta_y[lp.A.i[p]];
-    }
-    nnzs_processed += col_end - col_start;
-
-    delta_z[j] = -dot;
-    if (dot != 0.0) {
-      delta_z_indices.push_back(j);  // Note delta_z_indices has n elements reserved
-      delta_z_mark[j] = 1;
-    }
-  }
-  work_estimate += 3 * num_nonbasic;
-  work_estimate += 3 * nnzs_processed;
-  work_estimate += 2 * delta_z_indices.size();
-}
-
-template <typename i_t, typename f_t>
-void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
-                     const sparse_vector_t<i_t, f_t>& delta_y,
-                     i_t leaving_index,
-                     i_t direction,
-                     std::vector<i_t>& nonbasic_mark,
-                     std::vector<i_t>& delta_z_mark,
-                     std::vector<i_t>& delta_z_indices,
-                     std::vector<f_t>& delta_z,
-                     f_t& work_estimate)
-{
-  // delta_zN = - N'*delta_y
-  const i_t nz_delta_y   = delta_y.i.size();
-  size_t nnz_processed   = 0;
-  size_t nonbasic_marked = 0;
-  for (i_t k = 0; k < nz_delta_y; k++) {
-    const i_t i         = delta_y.i[k];
-    const f_t delta_y_i = delta_y.x[k];
-    if (std::abs(delta_y_i) < 1e-12) { continue; }
-    const i_t row_start = A_transpose.col_start[i];
-    const i_t row_end   = A_transpose.col_start[i + 1];
-    nnz_processed += row_end - row_start;
-    for (i_t p = row_start; p < row_end; ++p) {
-      const i_t j = A_transpose.i[p];
-      if (nonbasic_mark[j] >= 0) {
-        delta_z[j] -= delta_y_i * A_transpose.x[p];
-        nonbasic_marked++;
-        if (!delta_z_mark[j]) {
-          delta_z_mark[j] = 1;
-          delta_z_indices.push_back(j);
-        }
-      }
-    }
-  }
-  work_estimate += 4 * nz_delta_y;
-  work_estimate += 2 * nnz_processed;
-  work_estimate += 3 * nonbasic_marked;
-  work_estimate += 2 * delta_z_indices.size();
-
-  // delta_zB = sigma*ei
-  delta_z[leaving_index] = direction;
-
-#ifdef CHECK_CHANGE_IN_REDUCED_COST
-  const i_t m = A_transpose.n;
-  const i_t n = A_transpose.m;
-  std::vector<f_t> delta_y_dense(m);
-  delta_y.to_dense(delta_y_dense);
-  std::vector<f_t> delta_z_check(n);
-  std::vector<i_t> delta_z_mark_check(n, 0);
-  std::vector<i_t> delta_z_indices_check;
-  phase2::compute_reduced_cost_update(lp,
-                                      basic_list,
-                                      nonbasic_list,
-                                      delta_y_dense,
-                                      leaving_index,
-                                      direction,
-                                      delta_z_mark_check,
-                                      delta_z_indices_check,
-                                      delta_z_check,
-                                      work_estimate);
-  f_t error_check = 0.0;
-  for (i_t k = 0; k < n; ++k) {
-    const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
-    if (diff > 1e-6) {
-      printf("delta_z error %d transpose %e no transpose %e diff %e\n",
-             k,
-             delta_z[k],
-             delta_z_check[k],
-             diff);
-    }
-    error_check = std::max(error_check, diff);
-  }
-  if (error_check > 1e-6) { printf("delta_z error %e\n", error_check); }
-#endif
 }
 
 template <typename i_t, typename f_t>
@@ -2784,6 +2784,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
+
     // Pricing
     i_t direction           = 0;
     i_t basic_leaving_index = -1;
@@ -2891,6 +2892,12 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       break;
     }
 
+    if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
+
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
+
     // BTran
     // BT*delta_y = -delta_zB = -sigma*ei
     timers.start_timer();
@@ -2932,30 +2939,30 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       PHASE2_NVTX_RANGE("DualSimplex::delta_z");
       if (use_transpose) {
         sparse_delta_z++;
-        phase2::compute_delta_z(A_transpose,
-                                delta_y_sparse,
-                                leaving_index,
-                                direction,
-                                nonbasic_mark,
-                                delta_z_mark,
-                                delta_z_indices,
-                                delta_z,
-                                phase2_work_estimate);
+        compute_delta_z(A_transpose,
+                        delta_y_sparse,
+                        leaving_index,
+                        direction,
+                        nonbasic_mark,
+                        delta_z_mark,
+                        delta_z_indices,
+                        delta_z,
+                        phase2_work_estimate);
       } else {
         dense_delta_z++;
         // delta_zB = sigma*ei
         delta_y_sparse.to_dense(delta_y);
         phase2_work_estimate += delta_y.size();
-        phase2::compute_reduced_cost_update(lp,
-                                            basic_list,
-                                            nonbasic_list,
-                                            delta_y,
-                                            leaving_index,
-                                            direction,
-                                            delta_z_mark,
-                                            delta_z_indices,
-                                            delta_z,
-                                            phase2_work_estimate);
+        compute_reduced_cost_update(lp,
+                                    basic_list,
+                                    nonbasic_list,
+                                    delta_y,
+                                    leaving_index,
+                                    direction,
+                                    delta_z_mark,
+                                    delta_z_indices,
+                                    delta_z,
+                                    phase2_work_estimate);
       }
     }
     timers.delta_z_time += timers.stop_timer();
@@ -3564,7 +3571,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           sum_perturb,
                           now);
       if (phase == 2 && settings.inside_mip == 1 && settings.dual_simplex_objective_callback) {
-        settings.dual_simplex_objective_callback(user_obj);
+        settings.dual_simplex_objective_callback(obj);
       }
     }
 
@@ -3597,7 +3604,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                           100.0 * dense_delta_z / (sparse_delta_z + dense_delta_z));
       ft.print_stats();
     }
-    if (settings.inside_mip && settings.concurrent_halt != nullptr) {
+    if (settings.inside_mip == 1 && settings.concurrent_halt != nullptr) {
       settings.log.debug("Setting concurrent halt in Dual Simplex Phase 2\n");
       *settings.concurrent_halt = 1;
     }
@@ -3634,6 +3641,27 @@ template dual::status_t dual_phase2_with_advanced_basis<int, double>(
   int& iter,
   std::vector<double>& steepest_edge_norms,
   work_limit_context_t* work_unit_context);
+
+template void compute_reduced_cost_update<int, double>(const lp_problem_t<int, double>& lp,
+                                                       const std::vector<int>& basic_list,
+                                                       const std::vector<int>& nonbasic_list,
+                                                       const std::vector<double>& delta_y,
+                                                       int leaving_index,
+                                                       int direction,
+                                                       std::vector<int>& delta_z_mark,
+                                                       std::vector<int>& delta_z_indices,
+                                                       std::vector<double>& delta_z,
+                                                       double& work_estimate);
+
+template void compute_delta_z<int, double>(const csc_matrix_t<int, double>& A_transpose,
+                                           const sparse_vector_t<int, double>& delta_y,
+                                           int leaving_index,
+                                           int direction,
+                                           const std::vector<int>& nonbasic_mark,
+                                           std::vector<int>& delta_z_mark,
+                                           std::vector<int>& delta_z_indices,
+                                           std::vector<double>& delta_z,
+                                           double& work_estimate);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -499,6 +499,36 @@ void check_presolve_status(const papilo::PresolveStatus& status)
   }
 }
 
+third_party_presolve_status_t convert_papilo_presolve_status_to_third_party_presolve_status(
+  const papilo::PresolveStatus& status)
+{
+  switch (status) {
+    case papilo::PresolveStatus::kUnchanged: return third_party_presolve_status_t::UNCHANGED;
+    case papilo::PresolveStatus::kReduced: return third_party_presolve_status_t::REDUCED;
+    case papilo::PresolveStatus::kUnbndOrInfeas:
+      return third_party_presolve_status_t::UNBNDORINFEAS;
+    case papilo::PresolveStatus::kInfeasible: return third_party_presolve_status_t::INFEASIBLE;
+    case papilo::PresolveStatus::kUnbounded:
+      return third_party_presolve_status_t::UNBOUNDED;
+      // Do not implement default case to trigger compile time error if new enum is added
+  }
+  return third_party_presolve_status_t::UNCHANGED;
+}
+
+third_party_presolve_status_t convert_pslp_presolve_status_to_third_party_presolve_status(
+  const PresolveStatus& status)
+{
+  switch (status) {
+    case PresolveStatus_::UNCHANGED: return third_party_presolve_status_t::UNCHANGED;
+    case PresolveStatus_::REDUCED: return third_party_presolve_status_t::REDUCED;
+    case PresolveStatus_::INFEASIBLE: return third_party_presolve_status_t::INFEASIBLE;
+    case PresolveStatus_::UNBNDORINFEAS:
+      return third_party_presolve_status_t::UNBNDORINFEAS;
+      // Do not implement default case to trigger compile time error if new enum is added
+  }
+  return third_party_presolve_status_t::UNCHANGED;
+}
+
 void check_postsolve_status(const papilo::PostsolveStatus& status)
 {
   switch (status) {
@@ -592,7 +622,7 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename i_t, typename f_t>
-std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply_pslp(
+third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply_pslp(
   optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit)
 {
   if constexpr (std::is_same_v<f_t, double>) {
@@ -606,23 +636,29 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
     pslp_presolver_ = ctx.presolver;
     pslp_stgs_      = ctx.settings;
 
+    auto status = convert_pslp_presolve_status_to_third_party_presolve_status(ctx.status);
     if (ctx.status == PresolveStatus_::INFEASIBLE || ctx.status == PresolveStatus_::UNBNDORINFEAS) {
-      return std::nullopt;
+      optimization_problem_t<i_t, f_t> empty_problem(op_problem.get_handle_ptr());
+      return third_party_presolve_result_t<i_t, f_t>{status, std::move(empty_problem), {}, {}, {}};
     }
 
     auto opt_problem = build_optimization_problem_from_pslp<i_t, f_t>(
       pslp_presolver_, op_problem.get_handle_ptr(), maximize_, original_obj_offset);
-    opt_problem.set_problem_name(op_problem.get_problem_name());
-    return std::make_optional(third_party_presolve_result_t<i_t, f_t>{opt_problem, {}});
+    return third_party_presolve_result_t<i_t, f_t>{status, std::move(opt_problem), {}, {}, {}};
   } else {
     cuopt_expects(
       false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
-    return std::nullopt;
+    return third_party_presolve_result_t<i_t, f_t>{
+      third_party_presolve_status_t::UNCHANGED,
+      optimization_problem_t<i_t, f_t>(op_problem.get_handle_ptr()),
+      {},
+      {},
+      {}};
   }
 }
 
 template <typename i_t, typename f_t>
-std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_t, f_t>::apply(
+third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
   cuopt::linear_programming::presolver_t presolver,
@@ -670,18 +706,30 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   auto result = papilo_presolver.apply(papilo_problem);
   check_presolve_status(result.status);
+  auto status = convert_papilo_presolve_status_to_third_party_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
-      result.status == papilo::PresolveStatus::kUnbndOrInfeas) {
-    return std::nullopt;
+      result.status == papilo::PresolveStatus::kUnbndOrInfeas ||
+      result.status == papilo::PresolveStatus::kUnbounded) {
+    optimization_problem_t<i_t, f_t> empty_problem(op_problem.get_handle_ptr());
+    return third_party_presolve_result_t<i_t, f_t>{status, std::move(empty_problem), {}, {}, {}};
   }
   papilo_post_solve_storage_.reset(new papilo::PostsolveStorage<f_t>(result.postsolve));
   CUOPT_LOG_INFO("Presolve removed: %d constraints, %d variables, %d nonzeros",
                  op_problem.get_n_constraints() - papilo_problem.getNRows(),
                  op_problem.get_n_variables() - papilo_problem.getNCols(),
                  op_problem.get_nnz() - papilo_problem.getConstraintMatrix().getNnz());
-  CUOPT_LOG_INFO("Presolved problem: %d constraints, %d variables, %d nonzeros",
+
+  i_t n_integer = 0;
+  {
+    auto col_flags = papilo_problem.getColFlags();
+    for (size_t i = 0; i < col_flags.size(); i++) {
+      if (col_flags[i].test(papilo::ColFlag::kIntegral)) n_integer++;
+    }
+  }
+  CUOPT_LOG_INFO("Presolved problem: %d constraints, %d variables (%d integer), %d nonzeros",
                  papilo_problem.getNRows(),
                  papilo_problem.getNCols(),
+                 n_integer,
                  papilo_problem.getConstraintMatrix().getNnz());
 
   // Check if presolve found the optimal solution (problem fully reduced)
@@ -691,7 +739,10 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
 
   auto opt_problem = build_optimization_problem<i_t, f_t>(
     papilo_problem, op_problem.get_handle_ptr(), category, maximize_);
+  // metadata from original optimization problem that is not filled
   opt_problem.set_problem_name(op_problem.get_problem_name());
+  opt_problem.set_objective_scaling_factor(op_problem.get_objective_scaling_factor());
+  // when an objective offset outside (e.g. from mps file), handle accordingly
   auto col_flags = papilo_problem.getColFlags();
   std::vector<i_t> implied_integer_indices;
   for (size_t i = 0; i < col_flags.size(); i++) {
@@ -708,8 +759,11 @@ std::optional<third_party_presolve_result_t<i_t, f_t>> third_party_presolve_t<i_
     }
   }
 
-  return std::make_optional(third_party_presolve_result_t<i_t, f_t>{
-    opt_problem, implied_integer_indices, reduced_to_original_map_, original_to_reduced_map_});
+  return third_party_presolve_result_t<i_t, f_t>{status,
+                                                 std::move(opt_problem),
+                                                 implied_integer_indices,
+                                                 reduced_to_original_map_,
+                                                 original_to_reduced_map_};
 }
 
 template <typename i_t, typename f_t>

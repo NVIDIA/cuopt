@@ -331,6 +331,7 @@ void compute_dual_solution_from_basis(const lp_problem_t<i_t, f_t>& lp,
 
 template <typename i_t, typename f_t>
 i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
+              const csr_matrix_t<i_t, f_t>& Arow,
               const simplex_solver_settings_t<i_t, f_t>& settings,
               f_t start_time,
               lp_solution_t<i_t, f_t>& solution,
@@ -387,6 +388,9 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
   std::vector<f_t>& y       = solution.y;
   const std::vector<f_t>& x = solution.x;
   i_t num_pushes            = 0;
+  std::vector<f_t> delta_zN(n - m);
+  std::vector<f_t> delta_expanded;  // workspace for sparse path (delta_y is sparse enough)
+  std::vector<f_t> delta_y_dense;   // workspace for dense path (delta_y is not sparse enough)
   while (superbasic_list.size() > 0) {
     const i_t s                   = superbasic_list.back();
     const i_t basic_leaving_index = superbasic_list_index.back();
@@ -401,11 +405,9 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     es_sparse.x[0] = -delta_zs;
 
     // B^T delta_y = -delta_zs*es
-    std::vector<f_t> delta_y(m);
     sparse_vector_t<i_t, f_t> delta_y_sparse(m, 1);
     sparse_vector_t<i_t, f_t> UTsol_sparse(m, 1);
     ft.b_transpose_solve(es_sparse, delta_y_sparse, UTsol_sparse);
-    delta_y_sparse.scatter(delta_y);
 
     // We solved B^T delta_y = -delta_zs*es, but for the update we need
     // U^T*etilde = es.
@@ -416,16 +418,38 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     }
 
     // delta_zN = -N^T delta_y
-    std::vector<f_t> delta_zN(n - m);
-    for (i_t k = 0; k < n - m; ++k) {
-      const i_t j         = nonbasic_list[k];
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      f_t dot             = 0.0;
-      for (i_t p = col_start; p < col_end; ++p) {
-        dot += lp.A.x[p] * delta_y[lp.A.i[p]];
+    // Choose sparse vs dense method by delta_y sparsity (match dual simplex: sparse if <= 30% nnz)
+    std::fill(delta_zN.begin(), delta_zN.end(), 0.);
+    const bool use_sparse = (delta_y_sparse.i.size() * 1.0 / m) <= 0.3;
+
+    if (use_sparse) {
+      delta_expanded.resize(n);
+      std::fill(delta_expanded.begin(), delta_expanded.end(), 0.);
+      for (i_t nnz_idx = 0; nnz_idx < static_cast<i_t>(delta_y_sparse.i.size()); ++nnz_idx) {
+        const i_t row       = delta_y_sparse.i[nnz_idx];
+        const f_t val       = delta_y_sparse.x[nnz_idx];
+        const i_t row_start = Arow.row_start[row];
+        const i_t row_end   = Arow.row_start[row + 1];
+        for (i_t p = row_start; p < row_end; ++p) {
+          const i_t col = Arow.j[p];
+          delta_expanded[col] += Arow.x[p] * val;
+        }
       }
-      delta_zN[k] = -dot;
+      for (i_t k = 0; k < n - m; ++k) {
+        delta_zN[k] = -delta_expanded[nonbasic_list[k]];
+      }
+    } else {
+      delta_y_sparse.to_dense(delta_y_dense);
+      for (i_t k = 0; k < n - m; ++k) {
+        const i_t j       = nonbasic_list[k];
+        f_t dot           = 0.0;
+        const i_t c_start = lp.A.col_start[j];
+        const i_t c_end   = lp.A.col_start[j + 1];
+        for (i_t p = c_start; p < c_end; ++p) {
+          dot += lp.A.x[p] * delta_y_dense[lp.A.i[p]];
+        }
+        delta_zN[k] = -dot;
+      }
     }
 
     i_t entering_index          = -1;
@@ -435,8 +459,10 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
     assert(step_length >= -1e-6);
 
     // y <- y + step_length * delta_y
-    for (i_t i = 0; i < m; ++i) {
-      y[i] += step_length * delta_y[i];
+    // Optimized: Only update non-zero elements from sparse representation
+    for (i_t nnz_idx = 0; nnz_idx < static_cast<i_t>(delta_y_sparse.i.size()); ++nnz_idx) {
+      const i_t i = delta_y_sparse.i[nnz_idx];
+      y[i] += step_length * delta_y_sparse.x[nnz_idx];
     }
 
     // z <- z + step_length * delta z
@@ -586,7 +612,7 @@ i_t dual_push(const lp_problem_t<i_t, f_t>& lp,
       return TIME_LIMIT_RETURN;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
       return CONCURRENT_HALT_RETURN;
     }
   }
@@ -725,7 +751,6 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
-
   settings.log.debug("Primal push: superbasic %ld\n", superbasic_list.size());
 
   std::vector<f_t>& x = solution.x;
@@ -964,7 +989,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
       return TIME_LIMIT_RETURN;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
       return CONCURRENT_HALT_RETURN;
     }
   }
@@ -1002,6 +1027,7 @@ i_t primal_push(const lp_problem_t<i_t, f_t>& lp,
   }
   solution.x = x_compare;
   solution.iterations += num_pushes;
+
   return 0;
 }
 
@@ -1190,6 +1216,9 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   f_t crossover_start = tic();
   f_t work_estimate   = 0;
 
+  csr_matrix_t<i_t, f_t> Arow(m, n, 1);
+  lp.A.to_compressed_row(Arow);
+
   settings.log.printf("\n");
   settings.log.printf("Starting crossover\n");
 
@@ -1324,15 +1353,23 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     return crossover_status_t::TIME_LIMIT;
   }
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-    settings.log.printf("Concurrent halt\n");
+    if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
     return crossover_status_t::CONCURRENT_LIMIT;
   }
 
   basis_update_mpf_t ft(L, U, p, settings.refactor_frequency);
   verify_basis<i_t, f_t>(m, n, vstatus);
   compare_vstatus_with_lists<i_t, f_t>(m, n, basic_list, nonbasic_list, vstatus);
-  i_t dual_push_status = dual_push(
-    lp, settings, start_time, solution, ft, basic_list, nonbasic_list, superbasic_list, vstatus);
+  i_t dual_push_status = dual_push(lp,
+                                   Arow,
+                                   settings,
+                                   start_time,
+                                   solution,
+                                   ft,
+                                   basic_list,
+                                   nonbasic_list,
+                                   superbasic_list,
+                                   vstatus);
   if (dual_push_status < 0) { return return_to_status(dual_push_status); }
   settings.log.debug("basic list size %ld m %d\n", basic_list.size(), m);
   settings.log.debug("nonbasic list size %ld n - m %d\n", nonbasic_list.size(), n - m);
@@ -1378,7 +1415,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       return crossover_status_t::TIME_LIMIT;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      settings.log.printf("Concurrent halt\n");
+      if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
       return crossover_status_t::CONCURRENT_LIMIT;
     }
     primal_infeas = primal_infeasibility(lp, settings, vstatus, solution.x);
@@ -1540,7 +1577,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
           return crossover_status_t::TIME_LIMIT;
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-          settings.log.printf("Concurrent halt\n");
+          if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
           return crossover_status_t::CONCURRENT_LIMIT;
         }
         solution.iterations += iter;

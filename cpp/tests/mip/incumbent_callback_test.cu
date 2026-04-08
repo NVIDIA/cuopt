@@ -154,4 +154,44 @@ TEST(mip_solve, incumbent_get_set_callback_test)
   }
 }
 
+// Verify that when only early heuristics find a feasible incumbent but the solver-space
+// pipeline (B&B + GPU heuristics) does not, the solver still returns that incumbent.
+// B&B runs but exits immediately (node_limit=0); GPU heuristics are disabled so the
+// population stays empty. The fallback in solver.cu must use the OG-space incumbent.
+TEST(mip_solve, early_heuristic_incumbent_fallback)
+{
+  setenv("CUOPT_DISABLE_GPU_HEURISTICS", "1", 1);
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("mip/pk1.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  handle_.sync_stream();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+
+  auto settings       = mip_solver_settings_t<int, double>{};
+  settings.time_limit = 10.;
+  settings.presolver  = presolver_t::Papilo;
+  settings.node_limit = 0;
+
+  int user_data = 0;
+  std::vector<std::pair<std::vector<double>, double>> callback_solutions;
+  test_get_solution_callback_t get_cb(callback_solutions, op_problem.get_n_variables(), &user_data);
+  settings.set_mip_callback(&get_cb, &user_data);
+
+  auto solution = solve_mip(op_problem, settings);
+
+  unsetenv("CUOPT_DISABLE_GPU_HEURISTICS");
+
+  EXPECT_GE(get_cb.n_calls, 1) << "Early heuristics should have emitted at least one incumbent";
+  auto status = solution.get_termination_status();
+  EXPECT_TRUE(status == mip_termination_status_t::FeasibleFound ||
+              status == mip_termination_status_t::Optimal)
+    << "Expected feasible result, got "
+    << mip_solution_t<int, double>::get_termination_status_string(status);
+  EXPECT_TRUE(std::isfinite(solution.get_objective_value()));
+
+  if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings); }
+}
+
 }  // namespace cuopt::linear_programming::test

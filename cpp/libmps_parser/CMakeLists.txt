@@ -111,6 +111,7 @@ add_library(cuopt::mps_parser ALIAS mps_parser)
 target_include_directories(mps_parser
   PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../src"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
