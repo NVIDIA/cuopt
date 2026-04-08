@@ -539,6 +539,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       return CONCURRENT_HALT_RETURN;
     }
 
+    printf("cuDSS numeric factor time    : %.2fs\n", numeric_time);
+    fflush(stdout);
+
     int info;
     size_t sizeWritten = 0;
     CUDSS_CALL_AND_CHECK(

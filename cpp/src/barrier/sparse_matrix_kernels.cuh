@@ -9,6 +9,7 @@
 
 #include <barrier/cusparse_info.hpp>
 #include <barrier/device_sparse_matrix.cuh>
+#include <dual_simplex/simplex_solver_settings.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -17,8 +18,10 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                               device_csr_matrix_t<i_t, f_t>& A,
                               device_csc_matrix_t<i_t, f_t>& DAT,
                               device_csr_matrix_t<i_t, f_t>& ADAT,
-                              cusparse_info_t<i_t, f_t>& cusparse_data)
+                              cusparse_info_t<i_t, f_t>& cusparse_data,
+                              const simplex_solver_settings_t<i_t, f_t>& settings)
 {
+  f_t start_init      = tic();
   auto A_nnz         = A.nz_max;
   auto DAT_nnz       = DAT.nz_max;
   f_t chunk_fraction = 0.15;
@@ -45,6 +48,7 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 
   // Buffer size
   size_t buffer_size;
+  f_t start_work_estimation = tic();
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_workEstimation(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -73,11 +77,13 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   cusparse_data.spgemm_descr,
                                                   &buffer_size,
                                                   cusparse_data.buffer_size.data()));
+  f_t work_estimation_time = toc(start_work_estimation);
 
   int64_t num_prods;
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_getNumProducts(cusparse_data.spgemm_descr, &num_prods));
 
   size_t buffer_size_3_size;
+  f_t start_estimate_memory = tic();
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_estimateMemory(handle->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -112,6 +118,13 @@ void initialize_cusparse_data(raft::handle_t const* handle,
                                                   &cusparse_data.buffer_size_2_size));
   cusparse_data.buffer_size_3.resize(0, handle->get_stream());
   cusparse_data.buffer_size_2.resize(cusparse_data.buffer_size_2_size, handle->get_stream());
+  handle->sync_stream();
+
+  printf("SpGEMM init total            : %.2fs\n", toc(start_init));
+  printf("SpGEMM workEstimation time   : %.2fs\n", work_estimation_time);
+  printf("SpGEMM estimateMemory time   : %.2fs\n", toc(start_estimate_memory));
+  printf("SpGEMM estimated products    : %.2e\n", static_cast<double>(num_prods));
+  fflush(stdout);
 }
 
 template <typename i_t, typename f_t>
@@ -119,8 +132,10 @@ void multiply_kernels(raft::handle_t const* handle,
                       device_csr_matrix_t<i_t, f_t>& A,
                       device_csc_matrix_t<i_t, f_t>& DAT,
                       device_csr_matrix_t<i_t, f_t>& ADAT,
-                      cusparse_info_t<i_t, f_t>& cusparse_data)
+                      cusparse_info_t<i_t, f_t>& cusparse_data,
+                      const simplex_solver_settings_t<i_t, f_t>& settings)
 {
+  f_t start_spgemm_compute = tic();
   RAFT_CUSPARSE_TRY(
     cusparseSpGEMM_compute(handle->get_cusparse_handle(),
                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -135,8 +150,10 @@ void multiply_kernels(raft::handle_t const* handle,
                            cusparse_data.spgemm_descr,
                            &cusparse_data.buffer_size_2_size,
                            cusparse_data.buffer_size_2.data()));
+  f_t spgemm_compute_time = toc(start_spgemm_compute);
 
   // get matrix C non-zero entries C_nnz1
+  f_t start_materialize = tic();
   int64_t ADAT_num_rows, ADAT_num_cols, ADAT_nnz1;
   RAFT_CUSPARSE_TRY(
     cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
@@ -147,7 +164,9 @@ void multiply_kernels(raft::handle_t const* handle,
   // update matC with the new pointers
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(
     cusparse_data.matADAT_descr, ADAT.row_start.data(), ADAT.j.data(), ADAT.x.data()));
+  f_t spgemm_materialize_time = toc(start_materialize);
 
+  f_t start_spgemm_copy = tic();
   RAFT_CUSPARSE_TRY(cusparseSpGEMM_copy(handle->get_cusparse_handle(),
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -161,6 +180,12 @@ void multiply_kernels(raft::handle_t const* handle,
                                         cusparse_data.spgemm_descr));
 
   handle->sync_stream();
+  f_t spgemm_copy_time = toc(start_spgemm_copy);
+
+  printf("SpGEMM compute time          : %.2fs\n", spgemm_compute_time);
+  printf("SpGEMM materialize time      : %.2fs\n", spgemm_materialize_time);
+  printf("SpGEMM copy time             : %.2fs\n", spgemm_copy_time);
+  fflush(stdout);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

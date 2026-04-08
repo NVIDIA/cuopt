@@ -819,6 +819,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              lp_problem_t<i_t, f_t>& problem,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
+  f_t presolve_start = tic();
+  if (settings.barrier_presolve) {
+    printf("Barrier presolve: enter       : %.2fs\n", 0.0);
+    fflush(stdout);
+  }
   problem = original;
   std::vector<char> row_sense(problem.num_rows, '=');
 
@@ -843,6 +848,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
   }
   if (settings.barrier_presolve && nonzero_lower_bounds > 0) {
+    f_t lower_bound_start = tic();
+    printf("Barrier presolve: shift lb begin : %.2fs count %d\n",
+           toc(presolve_start),
+           static_cast<int>(nonzero_lower_bounds));
+    fflush(stdout);
     settings.log.printf("Transforming %ld nonzero lower bound\n", nonzero_lower_bounds);
     presolve_info.removed_lower_bounds.resize(problem.num_cols);
     // We can construct a new variable: x'_j = x_j - l_j or x_j = x'_j + l_j
@@ -910,9 +920,14 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         problem.lower[j] = 0.0;
       }
     }
+    printf("Barrier presolve: shift lb end   : %.2fs elapsed %.2fs\n",
+           toc(presolve_start),
+           toc(lower_bound_start));
+    fflush(stdout);
   }
 
   // Check for empty rows
+  f_t empty_row_scan_start = tic();
   i_t num_empty_rows = 0;
   {
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
@@ -921,22 +936,51 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       if (Arow.row_start[i + 1] - Arow.row_start[i] == 0) { num_empty_rows++; }
     }
   }
+  if (settings.barrier_presolve) {
+    printf("Barrier presolve: empty row scan : %.2fs elapsed %.2fs rows %d\n",
+           toc(presolve_start),
+           toc(empty_row_scan_start),
+           static_cast<int>(num_empty_rows));
+    fflush(stdout);
+  }
   if (num_empty_rows > 0) {
+    f_t empty_row_remove_start = tic();
     settings.log.printf("Presolve removing %d empty rows\n", num_empty_rows);
     i_t i = remove_empty_rows(problem, row_sense, num_empty_rows, presolve_info);
     if (i != 0) { return -1; }
+    if (settings.barrier_presolve) {
+      printf("Barrier presolve: empty row rm  : %.2fs elapsed %.2fs\n",
+             toc(presolve_start),
+             toc(empty_row_remove_start));
+      fflush(stdout);
+    }
   }
 
   // Check for empty cols
+  f_t empty_col_scan_start = tic();
   i_t num_empty_cols = 0;
   {
     for (i_t j = 0; j < problem.num_cols; ++j) {
       if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
     }
   }
+  if (settings.barrier_presolve) {
+    printf("Barrier presolve: empty col scan : %.2fs elapsed %.2fs cols %d\n",
+           toc(presolve_start),
+           toc(empty_col_scan_start),
+           static_cast<int>(num_empty_cols));
+    fflush(stdout);
+  }
   if (num_empty_cols > 0) {
+    f_t empty_col_remove_start = tic();
     settings.log.printf("Presolve attempt to remove %d empty cols\n", num_empty_cols);
     remove_empty_cols(problem, num_empty_cols, presolve_info);
+    if (settings.barrier_presolve) {
+      printf("Barrier presolve: empty col rm  : %.2fs elapsed %.2fs\n",
+             toc(presolve_start),
+             toc(empty_col_remove_start));
+      fflush(stdout);
+    }
   }
 
   // Check for free variables
@@ -948,6 +992,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   problem.Q.check_matrix("Before free variable expansion");
 
   if (settings.barrier_presolve && free_variables > 0) {
+    f_t free_var_start = tic();
+    printf("Barrier presolve: free var begin : %.2fs count %d\n",
+           toc(presolve_start),
+           static_cast<int>(free_variables));
+    fflush(stdout);
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
@@ -1092,10 +1141,21 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     // assert(problem.A.p[num_cols] == nnz);
     problem.A.n      = num_cols;
     problem.num_cols = num_cols;
+    printf("Barrier presolve: free var end   : %.2fs elapsed %.2fs\n",
+           toc(presolve_start),
+           toc(free_var_start));
+    fflush(stdout);
   }
 
   if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0) {
+    f_t folding_start = tic();
+    printf("Barrier presolve: folding begin  : %.2fs\n", toc(presolve_start));
+    fflush(stdout);
     folding(problem, settings, presolve_info);
+    printf("Barrier presolve: folding end    : %.2fs elapsed %.2fs\n",
+           toc(presolve_start),
+           toc(folding_start));
+    fflush(stdout);
   }
 
   // Check for dependent rows
@@ -1134,6 +1194,14 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
                         problem.A.m,
                         problem.A.n,
                         problem.A.col_start[problem.A.n]);
+  }
+  if (settings.barrier_presolve) {
+    printf("Barrier presolve: exit        : %.2fs rows %d cols %d nnz %d\n",
+           toc(presolve_start),
+           static_cast<int>(problem.A.m),
+           static_cast<int>(problem.A.n),
+           static_cast<int>(problem.A.col_start[problem.A.n]));
+    fflush(stdout);
   }
   assert(problem.rhs.size() == problem.A.m);
   return 0;

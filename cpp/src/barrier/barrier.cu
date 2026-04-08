@@ -219,6 +219,9 @@ class iteration_data_t {
       symbolic_status(0)
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
+    f_t constructor_start = tic();
+    printf("Barrier ctor: enter           : %.2fs\n", toc(constructor_start));
+    fflush(stdout);
 
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
@@ -288,9 +291,16 @@ class iteration_data_t {
     std::vector<i_t> dense_columns_unordered;
 
     f_t start_column_density = tic();
+    printf("Barrier ctor: find_dense begin: %.2fs\n", toc(constructor_start));
+    fflush(stdout);
     // Ignore Q matrix for now
     find_dense_columns(
       lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+    printf("Barrier ctor: find_dense end  : %.2fs elapsed %.2fs halt=%d\n",
+           toc(constructor_start),
+           toc(start_column_density),
+           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
+    fflush(stdout);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
     for (i_t j : dense_columns_unordered) {
@@ -322,10 +332,11 @@ class iteration_data_t {
     }
 
     if (use_augmented) {
-      settings.log.printf("Linear system               : augmented\n");
+      printf("Linear system               : augmented\n");
     } else {
-      settings.log.printf("Linear system               : ADAT\n");
+      printf("Linear system               : ADAT\n");
     }
+    fflush(stdout);
 
     // D = I + EET
     diag.set_scalar(1.0);
@@ -400,22 +411,43 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
+    printf("Barrier ctor: chol create begin: %.2fs\n", toc(constructor_start));
+    fflush(stdout);
     chol =
       std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(handle_ptr, settings, factorization_size);
+    printf("Barrier ctor: chol create end  : %.2fs\n", toc(constructor_start));
+    fflush(stdout);
     chol->set_positive_definite(false);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     // Perform symbolic analysis
     symbolic_status = 0;
     if (use_augmented) {
       // Build the sparsity pattern of the augmented system
+      printf("Barrier ctor: form_aug begin : %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       form_augmented(true);
+      printf("Barrier ctor: form_aug end   : %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      printf("Barrier ctor: analyze begin  : %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       symbolic_status = chol->analyze(device_augmented);
     } else {
+      printf("Barrier ctor: form_adat begin: %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       form_adat(true);
+      printf("Barrier ctor: form_adat end  : %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      printf("Barrier ctor: analyze begin  : %.2fs\n", toc(constructor_start));
+      fflush(stdout);
       symbolic_status = chol->analyze(device_ADAT);
     }
+    printf("Barrier ctor: analyze end    : %.2fs status %d\n",
+           toc(constructor_start),
+           symbolic_status);
+    printf("Barrier ctor: exit           : %.2fs\n", toc(constructor_start));
+    fflush(stdout);
   }
 
   void form_augmented(bool first_call = false)
@@ -546,6 +578,7 @@ class iteration_data_t {
     handle_ptr->sync_stream();
     raft::common::nvtx::range fun_scope("Barrier: Form ADAT");
     float64_t start_form_adat = tic();
+    float64_t start_value_update = tic();
     const i_t m               = AD.m;
 
     raft::copy(device_AD.x.data(),
@@ -583,11 +616,12 @@ class iteration_data_t {
                          span_x[i] *= span_scale[span_col_ind[i]];
                        });
     RAFT_CHECK_CUDA(stream_view_);
+    float64_t value_update_time = toc(start_value_update);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
     if (first_call) {
       try {
         initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info, settings_);
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -595,14 +629,18 @@ class iteration_data_t {
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
-    multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+    multiply_kernels<i_t, f_t>(
+      handle_ptr, device_A, device_AD, device_ADAT, cusparse_info, settings_);
     handle_ptr->sync_stream();
 
     auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
     float64_t adat_time = toc(start_form_adat);
 
+    printf("ADAT value update time       : %.2fs\n", value_update_time);
+    printf("ADAT total time              : %.2fs\n", adat_time);
+    fflush(stdout);
+
     if (num_factorizations == 0) {
-      settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
       settings_.log.printf("ADAT nonzeros               : %.2e\n",
                            static_cast<float64_t>(adat_nnz));
       settings_.log.printf(
@@ -3592,6 +3630,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
+      f_t affine_search_direction_start = tic();
       i_t status = gpu_compute_search_direction(
         data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
@@ -3600,6 +3639,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       }
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      printf("Barrier iter %d affine dir    : %.2fs\n", iter, toc(affine_search_direction_start));
+      fflush(stdout);
 
       if (status < 0) {
         return check_for_suboptimal_solution(options,
@@ -3631,6 +3672,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       f_t max_corrector_residual = 0.0;
 
+      f_t corrector_search_direction_start = tic();
       status = gpu_compute_search_direction(
         data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
@@ -3639,6 +3681,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       }
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      printf("Barrier iter %d corrector dir : %.2fs\n", iter, toc(corrector_search_direction_start));
+      fflush(stdout);
       if (status < 0) {
         return check_for_suboptimal_solution(options,
                                              data,

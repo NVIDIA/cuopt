@@ -364,6 +364,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                               f_t start_time,
                                               lp_solution_t<i_t, f_t>& solution)
 {
+  printf("Barrier wrapper: start        : %.2fs\n", toc(start_time));
+  fflush(stdout);
   lp_status_t status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
 
@@ -378,8 +380,20 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  f_t barrier_presolve_start = tic();
+  printf("Barrier wrapper: presolve begin : %.2fs\n", toc(start_time));
+  fflush(stdout);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
-  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
+  printf("Barrier wrapper: presolve end   : %.2fs elapsed %.2fs status %d\n",
+         toc(start_time),
+         toc(barrier_presolve_start),
+         ok);
+  fflush(stdout);
+  if (ok == CONCURRENT_HALT_RETURN) {
+    printf("Barrier wrapper: presolve halted: %.2fs\n", toc(start_time));
+    fflush(stdout);
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
@@ -389,7 +403,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.num_cols,
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
+  f_t barrier_scaling_start = tic();
+  printf("Barrier wrapper: scaling begin  : %.2fs\n", toc(start_time));
+  fflush(stdout);
   column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales);
+  printf("Barrier wrapper: scaling end    : %.2fs elapsed %.2fs\n",
+         toc(start_time),
+         toc(barrier_scaling_start));
+  fflush(stdout);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
@@ -411,10 +432,24 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     }
   }
 
-  auto barrier_solver = std::make_unique<barrier_solver_t<i_t, f_t>>(barrier_lp, presolve_info, barrier_settings);
+  f_t barrier_ctor_start = tic();
+  printf("Barrier wrapper: ctor begin     : %.2fs\n", toc(start_time));
+  fflush(stdout);
+  auto barrier_solver =
+    std::make_unique<barrier_solver_t<i_t, f_t>>(barrier_lp, presolve_info, barrier_settings);
+  printf("Barrier wrapper: ctor end       : %.2fs elapsed %.2fs\n",
+         toc(start_time),
+         toc(barrier_ctor_start));
+  fflush(stdout);
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
+  printf("Barrier wrapper: solve begin    : %.2fs\n", toc(start_time));
+  fflush(stdout);
   lp_status_t barrier_status =
     barrier_solver->solve(start_time, barrier_solver_settings, barrier_solution);
+  printf("Barrier wrapper: solve end      : %.2fs status %d\n",
+         toc(start_time),
+         static_cast<int>(barrier_status));
+  fflush(stdout);
   if (barrier_status == lp_status_t::CONCURRENT_LIMIT) {
     std::thread([s  = std::move(barrier_solver),
                  b  = std::move(barrier_lp),
