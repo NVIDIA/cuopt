@@ -245,8 +245,11 @@ class branch_and_bound_t {
   // are waiting to be executed.
   std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
 
-  // Worker pool
-  branch_and_bound_worker_pool_t<i_t, f_t> worker_pool_;
+  // Worker pool dedicated to the best-first search
+  bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
+
+  // Worker pool dedicated to diving
+  diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -291,11 +294,11 @@ class branch_and_bound_t {
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void plunge_with(bfs_worker_t<i_t, f_t>* worker);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void dive_with(diving_worker_t<i_t, f_t>* worker);
 
   // Run the scheduler whose will schedule and manage
   // all the other workers.

@@ -11,20 +11,24 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-template <typename i_t, typename f_t>
-class branch_and_bound_worker_pool_t {
+template <typename WorkerType>
+class worker_pool_t {
  public:
+  using i_t = WorkerType::int_type;
+  using f_t = WorkerType::float_type;
+
   void init(i_t num_workers,
             const lp_problem_t<i_t, f_t>& original_lp,
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<variable_type_t>& var_type,
-            const simplex_solver_settings_t<i_t, f_t>& settings)
+            const simplex_solver_settings_t<i_t, f_t>& settings,
+            const i_t rng_offset)
   {
     workers_.resize(num_workers);
     num_idle_workers_ = num_workers;
     for (i_t i = 0; i < num_workers; ++i) {
-      workers_[i] = std::make_unique<branch_and_bound_worker_t<i_t, f_t>>(
-        i, original_lp, Arow, var_type, settings);
+      workers_[i] =
+        std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
       idle_workers_.push_front(i);
     }
 
@@ -33,7 +37,7 @@ class branch_and_bound_worker_pool_t {
 
   // Here, we are assuming that the scheduler is the only
   // thread that can retrieve/pop an idle worker.
-  branch_and_bound_worker_t<i_t, f_t>* get_idle_worker()
+  WorkerType* get_idle_worker()
   {
     std::lock_guard<omp_mutex_t> lock(mutex_);
     if (idle_workers_.empty()) {
@@ -55,7 +59,7 @@ class branch_and_bound_worker_pool_t {
     }
   }
 
-  void return_worker_to_pool(branch_and_bound_worker_t<i_t, f_t>* worker)
+  void return_worker_to_pool(WorkerType* worker)
   {
     worker->is_active = false;
     std::lock_guard<omp_mutex_t> lock(mutex_);
@@ -69,7 +73,7 @@ class branch_and_bound_worker_pool_t {
 
     if (is_initialized) {
       for (i_t i = 0; i < workers_.size(); ++i) {
-        if (workers_[i]->search_strategy == BEST_FIRST && workers_[i]->is_active) {
+        if (workers_[i]->is_active) {
           lower_bound = std::min(workers_[i]->lower_bound.load(), lower_bound);
         }
       }
@@ -78,11 +82,12 @@ class branch_and_bound_worker_pool_t {
     return lower_bound;
   }
 
-  i_t num_idle_workers() { return num_idle_workers_; }
+  i_t num_idle_workers() const { return num_idle_workers_; }
+  i_t num_workers() const { return workers_.size(); }
 
  private:
   // Worker pool
-  std::vector<std::unique_ptr<branch_and_bound_worker_t<i_t, f_t>>> workers_;
+  std::vector<std::unique_ptr<WorkerType>> workers_;
   bool is_initialized = false;
 
   omp_mutex_t mutex_;
@@ -126,5 +131,11 @@ std::array<i_t, num_search_strategies> get_max_workers(
 
   return max_num_workers;
 }
+
+template <typename i_t, typename f_t>
+using bfs_worker_pool_t = worker_pool_t<bfs_worker_t<i_t, f_t>>;
+
+template <typename i_t, typename f_t>
+using diving_worker_pool_t = worker_pool_t<diving_worker_t<i_t, f_t>>;
 
 }  // namespace cuopt::linear_programming::dual_simplex

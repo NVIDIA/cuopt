@@ -300,7 +300,7 @@ f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
   f_t lower_bound      = lower_bound_ceiling_.load();
   f_t heap_lower_bound = node_queue_.get_lower_bound();
   lower_bound          = std::min(heap_lower_bound, lower_bound);
-  lower_bound          = std::min(worker_pool_.get_lower_bound(), lower_bound);
+  lower_bound          = std::min(bfs_worker_pool_.get_lower_bound(), lower_bound);
 
   if (std::isfinite(lower_bound)) {
     return lower_bound;
@@ -841,7 +841,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
                                                      exploration_stats_,
                                                      settings_,
                                                      upper_bound_,
-                                                     worker_pool_.num_idle_workers(),
+                                                     bfs_worker_pool_.num_idle_workers(),
                                                      log,
                                                      new_slacks_,
                                                      original_lp_);
@@ -1435,7 +1435,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   return lp_status;
 }
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker)
+void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker)
 {
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(worker->start_node);
@@ -1557,13 +1557,13 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   }
 
   if (settings_.num_threads > 1) {
-    worker_pool_.return_worker_to_pool(worker);
+    bfs_worker_pool_.return_worker_to_pool(worker);
     active_workers_per_strategy_[BEST_FIRST]--;
   }
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>* worker)
+void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 {
   raft::common::nvtx::range scope("BB::diving_thread");
   logger_t log;
@@ -1647,7 +1647,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
-  worker_pool_.return_worker_to_pool(worker);
+  diving_worker_pool_.return_worker_to_pool(worker);
   active_workers_per_strategy_[search_strategy]--;
 }
 
@@ -1662,7 +1662,11 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
   std::array<i_t, num_search_strategies> max_num_workers_per_type =
     get_max_workers(num_workers, strategies);
 
-  worker_pool_.init(num_workers, original_lp_, Arow_, var_types_, settings_);
+  const i_t num_bfs_workers    = max_num_workers_per_type[BEST_FIRST];
+  const i_t num_diving_workers = num_workers - num_bfs_workers;
+  bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_, 0);
+  diving_worker_pool_.init(
+    num_diving_workers, original_lp_, Arow_, var_types_, settings_, num_bfs_workers);
   active_workers_per_strategy_.fill(0);
 
 #ifdef CUOPT_LOG_DEBUG
@@ -1732,55 +1736,61 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
         continue;
       }
 
-      // Get an idle worker.
-      branch_and_bound_worker_t<i_t, f_t>* worker = worker_pool_.get_idle_worker();
-      if (worker == nullptr) { break; }
-
       if (strategy == BEST_FIRST) {
+        // Get an idle worker.
+        bfs_worker_t<i_t, f_t>* bfs_worker = bfs_worker_pool_.get_idle_worker();
+        if (bfs_worker == nullptr) { continue; }
+
         // If there any node left in the heap, we pop the top node and explore it.
         std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue_.pop_best_first();
 
         if (!start_node.has_value()) { continue; }
-        if (get_cutoff() < start_node.value()->lower_bound) {
+        mip_node_t<i_t, f_t>* node_ptr = start_node.value();
+
+        if (get_cutoff() < node_ptr->lower_bound) {
           // This node was put on the heap earlier but its lower bound is now greater than the
           // current upper bound
-          search_tree_.graphviz_node(
-            settings_.log, start_node.value(), "cutoff", start_node.value()->lower_bound);
-          search_tree_.update(start_node.value(), node_status_t::FATHOMED);
+          search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
+          search_tree_.update(node_ptr, node_status_t::FATHOMED);
           continue;
         }
 
         // Remove the worker from the idle list.
-        worker_pool_.pop_idle_worker();
-        worker->init_best_first(start_node.value(), original_lp_);
-        last_node_depth = start_node.value()->depth;
-        last_int_infeas = start_node.value()->integer_infeasible;
+        bfs_worker_pool_.pop_idle_worker();
+        bfs_worker->init(node_ptr, original_lp_);
+        last_node_depth = node_ptr->depth;
+        last_int_infeas = node_ptr->integer_infeasible;
         active_workers_per_strategy_[strategy]++;
         launched_any_task = true;
 
-#pragma omp task affinity(worker)
-        plunge_with(worker);
+#pragma omp task affinity(bfs_worker)
+        plunge_with(bfs_worker);
 
       } else {
+        // Get an idle worker.
+        diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.get_idle_worker();
+        if (diving_worker == nullptr) { continue; }
+
         std::optional<mip_node_t<i_t, f_t>*> start_node = node_queue_.pop_diving();
 
         if (!start_node.has_value()) { continue; }
-        if (get_cutoff() < start_node.value()->lower_bound ||
-            start_node.value()->depth < diving_settings.min_node_depth) {
+        mip_node_t<i_t, f_t>* node_ptr = start_node.value();
+
+        if (get_cutoff() < node_ptr->lower_bound ||
+            node_ptr->depth < diving_settings.min_node_depth) {
           continue;
         }
 
-        bool is_feasible =
-          worker->init_diving(start_node.value(), strategy, original_lp_, settings_);
+        bool is_feasible = diving_worker->init(node_ptr, strategy, original_lp_, settings_);
         if (!is_feasible) { continue; }
 
         // Remove the worker from the idle list.
-        worker_pool_.pop_idle_worker();
+        diving_worker_pool_.pop_idle_worker();
         active_workers_per_strategy_[strategy]++;
         launched_any_task = true;
 
-#pragma omp task affinity(worker)
-        dive_with(worker);
+#pragma omp task affinity(diving_worker)
+        dive_with(diving_worker);
       }
     }
 
@@ -1804,7 +1814,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
-  branch_and_bound_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_);
+  bfs_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_, 0);
 
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
@@ -1848,7 +1858,7 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
       continue;
     }
 
-    worker.init_best_first(start_node.value(), original_lp_);
+    worker.init(start_node.value(), original_lp_);
     plunge_with(&worker);
 
     lower_bound = get_lower_bound();
