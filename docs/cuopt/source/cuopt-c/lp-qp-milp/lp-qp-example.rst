@@ -91,7 +91,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
 
-A sample MPS file (:download:`download sample.mps <examples/sample.mps>`):
+A sample MPS file (:download:`download sample.mps <https://raw.githubusercontent.com/BUGSENG/PPL/devel/demos/ppl_lpsol/examples/sample.mps>`):
 
 .. literalinclude:: examples/sample.mps
    :language: text

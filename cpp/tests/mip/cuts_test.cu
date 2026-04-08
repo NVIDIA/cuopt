@@ -969,6 +969,55 @@ TEST(cuts, test_cuts_2)
   EXPECT_EQ(solution.get_num_nodes(), 0);
 }
 
+TEST(cuts, test_duplicate_cuts_detection)
+{
+  dual_simplex::simplex_solver_settings_t<int, double> settings;
+  dual_simplex::cut_pool_t<int, double> cut_pool(4, settings);
+  dual_simplex::inequality_t<int, double> cut1;
+  cut1.push_back(0, 1.0);
+  cut1.push_back(1, 2.0);
+  cut1.rhs = 1.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut1);
+  dual_simplex::inequality_t<int, double> cut2;
+  cut2.push_back(0, 2.0);
+  cut2.push_back(1, 4.0);
+  cut2.rhs = 2.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut2);
+  dual_simplex::inequality_t<int, double> cut3;
+  cut3.push_back(0, 0.1);
+  cut3.push_back(2, 0.2);
+  cut3.rhs = 1.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut3);
+  dual_simplex::inequality_t<int, double> cut4;
+  cut4.push_back(0, 0.2);
+  cut4.push_back(2, 0.4);
+  cut4.rhs = 1.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut4);
+  dual_simplex::inequality_t<int, double> cut5;
+  cut5.push_back(1, 10.0);
+  cut5.push_back(3, 20.0);
+  cut5.rhs = 0.1;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut5);
+  dual_simplex::inequality_t<int, double> cut6;
+  cut6.push_back(1, 20.0);
+  cut6.push_back(3, 40.0);
+  cut6.rhs = 0.2;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut6);
+  dual_simplex::inequality_t<int, double> cut7;
+  cut7.push_back(0, 1.0);
+  cut7.push_back(1, 1.0);
+  cut7.push_back(2, 1.0);
+  cut7.push_back(3, 1.0);
+  cut7.rhs = 1.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut7);
+  dual_simplex::inequality_t<int, double> cut8;
+  cut8.push_back(1, 3.0);
+  cut8.rhs = 7.0;
+  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
+
+  cut_pool.check_for_duplicate_cuts();
+}
+
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
 {
   const raft::handle_t handle{};

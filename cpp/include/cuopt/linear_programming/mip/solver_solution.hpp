@@ -24,13 +24,14 @@
 namespace cuopt::linear_programming {
 
 enum class mip_termination_status_t : int8_t {
-  NoTermination = CUOPT_TERIMINATION_STATUS_NO_TERMINATION,
-  Optimal       = CUOPT_TERIMINATION_STATUS_OPTIMAL,
-  FeasibleFound = CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND,
-  Infeasible    = CUOPT_TERIMINATION_STATUS_INFEASIBLE,
-  Unbounded     = CUOPT_TERIMINATION_STATUS_UNBOUNDED,
-  TimeLimit     = CUOPT_TERIMINATION_STATUS_TIME_LIMIT,
-  WorkLimit     = CUOPT_TERIMINATION_STATUS_WORK_LIMIT,
+  NoTermination         = CUOPT_TERMINATION_STATUS_NO_TERMINATION,
+  Optimal               = CUOPT_TERMINATION_STATUS_OPTIMAL,
+  FeasibleFound         = CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND,
+  Infeasible            = CUOPT_TERMINATION_STATUS_INFEASIBLE,
+  Unbounded             = CUOPT_TERMINATION_STATUS_UNBOUNDED,
+  TimeLimit             = CUOPT_TERMINATION_STATUS_TIME_LIMIT,
+  WorkLimit             = CUOPT_TERMINATION_STATUS_WORK_LIMIT,
+  UnboundedOrInfeasible = CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE,
 };
 
 template <typename i_t, typename f_t>
@@ -74,6 +75,7 @@ class mip_solution_t : public base_solution_t {
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
+  void log_detailed_summary() const;
   void log_summary() const;
 
  private:

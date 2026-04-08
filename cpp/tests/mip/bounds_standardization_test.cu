@@ -67,7 +67,7 @@ void test_bounds_standardization_test(std::string test_instance)
   // run the problem through pdlp
   auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
-  bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERIMINATION_STATUS_OPTIMAL;
+  bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERMINATION_STATUS_OPTIMAL;
   // the problem might not be feasible in terms of per constraint residual
   // only consider the pdlp results
   EXPECT_TRUE(sol_1_feasible);

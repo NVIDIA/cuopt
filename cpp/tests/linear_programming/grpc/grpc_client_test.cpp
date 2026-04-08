@@ -17,12 +17,16 @@
 #include "grpc_client_test_helper.hpp"
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include "grpc_client.hpp"
+#include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
+#include "grpc_settings_mapper.hpp"
+#include "grpc_solution_mapper.hpp"
 
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
@@ -834,7 +838,7 @@ TEST_F(GrpcClientTest, ChunkedDownload_FallbackOnResourceExhausted)
                  cuopt::remote::StartChunkedDownloadResponse* resp) {
       resp->set_download_id("dl-001");
       auto* h = resp->mutable_header();
-      h->set_is_mip(false);
+      h->set_problem_category(cuopt::remote::LP);
       h->set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       h->set_primal_objective(-464.753);
       auto* arr = h->add_arrays();
@@ -1124,7 +1128,7 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithPolling)
       cuopt::remote::LPSolution solution;
       solution.add_primal_solution(1.0);
       solution.set_primal_objective(1.0);
-      solution.set_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      solution.set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       resp->mutable_lp_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1172,7 +1176,7 @@ TEST_F(GrpcClientTest, SolveLP_SuccessWithWait)
       cuopt::remote::LPSolution solution;
       solution.add_primal_solution(1.0);
       solution.set_primal_objective(1.0);
-      solution.set_termination_status(cuopt::remote::PDLP_OPTIMAL);
+      solution.set_lp_termination_status(cuopt::remote::PDLP_OPTIMAL);
       resp->mutable_lp_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1305,9 +1309,9 @@ TEST_F(GrpcClientTest, SolveMIP_Success)
                  const cuopt::remote::GetResultRequest&,
                  cuopt::remote::ResultResponse* resp) {
       cuopt::remote::MIPSolution solution;
-      solution.add_solution(1.0);
-      solution.set_objective(1.0);
-      solution.set_termination_status(cuopt::remote::MIP_OPTIMAL);
+      solution.add_mip_solution(1.0);
+      solution.set_mip_objective(1.0);
+      solution.set_mip_termination_status(cuopt::remote::MIP_OPTIMAL);
       resp->mutable_mip_solution()->CopyFrom(solution);
       resp->set_status(cuopt::remote::SUCCESS);
       return grpc::Status::OK;
@@ -1631,4 +1635,348 @@ TEST_F(GrpcClientTest, SubmitLP_UnaryForSmallPayload)
 
   EXPECT_TRUE(result.success) << "Error: " << result.error_message;
   EXPECT_EQ(result.job_id, "unary-lp-001");
+}
+
+// =============================================================================
+// Mapper Roundtrip Tests
+// =============================================================================
+
+TEST(MapperRoundtrip, MIPSettingsAllFields)
+{
+  mip_solver_settings_t<int32_t, double> orig;
+
+  // Limits
+  orig.time_limit = 42.5;
+  orig.work_limit = 1000.0;
+  orig.node_limit = 5000;
+
+  // Tolerances
+  orig.tolerances.relative_mip_gap            = 1e-3;
+  orig.tolerances.absolute_mip_gap            = 1e-8;
+  orig.tolerances.integrality_tolerance       = 1e-4;
+  orig.tolerances.absolute_tolerance          = 2e-6;
+  orig.tolerances.relative_tolerance          = 3e-12;
+  orig.tolerances.presolve_absolute_tolerance = 5e-7;
+
+  // Solver configuration
+  orig.log_to_console  = false;
+  orig.heuristics_only = true;
+  orig.num_cpu_threads = 8;
+  orig.num_gpus        = 2;
+  orig.presolver       = presolver_t::Default;
+  orig.mip_scaling     = true;
+
+  // Branching
+  orig.reliability_branching           = 32;
+  orig.mip_batch_pdlp_strong_branching = 16;
+
+  // Cut configuration
+  orig.max_cut_passes             = 20;
+  orig.mir_cuts                   = 1;
+  orig.mixed_integer_gomory_cuts  = 2;
+  orig.knapsack_cuts              = 0;
+  orig.clique_cuts                = 3;
+  orig.strong_chvatal_gomory_cuts = -1;
+  orig.reduced_cost_strengthening = 1;
+  orig.cut_change_threshold       = 0.05;
+  orig.cut_min_orthogonality      = 0.8;
+
+  // Determinism and reproducibility
+  orig.determinism_mode = CUOPT_MODE_DETERMINISTIC;
+  orig.seed             = 12345;
+
+  // Roundtrip: C++ -> proto -> C++
+  cuopt::remote::MIPSolverSettings pb;
+  map_mip_settings_to_proto(orig, &pb);
+
+  mip_solver_settings_t<int32_t, double> restored;
+  map_proto_to_mip_settings(pb, restored);
+
+  // Limits
+  EXPECT_DOUBLE_EQ(restored.time_limit, 42.5);
+  EXPECT_DOUBLE_EQ(restored.work_limit, 1000.0);
+  EXPECT_EQ(restored.node_limit, 5000);
+
+  // Tolerances
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_mip_gap, 1e-3);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_mip_gap, 1e-8);
+  EXPECT_DOUBLE_EQ(restored.tolerances.integrality_tolerance, 1e-4);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_tolerance, 2e-6);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_tolerance, 3e-12);
+  EXPECT_DOUBLE_EQ(restored.tolerances.presolve_absolute_tolerance, 5e-7);
+
+  // Solver configuration
+  EXPECT_EQ(restored.log_to_console, false);
+  EXPECT_EQ(restored.heuristics_only, true);
+  EXPECT_EQ(restored.num_cpu_threads, 8);
+  EXPECT_EQ(restored.num_gpus, 2);
+  EXPECT_EQ(restored.presolver, presolver_t::Default);
+  EXPECT_EQ(restored.mip_scaling, true);
+
+  // Branching
+  EXPECT_EQ(restored.reliability_branching, 32);
+  EXPECT_EQ(restored.mip_batch_pdlp_strong_branching, 16);
+
+  // Cut configuration
+  EXPECT_EQ(restored.max_cut_passes, 20);
+  EXPECT_EQ(restored.mir_cuts, 1);
+  EXPECT_EQ(restored.mixed_integer_gomory_cuts, 2);
+  EXPECT_EQ(restored.knapsack_cuts, 0);
+  EXPECT_EQ(restored.clique_cuts, 3);
+  EXPECT_EQ(restored.strong_chvatal_gomory_cuts, -1);
+  EXPECT_EQ(restored.reduced_cost_strengthening, 1);
+  EXPECT_DOUBLE_EQ(restored.cut_change_threshold, 0.05);
+  EXPECT_DOUBLE_EQ(restored.cut_min_orthogonality, 0.8);
+
+  // Determinism and reproducibility
+  EXPECT_EQ(restored.determinism_mode, CUOPT_MODE_DETERMINISTIC);
+  EXPECT_EQ(restored.seed, 12345);
+}
+
+TEST(MapperRoundtrip, MIPSettingsNodeLimitSentinel)
+{
+  mip_solver_settings_t<int32_t, double> orig;
+  orig.node_limit = std::numeric_limits<int32_t>::max();
+
+  cuopt::remote::MIPSolverSettings pb;
+  map_mip_settings_to_proto(orig, &pb);
+  EXPECT_EQ(pb.node_limit(), -1) << "max() should map to -1 sentinel in proto";
+
+  mip_solver_settings_t<int32_t, double> restored;
+  restored.node_limit = 0;
+  map_proto_to_mip_settings(pb, restored);
+  EXPECT_EQ(restored.node_limit, 0) << "Negative sentinel should leave node_limit unchanged";
+}
+
+TEST(MapperRoundtrip, ProblemWithVariableTypes)
+{
+  cpu_optimization_problem_t<int32_t, double> orig;
+
+  std::vector<double> obj    = {1.0, 2.0, 3.0};
+  std::vector<double> var_lb = {0.0, 0.0, 0.0};
+  std::vector<double> var_ub = {10.0, 10.0, 10.0};
+  std::vector<var_t> var_ty  = {var_t::CONTINUOUS, var_t::INTEGER, var_t::CONTINUOUS};
+  std::vector<double> con_lb = {1.0};
+  std::vector<double> con_ub = {1e20};
+  std::vector<double> A_vals = {1.0, 1.0, 1.0};
+  std::vector<int32_t> A_idx = {0, 1, 2};
+  std::vector<int32_t> A_off = {0, 3};
+
+  orig.set_objective_coefficients(obj.data(), 3);
+  orig.set_maximize(true);
+  orig.set_variable_lower_bounds(var_lb.data(), 3);
+  orig.set_variable_upper_bounds(var_ub.data(), 3);
+  orig.set_variable_types(var_ty.data(), 3);
+  orig.set_csr_constraint_matrix(A_vals.data(), 3, A_idx.data(), 3, A_off.data(), 2);
+  orig.set_constraint_lower_bounds(con_lb.data(), 1);
+  orig.set_constraint_upper_bounds(con_ub.data(), 1);
+
+  cuopt::remote::OptimizationProblem pb;
+  map_problem_to_proto(orig, &pb);
+
+  ASSERT_EQ(pb.variable_types_size(), 3);
+  EXPECT_EQ(pb.variable_types(0), cuopt::remote::CONTINUOUS);
+  EXPECT_EQ(pb.variable_types(1), cuopt::remote::INTEGER);
+  EXPECT_EQ(pb.variable_types(2), cuopt::remote::CONTINUOUS);
+
+  cpu_optimization_problem_t<int32_t, double> restored;
+  map_proto_to_problem(pb, restored);
+
+  auto restored_types = restored.get_variable_types_host();
+  ASSERT_EQ(restored_types.size(), 3u);
+  EXPECT_EQ(restored_types[0], var_t::CONTINUOUS);
+  EXPECT_EQ(restored_types[1], var_t::INTEGER);
+  EXPECT_EQ(restored_types[2], var_t::CONTINUOUS);
+
+  EXPECT_EQ(restored.get_sense(), true);
+  auto restored_obj = restored.get_objective_coefficients_host();
+  ASSERT_EQ(restored_obj.size(), 3u);
+  EXPECT_DOUBLE_EQ(restored_obj[0], 1.0);
+  EXPECT_DOUBLE_EQ(restored_obj[1], 2.0);
+  EXPECT_DOUBLE_EQ(restored_obj[2], 3.0);
+}
+
+TEST(MapperRoundtrip, MIPSolutionAllFields)
+{
+  std::vector<double> sol_vec = {1.0, 0.0, 1.0, 0.0, 1.0};
+
+  cpu_mip_solution_t<int32_t, double> orig(std::move(sol_vec),
+                                           mip_termination_status_t::FeasibleFound,
+                                           42.5,    // objective
+                                           0.015,   // mip_gap
+                                           40.0,    // solution_bound
+                                           12.34,   // total_solve_time
+                                           0.56,    // presolve_time
+                                           1e-8,    // max_constraint_violation
+                                           1e-9,    // max_int_violation
+                                           1e-10,   // max_variable_bound_violation
+                                           1234,    // num_nodes
+                                           56789);  // num_simplex_iterations
+
+  cuopt::remote::MIPSolution pb;
+  map_mip_solution_to_proto(orig, &pb);
+
+  EXPECT_EQ(pb.mip_termination_status(), cuopt::remote::MIP_FEASIBLE_FOUND);
+  EXPECT_EQ(pb.mip_solution_size(), 5);
+  EXPECT_DOUBLE_EQ(pb.mip_objective(), 42.5);
+  EXPECT_DOUBLE_EQ(pb.mip_gap(), 0.015);
+
+  auto restored = map_proto_to_mip_solution<int32_t, double>(pb);
+
+  EXPECT_EQ(restored.get_termination_status(), mip_termination_status_t::FeasibleFound);
+  EXPECT_DOUBLE_EQ(restored.get_objective_value(), 42.5);
+  EXPECT_DOUBLE_EQ(restored.get_mip_gap(), 0.015);
+  EXPECT_DOUBLE_EQ(restored.get_solution_bound(), 40.0);
+  EXPECT_DOUBLE_EQ(restored.get_solve_time(), 12.34);
+  EXPECT_DOUBLE_EQ(restored.get_presolve_time(), 0.56);
+  EXPECT_DOUBLE_EQ(restored.get_max_constraint_violation(), 1e-8);
+  EXPECT_DOUBLE_EQ(restored.get_max_int_violation(), 1e-9);
+  EXPECT_DOUBLE_EQ(restored.get_max_variable_bound_violation(), 1e-10);
+  EXPECT_EQ(restored.get_num_nodes(), 1234);
+  EXPECT_EQ(restored.get_num_simplex_iterations(), 56789);
+
+  auto restored_sol = restored.get_solution_host();
+  ASSERT_EQ(restored_sol.size(), 5u);
+  EXPECT_DOUBLE_EQ(restored_sol[0], 1.0);
+  EXPECT_DOUBLE_EQ(restored_sol[1], 0.0);
+  EXPECT_DOUBLE_EQ(restored_sol[4], 1.0);
+}
+
+TEST(MapperRoundtrip, LPSolutionAllFields)
+{
+  std::vector<double> primal       = {1.5, 2.5, 3.5};
+  std::vector<double> dual         = {0.1, 0.2};
+  std::vector<double> reduced_cost = {0.0, 0.0, 0.5};
+
+  cpu_lp_solution_t<int32_t, double> orig(std::move(primal),
+                                          std::move(dual),
+                                          std::move(reduced_cost),
+                                          pdlp_termination_status_t::Optimal,
+                                          -464.753,         // primal_objective
+                                          -464.0,           // dual_objective
+                                          1.23,             // solve_time
+                                          1e-8,             // l2_primal_residual
+                                          2e-8,             // l2_dual_residual
+                                          3e-8,             // gap
+                                          500,              // num_iterations
+                                          method_t::PDLP);  // solved_by
+
+  cuopt::remote::LPSolution pb;
+  map_lp_solution_to_proto(orig, &pb);
+
+  EXPECT_EQ(pb.lp_termination_status(), cuopt::remote::PDLP_OPTIMAL);
+  EXPECT_EQ(pb.primal_solution_size(), 3);
+  EXPECT_EQ(pb.dual_solution_size(), 2);
+  EXPECT_EQ(pb.reduced_cost_size(), 3);
+
+  auto restored = map_proto_to_lp_solution<int32_t, double>(pb);
+
+  EXPECT_EQ(restored.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(restored.get_objective_value(), -464.753, 1e-6);
+  EXPECT_NEAR(restored.get_dual_objective_value(), -464.0, 1e-6);
+  EXPECT_DOUBLE_EQ(restored.get_solve_time(), 1.23);
+  EXPECT_DOUBLE_EQ(restored.get_l2_primal_residual(), 1e-8);
+  EXPECT_DOUBLE_EQ(restored.get_l2_dual_residual(), 2e-8);
+  EXPECT_DOUBLE_EQ(restored.get_gap(), 3e-8);
+  EXPECT_EQ(restored.get_num_iterations(), 500);
+  EXPECT_EQ(restored.solved_by(), method_t::PDLP);
+
+  auto restored_primal = restored.get_primal_solution_host();
+  ASSERT_EQ(restored_primal.size(), 3u);
+  EXPECT_DOUBLE_EQ(restored_primal[0], 1.5);
+  EXPECT_DOUBLE_EQ(restored_primal[2], 3.5);
+
+  auto restored_dual = restored.get_dual_solution_host();
+  ASSERT_EQ(restored_dual.size(), 2u);
+  EXPECT_DOUBLE_EQ(restored_dual[0], 0.1);
+}
+
+TEST(MapperRoundtrip, PDLPSettingsAllFields)
+{
+  pdlp_solver_settings_t<int32_t, double> orig;
+
+  orig.tolerances.absolute_gap_tolerance      = 1e-7;
+  orig.tolerances.relative_gap_tolerance      = 1e-6;
+  orig.tolerances.primal_infeasible_tolerance = 1e-5;
+  orig.tolerances.dual_infeasible_tolerance   = 2e-5;
+  orig.tolerances.absolute_dual_tolerance     = 3e-7;
+  orig.tolerances.relative_dual_tolerance     = 4e-7;
+  orig.tolerances.absolute_primal_tolerance   = 5e-7;
+  orig.tolerances.relative_primal_tolerance   = 6e-7;
+
+  orig.time_limit                 = 99.5;
+  orig.iteration_limit            = 10000;
+  orig.log_to_console             = false;
+  orig.detect_infeasibility       = true;
+  orig.strict_infeasibility       = true;
+  orig.pdlp_solver_mode           = pdlp_solver_mode_t::Fast1;
+  orig.method                     = method_t::Barrier;
+  orig.presolver                  = presolver_t::Default;
+  orig.dual_postsolve             = true;
+  orig.crossover                  = true;
+  orig.num_gpus                   = 4;
+  orig.per_constraint_residual    = true;
+  orig.cudss_deterministic        = true;
+  orig.folding                    = 1;
+  orig.augmented                  = 1;
+  orig.dualize                    = 1;
+  orig.ordering                   = 2;
+  orig.barrier_dual_initial_point = 1;
+  orig.eliminate_dense_columns    = true;
+  orig.pdlp_precision             = pdlp_precision_t::MixedPrecision;
+  orig.save_best_primal_so_far    = true;
+  orig.first_primal_feasible      = true;
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored);
+
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_gap_tolerance, 1e-7);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_gap_tolerance, 1e-6);
+  EXPECT_DOUBLE_EQ(restored.tolerances.primal_infeasible_tolerance, 1e-5);
+  EXPECT_DOUBLE_EQ(restored.tolerances.dual_infeasible_tolerance, 2e-5);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_dual_tolerance, 3e-7);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_dual_tolerance, 4e-7);
+  EXPECT_DOUBLE_EQ(restored.tolerances.absolute_primal_tolerance, 5e-7);
+  EXPECT_DOUBLE_EQ(restored.tolerances.relative_primal_tolerance, 6e-7);
+
+  EXPECT_DOUBLE_EQ(restored.time_limit, 99.5);
+  EXPECT_EQ(restored.iteration_limit, 10000);
+  EXPECT_EQ(restored.log_to_console, false);
+  EXPECT_EQ(restored.detect_infeasibility, true);
+  EXPECT_EQ(restored.strict_infeasibility, true);
+  EXPECT_EQ(restored.pdlp_solver_mode, pdlp_solver_mode_t::Fast1);
+  EXPECT_EQ(restored.method, method_t::Barrier);
+  EXPECT_EQ(restored.presolver, presolver_t::Default);
+  EXPECT_EQ(restored.dual_postsolve, true);
+  EXPECT_EQ(restored.crossover, true);
+  EXPECT_EQ(restored.num_gpus, 4);
+  EXPECT_EQ(restored.per_constraint_residual, true);
+  EXPECT_EQ(restored.cudss_deterministic, true);
+  EXPECT_EQ(restored.folding, 1);
+  EXPECT_EQ(restored.augmented, 1);
+  EXPECT_EQ(restored.dualize, 1);
+  EXPECT_EQ(restored.ordering, 2);
+  EXPECT_EQ(restored.barrier_dual_initial_point, 1);
+  EXPECT_EQ(restored.eliminate_dense_columns, true);
+  EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
+  EXPECT_EQ(restored.save_best_primal_so_far, true);
+  EXPECT_EQ(restored.first_primal_feasible, true);
+}
+
+TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
+{
+  pdlp_solver_settings_t<int32_t, double> orig;
+  orig.iteration_limit = std::numeric_limits<int32_t>::max();
+
+  cuopt::remote::PDLPSolverSettings pb;
+  map_pdlp_settings_to_proto(orig, &pb);
+  EXPECT_EQ(pb.iteration_limit(), -1) << "max() should map to -1 sentinel";
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  auto default_limit = restored.iteration_limit;
+  map_proto_to_pdlp_settings(pb, restored);
+  EXPECT_EQ(restored.iteration_limit, default_limit) << "Negative sentinel should keep default";
 }

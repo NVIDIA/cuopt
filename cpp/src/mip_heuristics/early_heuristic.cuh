@@ -24,8 +24,8 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename f_t>
-using early_incumbent_callback_t =
-  std::function<void(f_t solver_obj, f_t user_obj, const std::vector<f_t>& assignment)>;
+using early_incumbent_callback_t = std::function<void(
+  f_t solver_obj, f_t user_obj, const std::vector<f_t>& assignment, const char* heuristic_name)>;
 
 // CRTP base for early heuristics that run on the original (or papilo-presolved) problem
 // during presolve to find incumbents as early as possible.
@@ -89,13 +89,11 @@ class early_heuristic_t {
     best_assignment_ = user_assignment;
     solution_found_  = true;
     f_t user_obj     = problem_ptr_->get_user_obj_from_solver_obj(solver_obj);
-    double elapsed =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - start_time_).count();
-    CUOPT_LOG_INFO("Early heuristics (%s) lowered the primal bound. Objective %g. Time %.2f",
-                   Derived::name(),
-                   user_obj,
-                   elapsed);
-    if (incumbent_callback_) { incumbent_callback_(solver_obj, user_obj, user_assignment); }
+    // Log and callback are deferred to the shared incumbent_callback_ which enforces
+    // global monotonicity across all early heuristic instances.
+    if (incumbent_callback_) {
+      incumbent_callback_(solver_obj, user_obj, user_assignment, Derived::name());
+    }
   }
 
   int device_id_{0};

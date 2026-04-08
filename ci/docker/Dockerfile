@@ -45,6 +45,7 @@ RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python
 
 FROM python-env AS install-env
 
+ARG CUDA_VER
 ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
@@ -68,36 +69,18 @@ FROM install-env AS cuopt-final
 
 ARG PYTHON_SHORT_VER
 
-# Consolidate all directory creation, permissions, and file operations into a single layer
+# Make cuopt_grpc_server, cuopt_cli, and shared libraries available to all processes
+# (profile.d scripts are only sourced by login shells; ENV works for all containers)
+ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"
+
+# Directory creation, permissions
 RUN mkdir -p /opt/cuopt && \
     chmod 777 /opt/cuopt && \
-    # Create profile.d script for universal access
-    echo '#!/bin/bash' > /etc/profile.d/cuopt.sh && \
-    echo 'export PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:$PATH"' >> /etc/profile.d/cuopt.sh && \
-    echo 'export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /etc/profile.d/cuopt.sh && \
-    chmod +x /etc/profile.d/cuopt.sh && \
-    # Set in /etc/environment for system-wide access
-    echo 'PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/bin:$PATH"' >> /etc/environment && \
-    echo 'LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/lib/aarch64-linux-gnu:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/lib/wsl/lib/libnvidia-container:/usr/lib/nvidia:/usr/lib/nvidia-current:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt/lib/:/usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/rapids_logger/lib64:${LD_LIBRARY_PATH}"' >> /etc/environment && \
-    # Set proper permissions for cuOpt installation
     chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/cuopt* && \
     chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/libcuopt* && \
     chmod -R 755 /usr/local/lib/python${PYTHON_SHORT_VER}/dist-packages/cuopt_* && \
-    chmod -R 755 /usr/local/bin/* && \
-    # Create entrypoint script in a single operation
-    echo '#!/bin/bash' > /opt/cuopt/entrypoint.sh && \
-    echo 'set -e' >> /opt/cuopt/entrypoint.sh && \
-    echo '' >> /opt/cuopt/entrypoint.sh && \
-    echo '# Get current user info from Docker environment variables' >> /opt/cuopt/entrypoint.sh && \
-    echo 'CURRENT_UID=${UID:-1000}' >> /opt/cuopt/entrypoint.sh && \
-    echo 'CURRENT_GID=${GID:-1000}' >> /opt/cuopt/entrypoint.sh && \
-    echo '' >> /opt/cuopt/entrypoint.sh && \
-    echo '# Set environment variables for the current user' >> /opt/cuopt/entrypoint.sh && \
-    echo 'export HOME="/opt/cuopt"' >> /opt/cuopt/entrypoint.sh && \
-    echo '' >> /opt/cuopt/entrypoint.sh && \
-    echo '# Execute the command' >> /opt/cuopt/entrypoint.sh && \
-    echo 'exec "$@"' >> /opt/cuopt/entrypoint.sh && \
-    chmod +x /opt/cuopt/entrypoint.sh
+    chmod -R 755 /usr/local/bin/*
 
 # Set the default working directory to the cuopt folder
 WORKDIR /opt/cuopt
@@ -112,6 +95,10 @@ COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
 # Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC).
 COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
 
-# Use the flexible entrypoint
+# Entrypoint supports server selection:
+#   Default:                  Python REST server
+#   CUOPT_SERVER_TYPE=grpc:   gRPC server (uses CUOPT_SERVER_PORT, CUOPT_GPU_COUNT)
+#   Explicit command:         docker run <image> cuopt_grpc_server [args...]
+COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
 ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
 CMD ["python", "-m", "cuopt_server.cuopt_service"]

@@ -63,7 +63,10 @@ def main():
 
     # Incumbent callback - receives intermediate host solutions
     def callback(solution, solution_cost, solution_bound):
-        """Called when solver finds a new incumbent solution."""
+        """Called when solver finds a new incumbent solution.
+
+        solution_bound can be None when no finite bound is available yet.
+        """
         print(
             f"Solution : {solution} cost : {solution_cost} "
             f"bound : {solution_bound}\n"

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+ * reserved. SPDX-License-Identifier: Apache-2.0
  */
 /*
  * Simple QP C API Example
@@ -30,22 +30,24 @@
 const char* termination_status_to_string(cuopt_int_t termination_status)
 {
   switch (termination_status) {
-    case CUOPT_TERIMINATION_STATUS_OPTIMAL:
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
       return "Optimal";
-    case CUOPT_TERIMINATION_STATUS_INFEASIBLE:
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
       return "Infeasible";
-    case CUOPT_TERIMINATION_STATUS_UNBOUNDED:
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
       return "Unbounded";
-    case CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT:
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
       return "Iteration limit";
-    case CUOPT_TERIMINATION_STATUS_TIME_LIMIT:
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
       return "Time limit";
-    case CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR:
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
       return "Numerical error";
-    case CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE:
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
       return "Primal feasible";
-    case CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND:
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
       return "Feasible found";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE:
+      return "Unbounded or infeasible";
     default:
       return "Unknown";
   }
@@ -55,8 +57,8 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
 cuopt_int_t test_simple_qp()
 {
   cuOptOptimizationProblem problem = NULL;
-  cuOptSolverSettings settings = NULL;
-  cuOptSolution solution = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
 
   /* Solve the following QP:
      minimize x^2 + y^2
@@ -65,15 +67,15 @@ cuopt_int_t test_simple_qp()
      x, y >= 0
   */
 
-  cuopt_int_t num_variables = 2;
+  cuopt_int_t num_variables   = 2;
   cuopt_int_t num_constraints = 1;
-  cuopt_int_t nnz = 2;
+  cuopt_int_t nnz             = 2;
 
   // CSR format constraint matrix
   // https://docs.nvidia.com/nvpl/latest/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr
-  cuopt_int_t row_offsets[] = {0, 2};
+  cuopt_int_t row_offsets[]    = {0, 2};
   cuopt_int_t column_indices[] = {0, 1};
-  cuopt_float_t values[] = {1.0, 1.0};
+  cuopt_float_t values[]       = {1.0, 1.0};
 
   // Objective coefficients
   // From the objective function: minimize x^2 + y^2
@@ -85,16 +87,15 @@ cuopt_int_t test_simple_qp()
   // From the objective function: minimize x^2 + y^2
   // 1 is the coefficient of the quadratic term on x^2
   // 1 is the coefficient of the quadratic term on y^2
-  cuopt_float_t quadratic_objective_matrix_values[] = {1.0, 1.0};
-  cuopt_int_t quadratic_objective_matrix_row_offsets[] = {0, 1, 2};
+  cuopt_float_t quadratic_objective_matrix_values[]       = {1.0, 1.0};
+  cuopt_int_t quadratic_objective_matrix_row_offsets[]    = {0, 1, 2};
   cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
 
   // Constraint bounds
   // From the constraints:
   // x + y >= 1
   cuopt_float_t constraint_rhs[] = {1.0};
-  char constraint_sense[] = { CUOPT_GREATER_THAN };
-
+  char constraint_sense[]        = {CUOPT_GREATER_THAN};
 
   // Variable bounds
   // From the constraints:
@@ -172,7 +173,9 @@ cuopt_int_t test_simple_qp()
   // Print results
   printf("\nResults:\n");
   printf("--------\n");
-  printf("Termination status: %s (%d)\n", termination_status_to_string(termination_status), termination_status);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
   printf("Solve time: %f seconds\n", time);
   printf("Objective value: %f\n", objective_value);
 
@@ -203,7 +206,8 @@ DONE:
   return status;
 }
 
-int main() {
+int main()
+{
   // Run the test
   cuopt_int_t status = test_simple_qp();
 
