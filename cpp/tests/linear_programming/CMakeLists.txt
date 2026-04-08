@@ -3,14 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(LP_UNIT_TEST
+ConfigureTest(LP_UNIT_TEST lp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
-)# ##################################################################################################
+)
+# ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
-ConfigureTest(PDLP_TEST
+ConfigureTest(PDLP_TEST lp
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
 )
 
@@ -64,6 +65,8 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     endif()
 
     add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    set_tests_properties(C_API_TEST PROPERTIES LABELS "lp")
+    file(APPEND "${CUOPT_TEST_LABEL_MAP}" "C_API_TEST:lp\n")
 
     install(
         TARGETS C_API_TEST

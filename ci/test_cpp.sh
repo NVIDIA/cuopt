@@ -34,32 +34,8 @@ rapids-print-env
 rapids-logger "Check GPU usage"
 nvidia-smi
 
-# Derive CUOPT_TEST_COMPONENTS from changed-files env vars
-source ./ci/derive_test_components.sh
-
 rapids-logger "Download datasets"
-RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
-export RAPIDS_DATASET_ROOT_DIR
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"lp"* ]]; then
-    ./datasets/linear_programming/download_pdlp_test_dataset.sh
-else
-    rapids-logger "Skipping LP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"mip"* ]]; then
-    ./datasets/mip/download_miplib_test_dataset.sh
-else
-    rapids-logger "Skipping MIP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"routing"* ]]; then
-    pushd "${RAPIDS_DATASET_ROOT_DIR}"
-    ./get_test_data.sh
-    popd
-else
-    rapids-logger "Skipping routing dataset downloads (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
+source ./ci/utils/download_test_datasets.sh
 
 EXITCODE=0
 trap "EXITCODE=1" ERR

@@ -3,5 +3,5 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-# Add CLI end-to-end test
-ConfigureTest(CLI_TEST test_cli.cpp)
+# Add CLI end-to-end test — shared: runs for any component
+ConfigureTest(CLI_TEST shared test_cli.cpp)

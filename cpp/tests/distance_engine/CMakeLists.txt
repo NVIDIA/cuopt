@@ -3,6 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(WAYPOINT_MATRIXTEST
+ConfigureTest(WAYPOINT_MATRIXTEST routing
     ${CMAKE_CURRENT_SOURCE_DIR}/waypoint_matrix_test.cpp
 )

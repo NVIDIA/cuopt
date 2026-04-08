@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(QP_UNIT_TEST
+ConfigureTest(QP_UNIT_TEST lp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/no_constraints.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/two_variable_test.cu
 )

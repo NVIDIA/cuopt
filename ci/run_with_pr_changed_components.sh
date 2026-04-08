@@ -14,6 +14,7 @@
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_routing }}
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_lp }}
 #     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_mip }}
+#     ${{ fromJSON(needs.changed-files.outputs.changed_file_groups).test_shared }}
 #     ci/test_example.sh
 #
 # Optional extra args are forwarded to the test script.
@@ -23,7 +24,8 @@ set -euo pipefail
 export CUOPT_ROUTING_CHANGED="${1:-}"
 export CUOPT_LP_CHANGED="${2:-}"
 export CUOPT_MIP_CHANGED="${3:-}"
-shift 3
+export CUOPT_SHARED_CHANGED="${4:-}"
+shift 4
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 exec bash "$@"

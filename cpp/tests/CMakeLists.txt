@@ -33,8 +33,15 @@ endif()
 
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Label map file: maps test binary names to components (routing, lp, mip, shared).
+# run_ctests.sh reads this at runtime instead of maintaining a hardcoded case statement.
+set(CUOPT_TEST_LABEL_MAP "${CMAKE_CURRENT_BINARY_DIR}/test_component_labels.txt")
+file(WRITE "${CUOPT_TEST_LABEL_MAP}" "")
+
 # ################################################################ ------------------------------------------------------------------
-function(ConfigureTest CMAKE_TEST_NAME)
+# ConfigureTest(<test_name> <component_label> <source_files...>)
+#   component_label: routing | lp | mip | shared
+function(ConfigureTest CMAKE_TEST_NAME COMPONENT_LABEL)
     add_executable(${CMAKE_TEST_NAME} ${ARGN})
     set_target_properties(${CMAKE_TEST_NAME}
       PROPERTIES
@@ -69,6 +76,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
     endif()
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+    set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${COMPONENT_LABEL}")
+
+    # Append to the label map so run_ctests.sh can filter at runtime
+    file(APPEND "${CUOPT_TEST_LABEL_MAP}" "${CMAKE_TEST_NAME}:${COMPONENT_LABEL}\n")
 
     install(
         TARGETS ${CMAKE_TEST_NAME}
@@ -102,6 +113,14 @@ if(BUILD_TESTS)
   add_subdirectory(dual_simplex)
   add_subdirectory(qp)
   add_subdirectory(utilities)
+
+  # Install the label map alongside the test binaries
+  install(
+      FILES "${CUOPT_TEST_LABEL_MAP}"
+      COMPONENT testing
+      DESTINATION bin/gtests/libcuopt
+      EXCLUDE_FROM_ALL
+  )
 
   enable_testing()
 endif()

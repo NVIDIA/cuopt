@@ -53,32 +53,9 @@ elif command -v dnf &> /dev/null; then
     dnf -y install file unzip
 fi
 
-# Derive CUOPT_TEST_COMPONENTS from changed-files env vars
-source ./ci/derive_test_components.sh
-
-RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
-export RAPIDS_DATASET_ROOT_DIR
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"lp"* ]]; then
-    ./datasets/linear_programming/download_pdlp_test_dataset.sh
-else
-    echo "Skipping LP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"mip"* ]]; then
-    ./datasets/mip/download_miplib_test_dataset.sh
-else
-    echo "Skipping MIP dataset download (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
-
-if [[ "${CUOPT_TEST_COMPONENTS}" == "all" || "${CUOPT_TEST_COMPONENTS}" == *"routing"* ]]; then
-    cd ./datasets
-    ./get_test_data.sh --solomon
-    ./get_test_data.sh --tsp
-    cd -
-else
-    echo "Skipping routing dataset downloads (not needed for components: ${CUOPT_TEST_COMPONENTS})"
-fi
+CUOPT_ROUTING_DATASET_ARGS="--solomon --tsp"
+export CUOPT_ROUTING_DATASET_ARGS
+source ./ci/utils/download_test_datasets.sh
 
 # Run CLI tests
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
