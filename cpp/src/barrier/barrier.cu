@@ -91,11 +91,30 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
+  struct lifecycle_logger_t {
+    explicit lifecycle_logger_t(const simplex_solver_settings_t<i_t, f_t>& settings)
+      : start_time(tic()), concurrent_halt(settings.concurrent_halt)
+    {
+    }
+
+    ~lifecycle_logger_t()
+    {
+      printf("Barrier data: dtor end       : %.2fs halt=%d\n",
+             toc(start_time),
+             concurrent_halt != nullptr ? static_cast<int>(concurrent_halt->load()) : 0);
+      fflush(stdout);
+    }
+
+    f_t start_time;
+    const std::atomic<int>* concurrent_halt;
+  };
+
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
-    : upper_bounds(num_upper_bounds),
+    : lifecycle_logger_(settings),
+      upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
       w(num_upper_bounds),
@@ -447,6 +466,16 @@ class iteration_data_t {
            toc(constructor_start),
            symbolic_status);
     printf("Barrier ctor: exit           : %.2fs\n", toc(constructor_start));
+    fflush(stdout);
+  }
+
+  ~iteration_data_t()
+  {
+    printf("Barrier data: dtor begin     : %.2fs halt=%d\n",
+           toc(lifecycle_logger_.start_time),
+           settings_.concurrent_halt != nullptr
+             ? static_cast<int>(settings_.concurrent_halt->load())
+             : 0);
     fflush(stdout);
   }
 
@@ -1516,6 +1545,8 @@ class iteration_data_t {
     raft::copy(y.data(), d_y.data(), y.size(), handle_ptr->get_stream());
     handle_ptr->sync_stream();
   }
+
+  lifecycle_logger_t lifecycle_logger_;
 
   raft::handle_t const* handle_ptr;
   i_t n_upper_bounds;
@@ -3492,8 +3523,20 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
+    f_t data_ctor_start = tic();
+    printf("Barrier solve: data ctor begin: %.2fs\n", toc(start_time));
+    fflush(stdout);
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
+    printf("Barrier solve: data ctor end  : %.2fs elapsed %.2fs halt=%d indef=%d symbolic=%d\n",
+           toc(start_time),
+           toc(data_ctor_start),
+           settings.concurrent_halt != nullptr ? static_cast<int>(*settings.concurrent_halt) : 0,
+           static_cast<int>(data.indefinite_Q),
+           static_cast<int>(data.symbolic_status));
+    fflush(stdout);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      printf("Barrier solve: halt after data: %.2fs\n", toc(start_time));
+      fflush(stdout);
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3503,6 +3546,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       return lp_status_t::NUMERICAL_ISSUES;
     }
 
+    f_t vector_setup_start = tic();
+    printf("Barrier solve: vec init begin : %.2fs\n", toc(start_time));
+    fflush(stdout);
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
     data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
     data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
@@ -3511,18 +3557,33 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
     data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
     data.restrict_u_.resize(num_upper_bounds);
+    printf("Barrier solve: vec init end   : %.2fs elapsed %.2fs\n",
+           toc(start_time),
+           toc(vector_setup_start));
+    fflush(stdout);
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
     }
 
+    f_t initial_point_start = tic();
+    printf("Barrier solve: initial begin  : %.2fs\n", toc(start_time));
+    fflush(stdout);
     i_t initial_status = initial_point(data);
+    printf("Barrier solve: initial end    : %.2fs elapsed %.2fs status %d halt=%d\n",
+           toc(start_time),
+           toc(initial_point_start),
+           initial_status,
+           settings.concurrent_halt != nullptr ? static_cast<int>(*settings.concurrent_halt) : 0);
+    fflush(stdout);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      printf("Barrier solve: halt after init: %.2fs\n", toc(start_time));
+      fflush(stdout);
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3530,7 +3591,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+    f_t residual_init_start = tic();
+    printf("Barrier solve: residual begin : %.2fs\n", toc(start_time));
+    fflush(stdout);
     compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
+    printf("Barrier solve: residual end   : %.2fs elapsed %.2fs\n",
+           toc(start_time),
+           toc(residual_init_start));
+    fflush(stdout);
 
     f_t primal_residual_norm =
       std::max(vector_norm_inf<i_t, f_t>(data.primal_residual, stream_view_),
