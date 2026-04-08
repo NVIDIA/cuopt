@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -215,6 +215,7 @@ struct service_time_dimension_info_t {
 
 struct mismatch_dimension_info_t {
   bool has_vehicle_order_match = false;
+  bool has_vehicle_order_cost  = false;
   constexpr bool has_constraints() const { return has_vehicle_order_match; }
 };
 

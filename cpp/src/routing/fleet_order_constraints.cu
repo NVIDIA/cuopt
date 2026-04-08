@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,7 +9,10 @@
 
 #include <thrust/fill.h>
 #include <cuopt/error.hpp>
+#include <limits>
 #include <raft/core/span.hpp>
+#include <set>
+#include <unordered_set>
 #include <utilities/copy_helpers.hpp>
 #include <vector>
 
@@ -17,8 +20,11 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+// Generate a flat [n_vehicles x n_orders] matrix of order costs.
+// Infeasible pairs (excluded by vehicle_order_match/order_vehicle_match) get +inf.
+// Compatible pairs default to 0.0.
 template <typename i_t, typename f_t>
-rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
+rmm::device_uvector<double> generate_vehicle_order_match_matrix(
   data_model_view_t<i_t, f_t> const& data_model, bool& is_homogenous)
 {
   auto handle_ptr_     = data_model.get_handle_ptr();
@@ -32,10 +38,10 @@ rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
   const i_t order_begin           = depot_included ? 1 : 0;
 
   if (!vehicle_order_match.empty() || !order_vehicle_match.empty()) {
-    std::vector<bool> vehicle_order_match_h(n_orders * fleet_size, true);
+    // Use 0.0 for compatible, +inf for infeasible.
+    std::vector<double> order_costs_h(n_orders * fleet_size, 0.0);
     std::set<std::pair<i_t, i_t>> not_allowed_pairs;
-    // loop over specified vehicles and set the entries corresponding to specified
-    // order list to true and remaining orders to false
+
     for (const auto& [vehicle_id, order_ids] : vehicle_order_match) {
       const auto order_ids_vec_h = cuopt::host_copy(order_ids, stream_view);
       const auto order_ids_h =
@@ -43,7 +49,7 @@ rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
 
       for (i_t order_id = order_begin; order_id < n_orders; ++order_id) {
         if (!order_ids_h.count(order_id)) {
-          vehicle_order_match_h[vehicle_id * n_orders + order_id] = false;
+          order_costs_h[vehicle_id * n_orders + order_id] = std::numeric_limits<double>::infinity();
           not_allowed_pairs.insert({order_id, vehicle_id});
         }
       }
@@ -55,7 +61,7 @@ rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
         std::unordered_set<i_t>(vehicle_ids_vec_h.begin(), vehicle_ids_vec_h.end());
       for (i_t vehicle_id = 0; vehicle_id < fleet_size; ++vehicle_id) {
         if (!vehicle_ids_h.count(vehicle_id)) {
-          vehicle_order_match_h[order_id + vehicle_id * n_orders] = false;
+          order_costs_h[order_id + vehicle_id * n_orders] = std::numeric_limits<double>::infinity();
         } else {
           cuopt_expects(
             not_allowed_pairs.count({order_id, vehicle_id}) == 0u,
@@ -65,12 +71,12 @@ rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
       }
     }
 
-    if (is_homogenous && !vehicle_order_match_h.empty()) {
+    if (is_homogenous && !order_costs_h.empty()) {
       for (i_t vehicle_id = 1; vehicle_id < fleet_size; ++vehicle_id) {
         if (is_homogenous) {
           for (i_t order_id = order_begin; order_id < n_orders; ++order_id) {
-            if (vehicle_order_match_h[order_id + (vehicle_id - 1) * n_orders] !=
-                vehicle_order_match_h[order_id + vehicle_id * n_orders]) {
+            if (order_costs_h[order_id + (vehicle_id - 1) * n_orders] !=
+                order_costs_h[order_id + vehicle_id * n_orders]) {
               is_homogenous = false;
               break;
             }
@@ -79,21 +85,21 @@ rmm::device_uvector<bool> generate_vehicle_order_match_matrix(
       }
     }
 
-    return cuopt::device_copy(vehicle_order_match_h, stream_view);
+    return cuopt::device_copy(order_costs_h, stream_view);
   }
 
-  return rmm::device_uvector<bool>(0, stream_view);
+  return rmm::device_uvector<double>(0, stream_view);
 }
 
 template <typename i_t>
 __global__ void modify_service_times(raft::device_span<i_t> service_times,
-                                     raft::device_span<bool const> order_vehicle_match)
+                                     raft::device_span<double const> order_costs)
 {
-  cuopt_assert(service_times.size() == order_vehicle_match.size(),
-               "service times and order vehicle match matrix should have same sizes");
+  cuopt_assert(service_times.size() == order_costs.size(),
+               "service times and order costs matrix should have same sizes");
   size_t idx = threadIdx.x + blockDim.x * blockIdx.x;
   for (; idx < service_times.size(); idx += blockDim.x * gridDim.x) {
-    if (!order_vehicle_match[idx]) { service_times[idx] = std::numeric_limits<i_t>::max(); }
+    if (isinf(order_costs[idx])) { service_times[idx] = std::numeric_limits<i_t>::max(); }
   }
 }
 
@@ -102,14 +108,64 @@ void populate_vehicle_order_match(data_model_view_t<i_t, f_t> const& data_model,
                                   detail::fleet_order_constraints_t<i_t>& fleet_order_constraints_,
                                   bool& is_homogenous)
 {
-  fleet_order_constraints_.order_match =
+  fleet_order_constraints_.order_costs =
     generate_vehicle_order_match_matrix<i_t, f_t>(data_model, is_homogenous);
+}
+
+template <typename i_t, typename f_t>
+void populate_vehicle_order_cost(data_model_view_t<i_t, f_t> const& data_model,
+                                 detail::fleet_order_constraints_t<i_t>& fleet_order_constraints_)
+{
+  auto handle_ptr_     = data_model.get_handle_ptr();
+  auto stream_view     = handle_ptr_->get_stream();
+  const i_t fleet_size = data_model.get_fleet_size();
+  const i_t n_orders   = data_model.get_num_orders();
+
+  const auto& vehicle_order_cost = data_model.get_vehicle_order_cost();
+  if (vehicle_order_cost.empty()) { return; }
+
+  // Ensure order_costs array is allocated (may not be if order_match wasn't set)
+  if (fleet_order_constraints_.order_costs.is_empty()) {
+    fleet_order_constraints_.order_costs =
+      rmm::device_uvector<double>(n_orders * fleet_size, stream_view);
+    thrust::fill(handle_ptr_->get_thrust_policy(),
+                 fleet_order_constraints_.order_costs.begin(),
+                 fleet_order_constraints_.order_costs.end(),
+                 0.0);
+  }
+
+  // Copy per-vehicle cost arrays from user input, with consistency checks
+  auto order_costs_h = cuopt::host_copy(fleet_order_constraints_.order_costs, stream_view);
+  handle_ptr_->sync_stream();
+
+  for (const auto& [vehicle_id, costs_span] : vehicle_order_cost) {
+    const auto costs_h = cuopt::host_copy(costs_span, stream_view);
+    handle_ptr_->sync_stream();
+    cuopt_expects((i_t)costs_h.size() == n_orders,
+                  error_type_t::ValidationError,
+                  "vehicle_order_cost size must equal number of orders");
+    for (i_t order_id = 0; order_id < n_orders; ++order_id) {
+      double existing = order_costs_h[vehicle_id * n_orders + order_id];
+      double new_cost = costs_h[order_id];
+      cuopt_expects(!(std::isinf(existing) && std::isfinite(new_cost)),
+                    error_type_t::ValidationError,
+                    "Inconsistency: vehicle_order_match marks pair as infeasible but "
+                    "vehicle_order_cost specifies a finite cost for the same pair");
+      if (!std::isinf(existing)) { order_costs_h[vehicle_id * n_orders + order_id] = new_cost; }
+    }
+  }
+
+  fleet_order_constraints_.order_costs = cuopt::device_copy(order_costs_h, stream_view);
 }
 
 template void populate_vehicle_order_match(
   data_model_view_t<int, float> const& data_model,
   detail::fleet_order_constraints_t<int>& fleet_order_constraints_,
   bool& is_homogenous);
+
+template void populate_vehicle_order_cost(
+  data_model_view_t<int, float> const& data_model,
+  detail::fleet_order_constraints_t<int>& fleet_order_constraints_);
 }  // namespace detail
 }  // namespace routing
 }  // namespace cuopt

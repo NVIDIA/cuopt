@@ -157,7 +157,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
    * This avoids storing unnecessary dim_between for mismatch dimension
    */
   if (route.dimensions_info().has_dimension(dim_t::MISMATCH) &&
-      !route.vehicle_info().order_match[pickup_node.id()]) {
+      !route.vehicle_info().order_costs.empty() &&
+      isinf(route.vehicle_info().order_costs[pickup_node.id()])) {
     return;
   }
 

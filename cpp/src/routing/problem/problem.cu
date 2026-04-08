@@ -40,6 +40,9 @@ problem_t<i_t, f_t>::problem_t(const data_model_view_t<i_t, f_t>& data_model_vie
   populate_demand_container(data_model_view_, fleet_info, order_info);
   populate_vehicle_order_match(
     data_model_view_, fleet_info.fleet_order_constraints_, fleet_info.is_homogenous_);
+  populate_vehicle_order_cost(data_model_view_, fleet_info.fleet_order_constraints_);
+  // If per-vehicle order costs differ between vehicles, the fleet is heterogeneous
+  if (!data_model_view_.get_vehicle_order_cost().empty()) { fleet_info.is_homogenous_ = false; }
   populate_vehicle_infos(data_model_view_, fleet_info);
   // populate host vectors
   populate_host_arrays();
@@ -324,12 +327,21 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   // mismatch dimension info
   const auto& vehicle_order_match = data_view_ptr->get_vehicle_order_match();
   const auto& order_vehicle_match = data_view_ptr->get_order_vehicle_match();
+  const auto& vehicle_order_cost  = data_view_ptr->get_vehicle_order_cost();
   const bool vehicle_order_match_exists =
     !vehicle_order_match.empty() || !order_vehicle_match.empty();
-  if (vehicle_order_match_exists) {
+  const bool vehicle_order_cost_exists = !vehicle_order_cost.empty();
+  if (vehicle_order_match_exists || vehicle_order_cost_exists) {
     dimensions_info.enable_dimension(dim_t::MISMATCH);
-    auto& mismatch_dim_info                   = dimensions_info.mismatch_dim;
-    mismatch_dim_info.has_vehicle_order_match = true;
+    auto& mismatch_dim_info = dimensions_info.mismatch_dim;
+    if (vehicle_order_match_exists) { mismatch_dim_info.has_vehicle_order_match = true; }
+    if (vehicle_order_cost_exists) {
+      mismatch_dim_info.has_vehicle_order_cost = true;
+      double cost_weight = specified_weights.count(objective_t::VEHICLE_ORDER_COST)
+                             ? specified_weights.at(objective_t::VEHICLE_ORDER_COST)
+                             : 1.0;
+      dimensions_info.enable_objective(objective_t::VEHICLE_ORDER_COST, cost_weight);
+    }
   }
 
   // break dimension info

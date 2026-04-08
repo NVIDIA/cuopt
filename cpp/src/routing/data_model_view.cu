@@ -339,6 +339,16 @@ void data_model_view_t<i_t, f_t>::add_order_vehicle_match(const i_t order_id,
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_vehicle_order_cost(const i_t vehicle_id,
+                                                         double const* costs,
+                                                         const i_t n_orders)
+{
+  cuopt_expects(
+    costs != nullptr, error_type_t::ValidationError, "vehicle_order_cost cannot be null");
+  vehicle_order_cost_[vehicle_id] = raft::device_span<double const>(costs, n_orders);
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_order_service_times(i_t const* service_times,
                                                           const i_t truck_id,
                                                           bool validate_input)
@@ -665,6 +675,13 @@ const std::unordered_map<i_t, raft::device_span<i_t const>>&
 data_model_view_t<i_t, f_t>::get_order_vehicle_match() const noexcept
 {
   return order_vehicle_match_;
+}
+
+template <typename i_t, typename f_t>
+const std::unordered_map<i_t, raft::device_span<double const>>&
+data_model_view_t<i_t, f_t>::get_vehicle_order_cost() const noexcept
+{
+  return vehicle_order_cost_;
 }
 
 template <typename i_t, typename f_t>

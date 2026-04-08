@@ -9,6 +9,7 @@
 
 #include <cuopt/routing/data_model_view.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/macros.cuh>
 
 #include <raft/core/span.hpp>
 
@@ -28,7 +29,7 @@ struct fleet_order_constraints_t {
       n_vehicles(n_vehicles_),
       n_orders(n_orders_),
       order_service_times(n_vehicles * n_orders, handle_ptr_->get_stream()),
-      order_match(0, handle_ptr_->get_stream())
+      order_costs(0, handle_ptr_->get_stream())
   {
   }
 
@@ -53,16 +54,17 @@ struct fleet_order_constraints_t {
                                               n_orders);
     }
 
-    constexpr auto get_order_match(i_t truck_id) const
+    constexpr auto get_order_costs(i_t truck_id) const
     {
-      if (order_match.empty()) { return raft::span<bool const, is_device>{}; }
-      cuopt_assert(order_match.size() == n_orders * n_vehicles,
-                   "size mismatch of order_match vector");
-      return raft::span<bool const, is_device>(order_match.data() + truck_id * n_orders, n_orders);
+      if (order_costs.empty()) { return raft::span<double const, is_device>{}; }
+      cuopt_assert(order_costs.size() == (size_t)(n_orders * n_vehicles),
+                   "size mismatch of order_costs vector");
+      return raft::span<double const, is_device>(order_costs.data() + truck_id * n_orders,
+                                                 n_orders);
     }
 
     std::vector<i_t> order_service_times;
-    thrust::host_vector<bool> order_match;
+    std::vector<double> order_costs;
     i_t n_orders;
     i_t n_vehicles;
   };
@@ -71,8 +73,7 @@ struct fleet_order_constraints_t {
   {
     host_t h;
     h.order_service_times = host_copy(order_service_times, stream);
-    auto tmp_order_match  = host_copy(order_match, stream);
-    h.order_match         = thrust::host_vector<bool>(tmp_order_match);
+    h.order_costs         = host_copy(order_costs, stream);
     h.n_orders            = n_orders;
     h.n_vehicles          = n_vehicles;
     return h;
@@ -85,18 +86,18 @@ struct fleet_order_constraints_t {
                                           n_orders);
     }
 
-    raft::device_span<bool const> get_order_match(i_t truck_id) const
+    raft::device_span<double const> get_order_costs(i_t truck_id) const
     {
-      if (order_match.empty()) { return raft::device_span<bool const>{}; }
-      cuopt_assert(order_match.size() == n_orders * n_vehicles,
-                   "size mismatch of order_match vector");
-      return raft::device_span<bool const>(order_match.data() + truck_id * n_orders, n_orders);
+      if (order_costs.empty()) { return raft::device_span<double const>{}; }
+      cuopt_assert(order_costs.size() == (size_t)(n_orders * n_vehicles),
+                   "size mismatch of order_costs vector");
+      return raft::device_span<double const>(order_costs.data() + truck_id * n_orders, n_orders);
     }
 
     i_t n_vehicles{};
     i_t n_orders{};
     raft::device_span<i_t const> order_service_times{};
-    raft::device_span<bool const> order_match{};
+    raft::device_span<double const> order_costs{};
   };
 
   constexpr raft::device_span<i_t const> get_order_service_times(i_t truck_id) const
@@ -104,12 +105,12 @@ struct fleet_order_constraints_t {
     return raft::device_span<i_t const>(order_service_times.data() + truck_id * n_orders, n_orders);
   }
 
-  raft::device_span<bool const> get_order_match(i_t truck_id) const
+  raft::device_span<double const> get_order_costs(i_t truck_id) const
   {
-    if (order_match.is_empty()) { return raft::device_span<bool const>{}; }
-    cuopt_assert(order_match.size() == n_orders * n_vehicles,
-                 "size mismatch of order_match vector");
-    return raft::device_span<bool const>(order_match.data() + truck_id * n_orders, n_orders);
+    if (order_costs.is_empty()) { return raft::device_span<double const>{}; }
+    cuopt_assert(order_costs.size() == (size_t)(n_orders * n_vehicles),
+                 "size mismatch of order_costs vector");
+    return raft::device_span<double const>(order_costs.data() + truck_id * n_orders, n_orders);
   }
 
   view_t view() const
@@ -117,7 +118,7 @@ struct fleet_order_constraints_t {
     view_t v;
     v.order_service_times =
       raft::device_span<i_t const>(order_service_times.data(), order_service_times.size());
-    v.order_match = raft::device_span<bool const>(order_match.data(), order_match.size());
+    v.order_costs = raft::device_span<double const>(order_costs.data(), order_costs.size());
     v.n_vehicles  = n_vehicles;
     v.n_orders    = n_orders;
     return v;
@@ -127,7 +128,7 @@ struct fleet_order_constraints_t {
   i_t n_vehicles{};
   i_t n_orders{};
   rmm::device_uvector<i_t> order_service_times;
-  rmm::device_uvector<bool> order_match;
+  rmm::device_uvector<double> order_costs;
 };
 
 /**
@@ -142,6 +143,10 @@ template <typename i_t, typename f_t>
 void populate_vehicle_order_match(data_model_view_t<i_t, f_t> const& data_model,
                                   fleet_order_constraints_t<i_t>& fleet_order_constraints,
                                   bool& is_homogenous);
+
+template <typename i_t, typename f_t>
+void populate_vehicle_order_cost(data_model_view_t<i_t, f_t> const& data_model,
+                                 fleet_order_constraints_t<i_t>& fleet_order_constraints);
 
 }  // namespace detail
 }  // namespace routing
