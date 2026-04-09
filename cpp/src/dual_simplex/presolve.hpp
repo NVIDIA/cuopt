@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -73,52 +74,59 @@ struct lp_problem_t {
 
   void read_problem(const std::string& path)
   {
-    FILE* fid = fopen(path.c_str(), "r");
-    if (fid) {
-      auto check_read = [&](size_t got, size_t expected, const char* field) {
-        if (got != expected) {
-          fclose(fid);
-          throw std::runtime_error(std::string("Failed to read field '") + field +
-                                   "' from file: " + path);
-        }
-      };
-      constexpr i_t max_dim = 100000000;  // 100M upper bound for sanity
+    std::unique_ptr<FILE, decltype(&fclose)> fid(fopen(path.c_str(), "rb"), &fclose);
+    if (!fid) { throw std::runtime_error("Failed to open file: " + path); }
 
-      check_read(fread(&num_rows, sizeof(i_t), 1, fid), 1, "num_rows");
-      check_read(fread(&num_cols, sizeof(i_t), 1, fid), 1, "num_cols");
-      if (num_rows <= 0 || num_rows > max_dim || num_cols <= 0 || num_cols > max_dim) {
-        fclose(fid);
-        throw std::runtime_error("Invalid dimensions in file: " + path);
+    auto check_read = [&](size_t got, size_t expected, const char* field) {
+      if (got != expected) {
+        throw std::runtime_error(std::string("Failed to read field '") + field +
+                                 "' from file: " + path);
       }
-      check_read(fread(&obj_constant, sizeof(f_t), 1, fid), 1, "obj_constant");
-      check_read(fread(&obj_scale, sizeof(f_t), 1, fid), 1, "obj_scale");
-      i_t is_integral;
-      check_read(fread(&is_integral, sizeof(i_t), 1, fid), 1, "is_integral");
-      objective_is_integral = is_integral == 1;
-      objective.resize(num_cols);
-      check_read(fread(objective.data(), sizeof(f_t), num_cols, fid), num_cols, "objective");
-      rhs.resize(num_rows);
-      check_read(fread(rhs.data(), sizeof(f_t), num_rows, fid), num_rows, "rhs");
-      lower.resize(num_cols);
-      check_read(fread(lower.data(), sizeof(f_t), num_cols, fid), num_cols, "lower");
-      upper.resize(num_cols);
-      check_read(fread(upper.data(), sizeof(f_t), num_cols, fid), num_cols, "upper");
-      A.n = num_cols;
-      A.m = num_rows;
-      A.col_start.resize(num_cols + 1);
-      check_read(
-        fread(A.col_start.data(), sizeof(i_t), num_cols + 1, fid), num_cols + 1, "A.col_start");
-      i_t nnz = A.col_start[num_cols];
-      if (nnz < 0 || nnz > max_dim * 10) {
-        fclose(fid);
-        throw std::runtime_error("Invalid nnz in file: " + path);
-      }
-      A.i.resize(nnz);
-      check_read(fread(A.i.data(), sizeof(i_t), nnz, fid), nnz, "A.i");
-      A.x.resize(nnz);
-      check_read(fread(A.x.data(), sizeof(f_t), nnz, fid), nnz, "A.x");
-      fclose(fid);
+    };
+    constexpr i_t max_dim = 100000000;  // 100M upper bound for sanity
+
+    check_read(fread(&num_rows, sizeof(i_t), 1, fid.get()), 1, "num_rows");
+    check_read(fread(&num_cols, sizeof(i_t), 1, fid.get()), 1, "num_cols");
+    if (num_rows <= 0 || num_rows > max_dim || num_cols <= 0 || num_cols > max_dim) {
+      throw std::runtime_error("Invalid dimensions in file: " + path);
     }
+    check_read(fread(&obj_constant, sizeof(f_t), 1, fid.get()), 1, "obj_constant");
+    check_read(fread(&obj_scale, sizeof(f_t), 1, fid.get()), 1, "obj_scale");
+    i_t is_integral;
+    check_read(fread(&is_integral, sizeof(i_t), 1, fid.get()), 1, "is_integral");
+    objective_is_integral = is_integral == 1;
+    objective.resize(num_cols);
+    check_read(fread(objective.data(), sizeof(f_t), num_cols, fid.get()), num_cols, "objective");
+    rhs.resize(num_rows);
+    check_read(fread(rhs.data(), sizeof(f_t), num_rows, fid.get()), num_rows, "rhs");
+    lower.resize(num_cols);
+    check_read(fread(lower.data(), sizeof(f_t), num_cols, fid.get()), num_cols, "lower");
+    upper.resize(num_cols);
+    check_read(fread(upper.data(), sizeof(f_t), num_cols, fid.get()), num_cols, "upper");
+    A.n = num_cols;
+    A.m = num_rows;
+    A.col_start.resize(num_cols + 1);
+    check_read(
+      fread(A.col_start.data(), sizeof(i_t), num_cols + 1, fid.get()), num_cols + 1, "A.col_start");
+    i_t nnz = A.col_start[num_cols];
+    if (nnz < 0 || nnz > max_dim * 10) { throw std::runtime_error("Invalid nnz in file: " + path); }
+    if (A.col_start[0] != 0) {
+      throw std::runtime_error("Invalid A.col_start[0] in file: " + path);
+    }
+    for (i_t j = 0; j < num_cols; ++j) {
+      if (A.col_start[j] < 0 || A.col_start[j] > A.col_start[j + 1] || A.col_start[j + 1] > nnz) {
+        throw std::runtime_error("Invalid A.col_start monotonicity/range in file: " + path);
+      }
+    }
+    A.i.resize(nnz);
+    check_read(fread(A.i.data(), sizeof(i_t), nnz, fid.get()), nnz, "A.i");
+    for (i_t k = 0; k < nnz; ++k) {
+      if (A.i[k] < 0 || A.i[k] >= num_rows) {
+        throw std::runtime_error("Invalid row index in A.i in file: " + path);
+      }
+    }
+    A.x.resize(nnz);
+    check_read(fread(A.x.data(), sizeof(f_t), nnz, fid.get()), nnz, "A.x");
   }
 
   void write_mps(const std::string& path) const

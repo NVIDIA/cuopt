@@ -197,7 +197,10 @@ void print_version_info()
            (unsigned char)uuid.bytes[14],
            (unsigned char)uuid.bytes[15]);
   int version = 0;
-  cudaRuntimeGetVersion(&version);
+  if (cudaRuntimeGetVersion(&version) != cudaSuccess) {
+    CUOPT_LOG_WARN("Failed to query CUDA runtime version");
+    version = 0;
+  }
   int major = version / 1000;
   int minor = (version % 1000) / 10;
   CUOPT_LOG_INFO("cuOpt version: %d.%d.%d, git hash: %s, host arch: %s, device archs: %s",
