@@ -63,8 +63,23 @@ timeout 40m ./ci/run_ctests.sh
 CUOPT_CI_COREDUMP_PROBE=1
 if [[ "${CUOPT_CI_COREDUMP_PROBE:-}" == 1 ]]; then
   rapids-logger "CUOPT_CI_COREDUMP_PROBE: child bash SIGSEGV (core dump artifact check)"
+  # Count core files before the probe.
+  _probe_n_before="$(find "${CUOPT_COREDUMP_DIR:-/dev/null}" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
   bash -c 'kill -SEGV $$' || true
-  sleep 0.2
+  # Brief pause so the kernel can finish writing the core.
+  sleep 1
+  # Eagerly collect now so we can verify the probe worked.
+  cuopt_collect_coredumps || true
+  _probe_n_after="$(find "${CUOPT_COREDUMP_DIR:-/dev/null}" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
+  if [[ "${_probe_n_after}" -gt "${_probe_n_before}" ]]; then
+    rapids-logger "COREDUMP_PROBE: SUCCESS — $((_probe_n_after - _probe_n_before)) core file(s) collected"
+  else
+    rapids-logger "COREDUMP_PROBE: FAILED — no core file collected for SIGSEGV probe"
+    rapids-logger "  core_pattern=$(cat /proc/sys/kernel/core_pattern 2>/dev/null || echo n/a)"
+    rapids-logger "  ulimit -c=$(ulimit -c)"
+    rapids-logger "  CUOPT_COREDUMP_DIR=${CUOPT_COREDUMP_DIR:-unset}"
+    rapids-logger "  Hint: core_pattern may require a privileged container or --cap-add=SYS_PTRACE"
+  fi
 fi
 
 rapids-logger "Test script exiting with value: $EXITCODE"

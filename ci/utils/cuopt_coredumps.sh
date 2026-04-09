@@ -124,6 +124,9 @@ cuopt_enable_coredumps() {
   CUOPT_GDB_CORE_ARTIFACT_DIR="$(cuopt__gdb_core_artifact_basename)"
   export CUOPT_GDB_CORE_ARTIFACT_DIR
   export CUOPT_COREDUMP_DIR="${base}/${CUOPT_GDB_CORE_ARTIFACT_DIR}"
+  # Record startup time so coredumpctl collection can filter to this session only.
+  export CUOPT_COREDUMP_SINCE
+  CUOPT_COREDUMP_SINCE="$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '')"
   mkdir -p "${CUOPT_COREDUMP_DIR}"
 
   local pattern_target="${CUOPT_COREDUMP_DIR}/core.%e.%p.%t"
@@ -132,9 +135,11 @@ cuopt_enable_coredumps() {
   ulimit -c unlimited 2>/dev/null || true
   ulimit -H -c unlimited 2>/dev/null || true
 
-  # When unset, ask the kernel for broad core dump contents (Linux 4.6+; ignored elsewhere).
-  if [[ -z "${COREDUMP_FILTER:-}" ]]; then
-    export COREDUMP_FILTER=0xff
+  # Write the coredump filter to the kernel's per-process file (env var alone has no effect).
+  # 0xff = dump all memory segments (shared, private, huge, DAX — Linux 4.6+).
+  local filter="${COREDUMP_FILTER:-0xff}"
+  if [[ -w /proc/self/coredump_filter ]]; then
+    echo "${filter}" >/proc/self/coredump_filter 2>/dev/null || true
   fi
 
   # Prefer writing cores as files under CUOPT_COREDUMP_DIR (often fails in unprivileged Docker).
@@ -146,21 +151,139 @@ cuopt_enable_coredumps() {
   fi
 
   pattern="$(cat /proc/sys/kernel/core_pattern 2>/dev/null || echo n/a)"
+
+  # Track whether core_pattern points to our directory (file-based) or a pipe/collector.
+  export CUOPT_COREDUMP_PATTERN_IS_PIPE=0
+  if [[ "${pattern}" == \|* ]]; then
+    CUOPT_COREDUMP_PATTERN_IS_PIPE=1
+  fi
+
+  local coredump_filter_val="n/a"
+  if [[ -r /proc/self/coredump_filter ]]; then
+    coredump_filter_val="$(cat /proc/self/coredump_filter 2>/dev/null || echo n/a)"
+  fi
+
+  local _log_msg="Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
   if declare -F rapids-logger &>/dev/null; then
-    rapids-logger "Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit -c=$(ulimit -c) core_pattern=${pattern}"
-    if [[ "${pattern}" == \|* ]]; then
-      rapids-logger "WARNING: core_pattern pipes to a collector (e.g. apport); cores may not appear as files under ${CUOPT_COREDUMP_DIR}. Use a writable core_pattern or a privileged runner if needed."
-    fi
+    rapids-logger "${_log_msg}"
   else
-    echo "Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit -c=$(ulimit -c) core_pattern=${pattern}"
-    if [[ "${pattern}" == \|* ]]; then
-      echo "WARNING: core_pattern pipes to a collector; files may not land in ${CUOPT_COREDUMP_DIR}" >&2
+    echo "${_log_msg}"
+  fi
+
+  if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE}" == 1 ]]; then
+    local _pipe_msg="WARNING: core_pattern pipes to a collector — cores will NOT appear as files. Fallback: coredumpctl (systemd-coredump) or /var/crash (apport) will be checked at collection time."
+    if command -v coredumpctl &>/dev/null; then
+      _pipe_msg+=" coredumpctl is available."
+    else
+      _pipe_msg+=" coredumpctl NOT found; if systemd-coredump is the handler, cores may be lost."
+    fi
+    if declare -F rapids-logger &>/dev/null; then
+      rapids-logger "${_pipe_msg}"
+    else
+      echo "WARNING: ${_pipe_msg}" >&2
     fi
   fi
 }
 
+cuopt__log() {
+  if declare -F rapids-logger &>/dev/null; then
+    rapids-logger "$1"
+  else
+    echo "$1"
+  fi
+}
+
+# Copy a single core file into the artifact directory with a sanitized name.
+cuopt__copy_core_to_dest() {
+  local f="$1" dest="$2" label="${3:-}"
+  [[ -f "${f}" && -s "${f}" ]] || return 0
+  local base_name
+  base_name="$(basename "${f}")"
+  if [[ -n "${label}" ]]; then
+    base_name="${label}_${base_name}"
+  fi
+  base_name="${base_name//\//_}"
+  local dest_path="${dest}/${base_name}"
+  if [[ -e "${dest_path}" ]]; then
+    dest_path="${dest}/${base_name}.${RANDOM}"
+  fi
+  cp -a "${f}" "${dest_path}" 2>/dev/null || true
+}
+
+# Collect cores written as files (core_pattern was file-based or we got lucky).
+cuopt__collect_core_files() {
+  local dest="$1"
+  shift
+  local search_dirs=("$@")
+  local f
+  for dir in "${search_dirs[@]}"; do
+    [[ -d "${dir}" ]] || continue
+    while IFS= read -r -d '' f; do
+      [[ -f "${f}" ]] || continue
+      # Skip files already in dest.
+      case "${f}" in
+        "${dest}/"*) continue ;;
+      esac
+      cuopt__copy_core_to_dest "${f}" "${dest}" ""
+    done < <(
+      find "${dir}" \
+        \( -path '*/.git/*' -o -path '*/opt/conda/*' -o -path '*/conda_pkgs/*' -o -path "${dest}/*" \) -prune -o \
+        \( -name 'core' -o -name 'core.*' \) -type f -print0 2>/dev/null
+    )
+  done
+}
+
+# Fallback: extract cores via coredumpctl (systemd-coredump handler).
+cuopt__collect_via_coredumpctl() {
+  local dest="$1"
+  command -v coredumpctl &>/dev/null || return 0
+
+  cuopt__log "Attempting coredumpctl extraction (core_pattern is piped to systemd-coredump)"
+
+  # Build the coredumpctl list command — scope to this session if we have a start time.
+  local -a list_cmd=(coredumpctl list --no-pager --no-legend)
+  if [[ -n "${CUOPT_COREDUMP_SINCE:-}" ]]; then
+    list_cmd+=(--since "${CUOPT_COREDUMP_SINCE}")
+    cuopt__log "  Filtering coredumpctl to cores since ${CUOPT_COREDUMP_SINCE}"
+  fi
+
+  local line pid exe core_path
+  # --no-legend output format: DAY DATE TIME TZ PID UID GID SIG COREFILE EXE...
+  while IFS= read -r line; do
+    # Skip header / empty lines.
+    [[ "${line}" =~ ^[[:space:]]*[A-Z] ]] && continue
+    [[ -z "${line}" ]] && continue
+    # Parse PID (5th field) and EXE (last field).
+    pid="$(echo "${line}" | awk '{print $5}')"
+    exe="$(echo "${line}" | awk '{print $NF}')"
+    [[ -n "${pid}" ]] || continue
+    core_path="${dest}/coredumpctl_${pid}_$(basename "${exe:-unknown}").core"
+    if [[ -e "${core_path}" ]]; then
+      core_path="${core_path}.${RANDOM}"
+    fi
+    coredumpctl dump "${pid}" -o "${core_path}" 2>/dev/null || true
+    if [[ -s "${core_path}" ]]; then
+      cuopt__log "Extracted core for PID ${pid} (${exe}) → ${core_path} ($(du -h "${core_path}" | cut -f1))"
+    else
+      rm -f "${core_path}" 2>/dev/null || true
+    fi
+  done < <("${list_cmd[@]}" 2>/dev/null || true)
+}
+
+# Fallback: collect cores from apport crash reports (/var/crash).
+cuopt__collect_from_apport() {
+  local dest="$1"
+  local crash_dir="/var/crash"
+  [[ -d "${crash_dir}" ]] || return 0
+  local f
+  for f in "${crash_dir}"/*.crash "${crash_dir}"/core.* "${crash_dir}"/core; do
+    [[ -f "${f}" && -s "${f}" ]] || continue
+    cuopt__copy_core_to_dest "${f}" "${dest}" "apport"
+  done
+}
+
 cuopt_collect_coredumps() {
-  local ws base dest n_before n_after f rel dest_name dest_path
+  local ws base dest n_before n_after
   ws="${GITHUB_WORKSPACE:-${PWD}}"
   base="${RAPIDS_ARTIFACTS_DIR:-${ws}/artifacts}"
   if [[ -z "${CUOPT_GDB_CORE_ARTIFACT_DIR:-}" ]]; then
@@ -171,33 +294,31 @@ cuopt_collect_coredumps() {
 
   n_before="$(find "${dest}" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
 
-  while IFS= read -r -d '' f; do
-    [[ -f "${f}" ]] || continue
-    case "${f}" in
-      "${dest}/"*) continue ;;
-    esac
-    rel="${f#"${ws}"/}"
-    if [[ "${rel}" == "${f}" ]]; then
-      rel="$(basename "${f}")"
-    fi
-    dest_name="${rel//\//_}"
-    dest_path="${dest}/${dest_name}"
-    if [[ -e "${dest_path}" ]]; then
-      dest_path="${dest}/${dest_name}.${RANDOM}"
-    fi
-    cp -a "${f}" "${dest_path}" 2>/dev/null || true
-  done < <(
-    find "${ws}" \
-      \( -path '*/.git/*' -o -path '*/opt/conda/*' -o -path '*/conda_pkgs/*' -o -path "${dest}/*" \) -prune -o \
-      \( -name 'core' -o -name 'core.*' \) -type f -print0 2>/dev/null
-  )
+  # 1) Search for core files in workspace + common system locations.
+  cuopt__collect_core_files "${dest}" \
+    "${ws}" "/tmp" "/var/lib/systemd/coredump" "/var/crash"
+
+  # 2) If core_pattern pipes to a collector, try extracting via coredumpctl / apport.
+  if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE:-0}" == 1 ]]; then
+    cuopt__collect_via_coredumpctl "${dest}"
+    cuopt__collect_from_apport "${dest}"
+  fi
 
   n_after="$(find "${dest}" -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
   if [[ "${n_after}" -gt "${n_before}" ]]; then
-    if declare -F rapids-logger &>/dev/null; then
-      rapids-logger "Wrote $((n_after - n_before)) core file(s) into ${dest} (${n_after} total)"
-    else
-      echo "cuOpt coredumps: ${n_after} file(s) in ${dest}"
+    cuopt__log "Collected $((n_after - n_before)) core file(s) into ${dest} (${n_after} total)"
+    ls -lh "${dest}"/ 2>/dev/null || true
+  else
+    cuopt__log "WARNING: No core files found. Cores may have been discarded by the system collector."
+    cuopt__log "  core_pattern=$(cat /proc/sys/kernel/core_pattern 2>/dev/null || echo n/a)"
+    cuopt__log "  Searched: ${ws} /tmp /var/lib/systemd/coredump /var/crash"
+    if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE:-0}" == 1 ]]; then
+      if command -v coredumpctl &>/dev/null; then
+        cuopt__log "  coredumpctl list output:"
+        coredumpctl list --no-pager 2>/dev/null || true
+      else
+        cuopt__log "  coredumpctl not available; cannot extract from systemd-coredump"
+      fi
     fi
   fi
 }
