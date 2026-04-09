@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -166,30 +166,36 @@ static double get_available_memory_gb()
 void print_version_info()
 {
   int device_id = 0;
-  cudaGetDevice(&device_id);
+  if (cudaGetDevice(&device_id) != cudaSuccess) {
+    CUOPT_LOG_WARN("No CUDA device available, skipping GPU info");
+    return;
+  }
   cudaDeviceProp device_prop;
-  cudaGetDeviceProperties(&device_prop, device_id);
+  if (cudaGetDeviceProperties(&device_prop, device_id) != cudaSuccess) {
+    CUOPT_LOG_WARN("Failed to query CUDA device properties");
+    return;
+  }
   cudaUUID_t uuid   = device_prop.uuid;
   char uuid_str[37] = {0};
   snprintf(uuid_str,
            sizeof(uuid_str),
            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-           uuid.bytes[0],
-           uuid.bytes[1],
-           uuid.bytes[2],
-           uuid.bytes[3],
-           uuid.bytes[4],
-           uuid.bytes[5],
-           uuid.bytes[6],
-           uuid.bytes[7],
-           uuid.bytes[8],
-           uuid.bytes[9],
-           uuid.bytes[10],
-           uuid.bytes[11],
-           uuid.bytes[12],
-           uuid.bytes[13],
-           uuid.bytes[14],
-           uuid.bytes[15]);
+           (unsigned char)uuid.bytes[0],
+           (unsigned char)uuid.bytes[1],
+           (unsigned char)uuid.bytes[2],
+           (unsigned char)uuid.bytes[3],
+           (unsigned char)uuid.bytes[4],
+           (unsigned char)uuid.bytes[5],
+           (unsigned char)uuid.bytes[6],
+           (unsigned char)uuid.bytes[7],
+           (unsigned char)uuid.bytes[8],
+           (unsigned char)uuid.bytes[9],
+           (unsigned char)uuid.bytes[10],
+           (unsigned char)uuid.bytes[11],
+           (unsigned char)uuid.bytes[12],
+           (unsigned char)uuid.bytes[13],
+           (unsigned char)uuid.bytes[14],
+           (unsigned char)uuid.bytes[15]);
   int version = 0;
   cudaRuntimeGetVersion(&version);
   int major = version / 1000;

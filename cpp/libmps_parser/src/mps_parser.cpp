@@ -544,34 +544,29 @@ std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file
 #endif  // MPS_PARSER_WITH_ZLIB
 
   // Faster than using C++ I/O
-  FILE* fp = fopen(file.c_str(), "r");
+  std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "r")};
   mps_parser_expects(fp != nullptr,
                      error_type_t::ValidationError,
                      "Error opening MPS file! Given path: %s",
                      mps_file.c_str());
 
-  mps_parser_expects(fseek(fp, 0L, SEEK_END) == 0,
+  mps_parser_expects(fseek(fp.get(), 0L, SEEK_END) == 0,
                      error_type_t::ValidationError,
                      "File browsing MPS file! Given path: %s",
                      mps_file.c_str());
-  const long bufsize = ftell(fp);
+  const long bufsize = ftell(fp.get());
   mps_parser_expects(bufsize != -1L,
                      error_type_t::ValidationError,
                      "File browsing MPS file! Given path: %s",
                      mps_file.c_str());
   std::vector<char> buf(bufsize + 1);
-  rewind(fp);
+  rewind(fp.get());
 
-  mps_parser_expects(fread(buf.data(), sizeof(char), bufsize, fp) == bufsize,
+  mps_parser_expects(fread(buf.data(), sizeof(char), bufsize, fp.get()) == bufsize,
                      error_type_t::ValidationError,
                      "Error reading MPS file! Given path: %s",
                      mps_file.c_str());
   buf[bufsize] = '\0';
-
-  mps_parser_expects(fclose(fp) == 0,
-                     error_type_t::ValidationError,
-                     "Error closing MPS file! Given path: %s",
-                     mps_file.c_str());
 
   return buf;
 }

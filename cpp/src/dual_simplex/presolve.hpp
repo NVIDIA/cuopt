@@ -75,29 +75,48 @@ struct lp_problem_t {
   {
     FILE* fid = fopen(path.c_str(), "r");
     if (fid) {
-      fread(&num_rows, sizeof(i_t), 1, fid);
-      fread(&num_cols, sizeof(i_t), 1, fid);
-      fread(&obj_constant, sizeof(f_t), 1, fid);
-      fread(&obj_scale, sizeof(f_t), 1, fid);
+      auto check_read = [&](size_t got, size_t expected, const char* field) {
+        if (got != expected) {
+          fclose(fid);
+          throw std::runtime_error(std::string("Failed to read field '") + field +
+                                   "' from file: " + path);
+        }
+      };
+      constexpr i_t max_dim = 100000000;  // 100M upper bound for sanity
+
+      check_read(fread(&num_rows, sizeof(i_t), 1, fid), 1, "num_rows");
+      check_read(fread(&num_cols, sizeof(i_t), 1, fid), 1, "num_cols");
+      if (num_rows <= 0 || num_rows > max_dim || num_cols <= 0 || num_cols > max_dim) {
+        fclose(fid);
+        throw std::runtime_error("Invalid dimensions in file: " + path);
+      }
+      check_read(fread(&obj_constant, sizeof(f_t), 1, fid), 1, "obj_constant");
+      check_read(fread(&obj_scale, sizeof(f_t), 1, fid), 1, "obj_scale");
       i_t is_integral;
-      fread(&is_integral, sizeof(i_t), 1, fid);
+      check_read(fread(&is_integral, sizeof(i_t), 1, fid), 1, "is_integral");
       objective_is_integral = is_integral == 1;
       objective.resize(num_cols);
-      fread(objective.data(), sizeof(f_t), num_cols, fid);
+      check_read(fread(objective.data(), sizeof(f_t), num_cols, fid), num_cols, "objective");
       rhs.resize(num_rows);
-      fread(rhs.data(), sizeof(f_t), num_rows, fid);
+      check_read(fread(rhs.data(), sizeof(f_t), num_rows, fid), num_rows, "rhs");
       lower.resize(num_cols);
-      fread(lower.data(), sizeof(f_t), num_cols, fid);
+      check_read(fread(lower.data(), sizeof(f_t), num_cols, fid), num_cols, "lower");
       upper.resize(num_cols);
-      fread(upper.data(), sizeof(f_t), num_cols, fid);
+      check_read(fread(upper.data(), sizeof(f_t), num_cols, fid), num_cols, "upper");
       A.n = num_cols;
       A.m = num_rows;
       A.col_start.resize(num_cols + 1);
-      fread(A.col_start.data(), sizeof(i_t), num_cols + 1, fid);
-      A.i.resize(A.col_start[num_cols]);
-      fread(A.i.data(), sizeof(i_t), A.i.size(), fid);
-      A.x.resize(A.i.size());
-      fread(A.x.data(), sizeof(f_t), A.x.size(), fid);
+      check_read(
+        fread(A.col_start.data(), sizeof(i_t), num_cols + 1, fid), num_cols + 1, "A.col_start");
+      i_t nnz = A.col_start[num_cols];
+      if (nnz < 0 || nnz > max_dim * 10) {
+        fclose(fid);
+        throw std::runtime_error("Invalid nnz in file: " + path);
+      }
+      A.i.resize(nnz);
+      check_read(fread(A.i.data(), sizeof(i_t), nnz, fid), nnz, "A.i");
+      A.x.resize(nnz);
+      check_read(fread(A.x.data(), sizeof(f_t), nnz, fid), nnz, "A.x");
       fclose(fid);
     }
   }
