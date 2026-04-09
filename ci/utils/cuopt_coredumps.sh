@@ -123,6 +123,61 @@ cuopt__log() {
   fi
 }
 
+# When core_pattern pipes to a handler (apport/systemd-coredump), replace the handler
+# binary with a forwarder script that reads the core from stdin and writes it to disk.
+# The kernel invokes: |/path/to/handler -p%p -s%s ... -- %E
+# Our replacement reads stdin (the raw core) and writes it using the -p (PID) argument.
+cuopt__hijack_pipe_handler() {
+  local pattern="$1" dest="$2"
+  # Extract the handler binary path (first token after the leading '|').
+  local handler
+  handler="$(echo "${pattern}" | sed 's/^|//; s/ .*//')"
+  [[ -n "${handler}" && -f "${handler}" ]] || return 0
+
+  # Back up the original handler (only once).
+  local backup="${handler}.cuopt_orig"
+  if [[ ! -f "${backup}" ]]; then
+    cp -a "${handler}" "${backup}" 2>/dev/null || {
+      cuopt__log "WARNING: cannot back up ${handler} — hijack skipped (read-only?)"
+      return 0
+    }
+  fi
+
+  # Write a forwarder script that saves stdin (core dump) to the artifact dir.
+  # The kernel passes flags like -p PID; we parse -p to name the file.
+  cat > "${handler}" <<'FORWARDER_EOF'
+#!/bin/sh
+# cuOpt core-dump forwarder — replaces apport/systemd-coredump handler.
+# Reads raw core dump from stdin, writes to CUOPT_COREDUMP_DIR.
+PID="unknown"
+EXE="unknown"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p) shift; PID="$1" ;;
+    -p*) PID="${1#-p}" ;;
+    --) shift; EXE="$(echo "$*" | tr '/' '_')" ; break ;;
+  esac
+  shift
+done
+FORWARDER_EOF
+  # Append the dest directory (expanded now, not at runtime).
+  cat >> "${handler}" <<FORWARDER_DEST
+DEST="${dest}"
+FORWARDER_DEST
+  cat >> "${handler}" <<'FORWARDER_BODY'
+mkdir -p "${DEST}" 2>/dev/null
+CORE_FILE="${DEST}/core.${EXE}.${PID}"
+cat > "${CORE_FILE}"
+if [ -s "${CORE_FILE}" ]; then
+  echo "cuopt-forwarder: saved core for PID ${PID} (${EXE}) → ${CORE_FILE}" >&2
+else
+  rm -f "${CORE_FILE}" 2>/dev/null
+fi
+FORWARDER_BODY
+  chmod +x "${handler}" 2>/dev/null || true
+  cuopt__log "Hijacked pipe handler ${handler} → core forwarder (dest=${dest})"
+}
+
 cuopt_enable_coredumps() {
   local ws base pattern
   ws="${GITHUB_WORKSPACE:-${PWD}}"
@@ -164,6 +219,10 @@ cuopt_enable_coredumps() {
   export CUOPT_COREDUMP_PATTERN_IS_PIPE=0
   if [[ "${pattern}" == \|* ]]; then
     CUOPT_COREDUMP_PATTERN_IS_PIPE=1
+    # Attempt to hijack the pipe handler (e.g. apport) with a forwarder that saves cores
+    # as files. The kernel pipes the core dump on stdin to the handler binary; if we replace
+    # it with our own script, the core lands in CUOPT_COREDUMP_DIR.
+    cuopt__hijack_pipe_handler "${pattern}" "${CUOPT_COREDUMP_DIR}"
   fi
 
   local coredump_filter_val="n/a"
@@ -174,11 +233,16 @@ cuopt_enable_coredumps() {
   cuopt__log "Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
 
   if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE}" == 1 ]]; then
-    local _pipe_msg="WARNING: core_pattern pipes to a collector — cores will NOT appear as files. Fallback: coredumpctl (systemd-coredump) or /var/crash (apport) will be checked at collection time."
-    if command -v coredumpctl &>/dev/null; then
-      _pipe_msg+=" coredumpctl is available."
+    local _pipe_msg="core_pattern pipes to a collector."
+    if [[ -f "$(echo "${pattern}" | sed 's/^|//; s/ .*//' ).cuopt_orig" ]]; then
+      _pipe_msg+=" Handler hijacked with core forwarder — cores should land in ${CUOPT_COREDUMP_DIR}."
     else
-      _pipe_msg+=" coredumpctl NOT found; if systemd-coredump is the handler, cores may be lost."
+      _pipe_msg+=" Handler hijack failed. Fallback: coredumpctl / /var/crash at collection time."
+      if command -v coredumpctl &>/dev/null; then
+        _pipe_msg+=" coredumpctl is available."
+      else
+        _pipe_msg+=" coredumpctl NOT found; cores may be lost."
+      fi
     fi
     cuopt__log "${_pipe_msg}"
   fi
