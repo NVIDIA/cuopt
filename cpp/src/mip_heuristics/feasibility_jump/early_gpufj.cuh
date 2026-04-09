@@ -30,6 +30,10 @@ class early_gpufj_t : public early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>
   ~early_gpufj_t();
 
   static constexpr const char* name() { return "GPUFJ"; }
+  static constexpr internals::mip_solution_origin_t origin()
+  {
+    return internals::mip_solution_origin_t::FEASIBILITY_JUMP;
+  }
 
   void start();
   void stop();

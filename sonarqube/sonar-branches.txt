@@ -5,7 +5,7 @@
 
 # Main development branches
 main
-release/26.02
+release/26.04
 
 # Add release branches as needed
 # release/v1.0

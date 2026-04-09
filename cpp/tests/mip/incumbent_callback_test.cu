@@ -191,7 +191,8 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
     << mip_solution_t<int, double>::get_termination_status_string(status);
   EXPECT_TRUE(std::isfinite(solution.get_objective_value()));
 
-  if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings); }
+  ASSERT_FALSE(callback_solutions.empty());
+  check_solutions(get_cb, mps_problem, settings);
 }
 
 }  // namespace cuopt::linear_programming::test

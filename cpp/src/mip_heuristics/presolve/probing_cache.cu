@@ -14,7 +14,10 @@
 
 #include <omp.h>
 #include <thrust/binary_search.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
@@ -367,7 +370,7 @@ void compute_cache_for_var(i_t var_idx,
                            std::atomic<bool>& problem_is_infeasible,
                            std::vector<std::tuple<f_t, i_t, f_t, f_t>>& modification_vector,
                            std::vector<substitution_t<i_t, f_t>>& substitution_vector,
-                           timer_t timer,
+                           const termination_checker_t& timer,
                            i_t device_id)
 {
   RAFT_CUDA_TRY(cudaSetDevice(device_id));
@@ -704,8 +707,11 @@ void apply_substitution_queue_to_problem(
     host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
 
+  // remove duplicate substitution proposals to avoid races later
+  std::unordered_set<i_t> seen_substituted;
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
+      if (!seen_substituted.insert(substitution.substituted_var).second) { continue; }
       CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
                       substitution.substituting_var,
                       substitution.substituted_var);
@@ -843,7 +849,7 @@ std::vector<i_t> compute_priority_indices_by_implied_integers(problem_t<i_t, f_t
 template <typename i_t, typename f_t>
 bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
-                           timer_t timer)
+                           termination_checker_t& timer)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
   // we dont want to compute the probing cache for all variables for time and computation resources
@@ -856,6 +862,12 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // var
   bound_presolve.settings.iteration_limit = 50;
   bound_presolve.settings.time_limit      = timer.remaining_time();
+
+  // TODO: proper work unit accounting in deterministic mode for the probing cache
+  if ((bound_presolve.context.settings.determinism_mode & CUOPT_DETERMINISM_GPU_HEURISTICS)) {
+    bound_presolve.settings.iteration_limit = 1;
+    priority_indices.resize(std::min<size_t>(priority_indices.size(), 2048));
+  }
 
   size_t num_threads = bound_presolve.settings.num_threads < 0
                          ? 0.2 * omp_get_max_threads()
@@ -949,7 +961,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
 #define INSTANTIATE(F_TYPE)                                                                        \
   template bool compute_probing_cache<int, F_TYPE>(bound_presolve_t<int, F_TYPE> & bound_presolve, \
                                                    problem_t<int, F_TYPE> & problem,               \
-                                                   timer_t timer);                                 \
+                                                   termination_checker_t & timer);                 \
   template class probing_cache_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT

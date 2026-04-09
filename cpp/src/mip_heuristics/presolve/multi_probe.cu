@@ -5,10 +5,13 @@
  */
 /* clang-format on */
 
+#include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
+#include <utilities/determinism_log.hpp>
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
 #include <utilities/copy_helpers.hpp>
@@ -18,6 +21,15 @@
 #include "bounds_presolve_helpers.cuh"
 #include "bounds_update_helpers.cuh"
 #include "multi_probe.cuh"
+
+// enable to activate detailed determinism logs
+#if 0
+#undef CUOPT_DETERMINISM_LOG
+#define CUOPT_DETERMINISM_LOG(...) \
+  do {                             \
+    CUOPT_LOG_INFO(__VA_ARGS__);   \
+  } while (0)
+#endif
 
 namespace cuopt::linear_programming::detail {
 
@@ -263,7 +275,7 @@ void multi_probe_t<i_t, f_t>::set_bounds(
 template <typename i_t, typename f_t>
 termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t, f_t>& pb,
                                                                    const raft::handle_t* handle_ptr,
-                                                                   timer_t timer)
+                                                                   termination_checker_t& timer)
 {
   termination_criterion_t criteria = termination_criterion_t::ITERATION_LIMIT;
   skip_0                           = false;
@@ -279,7 +291,13 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     // reset for the next calls on the same object
     init_changed_constraints = true;
   }
+  CUOPT_DETERMINISM_LOG("multi_probe entry: iter_limit=%d timer_rem=%.6f timer_det=%d",
+                        settings.iteration_limit,
+                        timer.remaining_time(),
+                        (int)timer.deterministic);
+  [[maybe_unused]] i_t final_iter = 0;
   for (i_t iter = 0; iter < settings.iteration_limit; ++iter) {
+    final_iter = iter;
     if (timer.check_time_limit()) {
       criteria = termination_criterion_t::TIME_LIMIT;
       break;
@@ -308,6 +326,19 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     calculate_activity(pb, handle_ptr);
     constraint_stats(pb, handle_ptr);
   }
+
+  CUOPT_DETERMINISM_LOG(
+    "multi_probe exit: iters=%d iter_0=%d iter_1=%d criterion=%d "
+    "lb0_hash=0x%x ub0_hash=0x%x lb1_hash=0x%x ub1_hash=0x%x timer_rem=%.6f",
+    final_iter,
+    iter_0,
+    iter_1,
+    (int)criteria,
+    detail::compute_hash(make_span(upd_0.lb), handle_ptr->get_stream()),
+    detail::compute_hash(make_span(upd_0.ub), handle_ptr->get_stream()),
+    detail::compute_hash(make_span(upd_1.lb), handle_ptr->get_stream()),
+    detail::compute_hash(make_span(upd_1.ub), handle_ptr->get_stream()),
+    timer.remaining_time());
 
   return criteria;
 }
@@ -343,6 +374,10 @@ void multi_probe_t<i_t, f_t>::update_host_bounds(
     [] __device__(auto i) { return thrust::make_tuple(get_lower(i), get_upper(i)); });
   raft::copy(host_lb.data(), var_lb.data(), var_lb.size(), handle_ptr->get_stream());
   raft::copy(host_ub.data(), var_ub.data(), var_ub.size(), handle_ptr->get_stream());
+  handle_ptr->sync_stream();
+  CUOPT_DETERMINISM_LOG("update_host_bounds: lb_hash=0x%x ub_hash=0x%x",
+                        detail::compute_hash(make_span(var_lb), handle_ptr->get_stream()),
+                        detail::compute_hash(make_span(var_ub), handle_ptr->get_stream()));
 }
 
 template <typename i_t, typename f_t>
@@ -375,7 +410,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::solve_for_interval(
   const std::tuple<i_t, std::pair<f_t, f_t>, std::pair<f_t, f_t>>& var_interval_vals,
   const raft::handle_t* handle_ptr)
 {
-  timer_t timer(settings.time_limit);
+  termination_checker_t timer(context.gpu_heur_loop, settings.time_limit, *context.termination);
 
   copy_problem_into_probing_buffers(pb, handle_ptr);
   set_interval_bounds(var_interval_vals, pb, handle_ptr);
@@ -389,7 +424,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::solve(
   const std::tuple<std::vector<i_t>, std::vector<f_t>, std::vector<f_t>>& var_probe_vals,
   bool use_host_bounds)
 {
-  timer_t timer(settings.time_limit);
+  termination_checker_t timer(context.gpu_heur_loop, settings.time_limit, *context.termination);
   auto& handle_ptr = pb.handle_ptr;
   if (use_host_bounds) {
     update_device_bounds(handle_ptr);

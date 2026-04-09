@@ -52,7 +52,8 @@ __global__ void load_balancing_mtm_compute_scores(
   const __grid_constant__ typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
 
 template <typename i_t, typename f_t>
-__global__ void init_lhs_and_violation(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
+__global__ void init_lhs_and_violated_constraints(
+  typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
 
 // Update the jump move tables after the best jump value has been computed for a "heavy" variable
 template <typename i_t, typename f_t>

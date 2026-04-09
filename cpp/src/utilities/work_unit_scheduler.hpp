@@ -26,7 +26,7 @@ struct work_limit_context_t;
 
 class work_unit_scheduler_t {
  public:
-  explicit work_unit_scheduler_t(double sync_interval = 5.0);
+  explicit work_unit_scheduler_t(double sync_interval = 5.0, double base = 0.0);
 
   void set_sync_interval(double interval);
   double get_sync_interval() const { return sync_interval_; }
@@ -54,6 +54,7 @@ class work_unit_scheduler_t {
   void wait_at_sync_point(work_limit_context_t& ctx, double sync_target);
 
   double sync_interval_;
+  double base_;
   std::vector<std::reference_wrapper<work_limit_context_t>> contexts_;
 
   size_t barrier_generation_{0};

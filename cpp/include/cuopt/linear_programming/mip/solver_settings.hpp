@@ -107,6 +107,13 @@ class mip_solver_settings_t {
   i_t strong_branching_simplex_iteration_limit = -1;
   i_t num_gpus                                 = 1;
   bool log_to_console                          = true;
+  // User-facing multipliers on top of internal baseline work-unit scales.
+  // 1.0 = use internally calibrated default. Values > 1 make that component appear to do more work.
+  f_t cpufj_work_unit_scale    = 1.0;
+  f_t gpu_heur_work_unit_scale = 1.0;
+  f_t bb_work_unit_scale       = 1.0;
+  // When true, GPU heuristics wait for B&B to finish root solve before starting.
+  bool gpu_heur_wait_for_exploration = false;
 
   std::string log_file;
   std::string sol_file;
@@ -118,15 +125,15 @@ class mip_solver_settings_t {
   int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
   /**
-   * @brief Determinism mode for MIP solver.
+   * @brief Determinism mode for MIP solver (bitset).
    *
-   * Controls the determinism behavior of the MIP solver:
-   * - CUOPT_MODE_OPPORTUNISTIC (0): Default mode, allows non-deterministic
-   *   parallelism for better performance
-   * - CUOPT_MODE_DETERMINISTIC (1): Ensures deterministic results across runs
-   *   at potential cost of performance
+   * Bitwise OR of CUOPT_DETERMINISM_* flags:
+   * - CUOPT_DETERMINISM_NONE (0x0): Opportunistic, non-deterministic.
+   * - CUOPT_DETERMINISM_BB (0x1): Deterministic B&B tree exploration.
+   * - CUOPT_DETERMINISM_GPU_HEURISTICS (0x2): Deterministic GPU heuristic pipeline.
+   * - CUOPT_DETERMINISM_FULL (0x3): Both B&B and GPU heuristics deterministic.
    */
-  int determinism_mode = CUOPT_MODE_OPPORTUNISTIC;
+  int determinism_mode = CUOPT_DETERMINISM_NONE;
   /**
    * @brief Random seed for the MIP solver.
    *

@@ -5,16 +5,16 @@
  */
 /* clang-format on */
 
+#pragma once
+
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 
-#include <mip_heuristics/problem/problem.cuh>
-#include <mip_heuristics/relaxed_lp/lp_state.cuh>
+#include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/solution_callbacks.cuh>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
-#include <limits>
-
-#pragma once
+#include <utilities/termination_checker.hpp>
 
 // Forward declare
 namespace cuopt::linear_programming::dual_simplex {
@@ -37,12 +37,20 @@ struct mip_solver_context_t {
   explicit mip_solver_context_t(raft::handle_t const* handle_ptr_,
                                 problem_t<i_t, f_t>* problem_ptr_,
                                 mip_solver_settings_t<i_t, f_t> settings_)
-    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_)
+    : handle_ptr(handle_ptr_),
+      problem_ptr(problem_ptr_),
+      settings(settings_),
+      solution_publication(settings, stats),
+      solution_injection(settings, stats)
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
                                                    : -std::numeric_limits<f_t>::infinity());
-    gpu_heur_loop.deterministic = settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
+    gpu_heur_loop.deterministic = (settings.determinism_mode & CUOPT_DETERMINISM_GPU_HEURISTICS);
+    cuopt_assert(settings.cpufj_work_unit_scale > 0.0, "CPUFJ work-unit scale must be positive");
+    cuopt_assert(settings.gpu_heur_work_unit_scale > 0.0,
+                 "GPU heuristic work-unit scale must be positive");
+    gpu_heur_loop.work_unit_scale = GPU_HEUR_BASE_WORK_SCALE * settings.gpu_heur_work_unit_scale;
   }
 
   mip_solver_context_t(const mip_solver_context_t&)            = delete;
@@ -58,8 +66,13 @@ struct mip_solver_context_t {
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)
   work_limit_context_t gpu_heur_loop{"GPUHeur"};
+  solution_publication_t<i_t, f_t> solution_publication;
+  solution_injection_t<i_t, f_t> solution_injection;
 
-  // synchronization every 5 seconds for deterministic mode
+  // Root termination checker — set by mip_solver_t after construction.
+  // All sub-timers should use this as parent for wall-clock safety.
+  cuopt::termination_checker_t* termination{nullptr};
+
   work_unit_scheduler_t work_unit_scheduler_{5.0};
 
   early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};

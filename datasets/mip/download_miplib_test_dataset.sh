@@ -25,6 +25,7 @@ INSTANCES=(
     "enlight_hard"
     "enlight11"
     "supportcase22"
+    "supportcase42"
     "pk1"
 )
 

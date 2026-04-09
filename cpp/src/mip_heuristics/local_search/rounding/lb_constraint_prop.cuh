@@ -23,7 +23,7 @@ struct lb_constraint_prop_t {
   bool apply_round(
     solution_t<i_t, f_t>& sol,
     f_t lp_run_time_after_feasible,
-    timer_t& timer,
+    termination_checker_t& timer,
     std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates = std::nullopt);
   void sort_by_implied_slack_consumption(
     problem_t<i_t, f_t>& original_problem,
@@ -40,7 +40,7 @@ struct lb_constraint_prop_t {
                     load_balanced_bounds_presolve_t<i_t, f_t>& lb_bounds_update,
                     solution_t<i_t, f_t>& orig_sol,
                     f_t lp_run_time_after_feasible,
-                    timer_t& timer,
+                    termination_checker_t& timer,
                     std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates);
   std::tuple<f_t, f_t, f_t> probing_values(
     load_balanced_bounds_presolve_t<i_t, f_t>& lb_bounds_update,
@@ -83,7 +83,7 @@ struct lb_constraint_prop_t {
   bool run_repair_procedure(load_balanced_problem_t<i_t, f_t>* problem,
                             load_balanced_bounds_presolve_t<i_t, f_t>& lb_bounds_update,
                             problem_t<i_t, f_t>& original_problem,
-                            timer_t& timer,
+                            termination_checker_t& timer,
                             const raft::handle_t* handle_ptr);
 
   mip_solver_context_t<i_t, f_t>& context;
@@ -100,7 +100,7 @@ struct lb_constraint_prop_t {
   bool rounding_ii         = false;
   i_t bounds_prop_interval = 1;
   i_t n_iter_in_recovery   = 0;
-  timer_t max_timer{0.};
+  termination_checker_t max_timer;
   bool use_probing_cache = true;
 
   size_t repair_attempts                           = 0;

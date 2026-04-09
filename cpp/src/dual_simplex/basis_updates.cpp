@@ -2202,7 +2202,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
 
   // Ensure the workspace is sorted. Otherwise, the sparse dot will be incorrect.
   std::sort(xi_workspace_.begin() + m, xi_workspace_.begin() + m + nz, std::less<i_t>());
-  work_estimate_ += (m + nz) * std::log2(m + nz);
+  if (nz > 1) { work_estimate_ += (nz)*std::log2((f_t)(nz)); }
 
   // Gather the workspace into a column of S
   i_t S_start;
@@ -2214,7 +2214,7 @@ i_t basis_update_mpf_t<i_t, f_t>::update(const sparse_vector_t<i_t, f_t>& utilde
 
   // Gather etilde into a column of S
   etilde.sort();  // Needs to be sorted for the sparse dot. TODO(CMM): Is etilde sorted on input?
-  work_estimate_ += etilde.i.size() * std::log2(etilde.i.size());
+  if (etilde.i.size() > 1) { work_estimate_ += etilde.i.size() * std::log2((f_t)etilde.i.size()); }
   S_.append_column(etilde);
   work_estimate_ += 4 * etilde.i.size();
 

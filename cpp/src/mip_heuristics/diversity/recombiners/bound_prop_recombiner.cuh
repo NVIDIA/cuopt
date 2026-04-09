@@ -29,6 +29,7 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       rng(cuopt::seed_generator::get_seed()),
       vars_to_fix(n_vars, handle_ptr->get_stream())
   {
+    thrust::fill(handle_ptr->get_thrust_policy(), vars_to_fix.begin(), vars_to_fix.end(), -1);
   }
 
   void get_probing_values_for_infeasible(
@@ -131,9 +132,9 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       });
   }
 
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
-                                                  solution_t<i_t, f_t>& b,
-                                                  const weight_t<i_t, f_t>& weights)
+  std::tuple<solution_t<i_t, f_t>, bool, double> recombine(solution_t<i_t, f_t>& a,
+                                                           solution_t<i_t, f_t>& b,
+                                                           const weight_t<i_t, f_t>& weights)
   {
     raft::common::nvtx::range fun_scope("bound_prop_recombiner");
     auto& guiding_solution = a.get_feasible() ? a : b;
@@ -148,10 +149,11 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_other  = n_different_vars;
     i_t fixed_from_guiding = 0;
     i_t fixed_from_other   = 0;
+    i_t seed               = cuopt::seed_generator::get_seed();
     if (n_different_vars > (i_t)bp_recombiner_config_t::max_n_of_vars_from_other) {
       fixed_from_guiding = n_vars_from_other - bp_recombiner_config_t::max_n_of_vars_from_other;
       n_vars_from_other  = bp_recombiner_config_t::max_n_of_vars_from_other;
-      thrust::default_random_engine g{(unsigned int)cuopt::seed_generator::get_seed()};
+      thrust::default_random_engine g{(unsigned int)seed};
       thrust::shuffle(a.handle_ptr->get_thrust_policy(),
                       this->remaining_indices.data(),
                       this->remaining_indices.data() + n_different_vars,
@@ -160,12 +162,35 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
     i_t n_vars_from_guiding = a.problem_ptr->n_integer_vars - n_vars_from_other;
     CUOPT_LOG_DEBUG(
       "n_vars_from_guiding %d n_vars_from_other %d", n_vars_from_guiding, n_vars_from_other);
+
+    CUOPT_DETERMINISM_LOG("BP_DET: sol_a_hash=0x%x sol_b_hash=0x%x offspring_hash=0x%x, seed %x",
+                          a.get_hash(),
+                          b.get_hash(),
+                          offspring.get_hash(),
+                          seed);
+    CUOPT_DETERMINISM_LOG("BP_DET: n_different_vars=%d n_vars_from_other=%d n_vars_from_guiding=%d",
+                          n_different_vars,
+                          n_vars_from_other,
+                          n_vars_from_guiding);
+    CUOPT_DETERMINISM_LOG(
+      "BP_DET: remaining_indices_hash=0x%x (first %d elements)",
+      detail::compute_hash(make_span(this->remaining_indices), a.handle_ptr->get_stream()),
+      std::min((i_t)10, n_vars_from_other));
+    CUOPT_DETERMINISM_LOG("BP_DET: guiding_feasible=%d other_feasible=%d expensive_to_fix=%d",
+                          guiding_solution.get_feasible(),
+                          other_solution.get_feasible(),
+                          a.problem_ptr->expensive_to_fix_vars);
+    CUOPT_DETERMINISM_LOG(
+      "BP_DET: fixed_from_guiding=%d fixed_from_other=%d", fixed_from_guiding, fixed_from_other);
+
     // if either all integers are from A(meaning all are common) or all integers are from B(meaning
     // all are different), return
     if (n_vars_from_guiding == 0 || n_vars_from_other == 0) {
       CUOPT_LOG_DEBUG("Returning false because all vars are common or different");
-      return std::make_pair(offspring, false);
+      return std::make_tuple(offspring, false, 0.0);
     }
+    // TODO: REPLACE!
+    double work = static_cast<double>(n_vars_from_other) / 1e8;
 
     cuopt_assert(a.problem_ptr == b.problem_ptr,
                  "The two solutions should not refer to different problems");
@@ -175,9 +200,16 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
                                                                a.handle_ptr->get_stream());
     probing_config_t<i_t, f_t> probing_config(a.problem_ptr->n_variables, a.handle_ptr);
     if (guiding_solution.get_feasible() && !a.problem_ptr->expensive_to_fix_vars) {
+      CUOPT_DETERMINISM_LOG("BP_DET: Taking FEASIBLE path (with variable fixing)");
       this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
+      CUOPT_DETERMINISM_LOG("BP_DET: vars_to_fix_size=%lu", vars_to_fix.size());
       auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
-      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      CUOPT_DETERMINISM_LOG("BP_DET: fixed_problem_fingerprint=0x%x variable_map_size=%lu",
+                            fixed_problem.get_fingerprint(),
+                            variable_map.size());
+      termination_checker_t timer(this->context.gpu_heur_loop,
+                                  bp_recombiner_config_t::bounds_prop_time_limit,
+                                  *this->context.termination);
       rmm::device_uvector<f_t> old_assignment(offspring.assignment,
                                               offspring.handle_ptr->get_stream());
       offspring.handle_ptr->sync_stream();
@@ -197,26 +229,44 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
       constraint_prop.single_rounding_only  = true;
       constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
       constraint_prop.single_rounding_only = false;
-      cuopt_func_call(bool feasible_after_bounds_prop = offspring.get_feasible());
+      offspring.compute_feasibility();
+      bool feasible_after_bounds_prop = offspring.get_feasible();
       offspring.handle_ptr->sync_stream();
       offspring.problem_ptr = a.problem_ptr;
       fixed_assignment      = std::move(offspring.assignment);
       offspring.assignment  = std::move(old_assignment);
       offspring.handle_ptr->sync_stream();
       offspring.unfix_variables(fixed_assignment, variable_map);
-      cuopt_func_call(bool feasible_after_unfix = offspring.get_feasible());
-      // May be triggered due to numerical issues
-      // TODO: investigate further
-      // cuopt_assert(feasible_after_unfix == feasible_after_bounds_prop,
-      //              "Feasible after unfix should be same as feasible after bounds prop!");
+      offspring.compute_feasibility();
+      bool feasible_after_unfix = offspring.get_feasible();
+      cuopt_func_call(f_t excess_after_unfix = offspring.get_total_excess());
+      if (feasible_after_unfix != feasible_after_bounds_prop) {
+        CUOPT_LOG_WARN("Numerical issue in bounds prop, infeasibility after unfix");
+        // might become infeasible after unfixing due to numerical issues. Check that the excess
+        // remains consistent
+        // CUOPT_LOG_ERROR("Excess: %g, %g, %g, %g, feas %d", offspring.get_total_excess(),
+        // offspring.compute_max_constraint_violation(), offspring.compute_max_int_violation(),
+        // offspring.compute_max_variable_violation(), feasible_after_unfix);
+        // cuopt_assert(fabs(excess_after_unfix - excess_before) < 1e-6,
+        //              "Excess after unfix should be same as before unfix!");
+      }
       a.handle_ptr->sync_stream();
     } else {
-      timer_t timer(bp_recombiner_config_t::bounds_prop_time_limit);
+      CUOPT_DETERMINISM_LOG("BP_DET: Taking INFEASIBLE path (no variable fixing)");
+      termination_checker_t timer(this->context.gpu_heur_loop,
+                                  bp_recombiner_config_t::bounds_prop_time_limit,
+                                  *this->context.termination);
       get_probing_values_for_infeasible(
         guiding_solution, other_solution, offspring, probing_values, n_vars_from_other);
       probing_config.probing_values = host_copy(probing_values, offspring.handle_ptr->get_stream());
+      CUOPT_DETERMINISM_LOG(
+        "BP_DET: probing_values_hash=0x%x",
+        detail::compute_hash(make_span(probing_values), a.handle_ptr->get_stream()));
       constraint_prop.apply_round(offspring, lp_run_time_after_feasible, timer, probing_config);
     }
+    CUOPT_DETERMINISM_LOG("BP_DET: After apply_round: offspring_hash=0x%x feasible=%d",
+                          offspring.get_hash(),
+                          offspring.get_feasible());
     constraint_prop.max_n_failed_repair_iterations = 1;
     cuopt_func_call(offspring.test_number_all_integer());
     bool better_cost_than_parents =
@@ -236,11 +286,17 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
         bp_recombiner_config_t::decrease_max_n_of_vars_from_other();
       }
     }
+    CUOPT_DETERMINISM_LOG(
+      "BP_DET: Final offspring_hash=0x%x same_as_parents=%d better_cost=%d better_feas=%d",
+      offspring.get_hash(),
+      same_as_parents,
+      better_cost_than_parents,
+      better_feasibility_than_parents);
     if (better_cost_than_parents || better_feasibility_than_parents) {
       CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
-      return std::make_pair(offspring, true);
+      return std::make_tuple(offspring, true, work);
     }
-    return std::make_pair(offspring, !same_as_parents);
+    return std::make_tuple(offspring, !same_as_parents, work);
   }
 
   rmm::device_uvector<i_t> vars_to_fix;

@@ -8,14 +8,26 @@
 #include "diversity_manager.cuh"
 #include "population.cuh"
 
+#include <branch_and_bound/branch_and_bound.hpp>
+
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/determinism_log.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <mutex>
+
+// enable to activate detailed determinism logs
+#if 0
+#undef CUOPT_DETERMINISM_LOG
+#define CUOPT_DETERMINISM_LOG(...) \
+  do {                             \
+    CUOPT_LOG_INFO(__VA_ARGS__);   \
+  } while (0)
+#endif
 
 namespace cuopt::linear_programming::detail {
 
@@ -44,7 +56,7 @@ population_t<i_t, f_t>::population_t(std::string const& name_,
     rng(cuopt::seed_generator::get_seed()),
     early_exit_primal_generation(false),
     population_hash_map(*problem_ptr),
-    timer(0)
+    timer(0.0, cuopt::termination_checker_t::root_tag_t{})
 {
   best_feasible_objective = std::numeric_limits<f_t>::max();
 }
@@ -125,11 +137,12 @@ std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> population_t<i_t, f_t>::ge
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::add_solutions_from_vec(std::vector<solution_t<i_t, f_t>>&& solutions)
+void population_t<i_t, f_t>::add_solutions_from_vec(
+  std::vector<solution_t<i_t, f_t>>&& solutions, internals::mip_solution_origin_t callback_origin)
 {
   raft::common::nvtx::range fun_scope("add_solution_from_vec");
   for (auto&& sol : solutions) {
-    add_solution(std::move(sol));
+    add_solution(std::move(sol), callback_origin);
   }
 }
 
@@ -143,11 +156,11 @@ size_t population_t<i_t, f_t>::get_external_solution_size()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solution,
                                                    f_t objective,
-                                                   solution_origin_t origin)
+                                                   internals::mip_solution_origin_t origin)
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
 
-  if (origin == solution_origin_t::CPUFJ) {
+  if (origin == internals::mip_solution_origin_t::CPU_FEASIBILITY_JUMP) {
     external_solution_queue_cpufj.emplace_back(solution, objective, origin);
   } else {
     external_solution_queue.emplace_back(solution, objective, origin);
@@ -165,7 +178,7 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
   }
 
   CUOPT_LOG_DEBUG("%s added a solution to population, solution queue size %lu with objective %g",
-                  solution_origin_to_string(origin),
+                  internals::mip_solution_origin_to_string(origin),
                   external_solution_queue.size(),
                   problem_ptr->get_user_obj_from_solver_obj(objective));
   if (objective < best_feasible_objective) {
@@ -179,9 +192,17 @@ void population_t<i_t, f_t>::add_external_solution(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::add_external_solutions_to_population()
 {
+  const bool deterministic_bb = (context.settings.determinism_mode & CUOPT_DETERMINISM_BB) &&
+                                context.branch_and_bound_ptr != nullptr;
+  // Keep producer-only behavior only when deterministic B&B is draining the queue instead.
+  if ((context.settings.determinism_mode & CUOPT_DETERMINISM_GPU_HEURISTICS) && deterministic_bb) {
+    return;
+  }
   // don't do early exit checks here. mutex needs to be acquired to prevent race conditions
   auto new_sol_vector = get_external_solutions();
-  add_solutions_from_vec(std::move(new_sol_vector));
+  for (auto& drained_sol : new_sol_vector) {
+    add_solution(std::move(drained_sol.solution), drained_sol.origin);
+  }
 }
 
 // normally we would need a lock here but these are boolean types and race conditions are not
@@ -194,10 +215,11 @@ void population_t<i_t, f_t>::preempt_heuristic_solver()
 }
 
 template <typename i_t, typename f_t>
-std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions()
+std::vector<typename population_t<i_t, f_t>::drained_external_solution_t>
+population_t<i_t, f_t>::get_external_solutions()
 {
   std::lock_guard<std::mutex> lock(solution_mutex);
-  std::vector<solution_t<i_t, f_t>> return_vector;
+  std::vector<drained_external_solution_t> return_vector;
   i_t counter                     = 0;
   f_t new_best_feasible_objective = best_feasible_objective;
   f_t longest_wait_time           = 0;
@@ -205,11 +227,11 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
     for (auto& h_entry : queue) {
       // ignore CPUFJ solutions if they're not better than the best feasible.
       // It seems they worsen results on some instances despite the potential for improved diversity
-      if (h_entry.origin == solution_origin_t::CPUFJ &&
+      if (h_entry.origin == internals::mip_solution_origin_t::CPU_FEASIBILITY_JUMP &&
           h_entry.objective > new_best_feasible_objective) {
         continue;
-      } else if (h_entry.origin != solution_origin_t::CPUFJ &&
-                 h_entry.objective > new_best_feasible_objective) {
+      } else if (h_entry.origin != internals::mip_solution_origin_t::CPU_FEASIBILITY_JUMP &&
+                 h_entry.objective < new_best_feasible_objective) {
         new_best_feasible_objective = h_entry.objective;
       }
 
@@ -233,7 +255,7 @@ std::vector<solution_t<i_t, f_t>> population_t<i_t, f_t>::get_external_solutions
           problem_ptr->n_integer_vars);
       }
       sol.handle_ptr->sync_stream();
-      return_vector.emplace_back(std::move(sol));
+      return_vector.emplace_back(std::move(sol), h_entry.origin);
       counter++;
     }
   }
@@ -258,114 +280,53 @@ bool population_t<i_t, f_t>::is_better_than_best_feasible(solution_t<i_t, f_t>& 
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::invoke_get_solution_callback(
-  solution_t<i_t, f_t>& sol, internals::get_solution_callback_t* callback)
+void population_t<i_t, f_t>::run_solution_callbacks(
+  solution_t<i_t, f_t>& sol, internals::mip_solution_origin_t callback_origin)
 {
-  f_t user_objective = sol.get_user_objective();
-  f_t user_bound     = context.stats.get_solution_bound();
-  solution_t<i_t, f_t> temp_sol(sol);
-  problem_ptr->post_process_assignment(temp_sol.assignment);
-  if (problem_ptr->has_papilo_presolve_data()) {
-    problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
-  }
+  if (is_better_than_best_feasible(sol)) {
+    const bool deterministic_bb = (context.settings.determinism_mode & CUOPT_DETERMINISM_BB) &&
+                                  context.branch_and_bound_ptr != nullptr;
 
-  std::vector<f_t> user_objective_vec(1);
-  std::vector<f_t> user_bound_vec(1);
-  std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
-  user_objective_vec[0] = user_objective;
-  user_bound_vec[0]     = user_bound;
-  raft::copy(user_assignment_vec.data(),
-             temp_sol.assignment.data(),
-             temp_sol.assignment.size(),
-             temp_sol.handle_ptr->get_stream());
-  temp_sol.handle_ptr->sync_stream();
-  callback->get_solution(user_assignment_vec.data(),
-                         user_objective_vec.data(),
-                         user_bound_vec.data(),
-                         callback->get_user_data());
-}
-
-template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
-{
-  bool better_solution_found = is_better_than_best_feasible(sol);
-  auto user_callbacks        = context.settings.get_mip_callbacks();
-  if (better_solution_found) {
-    if (context.settings.benchmark_info_ptr != nullptr) {
-      context.settings.benchmark_info_ptr->last_improvement_of_best_feasible = timer.elapsed_time();
-    }
-    CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
-    if (problem_ptr->branch_and_bound_callback != nullptr) {
-      problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
-    }
-    for (auto callback : user_callbacks) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        invoke_get_solution_callback(sol, get_sol_callback);
+    if (deterministic_bb) {
+      const double work_timestamp = context.gpu_heur_loop.current_producer_work();
+      cuopt_assert(std::isfinite(work_timestamp),
+                   "Deterministic heuristic work timestamp must be finite");
+      context.branch_and_bound_ptr->queue_external_solution_deterministic(
+        sol.get_host_assignment(), sol.get_user_objective(), work_timestamp, callback_origin);
+    } else {
+      if (context.branch_and_bound_ptr != nullptr &&
+          context.problem_ptr->branch_and_bound_callback != nullptr) {
+        context.problem_ptr->branch_and_bound_callback(sol.get_host_assignment(), callback_origin);
       }
+
+      const double work_timestamp = context.gpu_heur_loop.current_work();
+      const auto payload          = context.solution_publication.build_callback_payload(
+        context.problem_ptr, sol, callback_origin, work_timestamp);
+      context.solution_publication.publish_new_best_feasible(payload, timer.elapsed_time());
     }
     // Save the best objective here even if callback handling later exits early.
     // This prevents older solutions from being reported as "new best" in subsequent callbacks.
     best_feasible_objective = sol.get_objective();
   }
 
-  for (auto callback : user_callbacks) {
-    if (callback->get_type() == internals::base_solution_callback_type::SET_SOLUTION) {
-      auto set_sol_callback       = static_cast<internals::set_solution_callback_t*>(callback);
-      f_t user_bound              = context.stats.get_solution_bound();
-      auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
-      rmm::device_uvector<f_t> incumbent_assignment(callback_num_variables,
-                                                    sol.handle_ptr->get_stream());
-      solution_t<i_t, f_t> outside_sol(sol);
-      rmm::device_scalar<f_t> d_outside_sol_objective(sol.handle_ptr->get_stream());
-      auto inf = std::numeric_limits<f_t>::infinity();
-      d_outside_sol_objective.set_value_async(inf, sol.handle_ptr->get_stream());
-      sol.handle_ptr->sync_stream();
-      std::vector<f_t> h_incumbent_assignment(incumbent_assignment.size());
-      std::vector<f_t> h_outside_sol_objective(1, inf);
-      std::vector<f_t> h_user_bound(1, user_bound);
-      set_sol_callback->set_solution(h_incumbent_assignment.data(),
-                                     h_outside_sol_objective.data(),
-                                     h_user_bound.data(),
-                                     set_sol_callback->get_user_data());
-      f_t outside_sol_objective = h_outside_sol_objective[0];
-      // The callback might be called without setting any valid solution or objective which triggers
-      // asserts
-      if (outside_sol_objective == inf) { return; }
-      d_outside_sol_objective.set_value_async(outside_sol_objective, sol.handle_ptr->get_stream());
-      raft::copy(incumbent_assignment.data(),
-                 h_incumbent_assignment.data(),
-                 incumbent_assignment.size(),
-                 sol.handle_ptr->get_stream());
-
-      bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
-      if (!is_valid) { return; }
-      cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),
-                   "Incumbent assignment size mismatch");
-      raft::copy(outside_sol.assignment.data(),
-                 incumbent_assignment.data(),
-                 incumbent_assignment.size(),
-                 sol.handle_ptr->get_stream());
-      outside_sol.compute_feasibility();
-
-      CUOPT_LOG_DEBUG("Injected solution feasibility =  %d objective = %g excess = %g",
-                      outside_sol.get_feasible(),
-                      outside_sol.get_user_objective(),
-                      outside_sol.get_total_excess());
-      if (std::abs(outside_sol.get_user_objective() - outside_sol_objective) > 1e-6) {
-        cuopt_func_call(
-          CUOPT_LOG_DEBUG("External solution objective mismatch: outside_sol.get_user_objective() "
-                          "= %g, outside_sol_objective = %g",
-                          outside_sol.get_user_objective(),
-                          outside_sol_objective));
+  context.solution_injection.invoke_set_solution_callbacks(
+    problem_ptr,
+    sol,
+    [this](
+      const std::vector<f_t>& assignment, f_t objective, internals::mip_solution_origin_t origin) {
+      const bool deterministic_bb = (context.settings.determinism_mode & CUOPT_DETERMINISM_BB) &&
+                                    context.branch_and_bound_ptr != nullptr;
+      if (deterministic_bb) {
+        const double work_timestamp = context.gpu_heur_loop.current_producer_work();
+        context.branch_and_bound_ptr->queue_external_solution_deterministic(
+          assignment,
+          context.problem_ptr->get_user_obj_from_solver_obj(objective),
+          work_timestamp,
+          origin);
+      } else {
+        add_external_solution(assignment, objective, origin);
       }
-      cuopt_assert(std::abs(outside_sol.get_user_objective() - outside_sol_objective) <= 1e-6,
-                   "External solution objective mismatch");
-      auto h_outside_sol = outside_sol.get_host_assignment();
-      add_external_solution(
-        h_outside_sol, outside_sol.get_objective(), solution_origin_t::EXTERNAL);
-    }
-  }
+    });
 }
 
 template <typename i_t, typename f_t>
@@ -401,7 +362,8 @@ void population_t<i_t, f_t>::adjust_weights_according_to_best_feasible()
 }
 
 template <typename i_t, typename f_t>
-std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&& sol)
+std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(
+  solution_t<i_t, f_t>&& sol, internals::mip_solution_origin_t callback_origin)
 {
   std::lock_guard<std::recursive_mutex> lock(write_mutex);
   raft::common::nvtx::range fun_scope("add_solution");
@@ -411,16 +373,18 @@ std::pair<i_t, bool> population_t<i_t, f_t>::add_solution(solution_t<i_t, f_t>&&
   // for hash computation, quality calculation, and similarity comparisons.
   sol.handle_ptr->sync_stream();
   population_hash_map.insert(sol);
-  double sol_cost   = sol.get_quality(weights);
-  bool best_updated = false;
-  CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d!",
+  double sol_cost               = sol.get_quality(weights);
+  bool best_updated             = false;
+  const uint32_t candidate_hash = sol.get_hash();
+  CUOPT_LOG_DEBUG("Adding solution with quality %f and objective %f n_integers %d, hash %x!",
                   sol_cost,
                   sol.get_user_objective(),
-                  sol.n_assigned_integers);
+                  sol.n_assigned_integers,
+                  candidate_hash);
   // We store the best feasible found so far at index 0.
   if (sol.get_feasible() &&
       (solutions[0].first == false || sol_cost + OBJECTIVE_EPSILON < indices[0].second)) {
-    run_solution_callbacks(sol);
+    run_solution_callbacks(sol, callback_origin);
     solutions[0].first = true;
     // we only have move assignment operator
     solution_t<i_t, f_t> temp_sol(sol);
@@ -706,7 +670,7 @@ void population_t<i_t, f_t>::halve_the_population()
     clear_except_best_feasible();
     var_threshold = std::max(var_threshold * 0.97, 0.5 * problem_ptr->n_integer_vars);
     for (auto& sol : sol_vec) {
-      add_solution(solution_t<i_t, f_t>(sol));
+      add_solution(solution_t<i_t, f_t>(sol), internals::mip_solution_origin_t::LOCAL_SEARCH);
     }
     if (counter++ > max_adjustments) break;
   }
@@ -718,7 +682,7 @@ void population_t<i_t, f_t>::halve_the_population()
       max_var_threshold,
       std::min((size_t)(var_threshold * 1.02), (size_t)(0.995 * problem_ptr->n_integer_vars)));
     for (auto& sol : sol_vec) {
-      add_solution(solution_t<i_t, f_t>(sol));
+      add_solution(solution_t<i_t, f_t>(sol), internals::mip_solution_origin_t::LOCAL_SEARCH);
     }
     if (counter++ > max_adjustments) break;
   }
@@ -744,7 +708,7 @@ void population_t<i_t, f_t>::start_threshold_adjustment()
 }
 
 template <typename i_t, typename f_t>
-void population_t<i_t, f_t>::adjust_threshold(cuopt::timer_t timer)
+void population_t<i_t, f_t>::adjust_threshold(cuopt::termination_checker_t& timer)
 {
   double time_ratio = (timer.elapsed_time() - population_start_time) /
                       (timer.get_time_limit() - population_start_time);
@@ -833,23 +797,29 @@ bool population_t<i_t, f_t>::test_invariant()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::print()
 {
+  std::vector<uint32_t> hashes;
+  for (auto& index : indices)
+    hashes.push_back(solutions[index.first].second.get_hash());
+  uint32_t final_hash = compute_hash(hashes);
   CUOPT_LOG_DEBUG(" -------------- ");
-  CUOPT_LOG_DEBUG("%s infeas weight %f threshold %d/%d:",
+  CUOPT_LOG_DEBUG("%s infeas weight %f threshold %d/%d (hash %x):",
                   name.c_str(),
                   infeasibility_importance,
                   var_threshold,
-                  problem_ptr->n_integer_vars);
+                  problem_ptr->n_integer_vars,
+                  final_hash);
   i_t i = 0;
   for (auto& index : indices) {
     if (index.first == 0 && solutions[0].first) {
       CUOPT_LOG_DEBUG(" Best feasible: %f", solutions[index.first].second.get_user_objective());
     }
-    CUOPT_LOG_DEBUG("%d :  %f\t%f\t%f\t%d",
+    CUOPT_LOG_DEBUG("%d :  %f\t%f\t%f\t%d (hash %x)",
                     i,
                     index.second,
                     solutions[index.first].second.get_total_excess(),
                     solutions[index.first].second.get_user_objective(),
-                    solutions[index.first].second.get_feasible());
+                    solutions[index.first].second.get_feasible(),
+                    solutions[index.first].second.get_hash());
     i++;
   }
   CUOPT_LOG_DEBUG(" -------------- ");
@@ -858,8 +828,8 @@ void population_t<i_t, f_t>::print()
 template <typename i_t, typename f_t>
 void population_t<i_t, f_t>::run_all_recombiners(solution_t<i_t, f_t>& sol)
 {
-  std::vector<solution_t<i_t, f_t>> sol_vec;
-  sol_vec.emplace_back(std::move(solution_t<i_t, f_t>(sol)));
+  std::vector<typename population_t<i_t, f_t>::drained_external_solution_t> sol_vec;
+  sol_vec.emplace_back(solution_t<i_t, f_t>(sol), internals::mip_solution_origin_t::LOCAL_SEARCH);
   dm.recombine_and_ls_with_all(sol_vec, true);
 }
 

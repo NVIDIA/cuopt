@@ -131,7 +131,7 @@ __global__ void brute_force_check_kernel(typename solution_t<i_t, f_t>::view_t s
   __shared__ i_t shbuf[raft::WarpSize];
   i_t total_feasible = raft::blockReduce(th_feasible_count, (char*)shbuf);
   if (threadIdx.x == 0) {
-    if (total_feasible == solution.problem.n_constraints) { atomicExch(best_config, config); }
+    if (total_feasible == solution.problem.n_constraints) { atomicMin(best_config, config); }
   }
 }
 

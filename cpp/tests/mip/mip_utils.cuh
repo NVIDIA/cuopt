@@ -8,9 +8,14 @@
 #include <algorithm>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
+#include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/solution/solution.cuh>
+#include <mip_heuristics/solver.cuh>
 #include <mps_parser/parser.hpp>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/timer.hpp>
 
 namespace cuopt::linear_programming::test {
 
@@ -178,6 +183,56 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   return std::make_tuple(solution.get_termination_status(),
                          solution.get_objective_value(),
                          solution.get_solution_bound());
+}
+
+struct fj_tweaks_t {
+  double objective_weight = 0;
+};
+
+struct fj_state_t {
+  detail::solution_t<int, double> solution;
+  std::vector<double> solution_vector;
+  int minimums;
+  double incumbent_objective;
+  double incumbent_violation;
+};
+
+static fj_state_t run_fj(detail::problem_t<int, double>& problem,
+                         const detail::fj_settings_t& fj_settings,
+                         fj_tweaks_t tweaks                   = {},
+                         std::vector<double> initial_solution = {},
+                         int determinism_mode                 = CUOPT_MODE_OPPORTUNISTIC)
+{
+  auto settings             = mip_solver_settings_t<int, double>{};
+  settings.time_limit       = 30.;
+  settings.determinism_mode = determinism_mode;
+  auto timer = cuopt::termination_checker_t(30.0, cuopt::termination_checker_t::root_tag_t{});
+  detail::mip_solver_t<int, double> solver(problem, settings, timer);
+
+  detail::solution_t<int, double> solution(*solver.context.problem_ptr);
+  if (initial_solution.size() > 0) {
+    expand_device_copy(solution.assignment, initial_solution, solution.handle_ptr->get_stream());
+  } else {
+    thrust::fill(solution.handle_ptr->get_thrust_policy(),
+                 solution.assignment.begin(),
+                 solution.assignment.end(),
+                 0.0);
+  }
+  solution.clamp_within_bounds();
+
+  detail::fj_t<int, double> fj(solver.context, fj_settings);
+  fj.reset_weights(solution.handle_ptr->get_stream(), 1.);
+  fj.objective_weight.set_value_async(tweaks.objective_weight, solution.handle_ptr->get_stream());
+  solution.handle_ptr->sync_stream();
+
+  fj.solve(solution);
+  auto solution_vector = host_copy(solution.assignment, solution.handle_ptr->get_stream());
+
+  return {solution,
+          solution_vector,
+          fj.climbers[0]->local_minimums_reached.value(solution.handle_ptr->get_stream()),
+          fj.climbers[0]->incumbent_objective.value(solution.handle_ptr->get_stream()),
+          fj.climbers[0]->violation_score.value(solution.handle_ptr->get_stream())};
 }
 
 }  // namespace cuopt::linear_programming::test

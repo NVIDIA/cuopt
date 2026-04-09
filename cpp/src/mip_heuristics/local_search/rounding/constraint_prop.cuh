@@ -43,7 +43,7 @@ struct constraint_prop_t {
   constraint_prop_t(mip_solver_context_t<i_t, f_t>& context);
   bool apply_round(solution_t<i_t, f_t>& sol,
                    f_t lp_run_time_after_feasible,
-                   timer_t& timer,
+                   termination_checker_t& timer,
                    std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>>
                      probing_config = std::nullopt);
   void sort_by_implied_slack_consumption(solution_t<i_t, f_t>& sol,
@@ -56,7 +56,7 @@ struct constraint_prop_t {
   bool find_integer(solution_t<i_t, f_t>& sol,
                     solution_t<i_t, f_t>& orig_sol,
                     f_t lp_run_time_after_feasible,
-                    timer_t& timer,
+                    termination_checker_t& timer,
                     std::optional<std::reference_wrapper<probing_config_t<i_t, f_t>>>
                       probing_config = std::nullopt);
   void find_set_integer_vars(solution_t<i_t, f_t>& sol, rmm::device_uvector<i_t>& set_vars);
@@ -121,7 +121,7 @@ struct constraint_prop_t {
                                           const raft::handle_t* handle_ptr);
   bool run_repair_procedure(problem_t<i_t, f_t>& problem,
                             problem_t<i_t, f_t>& original_problem,
-                            timer_t& timer,
+                            termination_checker_t& timer,
                             const raft::handle_t* handle_ptr);
   bool handle_fixed_vars(
     solution_t<i_t, f_t>& sol,
@@ -149,7 +149,7 @@ struct constraint_prop_t {
   i_t bounds_prop_interval           = 1;
   i_t n_iter_in_recovery             = 0;
   i_t max_n_failed_repair_iterations = 1;
-  timer_t max_timer{0.};
+  termination_checker_t max_timer;
   bool use_probing_cache = true;
   static repair_stats_t repair_stats;
   bool single_rounding_only = false;

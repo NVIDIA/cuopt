@@ -271,10 +271,11 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
   branch_and_bound_settings.log.log                                  = false;
   branch_and_bound_settings.log.log_prefix                           = "[RINS] ";
-  branch_and_bound_settings.solution_callback = [&rins_solution_queue](std::vector<f_t>& solution,
-                                                                       f_t objective) {
-    rins_solution_queue.push_back(solution);
-  };
+  branch_and_bound_settings.new_incumbent_callback =
+    [&rins_solution_queue](std::vector<f_t>& solution,
+                           f_t objective,
+                           const cuopt::internals::mip_solution_callback_info_t&,
+                           double) { rins_solution_queue.push_back(solution); };
   dual_simplex::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
   dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
     branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
@@ -347,8 +348,9 @@ void rins_t<i_t, f_t>::run_rins()
       cuopt_assert(best_sol.assignment.size() == sol_size_before_rins, "Assignment size mismatch");
       cuopt_assert(best_sol.assignment.size() == problem_copy->n_variables,
                    "Assignment size mismatch");
-      dm.population.add_external_solution(
-        best_sol.get_host_assignment(), best_sol.get_objective(), solution_origin_t::RINS);
+      dm.population.add_external_solution(best_sol.get_host_assignment(),
+                                          best_sol.get_objective(),
+                                          internals::mip_solution_origin_t::RINS);
     }
   }
 

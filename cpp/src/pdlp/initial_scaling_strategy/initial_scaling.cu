@@ -22,6 +22,8 @@
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
 
 namespace cuopt::linear_programming::detail {
@@ -684,9 +686,12 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
   rmm::device_uvector<f_t>& primal_solution,
   rmm::device_uvector<f_t>& dual_solution,
-  rmm::device_uvector<f_t>& dual_slack) const
+  rmm::device_uvector<f_t>& dual_slack,
+  cudaStream_t stream_override) const
 {
   raft::common::nvtx::range fun_scope("unscale_solutions");
+  const rmm::cuda_stream_view stream =
+    stream_override ? rmm::cuda_stream_view{stream_override} : stream_view_;
 
   if (primal_solution.size()) {
     cuopt_expects(primal_solution.size() % static_cast<size_t>(primal_size_h_) == 0,
@@ -703,7 +708,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       primal_solution.data(),
       primal_solution.size(),
       cuda::std::multiplies<>{},
-      stream_view_);
+      stream);
 
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
       cuopt_assert(h_bound_rescaling != f_t(0),
@@ -712,7 +717,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                       primal_solution.data(),
                                       primal_solution.size(),
                                       a_times_scalar<f_t>(f_t(1.0) / h_bound_rescaling),
-                                      stream_view_);
+                                      stream);
     }
   }
 
@@ -731,7 +736,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       dual_solution.data(),
       dual_solution.size(),
       cuda::std::multiplies<>{},
-      stream_view_);
+      stream);
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
       cuopt_assert(h_bound_rescaling != f_t(0),
                    "Numerical error: bound_rescaling_ should never equal 0");
@@ -739,7 +744,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                       dual_solution.data(),
                                       dual_solution.size(),
                                       a_times_scalar<f_t>(f_t(1.0) / h_objective_rescaling),
-                                      stream_view_);
+                                      stream);
     }
   }
 
@@ -756,7 +761,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       dual_slack.data(),
       dual_slack.size(),
       batch_safe_div<f_t>(),
-      stream_view_);
+      stream);
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
       cuopt_assert(h_bound_rescaling != f_t(0),
                    "Numerical error: bound_rescaling_ should never equal 0");
@@ -764,7 +769,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
                                       dual_slack.data(),
                                       dual_slack.size(),
                                       a_times_scalar<f_t>{f_t(1.0) / h_objective_rescaling},
-                                      stream_view_);
+                                      stream);
     }
   }
 }
@@ -781,10 +786,12 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
-  rmm::device_uvector<f_t>& solution, rmm::device_uvector<f_t>& s) const
+  rmm::device_uvector<f_t>& solution,
+  rmm::device_uvector<f_t>& s,
+  cudaStream_t stream_override) const
 {
   rmm::device_uvector<f_t> dummy(0, solution.stream());
-  unscale_solutions(solution, s, dummy);
+  unscale_solutions(solution, s, dummy, stream_override);
 }
 
 template <typename i_t, typename f_t>

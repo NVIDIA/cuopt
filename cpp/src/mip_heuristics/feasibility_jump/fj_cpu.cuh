@@ -154,7 +154,8 @@ struct fj_cpu_climber_t {
 
   // Work unit tracking for deterministic synchronization
   std::atomic<double> work_units_elapsed{0.0};
-  double work_unit_bias{1.5};               // Bias factor to keep CPUFJ ahead of B&B
+  double work_unit_bias{1.5};  // Bias factor to keep CPUFJ ahead of B&B
+  double work_budget{std::numeric_limits<double>::infinity()};
   producer_sync_t* producer_sync{nullptr};  // Optional sync utility for notifying progress
 
   std::atomic<bool> halted{false};

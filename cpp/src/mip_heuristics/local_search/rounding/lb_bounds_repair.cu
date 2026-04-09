@@ -8,8 +8,10 @@
 #include "lb_bounds_repair.cuh"
 
 #include <thrust/copy.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/seed_generator.cuh>
@@ -26,7 +28,8 @@ lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_pt
     violated_cstr_map(0, handle_ptr->get_stream()),
     total_vio(handle_ptr->get_stream()),
     gen(cuopt::seed_generator::get_seed()),
-    cycle_vector(MAX_CYCLE_SEQUENCE, -1)
+    cycle_vector(MAX_CYCLE_SEQUENCE, -1),
+    timer(0.0, cuopt::termination_checker_t::root_tag_t{})
 {
 }
 
@@ -68,8 +71,7 @@ std::tuple<f_t, i_t> lb_bounds_repair_t<i_t, f_t>::get_ii_violation(
      constraint_upper_bounds = problem.constraint_upper_bounds,
      cnst_slack              = make_span_2(lb_bound_presolve.cnst_slack),
      cstr_violations_up      = cstr_violations_up.data(),
-     cstr_violations_down    = cstr_violations_down.data(),
-     total_vio               = total_vio.data()] __device__(i_t cstr_idx) {
+     cstr_violations_down    = cstr_violations_down.data()] __device__(i_t cstr_idx) {
       f_t cnst_lb = constraint_lower_bounds[cstr_idx];
       f_t cnst_ub = constraint_upper_bounds[cstr_idx];
       f_t2 slack  = cnst_slack[cstr_idx];
@@ -80,7 +82,6 @@ std::tuple<f_t, i_t> lb_bounds_repair_t<i_t, f_t>::get_ii_violation(
       f_t violation                = max(curr_cstr_violation_up, curr_cstr_violation_down);
       if (violation >= ROUNDOFF_TOLERANCE) {
         violated_cstr_map[cstr_idx] = 1;
-        atomicAdd(total_vio, violation);
       } else {
         violated_cstr_map[cstr_idx] = 0;
       }
@@ -94,7 +95,18 @@ std::tuple<f_t, i_t> lb_bounds_repair_t<i_t, f_t>::get_ii_violation(
                               violated_constraints.data(),
                               cuda::std::identity{});
   i_t n_violated_cstr = iter - violated_constraints.data();
-  f_t total_violation = total_vio.value(handle_ptr->get_stream());
+  // Use deterministic reduction instead of non-deterministic atomicAdd
+  f_t total_violation = thrust::transform_reduce(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(0) + problem.n_constraints,
+    [cstr_violations_up   = cstr_violations_up.data(),
+     cstr_violations_down = cstr_violations_down.data()] __device__(i_t cstr_idx) -> f_t {
+      auto violation = max(cstr_violations_up[cstr_idx], cstr_violations_down[cstr_idx]);
+      return violation >= ROUNDOFF_TOLERANCE ? violation : 0.;
+    },
+    (f_t)0,
+    thrust::plus<f_t>());
   CUOPT_LOG_TRACE(
     "Repair: n_violated_cstr %d total_violation %f", n_violated_cstr, total_violation);
   return std::make_tuple(total_violation, n_violated_cstr);
@@ -397,10 +409,11 @@ bool lb_bounds_repair_t<i_t, f_t>::repair_problem(
   load_balanced_problem_t<i_t, f_t>* problem,
   load_balanced_bounds_presolve_t<i_t, f_t>& lb_bound_presolve,
   problem_t<i_t, f_t>& original_problem,
-  timer_t timer_,
+  termination_checker_t& timer_,
   const raft::handle_t* handle_ptr_)
 {
-  CUOPT_LOG_DEBUG("Running bounds repair");
+  nvtx::range fun_scope("LB repair_problem");
+  CUOPT_LOG_DEBUG("LB Running bounds repair");
   handle_ptr = handle_ptr_;
   timer      = timer_;
   resize(*problem);

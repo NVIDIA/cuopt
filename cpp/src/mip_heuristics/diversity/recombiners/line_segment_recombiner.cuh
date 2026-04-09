@@ -66,22 +66,26 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     return delta_vector;
   }
 
-  std::pair<solution_t<i_t, f_t>, bool> recombine(solution_t<i_t, f_t>& a,
-                                                  solution_t<i_t, f_t>& b,
-                                                  const weight_t<i_t, f_t>& weights)
+  std::tuple<solution_t<i_t, f_t>, bool, double> recombine(solution_t<i_t, f_t>& a,
+                                                           solution_t<i_t, f_t>& b,
+                                                           const weight_t<i_t, f_t>& weights)
   {
     raft::common::nvtx::range fun_scope("line_segment_recombiner");
+    CUOPT_DETERMINISM_LOG("LS rec: a %d b %d", a.get_hash(), b.get_hash());
     auto& guiding_solution = a.get_feasible() ? a : b;
     auto& other_solution   = a.get_feasible() ? b : a;
     // copy the solution from A
     solution_t<i_t, f_t> offspring(guiding_solution);
-    timer_t line_segment_timer{ls_recombiner_config_t::time_limit};
+    termination_checker_t line_segment_timer{
+      this->context.gpu_heur_loop, ls_recombiner_config_t::time_limit, *this->context.termination};
     // TODO after we have the conic combination, detect the lambda change
     // (i.e. the integral variables flip on line segment)
     i_t n_points_to_search        = ls_recombiner_config_t::n_points_to_search;
     const bool is_feasibility_run = false;
     i_t n_different_vars =
       this->assign_same_integer_values(guiding_solution, other_solution, offspring);
+    // TODO: CHANGE
+    double work                           = static_cast<double>(n_different_vars) / 1e8;
     rmm::device_uvector<f_t> delta_vector = generate_delta_vector(
       guiding_solution, other_solution, offspring, n_points_to_search, n_different_vars);
     line_segment_search.fj.copy_weights(weights, offspring.handle_ptr);
@@ -117,9 +121,9 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
     }
     if (better_cost_than_parents || better_feasibility_than_parents) {
       CUOPT_LOG_DEBUG("Offspring is feasible or better than both parents");
-      return std::make_pair(offspring, true);
+      return std::make_tuple(offspring, true, work);
     }
-    return std::make_pair(offspring, !same_as_parents);
+    return std::make_tuple(offspring, !same_as_parents, work);
   }
 
   line_segment_search_t<i_t, f_t>& line_segment_search;

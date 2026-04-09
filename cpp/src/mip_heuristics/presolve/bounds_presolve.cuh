@@ -14,6 +14,7 @@
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utils.cuh>
 
+#include <utilities/termination_checker.hpp>
 #include <utilities/timer.hpp>
 
 #include <thrust/pair.h>
@@ -60,7 +61,7 @@ class bound_presolve_t {
   void set_updated_bounds(const raft::handle_t* handle_ptr,
                           raft::device_span<f_t> output_lb,
                           raft::device_span<f_t> output_ub);
-  termination_criterion_t bound_update_loop(problem_t<i_t, f_t>& pb, timer_t timer);
+  termination_criterion_t bound_update_loop(problem_t<i_t, f_t>& pb, termination_checker_t& timer);
   void set_bounds(raft::device_span<f_t> var_lb,
                   raft::device_span<f_t> var_ub,
                   const std::vector<thrust::pair<i_t, f_t>>& var_probe_vals,

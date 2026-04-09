@@ -25,6 +25,7 @@ template <typename i_t, typename f_t>
 class solution_t {
  public:
   solution_t(problem_t<i_t, f_t>& problem);
+  solution_t(problem_t<i_t, f_t>& problem, const raft::handle_t* handle_override);
   solution_t(const solution_t<i_t, f_t>& other);
   solution_t& operator=(solution_t<i_t, f_t>&& other) noexcept = default;
   solution_t(solution_t<i_t, f_t>&& other)                     = default;
@@ -99,6 +100,7 @@ class solution_t {
   f_t compute_max_constraint_violation();
   f_t compute_max_int_violation();
   f_t compute_max_variable_violation();
+  uint32_t get_hash() const;
 
   struct view_t {
     // let's not bloat the class for every simple getter and setters
@@ -112,8 +114,6 @@ class solution_t {
     raft::device_span<f_t> assignment;
     raft::device_span<f_t> lower_excess;
     raft::device_span<f_t> upper_excess;
-    raft::device_span<f_t> lower_slack;
-    raft::device_span<f_t> upper_slack;
     raft::device_span<f_t> constraint_value;
     f_t* obj_val;
     i_t* n_feasible_constraints;
@@ -128,8 +128,6 @@ class solution_t {
   rmm::device_uvector<f_t> assignment;
   rmm::device_uvector<f_t> lower_excess;
   rmm::device_uvector<f_t> upper_excess;
-  rmm::device_uvector<f_t> lower_slack;
-  rmm::device_uvector<f_t> upper_slack;
   rmm::device_uvector<f_t> constraint_value;
   rmm::device_scalar<f_t> obj_val;
   rmm::device_scalar<i_t> n_feasible_constraints;

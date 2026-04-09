@@ -64,10 +64,12 @@ class pdlp_initial_scaling_strategy_t {
   void scale_primal(rmm::device_uvector<f_t>& primal_solution) const;
   void scale_dual(rmm::device_uvector<f_t>& dual_solution) const;
   void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
-                         rmm::device_uvector<f_t>& dual_solution) const;
+                         rmm::device_uvector<f_t>& dual_solution,
+                         cudaStream_t stream_override = nullptr) const;
   void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
                          rmm::device_uvector<f_t>& dual_solution,
-                         rmm::device_uvector<f_t>& dual_slack) const;
+                         rmm::device_uvector<f_t>& dual_slack,
+                         cudaStream_t stream_override = nullptr) const;
   void unscale_solutions(solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;

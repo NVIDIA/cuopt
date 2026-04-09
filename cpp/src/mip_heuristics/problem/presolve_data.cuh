@@ -93,10 +93,12 @@ class presolve_data_t {
                                rmm::cuda_stream_view stream);
   void post_process_assignment(problem_t<i_t, f_t>& problem,
                                rmm::device_uvector<f_t>& current_assignment,
-                               bool resize_to_original_problem = true)
+                               bool resize_to_original_problem       = true,
+                               const raft::handle_t* handle_override = nullptr)
   {
-    post_process_assignment(
-      problem, current_assignment, resize_to_original_problem, problem.handle_ptr->get_stream());
+    auto stream =
+      handle_override ? handle_override->get_stream() : problem.handle_ptr->get_stream();
+    post_process_assignment(problem, current_assignment, resize_to_original_problem, stream);
   }
   void post_process_solution(problem_t<i_t, f_t>& problem, solution_t<i_t, f_t>& solution);
 
@@ -106,8 +108,9 @@ class presolve_data_t {
                                 i_t original_num_variables);
   bool has_papilo_presolve_data() const { return papilo_presolve_ptr != nullptr; }
   i_t get_papilo_original_num_variables() const { return papilo_original_num_variables; }
-  void papilo_uncrush_assignment(problem_t<i_t, f_t>& problem,
-                                 rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(const problem_t<i_t, f_t>& problem,
+                                 rmm::device_uvector<f_t>& assignment,
+                                 const raft::handle_t* handle_override = nullptr) const;
 
   presolve_data_t(presolve_data_t&&)                 = default;
   presolve_data_t& operator=(presolve_data_t&&)      = default;

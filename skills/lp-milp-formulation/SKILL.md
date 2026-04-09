@@ -1,6 +1,6 @@
 ---
 name: lp-milp-formulation
-version: "26.04.00"
+version: "26.06.00"
 description: LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements (parameters, constraints, decisions, objective).
 ---
 

@@ -8,8 +8,10 @@
 #include "simple_rounding.cuh"
 #include "simple_rounding_kernels.cuh"
 
+#include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/determinism_log.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <thrust/copy.h>
@@ -35,6 +37,8 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
   if (n_integers_to_round == 0) { return solution.compute_feasibility(); }
   constexpr i_t brute_force_rounding_threshold = 8;
   if (n_integers_to_round <= brute_force_rounding_threshold) {
+    CUOPT_DETERMINISM_LOG(
+      "Brute-force rounding: n_to_round=%d hash=0x%x", n_integers_to_round, solution.get_hash());
     solution.compute_constraints();
     i_t n_configs = pow(2, n_integers_to_round);
     i_t n_blocks  = (n_configs + TPB - 1) / TPB;
@@ -42,7 +46,8 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
     rmm::device_uvector<i_t> var_map(n_integers_to_round, solution.handle_ptr->get_stream());
     rmm::device_uvector<f_t> constraint_buf(n_configs * solution.problem_ptr->n_constraints,
                                             solution.handle_ptr->get_stream());
-    rmm::device_scalar<i_t> best_config(-1, solution.handle_ptr->get_stream());
+    rmm::device_scalar<i_t> best_config(std::numeric_limits<i_t>::max(),
+                                        solution.handle_ptr->get_stream());
     thrust::copy_if(
       solution.handle_ptr->get_thrust_policy(),
       solution.problem_ptr->integer_indices.begin(),
@@ -58,7 +63,13 @@ bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
                                                                 cuopt::make_span(var_map),
                                                                 cuopt::make_span(constraint_buf),
                                                                 best_config.data());
-    if (best_config.value(solution.handle_ptr->get_stream()) != -1) {
+    i_t best_config_val = best_config.value(solution.handle_ptr->get_stream());
+    CUOPT_DETERMINISM_LOG(
+      "Brute-force rounding: best_config=%d (max=%d) var_map_hash=0x%x",
+      best_config_val,
+      (int)std::numeric_limits<i_t>::max(),
+      detail::compute_hash(make_span(var_map), solution.handle_ptr->get_stream()));
+    if (best_config_val != std::numeric_limits<i_t>::max()) {
       CUOPT_LOG_DEBUG("Feasible found during brute force rounding!");
       // apply the feasible rounding
       apply_feasible_rounding_kernel<i_t, f_t><<<1, TPB, 0, solution.handle_ptr->get_stream()>>>(

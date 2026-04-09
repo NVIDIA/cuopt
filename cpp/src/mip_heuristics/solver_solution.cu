@@ -7,6 +7,8 @@
 
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <utilities/copy_helpers.hpp>
+#include <utilities/hashing.hpp>
 #include <utilities/logger.hpp>
 
 #include <limits>
@@ -238,11 +240,25 @@ void mip_solution_t<i_t, f_t>::log_summary() const
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::log_detailed_summary() const
 {
+  uint32_t sol_hash = 0;
+  if (solution_.size() > 0) {
+    auto host_sol = cuopt::host_copy(solution_, rmm::cuda_stream_default);
+    sol_hash      = detail::compute_hash(host_sol);
+  }
+
+  uint32_t pool_hash = 0;
+  for (const auto& pool_sol : solution_pool_) {
+    if (pool_sol.size() > 0) {
+      auto host_pool_sol = cuopt::host_copy(pool_sol, rmm::cuda_stream_default);
+      pool_hash ^= detail::compute_hash(host_pool_sol);
+    }
+  }
+
   CUOPT_LOG_INFO(
     "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
     "total_solve_time %f "
     "max constraint violation %f max int violation %f max var bounds violation %f "
-    "nodes %d simplex_iterations %d",
+    "nodes %d simplex_iterations %d solution_hash %08x pool_hash %08x pool_size %d",
     objective_,
     mip_gap_,
     stats_.get_solution_bound(),
@@ -252,7 +268,10 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
     max_int_violation_,
     max_variable_bound_violation_,
     stats_.num_nodes,
-    stats_.num_simplex_iterations);
+    stats_.num_simplex_iterations,
+    sol_hash,
+    pool_hash,
+    (int)solution_pool_.size());
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

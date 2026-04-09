@@ -1,6 +1,6 @@
 ---
 name: cuopt-developer
-version: "26.04.00"
+version: "26.06.00"
 description: Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture.
 ---
 
@@ -286,6 +286,22 @@ rmm::device_uvector<int> data(100, stream);
 2. Follow stream-ordering patterns
 3. Run C++ tests: `ctest --test-dir cpp/build`
 4. Run benchmarks to check performance
+
+## Common C++ Utilities (Do Not Reimplement)
+
+These utilities already exist in the codebase. Use them instead of writing ad-hoc alternatives.
+
+| Utility | Header | Usage |
+|---------|--------|-------|
+| `cuopt::scope_guard` | `<utilities/scope_guard.hpp>` | RAII cleanup: `auto guard = cuopt::scope_guard([&] { cleanup(); });` |
+| `detail::compute_hash` | `<utilities/hashing.hpp>` | Deterministic hash of device spans/vectors for debugging: `detail::compute_hash(make_span(vec), stream)` |
+| `cuopt_assert` | `<cuopt/error.hpp>` | Runtime assertion (always active in debug, `ASSERT_MODE`): `cuopt_assert(cond, "msg")` |
+| `cuopt_func_call` | `<cuopt/error.hpp>` | Wrap code that should only execute in debug builds |
+| `CUOPT_LOG_*` | `<utilities/logger.hpp>` | Logging macros: `CUOPT_LOG_INFO`, `CUOPT_LOG_DEBUG`, `CUOPT_LOG_WARN`, `CUOPT_LOG_ERROR` |
+| `CUOPT_DETERMINISM_LOG` | `<utilities/determinism_log.hpp>` | Determinism-specific debug logging (compiled out when not needed) |
+| `omp_atomic_t<T>` | `<utilities/omp_helpers.hpp>` | OpenMP-compatible atomic with `.load()`, `.store()`, operators |
+| `termination_checker_t` | `<utilities/termination_checker.hpp>` | Timer that respects deterministic work-unit budgets |
+| `cuopt::host_copy` | `<utilities/copy_helpers.hpp>` | D2H copy returning `std::vector`: `auto h_vec = cuopt::host_copy(d_vec, stream)` |
 
 ## Common Pitfalls
 

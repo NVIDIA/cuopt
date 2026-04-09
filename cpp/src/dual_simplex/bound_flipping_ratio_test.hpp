@@ -100,7 +100,7 @@ class bound_flipping_ratio_test_t {
   i_t n_;
   i_t m_;
 
-  f_t work_estimate_;
+  f_t work_estimate_{0.0};
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

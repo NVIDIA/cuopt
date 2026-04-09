@@ -7,13 +7,17 @@
 
 #pragma once
 
+#include <atomic>
+
 #include <raft/core/device_span.hpp>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
 
+#include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform.h>
 #include <thrust/tuple.h>
 #include <thrust/universal_vector.h>
@@ -21,6 +25,44 @@
 #include <cuda/std/functional>
 
 namespace cuopt {
+
+template <typename T>
+class copyable_atomic_t {
+ public:
+  copyable_atomic_t() = default;
+  copyable_atomic_t(T val) : val_(val) {}
+
+  copyable_atomic_t(const copyable_atomic_t& other)
+    : val_(other.val_.load(std::memory_order_relaxed))
+  {
+  }
+
+  copyable_atomic_t& operator=(const copyable_atomic_t& other)
+  {
+    if (this != &other) {
+      val_.store(other.val_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+    return *this;
+  }
+
+  T operator=(T new_val)
+  {
+    store(new_val);
+    return new_val;
+  }
+
+  operator T() const { return load(); }
+
+  T load(std::memory_order order = std::memory_order_relaxed) const { return val_.load(order); }
+
+  void store(T new_val, std::memory_order order = std::memory_order_relaxed)
+  {
+    val_.store(new_val, order);
+  }
+
+ private:
+  std::atomic<T> val_{};
+};
 
 template <typename T>
 struct type_2 {
@@ -335,6 +377,17 @@ raft::device_span<const T> make_span(rmm::device_uvector<T> const& container)
   return raft::device_span<const T>(container.data(), container.size());
 }
 
+template <typename T>
+raft::device_span<T> make_span(rmm::device_scalar<T>& scalar)
+{
+  return raft::device_span<T>(scalar.data(), 1);
+}
+
+template <typename T>
+raft::device_span<const T> make_span(rmm::device_scalar<T> const& scalar)
+{
+  return raft::device_span<const T>(scalar.data(), 1);
+}
 // resizes the device vector if it the std vector is larger
 template <typename T>
 inline void expand_device_copy(rmm::device_uvector<T>& device_vec,

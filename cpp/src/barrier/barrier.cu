@@ -40,7 +40,9 @@
 #include <raft/linalg/dot.cuh>
 
 #include <thrust/iterator/permutation_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 
 namespace cuopt::linear_programming::dual_simplex {
 

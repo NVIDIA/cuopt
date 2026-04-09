@@ -652,17 +652,22 @@ rapids_cpm_find(
 if(NOT BUILD_LP_ONLY)
 add_executable(cuopt_cli cuopt_cli.cpp)
 
+# PIE executable: auditwheel/patchelf expands .dynstr/RPATH when repairing wheels; non-PIE
+# (ET_EXEC) binaries are prone to corrupt segment layout. PIE (ET_DYN) survives RPATH edits.
 set_target_properties(cuopt_cli
   PROPERTIES
   CXX_STANDARD 20
   CXX_STANDARD_REQUIRED ON
   CXX_SCAN_FOR_MODULES OFF
+  POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_options(cuopt_cli
   PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
   "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
+
+target_link_options(cuopt_cli PRIVATE -pie)
 
 target_include_directories(cuopt_cli
   PRIVATE

@@ -34,7 +34,21 @@ class timer_t {
            elapsed_time());
   }
 
-  bool check_time_limit() const noexcept { return elapsed_time() >= time_limit; }
+  bool check_time_limit(const char* caller = __builtin_FUNCTION(),
+                        const char* file   = __builtin_FILE(),
+                        int line           = __builtin_LINE()) const noexcept
+  {
+    bool elapsed = elapsed_time() >= time_limit;
+    // if (elapsed) {
+    //   printf("************ TIME LIMIT (%.2gs) REACHED BY %s:%d: %s() ***\n",
+    //          time_limit,
+    //          file,
+    //          line,
+    //          caller);
+    //   //__builtin_trap();
+    // }
+    return elapsed;
+  }
 
   bool check_half_time() const noexcept { return elapsed_time() >= time_limit / 2; }
 

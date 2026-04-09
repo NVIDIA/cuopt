@@ -27,6 +27,10 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
   ~early_cpufj_t();
 
   static constexpr const char* name() { return "CPUFJ"; }
+  static constexpr internals::mip_solution_origin_t origin()
+  {
+    return internals::mip_solution_origin_t::CPU_FEASIBILITY_JUMP;
+  }
 
   void start();
   void stop();

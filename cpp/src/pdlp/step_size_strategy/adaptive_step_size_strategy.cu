@@ -28,6 +28,9 @@
 
 #include <cub/cub.cuh>
 
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+
 #include <limits>
 
 namespace cuopt::linear_programming::detail {

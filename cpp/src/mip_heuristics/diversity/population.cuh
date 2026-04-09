@@ -25,22 +25,20 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
-enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, RINS, EXTERNAL };
-
-constexpr const char* solution_origin_to_string(solution_origin_t origin)
-{
-  switch (origin) {
-    case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
-    case solution_origin_t::CPUFJ: return "CPUFJ";
-    case solution_origin_t::RINS: return "RINS";
-    case solution_origin_t::EXTERNAL: return "injected";
-    default: return "unknown";
-  }
-}
-
 template <typename i_t, typename f_t>
 class population_t {
  public:
+  struct drained_external_solution_t {
+    drained_external_solution_t(solution_t<i_t, f_t>&& solution_,
+                                internals::mip_solution_origin_t origin_)
+      : solution(std::move(solution_)), origin(origin_)
+    {
+    }
+
+    solution_t<i_t, f_t> solution;
+    internals::mip_solution_origin_t origin;
+  };
+
   population_t(std::string const& name,
                mip_solver_context_t<i_t, f_t>& context,
                diversity_manager_t<i_t, f_t>& dm,
@@ -83,6 +81,7 @@ class population_t {
       a.first = false;
     indices[0].second = std::numeric_limits<f_t>::max();
     indices.erase(indices.begin() + 1, indices.end());
+    best_feasible_objective = std::numeric_limits<f_t>::max();
   }
 
   void clear_except_best_feasible()
@@ -92,6 +91,7 @@ class population_t {
     }
     solutions[indices[0].first].first = true;
     indices.erase(indices.begin() + 1, indices.end());
+    best_feasible_objective = solutions[indices[0].first].second.get_objective();
   }
 
   // -------------------
@@ -103,16 +103,18 @@ class population_t {
   /*! \brief { Add a solution to population. Similar solutions may be ejected from the pool. }
    *  \return { -1 = not inserted , others = inserted index}
    */
-  std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol);
+  std::pair<i_t, bool> add_solution(solution_t<i_t, f_t>&& sol,
+                                    internals::mip_solution_origin_t callback_origin);
   void add_external_solution(const std::vector<f_t>& solution,
                              f_t objective,
-                             solution_origin_t origin);
-  std::vector<solution_t<i_t, f_t>> get_external_solutions();
+                             internals::mip_solution_origin_t origin);
+  std::vector<drained_external_solution_t> get_external_solutions();
   void add_external_solutions_to_population();
   size_t get_external_solution_size();
   void preempt_heuristic_solver();
 
-  void add_solutions_from_vec(std::vector<solution_t<i_t, f_t>>&& solutions);
+  void add_solutions_from_vec(std::vector<solution_t<i_t, f_t>>&& solutions,
+                              internals::mip_solution_origin_t callback_origin);
 
   // Updates the cstr weights according to the best solutions feasibility
   void compute_new_weights();
@@ -122,7 +124,7 @@ class population_t {
   // updates qualities of each solution
   void update_qualities();
   // adjusts the threshold of the population
-  void adjust_threshold(cuopt::timer_t timer);
+  void adjust_threshold(cuopt::termination_checker_t& timer);
   /*! \param sol { Input solution }
    *  \return { Index of the best solution similar to sol. If no similar is found we return
    * max_solutions. }*/
@@ -153,16 +155,14 @@ class population_t {
   std::vector<solution_t<i_t, f_t>> population_to_vector();
   void halve_the_population();
 
-  void run_solution_callbacks(solution_t<i_t, f_t>& sol);
+  void run_solution_callbacks(solution_t<i_t, f_t>& sol,
+                              internals::mip_solution_origin_t callback_origin);
 
   void adjust_weights_according_to_best_feasible();
 
   void start_threshold_adjustment();
 
   void diversity_step(i_t max_iterations_without_improvement);
-
-  void invoke_get_solution_callback(solution_t<i_t, f_t>& sol,
-                                    internals::get_solution_callback_t* callback);
 
   // does some consistency tests
   bool test_invariant();
@@ -186,7 +186,9 @@ class population_t {
 
   struct external_solution_t {
     external_solution_t() = default;
-    external_solution_t(const std::vector<f_t>& solution, f_t objective, solution_origin_t origin)
+    external_solution_t(const std::vector<f_t>& solution,
+                        f_t objective,
+                        internals::mip_solution_origin_t origin)
       : solution(solution),
         objective(objective),
         origin(origin),
@@ -195,7 +197,7 @@ class population_t {
     }
     std::vector<f_t> solution;
     f_t objective;
-    solution_origin_t origin;
+    internals::mip_solution_origin_t origin;
     timer_t timer;  // debug timer to track how long a solution has lingered in the queue
   };
 
@@ -211,7 +213,7 @@ class population_t {
   // be seeded from an early-FJ incumbent objective before a matching population solution exists.
   f_t best_feasible_objective = std::numeric_limits<f_t>::max();
   assignment_hash_map_t<i_t, f_t> population_hash_map;
-  cuopt::timer_t timer;
+  cuopt::termination_checker_t timer;
 };
 
 }  // namespace cuopt::linear_programming::detail

@@ -79,6 +79,7 @@ class third_party_presolve_t {
                                std::vector<f_t>& full_primal) const;
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
+  void set_deterministic(bool d) { deterministic_ = d; }
 
   ~third_party_presolve_t();
 
@@ -91,6 +92,7 @@ class third_party_presolve_t {
                  rmm::device_uvector<f_t>& reduced_costs,
                  rmm::cuda_stream_view stream_view);
 
+  bool deterministic_                               = false;
   bool maximize_                                    = false;
   cuopt::linear_programming::presolver_t presolver_ = cuopt::linear_programming::presolver_t::PSLP;
   // PSLP settings

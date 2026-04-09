@@ -35,6 +35,35 @@ void bounds_update_data_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   next_changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   changed_variables.resize(problem.n_variables, problem.handle_ptr->get_stream());
+
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               min_activity.begin(),
+               min_activity.end(),
+               std::numeric_limits<f_t>::signaling_NaN());
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               max_activity.begin(),
+               max_activity.end(),
+               std::numeric_limits<f_t>::signaling_NaN());
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               lb.begin(),
+               lb.end(),
+               std::numeric_limits<f_t>::signaling_NaN());
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               ub.begin(),
+               ub.end(),
+               std::numeric_limits<f_t>::signaling_NaN());
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               changed_constraints.begin(),
+               changed_constraints.end(),
+               -1);
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               next_changed_constraints.begin(),
+               next_changed_constraints.end(),
+               -1);
+  thrust::fill(problem.handle_ptr->get_thrust_policy(),
+               changed_variables.begin(),
+               changed_variables.end(),
+               -1);
 }
 
 template <typename i_t, typename f_t>

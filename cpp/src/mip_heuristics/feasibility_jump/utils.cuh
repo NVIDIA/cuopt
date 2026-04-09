@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,7 @@
 #include "feasibility_jump.cuh"
 
 #include <thrust/pair.h>
+#include <thrust/sort.h>
 #include <cuda/atomic>
 #include <raft/core/device_span.hpp>
 #include <rmm/device_scalar.hpp>
@@ -131,6 +132,23 @@ struct contiguous_set_t {
     contents.resize(size, stream);
     index_map.resize(size, stream);
     validity_bitmap.resize(size, stream);
+  }
+
+  void sort(const rmm::cuda_stream_view& stream)
+  {
+    thrust::sort(
+      rmm::exec_policy(stream), contents.begin(), contents.begin() + set_size.value(stream));
+    thrust::fill(rmm::exec_policy(stream), index_map.begin(), index_map.end(), -1);
+    thrust::for_each(rmm::exec_policy(stream),
+                     thrust::make_counting_iterator<i_t>(0),
+                     thrust::make_counting_iterator<i_t>(set_size.value(stream)),
+                     [v = view()] __device__(i_t idx) { v.index_map[v.contents[idx]] = idx; });
+
+    // only useful for debugging and ensuring the same hashes are printed
+#if FJ_SINGLE_STEP
+    thrust::fill(
+      rmm::exec_policy(stream), contents.begin() + set_size.value(stream), contents.end(), 0);
+#endif
   }
 
   struct view_t {

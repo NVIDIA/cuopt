@@ -8,6 +8,10 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
+#include <omp.h>
+
+#include <utilities/scope_guard.hpp>
+
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
@@ -17,6 +21,7 @@
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utilities/sort_csr.cuh>
 #include <mip_heuristics/utils.cuh>
+#include <utilities/determinism_log.hpp>
 
 #include <pdlp/pdlp.cuh>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
@@ -25,6 +30,7 @@
 #include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/seed_generator.cuh>
+#include <utilities/termination_checker.hpp>
 #include <utilities/version_info.hpp>
 
 #include <cuopt/linear_programming/backend_selection.hpp>
@@ -60,29 +66,10 @@ static void init_handler(const raft::handle_t* handle_ptr)
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 }
 
-template <typename f_t>
-static void invoke_solution_callbacks(
-  const std::vector<internals::base_solution_callback_t*>& mip_callbacks,
-  f_t objective,
-  std::vector<f_t>& assignment,
-  f_t bound)
-{
-  std::vector<f_t> obj_vec   = {objective};
-  std::vector<f_t> bound_vec = {bound};
-  for (auto callback : mip_callbacks) {
-    if (callback != nullptr &&
-        callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-      auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-      get_sol_callback->get_solution(
-        assignment.data(), obj_vec.data(), bound_vec.data(), get_sol_callback->get_user_data());
-    }
-  }
-}
-
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
-                                 timer_t& timer,
+                                 cuopt::termination_checker_t& timer,
                                  f_t& initial_upper_bound,
                                  std::vector<f_t>& initial_incumbent_assignment)
 {
@@ -115,28 +102,20 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       stats.set_solution_bound(solution.get_user_objective());
       // log the objective for scripts which need it
       CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
-      for (auto callback : settings.get_mip_callbacks()) {
-        if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-          auto temp_sol(solution);
-          auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-          std::vector<f_t> user_objective_vec(1);
-          std::vector<f_t> user_bound_vec(1);
-          user_objective_vec[0] = solution.get_user_objective();
-          user_bound_vec[0]     = stats.get_solution_bound();
-          if (problem.has_papilo_presolve_data()) {
-            problem.papilo_uncrush_assignment(temp_sol.assignment);
-          }
-          std::vector<f_t> user_assignment_vec(temp_sol.assignment.size());
-          raft::copy(user_assignment_vec.data(),
-                     temp_sol.assignment.data(),
-                     temp_sol.assignment.size(),
-                     temp_sol.handle_ptr->get_stream());
-          solution.handle_ptr->sync_stream();
-          get_sol_callback->get_solution(user_assignment_vec.data(),
-                                         user_objective_vec.data(),
-                                         user_bound_vec.data(),
-                                         get_sol_callback->get_user_data());
+      {
+        detail::solution_callback_payload_t<i_t, f_t> payload{};
+        payload.user_objective               = solution.get_user_objective();
+        payload.solver_objective             = solution.get_objective();
+        payload.callback_info.origin         = (uint32_t)internals::mip_solution_origin_t::PRESOLVE;
+        payload.callback_info.work_timestamp = 0.0;
+        detail::solution_t<i_t, f_t> temp_sol(solution);
+        if (problem.has_papilo_presolve_data()) {
+          problem.papilo_uncrush_assignment(temp_sol.assignment);
         }
+        payload.assignment =
+          cuopt::host_copy(temp_sol.assignment, temp_sol.handle_ptr->get_stream());
+        detail::solution_publication_t<i_t, f_t> pub(settings, stats);
+        pub.publish_new_best_feasible(payload);
       }
       return solution.get_solution(true, stats, false);
     }
@@ -178,33 +157,37 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     // via problem.get_solver_obj_from_user_obj.
     std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
     bool run_early_cpufj = problem.has_papilo_presolve_data() &&
-                           settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
+                           settings.determinism_mode == CUOPT_DETERMINISM_NONE &&
                            problem.original_problem_ptr->get_n_integers() > 0;
     if (run_early_cpufj) {
       auto early_fj_start = std::chrono::steady_clock::now();
       auto* presolver_ptr = problem.presolve_data.papilo_presolve_ptr;
       auto mip_callbacks  = settings.get_mip_callbacks();
       f_t no_bound = problem.presolve_data.objective_scaling_factor >= 0 ? (f_t)-1e20 : (f_t)1e20;
-      auto incumbent_callback = [presolver_ptr,
-                                 mip_callbacks,
-                                 no_bound,
-                                 ctx_ptr = &solver.context,
-                                 early_fj_start](f_t solver_obj,
-                                                 f_t user_obj,
-                                                 const std::vector<f_t>& assignment,
-                                                 const char* heuristic_name) {
-        std::vector<f_t> user_assignment;
-        presolver_ptr->uncrush_primal_solution(assignment, user_assignment);
-        ctx_ptr->initial_incumbent_assignment = user_assignment;
-        ctx_ptr->initial_upper_bound          = user_obj;
-        double elapsed =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start).count();
-        CUOPT_LOG_INFO("New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
-                       heuristic_name,
-                       user_obj,
-                       elapsed);
-        invoke_solution_callbacks(mip_callbacks, user_obj, user_assignment, no_bound);
-      };
+      detail::early_incumbent_callback_t<f_t> incumbent_callback =
+        [presolver_ptr, mip_callbacks, no_bound, ctx_ptr = &solver.context, early_fj_start](
+          f_t solver_obj,
+          f_t user_obj,
+          const std::vector<f_t>& assignment,
+          internals::mip_solution_origin_t origin) {
+          std::vector<f_t> user_assignment;
+          presolver_ptr->uncrush_primal_solution(assignment, user_assignment);
+          ctx_ptr->initial_incumbent_assignment = user_assignment;
+          ctx_ptr->initial_upper_bound          = user_obj;
+          double elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start)
+              .count();
+          CUOPT_LOG_INFO(
+            "New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
+            internals::mip_solution_origin_to_string(origin),
+            user_obj,
+            elapsed);
+          internals::mip_solution_callback_info_t callback_info{};
+          callback_info.origin         = (uint32_t)origin;
+          callback_info.work_timestamp = 0.0;
+          detail::dispatch_get_solution_callbacks(
+            mip_callbacks, user_assignment, user_obj, no_bound, callback_info);
+        };
       early_cpufj = std::make_unique<detail::early_cpufj_t<i_t, f_t>>(
         *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
@@ -216,7 +199,6 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
       solver.context.early_cpufj_ptr = early_cpufj.get();
       CUOPT_LOG_DEBUG("Started early CPUFJ on papilo-presolved problem during cuOpt presolve");
     }
-
     auto presolved_sol            = solver.run_solver();
     bool is_feasible_on_presolved = presolved_sol.get_feasible();
     presolved_sol.problem_ptr     = &problem;
@@ -251,6 +233,10 @@ template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                    mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
+  // Release the OMP thread pool on exit so that consecutive solves from different
+  // std::async threads (e.g. in tests) don't deadlock on stale OMP master affinity.
+  auto omp_guard = cuopt::scope_guard([] { omp_pause_resource_all(omp_pause_hard); });
+
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
     if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
@@ -277,6 +263,15 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     // Initialize seed generator if a specific seed is requested
     if (settings.seed >= 0) { cuopt::seed_generator::set_seed(settings.seed); }
+    CUOPT_DETERMINISM_LOG(
+      "Deterministic solve start settings: seed=%lld seed_state=%lld det_mode=%d "
+      "work_limit=%.6f max_cut_passes=%d num_cpu_threads=%d",
+      (long long)settings.seed,
+      (long long)cuopt::seed_generator::peek_seed(),
+      (int)settings.determinism_mode,
+      (double)settings.work_limit,
+      settings.max_cut_passes,
+      settings.num_cpu_threads);
 
     raft::common::nvtx::range fun_scope("Running solver");
 
@@ -303,7 +298,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       callback->template setup<f_t>(op_problem.get_n_variables());
     }
 
-    auto timer = timer_t(time_limit);
+    auto timer =
+      cuopt::termination_checker_t(time_limit, cuopt::termination_checker_t::root_tag_t{});
+    const bool deterministic_run = (settings.determinism_mode != CUOPT_DETERMINISM_NONE);
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);
@@ -311,8 +308,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     double presolve_time = 0.0;
     std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
     std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
-    detail::problem_t<i_t, f_t> problem(
-      op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
+    detail::problem_t<i_t, f_t> problem(op_problem, settings.get_tolerances(), deterministic_run);
 
     auto run_presolve              = settings.presolver != presolver_t::None;
     run_presolve                   = run_presolve && settings.initial_solutions.size() == 0;
@@ -347,35 +343,41 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::vector<f_t> early_best_user_assignment;
     std::mutex early_callback_mutex;
 
-    bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
+    bool run_early_fj = run_presolve && settings.determinism_mode == CUOPT_DETERMINISM_NONE &&
                         op_problem.get_n_integers() > 0 && op_problem.get_n_constraints() > 0;
     f_t no_bound = problem.presolve_data.objective_scaling_factor >= 0 ? (f_t)-1e20 : (f_t)1e20;
     if (run_early_fj) {
-      auto early_fj_start    = std::chrono::steady_clock::now();
-      auto early_fj_callback = [&early_best_objective,
-                                &early_best_user_obj,
-                                &early_best_user_assignment,
-                                &early_callback_mutex,
-                                &early_fj_start,
-                                mip_callbacks = settings.get_mip_callbacks(),
-                                no_bound](f_t solver_obj,
-                                          f_t user_obj,
-                                          const std::vector<f_t>& assignment,
-                                          const char* heuristic_name) {
-        std::lock_guard<std::mutex> lock(early_callback_mutex);
-        if (solver_obj >= early_best_objective.load()) { return; }
-        early_best_objective.store(solver_obj);
-        early_best_user_obj        = user_obj;
-        early_best_user_assignment = assignment;
-        double elapsed =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start).count();
-        CUOPT_LOG_INFO("New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
-                       heuristic_name,
-                       user_obj,
-                       elapsed);
-        auto user_assignment = assignment;
-        invoke_solution_callbacks(mip_callbacks, user_obj, user_assignment, no_bound);
-      };
+      auto early_fj_start = std::chrono::steady_clock::now();
+      detail::early_incumbent_callback_t<f_t> early_fj_callback =
+        [&early_best_objective,
+         &early_best_user_obj,
+         &early_best_user_assignment,
+         &early_callback_mutex,
+         &early_fj_start,
+         mip_callbacks = settings.get_mip_callbacks(),
+         no_bound](f_t solver_obj,
+                   f_t user_obj,
+                   const std::vector<f_t>& assignment,
+                   internals::mip_solution_origin_t origin) {
+          std::lock_guard<std::mutex> lock(early_callback_mutex);
+          if (solver_obj >= early_best_objective.load()) { return; }
+          early_best_objective.store(solver_obj);
+          early_best_user_obj        = user_obj;
+          early_best_user_assignment = assignment;
+          internals::mip_solution_callback_info_t callback_info{};
+          callback_info.origin         = (uint32_t)origin;
+          callback_info.work_timestamp = 0.0;
+          double elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start)
+              .count();
+          CUOPT_LOG_INFO(
+            "New solution from early primal heuristics (%s). Objective %+.6e. Time %.2f",
+            internals::mip_solution_origin_to_string(origin),
+            user_obj,
+            elapsed);
+          detail::dispatch_get_solution_callbacks(
+            mip_callbacks, assignment, user_obj, no_bound, callback_info);
+        };
 
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
       early_cpufj = std::make_unique<detail::early_cpufj_t<i_t, f_t>>(
@@ -398,10 +400,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       const auto& hp = settings.heuristic_params;
       double presolve_time_limit =
         std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
-      if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
-        presolve_time_limit = std::numeric_limits<double>::infinity();
-      }
-      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      if (deterministic_run) { presolve_time_limit = timer.remaining_time(); }
+      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      presolver->set_deterministic(deterministic_run);
       auto result = presolver->apply(op_problem,
                                      cuopt::linear_programming::problem_category_t::MIP,
                                      settings.presolver,
@@ -428,7 +429,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       }
       presolve_result_opt.emplace(std::move(result));
 
-      problem = detail::problem_t<i_t, f_t>(presolve_result_opt->reduced_problem);
+      problem = detail::problem_t<i_t, f_t>(
+        presolve_result_opt->reduced_problem, settings.get_tolerances(), deterministic_run);
       problem.set_papilo_presolve_data(presolver.get(),
                                        presolve_result_opt->reduced_to_original_map,
                                        presolve_result_opt->original_to_reduced_map,
@@ -499,7 +501,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                      reduced_costs.data(),
                      reduced_costs.data() + reduced_costs.size(),
                      std::numeric_limits<f_t>::signaling_NaN());
-        detail::problem_t<i_t, f_t> full_problem(op_problem);
+        detail::problem_t<i_t, f_t> full_problem(
+          op_problem, settings.get_tolerances(), deterministic_run);
         detail::solution_t<i_t, f_t> full_sol(full_problem);
         full_sol.copy_new_assignment(
           cuopt::host_copy(primal_solution, op_problem.get_handle_ptr()->get_stream()));

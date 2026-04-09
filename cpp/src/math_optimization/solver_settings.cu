@@ -113,6 +113,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT, &mip_settings.heuristic_params.initial_infeasibility_weight, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1000.0), "constraint violation penalty seed"},
     {CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT, &mip_settings.heuristic_params.relaxed_lp_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1.0), "base relaxed LP time cap in heuristics"},
     {CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT, &mip_settings.heuristic_params.related_vars_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(30.0), "time for related-variable structure build"},
+    {CUOPT_MIP_HYPER_HEURISTIC_CPUFJ_WORK_UNIT_SCALE, &mip_settings.cpufj_work_unit_scale, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(1.0), "user multiplier on CPUFJ work-unit rate"},
+    {CUOPT_MIP_HYPER_HEURISTIC_GPU_HEUR_WORK_UNIT_SCALE, &mip_settings.gpu_heur_work_unit_scale, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(1.0), "user multiplier on GPU heuristics work-unit rate"},
+    {CUOPT_MIP_HYPER_HEURISTIC_BB_WORK_UNIT_SCALE, &mip_settings.bb_work_unit_scale, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(1.0), "user multiplier on B&B work-unit rate"},
    };
 
   // Int parameters
@@ -142,7 +145,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT, &mip_settings.strong_branching_simplex_iteration_limit, -1,std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&pdlp_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
-    {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
+    {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_DETERMINISM_NONE, CUOPT_DETERMINISM_FULL, CUOPT_DETERMINISM_NONE},
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION},
@@ -171,6 +174,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_ELIMINATE_DENSE_COLUMNS, &pdlp_settings.eliminate_dense_columns, true},
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
+    {CUOPT_MIP_HYPER_HEURISTIC_GPU_HEUR_WAIT_FOR_EXPLORATION, &mip_settings.gpu_heur_wait_for_exploration, false, "GPU heuristics wait for B&B root solve before starting"},
   };
   // String parameters
   string_parameters = {

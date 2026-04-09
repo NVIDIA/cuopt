@@ -11,6 +11,7 @@
 #include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/node_queue.hpp>
+#include <cuopt/linear_programming/utilities/internals.hpp>
 
 #include <utilities/work_limit_context.hpp>
 
@@ -44,6 +45,8 @@ struct queued_integer_solution_t {
   int worker_id{-1};
   int sequence_id{0};
   double work_timestamp{0.0};
+  cuopt::internals::mip_solution_origin_t origin{
+    cuopt::internals::mip_solution_origin_t::BRANCH_AND_BOUND_NODE};
 
   bool operator<(const queued_integer_solution_t& other) const
   {
@@ -59,6 +62,7 @@ struct deterministic_snapshot_t {
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
   std::vector<f_t> incumbent;
   i_t total_lp_iters;
+  i_t nodes_explored;
 };
 
 template <typename i_t, typename f_t, typename Derived>
@@ -66,7 +70,6 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
   using base_t = branch_and_bound_worker_t<i_t, f_t>;
 
  public:
-  double clock{0.0};
   work_limit_context_t work_context;
 
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
@@ -75,6 +78,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Diving-specific snapshots (ignored by BFS workers)
   std::vector<f_t> incumbent_snapshot;
   i_t total_lp_iters_snapshot{0};
+  i_t nodes_explored_snapshot{0};
 
   std::vector<queued_integer_solution_t<i_t, f_t>> integer_solutions;
   int next_solution_seq{0};
@@ -101,6 +105,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
     pc_snapshot             = snap.pc_snapshot;
     incumbent_snapshot      = snap.incumbent;
     total_lp_iters_snapshot = snap.total_lp_iters;
+    nodes_explored_snapshot = snap.nodes_explored;
   }
 
   bool has_work() const { return static_cast<const Derived*>(this)->has_work_impl(); }
@@ -158,11 +163,6 @@ class deterministic_bfs_worker_t
                                                     mip_node_t<i_t, f_t>* up_child,
                                                     rounding_direction_t preferred_direction)
   {
-    if (!plunge_stack.empty()) {
-      backlog.push(plunge_stack.back());
-      plunge_stack.pop_back();
-    }
-
     down_child->origin_worker_id = this->worker_id;
     down_child->creation_seq     = next_creation_seq++;
     up_child->origin_worker_id   = this->worker_id;
@@ -170,11 +170,11 @@ class deterministic_bfs_worker_t
 
     mip_node_t<i_t, f_t>* first_child;
     if (preferred_direction == rounding_direction_t::UP) {
-      plunge_stack.push_front(down_child);
+      backlog.push(down_child);
       plunge_stack.push_front(up_child);
       first_child = up_child;
     } else {
-      plunge_stack.push_front(up_child);
+      backlog.push(up_child);
       plunge_stack.push_front(down_child);
       first_child = down_child;
     }
@@ -211,7 +211,7 @@ class deterministic_bfs_worker_t
   void record_branched(
     mip_node_t<i_t, f_t>* node, i_t down_child_id, i_t up_child_id, i_t branch_var, f_t branch_val)
   {
-    record_event(bb_event_t<i_t, f_t>::make_branched(this->clock,
+    record_event(bb_event_t<i_t, f_t>::make_branched(this->work_context.current_work(),
                                                      this->worker_id,
                                                      node->creation_seq,
                                                      down_child_id,
@@ -227,7 +227,7 @@ class deterministic_bfs_worker_t
   void record_integer_solution(mip_node_t<i_t, f_t>* node, f_t objective)
   {
     record_event(bb_event_t<i_t, f_t>::make_integer_solution(
-      this->clock, this->worker_id, node->creation_seq, objective));
+      this->work_context.current_work(), this->worker_id, node->creation_seq, objective));
     ++nodes_processed_this_horizon;
     ++this->total_nodes_processed;
     ++this->total_integer_solutions;
@@ -236,7 +236,7 @@ class deterministic_bfs_worker_t
   void record_fathomed(mip_node_t<i_t, f_t>* node, f_t lower_bound)
   {
     record_event(bb_event_t<i_t, f_t>::make_fathomed(
-      this->clock, this->worker_id, node->creation_seq, lower_bound));
+      this->work_context.current_work(), this->worker_id, node->creation_seq, lower_bound));
     ++nodes_processed_this_horizon;
     ++this->total_nodes_processed;
     ++total_nodes_pruned;
@@ -244,8 +244,8 @@ class deterministic_bfs_worker_t
 
   void record_infeasible(mip_node_t<i_t, f_t>* node)
   {
-    record_event(
-      bb_event_t<i_t, f_t>::make_infeasible(this->clock, this->worker_id, node->creation_seq));
+    record_event(bb_event_t<i_t, f_t>::make_infeasible(
+      this->work_context.current_work(), this->worker_id, node->creation_seq));
     ++nodes_processed_this_horizon;
     ++this->total_nodes_processed;
     ++total_nodes_infeasible;
@@ -253,8 +253,8 @@ class deterministic_bfs_worker_t
 
   void record_numerical(mip_node_t<i_t, f_t>* node)
   {
-    record_event(
-      bb_event_t<i_t, f_t>::make_numerical(this->clock, this->worker_id, node->creation_seq));
+    record_event(bb_event_t<i_t, f_t>::make_numerical(
+      this->work_context.current_work(), this->worker_id, node->creation_seq));
     ++nodes_processed_this_horizon;
     ++this->total_nodes_processed;
   }
@@ -288,6 +288,7 @@ class deterministic_diving_worker_t
 
   // Diving statistics
   i_t total_nodes_explored{0};
+  i_t nodes_explored_last_sync{0};
   i_t total_dives{0};
   i_t lp_iters_this_dive{0};
 
@@ -339,7 +340,13 @@ class deterministic_diving_worker_t
   void queue_integer_solution(f_t objective, const std::vector<f_t>& solution, i_t depth)
   {
     this->integer_solutions.push_back(
-      {objective, solution, depth, this->worker_id, this->next_solution_seq++});
+      {objective,
+       solution,
+       depth,
+       this->worker_id,
+       this->next_solution_seq++,
+       this->work_context.current_work(),
+       cuopt::internals::mip_solution_origin_t::BRANCH_AND_BOUND_DIVING});
     ++this->total_integer_solutions;
   }
 

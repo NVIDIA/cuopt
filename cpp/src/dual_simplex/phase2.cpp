@@ -3551,7 +3551,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
       phase2_work_estimate += ft.work_estimate();
       ft.clear_work_estimate();
-      work_unit_context->record_work_sync_on_horizon(phase2_work_estimate / 1e8);
+      if (work_unit_context) {
+        work_unit_context->record_work_sync_on_horizon(phase2_work_estimate / 1e8);
+      }
       phase2_work_estimate = 0.0;
 
       last_feature_log_iter = iter;

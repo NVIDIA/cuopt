@@ -102,10 +102,11 @@ class problem_t {
                                bool resize_to_original_problem,
                                rmm::cuda_stream_view stream);
   void post_process_assignment(rmm::device_uvector<f_t>& current_assignment,
-                               bool resize_to_original_problem = true)
+                               bool resize_to_original_problem       = true,
+                               const raft::handle_t* handle_override = nullptr)
   {
-    post_process_assignment(
-      current_assignment, resize_to_original_problem, handle_ptr->get_stream());
+    auto stream = handle_override ? handle_override->get_stream() : handle_ptr->get_stream();
+    post_process_assignment(current_assignment, resize_to_original_problem, stream);
   }
   void post_process_solution(solution_t<i_t, f_t>& solution);
   void set_papilo_presolve_data(const third_party_presolve_t<i_t, f_t>* presolver_ptr,
@@ -117,7 +118,8 @@ class problem_t {
   {
     return presolve_data.get_papilo_original_num_variables();
   }
-  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const;
+  void papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                 const raft::handle_t* handle_override = nullptr) const;
   void compute_transpose_of_problem();
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
@@ -249,7 +251,8 @@ class problem_t {
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
-  std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
+  std::function<void(const std::vector<f_t>&, cuopt::internals::mip_solution_origin_t)>
+    branch_and_bound_callback;
   std::function<void(const std::vector<f_t>&,
                      const std::vector<f_t>&,
                      const std::vector<f_t>&,

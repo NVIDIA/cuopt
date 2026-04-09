@@ -27,9 +27,13 @@
 #include <thrust/count.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/reduce.h>
 #include <thrust/set_operations.h>
 #include <thrust/sort.h>
 #include <thrust/tabulate.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <cuda/std/functional>
 
@@ -64,6 +68,10 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   set_bounds_if_not_set(*this);
 
   set_variable_bounds(*this);
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               integer_fixed_variable_map.begin(),
+               integer_fixed_variable_map.end(),
+               -1);
 
   const bool is_mip = original_problem_ptr->get_problem_category() != problem_category_t::LP;
   if (is_mip) {
@@ -136,7 +144,7 @@ problem_t<i_t, f_t>::problem_t(
     nonbinary_indices(0, problem_.get_handle_ptr()->get_stream()),
     is_binary_variable(0, problem_.get_handle_ptr()->get_stream()),
     related_variables(0, problem_.get_handle_ptr()->get_stream()),
-    related_variables_offsets(n_variables, problem_.get_handle_ptr()->get_stream()),
+    related_variables_offsets(0, problem_.get_handle_ptr()->get_stream()),
     var_names(problem_.get_variable_names()),
     row_names(problem_.get_row_names()),
     objective_name(problem_.get_objective_name()),
@@ -946,8 +954,12 @@ void problem_t<i_t, f_t>::compute_related_variables(double time_limit)
 
   handle_ptr->sync_stream();
 
-  // CHANGE
-  if (deterministic) { time_limit = std::numeric_limits<f_t>::infinity(); }
+  if (deterministic) {
+    // TODO: Re-enable deterministic related-variable construction once we have a work estimator.
+    related_variables.resize(0, handle_ptr->get_stream());
+    related_variables_offsets.resize(0, handle_ptr->get_stream());
+    return;
+  }
 
   // previously used constants were based on 40GB of memory. Scale accordingly on smaller GPUs
   // We can't rely on querying free memory or allocation try/catch
@@ -1418,6 +1430,12 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
   raft::common::nvtx::range fun_scope("substitute_variables");
   cuopt_assert((are_exclusive<i_t, f_t>(var_indices, var_to_substitute_indices)),
                "variables and var_to_substitute_indices are not exclusive");
+  {
+    std::vector<i_t> sorted_vi(var_indices);
+    std::sort(sorted_vi.begin(), sorted_vi.end());
+    cuopt_assert(std::adjacent_find(sorted_vi.begin(), sorted_vi.end()) == sorted_vi.end(),
+                 "var_indices must not contain duplicates");
+  }
   const i_t dummy_substituted_variable = var_indices[0];
   cuopt_assert(var_indices.size() == var_to_substitute_indices.size(), "size mismatch");
   cuopt_assert(var_indices.size() == offset_values.size(), "size mismatch");
@@ -1446,10 +1464,16 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
                objective_offset_delta_per_variable.begin(),
                objective_offset_delta_per_variable.end(),
                zero_value);
+  const i_t n_substitutions = d_var_indices.size();
+  rmm::device_uvector<i_t> obj_coeff_keys(n_substitutions, handle_ptr->get_stream());
+  rmm::device_uvector<f_t> obj_coeff_deltas(n_substitutions, handle_ptr->get_stream());
+
+  CUOPT_LOG_INFO("Substituting %d variables", n_substitutions);
+
   thrust::for_each(
     handle_ptr->get_thrust_policy(),
     thrust::make_counting_iterator(0),
-    thrust::make_counting_iterator(0) + d_var_indices.size(),
+    thrust::make_counting_iterator(0) + n_substitutions,
     [variable_fix_mask                   = make_span(fixing_helpers.variable_fix_mask),
      var_indices                         = make_span(d_var_indices),
      n_variables                         = n_variables,
@@ -1458,20 +1482,40 @@ void problem_t<i_t, f_t>::substitute_variables(const std::vector<i_t>& var_indic
      var_to_substitute_indices           = make_span(d_var_to_substitute_indices),
      objective_coefficients              = make_span(objective_coefficients),
      objective_offset_delta_per_variable = make_span(objective_offset_delta_per_variable),
-     objective_offset                    = objective_offset.data(),
+     obj_keys                            = make_span(obj_coeff_keys),
+     obj_deltas                          = make_span(obj_coeff_deltas),
      var_flags                           = make_span(presolve_data.var_flags)] __device__(i_t idx) {
-      i_t var_idx                     = var_indices[idx];
-      i_t substituting_var_idx        = var_to_substitute_indices[idx];
-      variable_fix_mask[var_idx]      = idx;
-      f_t objective_offset_difference = objective_coefficients[var_idx] * substitute_offset[idx];
-      objective_offset_delta_per_variable[idx] += objective_offset_difference;
-      //  atomicAdd(objective_offset, objective_offset_difference);
-      atomicAdd(&objective_coefficients[substituting_var_idx],
-                objective_coefficients[var_idx] * substitute_coefficient[idx]);
-      // Substitution changes the constraint coefficients on x_B, invalidating
-      // any implied-integrality proof that relied on the original structure.
+      i_t var_idx                = var_indices[idx];
+      i_t substituting_var_idx   = var_to_substitute_indices[idx];
+      variable_fix_mask[var_idx] = idx;
+      objective_offset_delta_per_variable[idx] +=
+        objective_coefficients[var_idx] * substitute_offset[idx];
+      obj_keys[idx]   = substituting_var_idx;
+      obj_deltas[idx] = objective_coefficients[var_idx] * substitute_coefficient[idx];
       var_flags[substituting_var_idx] &= ~(i_t)VAR_IMPLIED_INTEGER;
     });
+
+  // Deterministic reduction of objective coefficient deltas per substituting variable
+  thrust::sort_by_key(handle_ptr->get_thrust_policy(),
+                      obj_coeff_keys.begin(),
+                      obj_coeff_keys.end(),
+                      obj_coeff_deltas.begin());
+  rmm::device_uvector<i_t> unique_keys(n_substitutions, handle_ptr->get_stream());
+  rmm::device_uvector<f_t> summed_deltas(n_substitutions, handle_ptr->get_stream());
+  auto [keys_end, vals_end] = thrust::reduce_by_key(handle_ptr->get_thrust_policy(),
+                                                    obj_coeff_keys.begin(),
+                                                    obj_coeff_keys.end(),
+                                                    obj_coeff_deltas.begin(),
+                                                    unique_keys.begin(),
+                                                    summed_deltas.begin());
+  i_t n_unique              = keys_end - unique_keys.begin();
+  thrust::for_each(
+    handle_ptr->get_thrust_policy(),
+    thrust::make_counting_iterator(0),
+    thrust::make_counting_iterator(n_unique),
+    [obj_coeffs = make_span(objective_coefficients),
+     keys       = unique_keys.data(),
+     deltas     = summed_deltas.data()] __device__(i_t i) { obj_coeffs[keys[i]] += deltas[i]; });
   presolve_data.objective_offset += thrust::reduce(handle_ptr->get_thrust_policy(),
                                                    objective_offset_delta_per_variable.begin(),
                                                    objective_offset_delta_per_variable.end(),
@@ -2167,9 +2211,10 @@ void problem_t<i_t, f_t>::set_papilo_presolve_data(
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment) const
+void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& assignment,
+                                                    const raft::handle_t* handle_override) const
 {
-  presolve_data.papilo_uncrush_assignment(const_cast<problem_t&>(*this), assignment);
+  presolve_data.papilo_uncrush_assignment(*this, assignment, handle_override);
 }
 
 template <typename i_t, typename f_t>

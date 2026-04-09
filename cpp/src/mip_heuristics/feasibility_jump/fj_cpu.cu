@@ -11,16 +11,20 @@
 #include "feasibility_jump_impl_common.cuh"
 #include "fj_cpu.cuh"
 
+#include <utilities/determinism_log.hpp>
 #include <utilities/seed_generator.cuh>
 
 #include <raft/core/nvtx.hpp>
 
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/tuple.h>
+
+#include <cerrno>
 #include <chrono>
-#include <iomanip>
-#include <mutex>
+#include <cmath>
+#include <cstdlib>
 #include <random>
 #include <sstream>
-#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -37,6 +41,24 @@
 #endif
 
 namespace cuopt::linear_programming::detail {
+
+namespace {
+
+double read_positive_work_unit_scale(const char* env_name)
+{
+  const char* env_value = std::getenv(env_name);
+  if (env_value == nullptr || env_value[0] == '\0') { return 1.0; }
+
+  errno                     = 0;
+  char* end_ptr             = nullptr;
+  const double parsed_value = std::strtod(env_value, &end_ptr);
+  const bool valid_value    = errno == 0 && end_ptr != env_value && *end_ptr == '\0' &&
+                           std::isfinite(parsed_value) && parsed_value > 0.0;
+  cuopt_assert(valid_value, "Invalid CPUFJ work-unit scale env var");
+  return parsed_value;
+}
+
+}  // namespace
 
 template <typename i_t, typename f_t, typename ArrayType>
 thrust::tuple<f_t, f_t> get_mtm_for_bound(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
@@ -105,99 +127,6 @@ thrust::tuple<f_t, f_t, f_t, f_t> get_mtm_for_constraint(
   }
 
   return {delta_ij, sign, slack, cstr_tolerance};
-}
-
-template <typename i_t, typename f_t>
-std::pair<f_t, f_t> feas_score_constraint(const typename fj_t<i_t, f_t>::climber_data_t::view_t& fj,
-                                          i_t var_idx,
-                                          f_t delta,
-                                          i_t cstr_idx,
-                                          f_t cstr_coeff,
-                                          f_t c_lb,
-                                          f_t c_ub,
-                                          f_t current_lhs,
-                                          f_t left_weight,
-                                          f_t right_weight)
-{
-  cuopt_assert(isfinite(delta), "invalid delta");
-  cuopt_assert(cstr_coeff != 0 && isfinite(cstr_coeff), "invalid coefficient");
-
-  f_t base_feas    = 0;
-  f_t bonus_robust = 0;
-
-  f_t bounds[2] = {c_lb, c_ub};
-  cuopt_assert(isfinite(c_lb) || isfinite(c_ub), "no range");
-  for (i_t bound_idx = 0; bound_idx < 2; ++bound_idx) {
-    if (!isfinite(bounds[bound_idx])) continue;
-
-    // factor to correct the lhs/rhs to turn a lb <= lhs <= ub constraint into
-    // two virtual leq constraints "lhs <= ub" and "-lhs <= -lb" in order to match
-    // the convention of the paper
-
-    // TODO: broadcast left/right weights to a csr_offset-indexed table? local minimums
-    // usually occur on a rarer basis (around 50 iteratiosn to 1 local minimum)
-    // likely unreasonable and overkill however
-    f_t cstr_weight = bound_idx == 0 ? left_weight : right_weight;
-    f_t sign        = bound_idx == 0 ? -1 : 1;
-    f_t rhs         = bounds[bound_idx] * sign;
-    f_t old_lhs     = current_lhs * sign;
-    f_t new_lhs     = (current_lhs + cstr_coeff * delta) * sign;
-    f_t old_slack   = rhs - old_lhs;
-    f_t new_slack   = rhs - new_lhs;
-
-    cuopt_assert(isfinite(cstr_weight), "invalid weight");
-    cuopt_assert(cstr_weight >= 0, "invalid weight");
-    cuopt_assert(isfinite(old_lhs), "");
-    cuopt_assert(isfinite(new_lhs), "");
-    cuopt_assert(isfinite(old_slack) && isfinite(new_slack), "");
-
-    f_t cstr_tolerance = fj.get_corrected_tolerance(cstr_idx, c_lb, c_ub);
-
-    bool old_viol = fj.excess_score(cstr_idx, current_lhs, c_lb, c_ub) < -cstr_tolerance;
-    bool new_viol =
-      fj.excess_score(cstr_idx, current_lhs + cstr_coeff * delta, c_lb, c_ub) < -cstr_tolerance;
-
-    bool old_sat = old_lhs < rhs + cstr_tolerance;
-    bool new_sat = new_lhs < rhs + cstr_tolerance;
-
-    // equality
-    if (fj.pb.integer_equal(c_lb, c_ub)) {
-      if (!old_viol) cuopt_assert(old_sat == !old_viol, "");
-      if (!new_viol) cuopt_assert(new_sat == !new_viol, "");
-    }
-
-    // if it would feasibilize this constraint
-    if (!old_sat && new_sat) {
-      cuopt_assert(old_viol, "");
-      base_feas += cstr_weight;
-    }
-    // would cause this constraint to be violated
-    else if (old_sat && !new_sat) {
-      cuopt_assert(new_viol, "");
-      base_feas -= cstr_weight;
-    }
-    // simple improvement
-    else if (!old_sat && !new_sat && old_lhs > new_lhs) {
-      cuopt_assert(old_viol && new_viol, "");
-      base_feas += (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
-    }
-    // simple worsening
-    else if (!old_sat && !new_sat && old_lhs <= new_lhs) {
-      cuopt_assert(old_viol && new_viol, "");
-      base_feas -= (i_t)(cstr_weight * fj.settings->parameters.excess_improvement_weight);
-    }
-
-    // robustness score bonus if this would leave some strick slack
-    bool old_stable = old_lhs < rhs - cstr_tolerance;
-    bool new_stable = new_lhs < rhs - cstr_tolerance;
-    if (!old_stable && new_stable) {
-      bonus_robust += cstr_weight;
-    } else if (old_stable && !new_stable) {
-      bonus_robust -= cstr_weight;
-    }
-  }
-
-  return {base_feas, bonus_robust};
 }
 
 static constexpr double BIGVAL_THRESHOLD = 1e20;
@@ -1401,6 +1330,15 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 
   // Initialize fj_cpu with all the data
   init_fj_cpu(*fj_cpu, solution, left_weights, right_weights, objective_weight);
+  const double cpu_work_unit_scale =
+    context.settings.cpufj_work_unit_scale != 1.0
+      ? context.settings.cpufj_work_unit_scale
+      : read_positive_work_unit_scale("CUOPT_CPUFJ_WORK_UNIT_SCALE");
+  fj_cpu->work_unit_bias *= cpu_work_unit_scale;
+  if (cpu_work_unit_scale != 1.0) {
+    CUOPT_DETERMINISM_LOG(
+      "CPUFJ using work-unit scale %f (bias=%f)", cpu_work_unit_scale, fj_cpu->work_unit_bias);
+  }
   fj_cpu->settings = settings;
   if (randomize_params) {
     auto rng                 = std::mt19937(cuopt::seed_generator::get_seed());
@@ -1550,6 +1488,10 @@ static bool cpufj_solve_loop(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_lim
       fj_cpu.work_units_elapsed += biased_work;
 
       if (fj_cpu.producer_sync != nullptr) { fj_cpu.producer_sync->notify_progress(); }
+
+      if (fj_cpu.work_units_elapsed.load(std::memory_order_relaxed) >= fj_cpu.work_budget) {
+        break;
+      }
     }
 
     cuopt_func_call(sanity_checks(fj_cpu));

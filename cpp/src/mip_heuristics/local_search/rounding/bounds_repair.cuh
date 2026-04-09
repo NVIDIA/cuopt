@@ -13,6 +13,9 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/tuple.h>
+
 namespace cuopt::linear_programming::detail {
 
 // from the paper, probability of choosing random candidate= noise parameter
@@ -120,7 +123,7 @@ class bounds_repair_t {
   void compute_damages(problem_t<i_t, f_t>& problem, i_t n_candidates);
   bool repair_problem(problem_t<i_t, f_t>& problem,
                       problem_t<i_t, f_t>& original_problem,
-                      timer_t timer_,
+                      termination_checker_t& timer_,
                       const raft::handle_t* handle_ptr_);
   void apply_move(problem_t<i_t, f_t>& problem,
                   problem_t<i_t, f_t>& original_problem,
@@ -144,7 +147,7 @@ class bounds_repair_t {
   i_t h_n_violated_cstr;
   const raft::handle_t* handle_ptr;
   std::mt19937 gen;
-  timer_t timer{0.};
+  termination_checker_t timer;
   std::vector<i_t> cycle_vector;
   i_t cycle_write_pos = 0;
 };

@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
-#include <utilities/timer.hpp>
+#include <utilities/termination_checker.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -26,19 +26,21 @@ template <typename i_t, typename f_t>
 class line_segment_search_t {
  public:
   line_segment_search_t() = delete;
-  line_segment_search_t(fj_t<i_t, f_t>& fj, constraint_prop_t<i_t, f_t>& constraint_prop);
+  line_segment_search_t(mip_solver_context_t<i_t, f_t>& context,
+                        fj_t<i_t, f_t>& fj,
+                        constraint_prop_t<i_t, f_t>& constraint_prop);
   bool search_line_segment(solution_t<i_t, f_t>& solution,
                            const rmm::device_uvector<f_t>& point_1,
                            const rmm::device_uvector<f_t>& point_2,
                            bool is_feasibility_run,
-                           cuopt::timer_t& timer);
+                           cuopt::termination_checker_t& timer);
 
   bool search_line_segment(solution_t<i_t, f_t>& solution,
                            const rmm::device_uvector<f_t>& point_1,
                            const rmm::device_uvector<f_t>& point_2,
                            const rmm::device_uvector<f_t>& delta_vector,
                            bool is_feasibility_run,
-                           cuopt::timer_t& timer);
+                           cuopt::termination_checker_t& timer);
 
   void save_solution_if_better(solution_t<i_t, f_t>& solution,
                                const rmm::device_uvector<f_t>& point_1,
@@ -49,6 +51,7 @@ class line_segment_search_t {
                                f_t& best_feasible_cost,
                                f_t curr_cost);
 
+  mip_solver_context_t<i_t, f_t>& context;
   fj_t<i_t, f_t>& fj;
   constraint_prop_t<i_t, f_t>& constraint_prop;
   line_segment_settings_t settings;

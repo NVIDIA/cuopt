@@ -12,19 +12,23 @@
 #include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
+#include <utilities/work_limit_context.hpp>
 #include "lp_state.cuh"
 
 namespace cuopt::linear_programming::detail {
 
 struct relaxed_lp_settings_t {
-  double tolerance                  = 1e-4;
-  double time_limit                 = 1.0;
-  bool check_infeasibility          = true;
-  bool return_first_feasible        = false;
-  bool save_state                   = true;
-  bool per_constraint_residual      = true;
-  bool has_initial_primal           = true;
-  std::atomic<int>* concurrent_halt = nullptr;
+  double tolerance                          = 1e-4;
+  double time_limit                         = 1.0;
+  int iteration_limit                       = std::numeric_limits<int>::max();
+  double work_limit                         = std::numeric_limits<double>::infinity();
+  bool check_infeasibility                  = true;
+  bool return_first_feasible                = false;
+  bool save_state                           = true;
+  bool per_constraint_residual              = true;
+  bool has_initial_primal                   = true;
+  std::atomic<int>* concurrent_halt         = nullptr;
+  cuopt::work_limit_context_t* work_context = nullptr;
 };
 
 template <typename i_t, typename f_t>

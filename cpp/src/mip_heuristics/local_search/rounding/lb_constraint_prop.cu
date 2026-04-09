@@ -33,7 +33,8 @@ lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f
                    context.problem_ptr->handle_ptr->get_stream()),
     assignment_restore(context.problem_ptr->n_variables,
                        context.problem_ptr->handle_ptr->get_stream()),
-    rng(cuopt::seed_generator::get_seed(), 0, 0)
+    rng(cuopt::seed_generator::get_seed(), 0, 0),
+    max_timer(0.0, cuopt::termination_checker_t::root_tag_t{})
 {
 }
 
@@ -700,14 +701,15 @@ template <typename i_t, typename f_t>
 bool lb_constraint_prop_t<i_t, f_t>::apply_round(
   solution_t<i_t, f_t>& sol,
   f_t lp_run_time_after_feasible,
-  timer_t& timer,
+  termination_checker_t& timer,
   std::optional<std::vector<thrust::pair<f_t, f_t>>> probing_candidates)
 {
   raft::common::nvtx::range fun_scope("constraint prop round");
 
   // this is second timer that can continue but without recovery mode
   const f_t max_time_for_bounds_prop = 5.;
-  max_timer                          = timer_t{max_time_for_bounds_prop};
+  max_timer =
+    termination_checker_t{context.gpu_heur_loop, max_time_for_bounds_prop, *context.termination};
   if (check_brute_force_rounding(sol)) { return true; }
   recovery_mode      = false;
   rounding_ii        = false;

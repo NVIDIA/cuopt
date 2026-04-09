@@ -235,7 +235,7 @@ void bound_flipping_ratio_test_t<i_t, f_t>::heap_passes(const std::vector<i_t>& 
     // Remove minimum ratio from the heap and rebalance
     i_t heap_index = bare_idx.front();
     std::pop_heap(bare_idx.begin(), bare_idx.end(), compare);
-    work_estimate_ += 2 * std::log2(bare_idx.size());
+    if (bare_idx.size() > 1) { work_estimate_ += 2 * std::log2((f_t)bare_idx.size()); }
     bare_idx.pop_back();
 
     nonbasic_entering = current_indicies[heap_index];

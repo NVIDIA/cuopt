@@ -24,8 +24,10 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename f_t>
-using early_incumbent_callback_t = std::function<void(
-  f_t solver_obj, f_t user_obj, const std::vector<f_t>& assignment, const char* heuristic_name)>;
+using early_incumbent_callback_t = std::function<void(f_t solver_obj,
+                                                      f_t user_obj,
+                                                      const std::vector<f_t>& assignment,
+                                                      internals::mip_solution_origin_t origin)>;
 
 // CRTP base for early heuristics that run on the original (or papilo-presolved) problem
 // during presolve to find incumbents as early as possible.
@@ -92,7 +94,7 @@ class early_heuristic_t {
     // Log and callback are deferred to the shared incumbent_callback_ which enforces
     // global monotonicity across all early heuristic instances.
     if (incumbent_callback_) {
-      incumbent_callback_(solver_obj, user_obj, user_assignment, Derived::name());
+      incumbent_callback_(solver_obj, user_obj, user_assignment, Derived::origin());
     }
   }
 

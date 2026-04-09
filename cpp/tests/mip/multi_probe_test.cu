@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
+#include "determinism_utils.cuh"
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -43,9 +44,10 @@ void init_handler(const raft::handle_t* handle_ptr)
 }
 
 std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_random(
-  detail::problem_t<int, double>& problem, int sample_size)
+  detail::problem_t<int, double>& problem,
+  int sample_size,
+  unsigned long seed = std::random_device{}())
 {
-  auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
   problem.compute_n_integer_vars();
   auto [v_lb, v_ub] = extract_host_bounds<double>(problem.variable_bounds, problem.handle_ptr);
@@ -138,10 +140,8 @@ multi_probe_results(
     std::move(h_lb_0), std::move(h_ub_0), std::move(h_lb_1), std::move(h_ub_1));
 }
 
-void test_multi_probe(std::string path)
+uint32_t test_multi_probe(std::string path, unsigned long seed = std::random_device{}())
 {
-  auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
   const raft::handle_t handle_{};
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);
@@ -150,12 +150,13 @@ void test_multi_probe(std::string path)
   problem_checking_t<int, double>::check_problem_representation(op_problem);
   detail::problem_t<int, double> problem(op_problem);
   mip_solver_settings_t<int, double> default_settings{};
-  detail::mip_solver_t<int, double> solver(problem, default_settings, cuopt::timer_t(0));
+  auto timer = cuopt::termination_checker_t(0.0, cuopt::termination_checker_t::root_tag_t{});
+  detail::mip_solver_t<int, double> solver(problem, default_settings, timer);
   detail::bound_presolve_t<int, double> bnd_prb_0(solver.context);
   detail::bound_presolve_t<int, double> bnd_prb_1(solver.context);
   detail::multi_probe_t<int, double> multi_probe_prs(solver.context);
 
-  auto probe_tuple       = select_k_random(problem, 100);
+  auto probe_tuple       = select_k_random(problem, 100, seed);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);
 
   auto [bnd_lb_0, bnd_ub_0, bnd_lb_1, bnd_ub_1] =
@@ -174,6 +175,16 @@ void test_multi_probe(std::string path)
   auto mlp_min_act_1 = host_copy(multi_probe_prs.upd_1.min_activity, stream);
   auto mlp_max_act_1 = host_copy(multi_probe_prs.upd_1.max_activity, stream);
 
+  std::vector<uint32_t> hashes;
+  hashes.push_back(detail::compute_hash(bnd_min_act_0));
+  hashes.push_back(detail::compute_hash(bnd_min_act_1));
+  hashes.push_back(detail::compute_hash(bnd_max_act_0));
+  hashes.push_back(detail::compute_hash(bnd_max_act_1));
+  hashes.push_back(detail::compute_hash(bnd_lb_0));
+  hashes.push_back(detail::compute_hash(bnd_ub_0));
+  hashes.push_back(detail::compute_hash(bnd_lb_1));
+  hashes.push_back(detail::compute_hash(bnd_ub_1));
+
   for (int i = 0; i < (int)bnd_min_act_0.size(); ++i) {
     EXPECT_DOUBLE_EQ(bnd_min_act_0[i], mlp_min_act_0[i]);
     EXPECT_DOUBLE_EQ(bnd_max_act_0[i], mlp_max_act_0[i]);
@@ -187,6 +198,9 @@ void test_multi_probe(std::string path)
     EXPECT_DOUBLE_EQ(bnd_lb_1[i], m_lb_1[i]);
     EXPECT_DOUBLE_EQ(bnd_ub_1[i], m_ub_1[i]);
   }
+
+  // return a composite hash of all the hashes to check for determinism
+  return detail::compute_hash(hashes);
 }
 
 TEST(presolve, multi_probe)
@@ -200,4 +214,29 @@ TEST(presolve, multi_probe)
   }
 }
 
+TEST(presolve, multi_probe_deterministic)
+{
+  spin_stream_raii_t spin_stream_1;
+
+  std::vector<std::string> test_instances = {
+    "mip/50v-10-free-bound.mps",
+    "mip/neos5-free-bound.mps",
+    "mip/neos5.mps",
+    "mip/50v-10.mps",
+  };
+  for (const auto& test_instance : test_instances) {
+    std::cout << "Running: " << test_instance << std::endl;
+    unsigned long seed = std::random_device{}();
+    auto path          = make_path_absolute(test_instance);
+    uint32_t gold_hash = 0;
+    for (int i = 0; i < 10; ++i) {
+      auto hash = test_multi_probe(path, seed);
+      if (i == 0) {
+        gold_hash = hash;
+      } else {
+        EXPECT_EQ(hash, gold_hash);
+      }
+    }
+  }
+}
 }  // namespace cuopt::linear_programming::test

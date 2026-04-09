@@ -29,7 +29,8 @@
 
 namespace cuopt {
 
-work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval) : sync_interval_(sync_interval)
+work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval, double base)
+  : sync_interval_(sync_interval), base_(base)
 {
 }
 
@@ -79,15 +80,15 @@ void work_unit_scheduler_t::wait_for_next_sync(work_limit_context_t& ctx)
 {
   if (is_shutdown()) return;
 
-  double next_sync              = current_sync_target();
-  ctx.global_work_units_elapsed = next_sync;
+  double next_sync = current_sync_target();
+  ctx.set_current_work(next_sync, false);
   wait_at_sync_point(ctx, next_sync);
 }
 
 double work_unit_scheduler_t::current_sync_target() const
 {
   if (sync_interval_ <= 0) return std::numeric_limits<double>::infinity();
-  return (barrier_generation_ + 1) * sync_interval_;
+  return base_ + (barrier_generation_ + 1) * sync_interval_;
 }
 
 void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double sync_target)

@@ -49,6 +49,39 @@ class c_get_solution_callback_t : public cuopt::internals::get_solution_callback
   cuOptMIPGetSolutionCallback callback_;
 };
 
+class c_get_solution_callback_ext_t : public cuopt::internals::get_solution_callback_ext_t {
+ public:
+  explicit c_get_solution_callback_ext_t(cuOptMIPGetSolutionCallbackExt callback)
+    : callback_(callback)
+  {
+  }
+
+  void get_solution(void* data,
+                    void* objective_value,
+                    void* solution_bound,
+                    const cuopt::internals::mip_solution_callback_info_t* callback_info,
+                    void* user_data) override
+  {
+    if (callback_ == nullptr) { return; }
+    cuOptMIPSolutionCallbackInfo c_callback_info{};
+    if (callback_info != nullptr) {
+      c_callback_info.origin         = (uint32_t)callback_info->origin;
+      c_callback_info.work_timestamp = callback_info->work_timestamp;
+    } else {
+      c_callback_info.origin         = CUOPT_MIP_SOLUTION_ORIGIN_UNKNOWN;
+      c_callback_info.work_timestamp = -1.0;
+    }
+    callback_(static_cast<const cuopt_float_t*>(data),
+              static_cast<const cuopt_float_t*>(objective_value),
+              static_cast<const cuopt_float_t*>(solution_bound),
+              &c_callback_info,
+              user_data);
+  }
+
+ private:
+  cuOptMIPGetSolutionCallbackExt callback_;
+};
+
 class c_set_solution_callback_t : public cuopt::internals::set_solution_callback_t {
  public:
   explicit c_set_solution_callback_t(cuOptMIPSetSolutionCallback callback) : callback_(callback) {}
@@ -68,6 +101,11 @@ class c_set_solution_callback_t : public cuopt::internals::set_solution_callback
  private:
   cuOptMIPSetSolutionCallback callback_;
 };
+
+// ABI guards: these fire at compile time if the struct layout changes
+// and existing field offsets are changed
+static_assert(offsetof(cuOptMIPSolutionCallbackInfo, origin) == 0, "ABI break");
+static_assert(offsetof(cuOptMIPSolutionCallbackInfo, work_timestamp) == 8, "ABI break");
 
 // Owns solver settings and C callback wrappers for C API lifetime.
 struct solver_settings_handle_t {
@@ -762,6 +800,19 @@ cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
   if (callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_handle_t* settings_handle = get_settings_handle(settings);
   auto callback_wrapper                     = std::make_unique<c_get_solution_callback_t>(callback);
+  settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
+  settings_handle->callbacks.push_back(std::move(callback_wrapper));
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetMIPGetSolutionCallbackExt(cuOptSolverSettings settings,
+                                              cuOptMIPGetSolutionCallbackExt callback,
+                                              void* user_data)
+{
+  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (callback == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  solver_settings_handle_t* settings_handle = get_settings_handle(settings);
+  auto callback_wrapper = std::make_unique<c_get_solution_callback_ext_t>(callback);
   settings_handle->settings->set_mip_callback(callback_wrapper.get(), user_data);
   settings_handle->callbacks.push_back(std::move(callback_wrapper));
   return CUOPT_SUCCESS;

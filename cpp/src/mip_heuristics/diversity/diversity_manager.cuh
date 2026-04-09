@@ -25,6 +25,7 @@
 #include <mip_heuristics/local_search/local_search.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <utilities/termination_checker.hpp>
 #include <utilities/timer.hpp>
 
 #include <cstdint>
@@ -35,7 +36,7 @@ template <typename i_t, typename f_t>
 class diversity_manager_t {
  public:
   diversity_manager_t(mip_solver_context_t<i_t, f_t>& context);
-  bool run_presolve(f_t time_limit, timer_t global_timer);
+  bool run_presolve(f_t time_limit, cuopt::termination_checker_t& global_timer);
   solution_t<i_t, f_t> run_solver();
   void generate_solution(f_t time_limit, bool random_start = true);
   void run_fj_alone(solution_t<i_t, f_t>& solution);
@@ -50,8 +51,9 @@ class diversity_manager_t {
   void diversity_step(i_t max_iterations_without_improvement);
   void add_user_given_solutions(std::vector<solution_t<i_t, f_t>>& initial_sol_vector);
   population_t<i_t, f_t>* get_population_pointer() { return &population; }
-  void recombine_and_ls_with_all(std::vector<solution_t<i_t, f_t>>& solutions,
-                                 bool add_only_feasible = false);
+  void recombine_and_ls_with_all(
+    std::vector<typename population_t<i_t, f_t>::drained_external_solution_t>& solutions,
+    bool add_only_feasible = false);
   void recombine_and_ls_with_all(solution_t<i_t, f_t>& solution, bool add_only_feasible = false);
   std::pair<solution_t<i_t, f_t>, solution_t<i_t, f_t>> recombine_and_local_search(
     solution_t<i_t, f_t>& a,
@@ -65,7 +67,7 @@ class diversity_manager_t {
                               solution_t<i_t, f_t>& sol2);
   bool run_local_search(solution_t<i_t, f_t>& solution,
                         const weight_t<i_t, f_t>& weights,
-                        timer_t& timer,
+                        termination_checker_t& timer,
                         ls_config_t<i_t, f_t>& ls_config);
 
   void consume_staged_simplex_solution(lp_state_t<i_t, f_t>& lp_state);
@@ -84,7 +86,7 @@ class diversity_manager_t {
   std::vector<f_t> staged_simplex_dual_solution;
   f_t staged_simplex_objective{std::numeric_limits<f_t>::infinity()};
   local_search_t<i_t, f_t> ls;
-  cuopt::timer_t timer;
+  cuopt::termination_checker_t timer;
   bound_prop_recombiner_t<i_t, f_t> bound_prop_recombiner;
   fp_recombiner_t<i_t, f_t> fp_recombiner;
   line_segment_recombiner_t<i_t, f_t> line_segment_recombiner;

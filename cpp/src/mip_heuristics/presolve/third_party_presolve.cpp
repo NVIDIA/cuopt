@@ -544,7 +544,8 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
 template <typename f_t>
 void set_presolve_methods(papilo::Presolve<f_t>& presolver,
                           problem_category_t category,
-                          bool dual_postsolve)
+                          bool dual_postsolve,
+                          bool deterministic)
 {
   using uptr = std::unique_ptr<papilo::PresolveMethod<f_t>>;
 
@@ -571,7 +572,9 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
   // exhaustive presolvers
   presolver.addPresolveMethod(uptr(new papilo::ImplIntDetection<f_t>()));
   presolver.addPresolveMethod(uptr(new papilo::DominatedCols<f_t>()));
-  presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>()));
+  // Papilo's Probing presolver is nondeterministic.
+  // TODO: push an upstream PR
+  if (!deterministic) { presolver.addPresolveMethod(uptr(new papilo::Probing<f_t>())); }
 
   if (!dual_postsolve) {
     presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
@@ -605,17 +608,20 @@ template <typename f_t>
 void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
                              problem_category_t category,
                              int nrows,
-                             int ncols)
+                             int ncols,
+                             bool deterministic = false)
 {
   // It looks like a copy. But this copy has the pointers to relevant variables in papilo
   auto params = presolver.getParameters();
   if (category == problem_category_t::MIP) {
-    // Papilo has work unit measurements for probing. Because of this when the first batch fails to
-    // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
-    // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
-    // long
-    int min_badgesize = std::max(ncols / 2, 32);
-    params.setParameter("probing.minbadgesize", min_badgesize);
+    if (!deterministic) {
+      // Papilo has work unit measurements for probing. Because of this when the first batch fails
+      // to produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
+      // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
+      // long
+      int min_badgesize = std::max(ncols / 2, 32);
+      params.setParameter("probing.minbadgesize", min_badgesize);
+    }
     params.setParameter("cliquemerging.enabled", true);
     params.setParameter("cliquemerging.maxcalls", 50);
   }
@@ -690,7 +696,7 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
   CUOPT_LOG_INFO("Calling Papilo presolver (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
-  set_presolve_methods(papilo_presolver, category, dual_postsolve);
+  set_presolve_methods(papilo_presolver, category, dual_postsolve, deterministic_);
   set_presolve_options<i_t, f_t>(papilo_presolver,
                                  category,
                                  absolute_tolerance,
@@ -698,8 +704,11 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
                                  time_limit,
                                  dual_postsolve,
                                  num_cpu_threads);
-  set_presolve_parameters(
-    papilo_presolver, category, op_problem.get_n_constraints(), op_problem.get_n_variables());
+  set_presolve_parameters(papilo_presolver,
+                          category,
+                          op_problem.get_n_constraints(),
+                          op_problem.get_n_variables(),
+                          deterministic_);
 
   // Disable papilo logs
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

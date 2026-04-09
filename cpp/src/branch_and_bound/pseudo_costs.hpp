@@ -17,12 +17,14 @@
 
 #include <utilities/omp_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
+#include <utilities/work_limit_context.hpp>
 
 #include <omp.h>
 #include <cmath>
 #include <rmm/device_uvector.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -357,6 +359,13 @@ class pseudo_cost_snapshot_t {
     }
   }
 
+  // Record an update that was already applied to the arrays (e.g. by strong branching).
+  void record_update(
+    i_t variable, rounding_direction_t direction, f_t delta, double clock, int worker_id)
+  {
+    updates_.push_back({variable, direction, delta, clock, worker_id});
+  }
+
   std::vector<pseudo_cost_update_t<i_t, f_t>> take_updates()
   {
     std::vector<pseudo_cost_update_t<i_t, f_t>> result;
@@ -370,6 +379,7 @@ class pseudo_cost_snapshot_t {
   std::vector<f_t> sum_up_;
   std::vector<i_t> num_down_;
   std::vector<i_t> num_up_;
+  int64_t strong_branching_lp_iter_{0};
 
  private:
   std::vector<pseudo_cost_update_t<i_t, f_t>> updates_;
@@ -452,8 +462,10 @@ class pseudo_costs_t {
       nd[j] = pseudo_cost_num_down[j];
       nu[j] = pseudo_cost_num_up[j];
     }
-    return pseudo_cost_snapshot_t<i_t, f_t>(
-      std::move(sd), std::move(su), std::move(nd), std::move(nu));
+    auto snap =
+      pseudo_cost_snapshot_t<i_t, f_t>(std::move(sd), std::move(su), std::move(nd), std::move(nu));
+    snap.strong_branching_lp_iter_ = strong_branching_lp_iter.load();
+    return snap;
   }
 
   void merge_updates(const std::vector<pseudo_cost_update_t<i_t, f_t>>& updates)
@@ -541,6 +553,44 @@ class pseudo_costs_t {
   batch_pdlp_warm_cache_t<i_t, f_t> pdlp_warm_cache;
 };
 
+// Callback invoked after each strong-branching pseudocost discovery.
+template <typename i_t, typename f_t>
+using sb_update_callback_t =
+  std::function<void(i_t variable, rounding_direction_t direction, f_t delta)>;
+
+// Core reliability branching loop usable by both opportunistic and deterministic paths.
+// When num_tasks == 1, runs serially with no locking (deterministic).
+// When num_tasks > 1 with mutexes/rng, uses OMP taskloop (opportunistic).
+// SumT/CountT can be f_t/i_t (deterministic snapshot) or omp_atomic_t<f_t>/omp_atomic_t<i_t>.
+template <typename i_t, typename f_t, typename SumT, typename CountT, typename SBIterT>
+i_t reliable_variable_selection_core(mip_node_t<i_t, f_t>* node_ptr,
+                                     const std::vector<i_t>& fractional,
+                                     const std::vector<f_t>& solution,
+                                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const std::vector<variable_type_t>& var_types,
+                                     const lp_problem_t<i_t, f_t>& leaf_problem,
+                                     const std::vector<f_t>& edge_norms,
+                                     const basis_update_mpf_t<i_t, f_t>& basis_factors,
+                                     const std::vector<i_t>& basic_list,
+                                     const std::vector<i_t>& nonbasic_list,
+                                     SumT* sum_down,
+                                     SumT* sum_up,
+                                     CountT* num_down,
+                                     CountT* num_up,
+                                     i_t n_vars,
+                                     SBIterT& strong_branching_lp_iter,
+                                     f_t upper_bound,
+                                     int64_t bnb_lp_iters,
+                                     int64_t bnb_nodes_explored,
+                                     f_t start_time,
+                                     const reliability_branching_settings_t<i_t, f_t>& rb_settings,
+                                     int num_tasks,
+                                     omp_mutex_t* var_mutex_down,
+                                     omp_mutex_t* var_mutex_up,
+                                     pcgenerator_t* rng,
+                                     cuopt::work_limit_context_t* work_ctx              = nullptr,
+                                     const sb_update_callback_t<i_t, f_t>& on_sb_update = {});
+
 template <typename i_t, typename f_t>
 void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -556,6 +606,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<i_t>& basic_list,
                       const std::vector<i_t>& nonbasic_list,
                       basis_update_mpf_t<i_t, f_t>& basis_factors,
-                      pseudo_costs_t<i_t, f_t>& pc);
+                      pseudo_costs_t<i_t, f_t>& pc,
+                      cuopt::work_limit_context_t* work_unit_context = nullptr);
 
 }  // namespace cuopt::linear_programming::dual_simplex

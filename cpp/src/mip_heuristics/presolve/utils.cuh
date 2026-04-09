@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -14,7 +14,8 @@ enum class termination_criterion_t {
   ITERATION_LIMIT,
   CONVERGENCE,
   INFEASIBLE,
-  NO_UPDATE
+  NO_UPDATE,
+  WORK_LIMIT
 };
 
 }  // namespace cuopt::linear_programming::detail

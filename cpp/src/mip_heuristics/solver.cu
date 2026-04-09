@@ -18,6 +18,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
+#include <utilities/determinism_log.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -25,7 +26,12 @@
 #include <cmath>
 #include <future>
 #include <memory>
-#include <thread>
+
+// enable to activate detailed determinism logs
+#if 0
+#undef CUOPT_DETERMINISM_LOG
+#define CUOPT_DETERMINISM_LOG(...) CUOPT_LOG_INFO(__VA_ARGS__)
+#endif
 
 namespace cuopt::linear_programming::detail {
 
@@ -42,25 +48,46 @@ static void init_handler(const raft::handle_t* handle_ptr)
 template <typename i_t, typename f_t>
 mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
                                      const mip_solver_settings_t<i_t, f_t>& solver_settings,
-                                     timer_t timer)
+                                     cuopt::termination_checker_t& timer)
   : op_problem_(op_problem),
     solver_settings_(solver_settings),
     context(op_problem.handle_ptr, const_cast<problem_t<i_t, f_t>*>(&op_problem), solver_settings),
     timer_(timer)
 {
+  context.termination = &timer_;
   init_handler(op_problem.handle_ptr);
 }
 
 template <typename i_t, typename f_t>
-struct branch_and_bound_solution_helper_t {
-  branch_and_bound_solution_helper_t(diversity_manager_t<i_t, f_t>* dm,
-                                     dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings)
-    : dm(dm), settings_(settings) {};
+struct bb_callback_adapter_t {
+  bb_callback_adapter_t(mip_solver_context_t<i_t, f_t>* context, diversity_manager_t<i_t, f_t>* dm)
+    : context(context), dm(dm) {};
 
-  void solution_callback(std::vector<f_t>& solution, f_t objective)
+  void new_incumbent_callback(std::vector<f_t>& solution,
+                              f_t objective,
+                              const internals::mip_solution_callback_info_t& info,
+                              double work_timestamp)
   {
-    dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
-    dm->rins.new_best_incumbent_callback(solution);
+    if (context->settings.determinism_mode & CUOPT_DETERMINISM_BB) {
+      // B&B calls this from its own thread. Use a dedicated per-thread stream
+      // to avoid racing on the heuristic thread's stream.
+      raft::handle_t callback_handle(rmm::cuda_stream_per_thread);
+      solution_t<i_t, f_t> temp_sol(*context->problem_ptr, &callback_handle);
+      temp_sol.copy_new_assignment(solution);
+      temp_sol.compute_feasibility();
+      const auto payload = context->solution_publication.build_callback_payload(
+        context->problem_ptr,
+        temp_sol,
+        (internals::mip_solution_origin_t)info.origin,
+        work_timestamp);
+      context->solution_publication.publish_new_best_feasible(payload, work_timestamp);
+    }
+    if (context->diversity_manager_ptr != nullptr &&
+        !(context->settings.determinism_mode & CUOPT_DETERMINISM_GPU_HEURISTICS)) {
+      context->diversity_manager_ptr->population.add_external_solution(
+        solution, objective, (internals::mip_solution_origin_t)info.origin);
+      context->diversity_manager_ptr->rins.new_best_incumbent_callback(solution);
+    }
   }
 
   void set_simplex_solution(std::vector<f_t>& solution,
@@ -76,8 +103,8 @@ struct branch_and_bound_solution_helper_t {
   }
 
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
+  mip_solver_context_t<i_t, f_t>* context;
   diversity_manager_t<i_t, f_t>* dm;
-  dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
 // Extract probing cache into CPU-only CSR struct for implied bounds cuts
@@ -183,6 +210,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 {
   //  we need to keep original problem const
   cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
+  cuopt_assert(context.termination != nullptr, "termination checker must be set before run_solver");
   context.problem_ptr->tolerances = context.settings.get_tolerances();
   cuopt_expects(context.problem_ptr->preprocess_called,
                 error_type_t::RuntimeError,
@@ -193,25 +221,28 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
-    for (auto callback : context.settings.get_mip_callbacks()) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-      }
-    }
+    const auto payload = context.solution_publication.build_callback_payload(
+      context.problem_ptr, sol, internals::mip_solution_origin_t::PRESOLVE, 0.0);
+    context.solution_publication.publish_new_best_feasible(payload);
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
-  dm.timer                   = timer_;
-  const bool run_presolve    = context.settings.presolver != presolver_t::None;
-  f_t time_limit             = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
-                                 ? std::numeric_limits<f_t>::infinity()
-                                 : timer_.remaining_time();
-  const auto& hp             = context.settings.heuristic_params;
-  double presolve_time_limit = std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
-  presolve_time_limit        = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
-                                 ? std::numeric_limits<f_t>::infinity()
-                                 : presolve_time_limit;
+  const bool deterministic_run =
+    (context.settings.determinism_mode & CUOPT_DETERMINISM_GPU_HEURISTICS);
+  const f_t gpu_heur_work_limit =
+    deterministic_run ? context.settings.work_limit : timer_.get_time_limit();
+  if (deterministic_run)
+    cuopt_assert(gpu_heur_work_limit >= 0.0,
+                 "Deterministic GPU heuristic work limit must be non-negative");
+  dm.timer = cuopt::termination_checker_t(context.gpu_heur_loop, gpu_heur_work_limit, timer_);
+  const bool run_presolve = context.settings.presolver != presolver_t::None;
+  f_t time_limit =
+    deterministic_run ? std::numeric_limits<f_t>::infinity() : timer_.remaining_time();
+  const auto& hp = context.settings.heuristic_params;
+  double presolve_time_limit =
+    deterministic_run ? timer_.remaining_time()
+                      : std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
+
   if (std::isfinite(presolve_time_limit))
     CUOPT_LOG_DEBUG("Presolve time limit: %g", presolve_time_limit);
   bool presolve_success = run_presolve ? dm.run_presolve(presolve_time_limit, timer_) : true;
@@ -236,12 +267,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
-    for (auto callback : context.settings.get_mip_callbacks()) {
-      if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-        auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-        dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-      }
-    }
+    const auto payload = context.solution_publication.build_callback_payload(
+      context.problem_ptr, sol, internals::mip_solution_origin_t::PRESOLVE, 0.0);
+    context.solution_publication.publish_new_best_feasible(payload);
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
@@ -274,12 +302,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       sol.set_problem_fully_reduced();
     }
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal) {
-      for (auto callback : context.settings.get_mip_callbacks()) {
-        if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
-          auto get_sol_callback = static_cast<internals::get_solution_callback_t*>(callback);
-          dm.population.invoke_get_solution_callback(sol, get_sol_callback);
-        }
-      }
+      const auto payload = context.solution_publication.build_callback_payload(
+        context.problem_ptr, sol, internals::mip_solution_origin_t::PRESOLVE, 0.0);
+      context.solution_publication.publish_new_best_feasible(payload);
     }
     context.problem_ptr->post_process_solution(sol);
     return sol;
@@ -297,7 +322,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
-  branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
+  bb_callback_adapter_t solution_helper(&context, &dm);
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
   dual_simplex::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
@@ -325,9 +350,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.max_cut_passes        = context.settings.max_cut_passes;
     branch_and_bound_settings.mir_cuts              = context.settings.mir_cuts;
     branch_and_bound_settings.deterministic =
-      context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
+      (context.settings.determinism_mode & CUOPT_DETERMINISM_BB);
 
-    if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
+    if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
       branch_and_bound_settings.work_limit = context.settings.work_limit;
     } else {
       branch_and_bound_settings.work_limit = std::numeric_limits<f_t>::infinity();
@@ -355,32 +380,37 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.reduced_cost_strengthening == -1
         ? 2
         : context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.bb_work_unit_scale = solver_settings_.bb_work_unit_scale;
+    branch_and_bound_settings.gpu_heur_wait_for_exploration =
+      solver_settings_.gpu_heur_wait_for_exploration;
 
     if (context.settings.num_cpu_threads < 0) {
       branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);
     } else {
       branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
     }
-
+    CUOPT_LOG_INFO("Using %d CPU threads for B&B", branch_and_bound_settings.num_threads);
     // Set the branch and bound -> primal heuristics callback
-    branch_and_bound_settings.solution_callback =
-      std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::solution_callback,
+    branch_and_bound_settings.new_incumbent_callback =
+      std::bind(&bb_callback_adapter_t<i_t, f_t>::new_incumbent_callback,
                 &solution_helper,
                 std::placeholders::_1,
-                std::placeholders::_2);
+                std::placeholders::_2,
+                std::placeholders::_3,
+                std::placeholders::_4);
     // heuristic_preemption_callback is needed in both modes to properly stop the heuristic thread
-    branch_and_bound_settings.heuristic_preemption_callback = std::bind(
-      &branch_and_bound_solution_helper_t<i_t, f_t>::preempt_heuristic_solver, &solution_helper);
-    if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
+    branch_and_bound_settings.heuristic_preemption_callback =
+      std::bind(&bb_callback_adapter_t<i_t, f_t>::preempt_heuristic_solver, &solution_helper);
+    if (!(context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
       branch_and_bound_settings.set_simplex_solution_callback =
-        std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
+        std::bind(&bb_callback_adapter_t<i_t, f_t>::set_simplex_solution,
                   &solution_helper,
                   std::placeholders::_1,
                   std::placeholders::_2,
                   std::placeholders::_3);
 
       branch_and_bound_settings.node_processed_callback =
-        std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::node_processed_callback,
+        std::bind(&bb_callback_adapter_t<i_t, f_t>::node_processed_callback,
                   &solution_helper,
                   std::placeholders::_1,
                   std::placeholders::_2);
@@ -412,14 +442,15 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       [stats_ptr](f_t user_bound) { stats_ptr->set_solution_bound(user_bound); });
 
     // Set the primal heuristics -> branch and bound callback
-    if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
+    if (!(context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
         std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
                   branch_and_bound.get(),
-                  std::placeholders::_1);
-    } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
+                  std::placeholders::_1,
+                  std::placeholders::_2);
+    } else if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
       branch_and_bound->set_concurrent_lp_root_solve(false);
       // TODO once deterministic GPU heuristics are integrated
       // context.problem_ptr->branch_and_bound_callback =
@@ -429,18 +460,21 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
 
     context.work_unit_scheduler_.register_context(branch_and_bound->get_work_unit_context());
-    // context.work_unit_scheduler_.verbose = true;
 
-    context.problem_ptr->set_root_relaxation_solution_callback =
-      std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
-                branch_and_bound.get(),
-                std::placeholders::_1,
-                std::placeholders::_2,
-                std::placeholders::_3,
-                std::placeholders::_4,
-                std::placeholders::_5,
-                std::placeholders::_6,
-                std::placeholders::_7);
+    if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
+      context.problem_ptr->set_root_relaxation_solution_callback = nullptr;
+    } else {
+      context.problem_ptr->set_root_relaxation_solution_callback =
+        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
+                  branch_and_bound.get(),
+                  std::placeholders::_1,
+                  std::placeholders::_2,
+                  std::placeholders::_3,
+                  std::placeholders::_4,
+                  std::placeholders::_5,
+                  std::placeholders::_6,
+                  std::placeholders::_7);
+    }
 
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");
@@ -454,10 +488,12 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // std::async and std::future allow us to get the return value of bb::solve()
     // without having to manually manage the thread
     // std::future.get() performs a join() operation to wait until the return status is available
-    branch_and_bound_status_future = std::async(std::launch::async,
-                                                &dual_simplex::branch_and_bound_t<i_t, f_t>::solve,
-                                                branch_and_bound.get(),
-                                                std::ref(branch_and_bound_solution));
+    int bb_device_id = context.handle_ptr->get_device();
+    branch_and_bound_status_future =
+      std::async(std::launch::async, [&branch_and_bound, &branch_and_bound_solution, bb_device_id] {
+        RAFT_CUDA_TRY(cudaSetDevice(bb_device_id));
+        return branch_and_bound->solve(branch_and_bound_solution);
+      });
   }
 
   // Start the primal heuristics
@@ -470,9 +506,46 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.stats.set_solution_bound(
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound));
     }
+    CUOPT_LOG_DEBUG(
+      "B&B solution reconstruction: det_bb=%d obj_finite=%d obj=%.16e bb_status=%d "
+      "has_incumbent=%d sol_size=%zu",
+      (int)(context.settings.determinism_mode & CUOPT_DETERMINISM_BB),
+      (int)std::isfinite(branch_and_bound_solution.objective),
+      branch_and_bound_solution.objective,
+      (int)bb_status,
+      (int)branch_and_bound_solution.has_incumbent,
+      branch_and_bound_solution.x.size());
+    if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB) &&
+        std::isfinite(branch_and_bound_solution.objective)) {
+      solution_t<i_t, f_t> bb_sol(*context.problem_ptr);
+      bb_sol.copy_new_assignment(branch_and_bound_solution.x);
+      bb_sol.compute_feasibility();
+      sol = std::move(bb_sol);
+    } else if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
+      // In deterministic mode, only solutions retired by B&B are valid output.
+      // Discard the GPU heuristic incumbent that B&B never processed.
+      sol = solution_t<i_t, f_t>(*context.problem_ptr);
+    }
     if (bb_status == dual_simplex::mip_status_t::INFEASIBLE) { sol.set_problem_fully_reduced(); }
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
+
+    if ((context.settings.determinism_mode & CUOPT_DETERMINISM_BB)) {
+      double bnb_work  = branch_and_bound->get_work_unit_context().current_work();
+      double gpu_work  = context.gpu_heur_loop.current_work();
+      double bnb_scale = BB_BASE_WORK_SCALE * solver_settings_.bb_work_unit_scale;
+      double gpu_scale = GPU_HEUR_BASE_WORK_SCALE * solver_settings_.gpu_heur_work_unit_scale;
+      CUOPT_LOG_INFO(
+        "Work unit summary: B&B=%.2f (scale=%.3f, raw=%.2f) GPU_heur=%.2f (scale=%.3f, raw=%.2f) "
+        "ratio=%.2fx",
+        bnb_work,
+        bnb_scale,
+        bnb_scale > 0 ? bnb_work / bnb_scale : 0.0,
+        gpu_work,
+        gpu_scale,
+        gpu_scale > 0 ? gpu_work / gpu_scale : 0.0,
+        gpu_work > 0 ? bnb_work / gpu_work : 0.0);
+    }
   }
   sol.compute_feasibility();
 

@@ -19,6 +19,8 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 
 #include <thrust/count.h>
+#include <thrust/extrema.h>
+#include <thrust/fill.h>
 #include <thrust/transform_reduce.h>
 #include <cuda/functional>
 #include <raft/linalg/binary_op.cuh>
@@ -46,12 +48,26 @@ solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_)
     assignment(std::move(get_lower_bounds<f_t>(problem_.variable_bounds, handle_ptr))),
     lower_excess(problem_.n_constraints, handle_ptr->get_stream()),
     upper_excess(problem_.n_constraints, handle_ptr->get_stream()),
-    lower_slack(problem_.n_constraints, handle_ptr->get_stream()),
-    upper_slack(problem_.n_constraints, handle_ptr->get_stream()),
     constraint_value(problem_.n_constraints, handle_ptr->get_stream()),
     obj_val(handle_ptr->get_stream()),
     n_feasible_constraints(handle_ptr->get_stream()),
     lp_state(problem_)
+{
+  clamp_within_var_bounds(assignment, problem_ptr, handle_ptr);
+}
+
+template <typename i_t, typename f_t>
+solution_t<i_t, f_t>::solution_t(problem_t<i_t, f_t>& problem_,
+                                 const raft::handle_t* handle_override)
+  : problem_ptr(&problem_),
+    handle_ptr(handle_override),
+    assignment(std::move(get_lower_bounds<f_t>(problem_.variable_bounds, handle_ptr))),
+    lower_excess(problem_.n_constraints, handle_ptr->get_stream()),
+    upper_excess(problem_.n_constraints, handle_ptr->get_stream()),
+    constraint_value(problem_.n_constraints, handle_ptr->get_stream()),
+    obj_val(handle_ptr->get_stream()),
+    n_feasible_constraints(handle_ptr->get_stream()),
+    lp_state(problem_, handle_ptr->get_stream())
 {
   clamp_within_var_bounds(assignment, problem_ptr, handle_ptr);
 }
@@ -63,8 +79,6 @@ solution_t<i_t, f_t>::solution_t(const solution_t<i_t, f_t>& other)
     assignment(other.assignment, handle_ptr->get_stream()),
     lower_excess(other.lower_excess, handle_ptr->get_stream()),
     upper_excess(other.upper_excess, handle_ptr->get_stream()),
-    lower_slack(other.lower_slack, handle_ptr->get_stream()),
-    upper_slack(other.upper_slack, handle_ptr->get_stream()),
     constraint_value(other.constraint_value, handle_ptr->get_stream()),
     obj_val(other.obj_val, handle_ptr->get_stream()),
     n_feasible_constraints(other.n_feasible_constraints, handle_ptr->get_stream()),
@@ -91,10 +105,18 @@ void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
   h_user_obj           = other_sol.h_user_obj;
   h_infeasibility_cost = other_sol.h_infeasibility_cost;
   expand_device_copy(assignment, other_sol.assignment, handle_ptr->get_stream());
+
+  // excess and constraint value may be uninitialized (and computed later). Mark them as
+  // such
+  cuopt::mark_span_as_initialized(make_span(other_sol.lower_excess), handle_ptr->get_stream());
+  cuopt::mark_span_as_initialized(make_span(other_sol.upper_excess), handle_ptr->get_stream());
+  cuopt::mark_span_as_initialized(make_span(other_sol.constraint_value), handle_ptr->get_stream());
+  cuopt::mark_span_as_initialized(make_span(other_sol.obj_val), handle_ptr->get_stream());
+  cuopt::mark_span_as_initialized(make_span(other_sol.n_feasible_constraints),
+                                  handle_ptr->get_stream());
+
   expand_device_copy(lower_excess, other_sol.lower_excess, handle_ptr->get_stream());
   expand_device_copy(upper_excess, other_sol.upper_excess, handle_ptr->get_stream());
-  expand_device_copy(lower_slack, other_sol.lower_slack, handle_ptr->get_stream());
-  expand_device_copy(upper_slack, other_sol.upper_slack, handle_ptr->get_stream());
   expand_device_copy(constraint_value, other_sol.constraint_value, handle_ptr->get_stream());
   raft::copy(obj_val.data(), other_sol.obj_val.data(), 1, handle_ptr->get_stream());
   raft::copy(n_feasible_constraints.data(),
@@ -113,14 +135,26 @@ void solution_t<i_t, f_t>::copy_from(const solution_t<i_t, f_t>& other_sol)
 template <typename i_t, typename f_t>
 void solution_t<i_t, f_t>::resize_to_problem()
 {
+  i_t old_n_vars  = lp_state.prev_primal.size();
+  i_t old_n_cstrs = lp_state.prev_dual.size();
   assignment.resize(problem_ptr->n_variables, handle_ptr->get_stream());
   lower_excess.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
   upper_excess.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
-  lower_slack.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
-  upper_slack.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
   constraint_value.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
   lp_state.prev_primal.resize(problem_ptr->n_variables, handle_ptr->get_stream());
   lp_state.prev_dual.resize(problem_ptr->n_constraints, handle_ptr->get_stream());
+  if (problem_ptr->n_variables > old_n_vars) {
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 lp_state.prev_primal.data() + old_n_vars,
+                 lp_state.prev_primal.data() + problem_ptr->n_variables,
+                 f_t(0));
+  }
+  if (problem_ptr->n_constraints > old_n_cstrs) {
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 lp_state.prev_dual.data() + old_n_cstrs,
+                 lp_state.prev_dual.data() + problem_ptr->n_constraints,
+                 f_t(0));
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -131,10 +165,6 @@ void solution_t<i_t, f_t>::resize_to_original_problem()
                       handle_ptr->get_stream());
   upper_excess.resize(problem_ptr->original_problem_ptr->get_n_constraints(),
                       handle_ptr->get_stream());
-  lower_slack.resize(problem_ptr->original_problem_ptr->get_n_constraints(),
-                     handle_ptr->get_stream());
-  upper_slack.resize(problem_ptr->original_problem_ptr->get_n_constraints(),
-                     handle_ptr->get_stream());
   constraint_value.resize(problem_ptr->original_problem_ptr->get_n_constraints(),
                           handle_ptr->get_stream());
   lp_state.prev_primal.resize(problem_ptr->original_problem_ptr->get_n_variables(),
@@ -149,8 +179,6 @@ void solution_t<i_t, f_t>::resize_copy(const solution_t<i_t, f_t>& other_sol)
   assignment.resize(other_sol.assignment.size(), handle_ptr->get_stream());
   lower_excess.resize(other_sol.lower_excess.size(), handle_ptr->get_stream());
   upper_excess.resize(other_sol.upper_excess.size(), handle_ptr->get_stream());
-  lower_slack.resize(other_sol.lower_slack.size(), handle_ptr->get_stream());
-  upper_slack.resize(other_sol.upper_slack.size(), handle_ptr->get_stream());
   constraint_value.resize(other_sol.constraint_value.size(), handle_ptr->get_stream());
   lp_state.prev_primal.resize(other_sol.lp_state.prev_primal.size(), handle_ptr->get_stream());
   lp_state.prev_dual.resize(other_sol.lp_state.prev_dual.size(), handle_ptr->get_stream());
@@ -165,8 +193,6 @@ typename solution_t<i_t, f_t>::view_t solution_t<i_t, f_t>::view()
   v.assignment       = raft::device_span<f_t>{assignment.data(), assignment.size()};
   v.lower_excess     = raft::device_span<f_t>{lower_excess.data(), lower_excess.size()};
   v.upper_excess     = raft::device_span<f_t>{upper_excess.data(), upper_excess.size()};
-  v.lower_slack      = raft::device_span<f_t>{lower_slack.data(), lower_slack.size()};
-  v.upper_slack      = raft::device_span<f_t>{upper_slack.data(), upper_slack.size()};
   v.constraint_value = raft::device_span<f_t>{constraint_value.data(), constraint_value.size()};
   v.obj_val          = obj_val.data();
   v.n_feasible_constraints = n_feasible_constraints.data();
@@ -235,7 +261,7 @@ void solution_t<i_t, f_t>::assign_random_within_bounds(f_t ratio_of_vars_to_rand
 
   auto variable_bounds = cuopt::host_copy(problem_ptr->variable_bounds, stream);
   auto variable_types  = cuopt::host_copy(problem_ptr->variable_types, stream);
-  problem_ptr->handle_ptr->sync_stream();
+  handle_ptr->sync_stream();
   for (size_t i = 0; i < problem_ptr->variable_bounds.size(); ++i) {
     if (only_integers && variable_types[i] != var_t::INTEGER) { continue; }
     bool skip = unif_prob(rng) > ratio_of_vars_to_random_assign;
@@ -640,6 +666,14 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
                                     stats,
                                     handle_ptr->get_stream()};
   }
+}
+
+template <typename i_t, typename f_t>
+uint32_t solution_t<i_t, f_t>::get_hash() const
+{
+  auto h_assignment =
+    host_copy(assignment.data(), problem_ptr->n_variables, handle_ptr->get_stream());
+  return compute_hash(h_assignment);
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
