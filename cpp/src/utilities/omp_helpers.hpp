@@ -134,16 +134,10 @@ class omp_atomic_t {
  private:
   T val;
 
-#ifndef __NVCC__
   friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
   friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
-#endif
+  friend bool compare_exchange(omp_atomic_t<int>& atomic_var, int& expected, int desired);
 };
-
-// Atomic CAS are only supported in OpenMP v5.1
-// (gcc 12+ or clang 14+), however, nvcc (or the host compiler) cannot
-// parse it correctly yet
-#ifndef __NVCC__
 
 // Free non-template functions are necessary because of a clang 20 bug
 // when omp atomic compare is used within a templated context.
@@ -169,8 +163,22 @@ inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
   }
   return old;
 }
-#endif
 
+// CAS: atomically sets `atomic_var` to `desired` if it equals `expected`.
+// On failure, loads the current value into expected.
+// Returns true if the exchange happened.
+inline bool compare_exchange(omp_atomic_t<int>& atomic_var, int& expected, int desired)
+{
+  int old;
+#pragma omp atomic compare capture
+  {
+    old = atomic_var.val;
+    if (atomic_var.val == expected) { atomic_var.val = desired; }
+  }
+  bool success = (old == expected);
+  if (!success) { expected = old; }
+  return success;
+}
 #endif
 
 }  // namespace cuopt

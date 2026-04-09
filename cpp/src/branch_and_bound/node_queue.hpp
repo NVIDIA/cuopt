@@ -155,13 +155,6 @@ class node_queue_t {
     std::lock_guard lock(mutex);
     return best_first_heap.empty() ? inf : best_first_heap.top()->lower_bound;
   }
-
-  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
-  // `unlock()` afterward.
-  mip_node_t<i_t, f_t>* bfs_top()
-  {
-    return best_first_heap.empty() ? nullptr : best_first_heap.top()->node;
-  }
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

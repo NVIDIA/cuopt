@@ -290,7 +290,7 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  void start_bfs_worker(mip_node_t<i_t, f_t>* start_node);
+  void start_new_bfs_worker(mip_node_t<i_t, f_t>* start_node);
 
   void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
 

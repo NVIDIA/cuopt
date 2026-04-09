@@ -1569,9 +1569,14 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
 
     worker->node_queue.lock();
     mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
-    worker->lower_bound              = start_node->lower_bound;
-    worker->node_depth               = start_node->depth;
-    worker->integer_infeasible       = start_node->integer_infeasible;
+    if (!start_node) {
+      worker->node_queue.unlock();
+      continue;
+    }
+
+    worker->lower_bound        = start_node->lower_bound;
+    worker->node_depth         = start_node->depth;
+    worker->integer_infeasible = start_node->integer_infeasible;
     worker->node_queue.unlock();
 
     if (get_cutoff() < start_node->lower_bound) {
@@ -1685,7 +1690,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::start_bfs_worker(mip_node_t<i_t, f_t>* start_node)
+void branch_and_bound_t<i_t, f_t>::start_new_bfs_worker(mip_node_t<i_t, f_t>* start_node)
 {
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) { return; }
@@ -1730,11 +1735,13 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
-  start_bfs_worker(search_tree_.root.get_up_child());
-  start_bfs_worker(search_tree_.root.get_down_child());
+  start_new_bfs_worker(search_tree_.root.get_up_child());
+  start_new_bfs_worker(search_tree_.root.get_down_child());
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && active_workers_per_strategy_[0] > 0) {
+    bool launched_any_task = false;
+
     repair_heuristic_solutions();
 
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
@@ -1787,10 +1794,11 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
     for (int k = 0; k < active_workers.size() && bfs_worker_pool_.num_idle_workers() > 0; ++k) {
       bfs_worker_t<i_t, f_t>* worker = active_workers[k];
       if (worker->is_active && worker->node_queue.best_first_queue_size() > 1) {
-        worker->node_queue.lock();
+        std::lock_guard lock(worker->node_queue);
         mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
-        start_bfs_worker(node);
-        worker->node_queue.unlock();
+        if (!node) { continue; }
+        start_new_bfs_worker(node);
+        launched_any_task = true;
       }
     }
 
@@ -1831,8 +1839,8 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
           continue;
         }
 
-        // Remove the worker from the idle list.
         active_workers_per_strategy_[strategy]++;
+        launched_any_task = true;
 
 #pragma omp task affinity(diving_worker)
         dive_with(diving_worker);
@@ -1849,10 +1857,10 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
       break;
     }
 
-    // // If no new task was launched in this iteration, suspend temporarily the
-    // // execution of the scheduler. As of 8/Jan/2026, GCC does not
-    // // implement taskyield, but LLVM does.
-    // if (!launched_any_task) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+    // If no new task was launched in this iteration, suspend temporarily the
+    // execution of the scheduler. As of 8/Jan/2026, GCC does not
+    // implement taskyield, but LLVM does.
+    if (!launched_any_task) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
   }
 }
 
@@ -1879,8 +1887,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
     if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
          time_since_last_log >= 1) ||
         (time_since_last_log > 30) || now > settings_.time_limit) {
-      i_t depth      = node_queue.bfs_top()->depth;
-      i_t int_infeas = node_queue.bfs_top()->integer_infeasible;
+      i_t depth      = worker->node_depth;
+      i_t int_infeas = worker->integer_infeasible;
       report(' ', upper_bound_, lower_bound, depth, int_infeas);
       exploration_stats_.last_log             = tic();
       exploration_stats_.nodes_since_last_log = 0;
@@ -2691,6 +2699,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lower_bound    = deterministic_compute_lower_bound();
     solver_status_ = deterministic_global_termination_status_;
   } else {
+    // for (int i = 0; i < bfs_worker_pool_.num_workers(); ++i) {
+    //
+    // }
+
     // if (node_queue_.best_first_queue_size() > 0) {
     //   // We need to clear the queue and use the info in the search tree for the lower bound
     //   while (node_queue_.best_first_queue_size() > 0) {

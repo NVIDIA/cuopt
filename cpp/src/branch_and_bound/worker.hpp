@@ -132,14 +132,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     f_t lower_bound = std::numeric_limits<f_t>::infinity();
 
     if (Base::is_active) {
-      if (node_queue.best_first_queue_size() > 0) {
-        node_queue.lock();
-        mip_node_t<i_t, f_t>* node = node_queue.bfs_top();
-        if (node) { lower_bound = node->lower_bound; }
-        node_queue.unlock();
-      }
-
-      lower_bound = std::min(lower_bound, Base::lower_bound.load());
+      lower_bound = std::min(node_queue.get_lower_bound(), Base::lower_bound.load());
     }
 
     return lower_bound;
