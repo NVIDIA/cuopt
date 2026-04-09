@@ -1,6 +1,6 @@
 ---
 name: qp-formulation
-version: "26.04.00"
+version: "26.06.00"
 description: Quadratic Programming (QP) — problem form and constraints. Domain concepts; no API or interface. QP is beta.
 ---
 

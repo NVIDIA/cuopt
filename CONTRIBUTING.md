@@ -117,7 +117,7 @@ Architecture:
 - Clone the repository:
 
 ```bash
-CUOPT_HOME=$(pwd)/cuopt
+export CUOPT_HOME=$(pwd)/cuopt
 git clone https://github.com/NVIDIA/cuopt.git $CUOPT_HOME
 cd $CUOPT_HOME
 ```
@@ -193,19 +193,20 @@ To build all libraries and tests, simply run
 To run the C++ tests, run
 
 ```bash
-cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
-ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
+ctest --test-dir ${CUOPT_HOME}/cpp/build -E L1TEST  # libcuopt
 ```
+`L1TEST`s are excluded because they are expensive and not run as part of the typical development process.
 
 To run python tests, run
 
 - To run `cuopt` tests:
 ```bash
 
-cd $CUOPT_HOME/datasets && get_test_data.sh
+cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/

@@ -16,8 +16,10 @@
 #include <thrust/copy.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/transform_output_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 namespace cuopt::linear_programming::detail {
 

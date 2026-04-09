@@ -11,6 +11,7 @@
 #include <thrust/count.h>
 #include <thrust/extrema.h>
 #include <thrust/functional.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>

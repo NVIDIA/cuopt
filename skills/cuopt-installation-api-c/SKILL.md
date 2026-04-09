@@ -1,6 +1,6 @@
 ---
 name: cuopt-installation-api-c
-version: "26.04.00"
+version: "26.06.00"
 description: Install cuOpt for C — conda, locate lib/headers, verification. Use when the user is installing or verifying the C API. Standalone; no common skill.
 ---
 

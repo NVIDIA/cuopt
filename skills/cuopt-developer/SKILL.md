@@ -1,6 +1,6 @@
 ---
 name: cuopt-developer
-version: "26.04.00"
+version: "26.06.00"
 description: Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture.
 ---
 

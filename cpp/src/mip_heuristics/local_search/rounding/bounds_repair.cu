@@ -8,8 +8,10 @@
 #include "bounds_repair.cuh"
 
 #include <thrust/copy.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/partition.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 #include <cuda/std/functional>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/mip_constants.hpp>
