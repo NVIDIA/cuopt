@@ -809,7 +809,12 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
 
     if (use_graph) {
       RAFT_CUDA_TRY(cudaStreamEndCapture(climber_stream, &graph));
-      RAFT_CUDA_TRY(cudaGraphInstantiate(&graph_instance, graph));
+      try {
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&graph_instance, graph));
+      } catch (...) {
+        RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+        throw;
+      }
       RAFT_CHECK_CUDA(climber_stream);
       RAFT_CUDA_TRY(cudaGraphDestroy(graph));
       graph_created = true;

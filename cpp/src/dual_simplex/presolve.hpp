@@ -83,7 +83,8 @@ struct lp_problem_t {
                                  "' from file: " + path);
       }
     };
-    constexpr i_t max_dim = 100000000;  // 100M upper bound for sanity
+    constexpr i_t max_dim                 = 100000000;        // 100M upper bound for sanity
+    constexpr size_t max_serialized_bytes = size_t{1} << 31;  // 2 GiB cap
 
     check_read(fread(&num_rows, sizeof(i_t), 1, fid.get()), 1, "num_rows");
     check_read(fread(&num_cols, sizeof(i_t), 1, fid.get()), 1, "num_cols");
@@ -92,9 +93,26 @@ struct lp_problem_t {
     }
     check_read(fread(&obj_constant, sizeof(f_t), 1, fid.get()), 1, "obj_constant");
     check_read(fread(&obj_scale, sizeof(f_t), 1, fid.get()), 1, "obj_scale");
+    if (obj_scale != f_t{1} && obj_scale != f_t{-1}) {
+      throw std::runtime_error("Invalid obj_scale in file: " + path);
+    }
     i_t is_integral;
     check_read(fread(&is_integral, sizeof(i_t), 1, fid.get()), 1, "is_integral");
+    if (is_integral != 0 && is_integral != 1) {
+      throw std::runtime_error("Invalid is_integral in file: " + path);
+    }
     objective_is_integral = is_integral == 1;
+
+    // Compute total byte footprint before any allocation
+    size_t total_bytes = static_cast<size_t>(num_cols) * sizeof(f_t)           // objective
+                         + static_cast<size_t>(num_rows) * sizeof(f_t)         // rhs
+                         + static_cast<size_t>(num_cols) * sizeof(f_t)         // lower
+                         + static_cast<size_t>(num_cols) * sizeof(f_t)         // upper
+                         + (static_cast<size_t>(num_cols) + 1) * sizeof(i_t);  // col_start
+    if (total_bytes > max_serialized_bytes) {
+      throw std::runtime_error("Serialized problem too large in file: " + path);
+    }
+
     objective.resize(num_cols);
     check_read(fread(objective.data(), sizeof(f_t), num_cols, fid.get()), num_cols, "objective");
     rhs.resize(num_rows);
@@ -118,6 +136,13 @@ struct lp_problem_t {
         throw std::runtime_error("Invalid A.col_start monotonicity/range in file: " + path);
       }
     }
+
+    // Check nnz byte footprint before allocating sparse arrays
+    size_t nnz_bytes = static_cast<size_t>(nnz) * (sizeof(i_t) + sizeof(f_t));
+    if (total_bytes + nnz_bytes > max_serialized_bytes) {
+      throw std::runtime_error("Serialized problem too large in file: " + path);
+    }
+
     A.i.resize(nnz);
     check_read(fread(A.i.data(), sizeof(i_t), nnz, fid.get()), nnz, "A.i");
     for (i_t k = 0; k < nnz; ++k) {
