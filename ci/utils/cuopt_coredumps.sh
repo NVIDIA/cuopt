@@ -115,6 +115,14 @@ cuopt__gdb_core_artifact_basename() {
   echo "cuopt-gdb-cores_${job}_cuda${cuda_ver}_py${py_ver}_${arch_}_${bt}"
 }
 
+cuopt__log() {
+  if declare -F rapids-logger &>/dev/null; then
+    rapids-logger "$1"
+  else
+    echo "$1"
+  fi
+}
+
 cuopt_enable_coredumps() {
   local ws base pattern
   ws="${GITHUB_WORKSPACE:-${PWD}}"
@@ -163,13 +171,7 @@ cuopt_enable_coredumps() {
     coredump_filter_val="$(cat /proc/self/coredump_filter 2>/dev/null || echo n/a)"
   fi
 
-  local _log_msg
-  _log_msg="Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
-  if declare -F rapids-logger &>/dev/null; then
-    rapids-logger "${_log_msg}"
-  else
-    echo "${_log_msg}"
-  fi
+  cuopt__log "Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
 
   if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE}" == 1 ]]; then
     local _pipe_msg="WARNING: core_pattern pipes to a collector — cores will NOT appear as files. Fallback: coredumpctl (systemd-coredump) or /var/crash (apport) will be checked at collection time."
@@ -178,19 +180,7 @@ cuopt_enable_coredumps() {
     else
       _pipe_msg+=" coredumpctl NOT found; if systemd-coredump is the handler, cores may be lost."
     fi
-    if declare -F rapids-logger &>/dev/null; then
-      rapids-logger "${_pipe_msg}"
-    else
-      echo "WARNING: ${_pipe_msg}" >&2
-    fi
-  fi
-}
-
-cuopt__log() {
-  if declare -F rapids-logger &>/dev/null; then
-    rapids-logger "$1"
-  else
-    echo "$1"
+    cuopt__log "${_pipe_msg}"
   fi
 }
 
@@ -258,9 +248,13 @@ cuopt__collect_via_coredumpctl() {
     pid="$(echo "${line}" | awk '{print $5}')"
     exe="$(echo "${line}" | awk '{print $NF}')"
     [[ -n "${pid}" ]] || continue
-    core_path="${dest}/coredumpctl_${pid}_$(basename "${exe:-unknown}").core"
+    local exe_base
+    exe_base="$(basename "${exe:-unknown}")"
+    core_path="${dest}/coredumpctl_${pid}_${exe_base}.core"
+    # Skip if this PID was already extracted (e.g. by a prior probe collection).
     if [[ -e "${core_path}" ]]; then
-      core_path="${core_path}.${RANDOM}"
+      cuopt__log "  Skipping PID ${pid} (${exe_base}) — already extracted"
+      continue
     fi
     coredumpctl dump "${pid}" -o "${core_path}" 2>/dev/null || true
     if [[ -s "${core_path}" ]]; then
@@ -297,7 +291,7 @@ cuopt_collect_coredumps() {
 
   # 1) Search for core files in workspace + common system locations.
   cuopt__collect_core_files "${dest}" \
-    "${ws}" "/tmp" "/var/lib/systemd/coredump" "/var/crash"
+    "${ws}" "/tmp" "/var/lib/systemd/coredump"
 
   # 2) If core_pattern pipes to a collector, try extracting via coredumpctl / apport.
   if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE:-0}" == 1 ]]; then
@@ -312,7 +306,7 @@ cuopt_collect_coredumps() {
   else
     cuopt__log "WARNING: No core files found. Cores may have been discarded by the system collector."
     cuopt__log "  core_pattern=$(cat /proc/sys/kernel/core_pattern 2>/dev/null || echo n/a)"
-    cuopt__log "  Searched: ${ws} /tmp /var/lib/systemd/coredump /var/crash"
+    cuopt__log "  Searched: ${ws} /tmp /var/lib/systemd/coredump (+ /var/crash if piped)"
     if [[ "${CUOPT_COREDUMP_PATTERN_IS_PIPE:-0}" == 1 ]]; then
       if command -v coredumpctl &>/dev/null; then
         cuopt__log "  coredumpctl list output:"
