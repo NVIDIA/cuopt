@@ -1,6 +1,6 @@
 ---
 name: cuopt-user-rules
-version: "26.04.00"
+version: "26.06.00"
 description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
 ---
 

@@ -22,6 +22,8 @@
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
 
 namespace cuopt::linear_programming::detail {

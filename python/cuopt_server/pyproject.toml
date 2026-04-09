@@ -21,7 +21,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "cuopt==26.4.*,>=0.0.0a0",
+    "cuopt==26.6.*,>=0.0.0a0",
     "cupy-cuda13x>=13.6.0",
     "fastapi",
     "jsonref==1.1.0",

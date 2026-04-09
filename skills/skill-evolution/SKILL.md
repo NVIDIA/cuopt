@@ -1,6 +1,6 @@
 ---
 name: skill-evolution
-version: "26.04.00"
+version: "26.06.00"
 description: After solving a non-trivial problem, detect generalizable learnings and propose skill updates so future interactions benefit automatically. Always active — applies to every interaction.
 ---
 
@@ -182,7 +182,7 @@ When skill evolution creates an entirely new skill directory, add `origin: skill
 ```yaml
 ---
 name: new-skill-name
-version: "26.04.00"
+version: "26.06.00"
 description: ...
 origin: skill-evolution
 ---

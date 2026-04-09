@@ -19,6 +19,7 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 
 #include <thrust/count.h>
+#include <thrust/extrema.h>
 #include <thrust/transform_reduce.h>
 #include <cuda/functional>
 #include <raft/linalg/binary_op.cuh>

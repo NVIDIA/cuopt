@@ -30,6 +30,8 @@
 
 #include <cub/cub.cuh>
 
+#include <thrust/iterator/zip_iterator.h>
+
 #include <cusparse_v2.h>
 
 namespace cuopt::linear_programming::detail {

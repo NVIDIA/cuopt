@@ -15,6 +15,9 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/tuple.h>
+
 #include <chrono>
 #include <iomanip>
 #include <mutex>

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,8 @@
 #include "compute_compatible.cuh"
 #include "local_search.cuh"
 
+#include <thrust/extrema.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
 
 #include <raft/util/cudart_utils.hpp>

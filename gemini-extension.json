@@ -1,6 +1,6 @@
 {
   "name": "nvidia-cuopt-skills",
   "description": "Agent skills for NVIDIA cuOpt optimization engine: routing, LP/MILP/QP, installation, and server.",
-  "version": "26.04.00",
+  "version": "26.06.00",
   "contextFileName": "AGENTS.md"
 }

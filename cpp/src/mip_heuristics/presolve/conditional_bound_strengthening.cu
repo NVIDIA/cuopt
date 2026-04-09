@@ -17,6 +17,12 @@
 #include "cusparse.h"
 
 #include <cub/cub.cuh>
+
+#include <thrust/extrema.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/tuple.h>
+
 #include "conditional_bound_strengthening.cuh"
 
 #include <unordered_set>

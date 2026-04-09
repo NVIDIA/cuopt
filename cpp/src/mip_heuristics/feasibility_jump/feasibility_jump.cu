@@ -23,6 +23,7 @@
 
 #include <thrust/copy.h>
 #include <thrust/count.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 #include <cub/cub.cuh>

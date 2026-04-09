@@ -1,6 +1,6 @@
 ---
 name: cuopt-qp-api-python
-version: "26.04.00"
+version: "26.06.00"
 description: Quadratic Programming (QP) with cuOpt — Python API only (beta). Use when the user is building or solving QP in Python.
 ---
 

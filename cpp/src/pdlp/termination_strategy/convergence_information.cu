@@ -25,6 +25,7 @@
 #include <raft/util/cuda_utils.cuh>
 
 #include <thrust/device_ptr.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 
 #include <cub/cub.cuh>
