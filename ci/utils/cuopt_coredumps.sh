@@ -163,7 +163,8 @@ cuopt_enable_coredumps() {
     coredump_filter_val="$(cat /proc/self/coredump_filter 2>/dev/null || echo n/a)"
   fi
 
-  local _log_msg="Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
+  local _log_msg
+  _log_msg="Core dumps: dir=${CUOPT_COREDUMP_DIR} ulimit=$(ulimit -c) core_pattern=${pattern} coredump_filter=${coredump_filter_val}"
   if declare -F rapids-logger &>/dev/null; then
     rapids-logger "${_log_msg}"
   else
