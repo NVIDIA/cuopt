@@ -7,7 +7,11 @@ import cuopt_mps_parser
 import numpy as np
 import pytest
 
-from cuopt.linear_programming import data_model, solver, solver_settings
+from cuopt.linear_programming import (
+    data_model,
+    solver,
+    solver_settings,
+)
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
@@ -36,6 +40,12 @@ from cuopt.linear_programming.solver.solver_wrapper import (
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
     SolverMethod,
+    SolverSettings,
+)
+from cuopt.linear_programming.problem import (
+    Problem,
+    CONTINUOUS,
+    MINIMIZE,
 )
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
@@ -77,7 +87,7 @@ def test_solver():
     assert solution.get_primal_objective() == pytest.approx(0.0)
     assert solution.get_dual_objective() == pytest.approx(0.0)
     assert solution.get_lp_stats()["gap"] == pytest.approx(0.0)
-    assert solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.PDLP
 
 
 def test_parser_and_solver():
@@ -590,7 +600,7 @@ def test_dual_simplex():
 
     assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
-    assert not solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.DualSimplex
 
 
 def test_barrier():
@@ -725,6 +735,22 @@ def test_write_files():
     os.remove("afiro.sol")
 
 
+def test_unbounded_problem():
+    problem = Problem("unbounded")
+    x = problem.addVariable(lb=0.0, vtype=CONTINUOUS, name="x")
+    y = problem.addVariable(lb=0.0, vtype=CONTINUOUS, name="y")
+
+    problem.addConstraint(-1 * x + 2 * y <= 0, name="c1")
+
+    problem.setObjective(-1 * x - 1 * y, sense=MINIMIZE)
+
+    settings = SolverSettings()
+
+    problem.solve(settings)
+
+    assert problem.Status.name == "UnboundedOrInfeasible"
+
+
 def test_pdlp_precision_single():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -742,7 +768,7 @@ def test_pdlp_precision_single():
     assert solution.get_primal_objective() == pytest.approx(
         -464.7531, rel=1e-1
     )
-    assert solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.PDLP
 
 
 def test_pdlp_precision_single_crossover():

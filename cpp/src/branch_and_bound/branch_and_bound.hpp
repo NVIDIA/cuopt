@@ -30,6 +30,8 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+
 #include <omp.h>
 
 #include <atomic>
@@ -89,7 +91,8 @@ class branch_and_bound_t {
                                     const std::vector<f_t>& reduced_costs,
                                     f_t objective,
                                     f_t user_objective,
-                                    i_t iterations)
+                                    i_t iterations,
+                                    method_t method)
   {
     if (!is_root_solution_set) {
       root_crossover_soln_.x              = primal;
@@ -99,6 +102,7 @@ class branch_and_bound_t {
       root_crossover_soln_.objective      = objective;
       root_crossover_soln_.user_objective = user_objective;
       root_crossover_soln_.iterations     = iterations;
+      root_relax_solved_by                = method;
       root_crossover_solution_set_.store(true, std::memory_order_release);
     }
   }
@@ -116,19 +120,12 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
-  // Set a cutoff bound from an external source (e.g., early FJ during presolve).
-  // Used for node pruning and reduced cost strengthening but NOT for gap computation.
-  // Unlike upper_bound_, this does not imply a verified incumbent solution exists.
-  //
-  // IMPORTANT: `bound` must be in B&B's internal objective space, i.e. the space of
-  // original_lp_ where:  user_obj = obj_scale * (internal_obj + obj_constant).
-  // The caller (solver.cu) converts from user-space via
-  //   problem_ptr->get_solver_obj_from_user_obj(user_cutoff)
-  // which accounts for both the presolve objective offset and maximization.
-  void set_initial_cutoff(f_t bound) { initial_cutoff_ = bound; }
+  // Seed the global upper bound from an external source (e.g., early FJ during presolve).
+  // `bound` must be in B&B's internal objective space.
+  void set_initial_upper_bound(f_t bound);
 
-  // Effective cutoff for node pruning: min of verified incumbent and external cutoff.
-  f_t get_cutoff() const { return std::min(upper_bound_.load(), initial_cutoff_); }
+  f_t get_upper_bound() const { return upper_bound_.load(); }
+  bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
@@ -195,15 +192,22 @@ class branch_and_bound_t {
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
 
-  // Verified incumbent bound (only set when B&B has an actual integer-feasible solution).
+  // Global upper bound in B&B's internal objective space.
+  // A finite value implies an incumbent exists somewhere (solver-space in incumbent_, or
+  // original-space in the mip_solver_context_t), but does NOT imply incumbent_.has_incumbent.
   omp_atomic_t<f_t> upper_bound_;
 
-  // External cutoff from early heuristics (for pruning only, no verified solution).
-  // Must be in B&B internal objective space (see set_initial_cutoff).
-  f_t initial_cutoff_{std::numeric_limits<f_t>::infinity()};
-
-  // Global variable for incumbent. The incumbent should be updated with the upper bound
+  // Solver-space incumbent tracked directly by B&B.
   mip_solution_t<i_t, f_t> incumbent_;
+
+  // Whether obj should replace the stored incumbent. Must be called under mutex_upper_.
+  // Compares against the stored incumbent's objective, NOT against upper_bound_, because
+  // set_initial_upper_bound can set a tighter bound from an OG-space solution that has no
+  // corresponding solver-space incumbent (e.g. papilo can't crush it back).
+  bool improves_incumbent(f_t obj) const
+  {
+    return !incumbent_.has_incumbent || obj < incumbent_.objective;
+  }
 
   // Structure with the general info of the solver.
   branch_and_bound_stats_t<i_t, f_t> exploration_stats_;
@@ -218,6 +222,7 @@ class branch_and_bound_t {
   f_t root_objective_;
   lp_solution_t<i_t, f_t> root_relax_soln_;
   lp_solution_t<i_t, f_t> root_crossover_soln_;
+  method_t root_relax_solved_by{Unset};
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   omp_atomic_t<f_t> root_lp_current_lower_bound_;

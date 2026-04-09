@@ -10,8 +10,8 @@ dependencies:
 - c-ares
 - c-compiler
 - ccache
-- clang-tools=20.1.4
-- clang==20.1.4
+- clang-tools=20.1.8
+- clang==20.1.8
 - cmake>=3.30.4
 - cpp-argparse
 - cuda-nvcc
@@ -34,7 +34,7 @@ dependencies:
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
-- libgrpc
+- libgrpc >=1.78.0,<1.80.0a0
 - libprotobuf
 - libraft-headers==26.6.*,>=0.0.0a0
 - librmm==26.6.*,>=0.0.0a0

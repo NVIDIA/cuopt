@@ -156,6 +156,21 @@ General FAQ
 
         while openssl x509 -noout -text; do :; done < test.pem.txt
 
+gRPC remote execution (``cuopt_grpc_server``)
+-----------------------------------------------
+
+.. dropdown:: Where are log files for the gRPC server / StreamLogs?
+
+   Workers write per-job solver logs under ``/tmp/cuopt_logs/job_<job_id>.log``. The ``StreamLogs`` RPC tails that file. Operational limits and behavior are summarized in :doc:`gRPC server behavior <cuopt-grpc/grpc-server-architecture>`.
+
+.. dropdown:: What happens if a ``cuopt_grpc_server`` worker crashes?
+
+   Jobs that worker was running are marked **FAILED**. The server monitor can detect the crash and spawn a replacement worker; other workers keep running. For more detail, see :doc:`gRPC server behavior <cuopt-grpc/grpc-server-architecture>` and the contributor reference ``cpp/docs/grpc-server-architecture.md`` in the repository.
+
+.. dropdown:: Does ``CancelJob`` stop a solve immediately?
+
+   Cancellation is honored **before** the solver starts. If the solve has already begun, it **runs to completion**; there is no mid-solve cancellation path. See :doc:`gRPC server behavior <cuopt-grpc/grpc-server-architecture>`.
+
 Routing FAQ
 ------------------------------
 
@@ -283,7 +298,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuOpt-Resources/blob/main/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuopt-examples/blob/branch-23.10/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 

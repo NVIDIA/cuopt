@@ -96,6 +96,9 @@ class solver_settings_t {
   const std::vector<parameter_info_t<std::string>>& get_string_parameters() const;
   const std::vector<std::string> get_parameter_names() const;
 
+  void load_parameters_from_file(const std::string& path);
+  bool dump_parameters_to_file(const std::string& path, bool hyperparameters_only = true) const;
+
  private:
   pdlp_solver_settings_t<i_t, f_t> pdlp_settings;
   mip_solver_settings_t<i_t, f_t> mip_settings;

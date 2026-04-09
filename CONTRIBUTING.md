@@ -197,8 +197,9 @@ cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
-ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
+ctest --test-dir ${CUOPT_HOME}/cpp/build -E L1TEST  # libcuopt
 ```
+`L1TEST`s are excluded because they are expensive and not run as part of the typical development process.
 
 To run python tests, run
 
@@ -212,6 +213,17 @@ export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
 ```
+## gRPC Remote Execution
+
+NVIDIA cuOpt includes a gRPC-based remote execution system for running solves on a
+GPU server from a program using the API locally. User documentation lives under `docs/cuopt/source/cuopt-grpc/` (Sphinx **gRPC remote execution** section):
+
+- `quick-start.rst` — Install/Docker/selector, how remote execution works, minimal LP and CLI examples (default C bundle).
+- `advanced.rst` — TLS, tuning, limitations, troubleshooting.
+- `examples.rst`, `api.rst` — Sample patterns and RPC overview.
+- `docs/cuopt/source/cuopt-grpc/grpc-server-architecture.md` — Short **gRPC server behavior** page in user docs.
+- `cpp/docs/grpc-server-architecture.md` — Full contributor reference (IPC, C++ source map, streaming).
+
 ## Debugging cuOpt
 
 ### Building in debug mode from source

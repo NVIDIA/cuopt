@@ -140,6 +140,7 @@ class pdlp_termination_strategy_t {
   f_t get_relative_primal_tolerance_factor() const;
 
   pdlp_termination_status_t get_termination_status(i_t id) const;
+  void set_termination_status(i_t id, pdlp_termination_status_t status);
   std::vector<pdlp_termination_status_t> get_terminations_status();
   bool all_optimal_status() const;
   bool all_done() const;

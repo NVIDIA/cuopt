@@ -2153,10 +2153,9 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
     std::max(device_vector_norm_inf<i_t, f_t>(data.d_primal_residual_, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_bound_residual_, stream_view_));
   dual_residual_norm = device_vector_norm_inf<i_t, f_t>(data.d_dual_residual_, stream_view_);
-  // TODO: CMM understand why rhs and not residual
   complementarity_residual_norm =
-    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_rhs_, stream_view_),
-             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_rhs_, stream_view_));
+    std::max(device_vector_norm_inf<i_t, f_t>(data.d_complementarity_xz_residual_, stream_view_),
+             device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -3494,7 +3493,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
     f_t relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
     f_t relative_complementarity_residual =
-      complementarity_residual_norm / (1.0 + std::abs(primal_objective));
+      complementarity_residual_norm /
+      (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
+                      std::abs(primal_objective)));
 
     dense_vector_t<i_t, f_t> upper(lp.upper);
     data.gather_upper_bounds(upper, data.restrict_u_);
@@ -3510,11 +3511,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     float64_t elapsed_time = toc(start_time);
     settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                         iter,
-                        primal_objective,
-                        dual_objective,
-                        primal_residual_norm,
-                        dual_residual_norm,
-                        complementarity_residual_norm,
+                        compute_user_objective(lp, primal_objective),
+                        compute_user_objective(lp, dual_objective),
+                        relative_primal_residual,
+                        relative_dual_residual,
+                        relative_complementarity_residual,
                         elapsed_time);
 
     bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
@@ -3656,7 +3657,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       relative_primal_residual = primal_residual_norm / (1.0 + norm_b);
       relative_dual_residual   = dual_residual_norm / (1.0 + norm_c);
       relative_complementarity_residual =
-        complementarity_residual_norm / (1.0 + std::abs(primal_objective));
+        complementarity_residual_norm /
+        (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
+                        std::abs(primal_objective)));
 
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&

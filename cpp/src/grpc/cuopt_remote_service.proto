@@ -192,47 +192,49 @@ message ResultArrayDescriptor {
 
 // Header for chunked result download - carries all scalar/enum/string fields
 // from LPSolution or MIPSolution. Array data is sent via GetResultChunk.
+// Field numbers use the same 1000/2000/3000 ranges as LPSolution, MIPSolution,
+// and PDLPWarmStartData for consistency with the codegen numbering scheme.
 message ChunkedResultHeader {
-  bool is_mip = 1;
-
-  // LP result scalars
-  PDLPTerminationStatus lp_termination_status = 10;
-  string error_message = 11;
-  double l2_primal_residual = 12;
-  double l2_dual_residual = 13;
-  double primal_objective = 14;
-  double dual_objective = 15;
-  double gap = 16;
-  int32 nb_iterations = 17;
-  double solve_time = 18;
-  bool solved_by_pdlp = 19;
-
-  // MIP result scalars
-  MIPTerminationStatus mip_termination_status = 30;
-  string mip_error_message = 31;
-  double mip_objective = 32;
-  double mip_gap = 33;
-  double solution_bound = 34;
-  double total_solve_time = 35;
-  double presolve_time = 36;
-  double max_constraint_violation = 37;
-  double max_int_violation = 38;
-  double max_variable_bound_violation = 39;
-  int32 nodes = 40;
-  int32 simplex_iterations = 41;
-
-  // LP warm start scalars (included in header since they are small)
-  double ws_initial_primal_weight = 60;
-  double ws_initial_step_size = 61;
-  int32 ws_total_pdlp_iterations = 62;
-  int32 ws_total_pdhg_iterations = 63;
-  double ws_last_candidate_kkt_score = 64;
-  double ws_last_restart_kkt_score = 65;
-  double ws_sum_solution_weight = 66;
-  int32 ws_iterations_since_last_restart = 67;
+  ProblemCategory problem_category = 1;
 
   // Array metadata so client knows what to fetch
   repeated ResultArrayDescriptor arrays = 50;
+
+  // LP result scalars (1000-range, same as LPSolution)
+  PDLPTerminationStatus lp_termination_status = 1000;
+  string error_message = 1001;
+  double l2_primal_residual = 1002;
+  double l2_dual_residual = 1003;
+  double primal_objective = 1004;
+  double dual_objective = 1005;
+  double gap = 1006;
+  int32 nb_iterations = 1007;
+  double solve_time = 1008;
+  int32 solved_by = 1009;
+
+  // MIP result scalars (2000-range, same as MIPSolution)
+  MIPTerminationStatus mip_termination_status = 2000;
+  string mip_error_message = 2001;
+  double mip_objective = 2002;
+  double mip_gap = 2003;
+  double solution_bound = 2004;
+  double total_solve_time = 2005;
+  double presolve_time = 2006;
+  double max_constraint_violation = 2007;
+  double max_int_violation = 2008;
+  double max_variable_bound_violation = 2009;
+  int32 nodes = 2010;
+  int32 simplex_iterations = 2011;
+
+  // LP warm start scalars (3000-range, same as PDLPWarmStartData)
+  double ws_initial_primal_weight = 3000;
+  double ws_initial_step_size = 3001;
+  int32 ws_total_pdlp_iterations = 3002;
+  int32 ws_total_pdhg_iterations = 3003;
+  double ws_last_candidate_kkt_score = 3004;
+  double ws_last_restart_kkt_score = 3005;
+  double ws_sum_solution_weight = 3006;
+  int32 ws_iterations_since_last_restart = 3007;
 }
 
 message StartChunkedDownloadRequest {

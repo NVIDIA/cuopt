@@ -65,7 +65,10 @@ int main(int argc, char** argv)
 
   argparse::ArgumentParser program("cuopt_grpc_server", version_string);
 
-  program.add_argument("-p", "--port").help("Listen port").default_value(8765).scan<'i', int>();
+  program.add_argument("-p", "--port")
+    .help("Listen port")
+    .default_value(cuopt_default_grpc_port)
+    .scan<'i', int>();
 
   program.add_argument("-w", "--workers")
     .help("Number of worker processes")
@@ -85,11 +88,6 @@ int main(int argc, char** argv)
     .help("Per-chunk timeout in seconds for streaming (0=disabled)")
     .default_value(60)
     .scan<'i', int>();
-
-  program.add_argument("--enable-transfer-hash")
-    .help("Log data hashes for streaming transfers (for testing)")
-    .default_value(false)
-    .implicit_value(true);
 
   program.add_argument("--tls")
     .help("Enable TLS (requires --tls-cert and --tls-key)")
@@ -144,7 +142,6 @@ int main(int argc, char** argv)
   }
 
   config.chunk_timeout_seconds = program.get<int>("--chunk-timeout");
-  config.enable_transfer_hash  = program.get<bool>("--enable-transfer-hash");
   config.enable_tls            = program.get<bool>("--tls");
   config.require_client        = program.get<bool>("--require-client-cert");
   config.log_to_console        = program.get<bool>("--log-to-console");

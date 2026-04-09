@@ -212,10 +212,12 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual::status_t::NUMERICAL ||
-      phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (phase1_status == dual::status_t::NUMERICAL) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
+  }
+  if (phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
   if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
@@ -312,7 +314,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
     if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
   } else {
-    // Dual infeasible -> Primal unbounded
+    // Dual infeasible -> Primal unbounded or infeasible
     settings.log.printf("Dual infeasible\n");
     original_solution.objective = -inf;
     if (lp.obj_scale == 1.0) {
@@ -323,7 +325,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       original_solution.user_objective = inf;
     }
     original_solution.iterations = iter;
-    return lp_status_t::UNBOUNDED;
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   return lp_status;
 }

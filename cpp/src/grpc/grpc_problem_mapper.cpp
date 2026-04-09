@@ -40,7 +40,7 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
 
   // Constraint matrix A in CSR format
   for (const auto& val : values) {
-    pb_problem->add_a(static_cast<double>(val));
+    pb_problem->add_a_values(static_cast<double>(val));
   }
   for (const auto& idx : indices) {
     pb_problem->add_a_indices(static_cast<int32_t>(idx));
@@ -107,19 +107,15 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
   // Variable types (for MIP problems)
   auto var_types = cpu_problem.get_variable_types_host();
   if (!var_types.empty()) {
-    // Convert var_t enum to char representation
-    std::string var_types_str;
-    var_types_str.reserve(var_types.size());
     for (const auto& vt : var_types) {
       switch (vt) {
-        case var_t::CONTINUOUS: var_types_str.push_back('C'); break;
-        case var_t::INTEGER: var_types_str.push_back('I'); break;
+        case var_t::CONTINUOUS: pb_problem->add_variable_types(cuopt::remote::CONTINUOUS); break;
+        case var_t::INTEGER: pb_problem->add_variable_types(cuopt::remote::INTEGER); break;
         default:
           throw std::runtime_error("map_problem_to_proto: unknown var_t value " +
                                    std::to_string(static_cast<int>(vt)));
       }
     }
-    pb_problem->set_variable_types(var_types_str);
   }
 
   // Quadratic objective matrix Q (for QPS problems)
@@ -152,7 +148,7 @@ void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
   cpu_problem.set_objective_offset(pb_problem.objective_offset());
 
   // Constraint matrix A in CSR format
-  std::vector<f_t> values(pb_problem.a().begin(), pb_problem.a().end());
+  std::vector<f_t> values(pb_problem.a_values().begin(), pb_problem.a_values().end());
   std::vector<i_t> indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
   std::vector<i_t> offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
 
@@ -211,19 +207,16 @@ void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
   }
 
   // Variable types
-  if (!pb_problem.variable_types().empty()) {
-    const std::string& var_types_str = pb_problem.variable_types();
-    // Convert char representation to var_t enum
+  if (pb_problem.variable_types_size() > 0) {
     std::vector<var_t> var_types;
-    var_types.reserve(var_types_str.size());
-    for (char c : var_types_str) {
-      switch (c) {
-        case 'C': var_types.push_back(var_t::CONTINUOUS); break;
-        case 'I':
-        case 'B': var_types.push_back(var_t::INTEGER); break;
+    var_types.reserve(pb_problem.variable_types_size());
+    for (int i = 0; i < pb_problem.variable_types_size(); ++i) {
+      switch (pb_problem.variable_types(i)) {
+        case cuopt::remote::CONTINUOUS: var_types.push_back(var_t::CONTINUOUS); break;
+        case cuopt::remote::INTEGER: var_types.push_back(var_t::INTEGER); break;
         default:
-          throw std::runtime_error(std::string("Unknown variable type character '") + c +
-                                   "' in variable_types string (expected 'C', 'I', or 'B')");
+          throw std::runtime_error("Unknown VariableType enum value " +
+                                   std::to_string(pb_problem.variable_types(i)));
       }
     }
     cpu_problem.set_variable_types(var_types.data(), static_cast<i_t>(var_types.size()));
@@ -244,11 +237,10 @@ void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
   }
 
   // Infer problem category from variable types
-  if (!pb_problem.variable_types().empty()) {
-    const std::string& var_types_str = pb_problem.variable_types();
-    bool has_integers                = false;
-    for (char c : var_types_str) {
-      if (c == 'I' || c == 'B') {
+  if (pb_problem.variable_types_size() > 0) {
+    bool has_integers = false;
+    for (int i = 0; i < pb_problem.variable_types_size(); ++i) {
+      if (pb_problem.variable_types(i) == cuopt::remote::INTEGER) {
         has_integers = true;
         break;
       }
@@ -509,22 +501,21 @@ void map_chunked_arrays_to_problem(const cuopt::remote::ChunkedProblemHeader& he
   }
 
   // Variable types + problem category
-  auto var_types_str = get_bytes(cuopt::remote::FIELD_VARIABLE_TYPES);
-  if (!var_types_str.empty()) {
+  auto var_types_ints = get_ints(cuopt::remote::FIELD_VARIABLE_TYPES);
+  if (!var_types_ints.empty()) {
     std::vector<var_t> vtypes;
-    vtypes.reserve(var_types_str.size());
+    vtypes.reserve(var_types_ints.size());
     bool has_ints = false;
-    for (char c : var_types_str) {
-      switch (c) {
-        case 'C': vtypes.push_back(var_t::CONTINUOUS); break;
-        case 'I':
-        case 'B':
+    for (const auto& v : var_types_ints) {
+      switch (static_cast<cuopt::remote::VariableType>(v)) {
+        case cuopt::remote::CONTINUOUS: vtypes.push_back(var_t::CONTINUOUS); break;
+        case cuopt::remote::INTEGER:
           vtypes.push_back(var_t::INTEGER);
           has_ints = true;
           break;
         default:
-          throw std::runtime_error(std::string("Unknown variable type character '") + c +
-                                   "' in chunked variable_types (expected 'C', 'I', or 'B')");
+          throw std::runtime_error("Unknown VariableType enum value " + std::to_string(v) +
+                                   " in chunked variable_types");
       }
     }
     cpu_problem.set_variable_types(vtypes.data(), static_cast<i_t>(vtypes.size()));
@@ -644,19 +635,19 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
 
   auto var_types = problem.get_variable_types_host();
   if (!var_types.empty()) {
-    std::vector<uint8_t> vt_bytes;
-    vt_bytes.reserve(var_types.size());
+    std::vector<int32_t> vt_enums;
+    vt_enums.reserve(var_types.size());
     for (const auto& vt : var_types) {
       switch (vt) {
-        case var_t::CONTINUOUS: vt_bytes.push_back('C'); break;
-        case var_t::INTEGER: vt_bytes.push_back('I'); break;
+        case var_t::CONTINUOUS: vt_enums.push_back(cuopt::remote::CONTINUOUS); break;
+        case var_t::INTEGER: vt_enums.push_back(cuopt::remote::INTEGER); break;
         default:
           throw std::runtime_error("chunk_problem_to_proto: unknown var_t value " +
                                    std::to_string(static_cast<int>(vt)));
       }
     }
-    chunk_byte_blob(
-      requests, cuopt::remote::FIELD_VARIABLE_TYPES, vt_bytes, upload_id, chunk_size_bytes);
+    chunk_typed_array(
+      requests, cuopt::remote::FIELD_VARIABLE_TYPES, vt_enums, upload_id, chunk_size_bytes);
   }
 
   if (problem.has_quadratic_objective()) {
