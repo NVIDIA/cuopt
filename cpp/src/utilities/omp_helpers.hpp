@@ -165,12 +165,12 @@ inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
 }
 
 // CAS: atomically sets `atomic_var` to `desired` if it equals `expected`.
-// On failure, loads the current value into expected.
+// On failure, loads the current value into `expected`.
 // Returns true if the exchange happened.
 inline bool compare_exchange(omp_atomic_t<int>& atomic_var, int& expected, int desired)
 {
   int old;
-#pragma omp atomic compare capture
+#pragma omp atomic compare capture seq_cst
   {
     old = atomic_var.val;
     if (atomic_var.val == expected) { atomic_var.val = desired; }
