@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,12 +28,14 @@ class heap_t {
   {
     buffer.push_back(node);
     std::push_heap(buffer.begin(), buffer.end(), comp);
+    ++num_entries_;
   }
 
   void push(T&& node)
   {
     buffer.push_back(std::move(node));
     std::push_heap(buffer.begin(), buffer.end(), comp);
+    ++num_entries_;
   }
 
   template <typename... Args>
@@ -42,6 +43,7 @@ class heap_t {
   {
     buffer.emplace_back(std::forward<Args>(args)...);
     std::push_heap(buffer.begin(), buffer.end(), comp);
+    ++num_entries_;
   }
 
   T pop()
@@ -49,82 +51,97 @@ class heap_t {
     std::pop_heap(buffer.begin(), buffer.end(), comp);
     T node = std::move(buffer.back());
     buffer.pop_back();
+    --num_entries_;
     return node;
   }
 
-  size_t size() const { return buffer.size(); }
+  size_t size() const { return num_entries_; }
   T& top() { return buffer.front(); }
-  void clear() { buffer.clear(); }
-  bool empty() const { return buffer.empty(); }
+
+  void clear()
+  {
+    buffer.clear();
+    num_entries_ = 0;
+  }
+
+  bool empty() const { return num_entries_ == 0; }
 
   // Read-only access to underlying buffer for iteration without modification
   const std::vector<T>& data() const { return buffer; }
 
  private:
   std::vector<T> buffer;
+  omp_atomic_t<size_t> num_entries_{0};
   Comp comp;
 };
 
 // A queue storing the nodes waiting to be explored/dived from.
+//
+// Both heaps share ownership of heap_entry_t via shared_ptr. This keeps the entry alive even
+// after the mip_node_t it points to has been freed, so pop_diving() can safely check
+// entry->node without a dangling dereference.
+//
+// Cross-heap invalidation: pop_best_first() nulls entry->node via std::exchange; pop_diving()
+// skips entries where entry->node == nullptr.
+//
+// Lock-free reads: best_first_queue_size(), diving_queue_size(), and get_lower_bound() read
+// atomic shadow variables and do not acquire the mutex.
 template <typename i_t, typename f_t>
 class node_queue_t {
  public:
   void push(mip_node_t<i_t, f_t>* new_node)
   {
-    std::lock_guard lock(mutex);
+    std::lock_guard lock(mutex_);
     auto entry = std::make_shared<heap_entry_t>(new_node);
-    best_first_heap.push(entry);
-    diving_heap.push(entry);
+    best_first_heap_.push(entry);
+    diving_heap_.push(entry);
+    lower_bound_ = best_first_heap_.top()->lower_bound;
+    ++diving_live_size_;
   }
 
   // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
   // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_best_first()
   {
-    if (best_first_heap.empty()) { return nullptr; }
-    auto entry = best_first_heap.pop();
-    return std::exchange(entry->node, nullptr);
+    if (best_first_heap_.empty()) { return nullptr; }
+    auto entry                 = best_first_heap_.pop();
+    lower_bound_               = get_lower_bound();
+    mip_node_t<i_t, f_t>* node = std::exchange(entry->node, nullptr);
+    --diving_live_size_;
+    return node;
   }
 
   // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
   // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_diving()
   {
-    while (!diving_heap.empty()) {
-      auto entry    = diving_heap.pop();
-      auto node_ptr = entry->node;
-      if (node_ptr != nullptr) { return node_ptr; }
+    while (!diving_heap_.empty()) {
+      auto entry = diving_heap_.pop();
+      if (entry->node != nullptr) {
+        --diving_live_size_;
+        return entry->node;
+      }
     }
-
     return nullptr;
   }
 
-  void lock() { mutex.lock(); }
-  void unlock() { mutex.unlock(); }
+  void lock() { mutex_.lock(); }
+  void unlock() { mutex_.unlock(); }
 
-  i_t diving_queue_size()
-  {
-    std::lock_guard lock(mutex);
-    return diving_heap.size();
-  }
+  i_t diving_queue_size() { return diving_live_size_; }
 
-  i_t best_first_queue_size()
-  {
-    std::lock_guard lock(mutex);
-    return best_first_heap.size();
-  }
+  i_t best_first_queue_size() { return best_first_heap_.size(); }
 
   f_t get_lower_bound()
   {
-    std::lock_guard lock(mutex);
-    return best_first_heap.empty() ? inf : best_first_heap.top()->lower_bound;
+    return best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity() : lower_bound_.load();
   }
 
  private:
   struct heap_entry_t {
     mip_node_t<i_t, f_t>* node = nullptr;
-    f_t lower_bound            = -inf;
-    f_t score                  = inf;
+    f_t lower_bound            = -std::numeric_limits<f_t>::infinity();
+    f_t score                  = std::numeric_limits<f_t>::infinity();
 
     heap_entry_t(mip_node_t<i_t, f_t>* new_node)
       : node(new_node), lower_bound(new_node->lower_bound), score(new_node->objective_estimate)
@@ -152,9 +169,12 @@ class node_queue_t {
     }
   };
 
-  heap_t<std::shared_ptr<heap_entry_t>, lower_bound_comp> best_first_heap;
-  heap_t<std::shared_ptr<heap_entry_t>, score_comp> diving_heap;
-  omp_mutex_t mutex;
+  heap_t<std::shared_ptr<heap_entry_t>, lower_bound_comp> best_first_heap_;
+  heap_t<std::shared_ptr<heap_entry_t>, score_comp> diving_heap_;
+  omp_mutex_t mutex_;
+
+  omp_atomic_t<f_t> lower_bound_{std::numeric_limits<f_t>::infinity()};
+  omp_atomic_t<i_t> diving_live_size_{0};
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
