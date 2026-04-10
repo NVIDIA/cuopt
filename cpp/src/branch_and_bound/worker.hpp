@@ -138,6 +138,13 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     return lower_bound;
   }
 
+  void init(mip_node_t<i_t, f_t>* node)
+  {
+    node_queue.push(node);
+    Base::lower_bound = node->lower_bound;
+    Base::is_active   = true;
+  }
+
   node_queue_t<i_t, f_t> node_queue;
 };
 
@@ -147,23 +154,22 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   using Base::Base;
 
-  // Initialize the worker for diving, setting the `start_node`, `start_lower` and
-  // `start_upper`. Returns `true` if the starting node is feasible via
-  // bounds propagation.
-  bool init(mip_node_t<i_t, f_t>* node,
-            search_strategy_t type,
+  void init(const mip_node_t<i_t, f_t>* node,
             const lp_problem_t<i_t, f_t>& original_lp,
-            const simplex_solver_settings_t<i_t, f_t>& settings)
+            search_strategy_t strategy)
   {
     start_node            = node->detach_copy();
     Base::start_lower     = original_lp.lower;
     Base::start_upper     = original_lp.upper;
-    Base::search_strategy = type;
+    Base::search_strategy = strategy;
     Base::lower_bound     = node->lower_bound;
     Base::is_active       = true;
-
     std::fill(Base::bounds_changed.begin(), Base::bounds_changed.end(), false);
     node->get_variable_bounds(Base::start_lower, Base::start_upper, Base::bounds_changed);
+  }
+
+  bool presolve_start_bounds(const simplex_solver_settings_t<i_t, f_t>& settings)
+  {
     return Base::node_presolver.bounds_strengthening(
       settings, Base::bounds_changed, Base::start_lower, Base::start_upper);
   }

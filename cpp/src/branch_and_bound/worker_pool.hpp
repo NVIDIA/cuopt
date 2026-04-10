@@ -8,7 +8,6 @@
 #pragma once
 
 #include <branch_and_bound/worker.hpp>
-#include <utilities/lock_free_stack.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -26,11 +25,11 @@ class worker_pool_t {
             const uint64_t rng_offset = 0)
   {
     workers_.resize(num_workers);
-    idle_stack_.init(num_workers);
+    num_idle_workers_ = num_workers;
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] =
         std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
-      idle_stack_.push(i);
+      idle_workers_.push_front(i);
     }
 
     is_initialized = true;
@@ -38,14 +37,22 @@ class worker_pool_t {
 
   WorkerType* pop_idle_worker()
   {
-    std::optional<i_t> idx = idle_stack_.pop();
-    return idx ? workers_[*idx].get() : nullptr;
+    std::lock_guard lock(mutex_);
+    if (idle_workers_.empty()) {
+      return nullptr;
+    } else {
+      i_t idx = idle_workers_.front();
+      idle_workers_.pop_front();
+      num_idle_workers_--;
+      return workers_[idx].get();
+    }
   }
-
   void return_worker_to_pool(WorkerType* worker)
   {
     worker->is_active = false;
-    idle_stack_.push(worker->worker_id);
+    std::lock_guard lock(mutex_);
+    idle_workers_.push_back(worker->worker_id);
+    num_idle_workers_++;
   }
 
   f_t get_lower_bound()
@@ -63,25 +70,16 @@ class worker_pool_t {
 
   WorkerType* get_worker(i_t id) { return workers_[id].get(); }
 
-  std::vector<WorkerType*> get_active_workers()
-  {
-    std::vector<WorkerType*> active_workers;
-    for (i_t i = 0; i < workers_.size(); ++i) {
-      if (workers_[i]->is_active) { active_workers.push_back(workers_[i].get()); }
-    }
-
-    return active_workers;
-  }
-
-  i_t num_idle_workers() const { return idle_stack_.size(); }
+  i_t num_idle_workers() const { return num_idle_workers_; }
   i_t num_workers() const { return workers_.size(); }
 
  private:
-  // Worker pool
   std::vector<std::unique_ptr<WorkerType>> workers_;
   bool is_initialized = false;
 
-  lock_free_index_stack_t<i_t> idle_stack_;
+  omp_mutex_t mutex_;
+  std::deque<i_t> idle_workers_;
+  omp_atomic_t<i_t> num_idle_workers_;
 };
 
 template <typename f_t, typename i_t>

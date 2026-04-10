@@ -68,42 +68,6 @@ class heap_t {
 // A queue storing the nodes waiting to be explored/dived from.
 template <typename i_t, typename f_t>
 class node_queue_t {
- private:
-  struct heap_entry_t {
-    mip_node_t<i_t, f_t>* node = nullptr;
-    f_t lower_bound            = -inf;
-    f_t score                  = inf;
-
-    heap_entry_t(mip_node_t<i_t, f_t>* new_node)
-      : node(new_node), lower_bound(new_node->lower_bound), score(new_node->objective_estimate)
-    {
-    }
-  };
-
-  // Comparision function for ordering the nodes based on their lower bound with
-  // lowest one being explored first.
-  struct lower_bound_comp {
-    bool operator()(const std::shared_ptr<heap_entry_t>& a, const std::shared_ptr<heap_entry_t>& b)
-    {
-      // `a` will be placed after `b`
-      return a->lower_bound > b->lower_bound;
-    }
-  };
-
-  // Comparision function for ordering the nodes based on some score (currently the pseudocost
-  // estimate) with the lowest being explored first.
-  struct score_comp {
-    bool operator()(const std::shared_ptr<heap_entry_t>& a, const std::shared_ptr<heap_entry_t>& b)
-    {
-      // `a` will be placed after `b`
-      return a->score > b->score;
-    }
-  };
-
-  heap_t<std::shared_ptr<heap_entry_t>, lower_bound_comp> best_first_heap;
-  heap_t<std::shared_ptr<heap_entry_t>, score_comp> diving_heap;
-  omp_mutex_t mutex;
-
  public:
   void push(mip_node_t<i_t, f_t>* new_node)
   {
@@ -155,6 +119,42 @@ class node_queue_t {
     std::lock_guard lock(mutex);
     return best_first_heap.empty() ? inf : best_first_heap.top()->lower_bound;
   }
+
+ private:
+  struct heap_entry_t {
+    mip_node_t<i_t, f_t>* node = nullptr;
+    f_t lower_bound            = -inf;
+    f_t score                  = inf;
+
+    heap_entry_t(mip_node_t<i_t, f_t>* new_node)
+      : node(new_node), lower_bound(new_node->lower_bound), score(new_node->objective_estimate)
+    {
+    }
+  };
+
+  // Comparision function for ordering the nodes based on their lower bound with
+  // lowest one being explored first.
+  struct lower_bound_comp {
+    bool operator()(const std::shared_ptr<heap_entry_t>& a, const std::shared_ptr<heap_entry_t>& b)
+    {
+      // `a` will be placed after `b`
+      return a->lower_bound > b->lower_bound;
+    }
+  };
+
+  // Comparision function for ordering the nodes based on some score (currently the pseudocost
+  // estimate) with the lowest being explored first.
+  struct score_comp {
+    bool operator()(const std::shared_ptr<heap_entry_t>& a, const std::shared_ptr<heap_entry_t>& b)
+    {
+      // `a` will be placed after `b`
+      return a->score > b->score;
+    }
+  };
+
+  heap_t<std::shared_ptr<heap_entry_t>, lower_bound_comp> best_first_heap;
+  heap_t<std::shared_ptr<heap_entry_t>, score_comp> diving_heap;
+  omp_mutex_t mutex;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

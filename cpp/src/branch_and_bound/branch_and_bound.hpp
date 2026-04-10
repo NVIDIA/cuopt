@@ -290,7 +290,10 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  void start_new_bfs_worker(mip_node_t<i_t, f_t>* start_node);
+  bool launch_bfs_worker(mip_node_t<i_t, f_t>* start_node);
+  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker,
+                            std::vector<search_strategy_t>::value_type diving_type,
+                            i_t min_node_depth);
 
   void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
 
