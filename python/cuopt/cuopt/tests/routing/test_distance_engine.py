@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -132,8 +132,7 @@ def test_compute_cost_matrix():
 
     # Get orders delivered using direct transport
     output_pdf = pd.read_csv(
-        utils.DATASETS_DIR
-        + "/distance_engine/direct_transport_sample.csv",
+        utils.DATASETS_DIR + "/distance_engine/direct_transport_sample.csv",
         index_col=0,
     )
 

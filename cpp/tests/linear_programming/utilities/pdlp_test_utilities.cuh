@@ -27,7 +27,7 @@ static std::string make_path_absolute(const std::string& file)
   std::string rel_file{};
   // assume relative paths are relative to the datasets directory
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  rel_file                                = datasets_dir + "/" + file;
+  rel_file                        = datasets_dir + "/" + file;
   return rel_file;
 }
 

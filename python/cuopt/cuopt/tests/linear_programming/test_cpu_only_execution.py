@@ -644,9 +644,7 @@ class TestSolutionInterfacePolymorphism:
 
     def test_lp_solution_values(self):
         """LP solve of afiro.mps returns correct objective and sizes."""
-        mps_file = (
-            f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
-        )
+        mps_file = f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
         dm = cuopt_mps_parser.ParseMps(mps_file)
         n_vars = len(dm.get_objective_coefficients())
         n_cons = len(dm.get_constraint_bounds())

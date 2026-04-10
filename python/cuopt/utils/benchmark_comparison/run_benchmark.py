@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
@@ -248,6 +248,7 @@ def main():
         or problem_type == "tsp"
     ):
         from pathlib import Path
+
         _repo_root = Path(__file__).resolve().parents[4]
         args.dataset_path = str(_repo_root / "datasets" / problem_type)
     else:

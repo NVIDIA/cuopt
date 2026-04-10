@@ -122,7 +122,7 @@ TEST(heterogenous_breaks, test_heterogeneous_breaks)
   auto stream = handle.get_stream();
 
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string routing_file                = datasets_dir + "/solomon/In/r107.txt";
+  std::string routing_file        = datasets_dir + "/solomon/In/r107.txt";
   Route<int, float> route;
   load_solomon(routing_file, route, 101);
 

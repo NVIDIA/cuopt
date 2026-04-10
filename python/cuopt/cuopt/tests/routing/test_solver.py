@@ -11,9 +11,7 @@ from cuopt.routing import utils
 
 import math
 
-SOLOMON_DATASETS_PATH = os.path.join(
-    utils.DATASETS_DIR, "solomon/In/"
-)
+SOLOMON_DATASETS_PATH = os.path.join(utils.DATASETS_DIR, "solomon/In/")
 
 
 def test_solomon():

@@ -31,7 +31,7 @@ TEST(c_api, float_size) { EXPECT_EQ(test_float_size(), sizeof(double)); }
 TEST(c_api, afiro)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename = datasets_dir + "/linear_programming/" + "afiro_original.mps";
+  std::string filename            = datasets_dir + "/linear_programming/" + "afiro_original.mps";
   int termination_status;
   EXPECT_EQ(solve_mps_file(filename.c_str(), 60, CUOPT_INFINITY, &termination_status),
             CUOPT_SUCCESS);
@@ -44,9 +44,9 @@ class TimeLimitTestFixture : public ::testing::TestWithParam<std::tuple<std::str
 TEST_P(TimeLimitTestFixture, time_limit)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename                    = datasets_dir + std::get<0>(GetParam());
-  double target_solve_time                = std::get<1>(GetParam());
-  int method                              = std::get<2>(GetParam());
+  std::string filename            = datasets_dir + std::get<0>(GetParam());
+  double target_solve_time        = std::get<1>(GetParam());
+  int method                      = std::get<2>(GetParam());
   int termination_status;
   double solve_time = std::numeric_limits<double>::quiet_NaN();
   EXPECT_EQ(solve_mps_file(filename.c_str(),
@@ -77,7 +77,7 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(c_api, iteration_limit)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename = datasets_dir + "/linear_programming/" + "afiro_original.mps";
+  std::string filename            = datasets_dir + "/linear_programming/" + "afiro_original.mps";
   int termination_status;
   EXPECT_EQ(solve_mps_file(filename.c_str(), 60, 1, &termination_status), CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_ITERATION_LIMIT);
@@ -86,7 +86,7 @@ TEST(c_api, iteration_limit)
 TEST(c_api, solve_time_bb_preemption)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename                    = datasets_dir + "/mip/" + "bb_optimality.mps";
+  std::string filename            = datasets_dir + "/mip/" + "bb_optimality.mps";
   int termination_status;
   double solve_time = std::numeric_limits<double>::quiet_NaN();
   EXPECT_EQ(solve_mps_file(filename.c_str(), 5, CUOPT_INFINITY, &termination_status, &solve_time),
@@ -146,7 +146,7 @@ TEST(c_api, test_quadratic_ranged_problem)
 TEST(c_api, test_write_problem)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string input_file = datasets_dir + "/linear_programming/afiro_original.mps";
+  std::string input_file          = datasets_dir + "/linear_programming/afiro_original.mps";
   std::string temp_file = std::filesystem::temp_directory_path().string() + "/c_api_test_write.mps";
   EXPECT_EQ(test_write_problem(input_file.c_str(), temp_file.c_str()), CUOPT_SUCCESS);
   std::filesystem::remove(temp_file);
@@ -256,10 +256,10 @@ class DeterministicBBTestFixture
 TEST_P(DeterministicBBTestFixture, deterministic_reproducibility)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename                    = datasets_dir + std::get<0>(GetParam());
-  int num_threads                         = std::get<1>(GetParam());
-  double time_limit                       = std::get<2>(GetParam());
-  double work_limit                       = std::get<3>(GetParam());
+  std::string filename            = datasets_dir + std::get<0>(GetParam());
+  int num_threads                 = std::get<1>(GetParam());
+  double time_limit               = std::get<2>(GetParam());
+  double work_limit               = std::get<3>(GetParam());
 
   // Run 3 times and verify identical results
   EXPECT_EQ(test_deterministic_bb(filename.c_str(), 3, num_threads, time_limit, work_limit),
@@ -282,7 +282,7 @@ INSTANTIATE_TEST_SUITE_P(c_api,
 TEST(c_api, pdlp_precision_single)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename = datasets_dir + "/linear_programming/afiro_original.mps";
+  std::string filename            = datasets_dir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status;
   cuopt_float_t objective;
   EXPECT_EQ(test_pdlp_precision_single(filename.c_str(), &termination_status, &objective),
@@ -295,8 +295,8 @@ TEST(c_api, pdlp_precision_mixed)
 {
   using namespace cuopt::linear_programming::detail;
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string filename           = datasets_dir + "/linear_programming/afiro_original.mps";
-  cuopt_int_t termination_status = -1;
+  std::string filename            = datasets_dir + "/linear_programming/afiro_original.mps";
+  cuopt_int_t termination_status  = -1;
   cuopt_float_t objective;
   if (!is_cusparse_runtime_mixed_precision_supported()) {
     auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
@@ -544,14 +544,14 @@ bool CpuOnlyWithServerTest::port_was_set_ = false;
 TEST_F(CpuOnlyWithServerTest, lp_solve)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string lp_file = datasets_dir + "/linear_programming/afiro_original.mps";
+  std::string lp_file             = datasets_dir + "/linear_programming/afiro_original.mps";
   EXPECT_EQ(test_cpu_only_execution(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
 TEST_F(CpuOnlyWithServerTest, mip_solve)
 {
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  std::string mip_file                    = datasets_dir + "/mip/bb_optimality.mps";
+  std::string mip_file            = datasets_dir + "/mip/bb_optimality.mps";
   EXPECT_EQ(test_cpu_only_mip_execution(mip_file.c_str()), CUOPT_SUCCESS);
 }
 

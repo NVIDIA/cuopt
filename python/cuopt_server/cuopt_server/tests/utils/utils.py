@@ -11,9 +11,17 @@ from typing import Dict, List, Optional
 import pytest
 import requests
 
-from pathlib import Path
 
-DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
+def _find_datasets_dir():
+    from pathlib import Path
+
+    candidate = Path(__file__).resolve().parents[5] / "datasets"
+    if candidate.is_dir():
+        return str(candidate)
+    return os.path.join(os.getcwd(), "datasets")
+
+
+DATASETS_DIR = _find_datasets_dir()
 
 
 def generate_json_data(**args):

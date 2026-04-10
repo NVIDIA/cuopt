@@ -29,7 +29,7 @@ mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_form
   std::string rel_file{};
   // assume relative paths are relative to the datasets directory
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  rel_file                                = datasets_dir + "/" + file;
+  rel_file                        = datasets_dir + "/" + file;
   // Empty problem not used in the test
   mps_data_model_t<int, double> problem;
   mps_parser_t<int, double> mps{problem, rel_file, fixed_format};
@@ -41,7 +41,7 @@ bool file_exists(const std::string& file)
   std::string rel_file{};
   // assume relative paths are relative to the datasets directory
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  rel_file                                = datasets_dir + "/" + file;
+  rel_file                        = datasets_dir + "/" + file;
   return std::filesystem::exists(rel_file);
 }
 
@@ -434,8 +434,8 @@ TEST(mps_ranges, fixed_ranges)
 
   std::string rel_file{};
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  rel_file                                = datasets_dir + "/" + file;
-  auto data_model                         = parse_mps<int, double>(rel_file, true);
+  rel_file                        = datasets_dir + "/" + file;
+  auto data_model                 = parse_mps<int, double>(rel_file, true);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
   EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
@@ -475,8 +475,8 @@ TEST(mps_ranges, free_ranges)
 
   std::string rel_file{};
   const std::string& datasets_dir = cuopt::test::get_datasets_dir();
-  rel_file                                = datasets_dir + "/" + file;
-  auto data_model                         = parse_mps<int, double>(rel_file, false);
+  rel_file                        = datasets_dir + "/" + file;
+  auto data_model                 = parse_mps<int, double>(rel_file, false);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
   EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
@@ -1021,9 +1021,8 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
 
 TEST(mps_roundtrip, linear_programming_basic)
 {
-  std::string input_file =
-    cuopt::test::get_datasets_dir() + "/linear_programming/good-mps-1.mps";
-  std::string temp_file = "/tmp/mps_roundtrip_lp_test.mps";
+  std::string input_file = cuopt::test::get_datasets_dir() + "/linear_programming/good-mps-1.mps";
+  std::string temp_file  = "/tmp/mps_roundtrip_lp_test.mps";
 
   // Read original
   auto original = parse_mps<int, double>(input_file, true);
@@ -1075,9 +1074,8 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
     GTEST_SKIP() << "Test file not found";
   }
 
-  std::string input_file =
-    cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_1.qps";
-  std::string temp_file = "/tmp/mps_roundtrip_qp_test_1.mps";
+  std::string input_file = cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_1.qps";
+  std::string temp_file  = "/tmp/mps_roundtrip_qp_test_1.mps";
 
   // Read original
   auto original = parse_mps<int, double>(input_file, false);
@@ -1104,9 +1102,8 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
     GTEST_SKIP() << "Test file not found";
   }
 
-  std::string input_file =
-    cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_2.qps";
-  std::string temp_file = "/tmp/mps_roundtrip_qp_test_2.mps";
+  std::string input_file = cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_2.qps";
+  std::string temp_file  = "/tmp/mps_roundtrip_qp_test_2.mps";
 
   // Read original
   auto original = parse_mps<int, double>(input_file, false);

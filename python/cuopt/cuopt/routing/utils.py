@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import glob
@@ -805,7 +805,14 @@ def save_data_model_to_yaml(data_model, solver_settings, solution, fname):
     fo.close()
 
 
-DATASETS_DIR = str(Path(__file__).resolve().parents[4] / "datasets")
+def _find_datasets_dir():
+    candidate = Path(__file__).resolve().parents[4] / "datasets"
+    if candidate.is_dir():
+        return str(candidate)
+    return os.path.join(os.getcwd(), "datasets")
+
+
+DATASETS_DIR = _find_datasets_dir()
 
 SOLOMON_PATH = os.path.join(DATASETS_DIR, "solomon", "In", "*.txt")
 REF_PATH = os.path.join(DATASETS_DIR, "ref")
