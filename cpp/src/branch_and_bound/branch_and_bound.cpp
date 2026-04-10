@@ -25,6 +25,7 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <raft/core/nvtx.hpp>
+#include <utilities/circular_deque.hpp>
 #include <utilities/hashing.hpp>
 
 #include <omp.h>
@@ -33,10 +34,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <deque>
 #include <future>
 #include <limits>
-#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -1085,12 +1084,12 @@ struct deterministic_diving_policy_t
   : deterministic_policy_base_t<i_t, f_t, deterministic_diving_worker_t<i_t, f_t>> {
   using base = deterministic_policy_base_t<i_t, f_t, deterministic_diving_worker_t<i_t, f_t>>;
 
-  std::deque<mip_node_t<i_t, f_t>*>& stack;
+  circular_deque_t<mip_node_t<i_t, f_t>*>& stack;
   i_t max_backtrack_depth;
 
   deterministic_diving_policy_t(branch_and_bound_t<i_t, f_t>& bnb,
                                 deterministic_diving_worker_t<i_t, f_t>& worker,
-                                std::deque<mip_node_t<i_t, f_t>*>& stack,
+                                circular_deque_t<mip_node_t<i_t, f_t>*>& stack,
                                 i_t max_backtrack_depth)
     : base(bnb, worker), stack(stack), max_backtrack_depth(max_backtrack_depth)
   {
@@ -1439,7 +1438,9 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
                                                mip_node_t<i_t, f_t>* start_node)
 {
-  std::deque<mip_node_t<i_t, f_t>*> stack;
+  // Stack holds at most 2 entries: the preferred child + its sibling.
+  // The sibling is evicted to the queue before a new pair of children is added.
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(4);
   stack.push_front(start_node);
 
   f_t lower_bound = get_lower_bound();
@@ -1618,7 +1619,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
   worker->recompute_bounds = true;
 
   search_tree_t<i_t, f_t> dive_tree(std::move(worker->start_node));
-  std::deque<mip_node_t<i_t, f_t>*> stack;
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(2 * diving_backtrack_limit + 4);
   stack.push_front(&dive_tree.root);
 
   branch_and_bound_stats_t<i_t, f_t> dive_stats;
@@ -3813,11 +3814,6 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 {
   raft::common::nvtx::range scope("BB::deterministic_dive");
 
-  // Create local search tree for the dive
-  search_tree_t<i_t, f_t> dive_tree(std::move(entry.node));
-  std::deque<mip_node_t<i_t, f_t>*> stack;
-  stack.push_front(&dive_tree.root);
-
   worker.dive_lower = std::move(entry.resolved_lower);
   worker.dive_upper = std::move(entry.resolved_upper);
 
@@ -3826,6 +3822,11 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
   i_t nodes_this_dive               = 0;
   worker.lp_iters_this_dive         = 0;
   worker.recompute_bounds_and_basis = true;
+
+  // Create local search tree for the dive
+  search_tree_t<i_t, f_t> dive_tree(std::move(entry.node));
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(2 * max_backtrack_depth + 4);
+  stack.push_front(&dive_tree.root);
 
   while (!stack.empty() && deterministic_global_termination_status_ == mip_status_t::UNSET &&
          nodes_this_dive < max_nodes_per_dive) {

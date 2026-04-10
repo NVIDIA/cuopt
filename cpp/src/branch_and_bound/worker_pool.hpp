@@ -8,6 +8,7 @@
 #pragma once
 
 #include <branch_and_bound/worker.hpp>
+#include <utilities/circular_deque.hpp>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -26,6 +27,7 @@ class worker_pool_t {
   {
     workers_.resize(num_workers);
     num_idle_workers_ = num_workers;
+    idle_workers_.clear_resize(num_workers);
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] =
         std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
@@ -78,7 +80,7 @@ class worker_pool_t {
   bool is_initialized = false;
 
   omp_mutex_t mutex_;
-  std::deque<i_t> idle_workers_;
+  circular_deque_t<i_t> idle_workers_;
   omp_atomic_t<i_t> num_idle_workers_;
 };
 
