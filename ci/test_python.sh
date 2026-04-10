@@ -36,11 +36,9 @@ mkdir -p "${RAPIDS_TESTS_DIR}" "${RAPIDS_COVERAGE_DIR}"
 rapids-print-env
 
 rapids-logger "Download datasets"
-RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
-export RAPIDS_DATASET_ROOT_DIR
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
+pushd datasets
 ./get_test_data.sh
 popd
 

@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DATASETS_DIR="$( cd "$SCRIPT_DIR/../../../../../datasets" && pwd )"
+
 # Add cuopt_cli path to PATH variable
 if command -v pyenv &> /dev/null; then
     PATH="$(pyenv root)/versions/$(pyenv version-name)/bin:$PATH"
@@ -20,8 +23,8 @@ cuopt_cli --help | grep "Usage: cuopt_cli" > /dev/null || (echo "Expected usage 
 
 # Run solver and check for optimal status - fail if not found
 
-cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
+cuopt_cli "${DATASETS_DIR}"/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
 
 # Add a for mixed integer programming test with options
 
-cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)
+cuopt_cli "${DATASETS_DIR}"/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)

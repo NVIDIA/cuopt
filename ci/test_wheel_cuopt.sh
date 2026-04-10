@@ -60,9 +60,6 @@ cd ./datasets
 ./get_test_data.sh --tsp
 cd -
 
-RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
-export RAPIDS_DATASET_ROOT_DIR
-
 # Run CLI tests
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 

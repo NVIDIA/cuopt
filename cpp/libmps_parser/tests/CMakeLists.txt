@@ -3,6 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
+cmake_path(GET PROJECT_SOURCE_DIR PARENT_PATH _cpp_dir)
+cmake_path(GET _cpp_dir PARENT_PATH CUOPT_REPO_ROOT)
+
 function(ConfigureTest CMAKE_TEST_NAME)
     add_executable(${CMAKE_TEST_NAME} ${ARGN})
 
@@ -39,6 +42,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
     )
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+    set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES WORKING_DIRECTORY ${CUOPT_REPO_ROOT})
 
     install(
         TARGETS ${CMAKE_TEST_NAME}

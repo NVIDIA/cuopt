@@ -80,10 +80,10 @@ def generate_new_order_data(
 
 def test_re_routing():
     utils.convert_solomon_inp_file_to_yaml(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
+        utils.DATASETS_DIR + "/solomon/In/r107.txt"
     )
     service_list, vehicle_capacity, vehicle_num = utils.create_from_yaml_file(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.yaml"
+        utils.DATASETS_DIR + "/solomon/In/r107.yaml"
     )
 
     # Truncate the model so that we run the test fast

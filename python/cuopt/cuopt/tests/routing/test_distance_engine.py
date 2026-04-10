@@ -117,22 +117,22 @@ def check_matrix(
 def test_compute_cost_matrix():
     # Data loading
     matrix_df_all = pd.read_csv(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/distance_engine/traveltimes.csv",
+        utils.DATASETS_DIR + "/distance_engine/traveltimes.csv",
         index_col=0,
     )
     order_pdf = pd.read_csv(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/distance_engine/order_sample.csv",
+        utils.DATASETS_DIR + "/distance_engine/order_sample.csv",
         encoding="ISO-8859-1",
     )
     matrix_pdf = pd.read_csv(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/distance_engine/ref_cost_matrix.csv",
+        utils.DATASETS_DIR + "/distance_engine/ref_cost_matrix.csv",
         sep=";",
         header=0,
     )
 
     # Get orders delivered using direct transport
     output_pdf = pd.read_csv(
-        utils.RAPIDS_DATASET_ROOT_DIR
+        utils.DATASETS_DIR
         + "/distance_engine/direct_transport_sample.csv",
         index_col=0,
     )
@@ -238,7 +238,7 @@ def test_compute_cost_matrix():
 
     # Build waypoint matrix
     offsets, indices, weights = get_graph_data(
-        utils.RAPIDS_DATASET_ROOT_DIR + "/distance_engine/waypoint_matrix.txt",
+        utils.DATASETS_DIR + "/distance_engine/waypoint_matrix.txt",
         ["int", "int", "float"],
     )
     waypoint_matrix = distance_engine.WaypointMatrix(offsets, indices, weights)

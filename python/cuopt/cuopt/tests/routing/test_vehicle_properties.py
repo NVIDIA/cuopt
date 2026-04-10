@@ -9,7 +9,7 @@ from cuopt import routing
 from cuopt.routing import utils
 from cuopt.routing.vehicle_routing_wrapper import ErrorStatus
 
-filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
+filename = utils.DATASETS_DIR + "/solomon/In/r107.txt"
 
 
 # ----- Vehicle types -----

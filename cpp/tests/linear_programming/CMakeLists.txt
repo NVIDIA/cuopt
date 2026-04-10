@@ -64,6 +64,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     endif()
 
     add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    set_tests_properties(C_API_TEST PROPERTIES WORKING_DIRECTORY ${CUOPT_REPO_ROOT})
 
     install(
         TARGETS C_API_TEST

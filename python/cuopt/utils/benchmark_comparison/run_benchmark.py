@@ -247,10 +247,9 @@ def main():
         or problem_type == "pdptw"
         or problem_type == "tsp"
     ):
-        args.dataset_path = os.path.join(
-            os.getenv("RAPIDS_DATASET_ROOT_DIR", "../../datasets/"),
-            problem_type,
-        )
+        from pathlib import Path
+        _repo_root = Path(__file__).resolve().parents[4]
+        args.dataset_path = str(_repo_root / "datasets" / problem_type)
     else:
         sys.exit("Problem type must be one of cvrptw or pdptw!")
 

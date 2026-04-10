@@ -15,6 +15,7 @@ TestSolutionInterfacePolymorphism:
 
 import logging
 import os
+from pathlib import Path
 import re
 import shutil
 import signal
@@ -30,9 +31,7 @@ from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
 logger = logging.getLogger(__name__)
 
-RAPIDS_DATASET_ROOT_DIR = os.environ.get(
-    "RAPIDS_DATASET_ROOT_DIR", "./datasets"
-)
+DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +302,7 @@ def _impl_lp_solve_cpu_only():
     from cuopt import linear_programming
     import cuopt_mps_parser
 
-    dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
-    mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
+    mps_file = f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
     dm = cuopt_mps_parser.ParseMps(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
@@ -333,8 +331,7 @@ def _impl_lp_dual_solution_cpu_only():
     from cuopt import linear_programming
     import cuopt_mps_parser
 
-    dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
-    mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
+    mps_file = f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
     dm = cuopt_mps_parser.ParseMps(mps_file)
     n_vars = len(dm.get_objective_coefficients())
     n_cons = len(dm.get_constraint_bounds())
@@ -366,8 +363,7 @@ def _impl_mip_solve_cpu_only():
     )
     import cuopt_mps_parser
 
-    dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
-    mps_file = f"{dataset_root}/mip/bb_optimality.mps"
+    mps_file = f"{DATASETS_DIR}/mip/bb_optimality.mps"
     dm = cuopt_mps_parser.ParseMps(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
@@ -402,8 +398,7 @@ def _impl_warmstart_cpu_only():
     from cuopt.linear_programming.solver_settings import SolverMethod
     import cuopt_mps_parser
 
-    dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
-    mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
+    mps_file = f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
     dm = cuopt_mps_parser.ParseMps(mps_file)
 
     settings = linear_programming.SolverSettings()
@@ -597,7 +592,7 @@ class TestCuoptCliCPUOnly:
     def test_cli_lp_remote(self, cpu_only_env_with_server):
         """LP solve via cuopt_cli runs remotely with correct objective."""
         output = self._run_cli(
-            f"{RAPIDS_DATASET_ROOT_DIR}/linear_programming/afiro_original.mps",
+            f"{DATASETS_DIR}/linear_programming/afiro_original.mps",
             cpu_only_env_with_server,
         )
         self._assert_remote_execution(output)
@@ -618,7 +613,7 @@ class TestCuoptCliCPUOnly:
     def test_cli_mip_remote(self, cpu_only_env_with_server):
         """MIP solve via cuopt_cli runs remotely with correct objective."""
         output = self._run_cli(
-            f"{RAPIDS_DATASET_ROOT_DIR}/mip/bb_optimality.mps",
+            f"{DATASETS_DIR}/mip/bb_optimality.mps",
             cpu_only_env_with_server,
         )
         self._assert_remote_execution(output)
@@ -650,7 +645,7 @@ class TestSolutionInterfacePolymorphism:
     def test_lp_solution_values(self):
         """LP solve of afiro.mps returns correct objective and sizes."""
         mps_file = (
-            f"{RAPIDS_DATASET_ROOT_DIR}/linear_programming/afiro_original.mps"
+            f"{DATASETS_DIR}/linear_programming/afiro_original.mps"
         )
         dm = cuopt_mps_parser.ParseMps(mps_file)
         n_vars = len(dm.get_objective_coefficients())
@@ -680,7 +675,7 @@ class TestSolutionInterfacePolymorphism:
 
     def test_mip_solution_values(self):
         """MIP solve of bb_optimality.mps returns valid stats."""
-        mps_file = f"{RAPIDS_DATASET_ROOT_DIR}/mip/bb_optimality.mps"
+        mps_file = f"{DATASETS_DIR}/mip/bb_optimality.mps"
         dm = cuopt_mps_parser.ParseMps(mps_file)
         n_vars = len(dm.get_objective_coefficients())
 

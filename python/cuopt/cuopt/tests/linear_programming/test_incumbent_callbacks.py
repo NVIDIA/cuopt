@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
 
 import cuopt_mps_parser
 import pytest
@@ -17,10 +18,7 @@ from cuopt.linear_programming.solver.solver_wrapper import (
 )
 from cuopt.utilities import utils
 
-RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
-if RAPIDS_DATASET_ROOT_DIR is None:
-    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
-    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
 
 
 def _run_incumbent_solver_callback(file_name, include_set_callback):
@@ -76,7 +74,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         else None
     )
 
-    file_path = RAPIDS_DATASET_ROOT_DIR + file_name
+    file_path = DATASETS_DIR + file_name
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()

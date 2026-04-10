@@ -25,7 +25,7 @@ python_path = shutil.which("python")
 )
 def test_time_limit_logs():
     dataset_path = (
-        utils.RAPIDS_DATASET_ROOT_DIR
+        utils.DATASETS_DIR
         + "/cuopt_service_data/cuopt_problem_data.json"
     )
     dataset = json.load(open(dataset_path))

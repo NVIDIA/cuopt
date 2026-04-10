@@ -28,9 +28,9 @@ cuopt::mps_parser::mps_data_model_t<int, double> read_from_mps(const std::string
                                                                bool fixed_mps_format = true)
 {
   std::string rel_file{};
-  // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  // assume relative paths are relative to the datasets directory
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  rel_file                                = datasets_dir + "/" + file;
   return cuopt::mps_parser::parse_mps<int, double>(rel_file, fixed_mps_format);
 }
 

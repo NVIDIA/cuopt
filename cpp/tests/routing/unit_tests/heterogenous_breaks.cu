@@ -121,8 +121,8 @@ TEST(heterogenous_breaks, test_heterogeneous_breaks)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string routing_file                = rapidsDatasetRootDir + "/solomon/In/r107.txt";
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  std::string routing_file                = datasets_dir + "/solomon/In/r107.txt";
   Route<int, float> route;
   load_solomon(routing_file, route, 101);
 

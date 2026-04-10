@@ -45,9 +45,7 @@ rapids-logger "Check GPU usage"
 nvidia-smi
 
 rapids-logger "Download datasets"
-RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
-export RAPIDS_DATASET_ROOT_DIR
-pushd "${RAPIDS_DATASET_ROOT_DIR}"
+pushd datasets
 ./get_test_data.sh
 popd
 

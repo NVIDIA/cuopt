@@ -242,7 +242,7 @@ TEST(vehicle_breaks, uniform_breaks)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  std::string path = cuopt::test::get_rapids_dataset_root_dir() + "/solomon/In/r107.txt";
+  std::string path = cuopt::test::get_datasets_dir() + "/solomon/In/r107.txt";
   Route<int, float> route;
   load_solomon(path, route, 101);
 
@@ -334,7 +334,7 @@ TEST(vehicle_breaks, non_uniform_breaks)
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  std::string path = cuopt::test::get_rapids_dataset_root_dir() + "/solomon/In/r107.txt";
+  std::string path = cuopt::test::get_datasets_dir() + "/solomon/In/r107.txt";
   Route<int, float> route;
   load_solomon(path, route, 101);
 

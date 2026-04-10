@@ -5,7 +5,7 @@ import time
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
-    RAPIDS_DATASET_ROOT_DIR,
+    DATASETS_DIR,
     RequestClient,
     delete_request,
     get_routes,
@@ -19,7 +19,7 @@ client = RequestClient()
 # solver from another test may cause this to result in a 200
 # (job is aborted while still on the queue)
 def test_abort_on_complete(cuoptproc):  # noqa
-    lp_path = RAPIDS_DATASET_ROOT_DIR + "/cuopt_service_data/good_lp.json"
+    lp_path = DATASETS_DIR + "/cuopt_service_data/good_lp.json"
 
     with open(lp_path, "rb") as infile:
         data = infile.read()
@@ -69,7 +69,7 @@ def test_abort_of_running(cuoptproc):  # noqa
     assert res.json()["running"] == 1
 
     # now a quick job should finish soon
-    lp_path = RAPIDS_DATASET_ROOT_DIR + "/cuopt_service_data/good_lp.json"
+    lp_path = DATASETS_DIR + "/cuopt_service_data/good_lp.json"
     with open(lp_path, "rb") as infile:
         data = infile.read()
 

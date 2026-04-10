@@ -214,7 +214,7 @@ class SolutionInterfaceTest : public ::testing::Test {
  protected:
   void SetUp() override
   {
-    const std::string& dir = cuopt::test::get_rapids_dataset_root_dir();
+    const std::string& dir = cuopt::test::get_datasets_dir();
     lp_file_               = dir + "/linear_programming/afiro_original.mps";
   }
   std::string lp_file_;

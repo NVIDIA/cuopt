@@ -8,7 +8,7 @@ import cudf
 from cuopt import routing
 from cuopt.routing import utils
 
-filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
+filename = utils.DATASETS_DIR + "/solomon/In/r107.txt"
 service_list, vehicle_capacity, vehicle_num = utils.create_from_file(filename)
 
 

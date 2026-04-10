@@ -32,6 +32,7 @@ endif()
 
 
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+cmake_path(GET PROJECT_SOURCE_DIR PARENT_PATH CUOPT_REPO_ROOT)
 
 # ################################################################ ------------------------------------------------------------------
 function(ConfigureTest CMAKE_TEST_NAME)
@@ -69,6 +70,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
     endif()
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+    set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES WORKING_DIRECTORY ${CUOPT_REPO_ROOT})
 
     install(
         TARGETS ${CMAKE_TEST_NAME}
@@ -77,16 +79,6 @@ function(ConfigureTest CMAKE_TEST_NAME)
         EXCLUDE_FROM_ALL
     )
 endfunction()
-
-
-# ####################################################################
-# - set rapids dataset path ----------------------------------------------------------------------
-if(RAPIDS_DATASET_ROOT_DIR)
-    message(STATUS "setting default RAPIDS_DATASET_ROOT_DIR to: ${RAPIDS_DATASET_ROOT_DIR}")
-    string(CONCAT CMAKE_C_FLAGS ${CMAKE_C_FLAGS} " -DRAPIDS_DATASET_ROOT_DIR=" "\\\"" ${RAPIDS_DATASET_ROOT_DIR} "\\\"")
-    string(CONCAT CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} " -DRAPIDS_DATASET_ROOT_DIR=" "\\\"" ${RAPIDS_DATASET_ROOT_DIR} "\\\"")
-    string(CONCAT CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} " -DRAPIDS_DATASET_ROOT_DIR=" "\\\"" ${RAPIDS_DATASET_ROOT_DIR} "\\\"")
-endif(RAPIDS_DATASET_ROOT_DIR)
 
 # ## test sources
 if(BUILD_TESTS)

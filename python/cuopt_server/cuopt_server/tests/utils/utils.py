@@ -11,10 +11,9 @@ from typing import Dict, List, Optional
 import pytest
 import requests
 
-RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
-if RAPIDS_DATASET_ROOT_DIR is None:
-    RAPIDS_DATASET_ROOT_DIR = os.path.dirname(os.getcwd())
-    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+from pathlib import Path
+
+DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
 
 
 def generate_json_data(**args):

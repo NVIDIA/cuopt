@@ -2,23 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+from pathlib import Path
 
 import cuopt_mps_parser
 import numpy as np
 import pytest
 from cuopt_mps_parser.utilities import InputValidationError
 
-RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
-if RAPIDS_DATASET_ROOT_DIR is None:
-    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
-    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
 
 
 def test_bad_mps_files():
     NumMpsFiles = 13
     for i in range(1, NumMpsFiles + 1):
         file_path = (
-            RAPIDS_DATASET_ROOT_DIR + f"/linear_programming/bad-mps-{i}.mps"
+            DATASETS_DIR + f"/linear_programming/bad-mps-{i}.mps"
         )
         if os.path.exists(file_path):
             with pytest.raises(InputValidationError):
@@ -27,7 +25,7 @@ def test_bad_mps_files():
 
 def test_good_mps_file():
     file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
+        DATASETS_DIR + "/linear_programming/good-mps-free-var.mps"
     )
     data_model = cuopt_mps_parser.ParseMps(file_path)
 

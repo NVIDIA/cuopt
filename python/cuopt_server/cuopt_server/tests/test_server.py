@@ -5,7 +5,7 @@ import pandas as pd
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
-    RAPIDS_DATASET_ROOT_DIR,
+    DATASETS_DIR,
     RequestClient,
     cuopt_service_sync,
     get_routes,
@@ -224,7 +224,7 @@ def test_service_endpoint(cuoptproc):  # noqa
 
 
 def test_service_endpoint_with_headers(cuoptproc):  # noqa
-    asset_dir = RAPIDS_DATASET_ROOT_DIR + "/cuopt_service_data"
+    asset_dir = DATASETS_DIR + "/cuopt_service_data"
     headers = {
         "NVCF-ASSET-DIR": asset_dir,
         # we only expect 1, but we should test the code just the same

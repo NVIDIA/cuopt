@@ -49,10 +49,10 @@ typedef struct file_params_t {
   file_params_t() {}
   file_params_t(const std::string& filename = "", const float cost = 0, const int vn = 0)
   {
-    // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
-    const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+    // assume relative paths are relative to the datasets directory
+    const std::string& datasets_dir = cuopt::test::get_datasets_dir();
     if ((filename != "") && (filename[0] != '/')) {
-      routing_file = rapidsDatasetRootDir + "/" + filename;
+      routing_file = datasets_dir + "/" + filename;
     } else {
       routing_file = filename;
     }
@@ -798,7 +798,7 @@ class routing_test_t : public base_test_t<i_t, f_t> {
   {
     std::ofstream out_stream(out_file, std::ios_base::app);
     if (!out_stream.is_open()) cuopt_assert(false, "Output ref file");
-    auto root = cuopt::test::get_rapids_dataset_root_dir();
+    auto root = cuopt::test::get_datasets_dir();
     out_stream << input_file_.substr(root.size() + 1) << ","
                << routing_solution.get_total_objective() << ","
                << routing_solution.get_vehicle_count() << "\n";

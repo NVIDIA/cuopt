@@ -28,7 +28,6 @@ set -euo pipefail
 
 cd /opt/cuopt/cuopt
 python -m pip install pytest pexpect
-export RAPIDS_DATASET_ROOT_DIR=\$(realpath datasets)
 echo '----------------- CLI TEST START ---------------'
 bash python/libcuopt/libcuopt/tests/test_cli.sh
 echo '----------------- CLI TEST END ---------------'

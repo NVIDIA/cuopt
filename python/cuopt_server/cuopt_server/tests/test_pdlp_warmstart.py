@@ -20,7 +20,7 @@ from cuopt.linear_programming.solver_settings import (
 
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import (
-    RAPIDS_DATASET_ROOT_DIR,
+    DATASETS_DIR,
     RequestClient,
 )
 
@@ -29,7 +29,7 @@ client = RequestClient()
 
 def test_warmstart(cuoptproc):  # noqa
     file_path = os.path.join(
-        RAPIDS_DATASET_ROOT_DIR,
+        DATASETS_DIR,
         "linear_programming/square41/square41.mps",
     )
     data_model_obj = cuopt_mps_parser.ParseMps(file_path)

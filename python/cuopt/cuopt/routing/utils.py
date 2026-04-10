@@ -3,6 +3,7 @@
 
 import glob
 import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -804,13 +805,10 @@ def save_data_model_to_yaml(data_model, solver_settings, solution, fname):
     fo.close()
 
 
-RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
-if RAPIDS_DATASET_ROOT_DIR is None:
-    RAPIDS_DATASET_ROOT_DIR = os.path.dirname(os.getcwd())
-    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+DATASETS_DIR = str(Path(__file__).resolve().parents[4] / "datasets")
 
-SOLOMON_PATH = os.path.join(RAPIDS_DATASET_ROOT_DIR, "solomon", "In", "*.txt")
-REF_PATH = os.path.join(RAPIDS_DATASET_ROOT_DIR, "ref")
+SOLOMON_PATH = os.path.join(DATASETS_DIR, "solomon", "In", "*.txt")
+REF_PATH = os.path.join(DATASETS_DIR, "ref")
 DATASETS_SOLOMON = glob.glob(SOLOMON_PATH)[:3]
 
 

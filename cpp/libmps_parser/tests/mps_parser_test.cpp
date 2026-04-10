@@ -27,9 +27,9 @@ constexpr double tolerance = 1e-6;
 mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_format = true)
 {
   std::string rel_file{};
-  // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  // assume relative paths are relative to the datasets directory
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  rel_file                                = datasets_dir + "/" + file;
   // Empty problem not used in the test
   mps_data_model_t<int, double> problem;
   mps_parser_t<int, double> mps{problem, rel_file, fixed_format};
@@ -39,9 +39,9 @@ mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_form
 bool file_exists(const std::string& file)
 {
   std::string rel_file{};
-  // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  // assume relative paths are relative to the datasets directory
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  rel_file                                = datasets_dir + "/" + file;
   return std::filesystem::exists(rel_file);
 }
 
@@ -433,8 +433,8 @@ TEST(mps_ranges, fixed_ranges)
   EXPECT_NEAR(3.4, mps.ranges_values[3], tolerance);   //  ROW3 range value
 
   std::string rel_file{};
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  rel_file                                = datasets_dir + "/" + file;
   auto data_model                         = parse_mps<int, double>(rel_file, true);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
@@ -474,8 +474,8 @@ TEST(mps_ranges, free_ranges)
   EXPECT_NEAR(3.4, mps.ranges_values[3], tolerance);   //  ROW3 range value
 
   std::string rel_file{};
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  const std::string& datasets_dir = cuopt::test::get_datasets_dir();
+  rel_file                                = datasets_dir + "/" + file;
   auto data_model                         = parse_mps<int, double>(rel_file, false);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
@@ -861,7 +861,7 @@ TEST(qps_parser, test_qps_files)
   // Test QP_Test_1.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_1.qps")) {
     auto parsed_data = parse_mps<int, double>(
-      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps", false);
+      cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_1.qps", false);
 
     EXPECT_EQ("QP_Test_1", parsed_data.get_problem_name());
     EXPECT_EQ(2, parsed_data.get_n_variables());    // C------1 and C------2
@@ -881,7 +881,7 @@ TEST(qps_parser, test_qps_files)
   // Test QP_Test_2.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_2.qps")) {
     auto parsed_data = parse_mps<int, double>(
-      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps", false);
+      cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_2.qps", false);
 
     EXPECT_EQ("QP_Test_2", parsed_data.get_problem_name());
     EXPECT_EQ(3, parsed_data.get_n_variables());    // C------1, C------2, C------3
@@ -1022,7 +1022,7 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
 TEST(mps_roundtrip, linear_programming_basic)
 {
   std::string input_file =
-    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/good-mps-1.mps";
+    cuopt::test::get_datasets_dir() + "/linear_programming/good-mps-1.mps";
   std::string temp_file = "/tmp/mps_roundtrip_lp_test.mps";
 
   // Read original
@@ -1049,7 +1049,7 @@ TEST(mps_roundtrip, linear_programming_with_bounds)
   }
 
   std::string input_file =
-    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/lp_model_with_var_bounds.mps";
+    cuopt::test::get_datasets_dir() + "/linear_programming/lp_model_with_var_bounds.mps";
   std::string temp_file = "/tmp/mps_roundtrip_lp_bounds_test.mps";
 
   // Read original
@@ -1076,7 +1076,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
   }
 
   std::string input_file =
-    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps";
+    cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_1.qps";
   std::string temp_file = "/tmp/mps_roundtrip_qp_test_1.mps";
 
   // Read original
@@ -1105,7 +1105,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
   }
 
   std::string input_file =
-    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps";
+    cuopt::test::get_datasets_dir() + "/quadratic_programming/QP_Test_2.qps";
   std::string temp_file = "/tmp/mps_roundtrip_qp_test_2.mps";
 
   // Read original

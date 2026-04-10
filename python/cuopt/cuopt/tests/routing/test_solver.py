@@ -12,7 +12,7 @@ from cuopt.routing import utils
 import math
 
 SOLOMON_DATASETS_PATH = os.path.join(
-    utils.RAPIDS_DATASET_ROOT_DIR, "solomon/In/"
+    utils.DATASETS_DIR, "solomon/In/"
 )
 
 

@@ -8,7 +8,7 @@ import cudf
 from cuopt import routing
 from cuopt.routing import utils
 
-filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
+filename = utils.DATASETS_DIR + "/solomon/In/r107.txt"
 
 
 def test_verbose_mode():

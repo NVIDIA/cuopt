@@ -22,7 +22,6 @@
  * Environment variables:
  *   CUOPT_GRPC_SERVER_PATH - Path to cuopt_grpc_server binary
  *   CUOPT_TEST_PORT_BASE   - Base port for test servers (default: 19000)
- *   RAPIDS_DATASET_ROOT_DIR - Path to test datasets
  */
 
 #include <gmock/gmock.h>
@@ -362,9 +361,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
   std::string get_test_data_path(const std::string& subdir, const std::string& filename)
   {
-    const char* env_var      = std::getenv("RAPIDS_DATASET_ROOT_DIR");
-    std::string dataset_root = env_var ? env_var : "./datasets";
-    return dataset_root + "/" + subdir + "/" + filename;
+    return "./datasets/" + subdir + "/" + filename;
   }
 
   std::string get_test_lp_path(const std::string& filename)

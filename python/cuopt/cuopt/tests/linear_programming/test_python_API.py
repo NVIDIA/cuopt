@@ -3,6 +3,7 @@
 
 import math
 import os
+from pathlib import Path
 
 import pytest
 
@@ -43,10 +44,7 @@ from cuopt.linear_programming.solver_settings import (
     SolverMethod,
 )
 
-RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
-if RAPIDS_DATASET_ROOT_DIR is None:
-    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
-    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+DATASETS_DIR = str(Path(__file__).resolve().parents[5] / "datasets")
 
 
 def test_model():
@@ -414,7 +412,7 @@ def test_incumbent_get_set_solutions():
 
 
 def test_warm_start():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
+    file_path = DATASETS_DIR + "/linear_programming/a2864/a2864.mps"
     problem = Problem.readMPS(file_path)
 
     settings = SolverSettings()
