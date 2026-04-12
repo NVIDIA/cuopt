@@ -189,10 +189,15 @@ inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
       current_size = shmem_sizes[function];
 
       if (dynamic_request_size > current_size) {
-        cudaFuncSetAttribute(
+        auto err = cudaFuncSetAttribute(
           function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
-        shmem_sizes[function] = dynamic_request_size;
-        return (cudaSuccess == cudaGetLastError());
+        if (err == cudaSuccess) {
+          shmem_sizes[function] = dynamic_request_size;
+          return true;
+        } else {
+          cudaGetLastError();  // clear sticky error so later RAFT_CHECK_CUDA doesn't catch it
+          return false;
+        }
       }
     }
   }
