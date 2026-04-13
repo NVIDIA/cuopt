@@ -1871,19 +1871,30 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
   // Root node path
   lp_status_t root_status;
-  std::future<lp_status_t> root_status_future;
-  root_status_future = std::async(std::launch::async,
-                                  &solve_linear_program_with_advanced_basis<i_t, f_t>,
-                                  std::ref(original_lp_),
-                                  exploration_stats_.start_time,
-                                  std::ref(lp_settings),
-                                  std::ref(root_relax_soln),
-                                  std::ref(basis_update),
-                                  std::ref(basic_list),
-                                  std::ref(nonbasic_list),
-                                  std::ref(root_vstatus),
-                                  std::ref(edge_norms),
-                                  nullptr);
+
+  // Note that we need to explicitly declared `root_status` as a shared variable here since
+  // it is local to the thread that are executing the enclosing task.
+#pragma omp task shared(root_status,     \
+                          original_lp_,  \
+                          lp_settings,   \
+                          basis_update,  \
+                          basic_list,    \
+                          nonbasic_list, \
+                          root_vstatus_, \
+                          edge_norms_) default(none)
+  {
+    root_status = solve_linear_program_with_advanced_basis(original_lp_,
+                                                           exploration_stats_.start_time,
+                                                           lp_settings,
+                                                           root_relax_soln_,
+                                                           basis_update,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           root_vstatus_,
+                                                           edge_norms_,
+                                                           nullptr);
+  }
+
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
   // to finish
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
@@ -1925,9 +1936,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
     // Check if crossover was stopped by dual simplex
     if (crossover_status == crossover_status_t::OPTIMAL) {
-      set_root_concurrent_halt(1);             // Stop dual simplex
-      root_status = root_status_future.get();  // Wait for dual simplex to finish
-      set_root_concurrent_halt(0);             // Clear the concurrent halt flag
+      set_root_concurrent_halt(1);  // Stop dual simplex
+#pragma omp taskwait                // Wait for dual simplex to finish
+      set_root_concurrent_halt(0);  // Clear the concurrent halt flag
       // Override the root relaxation solution with the crossover solution
       root_relax_soln = root_crossover_soln_;
       root_vstatus    = crossover_vstatus_;
@@ -1977,14 +1988,14 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       solver_name    = method_to_string(root_relax_solved_by);
 
     } else {
-      root_status          = root_status_future.get();
+#pragma omp taskwait
       user_objective       = root_relax_soln_.user_objective;
       iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
       solver_name          = "Dual Simplex";
     }
   } else {
-    root_status          = root_status_future.get();
+#pragma omp taskwait
     user_objective       = root_relax_soln_.user_objective;
     iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;
@@ -2613,11 +2624,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.deterministic) {
     run_deterministic_coordinator(Arow_);
   } else if (settings_.num_threads > 1) {
-#pragma omp parallel num_threads(settings_.num_threads)
-    {
-#pragma omp master
-      run_scheduler();
-    }
+    run_scheduler();
   } else {
     single_threaded_solve();
   }

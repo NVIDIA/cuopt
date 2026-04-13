@@ -756,14 +756,15 @@ static void batch_pdlp_strong_branching_task(
     ws_settings.inside_mip                           = true;
     if (effective_batch_pdlp == 1) { ws_settings.concurrent_halt = &concurrent_halt; }
 
-    auto start_time = std::chrono::high_resolution_clock::now();
+    auto pdlp_start_time = std::chrono::high_resolution_clock::now();
 
     auto ws_solution = solve_lp(&pc.pdlp_warm_cache.batch_pdlp_handle, mps_model, ws_settings);
 
     if (verbose) {
-      auto end_time = std::chrono::high_resolution_clock::now();
+      auto pdlp_end_time = std::chrono::high_resolution_clock::now();
       auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+        std::chrono::duration_cast<std::chrono::milliseconds>(pdlp_end_time - pdlp_start_time)
+          .count();
       settings.log.printf(
         "Original problem solved in %d milliseconds"
         " and iterations: %d\n",
@@ -1029,7 +1030,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * fractional.size());
   shared_strong_branching_context_view_t<i_t, f_t> sb_view(shared_ctx.solved);
 
-  std::atomic<int> concurrent_halt{0};
+  std::atomic concurrent_halt{0};
 
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
@@ -1052,70 +1053,67 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           basis_factors,
                                           pc);
   } else {
-#pragma omp parallel num_threads(settings.num_threads)
-    {
-#pragma omp single nowait
-      {
-        if (effective_batch_pdlp != 0) {
-#pragma omp task
-          batch_pdlp_strong_branching_task(settings,
-                                           effective_batch_pdlp,
-                                           start_time,
-                                           concurrent_halt,
-                                           original_lp,
-                                           new_slacks,
-                                           root_solution.x,
-                                           fractional,
-                                           root_obj,
-                                           pc,
-                                           sb_view,
-                                           pdlp_obj_down,
-                                           pdlp_obj_up);
-        }
+    if (effective_batch_pdlp != 0) {
+#pragma omp task depend(out : pdlp_obj_down) depend(out : pdlp_obj_up) default(shared)
+      batch_pdlp_strong_branching_task(settings,
+                                       effective_batch_pdlp,
+                                       start_time,
+                                       concurrent_halt,
+                                       original_lp,
+                                       new_slacks,
+                                       root_solution.x,
+                                       fractional,
+                                       root_obj,
+                                       pc,
+                                       sb_view,
+                                       pdlp_obj_down,
+                                       pdlp_obj_up);
+    }
 
-        if (effective_batch_pdlp != 2) {
-          i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
+    if (effective_batch_pdlp != 2) {
+      i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
-#pragma omp taskloop num_tasks(n)
-          for (i_t k = 0; k < n; k++) {
-            i_t start = std::floor(k * fractional.size() / n);
-            i_t end   = std::floor((k + 1) * fractional.size() / n);
+#pragma omp taskloop num_tasks(n) default(shared)
+      for (i_t k = 0; k < n; k++) {
+        i_t start = std::floor(k * fractional.size() / n);
+        i_t end   = std::floor((k + 1) * fractional.size() / n);
 
-            constexpr bool verbose = false;
-            if (verbose) {
-              settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
-                                  omp_get_thread_num(),
-                                  k,
-                                  start,
-                                  end,
-                                  end - start);
-            }
-
-            strong_branch_helper(start,
-                                 end,
-                                 start_time,
-                                 original_lp,
-                                 settings,
-                                 var_types,
-                                 fractional,
-                                 root_solution.x,
-                                 root_vstatus,
-                                 edge_norms,
-                                 root_obj,
-                                 upper_bound,
-                                 simplex_iteration_limit,
-                                 pc,
-                                 dual_simplex_obj_down,
-                                 dual_simplex_obj_up,
-                                 dual_simplex_status_down,
-                                 dual_simplex_status_up,
-                                 sb_view);
-          }
-          // DS done: signal PDLP to stop (time-limit or all work done) and wait
-          if (effective_batch_pdlp == 1) { concurrent_halt.store(1); }
+        if (verbose) {
+          settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
+                              omp_get_thread_num(),
+                              k,
+                              start,
+                              end,
+                              end - start);
         }
+
+        strong_branch_helper(start,
+                             end,
+                             start_time,
+                             original_lp,
+                             settings,
+                             var_types,
+                             fractional,
+                             root_solution.x,
+                             root_vstatus,
+                             edge_norms,
+                             root_obj,
+                             upper_bound,
+                             simplex_iteration_limit,
+                             pc,
+                             dual_simplex_obj_down,
+                             dual_simplex_obj_up,
+                             dual_simplex_status_down,
+                             dual_simplex_status_up,
+                             sb_view);
       }
+      // DS done: signal PDLP to stop (time-limit or all work done) and wait
+      if (effective_batch_pdlp == 1) { concurrent_halt.store(1); }
+    }
+
+    if (effective_batch_pdlp != 0) {
+#pragma omp taskwait depend(in : pdlp_obj_down) depend(in : pdlp_obj_up)
     }
   }
 
