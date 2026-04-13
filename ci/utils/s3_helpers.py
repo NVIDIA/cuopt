@@ -20,7 +20,9 @@ def s3_env():
     if os.environ.get("CUOPT_AWS_ACCESS_KEY_ID"):
         env["AWS_ACCESS_KEY_ID"] = os.environ["CUOPT_AWS_ACCESS_KEY_ID"]
     if os.environ.get("CUOPT_AWS_SECRET_ACCESS_KEY"):
-        env["AWS_SECRET_ACCESS_KEY"] = os.environ["CUOPT_AWS_SECRET_ACCESS_KEY"]
+        env["AWS_SECRET_ACCESS_KEY"] = os.environ[
+            "CUOPT_AWS_SECRET_ACCESS_KEY"
+        ]
     if os.environ.get("CUOPT_AWS_REGION"):
         env["AWS_DEFAULT_REGION"] = os.environ["CUOPT_AWS_REGION"]
     elif "AWS_DEFAULT_REGION" not in env:
@@ -34,12 +36,17 @@ def s3_download(s3_uri, local_path):
     try:
         subprocess.run(
             ["aws", "s3", "cp", s3_uri, local_path],
-            env=env, check=True, capture_output=True, text=True,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         print(f"Downloaded {s3_uri}")
         return True
     except FileNotFoundError:
-        print("WARNING: aws CLI not found, skipping S3 download", file=sys.stderr)
+        print(
+            "WARNING: aws CLI not found, skipping S3 download", file=sys.stderr
+        )
         return False
     except subprocess.CalledProcessError as exc:
         print(
@@ -55,15 +62,22 @@ def s3_upload(local_path, s3_uri):
     try:
         subprocess.run(
             ["aws", "s3", "cp", local_path, s3_uri],
-            env=env, check=True, capture_output=True, text=True,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         print(f"Uploaded {local_path} to {s3_uri}")
         return True
     except FileNotFoundError:
-        print("WARNING: aws CLI not found, skipping S3 upload", file=sys.stderr)
+        print(
+            "WARNING: aws CLI not found, skipping S3 upload", file=sys.stderr
+        )
         return False
     except subprocess.CalledProcessError as exc:
-        print(f"WARNING: S3 upload failed: {exc.stderr.strip()}", file=sys.stderr)
+        print(
+            f"WARNING: S3 upload failed: {exc.stderr.strip()}", file=sys.stderr
+        )
         return False
 
 
@@ -73,7 +87,10 @@ def s3_list(s3_prefix):
     try:
         result = subprocess.run(
             ["aws", "s3", "ls", s3_prefix],
-            env=env, check=True, capture_output=True, text=True,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
         print(f"WARNING: S3 ls failed: {exc}", file=sys.stderr)

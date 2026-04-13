@@ -17,7 +17,7 @@
 # Optional environment variables:
 #   GITHUB_RUN_URL     - Link to the GitHub Actions run
 #   REPORT_URL         - Link to the S3 HTML report
-#   CUOPT_BRANCH       - Branch name (e.g. main, release/26.06)
+#   CUOPT_BRANCH       - Branch name (e.g. main)
 
 set -euo pipefail
 

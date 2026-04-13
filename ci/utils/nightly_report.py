@@ -54,6 +54,7 @@ EMPTY_HISTORY = {"_schema_version": 1, "tests": {}}
 # JUnit XML parsing
 # ---------------------------------------------------------------------------
 
+
 def parse_junit_xml(xml_path):
     """Parse a JUnit XML file and return a list of test result dicts."""
     results = []
@@ -100,15 +101,17 @@ def parse_junit_xml(xml_path):
                 status = "passed"
                 message = ""
 
-            results.append({
-                "suite": suite_name,
-                "classname": classname,
-                "name": name,
-                "status": status,
-                "time": time_taken,
-                "message": message,
-                "source_file": str(xml_path),
-            })
+            results.append(
+                {
+                    "suite": suite_name,
+                    "classname": classname,
+                    "name": name,
+                    "status": status,
+                    "time": time_taken,
+                    "message": message,
+                    "source_file": str(xml_path),
+                }
+            )
 
     return results
 
@@ -125,6 +128,7 @@ def collect_all_results(results_dir):
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------
+
 
 def classify_failures(results):
     """
@@ -172,6 +176,7 @@ def classify_failures(results):
 # ---------------------------------------------------------------------------
 # History management
 # ---------------------------------------------------------------------------
+
 
 def load_history(history_path):
     """Load failure history from a local JSON file."""
@@ -257,14 +262,16 @@ def update_history(history, classified, sha, date_str):
             rec["status"] = "resolved"
             rec["resolved_date"] = date_str
             rec["resolved_sha"] = sha
-            resolved_tests.append({
-                "suite": rec["suite"],
-                "classname": rec["classname"],
-                "name": rec["name"],
-                "first_seen": rec["first_seen_date"],
-                "failure_count": rec["failure_count"],
-                "was_flaky": rec.get("is_flaky", False),
-            })
+            resolved_tests.append(
+                {
+                    "suite": rec["suite"],
+                    "classname": rec["classname"],
+                    "name": rec["name"],
+                    "first_seen": rec["first_seen_date"],
+                    "failure_count": rec["failure_count"],
+                    "was_flaky": rec.get("is_flaky", False),
+                }
+            )
 
     return history, new_failures, recurring_failures, resolved_tests
 
@@ -280,9 +287,17 @@ def save_history(history, history_path):
 # Report generation
 # ---------------------------------------------------------------------------
 
+
 def generate_markdown_report(
-    classified, new_failures, recurring_failures, resolved_tests, history,
-    test_type="", matrix_label="", sha="", date_str="",
+    classified,
+    new_failures,
+    recurring_failures,
+    resolved_tests,
+    history,
+    test_type="",
+    matrix_label="",
+    sha="",
+    date_str="",
 ):
     """Generate a Markdown summary report."""
     lines = []
@@ -320,7 +335,9 @@ def generate_markdown_report(
     lines.append(f"| Flaky (passed on retry) | {total_flaky} |")
     lines.append(f"| Skipped | {total_skipped} |")
     if resolved_tests:
-        lines.append(f"| **Stabilized (were failing, now pass)** | **{len(resolved_tests)}** |")
+        lines.append(
+            f"| **Stabilized (were failing, now pass)** | **{len(resolved_tests)}** |"
+        )
     lines.append("")
 
     # -- New genuine failures (highest priority) --
@@ -331,9 +348,13 @@ def generate_markdown_report(
         lines.append("|-------|------|-------|")
         for entry in new_failures:
             short_msg = (
-                entry.get("message", "")[:80].replace("\n", " ").replace("|", "\\|")
+                entry.get("message", "")[:80]
+                .replace("\n", " ")
+                .replace("|", "\\|")
             )
-            lines.append(f"| {entry['suite']} | `{entry['name']}` | {short_msg} |")
+            lines.append(
+                f"| {entry['suite']} | `{entry['name']}` | {short_msg} |"
+            )
         lines.append("")
 
     # -- Recurring failures --
@@ -344,11 +365,19 @@ def generate_markdown_report(
         lines.append("|-------|------|------------|---------------|-------|")
         for entry in recurring_failures:
             short_msg = (
-                entry.get("message", "")[:60].replace("\n", " ").replace("|", "\\|")
+                entry.get("message", "")[:60]
+                .replace("\n", " ")
+                .replace("|", "\\|")
             )
             first_seen = entry.get("first_seen", "unknown")
-            test_key = f"{entry['suite']}::{entry['classname']}::{entry['name']}"
-            count = history.get("tests", {}).get(test_key, {}).get("failure_count", "?")
+            test_key = (
+                f"{entry['suite']}::{entry['classname']}::{entry['name']}"
+            )
+            count = (
+                history.get("tests", {})
+                .get(test_key, {})
+                .get("failure_count", "?")
+            )
             lines.append(
                 f"| {entry['suite']} | `{entry['name']}` | {first_seen} | {count} | {short_msg} |"
             )
@@ -358,8 +387,12 @@ def generate_markdown_report(
     if resolved_tests:
         lines.append("## Stabilized Tests (were failing, now passing)")
         lines.append("")
-        lines.append("| Suite | Test | Was failing since | Total failure count | Was flaky? |")
-        lines.append("|-------|------|-------------------|---------------------|------------|")
+        lines.append(
+            "| Suite | Test | Was failing since | Total failure count | Was flaky? |"
+        )
+        lines.append(
+            "|-------|------|-------------------|---------------------|------------|"
+        )
         for entry in resolved_tests:
             flaky_badge = "Yes" if entry.get("was_flaky") else "No"
             lines.append(
@@ -376,7 +409,9 @@ def generate_markdown_report(
         lines.append("|-------|------|----------------|")
         for entry in classified["flaky"]:
             retry_count = entry.get("retry_count", "?")
-            lines.append(f"| {entry['suite']} | `{entry['name']}` | {retry_count} |")
+            lines.append(
+                f"| {entry['suite']} | `{entry['name']}` | {retry_count} |"
+            )
         lines.append("")
 
     # -- Detailed errors --
@@ -405,8 +440,14 @@ def generate_markdown_report(
 
 
 def generate_json_summary(
-    classified, new_failures, recurring_failures, resolved_tests,
-    test_type="", matrix_label="", sha="", date_str="",
+    classified,
+    new_failures,
+    recurring_failures,
+    resolved_tests,
+    test_type="",
+    matrix_label="",
+    sha="",
+    date_str="",
 ):
     """Generate a JSON summary for downstream tools (Slack notifier, dashboard)."""
     return {
@@ -470,6 +511,7 @@ def generate_json_summary(
 # HTML report
 # ---------------------------------------------------------------------------
 
+
 def _html_escape(text):
     """Escape HTML special characters."""
     return (
@@ -481,8 +523,15 @@ def _html_escape(text):
 
 
 def generate_html_report(
-    classified, new_failures, recurring_failures, resolved_tests, history,
-    test_type="", matrix_label="", sha="", date_str="",
+    classified,
+    new_failures,
+    recurring_failures,
+    resolved_tests,
+    history,
+    test_type="",
+    matrix_label="",
+    sha="",
+    date_str="",
 ):
     """Generate a self-contained HTML report with detailed failure info."""
     total_passed = len(classified["passed"])
@@ -566,7 +615,9 @@ def generate_html_report(
     if sha:
         meta_parts.append(f"Commit: <code>{_html_escape(sha[:12])}</code>")
     if matrix_label:
-        meta_parts.append(f"Matrix: <strong>{_html_escape(matrix_label)}</strong>")
+        meta_parts.append(
+            f"Matrix: <strong>{_html_escape(matrix_label)}</strong>"
+        )
     parts.append(" &nbsp;|&nbsp; ".join(meta_parts))
 
     parts.append(f"""</div>
@@ -582,23 +633,23 @@ def generate_html_report(
 
     # --- New failures ---
     if new_failures:
-        parts.append('<section><h2>New Failures</h2><table>')
-        parts.append('<tr><th>Suite</th><th>Test</th><th>Error</th></tr>')
+        parts.append("<section><h2>New Failures</h2><table>")
+        parts.append("<tr><th>Suite</th><th>Test</th><th>Error</th></tr>")
         for e in new_failures:
             msg = _html_escape(e.get("message", ""))
             short = _html_escape(e.get("message", "")[:100])
             parts.append(
-                f'<tr><td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code> '
+                f"<tr><td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code> "
                 f'<span class="badge badge-new">NEW</span></td>'
-                f'<td><details><summary>{short}</summary>'
+                f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
 
     # --- Recurring failures ---
     if recurring_failures:
-        parts.append('<section><h2>Recurring Failures</h2><table>')
+        parts.append("<section><h2>Recurring Failures</h2><table>")
         parts.append(
             "<tr><th>Suite</th><th>Test</th><th>First Seen</th>"
             "<th>Count</th><th>Error</th></tr>"
@@ -608,22 +659,24 @@ def generate_html_report(
             short = _html_escape(e.get("message", "")[:100])
             first_seen = _html_escape(e.get("first_seen", "unknown"))
             test_key = f"{e['suite']}::{e['classname']}::{e['name']}"
-            count = history.get("tests", {}).get(test_key, {}).get(
-                "failure_count", "?"
+            count = (
+                history.get("tests", {})
+                .get(test_key, {})
+                .get("failure_count", "?")
             )
             parts.append(
-                f'<tr><td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code> '
+                f"<tr><td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code> "
                 f'<span class="badge badge-recurring">RECURRING</span></td>'
                 f"<td>{first_seen}</td><td>{count}</td>"
-                f'<td><details><summary>{short}</summary>'
+                f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
 
     # --- Stabilized ---
     if resolved_tests:
-        parts.append('<section><h2>Stabilized Tests</h2><table>')
+        parts.append("<section><h2>Stabilized Tests</h2><table>")
         parts.append(
             "<tr><th>Suite</th><th>Test</th><th>Failing Since</th>"
             "<th>Failure Count</th><th>Was Flaky?</th></tr>"
@@ -631,25 +684,25 @@ def generate_html_report(
         for e in resolved_tests:
             flaky_tag = "Yes" if e.get("was_flaky") else "No"
             parts.append(
-                f'<tr><td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code> '
+                f"<tr><td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code> "
                 f'<span class="badge badge-resolved">FIXED</span></td>'
-                f'<td>{_html_escape(e.get("first_seen", "?"))}</td>'
-                f'<td>{e.get("failure_count", "?")}</td>'
+                f"<td>{_html_escape(e.get('first_seen', '?'))}</td>"
+                f"<td>{e.get('failure_count', '?')}</td>"
                 f"<td>{flaky_tag}</td></tr>"
             )
         parts.append("</table></section>")
 
     # --- Flaky ---
     if classified["flaky"]:
-        parts.append('<section><h2>Flaky Tests (passed on retry)</h2><table>')
+        parts.append("<section><h2>Flaky Tests (passed on retry)</h2><table>")
         parts.append("<tr><th>Suite</th><th>Test</th><th>Retries</th></tr>")
         for e in classified["flaky"]:
             parts.append(
-                f'<tr><td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code> '
+                f"<tr><td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code> "
                 f'<span class="badge badge-flaky">FLAKY</span></td>'
-                f'<td>{e.get("retry_count", "?")}</td></tr>'
+                f"<td>{e.get('retry_count', '?')}</td></tr>"
             )
         parts.append("</table></section>")
 
@@ -661,17 +714,19 @@ def generate_html_report(
             msg = _html_escape(e.get("message", "").strip())
             parts.append(
                 f'<h3 style="font-size:0.95rem;margin-top:16px">'
-                f'<code>{_html_escape(e["classname"])}::{_html_escape(e["name"])}</code></h3>'
+                f"<code>{_html_escape(e['classname'])}::{_html_escape(e['name'])}</code></h3>"
                 f'<p style="font-size:0.82rem;color:#616161">'
-                f'Suite: {_html_escape(e["suite"])} &nbsp;|&nbsp; '
-                f'Source: {_html_escape(e["source_file"])}</p>'
+                f"Suite: {_html_escape(e['suite'])} &nbsp;|&nbsp; "
+                f"Source: {_html_escape(e['source_file'])}</p>"
             )
             if msg:
                 parts.append(f'<pre class="error">{msg}</pre>')
         parts.append("</section>")
 
     if not all_failures and not classified["flaky"] and not resolved_tests:
-        parts.append('<p class="empty">All tests passed! No failures or flaky tests detected.</p>')
+        parts.append(
+            '<p class="empty">All tests passed! No failures or flaky tests detected.</p>'
+        )
 
     parts.append("</body></html>")
     return "\n".join(parts)
@@ -681,42 +736,50 @@ def generate_html_report(
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate nightly test failure report from JUnit XML results"
     )
     parser.add_argument(
-        "--results-dir", required=True,
+        "--results-dir",
+        required=True,
         help="Directory containing JUnit XML test result files",
     )
     parser.add_argument(
-        "--output-dir", default="report-output",
+        "--output-dir",
+        default="report-output",
         help="Directory to write report files to",
     )
     parser.add_argument(
-        "--sha", default=os.environ.get("GITHUB_SHA", "unknown"),
+        "--sha",
+        default=os.environ.get("GITHUB_SHA", "unknown"),
         help="Git commit SHA for this run",
     )
     parser.add_argument(
-        "--date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "--date",
+        default=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         help="Date for this run (YYYY-MM-DD)",
     )
     parser.add_argument(
-        "--test-type", default="unknown",
+        "--test-type",
+        default="unknown",
         help=(
             "Test type identifier (e.g., cpp, python, wheel-python, "
             "wheel-server, notebooks)"
         ),
     )
     parser.add_argument(
-        "--matrix-label", default="",
+        "--matrix-label",
+        default="",
         help=(
             "Matrix combination label (e.g., cuda12.9-py3.12-x86_64). "
             "Included in reports and JSON summary to identify the CI job."
         ),
     )
     parser.add_argument(
-        "--s3-history-uri", default="",
+        "--s3-history-uri",
+        default="",
         help=(
             "S3 URI for persistent failure history JSON. "
             "Downloaded before analysis, uploaded after update. "
@@ -725,7 +788,8 @@ def main():
         ),
     )
     parser.add_argument(
-        "--s3-summary-uri", default="",
+        "--s3-summary-uri",
+        default="",
         help=(
             "S3 URI to upload this run's JSON snapshot for aggregation. "
             "Example: s3://bucket/ci_test_reports/nightly/summaries/"
@@ -733,7 +797,8 @@ def main():
         ),
     )
     parser.add_argument(
-        "--s3-html-uri", default="",
+        "--s3-html-uri",
+        default="",
         help=(
             "S3 URI to upload the HTML report. "
             "Example: s3://bucket/ci_test_reports/nightly/reports/"
@@ -780,7 +845,9 @@ def main():
     )
 
     if resolved_tests:
-        print(f"Stabilized: {len(resolved_tests)} previously-failing test(s) now pass")
+        print(
+            f"Stabilized: {len(resolved_tests)} previously-failing test(s) now pass"
+        )
 
     save_history(history, local_history_path)
     print(f"Updated local history at {local_history_path}")
@@ -798,7 +865,11 @@ def main():
     )
 
     md_report = generate_markdown_report(
-        classified, new_failures, recurring_failures, resolved_tests, history,
+        classified,
+        new_failures,
+        recurring_failures,
+        resolved_tests,
+        history,
         **report_kwargs,
     )
     md_path = output_dir / "nightly_report.md"
@@ -806,7 +877,11 @@ def main():
     print(f"Markdown report written to {md_path}")
 
     html_report = generate_html_report(
-        classified, new_failures, recurring_failures, resolved_tests, history,
+        classified,
+        new_failures,
+        recurring_failures,
+        resolved_tests,
+        history,
         **report_kwargs,
     )
     html_path = output_dir / "nightly_report.html"
@@ -814,7 +889,10 @@ def main():
     print(f"HTML report written to {html_path}")
 
     json_summary = generate_json_summary(
-        classified, new_failures, recurring_failures, resolved_tests,
+        classified,
+        new_failures,
+        recurring_failures,
+        resolved_tests,
         **report_kwargs,
     )
     json_path = output_dir / "nightly_summary.json"
@@ -836,10 +914,14 @@ def main():
     # ---- Exit code ----
     genuine_failures = len(classified["failed"]) + len(classified["error"])
     if genuine_failures > 0:
-        print(f"\nFAILED: {genuine_failures} genuine test failure(s) detected.")
+        print(
+            f"\nFAILED: {genuine_failures} genuine test failure(s) detected."
+        )
         return 1
     if classified["flaky"]:
-        print(f"\nWARNING: All tests passed but {len(classified['flaky'])} flaky test(s) detected.")
+        print(
+            f"\nWARNING: All tests passed but {len(classified['flaky'])} flaky test(s) detected."
+        )
     else:
         print("\nAll tests passed.")
     return 0

@@ -37,6 +37,7 @@ from s3_helpers import s3_download, s3_upload, s3_list  # noqa: E402
 # Download and merge summaries
 # ---------------------------------------------------------------------------
 
+
 def download_summaries(s3_prefix, local_dir):
     """Download all JSON summaries from S3 prefix into local_dir.
     Returns list of loaded summary dicts."""
@@ -56,8 +57,10 @@ def download_summaries(s3_prefix, local_dir):
                 with open(local_path) as f:
                     summaries.append(json.load(f))
             except (json.JSONDecodeError, OSError) as exc:
-                print(f"WARNING: Failed to parse {local_path}: {exc}",
-                      file=sys.stderr)
+                print(
+                    f"WARNING: Failed to parse {local_path}: {exc}",
+                    file=sys.stderr,
+                )
     return summaries
 
 
@@ -70,14 +73,16 @@ def load_local_summaries(local_dir):
             with open(json_file) as f:
                 summaries.append(json.load(f))
         except (json.JSONDecodeError, OSError) as exc:
-            print(f"WARNING: Failed to parse {json_file}: {exc}",
-                  file=sys.stderr)
+            print(
+                f"WARNING: Failed to parse {json_file}: {exc}", file=sys.stderr
+            )
     return summaries
 
 
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
+
 
 def aggregate_summaries(summaries):
     """Merge per-matrix summaries into a consolidated view.
@@ -90,8 +95,12 @@ def aggregate_summaries(summaries):
     """
     grid = []
     totals = {
-        "total": 0, "passed": 0, "failed": 0,
-        "flaky": 0, "skipped": 0, "resolved": 0,
+        "total": 0,
+        "passed": 0,
+        "failed": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "resolved": 0,
     }
     all_new_failures = []
     all_recurring_failures = []
@@ -117,13 +126,15 @@ def aggregate_summaries(summaries):
         else:
             status = "passed"
 
-        grid.append({
-            "test_type": test_type,
-            "matrix_label": matrix_label,
-            "status": status,
-            "counts": counts,
-            "sha": s.get("sha", ""),
-        })
+        grid.append(
+            {
+                "test_type": test_type,
+                "matrix_label": matrix_label,
+                "status": status,
+                "counts": counts,
+                "sha": s.get("sha", ""),
+            }
+        )
 
         # Accumulate totals
         for key in totals:
@@ -157,18 +168,15 @@ def aggregate_summaries(summaries):
 # Consolidated JSON
 # ---------------------------------------------------------------------------
 
+
 def generate_consolidated_json(agg, date_str, branch, github_run_url=""):
     """Generate the consolidated JSON for Slack and dashboard."""
     total_jobs = len(agg["matrix_grid"])
     failed_jobs = sum(
         1 for g in agg["matrix_grid"] if g["status"].startswith("failed")
     )
-    flaky_jobs = sum(
-        1 for g in agg["matrix_grid"] if g["status"] == "flaky"
-    )
-    passed_jobs = sum(
-        1 for g in agg["matrix_grid"] if g["status"] == "passed"
-    )
+    flaky_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "flaky")
+    passed_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "passed")
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -195,9 +203,11 @@ def generate_consolidated_json(agg, date_str, branch, github_run_url=""):
 # Consolidated HTML
 # ---------------------------------------------------------------------------
 
+
 def _html_escape(text):
     return (
-        str(text).replace("&", "&amp;")
+        str(text)
+        .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
@@ -218,12 +228,16 @@ def _status_badge(status):
     return (
         f'<span style="display:inline-block;padding:3px 8px;border-radius:4px;'
         f'background:{bg};color:{text_color};font-size:0.75rem;font-weight:600">'
-        f'{label}</span>'
+        f"{label}</span>"
     )
 
 
 def generate_consolidated_html(
-    agg, date_str, branch, github_run_url="", s3_reports_prefix="",
+    agg,
+    date_str,
+    branch,
+    github_run_url="",
+    s3_reports_prefix="",
 ):
     """Generate a consolidated HTML dashboard for all matrix combos."""
     total_jobs = len(agg["matrix_grid"])
@@ -295,18 +309,18 @@ def generate_consolidated_html(
     if github_run_url:
         parts.append(
             f' &nbsp;|&nbsp; <a href="{_html_escape(github_run_url)}">'
-            f'GitHub Actions Run</a>'
+            f"GitHub Actions Run</a>"
         )
 
     parts.append(f"""</div>
 <div class="status-bar" style="background:{bar_color}">{bar_text}</div>
 <div class="summary-grid">
-  <div class="summary-card"><div class="num">{totals['total']}</div><div class="lbl">Total Tests</div></div>
-  <div class="summary-card"><div class="num pass">{totals['passed']}</div><div class="lbl">Passed</div></div>
-  <div class="summary-card"><div class="num fail">{totals['failed']}</div><div class="lbl">Failed</div></div>
-  <div class="summary-card"><div class="num flaky">{totals['flaky']}</div><div class="lbl">Flaky</div></div>
-  <div class="summary-card"><div class="num skip">{totals['skipped']}</div><div class="lbl">Skipped</div></div>
-  <div class="summary-card"><div class="num pass">{totals['resolved']}</div><div class="lbl">Stabilized</div></div>
+  <div class="summary-card"><div class="num">{totals["total"]}</div><div class="lbl">Total Tests</div></div>
+  <div class="summary-card"><div class="num pass">{totals["passed"]}</div><div class="lbl">Passed</div></div>
+  <div class="summary-card"><div class="num fail">{totals["failed"]}</div><div class="lbl">Failed</div></div>
+  <div class="summary-card"><div class="num flaky">{totals["flaky"]}</div><div class="lbl">Flaky</div></div>
+  <div class="summary-card"><div class="num skip">{totals["skipped"]}</div><div class="lbl">Skipped</div></div>
+  <div class="summary-card"><div class="num pass">{totals["resolved"]}</div><div class="lbl">Stabilized</div></div>
 </div>""")
 
     # --- Matrix grid ---
@@ -320,21 +334,19 @@ def generate_consolidated_html(
         # Build link to per-matrix HTML report on S3
         report_link = ""
         if s3_reports_prefix:
-            report_filename = (
-                f'{g["test_type"]}-{g["matrix_label"]}.html'
-            )
+            report_filename = f"{g['test_type']}-{g['matrix_label']}.html"
             report_link = (
                 f'<a class="matrix-link" href="{_html_escape(s3_reports_prefix)}'
                 f'{_html_escape(report_filename)}">View</a>'
             )
         parts.append(
-            f'<tr><td><strong>{_html_escape(g["test_type"])}</strong></td>'
-            f'<td><code>{_html_escape(g["matrix_label"])}</code></td>'
-            f'<td>{_status_badge(g["status"])}</td>'
-            f'<td>{counts.get("passed", 0)}</td>'
-            f'<td>{counts.get("failed", 0)}</td>'
-            f'<td>{counts.get("flaky", 0)}</td>'
-            f'<td>{counts.get("total", 0)}</td>'
+            f"<tr><td><strong>{_html_escape(g['test_type'])}</strong></td>"
+            f"<td><code>{_html_escape(g['matrix_label'])}</code></td>"
+            f"<td>{_status_badge(g['status'])}</td>"
+            f"<td>{counts.get('passed', 0)}</td>"
+            f"<td>{counts.get('failed', 0)}</td>"
+            f"<td>{counts.get('flaky', 0)}</td>"
+            f"<td>{counts.get('total', 0)}</td>"
             f"<td>{report_link}</td></tr>"
         )
     parts.append("</table></section>")
@@ -350,11 +362,11 @@ def generate_consolidated_html(
             msg = _html_escape(e.get("message", ""))
             short = _html_escape(e.get("message", "")[:100])
             parts.append(
-                f'<tr><td>{_html_escape(e["test_type"])}</td>'
-                f'<td><code>{_html_escape(e["matrix_label"])}</code></td>'
-                f'<td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code></td>'
-                f'<td><details><summary>{short}</summary>'
+                f"<tr><td>{_html_escape(e['test_type'])}</td>"
+                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
+                f"<td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
@@ -370,12 +382,12 @@ def generate_consolidated_html(
             msg = _html_escape(e.get("message", ""))
             short = _html_escape(e.get("message", "")[:100])
             parts.append(
-                f'<tr><td>{_html_escape(e["test_type"])}</td>'
-                f'<td><code>{_html_escape(e["matrix_label"])}</code></td>'
-                f'<td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code></td>'
-                f'<td>{_html_escape(e.get("first_seen", "?"))}</td>'
-                f'<td><details><summary>{short}</summary>'
+                f"<tr><td>{_html_escape(e['test_type'])}</td>"
+                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
+                f"<td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{_html_escape(e.get('first_seen', '?'))}</td>"
+                f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
@@ -389,12 +401,12 @@ def generate_consolidated_html(
         )
         for e in agg["all_resolved_tests"]:
             parts.append(
-                f'<tr><td>{_html_escape(e["test_type"])}</td>'
-                f'<td><code>{_html_escape(e["matrix_label"])}</code></td>'
-                f'<td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code></td>'
-                f'<td>{_html_escape(e.get("first_seen", "?"))}</td>'
-                f'<td>{e.get("failure_count", "?")}</td></tr>'
+                f"<tr><td>{_html_escape(e['test_type'])}</td>"
+                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
+                f"<td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{_html_escape(e.get('first_seen', '?'))}</td>"
+                f"<td>{e.get('failure_count', '?')}</td></tr>"
             )
         parts.append("</table></section>")
 
@@ -407,11 +419,11 @@ def generate_consolidated_html(
         )
         for e in agg["all_flaky_tests"]:
             parts.append(
-                f'<tr><td>{_html_escape(e["test_type"])}</td>'
-                f'<td><code>{_html_escape(e["matrix_label"])}</code></td>'
-                f'<td>{_html_escape(e["suite"])}</td>'
-                f'<td><code>{_html_escape(e["name"])}</code></td>'
-                f'<td>{e.get("retry_count", "?")}</td></tr>'
+                f"<tr><td>{_html_escape(e['test_type'])}</td>"
+                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
+                f"<td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{e.get('retry_count', '?')}</td></tr>"
             )
         parts.append("</table></section>")
 
@@ -480,44 +492,54 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Aggregate per-matrix nightly test summaries"
     )
     parser.add_argument(
-        "--s3-summaries-prefix", default="",
+        "--s3-summaries-prefix",
+        default="",
         help="S3 prefix for per-matrix JSON summaries (e.g., s3://bucket/.../summaries/2026-04-13/)",
     )
     parser.add_argument(
-        "--s3-reports-prefix", default="",
+        "--s3-reports-prefix",
+        default="",
         help="S3 prefix where per-matrix HTML reports live (for linking)",
     )
     parser.add_argument(
-        "--s3-output-uri", default="",
+        "--s3-output-uri",
+        default="",
         help="S3 URI to upload the consolidated JSON",
     )
     parser.add_argument(
-        "--s3-html-output-uri", default="",
+        "--s3-html-output-uri",
+        default="",
         help="S3 URI to upload the consolidated HTML report",
     )
     parser.add_argument(
-        "--s3-index-uri", default="",
+        "--s3-index-uri",
+        default="",
         help="S3 URI for the index.json that tracks all available dates (read + write)",
     )
     parser.add_argument(
-        "--s3-dashboard-uri", default="",
+        "--s3-dashboard-uri",
+        default="",
         help="S3 URI to upload the dashboard HTML (e.g., s3://bucket/.../dashboard/index.html)",
     )
     parser.add_argument(
-        "--dashboard-dir", default="",
+        "--dashboard-dir",
+        default="",
         help="Local directory containing dashboard files to upload",
     )
     parser.add_argument(
-        "--local-summaries-dir", default="",
+        "--local-summaries-dir",
+        default="",
         help="Local directory with JSON summaries (alternative to S3, for testing)",
     )
     parser.add_argument(
-        "--output-dir", default="aggregate-output",
+        "--output-dir",
+        default="aggregate-output",
         help="Local directory to write output files",
     )
     parser.add_argument(
@@ -527,7 +549,9 @@ def main():
     )
     parser.add_argument("--branch", default="main", help="Branch name")
     parser.add_argument(
-        "--github-run-url", default="", help="URL to the GitHub Actions run",
+        "--github-run-url",
+        default="",
+        help="URL to the GitHub Actions run",
     )
 
     args = parser.parse_args()
@@ -541,13 +565,17 @@ def main():
         download_dir = output_dir / "downloaded_summaries"
         summaries = download_summaries(args.s3_summaries_prefix, download_dir)
     else:
-        print("ERROR: Provide --s3-summaries-prefix or --local-summaries-dir",
-              file=sys.stderr)
+        print(
+            "ERROR: Provide --s3-summaries-prefix or --local-summaries-dir",
+            file=sys.stderr,
+        )
         return 1
 
     if not summaries:
-        print("WARNING: No summaries found. Generating empty report.",
-              file=sys.stderr)
+        print(
+            "WARNING: No summaries found. Generating empty report.",
+            file=sys.stderr,
+        )
 
     print(f"Loaded {len(summaries)} matrix summary file(s)")
 
@@ -562,7 +590,10 @@ def main():
 
     # ---- Step 3: Generate outputs ----
     consolidated = generate_consolidated_json(
-        agg, args.date, args.branch, args.github_run_url,
+        agg,
+        args.date,
+        args.branch,
+        args.github_run_url,
     )
 
     json_path = output_dir / "consolidated_summary.json"
@@ -570,7 +601,10 @@ def main():
     print(f"Consolidated JSON written to {json_path}")
 
     html_report = generate_consolidated_html(
-        agg, args.date, args.branch, args.github_run_url,
+        agg,
+        args.date,
+        args.branch,
+        args.github_run_url,
         args.s3_reports_prefix,
     )
     html_path = output_dir / "consolidated_report.html"
@@ -586,7 +620,10 @@ def main():
     # ---- Step 5: Update index.json ----
     if args.s3_index_uri:
         update_index(
-            args.s3_index_uri, args.date, consolidated, output_dir,
+            args.s3_index_uri,
+            args.date,
+            consolidated,
+            output_dir,
         )
 
     # ---- Step 6: Upload dashboard ----
@@ -595,8 +632,10 @@ def main():
         if dashboard_file.exists():
             s3_upload(str(dashboard_file), args.s3_dashboard_uri)
         else:
-            print(f"WARNING: Dashboard not found at {dashboard_file}",
-                  file=sys.stderr)
+            print(
+                f"WARNING: Dashboard not found at {dashboard_file}",
+                file=sys.stderr,
+            )
 
     return 0
 
