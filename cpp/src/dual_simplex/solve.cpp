@@ -724,6 +724,7 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   lp_status_t status = solve_linear_program_advanced(
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   if (status == lp_status_t::CONCURRENT_LIMIT) {
+    solution.iterations = lp_solution.iterations;
     std::thread([lp = std::move(original_lp),
                  ls = std::move(lp_solution),
                  vs = std::move(vstatus),
