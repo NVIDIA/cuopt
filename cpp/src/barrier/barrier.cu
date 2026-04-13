@@ -32,6 +32,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/macros.cuh>
+
 #include <numeric>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -585,7 +586,8 @@ class iteration_data_t {
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
     if (first_call) {
       try {
-        initialize_cusparse_data<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+        initialize_cusparse_data<i_t, f_t>(
+          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
