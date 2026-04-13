@@ -47,7 +47,14 @@ from xml.etree import ElementTree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from s3_helpers import s3_download, s3_upload  # noqa: E402
 
-EMPTY_HISTORY = {"_schema_version": 1, "tests": {}}
+EMPTY_HISTORY = {"_schema_version": 2, "tests": {}}
+
+# A test that resolves then fails again within this window is considered
+# "bouncing" (intermittently flaky) rather than a new failure.
+BOUNCE_WINDOW_DAYS = 14
+
+# Number of failure/resolve cycles that classify a test as cross-run flaky.
+BOUNCE_THRESHOLD = 2
 
 
 # ---------------------------------------------------------------------------
@@ -190,12 +197,37 @@ def load_history(history_path):
     return dict(EMPTY_HISTORY)
 
 
+def _days_between(date_a, date_b):
+    """Return absolute number of days between two YYYY-MM-DD strings."""
+    try:
+        a = datetime.strptime(date_a, "%Y-%m-%d")
+        b = datetime.strptime(date_b, "%Y-%m-%d")
+        return abs((a - b).days)
+    except (ValueError, TypeError):
+        return 999
+
+
+def _is_recent_resolve(rec, date_str):
+    """Check if a test was resolved recently (within bounce window)."""
+    resolved_date = rec.get("resolved_date", "")
+    if not resolved_date:
+        return False
+    return _days_between(resolved_date, date_str) <= BOUNCE_WINDOW_DAYS
+
+
 def update_history(history, classified, sha, date_str):
     """
     Update failure history with this run's results.
 
     Returns (history, new_failures, recurring_failures, resolved_tests).
-    resolved_tests = previously active failures that passed this run (stabilized).
+
+    Classification logic:
+      - "new failure": never seen before (no history entry at all)
+      - "recurring": was already active (failing on previous runs)
+      - "bouncing": was resolved recently but failed again — reactivated
+        as recurring (not new), and marked cross-run flaky after 2+ bounces
+      - "resolved": was active, now passes — notified once, then silent
+        on subsequent passes
     """
     tests = history.setdefault("tests", {})
     new_failures = []
@@ -206,14 +238,46 @@ def update_history(history, classified, sha, date_str):
     for entry in classified["failed"] + classified["error"]:
         test_key = f"{entry['suite']}::{entry['classname']}::{entry['name']}"
 
-        if test_key in tests and tests[test_key]["status"] == "active":
-            tests[test_key]["last_seen_date"] = date_str
-            tests[test_key]["last_seen_sha"] = sha
-            tests[test_key]["failure_count"] += 1
-            recurring_failures.append(
-                {**entry, "first_seen": tests[test_key]["first_seen_date"]}
-            )
+        if test_key in tests:
+            rec = tests[test_key]
+
+            if rec["status"] == "active":
+                # Still failing — bump count
+                rec["last_seen_date"] = date_str
+                rec["last_seen_sha"] = sha
+                rec["failure_count"] += 1
+                recurring_failures.append(
+                    {**entry, "first_seen": rec["first_seen_date"]}
+                )
+            elif rec["status"] == "resolved" and _is_recent_resolve(
+                rec, date_str
+            ):
+                # Bouncing: resolved recently but failed again.
+                # Reactivate as recurring, not new. Track the bounce.
+                rec["status"] = "active"
+                rec["last_seen_date"] = date_str
+                rec["last_seen_sha"] = sha
+                rec["failure_count"] += 1
+                rec["bounce_count"] = rec.get("bounce_count", 0) + 1
+                if rec["bounce_count"] >= BOUNCE_THRESHOLD:
+                    rec["is_flaky"] = True
+                recurring_failures.append(
+                    {
+                        **entry,
+                        "first_seen": rec["first_seen_date"],
+                        "is_bouncing": True,
+                    }
+                )
+            else:
+                # Resolved long ago — treat as new cycle but keep history
+                rec["status"] = "active"
+                rec["last_seen_date"] = date_str
+                rec["last_seen_sha"] = sha
+                rec["failure_count"] += 1
+                rec["bounce_count"] = rec.get("bounce_count", 0) + 1
+                new_failures.append(entry)
         else:
+            # Truly new — never seen before
             tests[test_key] = {
                 "suite": entry["suite"],
                 "classname": entry["classname"],
@@ -224,18 +288,24 @@ def update_history(history, classified, sha, date_str):
                 "last_seen_sha": sha,
                 "failure_count": 1,
                 "is_flaky": False,
+                "bounce_count": 0,
                 "status": "active",
             }
             new_failures.append(entry)
 
-    # --- Flaky tests ---
+    # --- Flaky tests (passed on retry within this run) ---
     for entry in classified["flaky"]:
         test_key = f"{entry['suite']}::{entry['classname']}::{entry['name']}"
         if test_key in tests:
-            tests[test_key]["last_seen_date"] = date_str
-            tests[test_key]["last_seen_sha"] = sha
-            tests[test_key]["failure_count"] += 1
-            tests[test_key]["is_flaky"] = True
+            rec = tests[test_key]
+            rec["last_seen_date"] = date_str
+            rec["last_seen_sha"] = sha
+            rec["failure_count"] += 1
+            rec["is_flaky"] = True
+            # If it was resolved, reactivate — it's still unstable
+            if rec["status"] == "resolved":
+                rec["status"] = "active"
+                rec["bounce_count"] = rec.get("bounce_count", 0) + 1
         else:
             tests[test_key] = {
                 "suite": entry["suite"],
@@ -247,6 +317,7 @@ def update_history(history, classified, sha, date_str):
                 "last_seen_sha": sha,
                 "failure_count": 1,
                 "is_flaky": True,
+                "bounce_count": 0,
                 "status": "active",
             }
 
@@ -269,9 +340,12 @@ def update_history(history, classified, sha, date_str):
                     "name": rec["name"],
                     "first_seen": rec["first_seen_date"],
                     "failure_count": rec["failure_count"],
+                    "bounce_count": rec.get("bounce_count", 0),
                     "was_flaky": rec.get("is_flaky", False),
                 }
             )
+        # If already "resolved" and passes again — no notification.
+        # The resolved notification was sent once when it first stabilized.
 
     return history, new_failures, recurring_failures, resolved_tests
 
