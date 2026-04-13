@@ -32,8 +32,6 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/macros.cuh>
-#include <utilities/scope_guard.hpp>
-
 #include <numeric>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -92,30 +90,11 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class iteration_data_t {
  public:
-  struct lifecycle_logger_t {
-    explicit lifecycle_logger_t(const simplex_solver_settings_t<i_t, f_t>& settings)
-      : start_time(tic()), concurrent_halt(settings.concurrent_halt)
-    {
-    }
-
-    ~lifecycle_logger_t()
-    {
-      printf("Barrier data: dtor end       : %.2fs halt=%d\n",
-             toc(start_time),
-             concurrent_halt != nullptr ? static_cast<int>(concurrent_halt->load()) : 0);
-      fflush(stdout);
-    }
-
-    f_t start_time;
-    const std::atomic<int>* concurrent_halt;
-  };
-
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
-    : lifecycle_logger_(settings),
-      upper_bounds(num_upper_bounds),
+    : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
       w(num_upper_bounds),
@@ -239,9 +218,6 @@ class iteration_data_t {
       symbolic_status(0)
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
-    f_t constructor_start = tic();
-    printf("Barrier ctor: enter           : %.2fs\n", toc(constructor_start));
-    fflush(stdout);
 
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
@@ -311,16 +287,9 @@ class iteration_data_t {
     std::vector<i_t> dense_columns_unordered;
 
     f_t start_column_density = tic();
-    printf("Barrier ctor: find_dense begin: %.2fs\n", toc(constructor_start));
-    fflush(stdout);
     // Ignore Q matrix for now
     find_dense_columns(
       lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-    printf("Barrier ctor: find_dense end  : %.2fs elapsed %.2fs halt=%d\n",
-           toc(constructor_start),
-           toc(start_column_density),
-           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
-    fflush(stdout);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
     for (i_t j : dense_columns_unordered) {
@@ -352,11 +321,10 @@ class iteration_data_t {
     }
 
     if (use_augmented) {
-      printf("Linear system               : augmented\n");
+      settings.log.printf("Linear system               : augmented\n");
     } else {
-      printf("Linear system               : ADAT\n");
+      settings.log.printf("Linear system               : ADAT\n");
     }
-    fflush(stdout);
 
     // D = I + EET
     diag.set_scalar(1.0);
@@ -431,53 +399,22 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
-    printf("Barrier ctor: chol create begin: %.2fs\n", toc(constructor_start));
-    fflush(stdout);
     chol =
       std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(handle_ptr, settings, factorization_size);
-    printf("Barrier ctor: chol create end  : %.2fs\n", toc(constructor_start));
-    fflush(stdout);
     chol->set_positive_definite(false);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     // Perform symbolic analysis
     symbolic_status = 0;
     if (use_augmented) {
       // Build the sparsity pattern of the augmented system
-      printf("Barrier ctor: form_aug begin : %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       form_augmented(true);
-      printf("Barrier ctor: form_aug end   : %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      printf("Barrier ctor: analyze begin  : %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       symbolic_status = chol->analyze(device_augmented);
     } else {
-      printf("Barrier ctor: form_adat begin: %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       form_adat(true);
-      printf("Barrier ctor: form_adat end  : %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      printf("Barrier ctor: analyze begin  : %.2fs\n", toc(constructor_start));
-      fflush(stdout);
       symbolic_status = chol->analyze(device_ADAT);
     }
-    printf("Barrier ctor: analyze end    : %.2fs status %d\n",
-           toc(constructor_start),
-           symbolic_status);
-    printf("Barrier ctor: exit           : %.2fs\n", toc(constructor_start));
-    fflush(stdout);
-  }
-
-  ~iteration_data_t()
-  {
-    printf("Barrier data: dtor begin     : %.2fs halt=%d\n",
-           toc(lifecycle_logger_.start_time),
-           settings_.concurrent_halt != nullptr
-             ? static_cast<int>(settings_.concurrent_halt->load())
-             : 0);
-    fflush(stdout);
   }
 
   void form_augmented(bool first_call = false)
@@ -608,7 +545,6 @@ class iteration_data_t {
     handle_ptr->sync_stream();
     raft::common::nvtx::range fun_scope("Barrier: Form ADAT");
     float64_t start_form_adat = tic();
-    float64_t start_value_update = tic();
     const i_t m               = AD.m;
 
     raft::copy(device_AD.x.data(),
@@ -646,12 +582,10 @@ class iteration_data_t {
                          span_x[i] *= span_scale[span_col_ind[i]];
                        });
     RAFT_CHECK_CUDA(stream_view_);
-    float64_t value_update_time = toc(start_value_update);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
     if (first_call) {
       try {
-        initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info, settings_);
+        initialize_cusparse_data<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -659,18 +593,14 @@ class iteration_data_t {
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
-    multiply_kernels<i_t, f_t>(
-      handle_ptr, device_A, device_AD, device_ADAT, cusparse_info, settings_);
+    multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
     handle_ptr->sync_stream();
 
     auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
     float64_t adat_time = toc(start_form_adat);
 
-    printf("ADAT value update time       : %.2fs\n", value_update_time);
-    printf("ADAT total time              : %.2fs\n", adat_time);
-    fflush(stdout);
-
     if (num_factorizations == 0) {
+      settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
       settings_.log.printf("ADAT nonzeros               : %.2e\n",
                            static_cast<float64_t>(adat_nnz));
       settings_.log.printf(
@@ -1162,9 +1092,6 @@ class iteration_data_t {
     std::sort(column_nz_permutation.begin(),
               column_nz_permutation.end(),
               [&column_nz](i_t i, i_t j) { return column_nz[i] < column_nz[j]; });
-    printf("[Barrier fdc] t=%.3f halt=%d after column_nz sort\n",
-           toc(start_column_density),
-           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // We then compute the exact sparsity pattern for columns of A whose where
@@ -1196,9 +1123,6 @@ class iteration_data_t {
     // The best way to do that is to have A stored in CSR format.
     csr_matrix_t<i_t, f_t> A_row(0, 0, 0);
     A.to_compressed_row(A_row);
-    printf("[Barrier fdc] t=%.3f halt=%d after to_compressed_row\n",
-           toc(start_column_density),
-           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     std::vector<i_t> histogram(m + 1, 0);
@@ -1329,9 +1253,6 @@ class iteration_data_t {
     std::sort(permutation.begin(), permutation.end(), [&delta_nz](i_t i, i_t j) {
       return delta_nz[i] < delta_nz[j];
     });
-    printf("[Barrier fdc] t=%.3f halt=%d after delta_nz sort\n",
-           toc(start_column_density),
-           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // Now we make a forward pass and compute the number of nonzeros in C
@@ -1546,8 +1467,6 @@ class iteration_data_t {
     raft::copy(y.data(), d_y.data(), y.size(), handle_ptr->get_stream());
     handle_ptr->sync_stream();
   }
-
-  lifecycle_logger_t lifecycle_logger_;
 
   raft::handle_t const* handle_ptr;
   i_t n_upper_bounds;
@@ -3524,24 +3443,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
-    raft::common::nvtx::push_range("BarrierSolve::IterationDataLifetime");
-    auto data_lifetime_scope = cuopt::scope_guard([&]() { raft::common::nvtx::pop_range(); });
-    f_t data_ctor_start = tic();
-    printf("Barrier solve: data ctor begin: %.2fs\n", toc(start_time));
-    fflush(stdout);
-    raft::common::nvtx::push_range("BarrierSolve::IterationDataCtorFull");
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
-    raft::common::nvtx::pop_range();
-    printf("Barrier solve: data ctor end  : %.2fs elapsed %.2fs halt=%d indef=%d symbolic=%d\n",
-           toc(start_time),
-           toc(data_ctor_start),
-           settings.concurrent_halt != nullptr ? static_cast<int>(*settings.concurrent_halt) : 0,
-           static_cast<int>(data.indefinite_Q),
-           static_cast<int>(data.symbolic_status));
-    fflush(stdout);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      printf("Barrier solve: halt after data: %.2fs\n", toc(start_time));
-      fflush(stdout);
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3551,51 +3454,26 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       return lp_status_t::NUMERICAL_ISSUES;
     }
 
-    f_t vector_setup_start = tic();
-    printf("Barrier solve: vec init begin : %.2fs\n", toc(start_time));
-    fflush(stdout);
-    {
-      raft::common::nvtx::range scope("BarrierSolve::VectorInit");
-      data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
-      data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
-      data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
-      data.cusparse_h_             = data.cusparse_view_.create_vector(data.d_h_);
-      data.cusparse_dx_residual_   = data.cusparse_view_.create_vector(data.d_dx_residual_);
-      data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
-      data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
-      data.restrict_u_.resize(num_upper_bounds);
-    }
-    printf("Barrier solve: vec init end   : %.2fs elapsed %.2fs\n",
-           toc(start_time),
-           toc(vector_setup_start));
-    fflush(stdout);
+    data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
+    data.cusparse_r1_            = data.cusparse_view_.create_vector(data.d_r1_);
+    data.cusparse_tmp4_          = data.cusparse_view_.create_vector(data.d_tmp4_);
+    data.cusparse_h_             = data.cusparse_view_.create_vector(data.d_h_);
+    data.cusparse_dx_residual_   = data.cusparse_view_.create_vector(data.d_dx_residual_);
+    data.cusparse_u_             = data.cusparse_view_.create_vector(data.d_u_);
+    data.cusparse_y_residual_    = data.cusparse_view_.create_vector(data.d_y_residual_);
+    data.restrict_u_.resize(num_upper_bounds);
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
     }
 
-    f_t initial_point_start = tic();
-    printf("Barrier solve: initial begin  : %.2fs\n", toc(start_time));
-    fflush(stdout);
-    i_t initial_status;
-    {
-      raft::common::nvtx::range scope("BarrierSolve::InitialPoint");
-      initial_status = initial_point(data);
-    }
-    printf("Barrier solve: initial end    : %.2fs elapsed %.2fs status %d halt=%d\n",
-           toc(start_time),
-           toc(initial_point_start),
-           initial_status,
-           settings.concurrent_halt != nullptr ? static_cast<int>(*settings.concurrent_halt) : 0);
-    fflush(stdout);
+    i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
-      printf("Barrier solve: halt after init: %.2fs\n", toc(start_time));
-      fflush(stdout);
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
     }
@@ -3603,17 +3481,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
-    f_t residual_init_start = tic();
-    printf("Barrier solve: residual begin : %.2fs\n", toc(start_time));
-    fflush(stdout);
-    {
-      raft::common::nvtx::range scope("BarrierSolve::ResidualInit");
-      compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
-    }
-    printf("Barrier solve: residual end   : %.2fs elapsed %.2fs\n",
-           toc(start_time),
-           toc(residual_init_start));
-    fflush(stdout);
+    compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
 
     f_t primal_residual_norm =
       std::max(vector_norm_inf<i_t, f_t>(data.primal_residual, stream_view_),
@@ -3713,7 +3581,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
-      f_t affine_search_direction_start = tic();
       i_t status = gpu_compute_search_direction(
         data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
@@ -3722,8 +3589,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       }
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-      printf("Barrier iter %d affine dir    : %.2fs\n", iter, toc(affine_search_direction_start));
-      fflush(stdout);
 
       if (status < 0) {
         return check_for_suboptimal_solution(options,
@@ -3755,7 +3620,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       f_t max_corrector_residual = 0.0;
 
-      f_t corrector_search_direction_start = tic();
       status = gpu_compute_search_direction(
         data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
@@ -3764,8 +3628,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       }
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-      printf("Barrier iter %d corrector dir : %.2fs\n", iter, toc(corrector_search_direction_start));
-      fflush(stdout);
       if (status < 0) {
         return check_for_suboptimal_solution(options,
                                              data,

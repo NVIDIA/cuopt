@@ -2590,10 +2590,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
 
     if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-    printf("[DS ph%d init] t=%.3f halt=%d after refactor_basis\n",
-           phase,
-           toc(start_time),
-           settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
   }
 
   // Populate c_basic after basis is initialized
@@ -2662,10 +2658,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                    phase2_work_estimate);
 
   if (toc(start_time) > settings.time_limit) { return dual::status_t::TIME_LIMIT; }
-  printf("[DS ph%d init] t=%.3f halt=%d after compute_primal_variables\n",
-         phase,
-         toc(start_time),
-         settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
   if (print_norms) { settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x)); }
 
 #ifdef COMPUTE_PRIMAL_RESIDUAL
@@ -2706,10 +2698,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                         vector_norm2<i_t, f_t>(delta_y_steepest_edge));
   }
 
-  printf("[DS ph%d init] t=%.3f halt=%d after SE_norms\n",
-         phase,
-         toc(start_time),
-         settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     return dual::status_t::CONCURRENT_LIMIT;
   }
@@ -2756,11 +2744,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                                    infeasibility_indices,
                                                    primal_infeasibility);
   phase2_work_estimate += 4 * m + 2 * n;
-  printf("[DS ph%d init] t=%.3f halt=%d after compute_primal_infeas infeas_nz=%d\n",
-         phase,
-         toc(start_time),
-         settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0,
-         (int)infeasibility_indices.size());
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
   phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
@@ -2773,10 +2756,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
   lp.A.transpose(A_transpose);
   phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
-  printf("[DS ph%d init] t=%.3f halt=%d after A_transpose\n",
-         phase,
-         toc(start_time),
-         settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0);
 
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     return dual::status_t::CONCURRENT_LIMIT;
@@ -2827,14 +2806,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
-    if (iter == 0 || (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1)) {
-      printf("[DS ph%d iter %d] loop top t=%.3f halt=%d infeas_nz=%d\n",
-             phase,
-             iter,
-             toc(start_time),
-             settings.concurrent_halt != nullptr ? (int)*settings.concurrent_halt : 0,
-             (int)infeasibility_indices.size());
-    }
 
     // Pricing
     i_t direction           = 0;
