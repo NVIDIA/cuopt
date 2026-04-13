@@ -76,7 +76,8 @@ TEST(set_shmem_of_kernel, no_sticky_error_after_failure)
     << "cudaDeviceGetAttribute(cudaDevAttrMaxSharedMemoryPerBlockOptin) failed";
   size_t too_large = static_cast<size_t>(shmem_max) + 1024;
 
-  EXPECT_FALSE(set_shmem_of_kernel(kernel_sticky_error, too_large));  // confirm failure branch taken
+  EXPECT_FALSE(
+    set_shmem_of_kernel(kernel_sticky_error, too_large));  // confirm failure branch taken
   EXPECT_EQ(cudaSuccess, cudaGetLastError());
 }
 

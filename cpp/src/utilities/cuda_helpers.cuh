@@ -12,13 +12,13 @@
 #include <thrust/host_vector.h>
 #include <thrust/tuple.h>
 #include <mutex>
-#include <shared_mutex>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 #include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <shared_mutex>
 #include <unordered_map>
 
 namespace cuopt {
