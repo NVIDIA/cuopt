@@ -2512,7 +2512,6 @@ dual::status_t dual_phase2(i_t phase,
     // Keep basis state alive while the concurrent solve continues asynchronously.
     std::thread([bl = std::move(basic_list),
                  nl = std::move(nonbasic_list),
-                 sl = std::move(superbasic_list),
                  f  = std::move(ft)]() {}).detach();
   }
   return result;
