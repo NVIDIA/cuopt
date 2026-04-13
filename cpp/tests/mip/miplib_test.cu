@@ -33,6 +33,12 @@ struct result_map_t {
   double cost;
 };
 
+struct sc_result_t {
+  std::string file;
+  double objective;
+  double sc_value;
+};
+
 void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, double> settings)
 {
   const raft::handle_t handle_{};
@@ -67,6 +73,35 @@ TEST(mip_solve, run_small_tests)
     {"mip/50v-10.mps", 11311031.}, {"mip/neos5.mps", 15.}, {"mip/swath1.mps", 1300.}};
   for (const auto& test_instance : test_instances) {
     test_miplib_file(test_instance, settings);
+  }
+}
+
+TEST(mip_solve, semi_continuous_regressions)
+{
+  const raft::handle_t handle_{};
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+
+  const std::vector<sc_result_t> test_instances = {{"mip/sc_standard.mps", 8., 0.},
+                                                   {"mip/sc_no_ub.mps", 8., 0.},
+                                                   {"mip/sc_lb_zero.mps", 8., 0.},
+                                                   {"mip/sc_neg_lb_pos_ub.mps", -1., -3.},
+                                                   {"mip/sc_both_neg.mps", -11., -5.},
+                                                   {"mip/sc_ub_zero.mps", -10., -4.}};
+
+  for (const auto& test_instance : test_instances) {
+    auto path = make_path_absolute(test_instance.file);
+    auto problem = cuopt::mps_parser::parse_mps<int, double>(path, false);
+    auto solution = solve_mip(&handle_, problem, settings);
+
+    EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal)
+      << test_instance.file;
+    ASSERT_EQ(solution.get_solution().size(),
+              static_cast<size_t>(problem.get_n_variables())) << test_instance.file;
+
+    auto host_solution = cuopt::host_copy(solution.get_solution(), solution.get_solution().stream());
+    EXPECT_NEAR(solution.get_objective_value(), test_instance.objective, 1e-6) << test_instance.file;
+    EXPECT_NEAR(host_solution[0], test_instance.sc_value, 1e-6) << test_instance.file;
   }
 }
 

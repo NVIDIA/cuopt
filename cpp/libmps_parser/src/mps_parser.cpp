@@ -1377,6 +1377,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
   switch (bound_type) {
     case LowerBound: {
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case UpperBound: {
@@ -1393,15 +1394,18 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       const f_t val                 = get_numerical_bound(line, start);
       variable_lower_bounds[var_id] = val;
       variable_upper_bounds[var_id] = val;
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case Free: {
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case LowerBoundNegInf:
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundInf:
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
@@ -1410,6 +1414,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       variable_lower_bounds[var_id] = 0;
       variable_upper_bounds[var_id] = 1;
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case LowerBoundIntegerVariable:
       // CPLEX MPS file references seems to imply that integer variables default to an upper bound
@@ -1419,6 +1424,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundIntegerVariable:
       variable_upper_bounds[var_id] = get_numerical_bound(line, start);
@@ -1432,9 +1438,23 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       break;
     case SemiContinuousVariable:
       // SC bound type: value is the upper bound U.
-      // Per CPLEX convention, if no LO bound was set (lower bound is 0), use 1.0 as L.
-      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
-      if (!bounds_defined_for_var_id.count(var_id) || variable_lower_bounds[var_id] == f_t(0)) {
+      if (fixed_mps_format) {
+        const auto maybe_value =
+          start == std::string_view::npos ? std::string_view{} : trim(line.substr(start, 12));
+        variable_upper_bounds[var_id] =
+          maybe_value.empty() ? +std::numeric_limits<f_t>::infinity() : get_numerical_bound(line, start);
+      } else {
+        const auto maybe_value =
+          start == std::string_view::npos ? std::string_view{} : trim(line.substr(start));
+        if (!maybe_value.empty()) {
+          std::stringstream ss{std::string(maybe_value)};
+          ss >> variable_upper_bounds[var_id];
+        } else {
+          variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
+        }
+      }
+      // Per CPLEX convention, default L to 1.0 only when no explicit lower bound was set.
+      if (!lower_bounds_defined_for_var_id.count(var_id)) {
         variable_lower_bounds[var_id] = f_t(1);
       }
       var_types[var_id] = 'S';

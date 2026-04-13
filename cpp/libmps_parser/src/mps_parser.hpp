@@ -135,6 +135,7 @@ class mps_parser_t {
   std::unordered_map<std::string, i_t> var_names_map{};
   std::unordered_set<std::string> ignored_objective_names{};
   std::unordered_set<i_t> bounds_defined_for_var_id{};
+  std::unordered_set<i_t> lower_bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
   /* Reads an MPS input file into a buffer.

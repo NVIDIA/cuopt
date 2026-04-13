@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <fstream>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -420,6 +421,36 @@ TEST(mps_bounds, upper_inf_var_bound)
   EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
   EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
   EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
+{
+  struct Case {
+    const char* file;
+    int n_vars;
+    double lower;
+    double upper;
+  };
+  const std::vector<Case> cases = {
+    {"mip/sc_standard.mps", 2, 2.0, 10.0},
+    {"mip/sc_lb_zero.mps", 2, 1.0, 10.0},
+    {"mip/sc_ub_zero.mps", 2, -4.0, 0.0},
+    {"mip/sc_no_ub.mps", 2, 2.0, 1e30},
+    {"mip/sc_both_neg.mps", 2, -5.0, -1.0},
+    {"mip/sc_neg_lb_pos_ub.mps", 2, -3.0, 5.0},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.file);
+    auto mps = read_from_mps(c.file, false);
+
+    ASSERT_EQ(c.n_vars, static_cast<int>(mps.var_types.size()));
+    EXPECT_EQ('S', mps.var_types[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(mps.variable_lower_bounds.size()));
+    ASSERT_EQ(c.n_vars, static_cast<int>(mps.variable_upper_bounds.size()));
+    EXPECT_DOUBLE_EQ(c.lower, mps.variable_lower_bounds[0]);
+    EXPECT_DOUBLE_EQ(c.upper, mps.variable_upper_bounds[0]);
+  }
 }
 
 TEST(mps_ranges, fixed_ranges)

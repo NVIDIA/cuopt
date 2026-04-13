@@ -1,4 +1,4 @@
-[10:23 AM]NAME sc_neg_lb_pos_ub
+NAME sc_neg_lb_pos_ub
 ROWS
  N  OBJ
  G  cover   

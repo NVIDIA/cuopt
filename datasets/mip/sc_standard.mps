@@ -1,4 +1,4 @@
-[10:24 AM]NAME sc_standard
+NAME sc_standard
 ROWS
  N  OBJ
  G  cover   

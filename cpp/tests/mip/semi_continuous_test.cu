@@ -18,7 +18,10 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <mps_parser/mps_data_model.hpp>
+#include <mps_parser/data_model_view.hpp>
 #include <mps_parser/parser.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -441,6 +444,22 @@ TEST(SemiContinuousMPS, DefaultLowerBoundIsOne)
   EXPECT_EQ(model.var_types_[0], 'S');
   EXPECT_DOUBLE_EQ(model.variable_lower_bounds_[0], 1.0);  // CPLEX default
   EXPECT_DOUBLE_EQ(model.variable_upper_bounds_[0], 10.0);
+}
+
+TEST(SemiContinuousMPS, DataModelViewMapsSToSemiContinuous)
+{
+  mps_parser::data_model_view_t<int, double> view;
+  const std::vector<char> var_types = {'C', 'I', 'S'};
+  view.set_variable_types(var_types.data(), static_cast<int>(var_types.size()));
+
+  cuopt::linear_programming::cpu_optimization_problem_t<int, double> problem;
+  cuopt::linear_programming::populate_from_data_model_view(&problem, &view);
+
+  auto host_types = problem.get_variable_types_host();
+  ASSERT_EQ(host_types.size(), 3u);
+  EXPECT_EQ(host_types[0], cuopt::linear_programming::var_t::CONTINUOUS);
+  EXPECT_EQ(host_types[1], cuopt::linear_programming::var_t::INTEGER);
+  EXPECT_EQ(host_types[2], cuopt::linear_programming::var_t::SEMI_CONTINUOUS);
 }
 
 }  // namespace cuopt::linear_programming::test

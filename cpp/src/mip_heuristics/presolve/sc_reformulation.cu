@@ -52,13 +52,17 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
   {
     auto relaxed_types = var_types;
+    auto relaxed_ub    = op_problem.get_variable_upper_bounds_host();
     auto relaxed_lb    = op_problem.get_variable_lower_bounds_host();
     for (i_t idx : sc_indices) {
       relaxed_types[idx] = var_t::CONTINUOUS;
-      relaxed_lb[idx]    = f_t(0);  // include 0 in the relaxed domain
+      // Relax to the convex hull of {0} U [L, U] before running GPU bound propagation.
+      relaxed_lb[idx] = std::min(f_t(0), relaxed_lb[idx]);
+      if (std::isfinite(relaxed_ub[idx])) { relaxed_ub[idx] = std::max(f_t(0), relaxed_ub[idx]); }
     }
     op_relaxed.set_variable_types(relaxed_types.data(), n_orig);
     op_relaxed.set_variable_lower_bounds(relaxed_lb.data(), n_orig);
+    op_relaxed.set_variable_upper_bounds(relaxed_ub.data(), n_orig);
   }
 
   // -------------------------------------------------------------------------
@@ -104,12 +108,17 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   // -------------------------------------------------------------------------
   // 5. Count how many SC vars truly need the binary-variable reformulation.
-  //    If L <= 0, then 0 is already in [L, U], so "x=0 OR L<=x<=U" simplifies
-  //    to plain continuous [L, U] — no binary needed.
+  //    If 0 is already inside [L, U], then "x=0 OR L<=x<=U" simplifies to
+  //    plain continuous [L, U] — no binary needed.
   // -------------------------------------------------------------------------
+  std::vector<bool> needs_binary(n_sc, true);
   i_t n_binary_needed = 0;
-  for (i_t idx : sc_indices) {
-    if (var_lb[idx] > f_t(0)) { ++n_binary_needed; }
+  for (i_t s = 0; s < n_sc; ++s) {
+    const i_t idx = sc_indices[s];
+    needs_binary[s] =
+      !(var_lb[idx] <= f_t(0) && std::isfinite(var_ub[idx]) && var_ub[idx] >= f_t(0)) &&
+      !(var_lb[idx] <= f_t(0) && !std::isfinite(var_ub[idx]));
+    if (needs_binary[s]) { ++n_binary_needed; }
   }
 
   // Extend variable arrays (one binary per SC var that actually needs it)
@@ -119,39 +128,44 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   obj_c.resize(n_orig + n_binary_needed, f_t(0));
 
   // -------------------------------------------------------------------------
-  // 6. For each SC variable: derive U, then either add binary + 2 linking
-  //    constraints (L > 0) or simply relax to continuous (L <= 0).
+  // 6. For each SC variable: derive U when needed, then either add binary + 2
+  //    linking constraints or simply relax to continuous if 0 is already in
+  //    the interval [L, U].
   // -------------------------------------------------------------------------
   i_t binary_count = 0;
   for (i_t s = 0; s < n_sc; ++s) {
     const i_t idx = sc_indices[s];
     const f_t L   = var_lb[idx];
+    const f_t orig_u = var_ub[idx];
 
-    // Use GPU-propagated bound; fall back to original UB; then to big-M
-    f_t U = tight_ub[idx];
-    if (!std::isfinite(U)) { U = var_ub[idx]; }
-    if (!std::isfinite(U)) { U = big_m; }
-
-    if (L <= f_t(0)) {
-      // 0 already in [L, U]: SC constraint is trivially the full range [L, U].
+    if (!needs_binary[s]) {
+      // 0 already lies in [L, U], so the SC disjunction is just the interval itself.
       CUOPT_LOG_WARN(
-        "SC var %d has non-positive lower bound (L=%.6g); treating as continuous [%.6g, %.6g]",
-        idx, L, L, U);
+        "SC var %d interval [%.6g, %.6g] already contains 0; treating it as continuous",
+        idx,
+        L,
+        orig_u);
       var_types[idx] = var_t::CONTINUOUS;
-      // lb and ub unchanged (keep [L, U])
-      var_ub[idx] = U;
       continue;
     }
+
+    // Use GPU-propagated upper bound for positive-side SC variables when available.
+    // For negative-side intervals, keep the original upper bound because the relaxed
+    // convex hull includes 0 and is not useful for tightening the negative upper edge.
+    f_t U = orig_u;
+    if (orig_u >= f_t(0) || !std::isfinite(orig_u)) { U = tight_ub[idx]; }
+    if (!std::isfinite(U)) { U = orig_u; }
+    if (!std::isfinite(U)) { U = big_m; }
 
     CUOPT_LOG_DEBUG("SC var %d: L=%.6g, U=%.6g (after propagation)", idx, L, U);
 
     const i_t b_idx = n_orig + binary_count;
     ++binary_count;
 
-    // Convert SC var to continuous [0, U]
+    // Convert SC var to the convex hull of {0} U [L, U].
     var_types[idx] = var_t::CONTINUOUS;
-    var_lb[idx]    = f_t(0);
-    var_ub[idx]    = U;
+    var_lb[idx]    = std::min(f_t(0), L);
+    var_ub[idx]    = std::max(f_t(0), U);
 
     // Constraint 1: x_i - L * b_i >= 0  (clb=0, cub=+inf)
     A_vals.push_back(f_t(1));   A_idx.push_back(idx);

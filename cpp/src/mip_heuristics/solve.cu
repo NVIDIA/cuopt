@@ -49,6 +49,8 @@
 
 #include <cuda_profiler_api.h>
 
+#include <cmath>
+
 namespace cuopt::linear_programming {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
@@ -291,6 +293,12 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // from the solution before returning it to the caller.
     const i_t n_orig_before_sc = op_problem.get_n_variables();
     const bool had_sc          = detail::reformulate_semi_continuous(op_problem, settings);
+    if (had_sc && !settings.initial_solutions.empty()) {
+      CUOPT_LOG_WARN(
+        "Ignoring %zu user initial solution(s): semi-continuous warm starts are not supported yet",
+        settings.initial_solutions.size());
+      settings.initial_solutions.clear();
+    }
 
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
@@ -557,15 +565,15 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       sol.log_detailed_summary();
     }
 
-    if (settings.sol_file != "") {
-      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
-      sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
-    }
-
     // Strip auxiliary binary variables that were injected by SC reformulation.
     // The caller only knows about the original n_orig_before_sc variables.
     if (had_sc && sol.get_solution().size() > static_cast<size_t>(n_orig_before_sc)) {
       sol.get_solution().resize(n_orig_before_sc, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    if (settings.sol_file != "") {
+      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+      sol.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
     }
 
     return sol;
