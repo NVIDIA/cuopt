@@ -23,8 +23,6 @@
 
 #include <raft/core/nvtx.hpp>
 
-#include <memory>
-
 // #define PHASE2_NVTX_RANGES
 
 #ifdef PHASE2_NVTX_RANGES
@@ -2490,7 +2488,7 @@ dual::status_t dual_phase2(i_t phase,
   const i_t n = lp.num_cols;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
-  auto ft = std::make_unique<basis_update_mpf_t<i_t, f_t>>(m, settings.refactor_frequency);
+  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   const bool initialize_basis = true;
   dual::status_t result = dual_phase2_with_advanced_basis(phase,
                                          slack_basis,
@@ -2499,7 +2497,7 @@ dual::status_t dual_phase2(i_t phase,
                                          lp,
                                          settings,
                                          vstatus,
-                                         *ft,
+                                         ft,
                                          basic_list,
                                          nonbasic_list,
                                          sol,

@@ -120,12 +120,12 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
   assert(m <= n);
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
-  auto ft = std::make_unique<basis_update_mpf_t<i_t, f_t>>(m, settings.refactor_frequency);
+  basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   lp_status_t result = solve_linear_program_with_advanced_basis(original_lp,
                                                   start_time,
                                                   settings,
                                                   original_solution,
-                                                  *ft,
+                                                  ft,
                                                   basic_list,
                                                   nonbasic_list,
                                                   vstatus,
