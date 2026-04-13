@@ -582,7 +582,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
   // raft::common::nvtx::range fun_scope("parse string");
 
   // Faster than C++ std::get_line
-  char* c_line   = strtok(buf, "\n");
+  char* saveptr  = nullptr;
+  char* c_line   = strtok_r(buf, "\n", &saveptr);
   bool skip_line = false;
 
   mps_parser_expects(c_line != nullptr,
@@ -768,7 +769,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
                          "Ended up at a bad parser state! Line=%s",
                          std::string(line).c_str());
     }
-  } while ((c_line = strtok(nullptr, "\n")) != nullptr);
+  } while ((c_line = strtok_r(nullptr, "\n", &saveptr)) != nullptr);
   mps_parser_expects(!objective_name.empty(), error_type_t::ValidationError, "No objective found!");
 
   mps_parser_expects(

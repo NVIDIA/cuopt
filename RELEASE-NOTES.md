@@ -1,5 +1,60 @@
 # Release Notes
 
+## Release Notes 26.04
+
+### New Features (26.04)
+- Run no-relaxation heuristics before presolve
+- Add new MIP cuts: clique cuts and implied bounds cuts
+- Add support for FP32 and mixed precision in PDLP
+- Add option for using Batch PDLP in reliability branching
+- Add UnboundedOrInfeasible termination status
+- Expose settings for tuning heuristics
+- Add support for Python 3.14
+- Add support for writing presolved model to a file
+- gRPC based remote execution support on Python, C and CLI interface for LP/QP and MIP
+
+### Breaking Changes (26.04)
+- The solved_by_pdlp field in the Python LP solution object was changed to solved_by
+- Drop support for Python 3.10
+
+### Improvements (26.04)
+- Improve reliability branching by better ranking of unreliable variables
+- Generate more MIR and Knapsack cuts
+- Improve aggregation and complementation in MIR cuts
+- Use variable lower and variable upper bounds in MIR cuts
+- Improve numerics of mixed integer Gomory cuts
+- Lift knapsack cuts
+- Improve row and objective scaling for MIP
+- Use objective function integrality when pruning node
+- Reduce time for Markowitz factorization in dual simplex
+- Reduce time for dual push inside crossover
+- Reduce number of free variables in barrier
+- Add gap information to primal heuristics logs when root relaxation is still solving
+- Refactoring agentic skills to follow standard skill structure and add developer skills
+- Adding skill to evolve skills
+
+
+### Bug Fixes (26.04)
+- Fix a bug in LP/MIP where cuOpt reported incorrect termination status; we now correctly report UnboundedOrInfeasible
+- Fix a bug in MIP where Papilo's probing presolver crashed; fix will be pushed upstream
+- Fix a bug in MIP with a missing stream sync in the probing cache that was causing a crash
+- Fix a bug in MIP leading to incorrect dual bound when nodes remain in the heap
+- Fix a bug in MIP where nodes with objective less than the incumbent objective value were incorrectly fathomed
+- Fix a bug in MIP where variables could violate their bounds in Feasibility Jump on the CPU
+- Fix a bug in MIP where a race condition could occur when sharing solutions between branch and bound and heuristics
+- Fix a bug in MIP where the solver was not respecting the time limit
+- Fix a bug in MIP where the solver terminated at the end of the root relaxation solve
+- Fix a bug in QP where quadratic terms were not written out to MPS files
+- Fix a bug in MIP where cuOpt was taking a long time to terminate after optimal solution found
+- Fix a bug in LP/barrier on problems containing variables with infinite lower bounds
+- Fix a bug in MIP where batch PDLP for strong branching was running on the problem without cuts
+- Fix a bug in Python API when using x + x*x, +x, -x expressions
+- Update to the latest version of PSLP which includes bug fixes for incorrect infeasible classification
+
+
+### Documentation (26.04)
+- Update docs to clarify the usage of getIncumbentValues() in the Python API
+
 ## Release Notes 26.02
 
 ### New Features (26.02)

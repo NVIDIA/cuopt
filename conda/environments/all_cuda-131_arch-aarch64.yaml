@@ -10,8 +10,8 @@ dependencies:
 - c-ares
 - c-compiler
 - ccache
-- clang-tools=20.1.4
-- clang==20.1.4
+- clang-tools=20.1.8
+- clang==20.1.8
 - cmake>=3.30.4
 - cpp-argparse
 - cuda-nvcc
