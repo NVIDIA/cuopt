@@ -107,14 +107,21 @@ jobs:
       - wheel-tests-cuopt
       - wheel-tests-cuopt-server
       - conda-notebook-tests
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
-    with:
-      build_type: ${{ inputs.build_type }}
-      branch: ${{ inputs.branch }}
-      date: ${{ inputs.date }}
-      sha: ${{ inputs.sha }}
-      node_type: "cpu4"
-      arch: "amd64"
-      container_image: "rapidsai/ci-conda:26.06-latest"
-      script: ci/nightly_summary.sh
+    runs-on: linux-amd64-cpu4
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Install dependencies
+        run: pip install awscli
+      - name: Run nightly summary
+        env:
+          CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+          CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+          CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+          CUOPT_SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+          CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+          CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
+          RAPIDS_BRANCH: ${{ inputs.branch }}
+        run: bash ci/nightly_summary.sh
