@@ -232,6 +232,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
   if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
     // Keep phase-1 state alive while the concurrent solve continues asynchronously.
+    original_solution.iterations = iter;
     std::thread([plp = std::move(presolved_lp),
                  pi  = std::move(presolve_info),
                  lpp = std::move(lp),
