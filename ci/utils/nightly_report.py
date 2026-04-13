@@ -51,10 +51,10 @@ EMPTY_HISTORY = {"_schema_version": 2, "tests": {}}
 
 # A test that resolves then fails again within this window is considered
 # "bouncing" (intermittently flaky) rather than a new failure.
-BOUNCE_WINDOW_DAYS = 14
+BOUNCE_WINDOW_DAYS = int(os.environ.get("CUOPT_BOUNCE_WINDOW_DAYS", 14))
 
 # Number of failure/resolve cycles that classify a test as cross-run flaky.
-BOUNCE_THRESHOLD = 2
+BOUNCE_THRESHOLD = int(os.environ.get("CUOPT_BOUNCE_THRESHOLD", 2))
 
 
 # ---------------------------------------------------------------------------
