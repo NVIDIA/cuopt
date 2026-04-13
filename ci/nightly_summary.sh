@@ -6,10 +6,8 @@
 # consolidated Slack notification.  Runs as a post-test job after all
 # matrix CI jobs finish.
 #
-# Required environment variables:
-#   CUOPT_DATASET_S3_URI          - S3 base URI
-#   CUOPT_AWS_ACCESS_KEY_ID       - AWS credentials
-#   CUOPT_AWS_SECRET_ACCESS_KEY
+# The script needs S3 access. It tries CUOPT_DATASET_S3_URI first, then
+# falls back to standard AWS env vars set by aws-actions/configure-aws-credentials.
 #
 # Optional:
 #   CUOPT_SLACK_WEBHOOK_URL       - sends Slack if set
@@ -28,8 +26,9 @@ BRANCH="${RAPIDS_BRANCH:-main}"
 GITHUB_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}/actions/runs/${GITHUB_RUN_ID:-}"
 
 if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
-    echo "ERROR: CUOPT_DATASET_S3_URI is not set. Cannot aggregate." >&2
-    exit 1
+    echo "WARNING: CUOPT_DATASET_S3_URI is not set. Skipping nightly aggregation." >&2
+    echo "The per-matrix reports (uploaded by individual test jobs) are still available on S3."
+    exit 0
 fi
 
 S3_BASE="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
