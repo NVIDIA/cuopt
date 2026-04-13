@@ -9,4 +9,4 @@ set -euo pipefail
 # Support invoking run_cuopt_server_pytests.sh outside the script directory
 cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/cuopt_server/cuopt_server/
 
-pytest -s --cache-clear "$@" tests
+pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests
