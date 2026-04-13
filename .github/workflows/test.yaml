@@ -41,6 +41,8 @@ jobs:
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      script-env-secret-4-key: CUOPT_SLACK_WEBHOOK_URL
+      script-env-secret-4-value: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
   conda-python-tests:
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     with:
@@ -57,6 +59,8 @@ jobs:
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      script-env-secret-4-key: CUOPT_SLACK_WEBHOOK_URL
+      script-env-secret-4-value: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
   wheel-tests-cuopt:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
@@ -72,6 +76,8 @@ jobs:
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      script-env-secret-4-key: CUOPT_SLACK_WEBHOOK_URL
+      script-env-secret-4-value: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
   wheel-tests-cuopt-server:
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
@@ -87,6 +93,8 @@ jobs:
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      script-env-secret-4-key: CUOPT_SLACK_WEBHOOK_URL
+      script-env-secret-4-value: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
   conda-notebook-tests:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
@@ -99,3 +107,29 @@ jobs:
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: ci/test_notebooks.sh
+  nightly-summary:
+    if: ${{ always() && inputs.build_type == 'nightly' }}
+    needs:
+      - conda-cpp-tests
+      - conda-python-tests
+      - wheel-tests-cuopt
+      - wheel-tests-cuopt-server
+      - conda-notebook-tests
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: "cpu4"
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.06-latest"
+      container-options: >-
+        -e CUOPT_DATASET_S3_URI=${{ secrets.CUOPT_DATASET_S3_URI }}
+        -e CUOPT_AWS_ACCESS_KEY_ID=${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+        -e CUOPT_AWS_SECRET_ACCESS_KEY=${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+        -e CUOPT_SLACK_WEBHOOK_URL=${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+        -e CUOPT_SLACK_BOT_TOKEN=${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+        -e CUOPT_SLACK_CHANNEL_ID=${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      script: ci/nightly_summary.sh
