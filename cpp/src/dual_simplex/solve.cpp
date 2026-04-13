@@ -33,7 +33,6 @@
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -132,11 +131,6 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
                                                   vstatus,
                                                   edge_norms,
                                                   work_unit_context);
-  if (result == lp_status_t::CONCURRENT_LIMIT) {
-    std::thread([bl = std::move(basic_list),
-                 nl = std::move(nonbasic_list),
-                 f  = std::move(ft)]() {}).detach();
-  }
   return result;
 }
 
@@ -231,15 +225,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
   if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
   if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
-    // Keep phase-1 state alive while the concurrent solve continues asynchronously.
     original_solution.iterations = iter;
-    std::thread([plp = std::move(presolved_lp),
-                 pi  = std::move(presolve_info),
-                 lpp = std::move(lp),
-                 cs  = std::move(column_scales),
-                 p1  = std::move(phase1_problem),
-                 p1v = std::move(phase1_vstatus),
-                 p1s = std::move(phase1_solution)]() {}).detach();
     return lp_status_t::CONCURRENT_LIMIT;
   }
   phase1_obj = phase1_solution.objective;
@@ -329,16 +315,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
     if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
     if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
     if (status == dual::status_t::CONCURRENT_LIMIT) {
-      // Preserve observed progress before returning the concurrent halt.
       original_solution.iterations = iter;
-      std::thread([sol = std::move(solution),
-                   plp = std::move(presolved_lp),
-                   pi  = std::move(presolve_info),
-                   lpp = std::move(lp),
-                   cs  = std::move(column_scales),
-                   p1  = std::move(phase1_problem),
-                   p1v = std::move(phase1_vstatus),
-                   p1s = std::move(phase1_solution)]() {}).detach();
       return lp_status_t::CONCURRENT_LIMIT;
     }
     if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
@@ -419,19 +396,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
   lp_status_t barrier_status =
     barrier_solver->solve(start_time, barrier_solver_settings, barrier_solution);
-  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) {
-    std::thread([s  = std::move(barrier_solver),
-                 b  = std::move(barrier_lp),
-                 p  = std::move(presolved_lp),
-                 o  = std::move(original_lp),
-                 bs = std::move(barrier_solution),
-                 ls = std::move(lp_solution),
-                 pi = std::move(presolve_info),
-                 cs = std::move(column_scales),
-                 ns = std::move(new_slacks),
-                 di = std::move(dualize_info)]() {}).detach();
-    return lp_status_t::CONCURRENT_LIMIT;
-  }
+  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
@@ -728,12 +693,6 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
   if (status == lp_status_t::CONCURRENT_LIMIT) {
     solution.iterations = lp_solution.iterations;
-    std::thread([lp = std::move(original_lp),
-                 ls = std::move(lp_solution),
-                 vs = std::move(vstatus),
-                 en = std::move(edge_norms),
-                 ns = std::move(new_slacks),
-                 di = std::move(dualize_info)]() {}).detach();
     return lp_status_t::CONCURRENT_LIMIT;
   }
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);

@@ -24,7 +24,6 @@
 #include <raft/core/nvtx.hpp>
 
 #include <memory>
-#include <thread>
 
 // #define PHASE2_NVTX_RANGES
 
@@ -2491,7 +2490,6 @@ dual::status_t dual_phase2(i_t phase,
   const i_t n = lp.num_cols;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
-  std::vector<i_t> superbasic_list;
   auto ft = std::make_unique<basis_update_mpf_t<i_t, f_t>>(m, settings.refactor_frequency);
   const bool initialize_basis = true;
   dual::status_t result = dual_phase2_with_advanced_basis(phase,
@@ -2508,12 +2506,6 @@ dual::status_t dual_phase2(i_t phase,
                                          iter,
                                          delta_y_steepest_edge,
                                          work_unit_context);
-  if (result == dual::status_t::CONCURRENT_LIMIT) {
-    // Keep basis state alive while the concurrent solve continues asynchronously.
-    std::thread([bl = std::move(basic_list),
-                 nl = std::move(nonbasic_list),
-                 f  = std::move(ft)]() {}).detach();
-  }
   return result;
 }
 
