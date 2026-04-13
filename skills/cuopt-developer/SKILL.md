@@ -296,56 +296,6 @@ rmm::device_uvector<int> data(100, stream);
 | CUDA out of memory | Reduce problem size |
 | Slow debug library loading | Device symbols cause delay |
 
-<!-- skill-evolution:start — SC reformulation implementation gotchas -->
-### Semi-Continuous Reformulation Implementation Gotchas
-
-#### 1. `bound_presolve_t` crashes with 0 constraints
-
-`bound_presolve_t::solve()` internally calls `update_bounds_kernel`, which uses a CUB block reduce over constraint rows. When the problem has **0 constraints**, CUDA raises `cudaErrorInvalidConfiguration`.
-
-**Guard bounds propagation before constructing `bound_presolve_t`:**
-
-```cpp
-if (op_relaxed.get_n_constraints() > 0) {
-  problem_t<i_t, f_t> temp_pb(op_relaxed, settings.get_tolerances());
-  mip_solver_context_t<i_t, f_t> ctx(handle_ptr, &temp_pb, settings);
-  bound_presolve_t<i_t, f_t> bps(ctx, bp_settings);
-  bps.resize(temp_pb);
-  bps.solve(temp_pb);
-  // copy tightened bounds...
-}
-// else: tight_ub stays at original variable upper bounds (safe fallback)
-```
-
-#### 2. `problem_t` does not understand `var_t::SEMI_CONTINUOUS`
-
-`problem_t` is constructed from `optimization_problem_t` inside the MIP solver. It has no concept of `var_t::SEMI_CONTINUOUS` — passing a problem that still contains SC vars causes undefined behavior or assertion failures.
-
-**When running GPU bounds propagation as part of SC reformulation, construct a relaxed copy** where SC vars are changed to `var_t::CONTINUOUS` with `lb = 0` before building `problem_t`. The real `problem_t` is created from the fully-reformulated `op_problem` (no SC vars remain) later in `solve_mip()`.
-
-```cpp
-optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
-// change SC vars → CONTINUOUS with lb=0 in op_relaxed before passing to problem_t
-```
-
-#### 3. Auxiliary binary variables leak into the returned solution
-
-`reformulate_semi_continuous()` adds `n_binary` binary variables to `op_problem`. After `run_mip()` returns, the solution vector has `n_orig + n_binary` entries. The caller only knows about `n_orig` variables.
-
-**Strip the auxiliary binaries before returning the solution:**
-
-```cpp
-const i_t n_orig_before_sc = op_problem.get_n_variables();
-const bool had_sc          = detail::reformulate_semi_continuous(op_problem, settings);
-// ... solve ...
-if (had_sc && sol.get_solution().size() > static_cast<size_t>(n_orig_before_sc)) {
-  sol.get_solution().resize(n_orig_before_sc, op_problem.get_handle_ptr()->get_stream());
-}
-```
-
-Do this **after** any `.sol` file write (which can include auxiliary vars for debugging) but **before** `return sol`.
-<!-- skill-evolution:end -->
-
 ## Canonical Documentation
 
 - **Contributing/build/test**: `CONTRIBUTING.md`
