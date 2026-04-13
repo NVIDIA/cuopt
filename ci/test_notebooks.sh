@@ -64,5 +64,11 @@ for nb in ${NBLIST}; do
   fi
 done
 
+popd
+
+rapids-logger "Generate nightly test report"
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "notebooks" --with-python-version
+
 rapids-logger "Notebook test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
