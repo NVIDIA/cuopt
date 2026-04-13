@@ -2509,6 +2509,7 @@ dual::status_t dual_phase2(i_t phase,
                                          delta_y_steepest_edge,
                                          work_unit_context);
   if (result == dual::status_t::CONCURRENT_LIMIT) {
+    // Keep basis state alive while the concurrent solve continues asynchronously.
     std::thread([bl = std::move(basic_list),
                  nl = std::move(nonbasic_list),
                  sl = std::move(superbasic_list),
