@@ -2490,7 +2490,7 @@ dual::status_t dual_phase2(i_t phase,
   std::vector<i_t> nonbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   const bool initialize_basis = true;
-  dual::status_t result = dual_phase2_with_advanced_basis(phase,
+  return dual_phase2_with_advanced_basis(phase,
                                          slack_basis,
                                          initialize_basis,
                                          start_time,
@@ -2504,7 +2504,6 @@ dual::status_t dual_phase2(i_t phase,
                                          iter,
                                          delta_y_steepest_edge,
                                          work_unit_context);
-  return result;
 }
 
 template <typename i_t, typename f_t>
