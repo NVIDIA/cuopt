@@ -1,6 +1,6 @@
 ---
 name: cuopt-lp-milp-api-python
-version: "26.04.00"
+version: "26.06.00"
 description: Solve Linear Programming (LP) and Mixed-Integer Linear Programming (MILP) with the Python API. Use when the user asks about optimization with linear constraints, integer variables, scheduling, resource allocation, facility location, or production planning.
 ---
 

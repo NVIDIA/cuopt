@@ -1,6 +1,6 @@
 ---
 name: cuopt-installation-api-python
-version: "26.04.00"
+version: "26.06.00"
 description: Install cuOpt for Python — pip, conda, Docker, verification. Use when the user is installing or verifying the Python API. Standalone; no common skill.
 ---
 

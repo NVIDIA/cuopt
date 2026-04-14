@@ -19,8 +19,10 @@
 #include <thrust/count.h>
 #include <thrust/functional.h>
 #include <thrust/gather.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 namespace cuopt::linear_programming::detail {
 template <typename f_t>

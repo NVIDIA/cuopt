@@ -1,6 +1,6 @@
 ---
 name: cuopt-installation-developer
-version: "26.04.00"
+version: "26.06.00"
 description: Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt.
 ---
 

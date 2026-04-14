@@ -10,6 +10,8 @@
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
+#include "../cuopt_default_grpc_port.h"
+
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -52,7 +54,7 @@ void grpc_test_mark_as_connected(class grpc_client_t& client);
  * - Result retrieval uses chunked download for results exceeding max_message_bytes.
  */
 struct grpc_client_config_t {
-  std::string server_address = "localhost:8765";
+  std::string server_address = std::string("localhost:") + std::to_string(cuopt_default_grpc_port);
   int poll_interval_ms       = 1000;   // How often to poll for job status
   int timeout_seconds        = 0;      // Max time to wait for job completion (0 = no limit)
   bool stream_logs           = false;  // Whether to stream logs from server
@@ -92,10 +94,6 @@ struct grpc_client_config_t {
   // Enable debug / throughput logging to stderr.
   // Controlled by CUOPT_GRPC_DEBUG env var (0|1). Default: off.
   bool enable_debug_log = false;
-
-  // Log FNV-1a hashes of uploaded/downloaded data on both client and server.
-  // Comparing the two hashes confirms data was not corrupted in transit.
-  bool enable_transfer_hash = false;
 
   // Override for the chunked upload threshold (bytes). Normally computed
   // automatically as 75% of max_message_bytes.  Set to 0 to force chunked
@@ -204,7 +202,7 @@ struct remote_mip_result_t {
  *
  * Usage:
  * @code
- * grpc_client_t client("localhost:8765");
+ * grpc_client_t client;  // default server: localhost:<cuopt_default_grpc_port>
  * if (!client.connect()) { ... handle error ... }
  *
  * auto result = client.solve_lp(problem, settings);

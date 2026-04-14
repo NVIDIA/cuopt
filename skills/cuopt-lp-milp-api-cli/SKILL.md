@@ -1,6 +1,6 @@
 ---
 name: cuopt-lp-milp-api-cli
-version: "26.04.00"
+version: "26.06.00"
 description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving from MPS via command line.
 ---
 

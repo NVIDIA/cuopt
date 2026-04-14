@@ -1,6 +1,6 @@
 ---
 name: cuopt-qp-api-c
-version: "26.04.00"
+version: "26.06.00"
 description: Quadratic Programming (QP) with cuOpt — C API. Use when the user is embedding QP in C/C++.
 ---
 

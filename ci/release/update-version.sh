@@ -152,3 +152,6 @@ elif [[ "${RUN_CONTEXT}" == "release" ]]; then
   sed_runner "s|\\bmain\\b|release/${NEXT_SHORT_TAG}|g" docs/cuopt/source/faq.rst
   sed_runner "s|\\bmain\\b|release/${NEXT_SHORT_TAG}|g" docs/cuopt/source/cuopt-python/routing/routing-example.ipynb
 fi
+
+# Update docs version switcher to include the new version
+python ci/utils/update_doc_versions.py

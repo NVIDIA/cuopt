@@ -13,6 +13,9 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/tuple.h>
+
 namespace cuopt::linear_programming::detail {
 
 // from the paper, probability of choosing random candidate= noise parameter

@@ -220,15 +220,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.early_cpufj_ptr) {
     context.early_cpufj_ptr->stop();
     if (context.early_cpufj_ptr->solution_found()) {
-      // Compare in user-space (representation-invariant) to pick the tighter cutoff.
-      f_t cpufj_user_obj = context.early_cpufj_ptr->get_best_user_objective();
-      bool should_update =
-        !std::isfinite(context.initial_cutoff) ||
-        (context.problem_ptr->maximize ? cpufj_user_obj > context.initial_cutoff
-                                       : cpufj_user_obj < context.initial_cutoff);
-      if (should_update) { context.initial_cutoff = cpufj_user_obj; }
-      CUOPT_LOG_INFO("Early CPUFJ found incumbent with user-space objective %g during presolve",
-                     cpufj_user_obj);
+      CUOPT_LOG_DEBUG("Early CPUFJ found incumbent with user-space objective %g during presolve",
+                      context.early_cpufj_ptr->get_best_user_objective());
     }
   }
 
@@ -402,16 +395,16 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
 
-    // Convert initial_cutoff from user-space to B&B's internal objective space.
+    // Convert the best external upper bound from user-space to B&B's internal objective space.
     // context.problem_ptr is the post-trivial-presolve problem, whose get_solver_obj_from_user_obj
     // produces values in the same space as B&B node lower bounds.
-    if (std::isfinite(context.initial_cutoff)) {
-      f_t bb_cutoff = context.problem_ptr->get_solver_obj_from_user_obj(context.initial_cutoff);
-      branch_and_bound->set_initial_cutoff(bb_cutoff);
-      dm.population.best_feasible_objective = bb_cutoff;
-      CUOPT_LOG_INFO("B&B using initial cutoff %.6e (user-space: %.6e) from early heuristics",
-                     bb_cutoff,
-                     context.initial_cutoff);
+    if (std::isfinite(context.initial_upper_bound)) {
+      f_t bb_ub = context.problem_ptr->get_solver_obj_from_user_obj(context.initial_upper_bound);
+      branch_and_bound->set_initial_upper_bound(bb_ub);
+      dm.population.best_feasible_objective = bb_ub;
+      CUOPT_LOG_DEBUG("B&B using initial upper bound %.6e (user-space: %.6e) from early heuristics",
+                      bb_ub,
+                      context.initial_upper_bound);
     }
 
     auto* stats_ptr = &context.stats;
@@ -482,6 +475,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
   }
   sol.compute_feasibility();
+
   rmm::device_scalar<i_t> is_feasible(sol.handle_ptr->get_stream());
   sol.test_variable_bounds(true, is_feasible.data());
   // test_variable_bounds clears is_feasible if the test is failed
@@ -494,7 +488,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
   context.stats.total_solve_time = timer_.elapsed_time();
   context.problem_ptr->post_process_solution(sol);
-  dm.rins.stop_rins();
   return sol;
 }
 

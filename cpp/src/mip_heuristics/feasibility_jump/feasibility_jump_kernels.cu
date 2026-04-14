@@ -14,6 +14,8 @@
 
 #include <raft/random/rng.cuh>
 
+#include <thrust/iterator/transform_iterator.h>
+
 #include <cooperative_groups.h>
 
 #include "feasibility_jump_impl_common.cuh"

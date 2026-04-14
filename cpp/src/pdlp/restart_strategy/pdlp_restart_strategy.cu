@@ -29,6 +29,7 @@
 #include <raft/linalg/unary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
 
+#include <thrust/device_ptr.h>
 #include <thrust/device_vector.h>
 #include <thrust/extrema.h>
 #include <thrust/for_each.h>
@@ -39,6 +40,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 #include <cub/cub.cuh>
 

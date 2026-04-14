@@ -27,9 +27,12 @@
 #include <thrust/count.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/set_operations.h>
 #include <thrust/sort.h>
 #include <thrust/tabulate.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <cuda/std/functional>
 
