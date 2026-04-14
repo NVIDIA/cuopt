@@ -3,22 +3,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Send a consolidated Slack notification for the entire nightly run.
-# Reads the aggregated JSON produced by aggregate_nightly.py and sends
-# chunked Slack messages:
-#   1. Header + status summary + test totals + failed CI jobs
-#   2. Failed/flaky matrix entries only (not passing ones)
-#   3. Failure details (new, recurring, stabilized, flaky)
-#   4. Links (presigned URLs + GitHub Actions)
-# Then uploads the HTML report as a Slack file.
+# Reads the aggregated JSON produced by aggregate_nightly.py and sends:
+#   - Main message: Header + status summary + test totals + failed CI jobs
+#   - Thread replies: matrix details, failure details, links, HTML report
+#
+# If SLACK_BOT_TOKEN is available, posts via chat.postMessage (enables
+# threading). Falls back to webhook (no threading) otherwise.
 #
 # Required environment variables:
-#   SLACK_WEBHOOK_URL       - Slack incoming webhook URL
+#   SLACK_WEBHOOK_URL       - Slack incoming webhook URL (fallback)
 #   CONSOLIDATED_SUMMARY    - Path to consolidated_summary.json
 #
 # Optional environment variables:
 #   CONSOLIDATED_HTML           - Path to consolidated HTML file to upload
-#   SLACK_BOT_TOKEN             - Slack Bot Token (xoxb-*) for file uploads
-#   SLACK_CHANNEL_ID            - Slack channel ID for file uploads
+#   SLACK_BOT_TOKEN             - Slack Bot Token (xoxb-*) for threading + file uploads
+#   SLACK_CHANNEL_ID            - Slack channel ID (required with bot token)
 #   PRESIGNED_REPORT_URL        - Presigned URL for consolidated HTML report
 #   PRESIGNED_DASHBOARD_URL     - Presigned URL for dashboard
 
@@ -37,7 +36,8 @@ if [ ! -f "${CONSOLIDATED_SUMMARY}" ]; then
     exit 1
 fi
 
-# Generate chunked Slack payloads — one JSON object per line
+# Generate Slack payloads — one JSON object per line.
+# Line 1 = main message, lines 2+ = thread replies.
 PAYLOADS=$(python3 - "${CONSOLIDATED_SUMMARY}" "${PRESIGNED_REPORT_URL}" "${PRESIGNED_DASHBOARD_URL}" <<'PYEOF'
 import json, sys
 
@@ -63,7 +63,6 @@ failed_jobs = jobs.get("failed", 0)
 flaky_jobs = jobs.get("flaky", 0)
 passed_jobs = jobs.get("passed", 0)
 
-# Count CI-level failures (jobs that failed at workflow level)
 total_ci_jobs = len(workflow_jobs)
 failed_ci_count = len(failed_ci_jobs)
 passed_ci_count = sum(1 for j in workflow_jobs if j["conclusion"] == "success")
@@ -84,11 +83,10 @@ def make_payload(blocks):
     })
 
 
-# ── Message 1: Header + status + totals + CI job failures ────────────
+# ══════════════════════════════════════════════════════════════════════
+# MAIN MESSAGE (line 1) — posted to channel, becomes thread parent
+# ══════════════════════════════════════════════════════════════════════
 blocks = []
-
-# Determine overall status considering both test results and CI jobs
-all_green = failed_jobs == 0 and failed_ci_count == 0
 
 if failed_ci_count > 0 or (failed_jobs > 0 and has_new):
     emoji = ":rotating_light:"
@@ -140,7 +138,7 @@ blocks.append({
     },
 })
 
-# Show failed CI jobs (notebooks, JuMP, etc.)
+# Failed CI jobs in main message
 if failed_ci_jobs:
     lines = []
     for j in failed_ci_jobs:
@@ -156,11 +154,29 @@ if failed_ci_jobs:
         "text": {"type": "mrkdwn", "text": "*Failed CI Jobs:*\n" + "\n".join(lines)},
     })
 
+# Links in main message
+link_parts = []
+if github_run_url:
+    link_parts.append(f"<{github_run_url}|:github: GitHub Actions>")
+if presigned_report_url:
+    link_parts.append(f"<{presigned_report_url}|:bar_chart: Full Report>")
+if presigned_dashboard_url:
+    link_parts.append(f"<{presigned_dashboard_url}|:chart_with_upwards_trend: Dashboard>")
+if link_parts:
+    blocks.append({"type": "divider"})
+    blocks.append({
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": "  |  ".join(link_parts)}],
+    })
+
 print(make_payload(blocks))
 
 
-# ── Message 2: Failed/flaky matrix entries only ──────────────────────
-# Only show entries that are NOT passed
+# ══════════════════════════════════════════════════════════════════════
+# THREAD REPLIES (lines 2+) — posted as replies to main message
+# ══════════════════════════════════════════════════════════════════════
+
+# ── Thread 1: Failed/flaky matrix entries ─────────────────────────────
 failed_grid = [g for g in grid if g["status"] != "passed"]
 
 if failed_grid:
@@ -199,22 +215,11 @@ if failed_grid:
 
     for i in range(0, len(grid_blocks), 48):
         chunk = grid_blocks[i:i+48]
-        print(make_payload([{"type": "divider"}] + chunk))
-else:
-    # All passed — just a compact summary
-    if total_jobs > 0:
-        print(make_payload([
-            {"type": "divider"},
-            {"type": "section",
-             "text": {"type": "mrkdwn",
-                      "text": f":white_check_mark: All {total_jobs} test matrix jobs passed"}},
-        ]))
+        print(make_payload(chunk))
 
-
-# ── Message 3: Failure details ────────────────────────────────────────
+# ── Thread 2: Failure details ─────────────────────────────────────────
 detail_blocks = []
 
-# New failures
 new_failures = d.get("new_failures", [])
 if new_failures:
     lines = []
@@ -234,7 +239,6 @@ if new_failures:
         })
         text = text[2900:]
 
-# Recurring failures
 recurring = d.get("recurring_failures", [])
 if recurring:
     lines = []
@@ -252,7 +256,6 @@ if recurring:
         "text": {"type": "mrkdwn", "text": "*:x: Recurring Failures:*\n" + "\n".join(lines)},
     })
 
-# Stabilized
 resolved = d.get("resolved_tests", [])
 if resolved:
     lines = []
@@ -273,7 +276,6 @@ if resolved:
         },
     })
 
-# Flaky summary
 flaky = d.get("flaky_tests", [])
 if flaky:
     unique_flaky = {}
@@ -296,41 +298,78 @@ if flaky:
 
 if detail_blocks:
     print(make_payload(detail_blocks))
-
-
-# ── Message 4: Links ─────────────────────────────────────────────────
-link_parts = []
-if github_run_url:
-    link_parts.append(f"<{github_run_url}|:github: GitHub Actions>")
-if presigned_report_url:
-    link_parts.append(f"<{presigned_report_url}|:bar_chart: Full Report>")
-if presigned_dashboard_url:
-    link_parts.append(f"<{presigned_dashboard_url}|:chart_with_upwards_trend: Dashboard>")
-if not presigned_report_url:
-    link_parts.append("_Full report attached below_")
-
-if link_parts:
-    print(make_payload([
-        {"type": "divider"},
-        {"type": "context",
-         "elements": [{"type": "mrkdwn", "text": "  |  ".join(link_parts)}]},
-    ]))
 PYEOF
 )
 
+# ── Send messages ─────────────────────────────────────────────────────
 echo "Sending consolidated Slack notification..."
+
+THREAD_TS=""
+FIRST=true
+
 while IFS= read -r payload; do
-    response=$(curl -s -X POST \
-        -H 'Content-type: application/json' \
-        --data "${payload}" \
-        "${SLACK_WEBHOOK_URL}")
-    if [ "${response}" != "ok" ]; then
-        echo "WARNING: Slack webhook returned: ${response}" >&2
+    if [ "${FIRST}" = true ] && [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ]; then
+        # Post main message via chat.postMessage to get thread_ts
+        BOT_PAYLOAD=$(python3 -c "
+import json, sys
+p = json.loads(sys.argv[1])
+p['channel'] = sys.argv[2]
+print(json.dumps(p))
+" "${payload}" "${SLACK_CHANNEL_ID}")
+
+        RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${BOT_PAYLOAD}" \
+            "https://slack.com/api/chat.postMessage")
+
+        THREAD_TS=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ts',''))" 2>/dev/null || echo "")
+        OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
+
+        if [ "${OK}" != "True" ]; then
+            echo "WARNING: chat.postMessage failed: ${RESPONSE}" >&2
+            # Fall back to webhook for this and remaining messages
+            THREAD_TS=""
+            curl -s -X POST -H 'Content-type: application/json' --data "${payload}" "${SLACK_WEBHOOK_URL}" || true
+        else
+            echo "Main message posted (ts=${THREAD_TS})"
+        fi
+        FIRST=false
+    elif [ -n "${THREAD_TS}" ] && [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ]; then
+        # Post thread reply via chat.postMessage
+        THREAD_PAYLOAD=$(python3 -c "
+import json, sys
+p = json.loads(sys.argv[1])
+p['channel'] = sys.argv[2]
+p['thread_ts'] = sys.argv[3]
+print(json.dumps(p))
+" "${payload}" "${SLACK_CHANNEL_ID}" "${THREAD_TS}")
+
+        RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${THREAD_PAYLOAD}" \
+            "https://slack.com/api/chat.postMessage")
+
+        OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
+        if [ "${OK}" != "True" ]; then
+            echo "WARNING: Thread reply failed: ${RESPONSE}" >&2
+        fi
+    else
+        # Fallback: webhook (no threading)
+        response=$(curl -s -X POST \
+            -H 'Content-type: application/json' \
+            --data "${payload}" \
+            "${SLACK_WEBHOOK_URL}")
+        if [ "${response}" != "ok" ]; then
+            echo "WARNING: Slack webhook returned: ${response}" >&2
+        fi
+        FIRST=false
     fi
 done <<< "${PAYLOADS}"
 echo "Consolidated Slack notification sent."
 
-# Upload HTML report as a file to Slack (requires bot token)
+# ── Upload HTML report as file in thread ──────────────────────────────
 if [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ] && [ -n "${CONSOLIDATED_HTML}" ] && [ -f "${CONSOLIDATED_HTML}" ]; then
     echo "Uploading HTML report to Slack..."
 
@@ -359,15 +398,19 @@ if [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ] && [ -n "${CONSOL
             -F "file=@${CONSOLIDATED_HTML}" \
             "${UPLOAD_URL}"
 
-        # Step 3: Complete the upload and share to channel
+        # Step 3: Complete the upload and share to channel (in thread if available)
         COMPLETE_PAYLOAD=$(python3 -c "
 import json, sys
-print(json.dumps({
+payload = {
     'files': [{'id': sys.argv[1], 'title': sys.argv[2]}],
     'channel_id': sys.argv[3],
-    'initial_comment': 'Full nightly test report \u2014 download and open in a browser for interactive details.'
-}))
-" "${FILE_ID}" "${UPLOAD_TITLE}" "${SLACK_CHANNEL_ID}")
+    'initial_comment': 'Full nightly test report \u2014 download and open in a browser for interactive details.',
+}
+thread_ts = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else ''
+if thread_ts:
+    payload['thread_ts'] = thread_ts
+print(json.dumps(payload))
+" "${FILE_ID}" "${UPLOAD_TITLE}" "${SLACK_CHANNEL_ID}" "${THREAD_TS}")
 
         COMPLETE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
