@@ -45,7 +45,10 @@ def download_summaries(s3_prefix, local_dir):
     local_dir.mkdir(parents=True, exist_ok=True)
 
     uris = s3_list(s3_prefix)
-    json_uris = [u for u in uris if u.endswith(".json")]
+    json_uris = [
+        u for u in uris
+        if u.endswith(".json") and not u.endswith("/consolidated.json")
+    ]
     print(f"Found {len(json_uris)} summary file(s) at {s3_prefix}")
 
     summaries = []

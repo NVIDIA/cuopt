@@ -2,21 +2,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Send a single consolidated Slack notification for the entire nightly run.
-# Reads the aggregated JSON produced by aggregate_nightly.py and sends a rich
-# Slack message with:
-#   - Matrix grid overview (test_type x matrix → status)
-#   - Failure tables with :new: / :repeat: badges and matrix context
-#   - @channel on new genuine failures
-#   - Stabilized and flaky test summaries
-#   - Link to GitHub Actions run and consolidated HTML report
+# Send a consolidated Slack notification for the entire nightly run.
+# Reads the aggregated JSON produced by aggregate_nightly.py and sends
+# chunked Slack messages:
+#   1. Header + status summary + test totals
+#   2. Matrix grid (passed / failed / flaky, chunked by test type)
+#   3. Failure details (new, recurring, stabilized, flaky)
+#   4. Links
+# Then uploads the HTML report as a Slack file.
 #
 # Required environment variables:
 #   SLACK_WEBHOOK_URL       - Slack incoming webhook URL
 #   CONSOLIDATED_SUMMARY    - Path to consolidated_summary.json
 #
 # Optional environment variables:
-#   REPORT_URL              - Link to the consolidated HTML report on S3
 #   CONSOLIDATED_HTML       - Path to consolidated HTML file to upload to Slack
 #   SLACK_BOT_TOKEN         - Slack Bot Token (xoxb-*) for file uploads
 #   SLACK_CHANNEL_ID        - Slack channel ID for file uploads (required with bot token)
@@ -25,7 +24,6 @@ set -euo pipefail
 
 CONSOLIDATED_SUMMARY="${CONSOLIDATED_SUMMARY:?CONSOLIDATED_SUMMARY must point to consolidated_summary.json}"
 SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:?SLACK_WEBHOOK_URL is required}"
-REPORT_URL="${REPORT_URL:-}"
 CONSOLIDATED_HTML="${CONSOLIDATED_HTML:-}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
@@ -35,10 +33,11 @@ if [ ! -f "${CONSOLIDATED_SUMMARY}" ]; then
     exit 1
 fi
 
-PAYLOAD=$(python3 - "${CONSOLIDATED_SUMMARY}" "${REPORT_URL}" <<'PYEOF'
+# Generate chunked Slack payloads — one JSON object per line
+PAYLOADS=$(python3 - "${CONSOLIDATED_SUMMARY}" <<'PYEOF'
 import json, sys
 
-summary_path, report_url = sys.argv[1:3]
+summary_path = sys.argv[1]
 
 with open(summary_path) as f:
     d = json.load(f)
@@ -56,7 +55,25 @@ failed_jobs = jobs.get("failed", 0)
 flaky_jobs = jobs.get("flaky", 0)
 passed_jobs = jobs.get("passed", 0)
 
-# --- Status line ---
+status_icons = {
+    "passed": ":white_check_mark:",
+    "failed-new": ":rotating_light:",
+    "failed-recurring": ":x:",
+    "flaky": ":warning:",
+    "no-results": ":grey_question:",
+}
+
+def make_payload(blocks):
+    return json.dumps({
+        "username": "cuOpt Nightly Bot",
+        "icon_emoji": ":robot_face:",
+        "blocks": blocks,
+    })
+
+
+# ── Message 1: Header + status + totals ──────────────────────────────
+blocks = []
+
 if failed_jobs > 0 and has_new:
     emoji = ":rotating_light:"
     text = f"NEW test failures in {failed_jobs} matrix job(s)"
@@ -82,9 +99,6 @@ stats = (
     f"Total: {totals.get('total', 0)}"
 )
 
-blocks = []
-
-# Header
 blocks.append({
     "type": "header",
     "text": {
@@ -93,8 +107,6 @@ blocks.append({
         "emoji": True,
     },
 })
-
-# Status summary
 blocks.append({
     "type": "section",
     "text": {
@@ -102,25 +114,18 @@ blocks.append({
         "text": f"{mention}{emoji} *{text}*\n\n{stats}",
     },
 })
+print(make_payload(blocks))
 
-blocks.append({"type": "divider"})
 
-# --- Matrix grid (compact) ---
-# Group by test_type for readability
+# ── Message 2: Matrix grid (chunked by test type) ────────────────────
 test_types = {}
 for g in grid:
     tt = g["test_type"]
     test_types.setdefault(tt, []).append(g)
 
-status_icons = {
-    "passed": ":white_check_mark:",
-    "failed-new": ":rotating_light:",
-    "failed-recurring": ":x:",
-    "flaky": ":warning:",
-    "no-results": ":grey_question:",
-}
-
-grid_lines = []
+# Split into sections that fit within Slack's 3000 char limit per block
+grid_blocks = []
+current_text = ""
 for tt, entries in sorted(test_types.items()):
     cells = []
     for g in entries:
@@ -131,154 +136,194 @@ for tt, entries in sorted(test_types.items()):
             cells.append(f"{icon} `{label}` ({failed_count} failures)")
         else:
             cells.append(f"{icon} `{label}`")
-    grid_lines.append(f"*{tt}*\n" + "\n".join(f"    {c}" for c in cells))
+    section = f"*{tt}*\n" + "\n".join(f"    {c}" for c in cells) + "\n"
 
-# Slack blocks have a 3000 char limit per text field; truncate if needed
-grid_text = "\n".join(grid_lines)
-if len(grid_text) > 2900:
-    # Summarize instead of full grid
-    grid_text = (
-        f"*Matrix Summary:* {passed_jobs} passed, {failed_jobs} failed, "
-        f"{flaky_jobs} flaky out of {total_jobs} jobs\n"
-        f"_(Full matrix in report link below)_"
-    )
+    # If adding this section would exceed limit, flush current block
+    if current_text and len(current_text) + len(section) > 2800:
+        grid_blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": current_text.rstrip()},
+        })
+        current_text = ""
+    current_text += section
 
-blocks.append({
-    "type": "section",
-    "text": {"type": "mrkdwn", "text": grid_text},
-})
-
-# --- New failures (max 10 to avoid hitting Slack limits) ---
-new_failures = d.get("new_failures", [])
-if new_failures:
-    blocks.append({"type": "divider"})
-    lines = []
-    for f_entry in new_failures[:10]:
-        msg = f_entry.get("message", "")[:50].replace("\n", " ")
-        matrix = f_entry.get("matrix_label", "")
-        lines.append(
-            f"  :new:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix}) \u2014 {msg}"
-        )
-    if len(new_failures) > 10:
-        lines.append(f"  _...and {len(new_failures) - 10} more_")
-    blocks.append({
+if current_text:
+    grid_blocks.append({
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*New Failures:*\n" + "\n".join(lines)},
+        "text": {"type": "mrkdwn", "text": current_text.rstrip()},
     })
 
-# --- Recurring failures (max 10) ---
+# Chunk grid blocks into messages of at most 48 blocks (leave room for divider)
+for i in range(0, len(grid_blocks), 48):
+    chunk = grid_blocks[i:i+48]
+    print(make_payload([{"type": "divider"}] + chunk))
+
+
+# ── Message 3: Failure details ────────────────────────────────────────
+detail_blocks = []
+
+# New failures
+new_failures = d.get("new_failures", [])
+if new_failures:
+    lines = []
+    for f_entry in new_failures[:15]:
+        msg = f_entry.get("message", "")[:80].replace("\n", " ")
+        matrix = f_entry.get("matrix_label", "")
+        lines.append(
+            f":new:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix})\n       {msg}"
+        )
+    if len(new_failures) > 15:
+        lines.append(f"_...and {len(new_failures) - 15} more_")
+    text = "*:rotating_light: New Failures:*\n" + "\n".join(lines)
+    # Split into 3000-char chunks if needed
+    while text:
+        detail_blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text[:2900]},
+        })
+        text = text[2900:]
+
+# Recurring failures
 recurring = d.get("recurring_failures", [])
 if recurring:
-    blocks.append({"type": "divider"})
     lines = []
-    for f_entry in recurring[:10]:
+    for f_entry in recurring[:15]:
         matrix = f_entry.get("matrix_label", "")
         first = f_entry.get("first_seen", "?")
         lines.append(
-            f"  :repeat:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix}) \u2014 since {first}"
+            f":repeat:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix}) \u2014 since {first}"
         )
-    if len(recurring) > 10:
-        lines.append(f"  _...and {len(recurring) - 10} more_")
-    blocks.append({
+    if len(recurring) > 15:
+        lines.append(f"_...and {len(recurring) - 15} more_")
+    detail_blocks.append({"type": "divider"})
+    detail_blocks.append({
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*Recurring Failures:*\n" + "\n".join(lines)},
+        "text": {"type": "mrkdwn", "text": "*:x: Recurring Failures:*\n" + "\n".join(lines)},
     })
 
-# --- Stabilized ---
+# Stabilized
 resolved = d.get("resolved_tests", [])
 if resolved:
     lines = []
-    for r in resolved[:5]:
+    for r in resolved[:10]:
         matrix = r.get("matrix_label", "")
         count = r.get("failure_count", "?")
         lines.append(
-            f"  :white_check_mark:  `{r['name']}` ({r['test_type']} / {matrix}) \u2014 failed {count}x"
+            f":white_check_mark:  `{r['name']}` ({r['test_type']} / {matrix}) \u2014 failed {count}x"
         )
-    if len(resolved) > 5:
-        lines.append(f"  _...and {len(resolved) - 5} more_")
-    blocks.append({
+    if len(resolved) > 10:
+        lines.append(f"_...and {len(resolved) - 10} more_")
+    detail_blocks.append({"type": "divider"})
+    detail_blocks.append({
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": "*Stabilized (were failing, now pass):*\n" + "\n".join(lines),
+            "text": "*:white_check_mark: Stabilized (were failing, now pass):*\n" + "\n".join(lines),
         },
     })
 
-# --- Flaky summary (count only to save space) ---
+# Flaky summary
 flaky = d.get("flaky_tests", [])
 if flaky:
-    # Group by test name to show unique flaky tests
     unique_flaky = {}
     for f_entry in flaky:
         key = f_entry["name"]
         unique_flaky.setdefault(key, []).append(f_entry.get("matrix_label", ""))
     lines = []
-    for name, matrices in sorted(unique_flaky.items())[:5]:
+    for name, matrices in sorted(unique_flaky.items())[:10]:
         matrix_str = ", ".join(matrices[:3])
         if len(matrices) > 3:
             matrix_str += f" +{len(matrices)-3} more"
-        lines.append(f"  :warning:  `{name}` ({matrix_str})")
-    if len(unique_flaky) > 5:
-        lines.append(f"  _...and {len(unique_flaky) - 5} more unique flaky tests_")
-    blocks.append({
+        lines.append(f":warning:  `{name}` ({matrix_str})")
+    if len(unique_flaky) > 10:
+        lines.append(f"_...and {len(unique_flaky) - 10} more unique flaky tests_")
+    detail_blocks.append({"type": "divider"})
+    detail_blocks.append({
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*Flaky Tests:*\n" + "\n".join(lines)},
+        "text": {"type": "mrkdwn", "text": "*:warning: Flaky Tests:*\n" + "\n".join(lines)},
     })
 
-# --- Links ---
+if detail_blocks:
+    print(make_payload(detail_blocks))
+
+
+# ── Message 4: Links ─────────────────────────────────────────────────
 link_parts = []
 if github_run_url:
-    link_parts.append(f"<{github_run_url}|GitHub Actions>")
-if report_url:
-    link_parts.append(f"<{report_url}|Full Report>")
-if link_parts:
-    blocks.append({"type": "divider"})
-    blocks.append({
-        "type": "context",
-        "elements": [{"type": "mrkdwn", "text": "  ".join(link_parts)}],
-    })
+    link_parts.append(f"<{github_run_url}|:github: GitHub Actions>")
+link_parts.append("_Full report attached below_")
 
-payload = {
-    "channel": "cuopt-regression-testing",
-    "username": "cuOpt Nightly Bot",
-    "icon_emoji": ":robot_face:",
-    "blocks": blocks,
-}
-print(json.dumps(payload))
+if link_parts:
+    print(make_payload([
+        {"type": "divider"},
+        {"type": "context",
+         "elements": [{"type": "mrkdwn", "text": "  |  ".join(link_parts)}]},
+    ]))
 PYEOF
 )
 
 echo "Sending consolidated Slack notification..."
-curl -s -X POST \
-    -H 'Content-type: application/json' \
-    --data "${PAYLOAD}" \
-    "${SLACK_WEBHOOK_URL}"
-
-echo ""
+while IFS= read -r payload; do
+    response=$(curl -s -X POST \
+        -H 'Content-type: application/json' \
+        --data "${payload}" \
+        "${SLACK_WEBHOOK_URL}")
+    if [ "${response}" != "ok" ]; then
+        echo "WARNING: Slack webhook returned: ${response}" >&2
+    fi
+done <<< "${PAYLOADS}"
 echo "Consolidated Slack notification sent."
 
 # Upload HTML report as a file to Slack (requires bot token)
 if [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ] && [ -n "${CONSOLIDATED_HTML}" ] && [ -f "${CONSOLIDATED_HTML}" ]; then
     echo "Uploading HTML report to Slack..."
 
-    # Read date and branch from the summary for the filename
     REPORT_DATE=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('date','report'))" "${CONSOLIDATED_SUMMARY}" 2>/dev/null || echo "report")
     REPORT_BRANCH=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('branch','main'))" "${CONSOLIDATED_SUMMARY}" 2>/dev/null || echo "main")
     UPLOAD_FILENAME="cuopt-nightly-${REPORT_BRANCH}-${REPORT_DATE}.html"
+    FILE_SIZE=$(stat --format=%s "${CONSOLIDATED_HTML}")
+    UPLOAD_TITLE="cuOpt Nightly Report — ${REPORT_BRANCH} — ${REPORT_DATE}"
 
-    UPLOAD_RESPONSE=$(curl -s -X POST \
+    # Step 1: Get an upload URL from Slack
+    URL_RESPONSE=$(curl -s -X POST \
         -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
-        -F "channels=${SLACK_CHANNEL_ID}" \
-        -F "file=@${CONSOLIDATED_HTML}" \
-        -F "filename=${UPLOAD_FILENAME}" \
-        -F "title=cuOpt Nightly Report — ${REPORT_BRANCH} — ${REPORT_DATE}" \
-        -F "initial_comment=Full nightly test report attached. Download and open in a browser for interactive details." \
-        "https://slack.com/api/files.upload")
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-urlencode "filename=${UPLOAD_FILENAME}" \
+        --data-urlencode "length=${FILE_SIZE}" \
+        "https://slack.com/api/files.getUploadURLExternal")
 
-    if echo "${UPLOAD_RESPONSE}" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('ok') else 1)" 2>/dev/null; then
-        echo "HTML report uploaded to Slack."
+    UPLOAD_URL=$(echo "${URL_RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('upload_url',''))" 2>/dev/null)
+    FILE_ID=$(echo "${URL_RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('file_id',''))" 2>/dev/null)
+
+    if [ -z "${UPLOAD_URL}" ] || [ -z "${FILE_ID}" ]; then
+        echo "WARNING: Slack file upload failed at getUploadURLExternal. Response: ${URL_RESPONSE}" >&2
     else
-        echo "WARNING: Slack file upload failed. Response: ${UPLOAD_RESPONSE}" >&2
+        # Step 2: Upload the file content to the presigned URL
+        curl -s -X POST \
+            -F "file=@${CONSOLIDATED_HTML}" \
+            "${UPLOAD_URL}"
+
+        # Step 3: Complete the upload and share to channel
+        COMPLETE_PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'files': [{'id': sys.argv[1], 'title': sys.argv[2]}],
+    'channel_id': sys.argv[3],
+    'initial_comment': 'Full nightly test report \u2014 download and open in a browser for interactive details.'
+}))
+" "${FILE_ID}" "${UPLOAD_TITLE}" "${SLACK_CHANNEL_ID}")
+
+        COMPLETE_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${COMPLETE_PAYLOAD}" \
+            "https://slack.com/api/files.completeUploadExternal")
+
+        if echo "${COMPLETE_RESPONSE}" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('ok') else 1)" 2>/dev/null; then
+            echo "HTML report uploaded to Slack."
+        else
+            echo "WARNING: Slack file upload failed at completeUploadExternal. Response: ${COMPLETE_RESPONSE}" >&2
+        fi
     fi
 else
     if [ -n "${SLACK_BOT_TOKEN}" ] && [ -z "${SLACK_CHANNEL_ID}" ]; then

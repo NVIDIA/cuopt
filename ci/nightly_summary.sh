@@ -63,7 +63,6 @@ if [ -n "${CUOPT_SLACK_WEBHOOK_URL:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightl
     SLACK_WEBHOOK_URL="${CUOPT_SLACK_WEBHOOK_URL}" \
     SLACK_BOT_TOKEN="${CUOPT_SLACK_BOT_TOKEN:-}" \
     SLACK_CHANNEL_ID="${CUOPT_SLACK_CHANNEL_ID:-}" \
-    REPORT_URL="${S3_CONSOLIDATED_HTML}" \
         bash "${SCRIPT_DIR}/utils/send_consolidated_summary.sh"
 fi
 

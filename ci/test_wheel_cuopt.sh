@@ -64,6 +64,7 @@ RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
 RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+export RAPIDS_TESTS_DIR
 mkdir -p "${RAPIDS_TESTS_DIR}"
 
 EXITCODE=0
