@@ -165,7 +165,6 @@ void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
 
   // delta_zB = sigma*ei
   delta_z[leaving_index] = direction;
-
 }
 
 template <typename i_t, typename f_t>
