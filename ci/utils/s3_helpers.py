@@ -15,21 +15,23 @@ import sys
 
 
 def s3_env():
-    """Build env dict for AWS CLI calls.
+    """Build env dict for AWS CLI calls using CUOPT-specific credentials.
 
-    Prefers credentials already set by aws-actions/configure-aws-credentials
-    (role-based tokens via AWS_ACCESS_KEY_ID / AWS_SESSION_TOKEN).  Falls
-    back to CUOPT_AWS_* overrides only when standard AWS vars are absent.
+    The cuOpt S3 bucket requires explicit CUOPT_AWS_* static credentials.
+    Role-based credentials from aws-actions/configure-aws-credentials do not
+    have access.  We override AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY with
+    the CUOPT_* values and unset AWS_SESSION_TOKEN to avoid mixing with
+    role-based session tokens (matching the pattern in datasets/*.sh).
     """
     env = os.environ.copy()
-    # Only override if standard AWS credentials are not already configured
-    if not os.environ.get("AWS_ACCESS_KEY_ID"):
-        if os.environ.get("CUOPT_AWS_ACCESS_KEY_ID"):
-            env["AWS_ACCESS_KEY_ID"] = os.environ["CUOPT_AWS_ACCESS_KEY_ID"]
-        if os.environ.get("CUOPT_AWS_SECRET_ACCESS_KEY"):
-            env["AWS_SECRET_ACCESS_KEY"] = os.environ[
-                "CUOPT_AWS_SECRET_ACCESS_KEY"
-            ]
+    if os.environ.get("CUOPT_AWS_ACCESS_KEY_ID"):
+        env["AWS_ACCESS_KEY_ID"] = os.environ["CUOPT_AWS_ACCESS_KEY_ID"]
+    if os.environ.get("CUOPT_AWS_SECRET_ACCESS_KEY"):
+        env["AWS_SECRET_ACCESS_KEY"] = os.environ[
+            "CUOPT_AWS_SECRET_ACCESS_KEY"
+        ]
+    # Unset session token to avoid mixing role-based tokens with static keys
+    env.pop("AWS_SESSION_TOKEN", None)
     if os.environ.get("CUOPT_AWS_REGION"):
         env["AWS_DEFAULT_REGION"] = os.environ["CUOPT_AWS_REGION"]
     elif "AWS_DEFAULT_REGION" not in env:
