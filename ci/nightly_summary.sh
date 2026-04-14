@@ -73,9 +73,20 @@ python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
     --workflow-jobs "${WORKFLOW_JOBS_JSON}"
 
 # --- Generate presigned URLs for reports (7-day expiry) ---
+# Map CUOPT_AWS_* to standard AWS env vars for the aws CLI
+export AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+export AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+unset AWS_SESSION_TOKEN
+
 PRESIGN_EXPIRY=604800
-PRESIGNED_HTML=$(aws s3 presign "${S3_CONSOLIDATED_HTML}" --expires-in "${PRESIGN_EXPIRY}" 2>/dev/null || echo "")
-PRESIGNED_DASHBOARD=$(aws s3 presign "${S3_DASHBOARD_URI}" --expires-in "${PRESIGN_EXPIRY}" 2>/dev/null || echo "")
+PRESIGNED_HTML=$(aws s3 presign "${S3_CONSOLIDATED_HTML}" --expires-in "${PRESIGN_EXPIRY}" 2>&1) || {
+    echo "WARNING: Failed to generate presigned URL for report: ${PRESIGNED_HTML}" >&2
+    PRESIGNED_HTML=""
+}
+PRESIGNED_DASHBOARD=$(aws s3 presign "${S3_DASHBOARD_URI}" --expires-in "${PRESIGN_EXPIRY}" 2>&1) || {
+    echo "WARNING: Failed to generate presigned URL for dashboard: ${PRESIGNED_DASHBOARD}" >&2
+    PRESIGNED_DASHBOARD=""
+}
 
 # Send consolidated Slack notification if webhook is available and this is a nightly build
 if [ -n "${CUOPT_SLACK_WEBHOOK_URL:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ]; then

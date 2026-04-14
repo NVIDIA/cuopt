@@ -175,53 +175,7 @@ print(make_payload(blocks))
 # THREAD REPLIES (lines 2+) — posted as replies to main message
 # ══════════════════════════════════════════════════════════════════════
 
-# ── Thread 1: CI Workflow Status (all jobs) ───────────────────────────
-# Shows every workflow job so new workflows are automatically visible.
-if workflow_jobs:
-    ci_icons = {"success": ":white_check_mark:", "failure": ":x:",
-                "cancelled": ":no_entry_sign:", "skipped": ":fast_forward:"}
-
-    # Group by workflow prefix (e.g., "conda-cpp-tests", "conda-notebook-tests")
-    wf_groups = {}
-    for j in workflow_jobs:
-        # Use the part before " / " as group name, or full name
-        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
-        wf_groups.setdefault(prefix, []).append(j)
-
-    ci_blocks = []
-    current = "*CI Workflow Status:*\n"
-    for group_name, group_jobs in sorted(wf_groups.items()):
-        passed = sum(1 for j in group_jobs if j["conclusion"] == "success")
-        failed = sum(1 for j in group_jobs if j["conclusion"] == "failure")
-        total = len(group_jobs)
-
-        if failed > 0:
-            icon = ":x:"
-            detail = f"{failed}/{total} failed"
-        elif passed == total:
-            icon = ":white_check_mark:"
-            detail = f"{total} passed"
-        else:
-            icon = ":grey_question:"
-            detail = f"{passed}/{total} passed"
-
-        line = f"{icon}  *{group_name}* — {detail}\n"
-        if len(current) + len(line) > 2900:
-            ci_blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": current.rstrip()},
-            })
-            current = ""
-        current += line
-
-    if current.strip():
-        ci_blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": current.rstrip()},
-        })
-    print(make_payload(ci_blocks))
-
-# ── Thread 2: Failing and flaky tests (grouped by workflow) ───────────
+# ── Thread 1: Failing and flaky tests (grouped by workflow) ───────────
 # Build per-workflow test issue lists
 new_failures = d.get("new_failures", [])
 recurring = d.get("recurring_failures", [])
@@ -291,6 +245,47 @@ if issues_by_wf:
             wf_text = wf_text[2900:]
 
         print(make_payload(wf_blocks))
+
+# ── Thread 2: CI Workflow Status (all jobs) ───────────────────────────
+# Shows every workflow job so new workflows are automatically visible.
+if workflow_jobs:
+    wf_groups = {}
+    for j in workflow_jobs:
+        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
+        wf_groups.setdefault(prefix, []).append(j)
+
+    ci_blocks = []
+    current = "*CI Workflow Status:*\n"
+    for group_name, group_jobs in sorted(wf_groups.items()):
+        passed = sum(1 for j in group_jobs if j["conclusion"] == "success")
+        failed = sum(1 for j in group_jobs if j["conclusion"] == "failure")
+        total = len(group_jobs)
+
+        if failed > 0:
+            icon = ":x:"
+            detail = f"{failed}/{total} failed"
+        elif passed == total:
+            icon = ":white_check_mark:"
+            detail = f"{total} passed"
+        else:
+            icon = ":grey_question:"
+            detail = f"{passed}/{total} passed"
+
+        line = f"{icon}  *{group_name}* — {detail}\n"
+        if len(current) + len(line) > 2900:
+            ci_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": current.rstrip()},
+            })
+            current = ""
+        current += line
+
+    if current.strip():
+        ci_blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": current.rstrip()},
+        })
+    print(make_payload(ci_blocks))
 PYEOF
 )
 
