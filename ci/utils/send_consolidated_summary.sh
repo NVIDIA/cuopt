@@ -101,7 +101,7 @@ if untracked_count > 0 or (failed_jobs > 0 and has_new):
     elif failed_jobs > 0:
         parts.append(f"recurring failures in {failed_jobs} matrix job(s)")
     text = " + ".join(parts)
-    mention = "<!channel> "
+    mention = ""
 elif failed_jobs > 0:
     emoji = ":x:"
     text = f"Recurring failures in {failed_jobs} matrix job(s)"
