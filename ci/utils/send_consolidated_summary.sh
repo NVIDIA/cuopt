@@ -138,20 +138,16 @@ blocks.append({
     },
 })
 
-# Failed CI jobs in main message
+# Failed CI jobs summary in main message (details in thread)
 if failed_ci_jobs:
-    lines = []
-    for j in failed_ci_jobs:
-        url = j.get("url", "")
-        name = j["name"]
-        if url:
-            lines.append(f":x:  <{url}|{name}>")
-        else:
-            lines.append(f":x:  {name}")
+    names = [j["name"] for j in failed_ci_jobs]
+    summary = f":x: *{len(failed_ci_jobs)} CI job(s) failed:* " + ", ".join(f"`{n}`" for n in names[:5])
+    if len(names) > 5:
+        summary += f" _+{len(names) - 5} more_"
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*Failed CI Jobs:*\n" + "\n".join(lines)},
+        "text": {"type": "mrkdwn", "text": summary},
     })
 
 # Links in main message
@@ -176,7 +172,29 @@ print(make_payload(blocks))
 # THREAD REPLIES (lines 2+) — posted as replies to main message
 # ══════════════════════════════════════════════════════════════════════
 
-# ── Thread 1: Failed/flaky matrix entries ─────────────────────────────
+# ── Thread 1: Failed CI job details ───────────────────────────────────
+if failed_ci_jobs:
+    ci_blocks = []
+    current = "*Failed CI Jobs:*\n"
+    for j in failed_ci_jobs:
+        url = j.get("url", "")
+        name = j["name"]
+        line = f":x:  <{url}|{name}>\n" if url else f":x:  {name}\n"
+        if len(current) + len(line) > 2900:
+            ci_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": current.rstrip()},
+            })
+            current = ""
+        current += line
+    if current.strip():
+        ci_blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": current.rstrip()},
+        })
+    print(make_payload(ci_blocks))
+
+# ── Thread 2: Failed/flaky matrix entries ─────────────────────────────
 failed_grid = [g for g in grid if g["status"] != "passed"]
 
 if failed_grid:

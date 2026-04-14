@@ -174,9 +174,22 @@ def aggregate_summaries(summaries):
 
 def parse_workflow_jobs(workflow_jobs_path):
     """Parse GitHub Actions workflow job statuses from JSON file.
-    Returns a list of dicts with job name, conclusion, and URL."""
+    Returns a list of dicts with job name, conclusion, and URL.
+    Only includes jobs NOT already tracked by per-matrix S3 summaries
+    (i.e., excludes conda-cpp-tests, conda-python-tests,
+    wheel-tests-cuopt, wheel-tests-cuopt-server matrix jobs and
+    their compute-matrix helpers)."""
     if not workflow_jobs_path or not Path(workflow_jobs_path).exists():
         return []
+
+    # Job name prefixes that are already covered by per-matrix S3 reports
+    TRACKED_PREFIXES = (
+        "conda-cpp-tests",
+        "conda-python-tests",
+        "wheel-tests-cuopt-server",
+        "wheel-tests-cuopt",
+    )
+
     try:
         with open(workflow_jobs_path) as f:
             data = json.load(f)
@@ -186,6 +199,9 @@ def parse_workflow_jobs(workflow_jobs_path):
             name = job.get("name", "")
             # Skip the nightly-summary job itself
             if "nightly-summary" in name.lower():
+                continue
+            # Skip jobs already tracked by per-matrix S3 summaries
+            if any(name.startswith(prefix) for prefix in TRACKED_PREFIXES):
                 continue
             result.append({
                 "name": name,
