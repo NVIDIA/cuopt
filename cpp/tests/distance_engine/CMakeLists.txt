@@ -5,4 +5,4 @@
 
 ConfigureTest(WAYPOINT_MATRIXTEST
     ${CMAKE_CURRENT_SOURCE_DIR}/waypoint_matrix_test.cpp
-    LABELS routing tier1)
+    LABELS routing)

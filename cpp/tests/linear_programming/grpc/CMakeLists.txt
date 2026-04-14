@@ -35,8 +35,8 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
 endif()
 
 add_test(NAME GRPC_CLIENT_TEST COMMAND GRPC_CLIENT_TEST)
-set_tests_properties(GRPC_CLIENT_TEST PROPERTIES LABELS "grpc;tier1")
-register_test_labels(GRPC_CLIENT_TEST grpc tier1)
+set_tests_properties(GRPC_CLIENT_TEST PROPERTIES LABELS "grpc")
+register_test_labels(GRPC_CLIENT_TEST grpc)
 
 install(
     TARGETS GRPC_CLIENT_TEST
@@ -77,8 +77,8 @@ if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
 endif()
 
 add_test(NAME GRPC_PIPE_SERIALIZATION_TEST COMMAND GRPC_PIPE_SERIALIZATION_TEST)
-set_tests_properties(GRPC_PIPE_SERIALIZATION_TEST PROPERTIES LABELS "grpc;tier1")
-register_test_labels(GRPC_PIPE_SERIALIZATION_TEST grpc tier1)
+set_tests_properties(GRPC_PIPE_SERIALIZATION_TEST PROPERTIES LABELS "grpc")
+register_test_labels(GRPC_PIPE_SERIALIZATION_TEST grpc)
 
 install(
     TARGETS GRPC_PIPE_SERIALIZATION_TEST
@@ -126,8 +126,8 @@ add_test(
         "CUOPT_GRPC_SERVER_PATH=$<TARGET_FILE:cuopt_grpc_server>"
         $<TARGET_FILE:GRPC_INTEGRATION_TEST>
 )
-set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "grpc;tier2")
-register_test_labels(GRPC_INTEGRATION_TEST grpc tier2)
+set_tests_properties(GRPC_INTEGRATION_TEST PROPERTIES LABELS "grpc")
+register_test_labels(GRPC_INTEGRATION_TEST grpc)
 
 install(
     TARGETS GRPC_INTEGRATION_TEST

@@ -27,9 +27,11 @@ fi
 # Set CUOPT_TEST_LABELS to a comma-separated list of labels to run only tests
 # matching ANY of those labels. For example:
 #   CUOPT_TEST_LABELS=routing          — run only routing tests
-#   CUOPT_TEST_LABELS=solver           — run all LP/MIP/QP tests
-#   CUOPT_TEST_LABELS=tier1            — run only fast unit tests
+#   CUOPT_TEST_LABELS=solver           — run all LP/MIP/QP/dual-simplex tests
+#   CUOPT_TEST_LABELS=mip              — run only MIP tests
 #   CUOPT_TEST_LABELS=routing,solver   — run routing + solver tests
+#
+# Available labels: routing, solver (includes lp, mip, qp, parser), grpc, cli
 #
 # When unset or empty, all tests run (backward-compatible default).
 # ---------------------------------------------------------------------------

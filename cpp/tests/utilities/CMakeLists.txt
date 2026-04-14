@@ -5,4 +5,4 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp
-    LABELS cli tier1)
+    LABELS cli)
