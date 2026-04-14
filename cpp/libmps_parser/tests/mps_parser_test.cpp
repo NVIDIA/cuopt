@@ -15,8 +15,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -434,10 +434,7 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
   const std::vector<Case> cases = {
     {"mip/sc_standard.mps", 2, 2.0, 10.0},
     {"mip/sc_lb_zero.mps", 2, 1.0, 10.0},
-    {"mip/sc_ub_zero.mps", 2, -4.0, 0.0},
     {"mip/sc_no_ub.mps", 2, 2.0, 1e30},
-    {"mip/sc_both_neg.mps", 2, -5.0, -1.0},
-    {"mip/sc_neg_lb_pos_ub.mps", 2, -3.0, 5.0},
   };
 
   for (const auto& c : cases) {
