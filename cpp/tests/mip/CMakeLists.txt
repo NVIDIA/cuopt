@@ -7,48 +7,48 @@
 # - MIP tests ----------------------------------------------------------------------
 ConfigureTest(MIP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/miplib_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(PROBLEM_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/problem_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(ELIM_VAR_REMAP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/elim_var_remap_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(STANDARDIZATION_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/bounds_standardization_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(MULTI_PROBE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/multi_probe_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(INCUMBENT_CALLBACK_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/incumbent_callback_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(DOC_EXAMPLE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/doc_example_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(CUTS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/cuts_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/integer_with_real_bounds.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(EMPTY_FIXED_PROBLEMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/empty_fixed_problems_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(PRESOLVE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/presolve_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 # Disable for now
 # ConfigureTest(FEASIBILITY_JUMP_TEST
 #    ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump_tests.cu
 # )
 ConfigureTest(MIP_TERMINATION_STATUS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/termination_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(DETERMINISM_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/determinism_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)
 ConfigureTest(HEURISTICS_HYPER_PARAMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/heuristics_hyper_params_test.cu
-    LABELS solver mip)
+    LABELS mathopt mip)

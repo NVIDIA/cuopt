@@ -128,7 +128,7 @@ if(BUILD_TESTS)
 
   # Register the MPS_PARSER_TEST labels (defined in libmps_parser/tests/,
   # which has its own ConfigureTest that does not call register_test_labels).
-  register_test_labels(MPS_PARSER_TEST solver parser)
+  register_test_labels(MPS_PARSER_TEST mathopt parser)
 
   # Generate and install the test-label manifest so ci/run_ctests.sh can
   # filter tests by label without needing a CMake build directory.

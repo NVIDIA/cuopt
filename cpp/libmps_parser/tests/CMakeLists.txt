@@ -53,5 +53,5 @@ endfunction()
  ConfigureTest(MPS_PARSER_TEST
      mps_parser_test.cpp
  )
- set_tests_properties(MPS_PARSER_TEST PROPERTIES LABELS "solver;parser")
+ set_tests_properties(MPS_PARSER_TEST PROPERTIES LABELS "mathopt;parser")
 ###################################################################################################
