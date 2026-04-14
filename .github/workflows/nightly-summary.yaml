@@ -68,4 +68,8 @@ jobs:
           CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
           RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
           RAPIDS_BRANCH: ${{ inputs.branch }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: bash ci/nightly_summary.sh

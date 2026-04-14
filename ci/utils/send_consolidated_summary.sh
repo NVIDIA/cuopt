@@ -5,10 +5,10 @@
 # Send a consolidated Slack notification for the entire nightly run.
 # Reads the aggregated JSON produced by aggregate_nightly.py and sends
 # chunked Slack messages:
-#   1. Header + status summary + test totals
-#   2. Matrix grid (passed / failed / flaky, chunked by test type)
+#   1. Header + status summary + test totals + failed CI jobs
+#   2. Failed/flaky matrix entries only (not passing ones)
 #   3. Failure details (new, recurring, stabilized, flaky)
-#   4. Links
+#   4. Links (presigned URLs + GitHub Actions)
 # Then uploads the HTML report as a Slack file.
 #
 # Required environment variables:
@@ -16,9 +16,11 @@
 #   CONSOLIDATED_SUMMARY    - Path to consolidated_summary.json
 #
 # Optional environment variables:
-#   CONSOLIDATED_HTML       - Path to consolidated HTML file to upload to Slack
-#   SLACK_BOT_TOKEN         - Slack Bot Token (xoxb-*) for file uploads
-#   SLACK_CHANNEL_ID        - Slack channel ID for file uploads (required with bot token)
+#   CONSOLIDATED_HTML           - Path to consolidated HTML file to upload
+#   SLACK_BOT_TOKEN             - Slack Bot Token (xoxb-*) for file uploads
+#   SLACK_CHANNEL_ID            - Slack channel ID for file uploads
+#   PRESIGNED_REPORT_URL        - Presigned URL for consolidated HTML report
+#   PRESIGNED_DASHBOARD_URL     - Presigned URL for dashboard
 
 set -euo pipefail
 
@@ -27,6 +29,8 @@ SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:?SLACK_WEBHOOK_URL is required}"
 CONSOLIDATED_HTML="${CONSOLIDATED_HTML:-}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
+PRESIGNED_REPORT_URL="${PRESIGNED_REPORT_URL:-}"
+PRESIGNED_DASHBOARD_URL="${PRESIGNED_DASHBOARD_URL:-}"
 
 if [ ! -f "${CONSOLIDATED_SUMMARY}" ]; then
     echo "ERROR: Summary file not found: ${CONSOLIDATED_SUMMARY}" >&2
@@ -34,10 +38,12 @@ if [ ! -f "${CONSOLIDATED_SUMMARY}" ]; then
 fi
 
 # Generate chunked Slack payloads — one JSON object per line
-PAYLOADS=$(python3 - "${CONSOLIDATED_SUMMARY}" <<'PYEOF'
+PAYLOADS=$(python3 - "${CONSOLIDATED_SUMMARY}" "${PRESIGNED_REPORT_URL}" "${PRESIGNED_DASHBOARD_URL}" <<'PYEOF'
 import json, sys
 
 summary_path = sys.argv[1]
+presigned_report_url = sys.argv[2] if len(sys.argv) > 2 else ""
+presigned_dashboard_url = sys.argv[3] if len(sys.argv) > 3 else ""
 
 with open(summary_path) as f:
     d = json.load(f)
@@ -49,11 +55,18 @@ jobs = d.get("job_summary", {})
 totals = d.get("test_totals", {})
 grid = d.get("matrix_grid", [])
 has_new = d.get("has_new_failures", False)
+failed_ci_jobs = d.get("failed_ci_jobs", [])
+workflow_jobs = d.get("workflow_jobs", [])
 
 total_jobs = jobs.get("total", 0)
 failed_jobs = jobs.get("failed", 0)
 flaky_jobs = jobs.get("flaky", 0)
 passed_jobs = jobs.get("passed", 0)
+
+# Count CI-level failures (jobs that failed at workflow level)
+total_ci_jobs = len(workflow_jobs)
+failed_ci_count = len(failed_ci_jobs)
+passed_ci_count = sum(1 for j in workflow_jobs if j["conclusion"] == "success")
 
 status_icons = {
     "passed": ":white_check_mark:",
@@ -71,12 +84,22 @@ def make_payload(blocks):
     })
 
 
-# ── Message 1: Header + status + totals ──────────────────────────────
+# ── Message 1: Header + status + totals + CI job failures ────────────
 blocks = []
 
-if failed_jobs > 0 and has_new:
+# Determine overall status considering both test results and CI jobs
+all_green = failed_jobs == 0 and failed_ci_count == 0
+
+if failed_ci_count > 0 or (failed_jobs > 0 and has_new):
     emoji = ":rotating_light:"
-    text = f"NEW test failures in {failed_jobs} matrix job(s)"
+    parts = []
+    if failed_ci_count > 0:
+        parts.append(f"{failed_ci_count} CI job(s) failed")
+    if failed_jobs > 0 and has_new:
+        parts.append(f"NEW test failures in {failed_jobs} matrix job(s)")
+    elif failed_jobs > 0:
+        parts.append(f"recurring failures in {failed_jobs} matrix job(s)")
+    text = " + ".join(parts)
     mention = "<!channel> "
 elif failed_jobs > 0:
     emoji = ":x:"
@@ -89,6 +112,8 @@ elif flaky_jobs > 0:
 else:
     emoji = ":white_check_mark:"
     text = f"All {total_jobs} matrix jobs passed"
+    if total_ci_jobs > 0:
+        text += f", all {passed_ci_count} CI jobs succeeded"
     mention = ""
 
 stats = (
@@ -114,49 +139,76 @@ blocks.append({
         "text": f"{mention}{emoji} *{text}*\n\n{stats}",
     },
 })
+
+# Show failed CI jobs (notebooks, JuMP, etc.)
+if failed_ci_jobs:
+    lines = []
+    for j in failed_ci_jobs:
+        url = j.get("url", "")
+        name = j["name"]
+        if url:
+            lines.append(f":x:  <{url}|{name}>")
+        else:
+            lines.append(f":x:  {name}")
+    blocks.append({"type": "divider"})
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "*Failed CI Jobs:*\n" + "\n".join(lines)},
+    })
+
 print(make_payload(blocks))
 
 
-# ── Message 2: Matrix grid (chunked by test type) ────────────────────
-test_types = {}
-for g in grid:
-    tt = g["test_type"]
-    test_types.setdefault(tt, []).append(g)
+# ── Message 2: Failed/flaky matrix entries only ──────────────────────
+# Only show entries that are NOT passed
+failed_grid = [g for g in grid if g["status"] != "passed"]
 
-# Split into sections that fit within Slack's 3000 char limit per block
-grid_blocks = []
-current_text = ""
-for tt, entries in sorted(test_types.items()):
-    cells = []
-    for g in entries:
-        icon = status_icons.get(g["status"], ":grey_question:")
-        label = g["matrix_label"]
-        failed_count = g["counts"].get("failed", 0)
-        if failed_count > 0:
-            cells.append(f"{icon} `{label}` ({failed_count} failures)")
-        else:
-            cells.append(f"{icon} `{label}`")
-    section = f"*{tt}*\n" + "\n".join(f"    {c}" for c in cells) + "\n"
+if failed_grid:
+    test_types = {}
+    for g in failed_grid:
+        tt = g["test_type"]
+        test_types.setdefault(tt, []).append(g)
 
-    # If adding this section would exceed limit, flush current block
-    if current_text and len(current_text) + len(section) > 2800:
+    grid_blocks = []
+    current_text = ""
+    for tt, entries in sorted(test_types.items()):
+        cells = []
+        for g in entries:
+            icon = status_icons.get(g["status"], ":grey_question:")
+            label = g["matrix_label"]
+            failed_count = g["counts"].get("failed", 0)
+            if failed_count > 0:
+                cells.append(f"{icon} `{label}` ({failed_count} failures)")
+            else:
+                cells.append(f"{icon} `{label}`")
+        section = f"*{tt}*\n" + "\n".join(f"    {c}" for c in cells) + "\n"
+
+        if current_text and len(current_text) + len(section) > 2800:
+            grid_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": current_text.rstrip()},
+            })
+            current_text = ""
+        current_text += section
+
+    if current_text:
         grid_blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn", "text": current_text.rstrip()},
         })
-        current_text = ""
-    current_text += section
 
-if current_text:
-    grid_blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": current_text.rstrip()},
-    })
-
-# Chunk grid blocks into messages of at most 48 blocks (leave room for divider)
-for i in range(0, len(grid_blocks), 48):
-    chunk = grid_blocks[i:i+48]
-    print(make_payload([{"type": "divider"}] + chunk))
+    for i in range(0, len(grid_blocks), 48):
+        chunk = grid_blocks[i:i+48]
+        print(make_payload([{"type": "divider"}] + chunk))
+else:
+    # All passed — just a compact summary
+    if total_jobs > 0:
+        print(make_payload([
+            {"type": "divider"},
+            {"type": "section",
+             "text": {"type": "mrkdwn",
+                      "text": f":white_check_mark: All {total_jobs} test matrix jobs passed"}},
+        ]))
 
 
 # ── Message 3: Failure details ────────────────────────────────────────
@@ -175,7 +227,6 @@ if new_failures:
     if len(new_failures) > 15:
         lines.append(f"_...and {len(new_failures) - 15} more_")
     text = "*:rotating_light: New Failures:*\n" + "\n".join(lines)
-    # Split into 3000-char chunks if needed
     while text:
         detail_blocks.append({
             "type": "section",
@@ -251,7 +302,12 @@ if detail_blocks:
 link_parts = []
 if github_run_url:
     link_parts.append(f"<{github_run_url}|:github: GitHub Actions>")
-link_parts.append("_Full report attached below_")
+if presigned_report_url:
+    link_parts.append(f"<{presigned_report_url}|:bar_chart: Full Report>")
+if presigned_dashboard_url:
+    link_parts.append(f"<{presigned_dashboard_url}|:chart_with_upwards_trend: Dashboard>")
+if not presigned_report_url:
+    link_parts.append("_Full report attached below_")
 
 if link_parts:
     print(make_payload([

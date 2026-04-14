@@ -13,6 +13,8 @@
 #   CUOPT_SLACK_WEBHOOK_URL       - sends Slack if set
 #   RAPIDS_BRANCH                 - branch name (default: main)
 #   RAPIDS_BUILD_TYPE             - build type (nightly, pull-request, etc.)
+#   GITHUB_TOKEN                  - for querying workflow job statuses
+#   GITHUB_RUN_ID                 - current workflow run ID
 
 set -euo pipefail
 
@@ -40,6 +42,20 @@ S3_INDEX_URI="${S3_BASE}/index.json"
 S3_DASHBOARD_URI="${S3_BASE}/dashboard/index.html"
 DASHBOARD_DIR="${SCRIPT_DIR}/dashboard"
 
+# --- Query GitHub API for workflow job statuses ---
+WORKFLOW_JOBS_JSON="${OUTPUT_DIR}/workflow_jobs.json"
+if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    echo "Fetching workflow job statuses from GitHub API..."
+    curl -s -L \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+        > "${WORKFLOW_JOBS_JSON}" || echo "{}" > "${WORKFLOW_JOBS_JSON}"
+else
+    echo "WARNING: GITHUB_TOKEN or GITHUB_RUN_ID not set, skipping workflow job status." >&2
+    echo "{}" > "${WORKFLOW_JOBS_JSON}"
+fi
+
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
 python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
@@ -53,7 +69,13 @@ python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
     --output-dir "${OUTPUT_DIR}" \
     --date "${RUN_DATE}" \
     --branch "${BRANCH}" \
-    --github-run-url "${GITHUB_RUN_URL}"
+    --github-run-url "${GITHUB_RUN_URL}" \
+    --workflow-jobs "${WORKFLOW_JOBS_JSON}"
+
+# --- Generate presigned URLs for reports (7-day expiry) ---
+PRESIGN_EXPIRY=604800
+PRESIGNED_HTML=$(aws s3 presign "${S3_CONSOLIDATED_HTML}" --expires-in "${PRESIGN_EXPIRY}" 2>/dev/null || echo "")
+PRESIGNED_DASHBOARD=$(aws s3 presign "${S3_DASHBOARD_URI}" --expires-in "${PRESIGN_EXPIRY}" 2>/dev/null || echo "")
 
 # Send consolidated Slack notification if webhook is available and this is a nightly build
 if [ -n "${CUOPT_SLACK_WEBHOOK_URL:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ]; then
@@ -63,6 +85,8 @@ if [ -n "${CUOPT_SLACK_WEBHOOK_URL:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightl
     SLACK_WEBHOOK_URL="${CUOPT_SLACK_WEBHOOK_URL}" \
     SLACK_BOT_TOKEN="${CUOPT_SLACK_BOT_TOKEN:-}" \
     SLACK_CHANNEL_ID="${CUOPT_SLACK_CHANNEL_ID:-}" \
+    PRESIGNED_REPORT_URL="${PRESIGNED_HTML}" \
+    PRESIGNED_DASHBOARD_URL="${PRESIGNED_DASHBOARD}" \
         bash "${SCRIPT_DIR}/utils/send_consolidated_summary.sh"
 fi
 

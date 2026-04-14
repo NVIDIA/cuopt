@@ -172,7 +172,38 @@ def aggregate_summaries(summaries):
 # ---------------------------------------------------------------------------
 
 
-def generate_consolidated_json(agg, date_str, branch, github_run_url=""):
+def parse_workflow_jobs(workflow_jobs_path):
+    """Parse GitHub Actions workflow job statuses from JSON file.
+    Returns a list of dicts with job name, conclusion, and URL."""
+    if not workflow_jobs_path or not Path(workflow_jobs_path).exists():
+        return []
+    try:
+        with open(workflow_jobs_path) as f:
+            data = json.load(f)
+        jobs_list = data.get("jobs", [])
+        result = []
+        for job in jobs_list:
+            name = job.get("name", "")
+            # Skip the nightly-summary job itself
+            if "nightly-summary" in name.lower():
+                continue
+            result.append({
+                "name": name,
+                "conclusion": job.get("conclusion", "unknown"),
+                "status": job.get("status", "unknown"),
+                "url": job.get("html_url", ""),
+            })
+        return result
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"WARNING: Failed to parse workflow jobs: {exc}",
+            file=sys.stderr,
+        )
+        return []
+
+
+def generate_consolidated_json(agg, date_str, branch, github_run_url="",
+                               workflow_jobs=None):
     """Generate the consolidated JSON for Slack and dashboard."""
     total_jobs = len(agg["matrix_grid"])
     failed_jobs = sum(
@@ -180,6 +211,10 @@ def generate_consolidated_json(agg, date_str, branch, github_run_url=""):
     )
     flaky_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "flaky")
     passed_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "passed")
+
+    # Workflow-level CI job statuses (notebooks, JuMP, etc.)
+    wf_jobs = workflow_jobs or []
+    failed_ci_jobs = [j for j in wf_jobs if j["conclusion"] == "failure"]
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -199,6 +234,8 @@ def generate_consolidated_json(agg, date_str, branch, github_run_url=""):
         "recurring_failures": agg["all_recurring_failures"],
         "flaky_tests": agg["all_flaky_tests"],
         "resolved_tests": agg["all_resolved_tests"],
+        "workflow_jobs": wf_jobs,
+        "failed_ci_jobs": failed_ci_jobs,
     }
 
 
@@ -556,6 +593,11 @@ def main():
         default="",
         help="URL to the GitHub Actions run",
     )
+    parser.add_argument(
+        "--workflow-jobs",
+        default="",
+        help="Path to JSON file with GitHub Actions workflow job statuses",
+    )
 
     args = parser.parse_args()
     output_dir = Path(args.output_dir)
@@ -591,12 +633,22 @@ def main():
         f"{sum(1 for g in agg['matrix_grid'] if g['status'] == 'flaky')} flaky"
     )
 
+    # ---- Step 2b: Parse workflow job statuses ----
+    workflow_jobs = parse_workflow_jobs(args.workflow_jobs)
+    if workflow_jobs:
+        failed_wf = [j for j in workflow_jobs if j["conclusion"] == "failure"]
+        print(
+            f"Workflow jobs: {len(workflow_jobs)} total, "
+            f"{len(failed_wf)} failed"
+        )
+
     # ---- Step 3: Generate outputs ----
     consolidated = generate_consolidated_json(
         agg,
         args.date,
         args.branch,
         args.github_run_url,
+        workflow_jobs,
     )
 
     json_path = output_dir / "consolidated_summary.json"
