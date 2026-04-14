@@ -1473,8 +1473,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         basic_map[worker->basic_list[i]] = i;
       }
 
+      // Each thread will have a different basis
+      // So we need to make a copy of Arow before we permute the columns
+      // so that nonbasic variables appear first
+      csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
       std::vector<i_t> nonbasic_end(m);
-      compute_initial_nonbasic_end(basic_map, Arow, nonbasic_end);
+      compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
       for (auto& [score, j] : unreliable_list) {
         if (pseudo_cost_num_down[j] == 0 || pseudo_cost_num_up[j] == 0) {
@@ -1482,7 +1487,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           objective_change_estimate_t<f_t> estimate =
             single_pivot_objective_change_estimate(worker->leaf_problem,
                                                    settings,
-                                                   Arow,
+                                                   local_Arow,
                                                    node_ptr->vstatus,
                                                    j,
                                                    basic_map[j],
