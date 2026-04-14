@@ -394,7 +394,6 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
   lp_status_t barrier_status =
     barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
-  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
@@ -588,6 +587,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     solution.l2_dual_residual   = barrier_solution.l2_dual_residual;
     solution.iterations         = barrier_solution.iterations;
   }
+
+  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
 
   // If we aren't doing crossover, we're done
   if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
