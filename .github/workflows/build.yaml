@@ -242,6 +242,44 @@ jobs:
             -f date="${INPUT_DATE}"             \
             -f sha="${INPUT_SHA}"
 
+  build-summary:
+    if: ${{ always() && (inputs.build_type == 'nightly') }}
+    needs:
+      - cpp-build
+      - python-build
+      - upload-conda
+      - wheel-build-cuopt-mps-parser
+      - wheel-publish-cuopt-mps-parser
+      - wheel-build-libcuopt
+      - wheel-publish-libcuopt
+      - wheel-build-cuopt
+      - wheel-publish-cuopt
+      - wheel-build-cuopt-server
+      - wheel-publish-cuopt-server
+      - wheel-build-cuopt-sh-client
+      - wheel-publish-cuopt-sh-client
+      - docs-build
+    runs-on: linux-amd64-cpu4
+    container:
+      image: python:3.12-slim
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends curl
+      - name: Send build summary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          CUOPT_SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          RAPIDS_BRANCH: ${{ inputs.branch }}
+        run: bash ci/build_summary.sh
+
   build-images:
     needs:
       - wheel-publish-cuopt

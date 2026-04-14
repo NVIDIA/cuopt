@@ -89,24 +89,35 @@ def make_payload(blocks):
 # ══════════════════════════════════════════════════════════════════════
 blocks = []
 
+# Identify which workflows have failures (from both CI jobs and matrix grid)
+failing_workflows = set()
+for j in failed_ci_jobs:
+    prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
+    failing_workflows.add(prefix)
+for g in grid:
+    if g["status"].startswith("failed"):
+        failing_workflows.add(g["test_type"])
+flaky_workflows = set()
+for g in grid:
+    if g["status"] == "flaky":
+        flaky_workflows.add(g["test_type"])
+
+has_failures = len(failing_workflows) > 0
 untracked_count = len(untracked_failed)
-if untracked_count > 0 or (failed_jobs > 0 and has_new):
+
+if has_failures and (has_new or untracked_count > 0):
     emoji = ":rotating_light:"
-    parts = []
-    if untracked_count > 0:
-        names = [j["name"] for j in untracked_failed]
-        parts.append(f"{untracked_count} CI job(s) failed ({', '.join(names[:3])})")
-    if failed_jobs > 0 and has_new:
-        parts.append(f"NEW test failures in {failed_jobs} matrix job(s)")
-    elif failed_jobs > 0:
-        parts.append(f"recurring failures in {failed_jobs} matrix job(s)")
-    text = " + ".join(parts)
+    wf_list = ", ".join(sorted(failing_workflows)[:5])
+    if len(failing_workflows) > 5:
+        wf_list += f" +{len(failing_workflows) - 5} more"
+    text = f"Failures in: {wf_list}"
     mention = ""
-elif failed_jobs > 0:
+elif has_failures:
     emoji = ":x:"
-    text = f"Recurring failures in {failed_jobs} matrix job(s)"
+    wf_list = ", ".join(sorted(failing_workflows)[:5])
+    text = f"Recurring failures in: {wf_list}"
     mention = ""
-elif flaky_jobs > 0:
+elif flaky_workflows:
     emoji = ":large_yellow_circle:"
     text = "All jobs passed but flaky tests detected"
     mention = ""
@@ -141,16 +152,28 @@ blocks.append({
     },
 })
 
-# Failed untracked CI jobs in main message (details in thread)
-if untracked_failed:
-    names = [j["name"] for j in untracked_failed]
-    summary = f":x: *{len(untracked_failed)} CI job(s) failed:* " + ", ".join(f"`{n}`" for n in names[:5])
-    if len(names) > 5:
-        summary += f" _+{len(names) - 5} more_"
+# Per-workflow failure summary in main message
+if failing_workflows:
+    lines = []
+    for wf in sorted(failing_workflows):
+        # Count matrix failures for this workflow
+        wf_grid = [g for g in grid if g["test_type"] == wf and g["status"].startswith("failed")]
+        # Count CI-level failures
+        wf_ci = [j for j in failed_ci_jobs
+                  if (j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]) == wf]
+        parts = []
+        if wf_grid:
+            parts.append(f"{len(wf_grid)} matrix job(s)")
+        if wf_ci and not any(not j.get("has_test_details", False) for j in wf_ci):
+            pass  # already covered by matrix
+        elif wf_ci:
+            parts.append("CI job failed")
+        detail = ", ".join(parts) if parts else "failed"
+        lines.append(f":x:  *{wf}* — {detail}")
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "section",
-        "text": {"type": "mrkdwn", "text": summary},
+        "text": {"type": "mrkdwn", "text": "\n".join(lines)},
     })
 
 # Links in main message
