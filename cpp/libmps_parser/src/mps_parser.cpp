@@ -1442,8 +1442,8 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       if (fixed_mps_format) {
         const auto maybe_value =
           start == std::string_view::npos ? std::string_view{} : trim(line.substr(start, 12));
-        variable_upper_bounds[var_id] =
-          maybe_value.empty() ? +std::numeric_limits<f_t>::infinity() : get_numerical_bound(line, start);
+        variable_upper_bounds[var_id] = maybe_value.empty() ? +std::numeric_limits<f_t>::infinity()
+                                                            : get_numerical_bound(line, start);
       } else {
         const auto maybe_value =
           start == std::string_view::npos ? std::string_view{} : trim(line.substr(start));
@@ -1453,10 +1453,6 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
         } else {
           variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
         }
-      }
-      // Per CPLEX convention, default L to 1.0 only when no explicit lower bound was set.
-      if (!lower_bounds_defined_for_var_id.count(var_id)) {
-        variable_lower_bounds[var_id] = f_t(1);
       }
       var_types[var_id] = 'S';
       break;

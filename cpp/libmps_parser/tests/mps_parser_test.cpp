@@ -433,7 +433,7 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
   };
   const std::vector<Case> cases = {
     {"mip/sc_standard.mps", 2, 2.0, 10.0},
-    {"mip/sc_lb_zero.mps", 2, 1.0, 10.0},
+    {"mip/sc_lb_zero.mps", 2, 0.0, 10.0},
     {"mip/sc_no_ub.mps", 2, 2.0, 1e30},
   };
 
