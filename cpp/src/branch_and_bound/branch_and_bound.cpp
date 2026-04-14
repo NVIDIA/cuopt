@@ -1750,7 +1750,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
         active_workers_per_strategy_[strategy]++;
         launched_any_task = true;
 
-#pragma omp task affinity(worker)
+#pragma omp task affinity(worker) default(none) firstprivate(worker)
         plunge_with(worker);
 
       } else {
@@ -1771,7 +1771,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
         active_workers_per_strategy_[strategy]++;
         launched_any_task = true;
 
-#pragma omp task affinity(worker)
+#pragma omp task affinity(worker) default(none) firstprivate(worker)
         dive_with(worker);
       }
     }
@@ -2621,12 +2621,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       "|   Gap    |  Time  |\n");
   }
 
-  if (settings_.deterministic) {
-    run_deterministic_coordinator(Arow_);
-  } else if (settings_.num_threads > 1) {
-    run_scheduler();
-  } else {
-    single_threaded_solve();
+#pragma omp taskgroup
+  {
+    if (settings_.deterministic) {
+      run_deterministic_coordinator(Arow_);
+    } else if (settings_.num_threads > 1) {
+      run_scheduler();
+    } else {
+      single_threaded_solve();
+    }
   }
 
   is_running_ = false;

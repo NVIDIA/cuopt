@@ -246,7 +246,8 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
   std::vector<int2> constraint_pairs_h(max_pair_per_row * problem.n_constraints, {-1, -1});
   std::unordered_set<int> cnstr_pair;
 
-#pragma omp parallel for private(cnstr_pair)
+#pragma omp taskloop private(cnstr_pair) default(none) \
+  shared(offsets, variables, reverse_offsets, reverse_constraints, constraint_pairs_h)
   for (int cnstr = 0; cnstr < problem.n_constraints; ++cnstr) {
     for (int jj = offsets[cnstr]; jj < offsets[cnstr + 1]; ++jj) {
       int var = variables[jj];

@@ -47,6 +47,7 @@
 #include <rmm/cuda_stream.hpp>
 
 #include <cuda_profiler_api.h>
+#include <omp.h>
 
 namespace cuopt::linear_programming {
 
@@ -80,10 +81,10 @@ static void invoke_solution_callbacks(
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
-                                 mip_solver_settings_t<i_t, f_t> const& settings,
-                                 timer_t& timer,
-                                 f_t initial_cutoff = std::numeric_limits<f_t>::infinity())
+mip_solution_t<i_t, f_t> run_mip_solver(detail::problem_t<i_t, f_t>& problem,
+                                        mip_solver_settings_t<i_t, f_t> const& settings,
+                                        timer_t& timer,
+                                        f_t initial_cutoff = std::numeric_limits<f_t>::infinity())
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
@@ -228,8 +229,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
-                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_problem,
+                                          mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
@@ -435,10 +436,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
-
     // early_best_user_obj is in user-space.
     // run_mip stores it in context.initial_cutoff and converts to target spaces as needed.
-    auto sol = run_mip(problem, settings, timer, early_best_user_obj);
+    auto sol = run_mip_solver(problem, settings, timer, early_best_user_obj);
 
     if (run_presolve) {
       auto status_to_skip = sol.get_termination_status() == mip_termination_status_t::TimeLimit ||
@@ -501,6 +501,50 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     CUOPT_LOG_ERROR("Unexpected error in solve_mip: %s", e.what());
     throw;
   }
+}
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
+                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+{
+  std::exception_ptr exception;
+  i_t num_threads = 0;
+  if (settings_const.num_cpu_threads < 0) {
+    num_threads = omp_get_max_threads();
+  } else {
+    if (settings_const.num_cpu_threads < 4) {
+      CUOPT_LOG_ERROR(
+        "The MIP solver requires at least 4 CPU threads! Setting the number of threads to 4.");
+    }
+
+    num_threads = std::max(4, settings_const.num_cpu_threads);
+  }
+
+  // TODO: Remove this after converting deterministic B&B to use tasks. This allows
+  // creating a nested parallel region.
+  omp_set_max_active_levels(2);
+
+  //
+  mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
+                               solver_stats_t<i_t, f_t>{},
+                               op_problem.get_handle_ptr()->get_stream());
+
+#pragma omp parallel num_threads(num_threads) default(none) \
+  shared(sol, op_problem, settings_const, exception)
+  {
+#pragma omp master
+    {
+      try {
+        sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);
+      } catch (...) {
+        // We cannot throw inside an OpenMP parallel region. So we need to catch and then
+        // re-throw later.
+        exception = std::current_exception();
+      }
+    }
+  }
+
+  if (exception) { std::rethrow_exception(exception); }
+  return sol;
 }
 
 template <typename i_t, typename f_t>

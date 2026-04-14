@@ -11,15 +11,9 @@
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 #include <mip_heuristics/local_search/feasibility_pump/feasibility_pump.cuh>
 #include <mip_heuristics/local_search/line_segment_search/line_segment_search.cuh>
-#include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
-
-#include <atomic>
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
 
 namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
@@ -126,12 +120,15 @@ class local_search_t {
   feasibility_pump_t<i_t, f_t> fp;
   std::mt19937 rng;
 
-  std::vector<std::unique_ptr<cpu_fj_thread_t<i_t, f_t>>> ls_cpu_fj;
-  std::vector<std::unique_ptr<cpu_fj_thread_t<i_t, f_t>>> scratch_cpu_fj;
-  cpu_fj_thread_t<i_t, f_t> scratch_cpu_fj_on_lp_opt;
-  cpu_fj_thread_t<i_t, f_t> deterministic_cpu_fj;
+  std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> ls_cpu_fj;
+  std::vector<std::unique_ptr<fj_cpu_climber_t<i_t, f_t>>> scratch_cpu_fj;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> scratch_cpu_fj_on_lp_opt;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> deterministic_cpu_fj;
   problem_t<i_t, f_t> problem_with_objective_cut;
   bool cutting_plane_added_for_active_run{false};
+
+  omp_atomic_t<f_t> local_search_best_obj{std::numeric_limits<double>::max()};
+  population_t<i_t, f_t>* pop_ptr{nullptr};
 };
 
 }  // namespace cuopt::linear_programming::detail

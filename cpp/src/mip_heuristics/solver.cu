@@ -309,12 +309,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   dual_simplex::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
 
-  i_t num_threads = 0;
-  if (context.settings.num_cpu_threads < 0) {
-    num_threads = omp_get_max_threads();
-  } else {
-    num_threads = std::max(1, context.settings.num_cpu_threads);
-  }
+  i_t num_threads = omp_get_num_threads();
 
   if (!context.settings.heuristics_only) {
     // Convert the presolved problem to dual_simplex::user_problem_t
@@ -330,7 +325,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
     branch_and_bound_settings.node_limit           = context.settings.node_limit;
-    branch_and_bound_settings.num_threads          = num_threads - 1;
+    branch_and_bound_settings.num_threads          = std::max(num_threads - 1, 1);
     branch_and_bound_settings.print_presolve_stats = false;
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
@@ -455,33 +450,25 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");
-      solution_t<i_t, f_t> sol(*context.problem_ptr);
       context.stats.total_solve_time = timer_.elapsed_time();
       context.problem_ptr->post_process_solution(sol);
       return sol;
     }
   }
 
-#pragma omp parallel num_threads(num_threads) default(none) \
-  shared(sol, branch_and_bound, branch_and_bound_status, branch_and_bound_solution, dm, context)
+#pragma omp taskgroup
   {
-#pragma omp master
-    {
-      if (!context.settings.heuristics_only) {
-#pragma omp task
-        {
-          branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
-        }
-      }
-
-#pragma omp task
+    if (!context.settings.heuristics_only) {
+#pragma omp task default(none) \
+  shared(branch_and_bound, branch_and_bound_solution, branch_and_bound_status)
       {
-        // Start the primal heuristics
-        context.diversity_manager_ptr = &dm;
-        // Start the primal heuristics
-        sol = dm.run_solver();
+        branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }
     }
+
+    // Start the primal heuristics
+    context.diversity_manager_ptr = &dm;
+    sol                           = dm.run_solver();
   }
 
   if (!context.settings.heuristics_only) {
@@ -508,7 +495,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
   context.stats.total_solve_time = timer_.elapsed_time();
   context.problem_ptr->post_process_solution(sol);
-  dm.rins.stop_rins();
   return sol;
 }
 
