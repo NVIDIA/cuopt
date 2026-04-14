@@ -166,38 +166,6 @@ void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
   // delta_zB = sigma*ei
   delta_z[leaving_index] = direction;
 
-#ifdef CHECK_CHANGE_IN_REDUCED_COST
-  const i_t m = A_transpose.n;
-  const i_t n = A_transpose.m;
-  std::vector<f_t> delta_y_dense(m);
-  delta_y.to_dense(delta_y_dense);
-  std::vector<f_t> delta_z_check(n);
-  std::vector<i_t> delta_z_mark_check(n, 0);
-  std::vector<i_t> delta_z_indices_check;
-  phase2::compute_reduced_cost_update(lp,
-                                      basic_list,
-                                      nonbasic_list,
-                                      delta_y_dense,
-                                      leaving_index,
-                                      direction,
-                                      delta_z_mark_check,
-                                      delta_z_indices_check,
-                                      delta_z_check,
-                                      work_estimate);
-  f_t error_check = 0.0;
-  for (i_t k = 0; k < n; ++k) {
-    const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
-    if (diff > 1e-6) {
-      printf("delta_z error %d transpose %e no transpose %e diff %e\n",
-             k,
-             delta_z[k],
-             delta_z_check[k],
-             diff);
-    }
-    error_check = std::max(error_check, diff);
-  }
-  if (error_check > 1e-6) { printf("delta_z error %e\n", error_check); }
-#endif
 }
 
 template <typename i_t, typename f_t>
