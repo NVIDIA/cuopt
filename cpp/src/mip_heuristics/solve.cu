@@ -472,7 +472,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     }
     // early_best_user_obj is in user-space.
     // run_mip stores it in context.initial_upper_bound and converts to target spaces as needed.
-    auto sol = run_mip(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
+    auto sol =
+      run_mip_solver(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
 
     if (run_presolve) {

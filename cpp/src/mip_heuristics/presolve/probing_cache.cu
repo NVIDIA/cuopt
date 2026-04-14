@@ -861,9 +861,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   bound_presolve.settings.iteration_limit = 50;
   bound_presolve.settings.time_limit      = timer.remaining_time();
 
-  size_t num_tasks = bound_presolve.settings.num_tasks < 0 ? 0.2 * omp_get_max_threads()
+  size_t num_tasks = bound_presolve.settings.num_tasks < 0 ? 0.2 * omp_get_num_threads()
                                                            : bound_presolve.settings.num_tasks;
-  num_tasks        = 1;  // std::clamp<size_t>(num_tasks, 1, 8);
+  num_tasks        = std::clamp<size_t>(num_tasks, 1, 8);
 
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
