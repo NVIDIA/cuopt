@@ -107,21 +107,15 @@ jobs:
       - wheel-tests-cuopt
       - wheel-tests-cuopt-server
       - conda-notebook-tests
-    runs-on: linux-amd64-cpu4
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.sha }}
-      - name: Install dependencies
-        run: pip install awscli
-      - name: Run nightly summary
-        env:
-          CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
-          CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-          CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
-          CUOPT_SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
-          CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
-          CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
-          RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
-          RAPIDS_BRANCH: ${{ inputs.branch }}
-        run: bash ci/nightly_summary.sh
+    uses: ./.github/workflows/nightly-summary.yaml
+    with:
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      build_type: ${{ inputs.build_type }}
+    secrets:
+      CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      CUOPT_SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
