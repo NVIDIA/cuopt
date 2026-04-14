@@ -63,12 +63,14 @@ struct mip_solver_context_t {
   work_unit_scheduler_t work_unit_scheduler_{5.0};
 
   early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
-  // Best objective from early heuristics, in user-space.
+  // Best upper bound from early heuristics, in user-space.
   // Must be converted to the target solver-space before use:
-  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_cutoff)
-  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_cutoff)
-  // Use std::isfinite() to check whether a valid cutoff exists.
-  f_t initial_cutoff{std::numeric_limits<f_t>::infinity()};
+  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_upper_bound)
+  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_upper_bound)
+  f_t initial_upper_bound{std::numeric_limits<f_t>::infinity()};
+
+  // Matching incumbent assignment in original output space from early heuristics.
+  std::vector<f_t> initial_incumbent_assignment{};
 };
 
 }  // namespace cuopt::linear_programming::detail

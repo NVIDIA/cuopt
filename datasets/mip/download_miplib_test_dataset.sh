@@ -25,6 +25,7 @@ INSTANCES=(
     "enlight_hard"
     "enlight11"
     "supportcase22"
+    "pk1"
 )
 
 BASE_URL="https://miplib.zib.de/WebData/instances"
