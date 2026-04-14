@@ -55,7 +55,9 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
       - name: Install dependencies
-        run: pip install awscli
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl
+          pip install awscli
       - name: Run nightly summary
         env:
           CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
