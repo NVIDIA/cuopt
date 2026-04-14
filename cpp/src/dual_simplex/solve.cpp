@@ -121,15 +121,15 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
   std::vector<i_t> nonbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   lp_status_t result = solve_linear_program_with_advanced_basis(original_lp,
-                                                  start_time,
-                                                  settings,
-                                                  original_solution,
-                                                  ft,
-                                                  basic_list,
-                                                  nonbasic_list,
-                                                  vstatus,
-                                                  edge_norms,
-                                                  work_unit_context);
+                                                                start_time,
+                                                                settings,
+                                                                original_solution,
+                                                                ft,
+                                                                basic_list,
+                                                                nonbasic_list,
+                                                                vstatus,
+                                                                edge_norms,
+                                                                work_unit_context);
   return result;
 }
 
