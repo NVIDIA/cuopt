@@ -8,11 +8,12 @@ ConfigureTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
-)# ##################################################################################################
+    LABELS solver lp tier1)
+# ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
 ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
-)
+    LABELS solver lp tier2)
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
@@ -64,6 +65,8 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     endif()
 
     add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    set_tests_properties(C_API_TEST PROPERTIES LABELS "solver;lp;tier1")
+    register_test_labels(C_API_TEST solver lp tier1)
 
     install(
         TARGETS C_API_TEST
