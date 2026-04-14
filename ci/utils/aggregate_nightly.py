@@ -704,11 +704,35 @@ def main():
             output_dir,
         )
 
-    # ---- Step 6: Upload dashboard ----
+    # ---- Step 6: Upload dashboard (self-contained with embedded data) ----
     if args.s3_dashboard_uri and args.dashboard_dir:
         dashboard_file = Path(args.dashboard_dir) / "index.html"
         if dashboard_file.exists():
-            s3_upload(str(dashboard_file), args.s3_dashboard_uri)
+            # Read the index.json we just uploaded/created
+            index_path = output_dir / "index.json"
+            index_data = {}
+            if index_path.exists():
+                with open(index_path) as f:
+                    index_data = json.load(f)
+
+            # Inject data into dashboard HTML so it works without S3 fetches
+            dashboard_html = dashboard_file.read_text()
+            inject_script = (
+                "<script>\n"
+                "// Embedded data — injected by aggregate_nightly.py\n"
+                f"window.__EMBEDDED_INDEX__ = {json.dumps(index_data)};\n"
+                f"window.__EMBEDDED_CONSOLIDATED__ = {json.dumps(consolidated)};\n"
+                "</script>\n"
+            )
+            # Insert before </head>
+            dashboard_html = dashboard_html.replace(
+                "</head>", inject_script + "</head>"
+            )
+
+            embedded_path = output_dir / "dashboard.html"
+            embedded_path.write_text(dashboard_html)
+            s3_upload(str(embedded_path), args.s3_dashboard_uri)
+            print(f"Dashboard uploaded with embedded data")
         else:
             print(
                 f"WARNING: Dashboard not found at {dashboard_file}",

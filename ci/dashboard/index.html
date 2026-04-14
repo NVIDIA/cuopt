@@ -223,37 +223,49 @@ const S = {
 /* Init                                                                */
 /* ================================================================== */
 async function init() {
-  // Determine S3 base URL from query param or auto-detect from location
-  const params = new URLSearchParams(window.location.search);
-  S.baseUrl = params.get('base_url') || deriveBaseUrl();
+  // Use embedded data if available (injected by aggregate_nightly.py)
+  if (window.__EMBEDDED_INDEX__) {
+    S.index = window.__EMBEDDED_INDEX__;
+    S.embedded = true;
+    if (window.__EMBEDDED_CONSOLIDATED__) {
+      S.current = window.__EMBEDDED_CONSOLIDATED__;
+    }
+  } else {
+    // Fall back to fetching from S3
+    const params = new URLSearchParams(window.location.search);
+    S.baseUrl = params.get('base_url') || deriveBaseUrl();
 
-  if (!S.baseUrl) {
-    showEmpty('Set <code>?base_url=https://...</code> to the S3 base URL for ci_test_reports/nightly/');
-    return;
-  }
+    if (!S.baseUrl) {
+      showEmpty('Set <code>?base_url=https://...</code> to the S3 base URL for ci_test_reports/nightly/');
+      return;
+    }
 
-  // Ensure trailing slash
-  if (!S.baseUrl.endsWith('/')) S.baseUrl += '/';
+    if (!S.baseUrl.endsWith('/')) S.baseUrl += '/';
 
-  try {
-    // Load index
-    const indexResp = await fetch(S.baseUrl + 'index.json');
-    if (!indexResp.ok) throw new Error(`index.json: ${indexResp.status}`);
-    S.index = await indexResp.json();
-  } catch (e) {
-    showEmpty(`Failed to load index.json from <code>${esc(S.baseUrl)}</code>.<br>${esc(e.message)}`);
-    return;
+    try {
+      const indexResp = await fetch(S.baseUrl + 'index.json');
+      if (!indexResp.ok) throw new Error(`index.json: ${indexResp.status}`);
+      S.index = await indexResp.json();
+    } catch (e) {
+      showEmpty(`Failed to load index.json from <code>${esc(S.baseUrl)}</code>.<br>${esc(e.message)}`);
+      return;
+    }
   }
 
   populateDateSelector();
   setupEventListeners();
 
-  // Load most recent date
-  const dates = Object.keys(S.index.dates || {}).sort().reverse();
-  if (dates.length > 0) {
-    await loadDate(dates[0]);
+  if (S.current) {
+    // Already have consolidated data from embedding
+    populateTestTypeFilters();
+    render();
   } else {
-    showEmpty('No nightly data available yet.');
+    const dates = Object.keys(S.index.dates || {}).sort().reverse();
+    if (dates.length > 0) {
+      await loadDate(dates[0]);
+    } else {
+      showEmpty('No nightly data available yet.');
+    }
   }
 }
 
