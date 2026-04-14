@@ -25,11 +25,10 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
-                                 const mip_solver_settings_t<i_t, f_t>& settings)
+                                 const mip_solver_settings_t<i_t, f_t>& settings,
+                                 std::vector<uint8_t>* used_fallback_big_m)
 {
-  // -------------------------------------------------------------------------
   // 1. Identify semi-continuous variables
-  // -------------------------------------------------------------------------
   auto var_types = op_problem.get_variable_types_host();
   std::vector<i_t> sc_indices;
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
@@ -37,18 +36,17 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   }
   if (sc_indices.empty()) { return false; }
 
-  const i_t n_orig     = op_problem.get_n_variables();
-  const i_t n_sc       = static_cast<i_t>(sc_indices.size());
+  const i_t n_orig       = op_problem.get_n_variables();
+  const i_t n_sc         = static_cast<i_t>(sc_indices.size());
   const auto* handle_ptr = op_problem.get_handle_ptr();
-  const f_t big_m      = settings.sc_big_m;
+  const f_t big_m        = settings.sc_big_m;
+  if (used_fallback_big_m != nullptr) { used_fallback_big_m->assign(n_orig, uint8_t{0}); }
 
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variable(s) before presolve", n_sc);
 
-  // -------------------------------------------------------------------------
   // 2. Build a relaxed copy where SC vars become continuous [0, original_ub].
   //    This lets GPU bounds propagation derive tight upper bounds from the
   //    constraint structure without the binary domain {0} ∪ [L, U].
-  // -------------------------------------------------------------------------
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
   {
     auto relaxed_types = var_types;
@@ -65,10 +63,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     op_relaxed.set_variable_upper_bounds(relaxed_ub.data(), n_orig);
   }
 
-  // -------------------------------------------------------------------------
   // 3. Run GPU bounds propagation on the relaxed problem to tighten UBs.
   //    Skip propagation when there are no constraints (nothing to propagate).
-  // -------------------------------------------------------------------------
   auto tight_ub = op_problem.get_variable_upper_bounds_host();  // fallback: original UBs
 
   if (op_relaxed.get_n_constraints() > 0) {
@@ -86,10 +82,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     handle_ptr->sync_stream();
   }
 
-  // -------------------------------------------------------------------------
   // 4. Fetch all host arrays we need to extend with the new binary variables
   //    and linking constraints.
-  // -------------------------------------------------------------------------
   auto var_lb = op_problem.get_variable_lower_bounds_host();
   auto var_ub = op_problem.get_variable_upper_bounds_host();
   auto obj_c  = op_problem.get_objective_coefficients_host();
@@ -106,11 +100,9 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   // Ensure objective and variable arrays are sized to n_orig
   if (obj_c.empty()) { obj_c.assign(n_orig, f_t(0)); }
 
-  // -------------------------------------------------------------------------
   // 5. Count how many SC vars truly need the binary-variable reformulation.
   //    If 0 is already inside [L, U], then "x=0 OR L<=x<=U" simplifies to
   //    plain continuous [L, U] — no binary needed.
-  // -------------------------------------------------------------------------
   std::vector<bool> needs_binary(n_sc, true);
   i_t n_binary_needed = 0;
   for (i_t s = 0; s < n_sc; ++s) {
@@ -127,15 +119,13 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   var_ub.resize(n_orig + n_binary_needed, f_t(1));
   obj_c.resize(n_orig + n_binary_needed, f_t(0));
 
-  // -------------------------------------------------------------------------
   // 6. For each SC variable: derive U when needed, then either add binary + 2
   //    linking constraints or simply relax to continuous if 0 is already in
   //    the interval [L, U].
-  // -------------------------------------------------------------------------
   i_t binary_count = 0;
   for (i_t s = 0; s < n_sc; ++s) {
-    const i_t idx = sc_indices[s];
-    const f_t L   = var_lb[idx];
+    const i_t idx    = sc_indices[s];
+    const f_t L      = var_lb[idx];
     const f_t orig_u = var_ub[idx];
 
     if (!needs_binary[s]) {
@@ -155,7 +145,10 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     f_t U = orig_u;
     if (orig_u >= f_t(0) || !std::isfinite(orig_u)) { U = tight_ub[idx]; }
     if (!std::isfinite(U)) { U = orig_u; }
-    if (!std::isfinite(U)) { U = big_m; }
+    if (!std::isfinite(U)) {
+      U = big_m;
+      if (used_fallback_big_m != nullptr) { (*used_fallback_big_m)[idx] = uint8_t{1}; }
+    }
 
     CUOPT_LOG_DEBUG("SC var %d: L=%.6g, U=%.6g (after propagation)", idx, L, U);
 
@@ -168,8 +161,10 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     var_ub[idx]    = std::max(f_t(0), U);
 
     // Constraint 1: x_i - L * b_i >= 0  (clb=0, cub=+inf)
-    A_vals.push_back(f_t(1));   A_idx.push_back(idx);
-    A_vals.push_back(-L);       A_idx.push_back(b_idx);
+    A_vals.push_back(f_t(1));
+    A_idx.push_back(idx);
+    A_vals.push_back(-L);
+    A_idx.push_back(b_idx);
     A_off.push_back(A_off.back() + 2);
     clb.push_back(f_t(0));
     cub.push_back(std::numeric_limits<f_t>::infinity());
@@ -177,8 +172,10 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     if (!row_types_h.empty()) { row_types_h.push_back('G'); }
 
     // Constraint 2: x_i - U * b_i <= 0  (clb=-inf, cub=0)
-    A_vals.push_back(f_t(1));   A_idx.push_back(idx);
-    A_vals.push_back(-U);       A_idx.push_back(b_idx);
+    A_vals.push_back(f_t(1));
+    A_idx.push_back(idx);
+    A_vals.push_back(-U);
+    A_idx.push_back(b_idx);
     A_off.push_back(A_off.back() + 2);
     clb.push_back(-std::numeric_limits<f_t>::infinity());
     cub.push_back(f_t(0));
@@ -186,12 +183,15 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     if (!row_types_h.empty()) { row_types_h.push_back('L'); }
   }
 
-  // -------------------------------------------------------------------------
   // 7. Rebuild op_problem with the extended data.
-  // -------------------------------------------------------------------------
-  const i_t new_n_vars = n_orig + n_binary_needed;
-  const i_t new_n_cons = static_cast<i_t>(clb.size());
-  const i_t new_nnz    = static_cast<i_t>(A_vals.size());
+  const i_t new_n_vars        = n_orig + n_binary_needed;
+  const i_t new_n_cons        = static_cast<i_t>(clb.size());
+  const i_t new_nnz           = static_cast<i_t>(A_vals.size());
+  const i_t added_constraints = 2 * n_binary_needed;
+
+  CUOPT_LOG_INFO("SC reformulation added %d variable(s) and %d constraint(s)",
+                 n_binary_needed,
+                 added_constraints);
 
   op_problem.set_objective_coefficients(obj_c.data(), new_n_vars);
   op_problem.set_variable_lower_bounds(var_lb.data(), new_n_vars);
@@ -202,21 +202,21 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   op_problem.set_constraint_lower_bounds(clb.data(), new_n_cons);
   op_problem.set_constraint_upper_bounds(cub.data(), new_n_cons);
   if (!b_rhs.empty()) { op_problem.set_constraint_bounds(b_rhs.data(), new_n_cons); }
-  if (!row_types_h.empty()) {
-    op_problem.set_row_types(row_types_h.data(), new_n_cons);
-  }
+  if (!row_types_h.empty()) { op_problem.set_row_types(row_types_h.data(), new_n_cons); }
 
   return true;
 }
 
 #if MIP_INSTANTIATE_FLOAT
 template bool reformulate_semi_continuous<int, float>(optimization_problem_t<int, float>&,
-                                                      const mip_solver_settings_t<int, float>&);
+                                                      const mip_solver_settings_t<int, float>&,
+                                                      std::vector<uint8_t>*);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template bool reformulate_semi_continuous<int, double>(optimization_problem_t<int, double>&,
-                                                       const mip_solver_settings_t<int, double>&);
+                                                       const mip_solver_settings_t<int, double>&,
+                                                       std::vector<uint8_t>*);
 #endif
 
 }  // namespace cuopt::linear_programming::detail

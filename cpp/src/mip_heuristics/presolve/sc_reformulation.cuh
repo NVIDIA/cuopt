@@ -35,6 +35,7 @@ namespace cuopt::linear_programming::detail {
  */
 template <typename i_t, typename f_t>
 bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
-                                 const mip_solver_settings_t<i_t, f_t>& settings);
+                                 const mip_solver_settings_t<i_t, f_t>& settings,
+                                 std::vector<uint8_t>* used_fallback_big_m = nullptr);
 
 }  // namespace cuopt::linear_programming::detail

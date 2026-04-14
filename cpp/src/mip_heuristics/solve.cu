@@ -24,6 +24,7 @@
 #include <pdlp/step_size_strategy/adaptive_step_size_strategy.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <pdlp/utils.cuh>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>
@@ -292,7 +293,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // Track n_orig so that auxiliary binary variables added by reformulation can be stripped
     // from the solution before returning it to the caller.
     const i_t n_orig_before_sc = op_problem.get_n_variables();
-    const bool had_sc          = detail::reformulate_semi_continuous(op_problem, settings);
+    std::vector<uint8_t> sc_used_fallback_big_m;
+    const bool had_sc =
+      detail::reformulate_semi_continuous(op_problem, settings, &sc_used_fallback_big_m);
     if (had_sc && !settings.initial_solutions.empty()) {
       CUOPT_LOG_WARN(
         "Ignoring %zu user initial solution(s): semi-continuous warm starts are not supported yet",
@@ -560,15 +563,34 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       }
     }
 
-    if (sol.get_termination_status() == mip_termination_status_t::FeasibleFound ||
-        sol.get_termination_status() == mip_termination_status_t::Optimal) {
-      sol.log_detailed_summary();
-    }
-
     // Strip auxiliary binary variables that were injected by SC reformulation.
     // The caller only knows about the original n_orig_before_sc variables.
     if (had_sc && sol.get_solution().size() > static_cast<size_t>(n_orig_before_sc)) {
       sol.get_solution().resize(n_orig_before_sc, op_problem.get_handle_ptr()->get_stream());
+    }
+
+    if (had_sc && (sol.get_termination_status() == mip_termination_status_t::FeasibleFound ||
+                   sol.get_termination_status() == mip_termination_status_t::Optimal)) {
+      auto host_solution =
+        cuopt::host_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
+      const f_t active_tol          = settings.tolerances.integrality_tolerance;
+      i_t num_active_fallback_big_m = 0;
+      for (i_t i = 0; i < static_cast<i_t>(sc_used_fallback_big_m.size()); ++i) {
+        if (!sc_used_fallback_big_m[i]) { continue; }
+        if (host_solution[i] >= settings.sc_big_m - active_tol) { ++num_active_fallback_big_m; }
+      }
+      if (num_active_fallback_big_m > 0) {
+        return mip_solution_t<i_t, f_t>{
+          cuopt::logic_error("Semi-continuous solution is active at fallback sc_big_m; result may "
+                             "depend on an artificial upper bound",
+                             cuopt::error_type_t::RuntimeError),
+          op_problem.get_handle_ptr()->get_stream()};
+      }
+    }
+
+    if (sol.get_termination_status() == mip_termination_status_t::FeasibleFound ||
+        sol.get_termination_status() == mip_termination_status_t::Optimal) {
+      sol.log_detailed_summary();
     }
 
     if (settings.sol_file != "") {
