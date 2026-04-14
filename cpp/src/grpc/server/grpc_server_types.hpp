@@ -7,6 +7,8 @@
 
 #ifdef CUOPT_ENABLE_GRPC
 
+#include "../cuopt_default_grpc_port.h"
+
 #include <grpcpp/grpcpp.h>
 #include "cuopt_remote.pb.h"
 #include "cuopt_remote_service.grpc.pb.h"
@@ -156,7 +158,7 @@ struct JobWaiter {
 // =============================================================================
 
 struct ServerConfig {
-  int port            = 8765;
+  int port            = cuopt_default_grpc_port;
   int num_workers     = 1;
   bool verbose        = true;
   bool log_to_console = false;
@@ -165,7 +167,6 @@ struct ServerConfig {
   // Clamped at startup to [kServerMinMessageBytes, kServerMaxMessageBytes].
   int64_t max_message_bytes = 256LL * 1024 * 1024;  // 256 MiB
   int chunk_timeout_seconds = 60;                   // 0 = disabled
-  bool enable_transfer_hash = false;
   bool enable_tls           = false;
   bool require_client       = false;
   std::string tls_cert_path;

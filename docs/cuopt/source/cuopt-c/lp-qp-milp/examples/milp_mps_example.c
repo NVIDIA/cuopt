@@ -39,8 +39,8 @@ const char* termination_status_to_string(cuopt_int_t termination_status)
 cuopt_int_t solve_mps_file(const char* filename)
 {
   cuOptOptimizationProblem problem = NULL;
-  cuOptSolverSettings settings = NULL;
-  cuOptSolution solution = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
   cuopt_int_t status;
   cuopt_float_t time;
   cuopt_int_t termination_status;
@@ -115,18 +115,20 @@ cuopt_int_t solve_mps_file(const char* filename)
   printf("\nResults:\n");
   printf("--------\n");
   printf("Number of variables: %d\n", num_variables);
-  printf("Termination status: %s (%d)\n", termination_status_to_string(termination_status), termination_status);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
   printf("Solve time: %f seconds\n", time);
   printf("Objective value: %f\n", objective_value);
 
   // Get and print solution variables
   if (has_primal_solution) {
-    solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
-    status = cuOptGetPrimalSolution(solution, solution_values);
-    if (status != CUOPT_SUCCESS) {
-      printf("Error getting solution values: %d\n", status);
-      goto DONE;
-    }
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status          = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    goto DONE;
+  }
   }
 
   printf("\nSolution: \n");
@@ -145,7 +147,8 @@ DONE:
   return status;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
   if (argc != 2) {
     printf("Usage: %s <mps_file_path>\n", argv[0]);
     return 1;

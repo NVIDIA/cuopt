@@ -693,6 +693,12 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_cupdlpx_restart(i_t total_number_
 {
   std::fill(should_restart.begin(), should_restart.end(), 0);
 
+#ifdef CUPDLP_DEBUG_MODE
+  // Print the current stats of initial fixed point error and fixed point error
+  print("initial_fixed_point_error", initial_fixed_point_error_);
+  print("fixed_point_error", fixed_point_error_);
+#endif
+
   if (total_number_of_iterations == hyper_params_.major_iteration) {
 #ifdef CUPDLP_DEBUG_MODE
     printf("forced restart at first major\n");

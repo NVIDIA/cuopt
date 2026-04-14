@@ -8,6 +8,7 @@
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
 #include <raft/core/error.hpp>
+#include <raft/util/cudart_utils.hpp>
 
 #include <utilities/logger.hpp>
 

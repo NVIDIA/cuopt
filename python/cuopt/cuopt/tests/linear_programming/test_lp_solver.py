@@ -87,7 +87,7 @@ def test_solver():
     assert solution.get_primal_objective() == pytest.approx(0.0)
     assert solution.get_dual_objective() == pytest.approx(0.0)
     assert solution.get_lp_stats()["gap"] == pytest.approx(0.0)
-    assert solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.PDLP
 
 
 def test_parser_and_solver():
@@ -600,7 +600,7 @@ def test_dual_simplex():
 
     assert solution.get_termination_status() == LPTerminationStatus.Optimal
     assert solution.get_primal_objective() == pytest.approx(-464.7531)
-    assert not solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.DualSimplex
 
 
 def test_barrier():
@@ -768,7 +768,7 @@ def test_pdlp_precision_single():
     assert solution.get_primal_objective() == pytest.approx(
         -464.7531, rel=1e-1
     )
-    assert solution.get_solved_by_pdlp()
+    assert solution.get_solved_by() == SolverMethod.PDLP
 
 
 def test_pdlp_precision_single_crossover():

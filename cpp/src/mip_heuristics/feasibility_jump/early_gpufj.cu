@@ -26,7 +26,7 @@ early_gpufj_t<i_t, f_t>::early_gpufj_t(const optimization_problem_t<i_t, f_t>& o
       op_problem, settings.get_tolerances(), std::move(incumbent_callback))
 {
   context_ptr_ = std::make_unique<mip_solver_context_t<i_t, f_t>>(
-    &this->handle_, this->problem_ptr_.get(), settings, nullptr);
+    &this->handle_, this->problem_ptr_.get(), settings);
 }
 
 template <typename i_t, typename f_t>

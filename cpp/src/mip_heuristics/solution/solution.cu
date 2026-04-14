@@ -323,7 +323,7 @@ f_t solution_t<i_t, f_t>::compute_l2_residual()
 }
 
 template <typename i_t, typename f_t>
-bool solution_t<i_t, f_t>::compute_feasibility()
+bool solution_t<i_t, f_t>::compute_feasibility(bool consider_integrality)
 {
   n_feasible_constraints.set_value_to_zero_async(handle_ptr->get_stream());
   compute_constraints();
@@ -331,7 +331,8 @@ bool solution_t<i_t, f_t>::compute_feasibility()
   compute_infeasibility();
   compute_number_of_integers();
   i_t h_n_feas_constraints = n_feasible_constraints.value(handle_ptr->get_stream());
-  is_feasible = h_n_feas_constraints == problem_ptr->n_constraints && test_number_all_integer();
+  is_feasible              = h_n_feas_constraints == problem_ptr->n_constraints;
+  if (consider_integrality) { is_feasible = is_feasible && test_number_all_integer(); }
   CUOPT_LOG_TRACE("is_feasible %d n_feasible_cstr %d all_cstr %d",
                   is_feasible,
                   h_n_feas_constraints,
@@ -617,42 +618,23 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     f_t max_constraint_violation     = compute_max_constraint_violation();
     f_t max_int_violation            = compute_max_int_violation();
     f_t max_variable_bound_violation = compute_max_variable_violation();
-    f_t total_solve_time             = stats.total_solve_time;
-    f_t presolve_time                = stats.presolve_time;
-    i_t num_nodes                    = stats.num_nodes;
-    i_t num_simplex_iterations       = stats.num_simplex_iterations;
     handle_ptr->sync_stream();
-    if (log_stats) {
-      CUOPT_LOG_INFO(
-        "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
-        "total_solve_time %f "
-        "max constraint violation %f max int violation %f max var bounds violation %f "
-        "nodes %d simplex_iterations %d",
-        h_user_obj,
-        rel_mip_gap,
-        solution_bound,
-        presolve_time,
-        total_solve_time,
-        max_constraint_violation,
-        max_int_violation,
-        max_variable_bound_violation,
-        num_nodes,
-        num_simplex_iterations);
-    }
     const bool not_optimal = rel_mip_gap > problem_ptr->tolerances.relative_mip_gap &&
                              abs_mip_gap > problem_ptr->tolerances.absolute_mip_gap;
     auto term_reason =
       not_optimal ? mip_termination_status_t::FeasibleFound : mip_termination_status_t::Optimal;
     if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
-    return mip_solution_t<i_t, f_t>(std::move(assignment),
-                                    problem_ptr->var_names,
-                                    h_user_obj,
-                                    rel_mip_gap,
-                                    term_reason,
-                                    max_constraint_violation,
-                                    max_int_violation,
-                                    max_variable_bound_violation,
-                                    stats);
+    auto sol = mip_solution_t<i_t, f_t>(std::move(assignment),
+                                        problem_ptr->var_names,
+                                        h_user_obj,
+                                        rel_mip_gap,
+                                        term_reason,
+                                        max_constraint_violation,
+                                        max_int_violation,
+                                        max_variable_bound_violation,
+                                        stats);
+    if (log_stats) { sol.log_detailed_summary(); }
+    return sol;
   } else {
     return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
                                                              : mip_termination_status_t::TimeLimit,

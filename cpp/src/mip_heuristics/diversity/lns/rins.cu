@@ -32,8 +32,8 @@ rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
                          rins_settings_t settings_)
   : context(context_), problem_ptr(context.problem_ptr), dm(dm_), settings(settings_)
 {
-  fixrate    = settings.default_fixrate;
-  time_limit = settings.default_time_limit;
+  fixrate    = context.settings.heuristic_params.rins_fix_rate;
+  time_limit = context.settings.heuristic_params.rins_time_limit;
 }
 
 template <typename i_t, typename f_t>
@@ -224,8 +224,7 @@ void rins_t<i_t, f_t>::run_rins()
 
   std::vector<std::vector<f_t>> rins_solution_queue;
 
-  mip_solver_context_t<i_t, f_t> fj_context(
-    &rins_handle, &fixed_problem, context.settings, context.scaling);
+  mip_solver_context_t<i_t, f_t> fj_context(&rins_handle, &fixed_problem, context.settings);
   fj_t<i_t, f_t> fj(fj_context);
   solution_t<i_t, f_t> fj_solution(fixed_problem);
   fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
@@ -265,12 +264,13 @@ void rins_t<i_t, f_t>::run_rins()
     std::min(current_mip_gap, (f_t)settings.target_mip_gap);
   branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
   branch_and_bound_settings.num_threads = 1;
-  branch_and_bound_settings.reliability_branching = 0;
-  branch_and_bound_settings.max_cut_passes        = 0;
-  branch_and_bound_settings.clique_cuts           = 0;
-  branch_and_bound_settings.sub_mip               = 1;
-  branch_and_bound_settings.log.log               = false;
-  branch_and_bound_settings.log.log_prefix        = "[RINS] ";
+  branch_and_bound_settings.reliability_branching                    = 0;
+  branch_and_bound_settings.max_cut_passes                           = 0;
+  branch_and_bound_settings.clique_cuts                              = 0;
+  branch_and_bound_settings.sub_mip                                  = 1;
+  branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
+  branch_and_bound_settings.log.log                                  = false;
+  branch_and_bound_settings.log.log_prefix                           = "[RINS] ";
   branch_and_bound_settings.solution_callback = [&rins_solution_queue](std::vector<f_t>& solution,
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
@@ -297,7 +297,8 @@ void rins_t<i_t, f_t>::run_rins()
     CUOPT_LOG_DEBUG("RINS submip time limit");
     // do goldilocks update
     fixrate    = std::min(fixrate + f_t(0.05), static_cast<f_t>(settings.max_fixrate));
-    time_limit = std::min(time_limit + f_t(2), static_cast<f_t>(settings.max_time_limit));
+    time_limit = std::min(time_limit + f_t(2),
+                          static_cast<f_t>(context.settings.heuristic_params.rins_max_time_limit));
   } else if (branch_and_bound_status == dual_simplex::mip_status_t::INFEASIBLE) {
     CUOPT_LOG_DEBUG("RINS submip infeasible");
     // do goldilocks update, decreasing fixrate
@@ -306,7 +307,8 @@ void rins_t<i_t, f_t>::run_rins()
     CUOPT_LOG_DEBUG("RINS solution not found");
     // do goldilocks update
     fixrate    = std::min(fixrate + f_t(0.05), static_cast<f_t>(settings.max_fixrate));
-    time_limit = std::min(time_limit + f_t(2), static_cast<f_t>(settings.max_time_limit));
+    time_limit = std::min(time_limit + f_t(2),
+                          static_cast<f_t>(context.settings.heuristic_params.rins_max_time_limit));
   }
 
   cpu_fj_thread.stop_cpu_solver();

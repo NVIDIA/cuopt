@@ -106,6 +106,9 @@ struct simplex_solver_settings_t {
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
+      mip_batch_pdlp_strong_branching(0),
+      mip_batch_pdlp_reliability_branching(0),
+      strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
       reliability_branching(-1),
       inside_mip(0),
@@ -189,8 +192,16 @@ struct simplex_solver_settings_t {
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
   f_t cut_min_orthogonality;       // minimum orthogonality for cuts
-  i_t mip_batch_pdlp_strong_branching{0};  // 0 if not using batch PDLP for strong branching, 1 if
-                                           // using batch PDLP for strong branching
+  i_t
+    mip_batch_pdlp_strong_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
+  i_t mip_batch_pdlp_reliability_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch
+                                             // PDLP only
+  // Set the maximum number of simplex iterations allowed per trial branch when applying
+  // strong branching to the root node.
+  // -1 - Automatic (iteration limit = 200)
+  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
+  // >1 - Set as the iteration limit in dual simplex
+  i_t strong_branching_simplex_iteration_limit;
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
 
