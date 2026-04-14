@@ -125,6 +125,14 @@ pdlp_termination_status_t pdlp_termination_strategy_t<i_t, f_t>::get_termination
 }
 
 template <typename i_t, typename f_t>
+void pdlp_termination_strategy_t<i_t, f_t>::set_termination_status(i_t id,
+                                                                   pdlp_termination_status_t status)
+{
+  cuopt_assert(id < termination_status_.size(), "id too big for batch size");
+  termination_status_[id] = (i_t)status;
+}
+
+template <typename i_t, typename f_t>
 std::vector<pdlp_termination_status_t>
 pdlp_termination_strategy_t<i_t, f_t>::get_terminations_status()
 {
@@ -389,7 +397,8 @@ __host__ __device__ bool pdlp_termination_strategy_t<i_t, f_t>::is_done(
 {
   return termination_status == pdlp_termination_status_t::Optimal ||
          termination_status == pdlp_termination_status_t::PrimalInfeasible ||
-         termination_status == pdlp_termination_status_t::DualInfeasible;
+         termination_status == pdlp_termination_status_t::DualInfeasible ||
+         termination_status == pdlp_termination_status_t::ConcurrentLimit;
 }
 
 template <typename i_t, typename f_t>
@@ -596,8 +605,10 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
                &infeasibility_information_view.dual_ray_linear_objective[i],
                1,
                stream_view_);
-    term_stats_vector[i].solved_by_pdlp =
-      (termination_status[i] != pdlp_termination_status_t::ConcurrentLimit);
+
+    if (termination_status[i] != pdlp_termination_status_t::ConcurrentLimit) {
+      term_stats_vector[i].solved_by = method_t::PDLP;
+    }
   }
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));

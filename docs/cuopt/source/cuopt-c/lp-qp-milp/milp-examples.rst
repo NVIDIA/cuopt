@@ -98,7 +98,7 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
    # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
    LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
 
-A sample MILP MPS file (:download:`download mip_sample.mps <examples/mip_sample.mps>`):
+A sample MILP MPS file (:download:`download mip_sample.mps <https://raw.githubusercontent.com/coin-or/SYMPHONY/master/Datasets/sample.mps>`):
 
 .. literalinclude:: examples/mip_sample.mps
    :language: text

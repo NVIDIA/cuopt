@@ -61,12 +61,30 @@ void pdlp_solver_settings_t<i_t, f_t>::set_initial_dual_solution(const f_t* init
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_step_size(f_t initial_step_size)
 {
+  cuopt_expects(initial_step_size > f_t(0),
+                error_type_t::ValidationError,
+                "Initial step size must be greater than 0");
+  cuopt_expects(!std::isinf(initial_step_size),
+                error_type_t::ValidationError,
+                "Initial step size must be finite");
+  cuopt_expects(!std::isnan(initial_step_size),
+                error_type_t::ValidationError,
+                "Initial step size must be a number");
   initial_step_size_ = std::make_optional(initial_step_size);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_weight(f_t initial_primal_weight)
 {
+  cuopt_expects(initial_primal_weight > f_t(0),
+                error_type_t::ValidationError,
+                "Initial primal weight must be greater than 0");
+  cuopt_expects(!std::isinf(initial_primal_weight),
+                error_type_t::ValidationError,
+                "Initial primal weight must be finite");
+  cuopt_expects(!std::isnan(initial_primal_weight),
+                error_type_t::ValidationError,
+                "Initial primal weight must be a number");
   initial_primal_weight_ = std::make_optional(initial_primal_weight);
 }
 
@@ -346,6 +364,21 @@ template <typename i_t, typename f_t>
 std::optional<f_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_primal_weight() const
 {
   return initial_primal_weight_;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_settings_t<i_t, f_t>::set_initial_pdlp_iteration(i_t initial_pdlp_iteration)
+{
+  cuopt_expects(initial_pdlp_iteration >= 0,
+                error_type_t::ValidationError,
+                "Initial pdlp iteration must be greater than or equal to 0");
+  initial_pdlp_iteration_ = std::make_optional(initial_pdlp_iteration);
+}
+
+template <typename i_t, typename f_t>
+std::optional<i_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_pdlp_iteration() const
+{
+  return initial_pdlp_iteration_;
 }
 
 template <typename i_t, typename f_t>

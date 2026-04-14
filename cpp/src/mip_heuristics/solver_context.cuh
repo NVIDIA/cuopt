@@ -9,7 +9,6 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
-#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
@@ -37,9 +36,8 @@ template <typename i_t, typename f_t>
 struct mip_solver_context_t {
   explicit mip_solver_context_t(raft::handle_t const* handle_ptr_,
                                 problem_t<i_t, f_t>* problem_ptr_,
-                                mip_solver_settings_t<i_t, f_t> settings_,
-                                pdlp_initial_scaling_strategy_t<i_t, f_t>* scaling)
-    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_), scaling(scaling)
+                                mip_solver_settings_t<i_t, f_t> settings_)
+    : handle_ptr(handle_ptr_), problem_ptr(problem_ptr_), settings(settings_)
   {
     cuopt_assert(problem_ptr != nullptr, "problem_ptr is nullptr");
     stats.set_solution_bound(problem_ptr->maximize ? std::numeric_limits<f_t>::infinity()
@@ -56,7 +54,6 @@ struct mip_solver_context_t {
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
-  pdlp_initial_scaling_strategy_t<i_t, f_t>* scaling;  // nullptr when not available (early FJ)
   solver_stats_t<i_t, f_t> stats;
   // Work limit context for tracking work units in deterministic mode (shared across all timers in
   // GPU heuristic loop)
@@ -66,12 +63,14 @@ struct mip_solver_context_t {
   work_unit_scheduler_t work_unit_scheduler_{5.0};
 
   early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
-  // Best objective from early heuristics, in user-space.
+  // Best upper bound from early heuristics, in user-space.
   // Must be converted to the target solver-space before use:
-  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_cutoff)
-  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_cutoff)
-  // Use std::isfinite() to check whether a valid cutoff exists.
-  f_t initial_cutoff{std::numeric_limits<f_t>::infinity()};
+  //   - B&B: problem_ptr->get_solver_obj_from_user_obj(initial_upper_bound)
+  //   - CPUFJ: papilo_problem.get_solver_obj_from_user_obj(initial_upper_bound)
+  f_t initial_upper_bound{std::numeric_limits<f_t>::infinity()};
+
+  // Matching incumbent assignment in original output space from early heuristics.
+  std::vector<f_t> initial_incumbent_assignment{};
 };
 
 }  // namespace cuopt::linear_programming::detail

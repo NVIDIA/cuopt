@@ -138,7 +138,8 @@ endif(BUILD_MSAN)
 # infrastructure files. Those files include abseil headers, and abseil's shared library
 # on conda-forge doesn't export Mutex::Dtor() in NDEBUG builds (abseil-cpp#1624).
 # Keeping NDEBUG defined for gRPC files makes the header inline an empty Dtor(),
-# avoiding the missing symbol at runtime.
+# avoiding the missing symbol at runtime.  Additionally, gRPC files are always
+# compiled with -DNDEBUG (see below) so Debug builds also avoid the missing symbol.
 if(DEFINE_ASSERT)
   add_definitions(-DASSERT_MODE)
   list(APPEND CUOPT_CUDA_FLAGS -UNDEBUG)
@@ -292,6 +293,14 @@ find_package(CUDSS REQUIRED)
 # gRPC can come from either:
 # - an installed CMake package (gRPCConfig.cmake), or
 # - an in-tree build (e.g. python/libcuopt uses FetchContent(grpc), which defines gRPC::grpc++).
+
+if(NOT TARGET OpenSSL::SSL)
+  find_package(OpenSSL CONFIG QUIET)
+  if(NOT OpenSSL_FOUND AND NOT OPENSSL_FOUND)
+    find_package(OpenSSL REQUIRED)
+  endif()
+endif()
+
 if(NOT TARGET gRPC::grpc++)
   find_package(gRPC CONFIG REQUIRED)
 endif()
@@ -390,7 +399,7 @@ if(DEFINE_ASSERT)
 endif()
 
 # Add gRPC mapper files and generated protobuf sources
-list(APPEND CUOPT_SRC_FILES
+set(GRPC_INFRA_FILES
   ${PROTO_SRCS}
   ${GRPC_PROTO_SRCS}
   ${GRPC_SERVICE_SRCS}
@@ -401,6 +410,15 @@ list(APPEND CUOPT_SRC_FILES
   src/grpc/client/grpc_client.cpp
   src/grpc/client/solve_remote.cpp
 )
+list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
+
+# Always keep NDEBUG defined for gRPC infrastructure files so that abseil
+# headers inline Mutex::Dtor() instead of emitting an external call.
+# The conda-forge abseil shared library is built with NDEBUG and does not
+# export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
+# at runtime with "undefined symbol: absl::…::Mutex::Dtor".
+set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+  APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 
 add_library(cuopt SHARED
   ${CUOPT_SRC_FILES}

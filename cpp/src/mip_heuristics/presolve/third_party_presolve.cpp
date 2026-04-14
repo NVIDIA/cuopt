@@ -739,7 +739,10 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 
   auto opt_problem = build_optimization_problem<i_t, f_t>(
     papilo_problem, op_problem.get_handle_ptr(), category, maximize_);
+  // metadata from original optimization problem that is not filled
   opt_problem.set_problem_name(op_problem.get_problem_name());
+  opt_problem.set_objective_scaling_factor(op_problem.get_objective_scaling_factor());
+  // when an objective offset outside (e.g. from mps file), handle accordingly
   auto col_flags = papilo_problem.getColFlags();
   std::vector<i_t> implied_integer_indices;
   for (size_t i = 0; i < col_flags.size(); i++) {

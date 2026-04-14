@@ -501,8 +501,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   }
 
   // Check for concurrent limit
-  if (settings_.method == method_t::Concurrent && settings_.concurrent_halt != nullptr &&
-      *settings_.concurrent_halt == 1) {
+  if (settings_.concurrent_halt != nullptr && settings_.concurrent_halt->load() == 1) {
 #ifdef PDLP_VERBOSE_MODE
     RAFT_CUDA_TRY(cudaDeviceSynchronize());
     std::cout << "Concurrent Limit reached, returning current solution" << std::endl;
@@ -772,13 +771,34 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
     if (current_termination_strategy_.is_done(term)) {
       std::cout << "[BATCH MODE]: Climber " << i << " is done with "
                 << optimization_problem_solution_t<i_t, f_t>::get_termination_status_string(term)
-                << " at step " << total_pdlp_iterations_ << ". It's original index is "
+                << " at step " << internal_solver_iterations_ << ". It's original index is "
                 << climber_strategies_[i].original_index << std::endl;
     }
   }
 #endif
 
-  // All are optimal or infeasible
+  // Sync external solved status into internal termination strategy before all_done() check
+  if (sb_view_.is_valid()) {
+    for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+      // If PDLP has solved it to optimality we want to keep it and resolved both solvers having
+      // solved the problem later
+      if (current_termination_strategy_.is_done(
+            current_termination_strategy_.get_termination_status(i)))
+        continue;
+      const i_t local_idx = climber_strategies_[i].original_index;
+      if (sb_view_.is_solved(local_idx)) {
+        current_termination_strategy_.set_termination_status(
+          i, pdlp_termination_status_t::ConcurrentLimit);
+#ifdef BATCH_VERBOSE_MODE
+        std::cout << "[COOP SB] DS already solved climber " << i << " (original_index " << local_idx
+                  << "), synced to ConcurrentLimit at step " << internal_solver_iterations_
+                  << std::endl;
+#endif
+      }
+    }
+  }
+
+  // All are optimal, infeasible, or externally solved
   if (current_termination_strategy_.all_done()) {
     const auto original_batch_size = settings_.new_bounds.size();
     // Some climber got removed from the batch while the optimization was running
@@ -821,10 +841,13 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         batch_solution_to_return_
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
-                             pdlp_termination_status_t::ConcurrentLimit);
+        if (current_termination_strategy_.get_termination_status(i) !=
+            pdlp_termination_status_t::ConcurrentLimit) {
+          batch_solution_to_return_
+            .get_additional_termination_informations()[climber_strategies_[i].original_index]
+            .solved_by = method_t::PDLP;
+        }
+        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
       current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -840,6 +863,11 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         problem_ptr->row_names,
         std::move(batch_solution_to_return_.get_additional_termination_informations()),
         std::move(batch_solution_to_return_.get_terminations_status())};
+    }
+    if (sb_view_.is_valid()) {
+      for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+        sb_view_.mark_solved(climber_strategies_[i].original_index);
+      }
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
     return current_termination_strategy_.fill_return_problem_solution(
@@ -859,8 +887,11 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
             current_termination_strategy_.get_termination_status(i))) {
         raft::common::nvtx::range fun_scope("remove_done_climber");
 #ifdef BATCH_VERBOSE_MODE
-        std::cout << "Removing climber " << i << " because it is done. Its original index is "
-                  << climber_strategies_[i].original_index << std::endl;
+        const bool externally_solved = (current_termination_strategy_.get_termination_status(i) ==
+                                        pdlp_termination_status_t::ConcurrentLimit);
+        std::cout << "Removing climber " << i << " (original_index "
+                  << climber_strategies_[i].original_index << ") because it is done"
+                  << (externally_solved ? " [solved by DS]" : " [solved by PDLP]") << std::endl;
 #endif
         to_remove.emplace(i);
         // Copy current climber solution information
@@ -889,10 +920,13 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
         batch_solution_to_return_
           .get_additional_termination_informations()[climber_strategies_[i].original_index]
           .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .solved_by_pdlp = (current_termination_strategy_.get_termination_status(i) !=
-                             pdlp_termination_status_t::ConcurrentLimit);
+        if (current_termination_strategy_.get_termination_status(i) !=
+            pdlp_termination_status_t::ConcurrentLimit) {
+          batch_solution_to_return_
+            .get_additional_termination_informations()[climber_strategies_[i].original_index]
+            .solved_by = method_t::PDLP;
+        }
+        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
       }
     }
     if (to_remove.size() > 0) {
@@ -966,7 +1000,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // To avoid that we allow at least two iterations at first before checking (in practice 0 wasn't
   // enough) We still need to check iteration and time limit prior without breaking the logic below
   // of first checking termination before the limit
-  if (total_pdlp_iterations_ <= 1) {
+  if (internal_solver_iterations_ <= 1) {
     print_termination_criteria(timer);
     return check_limits(timer);
   }
@@ -1508,9 +1542,6 @@ HDI void fixed_error_computation(const f_t norm_squared_delta_primal,
     norm_squared_delta_primal * primal_weight + norm_squared_delta_dual / primal_weight;
   const f_t computed_interaction = f_t(2.0) * interaction * step_size;
 
-  cuopt_assert(movement + computed_interaction >= f_t(0.0),
-               "Movement + computed interaction must be >= 0");
-
   // Clamp to 0 to avoid NaN
   *fixed_point_error = cuda::std::sqrt(cuda::std::max(f_t(0.0), movement + computed_interaction));
 
@@ -1768,6 +1799,90 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     op_problem_scaled_.n_variables,
     pdhg_solver_.get_primal_tmp_resource().data(),
     CUSPARSE_ORDER_COL);
+
+  // Recalculate SpMM buffer sizes for the new batch dimensions.
+  // cuSparse may require different buffer sizes when the number of columns changes
+  // (e.g. SpMM with 1 column may internally fall back to SpMV with larger buffer needs).
+  {
+    size_t new_buf_size = 0;
+
+    // PDHG row-row: A_T * batch_dual_solutions -> batch_current_AtYs
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A_T,
+      pdhg_cusparse_view.batch_dual_solutions,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_current_AtYs,
+      (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
+
+    // PDHG row-row: A * batch_reflected_primal_solutions -> batch_dual_gradients
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A,
+      pdhg_cusparse_view.batch_reflected_primal_solutions,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_dual_gradients,
+      (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_non_transpose_batch_row_row_.resize(new_buf_size, stream_view_);
+
+    // Adaptive step size: A_T * batch_potential_next_dual_solution -> batch_next_AtYs
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      pdhg_cusparse_view.A_T,
+      pdhg_cusparse_view.batch_potential_next_dual_solution,
+      reusable_device_scalar_value_0_.data(),
+      pdhg_cusparse_view.batch_next_AtYs,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    pdhg_cusparse_view.buffer_transpose_batch.resize(new_buf_size, stream_view_);
+
+    // Convergence info: A_T * batch_dual_solutions -> batch_tmp_primals
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      current_op_problem_evaluation_cusparse_view_.A_T,
+      current_op_problem_evaluation_cusparse_view_.batch_dual_solutions,
+      reusable_device_scalar_value_0_.data(),
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_primals,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.resize(new_buf_size,
+                                                                               stream_view_);
+
+    // Convergence info: A * batch_primal_solutions -> batch_tmp_duals
+    RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmm_bufferSize(
+      handle_ptr_->get_cusparse_handle(),
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      CUSPARSE_OPERATION_NON_TRANSPOSE,
+      reusable_device_scalar_value_1_.data(),
+      current_op_problem_evaluation_cusparse_view_.A,
+      current_op_problem_evaluation_cusparse_view_.batch_primal_solutions,
+      reusable_device_scalar_value_0_.data(),
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_duals,
+      CUSPARSE_SPMM_CSR_ALG3,
+      &new_buf_size,
+      stream_view_));
+    current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.resize(new_buf_size,
+                                                                                   stream_view_);
+  }
 
   // Rerun preprocess
 
@@ -2200,6 +2315,22 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     pdhg_solver_.total_pdhg_iterations_ = initial_k_.value();
     pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(initial_k_.value(), stream_view_);
   }
+  if (settings_.get_initial_pdlp_iteration().has_value()) {
+    total_pdlp_iterations_ = settings_.get_initial_pdlp_iteration().value();
+    // This is meaningless in batch mode since pdhg step is never used, set it just to avoid
+    // assertions
+    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_,
+                                                               stream_view_);
+    pdhg_solver_.total_pdhg_iterations_ = total_pdlp_iterations_;
+    // Reset the fixed point error since at this pdlp iteration it is expected to already be
+    // initialized to some value
+    std::fill(restart_strategy_.initial_fixed_point_error_.begin(),
+              restart_strategy_.initial_fixed_point_error_.end(),
+              f_t(0.0));
+    std::fill(restart_strategy_.fixed_point_error_.begin(),
+              restart_strategy_.fixed_point_error_.end(),
+              f_t(0.0));
+  }
 
   // Only the primal_weight_ and step_size_ variables are initialized during the initial phase
   // The associated primal/dual step_size (computed using the two firstly mentionned) are not
@@ -2321,13 +2452,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
-  // In batch mode, before running the solver, we need to transpose the primal and dual solution to
-  // row format
-  if (batch_mode_)
-    transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
-                                 pdhg_solver_.get_potential_next_dual_solution(),
-                                 pdhg_solver_.get_dual_slack());
-
   if (!inside_mip_) {
     CUOPT_LOG_INFO(
       "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
@@ -2390,13 +2514,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-#ifdef CUPDLP_DEBUG_MODE
-      print("before scale slack", pdhg_solver_.get_dual_slack());
-      print("before scale potential next primal",
-            pdhg_solver_.get_potential_next_primal_solution());
-      print("before scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
-#endif
-
       // In case of batch mode, primal and dual matrices are in row format
       // We need to transpose them to column format before doing any checks
       if (batch_mode_) {
@@ -2411,6 +2528,13 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         transpose_primal_dual_back_to_col(
           pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
       }
+
+#ifdef CUPDLP_DEBUG_MODE
+      print("before scale slack", pdhg_solver_.get_dual_slack());
+      print("before scale potential next primal",
+            pdhg_solver_.get_potential_next_primal_solution());
+      print("before scale potential next dual", pdhg_solver_.get_potential_next_dual_solution());
+#endif
 
       // We go back to the unscaled problem here. It ensures that we do not terminate 'too early'
       // because of the error margin being evaluated on the scaled problem

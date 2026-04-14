@@ -58,7 +58,7 @@ class solution_t {
   // makes the approximate integer values up to INTEGRALITY TOLERANCE whole integers
   void correct_integer_precision();
   // does a reduction and returns if the current solution is feasible
-  bool compute_feasibility();
+  bool compute_feasibility(bool consider_integrality = true);
   // sets the is_feasible flag to 1
   void set_feasible();
   // sets the is_feasible flag to 0

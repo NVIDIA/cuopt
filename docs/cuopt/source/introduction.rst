@@ -119,6 +119,8 @@ cuOpt supports the following APIs:
 - Python support
    - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
    - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - Python <cuopt-python/quick-start>`
+- gRPC remote execution
+   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - gRPC remote <cuopt-grpc/quick-start>`
 - Server support
    - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
    - :doc:`Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start>`

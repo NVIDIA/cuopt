@@ -265,11 +265,6 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
   f_t user_bound     = context.stats.get_solution_bound();
   solution_t<i_t, f_t> temp_sol(sol);
   problem_ptr->post_process_assignment(temp_sol.assignment);
-  if (context.settings.mip_scaling) {
-    cuopt_assert(context.scaling != nullptr, "");
-    rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
-    context.scaling->unscale_solutions(temp_sol.assignment, dummy);
-  }
   if (problem_ptr->has_papilo_presolve_data()) {
     problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
   }
@@ -309,10 +304,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         invoke_get_solution_callback(sol, get_sol_callback);
       }
     }
-    // save the best objective here, because we might not have been able to return the solution to
-    // the user because of the unscaling that causes infeasibility.
-    // This prevents an issue of repaired, or a fully feasible solution being reported in the call
-    // back in next run.
+    // Save the best objective here even if callback handling later exits early.
+    // This prevents older solutions from being reported as "new best" in subsequent callbacks.
     best_feasible_objective = sol.get_objective();
   }
 
@@ -345,10 +338,6 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
                  incumbent_assignment.size(),
                  sol.handle_ptr->get_stream());
 
-      if (context.settings.mip_scaling) {
-        cuopt_assert(context.scaling != nullptr, "");
-        context.scaling->scale_solutions(incumbent_assignment);
-      }
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
       if (!is_valid) { return; }
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),

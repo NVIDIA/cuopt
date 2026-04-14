@@ -24,7 +24,8 @@ constexpr double distance_to_check_for_feasible = 0.01;
 
 template <typename i_t, typename f_t>
 struct cycle_queue_t {
-  cycle_queue_t(problem_t<i_t, f_t>& problem) : curr_recent_sol(cycle_detection_length - 1)
+  cycle_queue_t(problem_t<i_t, f_t>& problem, i_t cycle_len = 30)
+    : cycle_detection_length(cycle_len), curr_recent_sol(cycle_detection_length - 1)
   {
     for (i_t i = 0; i < cycle_detection_length; ++i) {
       recent_solutions.emplace_back(
@@ -86,7 +87,7 @@ struct cycle_queue_t {
   }
 
   std::vector<rmm::device_uvector<f_t>> recent_solutions;
-  const i_t cycle_detection_length = 30;
+  const i_t cycle_detection_length;
   i_t curr_recent_sol;
   i_t n_iterations_without_cycle = 0;
 };
