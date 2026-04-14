@@ -174,15 +174,15 @@ def aggregate_summaries(summaries):
 
 def parse_workflow_jobs(workflow_jobs_path):
     """Parse GitHub Actions workflow job statuses from JSON file.
-    Returns a list of dicts with job name, conclusion, and URL.
-    Only includes jobs NOT already tracked by per-matrix S3 summaries
-    (i.e., excludes conda-cpp-tests, conda-python-tests,
-    wheel-tests-cuopt, wheel-tests-cuopt-server matrix jobs and
-    their compute-matrix helpers)."""
+    Returns all jobs (except nightly-summary itself) with name,
+    conclusion, URL, and whether they are tracked by per-matrix
+    S3 summaries."""
     if not workflow_jobs_path or not Path(workflow_jobs_path).exists():
         return []
 
-    # Job name prefixes that are already covered by per-matrix S3 reports
+    # Job name prefixes that are covered by per-matrix S3 reports.
+    # These jobs also have detailed test results; other jobs only have
+    # a pass/fail status at the workflow level.
     TRACKED_PREFIXES = (
         "conda-cpp-tests",
         "conda-python-tests",
@@ -200,14 +200,16 @@ def parse_workflow_jobs(workflow_jobs_path):
             # Skip the nightly-summary job itself
             if "nightly-summary" in name.lower():
                 continue
-            # Skip jobs already tracked by per-matrix S3 summaries
-            if any(name.startswith(prefix) for prefix in TRACKED_PREFIXES):
+            # Skip helper jobs (compute-matrix, etc.)
+            if "compute-matrix" in name.lower():
                 continue
+            tracked = any(name.startswith(p) for p in TRACKED_PREFIXES)
             result.append({
                 "name": name,
                 "conclusion": job.get("conclusion", "unknown"),
                 "status": job.get("status", "unknown"),
                 "url": job.get("html_url", ""),
+                "has_test_details": tracked,
             })
         return result
     except (json.JSONDecodeError, OSError) as exc:
@@ -228,9 +230,13 @@ def generate_consolidated_json(agg, date_str, branch, github_run_url="",
     flaky_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "flaky")
     passed_jobs = sum(1 for g in agg["matrix_grid"] if g["status"] == "passed")
 
-    # Workflow-level CI job statuses (notebooks, JuMP, etc.)
+    # Workflow-level CI job statuses
     wf_jobs = workflow_jobs or []
     failed_ci_jobs = [j for j in wf_jobs if j["conclusion"] == "failure"]
+    # Jobs without per-matrix S3 tracking (notebooks, JuMP, etc.)
+    untracked_failed = [
+        j for j in failed_ci_jobs if not j.get("has_test_details", False)
+    ]
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -252,6 +258,7 @@ def generate_consolidated_json(agg, date_str, branch, github_run_url="",
         "resolved_tests": agg["all_resolved_tests"],
         "workflow_jobs": wf_jobs,
         "failed_ci_jobs": failed_ci_jobs,
+        "untracked_failed_ci_jobs": untracked_failed,
     }
 
 

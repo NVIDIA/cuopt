@@ -56,6 +56,7 @@ totals = d.get("test_totals", {})
 grid = d.get("matrix_grid", [])
 has_new = d.get("has_new_failures", False)
 failed_ci_jobs = d.get("failed_ci_jobs", [])
+untracked_failed = d.get("untracked_failed_ci_jobs", [])
 workflow_jobs = d.get("workflow_jobs", [])
 
 total_jobs = jobs.get("total", 0)
@@ -88,11 +89,13 @@ def make_payload(blocks):
 # ══════════════════════════════════════════════════════════════════════
 blocks = []
 
-if failed_ci_count > 0 or (failed_jobs > 0 and has_new):
+untracked_count = len(untracked_failed)
+if untracked_count > 0 or (failed_jobs > 0 and has_new):
     emoji = ":rotating_light:"
     parts = []
-    if failed_ci_count > 0:
-        parts.append(f"{failed_ci_count} CI job(s) failed")
+    if untracked_count > 0:
+        names = [j["name"] for j in untracked_failed]
+        parts.append(f"{untracked_count} CI job(s) failed ({', '.join(names[:3])})")
     if failed_jobs > 0 and has_new:
         parts.append(f"NEW test failures in {failed_jobs} matrix job(s)")
     elif failed_jobs > 0:
@@ -138,10 +141,10 @@ blocks.append({
     },
 })
 
-# Failed CI jobs summary in main message (details in thread)
-if failed_ci_jobs:
-    names = [j["name"] for j in failed_ci_jobs]
-    summary = f":x: *{len(failed_ci_jobs)} CI job(s) failed:* " + ", ".join(f"`{n}`" for n in names[:5])
+# Failed untracked CI jobs in main message (details in thread)
+if untracked_failed:
+    names = [j["name"] for j in untracked_failed]
+    summary = f":x: *{len(untracked_failed)} CI job(s) failed:* " + ", ".join(f"`{n}`" for n in names[:5])
     if len(names) > 5:
         summary += f" _+{len(names) - 5} more_"
     blocks.append({"type": "divider"})
@@ -172,14 +175,37 @@ print(make_payload(blocks))
 # THREAD REPLIES (lines 2+) — posted as replies to main message
 # ══════════════════════════════════════════════════════════════════════
 
-# ── Thread 1: Failed CI job details ───────────────────────────────────
-if failed_ci_jobs:
+# ── Thread 1: CI Workflow Status (all jobs) ───────────────────────────
+# Shows every workflow job so new workflows are automatically visible.
+if workflow_jobs:
+    ci_icons = {"success": ":white_check_mark:", "failure": ":x:",
+                "cancelled": ":no_entry_sign:", "skipped": ":fast_forward:"}
+
+    # Group by workflow prefix (e.g., "conda-cpp-tests", "conda-notebook-tests")
+    wf_groups = {}
+    for j in workflow_jobs:
+        # Use the part before " / " as group name, or full name
+        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
+        wf_groups.setdefault(prefix, []).append(j)
+
     ci_blocks = []
-    current = "*Failed CI Jobs:*\n"
-    for j in failed_ci_jobs:
-        url = j.get("url", "")
-        name = j["name"]
-        line = f":x:  <{url}|{name}>\n" if url else f":x:  {name}\n"
+    current = "*CI Workflow Status:*\n"
+    for group_name, group_jobs in sorted(wf_groups.items()):
+        passed = sum(1 for j in group_jobs if j["conclusion"] == "success")
+        failed = sum(1 for j in group_jobs if j["conclusion"] == "failure")
+        total = len(group_jobs)
+
+        if failed > 0:
+            icon = ":x:"
+            detail = f"{failed}/{total} failed"
+        elif passed == total:
+            icon = ":white_check_mark:"
+            detail = f"{total} passed"
+        else:
+            icon = ":grey_question:"
+            detail = f"{passed}/{total} passed"
+
+        line = f"{icon}  *{group_name}* — {detail}\n"
         if len(current) + len(line) > 2900:
             ci_blocks.append({
                 "type": "section",
@@ -187,6 +213,7 @@ if failed_ci_jobs:
             })
             current = ""
         current += line
+
     if current.strip():
         ci_blocks.append({
             "type": "section",
@@ -194,128 +221,76 @@ if failed_ci_jobs:
         })
     print(make_payload(ci_blocks))
 
-# ── Thread 2: Failed/flaky matrix entries ─────────────────────────────
-failed_grid = [g for g in grid if g["status"] != "passed"]
-
-if failed_grid:
-    test_types = {}
-    for g in failed_grid:
-        tt = g["test_type"]
-        test_types.setdefault(tt, []).append(g)
-
-    grid_blocks = []
-    current_text = ""
-    for tt, entries in sorted(test_types.items()):
-        cells = []
-        for g in entries:
-            icon = status_icons.get(g["status"], ":grey_question:")
-            label = g["matrix_label"]
-            failed_count = g["counts"].get("failed", 0)
-            if failed_count > 0:
-                cells.append(f"{icon} `{label}` ({failed_count} failures)")
-            else:
-                cells.append(f"{icon} `{label}`")
-        section = f"*{tt}*\n" + "\n".join(f"    {c}" for c in cells) + "\n"
-
-        if current_text and len(current_text) + len(section) > 2800:
-            grid_blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": current_text.rstrip()},
-            })
-            current_text = ""
-        current_text += section
-
-    if current_text:
-        grid_blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": current_text.rstrip()},
-        })
-
-    for i in range(0, len(grid_blocks), 48):
-        chunk = grid_blocks[i:i+48]
-        print(make_payload(chunk))
-
-# ── Thread 2: Failure details ─────────────────────────────────────────
-detail_blocks = []
-
+# ── Thread 2: Failing and flaky tests (grouped by workflow) ───────────
+# Build per-workflow test issue lists
 new_failures = d.get("new_failures", [])
-if new_failures:
-    lines = []
-    for f_entry in new_failures[:15]:
-        msg = f_entry.get("message", "")[:80].replace("\n", " ")
-        matrix = f_entry.get("matrix_label", "")
-        lines.append(
-            f":new:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix})\n       {msg}"
-        )
-    if len(new_failures) > 15:
-        lines.append(f"_...and {len(new_failures) - 15} more_")
-    text = "*:rotating_light: New Failures:*\n" + "\n".join(lines)
-    while text:
-        detail_blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": text[:2900]},
-        })
-        text = text[2900:]
-
 recurring = d.get("recurring_failures", [])
-if recurring:
-    lines = []
-    for f_entry in recurring[:15]:
-        matrix = f_entry.get("matrix_label", "")
-        first = f_entry.get("first_seen", "?")
-        lines.append(
-            f":repeat:  `{f_entry['name']}` ({f_entry['test_type']} / {matrix}) \u2014 since {first}"
-        )
-    if len(recurring) > 15:
-        lines.append(f"_...and {len(recurring) - 15} more_")
-    detail_blocks.append({"type": "divider"})
-    detail_blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": "*:x: Recurring Failures:*\n" + "\n".join(lines)},
-    })
-
-resolved = d.get("resolved_tests", [])
-if resolved:
-    lines = []
-    for r in resolved[:10]:
-        matrix = r.get("matrix_label", "")
-        count = r.get("failure_count", "?")
-        lines.append(
-            f":white_check_mark:  `{r['name']}` ({r['test_type']} / {matrix}) \u2014 failed {count}x"
-        )
-    if len(resolved) > 10:
-        lines.append(f"_...and {len(resolved) - 10} more_")
-    detail_blocks.append({"type": "divider"})
-    detail_blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": "*:white_check_mark: Stabilized (were failing, now pass):*\n" + "\n".join(lines),
-        },
-    })
-
 flaky = d.get("flaky_tests", [])
-if flaky:
-    unique_flaky = {}
-    for f_entry in flaky:
-        key = f_entry["name"]
-        unique_flaky.setdefault(key, []).append(f_entry.get("matrix_label", ""))
-    lines = []
-    for name, matrices in sorted(unique_flaky.items())[:10]:
-        matrix_str = ", ".join(matrices[:3])
-        if len(matrices) > 3:
-            matrix_str += f" +{len(matrices)-3} more"
-        lines.append(f":warning:  `{name}` ({matrix_str})")
-    if len(unique_flaky) > 10:
-        lines.append(f"_...and {len(unique_flaky) - 10} more unique flaky tests_")
-    detail_blocks.append({"type": "divider"})
-    detail_blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": "*:warning: Flaky Tests:*\n" + "\n".join(lines)},
-    })
+resolved = d.get("resolved_tests", [])
 
-if detail_blocks:
-    print(make_payload(detail_blocks))
+# Collect all test issues by test_type (workflow)
+issues_by_wf = {}
+for f_entry in new_failures:
+    tt = f_entry.get("test_type", "unknown")
+    issues_by_wf.setdefault(tt, {"new": [], "recurring": [], "flaky": [], "resolved": []})
+    issues_by_wf[tt]["new"].append(f_entry)
+for f_entry in recurring:
+    tt = f_entry.get("test_type", "unknown")
+    issues_by_wf.setdefault(tt, {"new": [], "recurring": [], "flaky": [], "resolved": []})
+    issues_by_wf[tt]["recurring"].append(f_entry)
+for f_entry in flaky:
+    tt = f_entry.get("test_type", "unknown")
+    issues_by_wf.setdefault(tt, {"new": [], "recurring": [], "flaky": [], "resolved": []})
+    issues_by_wf[tt]["flaky"].append(f_entry)
+for r in resolved:
+    tt = r.get("test_type", "unknown")
+    issues_by_wf.setdefault(tt, {"new": [], "recurring": [], "flaky": [], "resolved": []})
+    issues_by_wf[tt]["resolved"].append(r)
+
+if issues_by_wf:
+    for wf_name, issues in sorted(issues_by_wf.items()):
+        wf_blocks = []
+        wf_text = f"*{wf_name}*\n"
+
+        # New failures
+        for f_entry in issues["new"][:10]:
+            msg = f_entry.get("message", "")[:60].replace("\n", " ")
+            matrix = f_entry.get("matrix_label", "")
+            wf_text += f":new:  `{f_entry['name']}` ({matrix}) — {msg}\n"
+
+        # Recurring failures
+        for f_entry in issues["recurring"][:10]:
+            matrix = f_entry.get("matrix_label", "")
+            first = f_entry.get("first_seen", "?")
+            wf_text += f":repeat:  `{f_entry['name']}` ({matrix}) — since {first}\n"
+
+        # Flaky
+        for f_entry in issues["flaky"][:10]:
+            matrix = f_entry.get("matrix_label", "")
+            wf_text += f":warning:  `{f_entry['name']}` ({matrix})\n"
+
+        # Resolved
+        for r in issues["resolved"][:5]:
+            matrix = r.get("matrix_label", "")
+            count = r.get("failure_count", "?")
+            wf_text += f":white_check_mark:  `{r['name']}` ({matrix}) — was failing {count}x\n"
+
+        # Truncation notes
+        for category, label, limit in [("new", "new failures", 10), ("recurring", "recurring", 10),
+                                        ("flaky", "flaky", 10), ("resolved", "resolved", 5)]:
+            if len(issues[category]) > limit:
+                wf_text += f"_...+{len(issues[category]) - limit} more {label}_\n"
+
+        # Chunk if needed
+        while wf_text:
+            chunk = wf_text[:2900]
+            wf_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": chunk.rstrip()},
+            })
+            wf_text = wf_text[2900:]
+
+        print(make_payload(wf_blocks))
 PYEOF
 )
 
