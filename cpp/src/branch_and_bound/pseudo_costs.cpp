@@ -1054,17 +1054,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           pc);
   } else {
     if (effective_batch_pdlp != 0) {
-#pragma omp task shared(settings,          \
-                          concurrent_halt, \
-                          original_lp,     \
-                          new_slacks,      \
-                          root_solution,   \
-                          fractional,      \
-                          pc,              \
-                          sb_view,         \
-                          pdlp_obj_down,   \
-                          pdlp_obj_up)     \
-  firstprivate(effective_batch_pdlp, start_time, root_obj) default(none)
+#pragma omp task default(shared)
       batch_pdlp_strong_branching_task(settings,
                                        effective_batch_pdlp,
                                        start_time,
@@ -1084,20 +1074,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
-#pragma omp taskloop num_tasks(n) default(none) shared(original_lp,                \
-                                                         settings,                 \
-                                                         var_types,                \
-                                                         fractional,               \
-                                                         root_solution,            \
-                                                         root_vstatus,             \
-                                                         edge_norms,               \
-                                                         pc,                       \
-                                                         dual_simplex_obj_down,    \
-                                                         dual_simplex_obj_up,      \
-                                                         dual_simplex_status_down, \
-                                                         dual_simplex_status_up,   \
-                                                         sb_view)                  \
-  firstprivate(start_time, root_obj, upper_bound, simplex_iteration_limit, n)
+#pragma omp taskloop num_tasks(n) default(shared)
       for (i_t k = 0; k < n; k++) {
         i_t start = std::floor(k * fractional.size() / n);
         i_t end   = std::floor((k + 1) * fractional.size() / n);
@@ -1568,18 +1545,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   std::atomic<int> concurrent_halt{0};
 
   if (use_pdlp) {
-#pragma omp task default(none) shared(log,               \
-                                        concurrent_halt, \
-                                        original_lp,     \
-                                        new_slacks,      \
-                                        leaf_solution,   \
-                                        worker,          \
-                                        candidate_vars,  \
-                                        settings,        \
-                                        sb_view,         \
-                                        pdlp_obj_down,   \
-                                        pdlp_obj_up)     \
-  firstprivate(rb_mode, num_candidates, start_time)
+#pragma omp task default(shared)
     batch_pdlp_reliability_branching_task(log,
                                           rb_mode,
                                           num_candidates,
@@ -1614,30 +1580,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t dual_simplex_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) default(none) \
-  shared(log,                                                                                      \
-           unreliable_list,                                                                        \
-           settings,                                                                               \
-           sb_view,                                                                                \
-           worker,                                                                                 \
-           var_types,                                                                              \
-           node_ptr,                                                                               \
-           leaf_solution,                                                                          \
-           dual_simplex_obj_down,                                                                  \
-           dual_simplex_obj_up,                                                                    \
-           dual_simplex_status_down,                                                               \
-           dual_simplex_status_up,                                                                 \
-           score_mutex,                                                                            \
-           max_score,                                                                              \
-           branch_var) firstprivate(num_candidates,                                                \
-                                      start_time,                                                  \
-                                      rb_mode,                                                     \
-                                      reliable_threshold,                                          \
-                                      upper_bound,                                                 \
-                                      iter_limit_per_trial,                                        \
-                                      eps,                                                         \
-                                      pseudo_cost_up_avg,                                          \
-                                      pseudo_cost_down_avg)
+#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) default(shared)
     for (i_t i = 0; i < num_candidates; ++i) {
       auto [score, j] = unreliable_list[i];
 

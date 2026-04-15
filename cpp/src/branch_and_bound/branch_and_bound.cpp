@@ -1880,14 +1880,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
   // Note that we need to explicitly declared `root_status` as a shared variable here since
   // it is local to the thread that are executing the enclosing task.
-#pragma omp task shared(root_status,     \
-                          original_lp_,  \
-                          lp_settings,   \
-                          basis_update,  \
-                          basic_list,    \
-                          nonbasic_list, \
-                          root_vstatus_, \
-                          edge_norms_) default(none) depend(out : root_status)
+#pragma omp task default(shared) depend(out : root_status)
   {
     root_status = solve_linear_program_with_advanced_basis(original_lp_,
                                                            exploration_stats_.start_time,

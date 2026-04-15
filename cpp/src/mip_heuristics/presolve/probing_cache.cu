@@ -897,20 +897,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 
-#pragma omp taskloop num_tasks(num_tasks) default(none) firstprivate(step_start, step_end) \
-  shared(num_tasks,                                                                        \
-           priority_indices,                                                               \
-           timer,                                                                          \
-           multi_probe_presolve_pool,                                                      \
-           bound_presolve,                                                                 \
-           problem,                                                                        \
-           h_var_bounds,                                                                   \
-           h_integer_indices,                                                              \
-           n_of_implied_singletons,                                                        \
-           n_of_cached_probings,                                                           \
-           problem_is_infeasible,                                                          \
-           modification_vector_pool,                                                       \
-           substitution_vector_pool)
+#pragma omp taskloop num_tasks(num_tasks) default(shared)
     for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
       size_t n     = step_end - step_start;
       size_t begin = step_start + std::floor(static_cast<f_t>(n) * task_id / num_tasks);

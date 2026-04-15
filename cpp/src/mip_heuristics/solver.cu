@@ -452,8 +452,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
-#pragma omp task default(none) \
-  shared(branch_and_bound, branch_and_bound_solution, branch_and_bound_status)
+#pragma omp task default(shared)
       {
         branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }
