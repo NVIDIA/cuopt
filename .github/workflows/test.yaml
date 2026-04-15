@@ -121,6 +121,7 @@ jobs:
       branch: ${{ inputs.branch }}
       sha: ${{ inputs.sha }}
       build_type: ${{ inputs.build_type }}
+      date: ${{ inputs.date }}
     secrets:
       CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
       CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}

@@ -22,7 +22,7 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 OUTPUT_DIR="${PWD}/aggregate-output"
 mkdir -p "${OUTPUT_DIR}"
 
-RUN_DATE="$(date +%F)"
+RUN_DATE="${RUN_DATE:-$(date +%F)}"
 BRANCH="${RAPIDS_BRANCH:-main}"
 
 GITHUB_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}/actions/runs/${GITHUB_RUN_ID:-}"
