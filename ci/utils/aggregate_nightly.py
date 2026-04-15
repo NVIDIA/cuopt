@@ -526,20 +526,23 @@ def update_index(s3_index_uri, date_str, consolidated, output_dir):
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Add today's entry (compact — just enough for the dashboard trends)
-    index["dates"][date_str] = {
+    # Add today's entry keyed by date/branch for multi-branch support
+    branch = consolidated.get("branch", "main")
+    entry_key = f"{date_str}/{branch}"
+    index["dates"][entry_key] = {
+        "date": date_str,
+        "branch": branch,
         "job_summary": consolidated.get("job_summary", {}),
         "test_totals": consolidated.get("test_totals", {}),
         "has_new_failures": consolidated.get("has_new_failures", False),
-        "branch": consolidated.get("branch", ""),
         "github_run_url": consolidated.get("github_run_url", ""),
     }
 
-    # Prune to last N days
+    # Prune to last N entries
     dates_sorted = sorted(index["dates"].keys(), reverse=True)
     if len(dates_sorted) > MAX_INDEX_DAYS:
-        for old_date in dates_sorted[MAX_INDEX_DAYS:]:
-            del index["dates"][old_date]
+        for old_key in dates_sorted[MAX_INDEX_DAYS:]:
+            del index["dates"][old_key]
 
     # Write and upload
     with open(local_index, "w") as f:

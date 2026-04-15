@@ -292,26 +292,32 @@ function deriveBaseUrl() {
 /* ================================================================== */
 /* Data loading                                                        */
 /* ================================================================== */
-async function loadDate(dateStr) {
+async function loadDate(entryKey) {
   const main = document.getElementById('main-content');
 
-  // If embedded and this is the embedded date, use embedded data
-  if (S.embedded && S.current && S.current.date === dateStr) {
+  // entryKey can be "date/branch" or just "date" (legacy)
+  const entry = S.index?.dates?.[entryKey] || {};
+  const dateStr = entry.date || entryKey.split('/')[0] || entryKey;
+  const branch = entry.branch || entryKey.split('/')[1] || 'main';
+  const branchSlug = branch.replace(/\//g, '-');
+
+  // If embedded and this matches the embedded data, use it
+  if (S.embedded && S.current && S.current.date === dateStr && S.current.branch === branch) {
     populateTestTypeFilters();
     render();
     return;
   }
 
-  // If embedded with no S3 access, can't load other dates
+  // If embedded with no S3 access, can't load other entries
   if (S.embedded && !S.baseUrl) {
-    showEmpty(`Only the latest run (${esc(S.current?.date || 'unknown')}) is available in this view. Download per-date reports from S3 for historical data.`);
+    showEmpty(`Only the latest run (${esc(S.current?.date || 'unknown')} / ${esc(S.current?.branch || 'unknown')}) is available in this view.`);
     return;
   }
 
-  main.innerHTML = '<div class="loading">Loading data for ' + esc(dateStr) + '...</div>';
+  main.innerHTML = '<div class="loading">Loading data for ' + esc(dateStr) + ' / ' + esc(branch) + '...</div>';
 
   try {
-    const url = S.baseUrl + 'summaries/' + dateStr + '/consolidated.json';
+    const url = S.baseUrl + 'summaries/' + dateStr + '/' + branchSlug + '/consolidated.json';
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`${resp.status}`);
     S.current = await resp.json();
@@ -501,21 +507,27 @@ function renderResolved() {
 function renderTrends() {
   if (!S.index || !S.index.dates) return '<p class="empty-state">No trend data available.</p>';
 
-  const dates = Object.keys(S.index.dates).sort().slice(-14); // Last 14 days
-  if (!dates.length) return '<p class="empty-state">No trend data available.</p>';
+  // Filter to current branch and sort by date
+  const currentBranch = S.current?.branch || 'main';
+  const entries = Object.entries(S.index.dates)
+    .filter(([_, v]) => (v.branch || 'main') === currentBranch)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-14);
+  if (!entries.length) return '<p class="empty-state">No trend data available.</p>';
 
-  let html = '<section><h2>Test Results — Last 14 Days</h2>';
+  let html = `<section><h2>Test Results — Last 14 Runs (${esc(currentBranch)})</h2>`;
   html += '<div class="chart-container">';
 
   // Find max total for scaling
   let maxTotal = 1;
-  for (const d of dates) {
-    const t = S.index.dates[d].test_totals || {};
+  for (const [_, val] of entries) {
+    const t = val.test_totals || {};
     maxTotal = Math.max(maxTotal, t.total || 0);
   }
 
-  for (const d of dates) {
-    const t = S.index.dates[d].test_totals || {};
+  for (const [key, val] of entries) {
+    const d = val.date || key.split('/')[0] || key;
+    const t = val.test_totals || {};
     const total = t.total || 0;
     const passed = t.passed || 0;
     const failed = t.failed || 0;
@@ -539,11 +551,12 @@ function renderTrends() {
   html += '</div></section>';
 
   // Job pass rate trend
-  html += '<section><h2>Matrix Job Pass Rate — Last 14 Days</h2>';
+  html += `<section><h2>Matrix Job Pass Rate — Last 14 Runs (${esc(currentBranch)})</h2>`;
   html += '<div class="chart-container">';
 
-  for (const d of dates) {
-    const j = S.index.dates[d].job_summary || {};
+  for (const [key, val] of entries) {
+    const d = val.date || key.split('/')[0] || key;
+    const j = val.job_summary || {};
     const total = j.total || 0;
     const passed = j.passed || 0;
     const failed = j.failed || 0;
@@ -638,8 +651,13 @@ function filterEntries(entries) {
 /* ================================================================== */
 function populateDateSelector() {
   const sel = document.getElementById('date-select');
-  const dates = Object.keys(S.index.dates || {}).sort().reverse();
-  sel.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+  const entries = Object.entries(S.index.dates || {}).sort((a, b) => b[0].localeCompare(a[0]));
+  sel.innerHTML = entries.map(([key, val]) => {
+    const date = val.date || key.split('/')[0] || key;
+    const branch = val.branch || key.split('/')[1] || '';
+    const label = branch ? `${date} — ${branch}` : date;
+    return `<option value="${key}">${label}</option>`;
+  }).join('');
 }
 
 function setupEventListeners() {

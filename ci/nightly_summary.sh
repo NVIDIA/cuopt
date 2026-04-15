@@ -34,12 +34,13 @@ if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
 fi
 
 S3_BASE="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
-S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/"
-S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/"
-S3_CONSOLIDATED_JSON="${S3_BASE}/summaries/${RUN_DATE}/consolidated.json"
-S3_CONSOLIDATED_HTML="${S3_BASE}/reports/${RUN_DATE}/consolidated.html"
+BRANCH_SLUG=$(echo "${BRANCH}" | tr '/' '-')
+S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
+S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/"
+S3_CONSOLIDATED_JSON="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/consolidated.json"
+S3_CONSOLIDATED_HTML="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/consolidated.html"
 S3_INDEX_URI="${S3_BASE}/index.json"
-S3_DASHBOARD_URI="${S3_BASE}/dashboard/index.html"
+S3_DASHBOARD_URI="${S3_BASE}/dashboard/${BRANCH_SLUG}/index.html"
 DASHBOARD_DIR="${SCRIPT_DIR}/dashboard"
 
 # --- Query GitHub API for workflow job statuses ---
