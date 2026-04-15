@@ -151,9 +151,11 @@ pre.error { background: #263238; color: #e0e0e0; padding: 10px; border-radius: 6
   <h1>cuOpt Nightly</h1>
 
   <label for="date-select">Date</label>
+  <div id="date-info" style="display:none;padding:6px 0;font-size:0.9rem;font-weight:600;"></div>
   <select id="date-select"><option>Loading...</option></select>
 
   <label for="branch-select">Branch</label>
+  <div id="branch-info" style="display:none;padding:6px 0;font-size:0.9rem;font-weight:600;"></div>
   <select id="branch-select"><option value="main">main</option></select>
 
   <div class="filter-group">
@@ -259,10 +261,16 @@ async function init() {
     // Already have consolidated data from embedding
     populateTestTypeFilters();
     render();
-    // Mark date selector with current date when embedded
     if (S.embedded) {
-      const sel = document.getElementById('date-select');
-      sel.value = S.current.date || '';
+      // Show branch and date as info labels, hide dropdowns
+      document.getElementById('date-select').style.display = 'none';
+      document.getElementById('branch-select').style.display = 'none';
+      const dateInfo = document.getElementById('date-info');
+      const branchInfo = document.getElementById('branch-info');
+      dateInfo.textContent = S.current.date || 'unknown';
+      dateInfo.style.display = 'block';
+      branchInfo.textContent = S.current.branch || 'unknown';
+      branchInfo.style.display = 'block';
     }
   } else {
     const dates = Object.keys(S.index.dates || {}).sort().reverse();
