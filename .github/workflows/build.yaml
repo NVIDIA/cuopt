@@ -37,6 +37,10 @@ on:
           If 'true', trigger the test workflow after all builds complete.
         type: boolean
         default: false
+      summary-only:
+        description: "If true, skip all build jobs and run only build-summary"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -44,6 +48,7 @@ concurrency:
 
 jobs:
   cpp-build:
+    if: ${{ !inputs.summary-only }}
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
@@ -53,6 +58,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/build_cpp.sh
   python-build:
+    if: ${{ !inputs.summary-only }}
     needs: [cpp-build]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
@@ -63,6 +69,7 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/build_python.sh
   upload-conda:
+    if: ${{ !inputs.summary-only }}
     needs: [cpp-build, python-build]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-upload-packages.yaml@main
@@ -72,6 +79,7 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
   wheel-build-cuopt-mps-parser:
+    if: ${{ !inputs.summary-only }}
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -86,6 +94,7 @@ jobs:
       # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
       matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
   wheel-publish-cuopt-mps-parser:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
@@ -97,6 +106,7 @@ jobs:
       package-name: cuopt_mps_parser
       package-type: python
   wheel-build-libcuopt:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-cuopt-mps-parser
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
@@ -110,6 +120,7 @@ jobs:
       package-type: cpp
       matrix_filter: group_by([.ARCH, (.CUDA_VER|split(".")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(".")|map(tonumber)))
   wheel-publish-libcuopt:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-libcuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
@@ -121,6 +132,7 @@ jobs:
       package-name: libcuopt
       package-type: cpp
   wheel-build-cuopt:
+    if: ${{ !inputs.summary-only }}
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
@@ -133,6 +145,7 @@ jobs:
       package-name: cuopt
       package-type: python
   wheel-publish-cuopt:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-cuopt
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
@@ -144,6 +157,7 @@ jobs:
       package-name: cuopt
       package-type: python
   wheel-build-cuopt-server:
+    if: ${{ !inputs.summary-only }}
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -158,6 +172,7 @@ jobs:
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: map(select(.ARCH == "amd64")) | group_by(.CUDA_VER|split(".")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(".")|map(tonumber)), (.CUDA_VER|split(".")|map(tonumber))]))
   wheel-publish-cuopt-server:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-cuopt-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
@@ -169,6 +184,7 @@ jobs:
       package-name: cuopt_server
       package-type: python
   docs-build:
+    if: ${{ !inputs.summary-only }}
     needs: [python-build]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
@@ -184,6 +200,7 @@ jobs:
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
+    if: ${{ !inputs.summary-only }}
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -199,6 +216,7 @@ jobs:
       # only need 1 build (noarch package): this selects amd64, oldest-supported Python, latest-supported CUDA
       matrix_filter: '[map(select(.ARCH == "amd64")) | min_by((.PY_VER | split(".") | map(tonumber)), (.CUDA_VER | split(".") | map(-tonumber)))]'
   wheel-publish-cuopt-sh-client:
+    if: ${{ !inputs.summary-only }}
     needs: wheel-build-cuopt-sh-client
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
@@ -219,7 +237,7 @@ jobs:
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
       - wheel-publish-libcuopt
-    if: inputs.trigger-tests
+    if: ${{ inputs.trigger-tests && !inputs.summary-only }}
     runs-on: ubuntu-latest
     # ref: https://docs.github.com/en/actions/reference/security/secure-use#use-an-intermediate-environment-variable
     env:
@@ -281,6 +299,7 @@ jobs:
         run: bash ci/build_summary.sh
 
   build-images:
+    if: ${{ !inputs.summary-only }}
     needs:
       - wheel-publish-cuopt
       - wheel-publish-cuopt-server
