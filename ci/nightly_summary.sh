@@ -62,14 +62,6 @@ else
     echo "{}" > "${WORKFLOW_JOBS_JSON}"
 fi
 
-# Check if branch-separated path has per-matrix summaries (exclude consolidated.json)
-S3_SUMMARIES_LEGACY="${S3_BASE}/summaries/${RUN_DATE}/"
-SUMMARY_COUNT=$(aws s3 ls "${S3_SUMMARIES_PREFIX}" 2>/dev/null | grep -v consolidated | grep -c '\.json' || echo "0")
-if [ "${SUMMARY_COUNT}" -eq 0 ]; then
-    echo "No per-matrix summaries at branch path (${S3_SUMMARIES_PREFIX}), falling back to legacy path"
-    S3_SUMMARIES_PREFIX="${S3_SUMMARIES_LEGACY}"
-    S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/"
-fi
 
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
