@@ -386,34 +386,6 @@ def generate_consolidated_html(
   <div class="summary-card"><div class="num pass">{totals["resolved"]}</div><div class="lbl">Stabilized</div></div>
 </div>""")
 
-    # --- Matrix grid ---
-    parts.append("<section><h2>Matrix Overview</h2><table>")
-    parts.append(
-        "<tr><th>Test Type</th><th>Matrix</th><th>Status</th>"
-        "<th>Passed</th><th>Failed</th><th>Flaky</th><th>Total</th><th>Report</th></tr>"
-    )
-    for g in agg["matrix_grid"]:
-        counts = g["counts"]
-        # Build link to per-matrix HTML report on S3
-        report_link = ""
-        if s3_reports_prefix:
-            report_filename = f"{g['test_type']}-{g['matrix_label']}.html"
-            report_link = (
-                f'<a class="matrix-link" href="{_html_escape(s3_reports_prefix)}'
-                f'{_html_escape(report_filename)}">View</a>'
-            )
-        parts.append(
-            f"<tr><td><strong>{_html_escape(g['test_type'])}</strong></td>"
-            f"<td><code>{_html_escape(g['matrix_label'])}</code></td>"
-            f"<td>{_status_badge(g['status'])}</td>"
-            f"<td>{counts.get('passed', 0)}</td>"
-            f"<td>{counts.get('failed', 0)}</td>"
-            f"<td>{counts.get('flaky', 0)}</td>"
-            f"<td>{counts.get('total', 0)}</td>"
-            f"<td>{report_link}</td></tr>"
-        )
-    parts.append("</table></section>")
-
     # --- New failures ---
     if agg["all_new_failures"]:
         parts.append("<section><h2>New Failures</h2><table>")
@@ -500,6 +472,33 @@ def generate_consolidated_html(
             '<p style="color:#9e9e9e;font-style:italic;padding:16px">'
             "All tests passed across all matrices!</p>"
         )
+
+    # --- Matrix grid (at the end) ---
+    parts.append("<section><h2>Matrix Overview</h2><table>")
+    parts.append(
+        "<tr><th>Test Type</th><th>Matrix</th><th>Status</th>"
+        "<th>Passed</th><th>Failed</th><th>Flaky</th><th>Total</th><th>Report</th></tr>"
+    )
+    for g in agg["matrix_grid"]:
+        counts = g["counts"]
+        report_link = ""
+        if s3_reports_prefix:
+            report_filename = f"{g['test_type']}-{g['matrix_label']}.html"
+            report_link = (
+                f'<a class="matrix-link" href="{_html_escape(s3_reports_prefix)}'
+                f'{_html_escape(report_filename)}">View</a>'
+            )
+        parts.append(
+            f"<tr><td><strong>{_html_escape(g['test_type'])}</strong></td>"
+            f"<td><code>{_html_escape(g['matrix_label'])}</code></td>"
+            f"<td>{_status_badge(g['status'])}</td>"
+            f"<td>{counts.get('passed', 0)}</td>"
+            f"<td>{counts.get('failed', 0)}</td>"
+            f"<td>{counts.get('flaky', 0)}</td>"
+            f"<td>{counts.get('total', 0)}</td>"
+            f"<td>{report_link}</td></tr>"
+        )
+    parts.append("</table></section>")
 
     parts.append("</body></html>")
     return "\n".join(parts)
