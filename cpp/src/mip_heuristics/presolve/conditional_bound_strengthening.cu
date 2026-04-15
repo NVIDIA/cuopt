@@ -246,12 +246,15 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
   std::vector<int2> constraint_pairs_h(max_pair_per_row * problem.n_constraints, {-1, -1});
   std::unordered_set<int> cnstr_pair;
 
-#pragma omp taskloop private(cnstr_pair) default(none) \
-  shared(offsets, variables, reverse_offsets, reverse_constraints, constraint_pairs_h)
-  for (int cnstr = 0; cnstr < problem.n_constraints; ++cnstr) {
-    for (int jj = offsets[cnstr]; jj < offsets[cnstr + 1]; ++jj) {
+  i_t num_tasks = omp_get_num_threads() - 4;
+
+  CUOPT_LOG_INFO("Selecting constraint pairs with %d tasks", num_tasks);
+#pragma omp taskloop num_tasks(num_tasks) private(cnstr_pair) default(none) \
+  shared(problem, offsets, variables, reverse_offsets, reverse_constraints, constraint_pairs_h)
+  for (i_t cnstr = 0; cnstr < problem.n_constraints; ++cnstr) {
+    for (i_t jj = offsets[cnstr]; jj < offsets[cnstr + 1]; ++jj) {
       int var = variables[jj];
-      for (int kk = reverse_offsets[var]; kk < reverse_offsets[var + 1]; ++kk) {
+      for (i_t kk = reverse_offsets[var]; kk < reverse_offsets[var + 1]; ++kk) {
         if (reverse_constraints[kk] != cnstr) { cnstr_pair.insert(reverse_constraints[kk]); }
         if (cnstr_pair.size() == max_pair_per_row) { break; }
       }

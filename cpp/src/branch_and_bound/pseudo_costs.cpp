@@ -1000,6 +1000,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       basis_update_mpf_t<i_t, f_t>& basis_factors,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
+  raft::common::nvtx::range scope("BB::strong_branching");
+
   pc.resize(original_lp.num_cols);
   pc.strong_branch_down.assign(fractional.size(), 0);
   pc.strong_branch_up.assign(fractional.size(), 0);
@@ -1304,6 +1306,8 @@ i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractio
                                                  const std::vector<f_t>& solution,
                                                  logger_t& log)
 {
+  raft::common::nvtx::range scope("BB::pseudocost_branching");
+
   i_t branch_var = fractional[0];
   f_t max_score  = -1;
   i_t num_initialized_down;
@@ -1350,6 +1354,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   const std::vector<i_t>& new_slacks,
   const lp_problem_t<i_t, f_t>& original_lp)
 {
+  raft::common::nvtx::range scope("BB::reliability_branching");
+
   constexpr f_t eps                      = 1e-6;
   f_t start_time                         = bnb_stats.start_time;
   i_t branch_var                         = fractional[0];

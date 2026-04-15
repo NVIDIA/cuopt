@@ -90,6 +90,8 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
     counter++;
   };
 
+  CUOPT_LOG_INFO("Launching %d scratch CPUFJ tasks", scratch_cpu_fj.size());
+
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     auto ptr = scratch_cpu_fj[i].get();
 #pragma omp task firstprivate(ptr) depend(out : *ptr) default(none)
@@ -128,6 +130,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   // default weights
   cudaDeviceSynchronize();
 
+  CUOPT_LOG_INFO("Launching scratch CPUFJ (on LP optimal) task");
+
 #pragma omp task shared(scratch_cpu_fj_on_lp_opt) default(none) \
   depend(out : *scratch_cpu_fj_on_lp_opt)
   cpufj_solve(scratch_cpu_fj_on_lp_opt.get());
@@ -144,6 +148,8 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
   if (scratch_cpu_fj_on_lp_opt) {
     scratch_cpu_fj_on_lp_opt->halted = true;
 #pragma omp taskwait depend(in : *scratch_cpu_fj_on_lp_opt)
+
+    CUOPT_LOG_INFO("All scratch CPUFJ tasks were stopped");
   }
 }
 
@@ -181,6 +187,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
       bb.queue_external_solution_deterministic(h_vec, work_units);
     };
 
+  CUOPT_LOG_INFO("Launching deterministic CPUFJ task");
 #pragma omp task shared(deterministic_cpu_fj) default(none) depend(inout : *deterministic_cpu_fj)
   cpufj_solve(deterministic_cpu_fj.get());
 
@@ -199,6 +206,7 @@ void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
 
     deterministic_cpu_fj->halted = true;
 #pragma omp taskwait depend(in : *deterministic_cpu_fj)
+    CUOPT_LOG_INFO("Deterministic CPUFJ task was stopped");
   }
 }
 
@@ -246,9 +254,13 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // Start CPU solver in background thread
 #pragma omp taskgroup
   {
+    if (ls_cpu_fj.size() > 0) {
+      CUOPT_LOG_INFO("Launching %d CPUFJ tasks", ls_cpu_fj.size());
+
 #pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(ls_cpu_fj.size()) nogroup
-    for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
-      cpufj_solve(ls_cpu_fj[i].get());
+      for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
+        cpufj_solve(ls_cpu_fj[i].get());
+      }
     }
 
     // Run GPU solver
@@ -259,6 +271,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
       ls_cpu_fj[i]->halted = true;
     }
   }
+
+  CUOPT_LOG_INFO("All CPUFJ tasks were stopped");
 
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();

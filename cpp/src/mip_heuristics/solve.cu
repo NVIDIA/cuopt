@@ -577,23 +577,26 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   if (settings_const.num_cpu_threads < 0) {
     num_threads = omp_get_max_threads();
   } else {
-    if (settings_const.num_cpu_threads < 4) {
-      CUOPT_LOG_ERROR(
-        "The MIP solver requires at least 4 CPU threads! Setting the number of threads to 4.");
-    }
+    num_threads = settings_const.num_cpu_threads;
+  }
 
-    num_threads = std::max(4, settings_const.num_cpu_threads);
+  if (num_threads < 4) {
+    CUOPT_LOG_ERROR("The MIP solver requires at least 4 CPU threads!");
+    return mip_solution_t<i_t, f_t>{
+      cuopt::logic_error("The number of CPU threads is below than expected.",
+                         cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
   }
 
   // TODO: Remove this after converting deterministic B&B to use tasks. This allows
   // creating a nested parallel region.
   omp_set_max_active_levels(2);
 
-  //
   mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
                                solver_stats_t<i_t, f_t>{},
                                op_problem.get_handle_ptr()->get_stream());
 
+  // Creates the OpenMP thread pool. It will be shared across the entire MIP solver.
 #pragma omp parallel num_threads(num_threads) default(none) \
   shared(sol, op_problem, settings_const, exception)
   {
@@ -607,7 +610,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         exception = std::current_exception();
       }
     }
-  }
+  }  // Implicit barrier
 
   if (exception) { std::rethrow_exception(exception); }
   return sol;

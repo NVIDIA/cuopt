@@ -61,6 +61,8 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
 
     if (population_ready) {
       lp_optimal_solution = solution;
+
+      CUOPT_LOG_INFO("Launching RINS task");
 #pragma omp task default(none)
       run_rins();
     } else {
@@ -82,9 +84,7 @@ template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::run_rins()
 {
   raft::common::nvtx::range fun_scope("Running RINS");
-
-  if (total_calls == 0) RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
-
+  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_assert(lp_optimal_solution.size() == problem_copy->n_variables, "Assignment size mismatch");
   cuopt_assert(problem_copy->handle_ptr == &rins_handle, "Handle mismatch");
   // Do not make assertions based on problem_ptr. The original problem may have been modified within
@@ -226,6 +226,7 @@ void rins_t<i_t, f_t>::run_rins()
                           true);
   fj_cpu->log_prefix = "[RINS] ";
 
+  CUOPT_LOG_INFO("Launching CPUFJ (RINS) task");
 #pragma omp task shared(fj_cpu) firstprivate(time_limit) default(none)
   cpufj_solve(fj_cpu.get(), time_limit);
 

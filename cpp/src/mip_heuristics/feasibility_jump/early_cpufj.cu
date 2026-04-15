@@ -43,6 +43,7 @@ void early_cpufj_t<i_t, f_t>::start()
                                          const std::vector<f_t>& assignment,
                                          double) { this->try_update_best(solver_obj, assignment); };
 
+  CUOPT_LOG_INFO("Launching early CPUFJ task");
 #pragma omp task shared(fj_cpu_) depend(out : *fj_cpu_) default(none)
   cpufj_solve(fj_cpu_.get());
 }
@@ -56,6 +57,7 @@ void early_cpufj_t<i_t, f_t>::stop()
 
   fj_cpu_->halted = true;
 #pragma omp taskwait depend(in : *fj_cpu_)
+  CUOPT_LOG_INFO("Early CPUFJ task was stopped");
 
   CUOPT_LOG_DEBUG("[Early CPUFJ] Stopped after %d iterations, solution_found=%d",
                   fj_cpu_ ? fj_cpu_->iterations : 0,

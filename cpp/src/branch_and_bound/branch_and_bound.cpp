@@ -1800,6 +1800,8 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
+  raft::common::nvtx::range scope("BB::single_threaded_solve");
+
   branch_and_bound_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_);
 
   f_t lower_bound = get_lower_bound();
@@ -2634,7 +2636,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     } else {
       single_threaded_solve();
     }
-  }
+  }  // Implicit barrier for all tasks created within the group
 
   is_running_ = false;
 

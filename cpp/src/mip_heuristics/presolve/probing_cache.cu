@@ -890,6 +890,8 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // are visible before any per-thread kernel can reference that memory.
   problem.handle_ptr->sync_stream();
 
+  CUOPT_LOG_INFO("Running probing cache with %d tasks", num_tasks);
+
   // Main parallel loop
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
