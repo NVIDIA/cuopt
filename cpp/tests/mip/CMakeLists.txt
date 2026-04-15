@@ -8,6 +8,9 @@
 ConfigureTest(MIP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/miplib_test.cu
 )
+ConfigureTest(SEMI_CONTINUOUS_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/semi_continuous_test.cu
+)
 ConfigureTest(PROBLEM_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/problem_test.cu
 )
