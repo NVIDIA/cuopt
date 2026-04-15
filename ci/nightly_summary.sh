@@ -27,6 +27,11 @@ BRANCH="${RAPIDS_BRANCH:-main}"
 
 GITHUB_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}/actions/runs/${GITHUB_RUN_ID:-}"
 
+# Map CUOPT_AWS_* to standard AWS env vars for the aws CLI
+export AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
+export AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
+unset AWS_SESSION_TOKEN
+
 if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
     echo "WARNING: CUOPT_DATASET_S3_URI is not set. Skipping nightly aggregation." >&2
     echo "The per-matrix reports (uploaded by individual test jobs) are still available on S3."
@@ -83,11 +88,6 @@ python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
     --workflow-jobs "${WORKFLOW_JOBS_JSON}"
 
 # --- Generate presigned URLs for reports (7-day expiry) ---
-# Map CUOPT_AWS_* to standard AWS env vars for the aws CLI
-export AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-export AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-unset AWS_SESSION_TOKEN
-
 PRESIGN_EXPIRY=604800
 PRESIGNED_HTML=$(aws s3 presign "${S3_CONSOLIDATED_HTML}" --expires-in "${PRESIGN_EXPIRY}" 2>&1) || {
     echo "WARNING: Failed to generate presigned URL for report: ${PRESIGNED_HTML}" >&2
