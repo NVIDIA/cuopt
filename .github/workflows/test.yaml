@@ -99,3 +99,16 @@ jobs:
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: ci/test_notebooks.sh
+  sonarqube-analysis:
+    if: inputs.build_type == 'nightly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: Run SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ci/run_sonarqube.sh "${{ inputs.branch }}"
