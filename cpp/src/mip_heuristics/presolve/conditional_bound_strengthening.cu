@@ -266,7 +266,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
       constraint_pairs_h[cnstr * max_pair_per_row + counter++] = {cnstr, temp};
     }
     cnstr_pair.clear();
-  }
+  }  // implicit barrier that waits for all iterations to finish before proceeding
 
   constraint_pairs = cuopt::device_copy(constraint_pairs_h, problem.handle_ptr->get_stream());
 

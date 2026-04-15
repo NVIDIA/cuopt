@@ -926,7 +926,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                                         timer,
                                         problem.handle_ptr->get_device());
       }
-    }
+    }  // implicit barrier that waits for all iterations to finish before proceeding
 
     // TODO when we have determinism, check current threads work/time counter and filter queue
     // items that are smaller or equal to that

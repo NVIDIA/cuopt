@@ -461,7 +461,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // Start the primal heuristics
     context.diversity_manager_ptr = &dm;
     sol                           = dm.run_solver();
-  }  // implicit barrier for all tasks created within the taskgroup
+  }  // implicit barrier for all tasks created in B&B and heuristics
 
   if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {

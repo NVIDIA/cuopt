@@ -24,6 +24,7 @@
 
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/tic_toc.hpp>
+#include <utilities/scope_guard.hpp>
 
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
@@ -84,6 +85,8 @@ template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::run_rins()
 {
   raft::common::nvtx::range fun_scope("Running RINS");
+  scope_guard scope_guard([this]() { this->launch_new_task = true; });
+
   RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_assert(lp_optimal_solution.size() == problem_copy->n_variables, "Assignment size mismatch");
   cuopt_assert(problem_copy->handle_ptr == &rins_handle, "Handle mismatch");
@@ -115,10 +118,7 @@ void rins_t<i_t, f_t>::run_rins()
   cuopt_assert(best_sol.handle_ptr == &rins_handle, "Handle mismatch");
 
   cuopt_assert(best_sol.get_feasible(), "Best solution is not feasible");
-  if (!best_sol.get_feasible()) {
-    launch_new_task = true;
-    return;
-  }
+  if (!best_sol.get_feasible()) { return; }
 
   i_t sol_size_before_rins = best_sol.assignment.size();
   auto lp_opt_device = cuopt::device_copy(this->lp_optimal_solution, rins_handle.get_stream());
@@ -142,7 +142,6 @@ void rins_t<i_t, f_t>::run_rins()
   // abort if the fractional ratio is too low
   if (fractional_ratio < settings.min_fractional_ratio) {
     CUOPT_LOG_TRACE("RINS fractional ratio too low, aborting");
-    launch_new_task = true;
     return;
   }
 
@@ -167,7 +166,6 @@ void rins_t<i_t, f_t>::run_rins()
 
   if (n_to_fix == 0) {
     CUOPT_LOG_DEBUG("RINS no variables to fix");
-    launch_new_task = true;
     return;
   }
 
@@ -299,7 +297,7 @@ void rins_t<i_t, f_t>::run_rins()
                           static_cast<f_t>(context.settings.heuristic_params.rins_max_time_limit));
   }
 
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the CPU FJ (RINS) to finish
 
   CUOPT_LOG_DEBUG("RINS FJ ran for %d iterations", fj_cpu->iterations);
   if (fj_cpu->feasible_found) {
@@ -341,7 +339,6 @@ void rins_t<i_t, f_t>::run_rins()
 
   if (improvement_found) total_success++;
   CUOPT_LOG_DEBUG("RINS calls/successes %d/%d", total_calls, total_success);
-  launch_new_task = true;
 }
 
 #if MIP_INSTANTIATE_FLOAT

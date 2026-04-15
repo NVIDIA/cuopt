@@ -1114,7 +1114,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
 
     if (effective_batch_pdlp != 0) {
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
     }
   }
 
@@ -1567,7 +1567,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     log.printf("Time limit reached\n");
     if (use_pdlp) {
       concurrent_halt.store(1);
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
     }
     return branch_var;
   }
@@ -1706,7 +1706,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   //}
 
   if (use_pdlp) {
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
 
     i_t pdlp_applied = 0;
     i_t pdlp_optimal = 0;

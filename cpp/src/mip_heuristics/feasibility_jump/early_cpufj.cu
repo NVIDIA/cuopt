@@ -56,7 +56,7 @@ void early_cpufj_t<i_t, f_t>::stop()
   preemption_flag_.store(true);
 
   fj_cpu_->halted = true;
-#pragma omp taskwait depend(in : *fj_cpu_)
+#pragma omp taskwait depend(in : *fj_cpu_)  // Wait for the early CPUFJ task to finish
 
   CUOPT_LOG_INFO("[Early CPUFJ] Stopped after %d iterations, solution_found=%d",
                  fj_cpu_ ? fj_cpu_->iterations : 0,

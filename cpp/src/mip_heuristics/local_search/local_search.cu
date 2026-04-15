@@ -127,9 +127,6 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
       }
     };
 
-  // default weights
-  cudaDeviceSynchronize();
-
   CUOPT_LOG_INFO("Launching scratch CPUFJ (on LP optimal) task");
 
 #pragma omp task shared(scratch_cpu_fj_on_lp_opt) default(none) \
@@ -142,12 +139,13 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     scratch_cpu_fj[i]->halted = true;
-#pragma omp taskwait depend(in : *scratch_cpu_fj[i])
+#pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
   }
 
   if (scratch_cpu_fj_on_lp_opt) {
     scratch_cpu_fj_on_lp_opt->halted = true;
-#pragma omp taskwait depend(in : *scratch_cpu_fj_on_lp_opt)
+#pragma omp taskwait depend( \
+    in : *scratch_cpu_fj_on_lp_opt)  // Wait for the scratch CPU FJ (LP optimal) task to finish
 
     CUOPT_LOG_INFO("All scratch CPUFJ tasks were stopped");
   }
@@ -205,7 +203,8 @@ void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
     }
 
     deterministic_cpu_fj->halted = true;
-#pragma omp taskwait depend(in : *deterministic_cpu_fj)
+#pragma omp taskwait depend( \
+    in : *deterministic_cpu_fj)  // Wait for deterministic CPU FJ task to finish
     CUOPT_LOG_INFO("Deterministic CPUFJ task was stopped");
   }
 }
@@ -270,7 +269,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
       ls_cpu_fj[i]->halted = true;
     }
-  }
+  }  // implicit barrier that waits all CPU FJ tasks to finish
 
   CUOPT_LOG_INFO("All CPUFJ tasks were stopped");
 

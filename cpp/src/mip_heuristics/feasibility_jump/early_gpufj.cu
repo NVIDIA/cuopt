@@ -72,7 +72,7 @@ void early_gpufj_t<i_t, f_t>::stop()
   if (!fj_ptr_) { return; }
 
   context_ptr_->preempt_heuristic_solver_.store(true);
-#pragma omp taskwait depend(in : *fj_ptr_)
+#pragma omp taskwait depend(in : *fj_ptr_)  // Wait for the early GPU FJ task to finish
 
   CUOPT_LOG_INFO("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
 

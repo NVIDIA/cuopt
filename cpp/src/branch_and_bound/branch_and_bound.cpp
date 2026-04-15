@@ -1987,14 +1987,14 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       solver_name    = method_to_string(root_relax_solved_by);
 
     } else {
-#pragma omp taskwait depend(in : root_status)
+#pragma omp taskwait depend(in : root_status)  // Wait for the dual simplex to finish
       user_objective       = root_relax_soln_.user_objective;
       iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
       solver_name          = "Dual Simplex";
     }
   } else {
-#pragma omp taskwait depend(in : root_status)
+#pragma omp taskwait depend(in : root_status)  // Wait for the dual simplex to finish
     user_objective       = root_relax_soln_.user_objective;
     iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;
@@ -2629,7 +2629,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     } else {
       single_threaded_solve();
     }
-  }  // Implicit barrier for all tasks created within the group
+  }  // Implicit barrier for all tasks created within the group (RINS, B&B workers)
 
   is_running_ = false;
 
