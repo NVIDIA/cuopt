@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: SonarQube Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to analyze (default: current branch)"
+        required: false
+        type: string
+
+jobs:
+  sonarqube-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ci/run_sonarqube.sh "${{ inputs.branch || github.ref_name }}"
