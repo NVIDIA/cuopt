@@ -68,10 +68,10 @@ TEST(mip_solve, semi_continuous_regressions)
   mip_solver_settings_t<int, double> settings;
   settings.time_limit = 10.;
 
-  const std::vector<sc_result_t> test_instances = {{"mip/sc_standard.mps", 8., 0.},
-                                                   {"mip/sc_no_ub.mps", 8., 0.}};
+  const std::vector<sc_result_t> valid_test_instances = {
+    {"mip/sc_standard.mps", 8., 0.}, {"mip/sc_no_ub.mps", 8., 0.}, {"mip/sc_lb_zero.mps", 8., 0.}};
 
-  for (const auto& test_instance : test_instances) {
+  for (const auto& test_instance : valid_test_instances) {
     auto path     = make_path_absolute(test_instance.file);
     auto problem  = cuopt::mps_parser::parse_mps<int, double>(path, false);
     auto solution = solve_mip(&handle_, problem, settings);
@@ -96,7 +96,6 @@ TEST(mip_solve, semi_continuous_invalid_bounds_rejected)
   settings.time_limit = 10.;
 
   const std::vector<std::pair<double, double>> invalid_bounds = {
-    {0.0, 10.0},
     {-3.0, 5.0},
     {-5.0, -1.0},
     {-4.0, 0.0},

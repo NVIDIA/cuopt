@@ -64,6 +64,28 @@ static void init_handler(const raft::handle_t* handle_ptr)
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 }
 
+template <typename i_t, typename f_t>
+static void normalize_zero_lb_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem)
+{
+  if (op_problem.get_variable_types().is_empty()) { return; }
+
+  auto var_types = op_problem.get_variable_types_host();
+  auto var_lb    = op_problem.get_variable_lower_bounds_host();
+  bool modified  = false;
+
+  for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
+    if (var_types[i] == var_t::SEMI_CONTINUOUS && var_lb[i] == f_t(0)) {
+      CUOPT_LOG_WARN(
+        "SC var %d has zero lower bound; treating it as continuous to match common solver behavior",
+        i);
+      var_types[i] = var_t::CONTINUOUS;
+      modified     = true;
+    }
+  }
+
+  if (modified) { op_problem.set_variable_types(var_types.data(), var_types.size()); }
+}
+
 template <typename f_t>
 static void invoke_solution_callbacks(
   const std::vector<internals::base_solution_callback_t*>& mip_callbacks,
@@ -285,6 +307,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     raft::common::nvtx::range fun_scope("Running solver");
 
     // This is required as user might forget to set some fields
+    normalize_zero_lb_semi_continuous(op_problem);
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
