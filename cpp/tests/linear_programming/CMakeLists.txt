@@ -8,12 +8,12 @@ ConfigureTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
-    LABELS mathopt lp)
+    LABELS numopt)
 # ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
 ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
-    LABELS mathopt lp)
+    LABELS numopt)
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
@@ -65,8 +65,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     endif()
 
     add_test(NAME C_API_TEST COMMAND C_API_TEST)
-    set_tests_properties(C_API_TEST PROPERTIES LABELS "mathopt;lp")
-    register_test_labels(C_API_TEST mathopt lp)
+    set_tests_properties(C_API_TEST PROPERTIES LABELS "numopt")
 
     install(
         TARGETS C_API_TEST
