@@ -153,24 +153,26 @@ blocks.append({
     },
 })
 
-# Per-workflow failure summary in main message
+# Per-workflow failure summary using CI job counts from GitHub API
+# Build a lookup: workflow prefix -> (failed, total) from workflow_jobs
+wf_counts = {}
+for j in workflow_jobs:
+    prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
+    wf_counts.setdefault(prefix, {"failed": 0, "total": 0})
+    wf_counts[prefix]["total"] += 1
+    if j["conclusion"] == "failure":
+        wf_counts[prefix]["failed"] += 1
+
 if failing_workflows:
     lines = []
     for wf in sorted(failing_workflows):
-        # Count matrix failures for this workflow
-        wf_grid = [g for g in grid if g["test_type"] == wf and g["status"].startswith("failed")]
-        # Count CI-level failures
-        wf_ci = [j for j in failed_ci_jobs
-                  if (j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]) == wf]
-        parts = []
-        if wf_grid:
-            parts.append(f"{len(wf_grid)} matrix job(s)")
-        if wf_ci and not any(not j.get("has_test_details", False) for j in wf_ci):
-            pass  # already covered by matrix
-        elif wf_ci:
-            parts.append("CI job failed")
-        detail = ", ".join(parts) if parts else "failed"
-        lines.append(f":x:  *{wf}* — {detail}")
+        counts = wf_counts.get(wf, {})
+        f_count = counts.get("failed", 0)
+        t_count = counts.get("total", 0)
+        if t_count > 0:
+            lines.append(f":x:  *{wf}* — {f_count}/{t_count} failed")
+        else:
+            lines.append(f":x:  *{wf}* — failed")
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "section",
