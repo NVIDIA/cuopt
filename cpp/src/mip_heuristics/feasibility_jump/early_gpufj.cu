@@ -57,7 +57,7 @@ void early_gpufj_t<i_t, f_t>::start()
     this->try_update_best(solver_obj, h_assignment);
   };
 
-  CUOPT_LOG_INFO("Launching early GPUFJ task");
+  CUOPT_LOG_DEBUG("Launching early GPUFJ task");
 
 #pragma omp task default(none) shared(fj_ptr_) depend(out : *fj_ptr_)
   {
@@ -74,7 +74,7 @@ void early_gpufj_t<i_t, f_t>::stop()
   context_ptr_->preempt_heuristic_solver_.store(true);
 #pragma omp taskwait depend(in : *fj_ptr_)  // Wait for the early GPU FJ task to finish
 
-  CUOPT_LOG_INFO("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
+  CUOPT_LOG_DEBUG("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
 
   fj_ptr_.reset();
 }

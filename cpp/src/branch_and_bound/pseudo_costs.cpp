@@ -1030,7 +1030,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * fractional.size());
   shared_strong_branching_context_view_t<i_t, f_t> sb_view(shared_ctx.solved);
 
-  std::atomic concurrent_halt{0};
+  std::atomic<int> concurrent_halt{0};
 
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());

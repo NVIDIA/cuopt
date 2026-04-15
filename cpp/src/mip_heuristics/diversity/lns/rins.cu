@@ -63,7 +63,7 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
     if (population_ready) {
       lp_optimal_solution = solution;
 
-      CUOPT_LOG_INFO("Launching RINS task");
+      CUOPT_LOG_DEBUG("Launching RINS task");
 #pragma omp task default(none)
       run_rins();
     } else {

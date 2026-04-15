@@ -90,7 +90,7 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
     counter++;
   };
 
-  CUOPT_LOG_INFO("Launching %d scratch CPUFJ tasks", scratch_cpu_fj.size());
+  CUOPT_LOG_DEBUG("Launching %d scratch CPUFJ tasks", scratch_cpu_fj.size());
 
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     auto ptr = scratch_cpu_fj[i].get();
@@ -127,7 +127,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
       }
     };
 
-  CUOPT_LOG_INFO("Launching scratch CPUFJ (on LP optimal) task");
+  CUOPT_LOG_DEBUG("Launching scratch CPUFJ (on LP optimal) task");
 
 #pragma omp task shared(scratch_cpu_fj_on_lp_opt) default(none) \
   depend(out : *scratch_cpu_fj_on_lp_opt)
@@ -147,7 +147,7 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 #pragma omp taskwait depend( \
     in : *scratch_cpu_fj_on_lp_opt)  // Wait for the scratch CPU FJ (LP optimal) task to finish
 
-    CUOPT_LOG_INFO("All scratch CPUFJ tasks were stopped");
+    CUOPT_LOG_DEBUG("All scratch CPUFJ tasks were stopped");
   }
 }
 
@@ -185,7 +185,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
       bb.queue_external_solution_deterministic(h_vec, work_units);
     };
 
-  CUOPT_LOG_INFO("Launching deterministic CPUFJ task");
+  CUOPT_LOG_DEBUG("Launching deterministic CPUFJ task");
 #pragma omp task shared(deterministic_cpu_fj) default(none) depend(inout : *deterministic_cpu_fj)
   cpufj_solve(deterministic_cpu_fj.get());
 
@@ -205,7 +205,7 @@ void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
     deterministic_cpu_fj->halted = true;
 #pragma omp taskwait depend( \
     in : *deterministic_cpu_fj)  // Wait for deterministic CPU FJ task to finish
-    CUOPT_LOG_INFO("Deterministic CPUFJ task was stopped");
+    CUOPT_LOG_DEBUG("Deterministic CPUFJ task was stopped");
   }
 }
 
@@ -254,7 +254,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
 #pragma omp taskgroup
   {
     if (ls_cpu_fj.size() > 0) {
-      CUOPT_LOG_INFO("Launching %d CPUFJ tasks", ls_cpu_fj.size());
+      CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", ls_cpu_fj.size());
 
 #pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(ls_cpu_fj.size()) nogroup
       for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
@@ -271,7 +271,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
     }
   }  // implicit barrier that waits all CPU FJ tasks to finish
 
-  CUOPT_LOG_INFO("All CPUFJ tasks were stopped");
+  CUOPT_LOG_DEBUG("All CPUFJ tasks were stopped");
 
   solution_t<i_t, f_t> solution_cpu(*solution.problem_ptr);
   f_t best_cpu_obj = std::numeric_limits<f_t>::max();
