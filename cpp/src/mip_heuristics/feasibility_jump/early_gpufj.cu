@@ -38,7 +38,7 @@ early_gpufj_t<i_t, f_t>::~early_gpufj_t()
 template <typename i_t, typename f_t>
 void early_gpufj_t<i_t, f_t>::start()
 {
-  if (worker_thread_) { return; }
+  if (fj_ptr_) { return; }
 
   this->start_time_ = std::chrono::steady_clock::now();
 
@@ -57,29 +57,26 @@ void early_gpufj_t<i_t, f_t>::start()
     this->try_update_best(solver_obj, h_assignment);
   };
 
-  worker_thread_ = std::make_unique<std::thread>(&early_gpufj_t::run_worker, this);
-}
+  CUOPT_LOG_INFO("Launching early GPUFJ task");
 
-template <typename i_t, typename f_t>
-void early_gpufj_t<i_t, f_t>::run_worker()
-{
-  RAFT_CUDA_TRY(cudaSetDevice(this->device_id_));
-  fj_ptr_->solve(*this->solution_ptr_);
+#pragma omp task default(none) shared(fj_ptr_) depend(out : *fj_ptr_)
+  {
+    RAFT_CUDA_TRY(cudaSetDevice(this->device_id_));
+    fj_ptr_->solve(*this->solution_ptr_);
+  }
 }
 
 template <typename i_t, typename f_t>
 void early_gpufj_t<i_t, f_t>::stop()
 {
-  if (!worker_thread_) { return; }
+  if (!fj_ptr_) { return; }
 
   context_ptr_->preempt_heuristic_solver_.store(true);
+#pragma omp taskwait depend(in : *fj_ptr_)
 
-  if (worker_thread_->joinable()) { worker_thread_->join(); }
-
-  CUOPT_LOG_DEBUG("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
+  CUOPT_LOG_INFO("[Early GPU FJ] Stopped, solution_found=%d", this->solution_found_);
 
   fj_ptr_.reset();
-  worker_thread_.reset();
 }
 
 #if MIP_INSTANTIATE_FLOAT
