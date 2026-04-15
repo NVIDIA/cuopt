@@ -128,13 +128,14 @@ else:
         text += f", all {passed_ci_count} CI jobs succeeded"
     mention = ""
 
-stats = (
-    f":white_check_mark: {totals.get('passed', 0)} passed  |  "
-    f":x: {totals.get('failed', 0)} failed  |  "
-    f":warning: {totals.get('flaky', 0)} flaky  |  "
-    f":fast_forward: {totals.get('skipped', 0)} skipped  |  "
-    f"Total: {totals.get('total', 0)}"
-)
+stats_parts = []
+if totals.get("failed", 0) > 0:
+    stats_parts.append(f":x: {totals['failed']} failed")
+if totals.get("flaky", 0) > 0:
+    stats_parts.append(f":warning: {totals['flaky']} flaky")
+if not stats_parts:
+    stats_parts.append(f":white_check_mark: {totals.get('total', 0)} tests passed")
+stats = "  |  ".join(stats_parts)
 
 blocks.append({
     "type": "header",
@@ -269,46 +270,33 @@ if issues_by_wf:
 
         print(make_payload(wf_blocks))
 
-# ── Thread 2: CI Workflow Status (all jobs) ───────────────────────────
-# Shows every workflow job so new workflows are automatically visible.
+# ── Thread 2: CI Workflow Status (only failures + summary) ────────────
 if workflow_jobs:
     wf_groups = {}
     for j in workflow_jobs:
         prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
         wf_groups.setdefault(prefix, []).append(j)
 
-    ci_blocks = []
-    current = "*CI Workflow Status:*\n"
+    failed_lines = []
+    passed_count = 0
     for group_name, group_jobs in sorted(wf_groups.items()):
         passed = sum(1 for j in group_jobs if j["conclusion"] == "success")
         failed = sum(1 for j in group_jobs if j["conclusion"] == "failure")
         total = len(group_jobs)
 
         if failed > 0:
-            icon = ":x:"
-            detail = f"{failed}/{total} failed"
-        elif passed == total:
-            icon = ":white_check_mark:"
-            detail = f"{total} passed"
+            failed_lines.append(f":x:  *{group_name}* — {failed}/{total} failed")
         else:
-            icon = ":grey_question:"
-            detail = f"{passed}/{total} passed"
+            passed_count += 1
 
-        line = f"{icon}  *{group_name}* — {detail}\n"
-        if len(current) + len(line) > 2900:
-            ci_blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": current.rstrip()},
-            })
-            current = ""
-        current += line
-
-    if current.strip():
-        ci_blocks.append({
+    if failed_lines:
+        text = "*Failed CI Workflows:*\n" + "\n".join(failed_lines)
+        if passed_count > 0:
+            text += f"\n_{passed_count} other workflow(s) passed_"
+        print(make_payload([{
             "type": "section",
-            "text": {"type": "mrkdwn", "text": current.rstrip()},
-        })
-    print(make_payload(ci_blocks))
+            "text": {"type": "mrkdwn", "text": text},
+        }]))
 PYEOF
 )
 
