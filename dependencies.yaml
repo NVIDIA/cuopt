@@ -299,6 +299,7 @@ dependencies:
         packages:
           - libboost-devel
           - cpp-argparse
+          - pyyaml
           - tbb-devel
           - zlib
           - bzip2
@@ -313,6 +314,7 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
+          - pyyaml
   test_cpp_cuopt:
     common:
       - output_types: [conda]
@@ -766,6 +768,7 @@ dependencies:
       - output_types: [conda, requirements]
         packages:
           - pre-commit
+          - ruamel.yaml>=0.18
       - output_types: conda
         packages:
           - clang==20.1.8

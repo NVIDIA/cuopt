@@ -1,0 +1,679 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Field registry for auto-generating proto definitions and C++ conversion code.
+#
+# Convention-over-configuration:
+#   - Bare field name = double type, getter = get_<name>()
+#   - "field: type" = specified type
+#   - "field: { type: T, ... }" = full override
+#
+# Scalar getters default to get_<name>().
+# Array getters default to get_<name>_host() (for optimization_problem) or
+#   get_<name>_host() for solution arrays.
+# Proto field name = registry field name (always).
+# Enum conventions: see the "Enums" section below for full defaults.
+#
+# Field numbers:
+#   field_num  – proto message field number (auto-assigned if missing)
+#   array_id   – enum value for ArrayFieldId or ResultFieldId (auto-assigned)
+#
+# Numbering is contiguous within each proto message (no artificial caps).
+# The only hard ranges are for solution scalars that share ChunkedResultHeader:
+#   LP:  1000-1999
+#   MIP: 2000-2999
+#   WS:  3000-3999
+#
+# Attributes (all optional):
+#
+# Per-field:
+#   type               – proto wire type (default: double for scalars, repeated double for arrays)
+#   field_num          – proto message field number (auto-assigned if missing)
+#   array_id           – enum value for ArrayFieldId or ResultFieldId (auto-assigned)
+#   setter_getter_root – C++ getter/setter root when different from field name
+#   getter             – explicit C++ getter expression (overrides setter_getter_root)
+#   setter             – explicit C++ setter name
+#   member             – C++ member name or access path (when different from field name)
+#   setter_group       – name of multi-argument setter group
+#   conditional        – true => guard serialization with emptiness check
+#   skip_conversion    – true => include in proto but not in conversion code
+#   proto_only         – true => include in proto header but not a constructor arg
+#   sentinel           – sentinel value handling for fields with "unset" semantics
+#   to_proto_cast      – explicit cast type for C++ -> proto direction
+#   from_proto_cast    – explicit cast type for proto -> C++ direction
+#
+# Per-section:
+#   cpp_type           – C++ type this section maps to
+#   constructor_args   – mapping of constructor parameter names to field sources
+#   presence_check     – predicate expression to test if optional data is present
+#   getter             – (per-section) expression to access the section's C++ data
+#
+# See GRPC_CODE_GENERATION.md for the full specification and examples.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Enums
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Convention-based defaults (override any field explicitly when needed):
+#   cpp_type    — {key}_t
+#   proto_type  — PascalCase from key (acronyms PDLP/MIP/LP/QP/VRP/PDP uppercased)
+#   to_proto_fn — to_proto_{key}()
+#   from_proto  — from_proto_{key}()
+#   default     — first value (proto3 zero-value)
+#   values      — bare names auto-number from 0; {Name: N} resets counter to N
+#   proto_prefix — "" (no prefix); set when proto values need disambiguation
+#
+# Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
+# no prefix.
+#
+enums:
+  pdlp_termination_status:
+    domain: solution
+    proto_prefix: PDLP
+    values:
+    - NoTermination
+    - NumericalError
+    - Optimal
+    - PrimalInfeasible
+    - DualInfeasible
+    - IterationLimit
+    - TimeLimit
+    - ConcurrentLimit
+    - PrimalFeasible
+
+  mip_termination_status:
+    domain: solution
+    proto_prefix: MIP
+    values:
+    - NoTermination
+    - Optimal
+    - FeasibleFound
+    - Infeasible
+    - Unbounded
+    - TimeLimit
+    - WorkLimit
+
+  pdlp_solver_mode:
+    domain: settings
+    default: Stable3
+    values:
+    - Stable1
+    - Stable2
+    - Methodical1
+    - Fast1
+    - Stable3
+
+  lp_method:
+    domain: settings
+    cpp_type: method_t
+    values:
+    - Concurrent
+    - PDLP
+    - DualSimplex
+    - Barrier
+
+  variable_type:
+    domain: problem
+    cpp_type: var_t
+    values:
+    - CONTINUOUS
+    - INTEGER
+
+  problem_category:
+    domain: problem
+    values:
+    - LP
+    - MIP
+
+  # ResultFieldId is auto-derived from solution/warm-start array_id fields.
+  # Aliases here preserve backward compatibility with upstream's abbreviated
+  # rapids-pre-commit-hooks: disable-next-line
+  # names (26.04) while the codegen uses full, consistent canonical names.
+  result_field_id:
+    aliases:
+      RESULT_WS_CURRENT_PRIMAL: 3
+      RESULT_WS_CURRENT_DUAL: 4
+      RESULT_WS_INITIAL_PRIMAL_AVG: 5
+      RESULT_WS_INITIAL_DUAL_AVG: 6
+      RESULT_WS_SUM_PRIMAL: 8
+      RESULT_WS_SUM_DUAL: 9
+      RESULT_WS_LAST_RESTART_GAP_PRIMAL: 10
+      RESULT_WS_LAST_RESTART_GAP_DUAL: 11
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LP Solution
+# ─────────────────────────────────────────────────────────────────────────────
+lp_solution:
+  cpp_type: "cpu_lp_solution_t<i_t, f_t>"
+
+  scalars:
+  - lp_termination_status:
+      field_num: 1000
+      type: pdlp_termination_status
+      getter: get_termination_status()
+  - error_message:
+      field_num: 1001
+      type: string
+      getter: "get_error_status().what()"
+      proto_only: true
+  - l2_primal_residual:
+      field_num: 1002
+  - l2_dual_residual:
+      field_num: 1003
+  - primal_objective:
+      field_num: 1004
+      getter: get_objective_value()
+  - dual_objective:
+      field_num: 1005
+      getter: get_dual_objective_value()
+  - gap:
+      field_num: 1006
+  - nb_iterations:
+      field_num: 1007
+      type: int32
+      getter: get_num_iterations()
+  - solve_time:
+      field_num: 1008
+  - solved_by:
+      field_num: 1009
+      type: int32
+      getter: solved_by()
+      to_proto_cast: int32_t
+      from_proto_cast: method_t
+
+  arrays:
+  - primal_solution:
+      field_num: 1
+      array_id: 0
+  - dual_solution:
+      field_num: 2
+      array_id: 1
+  - reduced_cost:
+      field_num: 3
+      array_id: 2
+
+  constructor_args:
+    scalars:
+    - lp_termination_status
+    - primal_objective
+    - dual_objective
+    - solve_time
+    - l2_primal_residual
+    - l2_dual_residual
+    - gap
+    - nb_iterations
+    - solved_by
+
+  warm_start:
+    presence_check: has_warm_start_data()
+    getter: get_cpu_pdlp_warm_start_data()
+    result_id_prefix: WS
+    chunked_header_prefix: ws_
+
+    scalars:
+    - initial_primal_weight:
+        field_num: 3000
+        member: initial_primal_weight_
+    - initial_step_size:
+        field_num: 3001
+        member: initial_step_size_
+    - total_pdlp_iterations:
+        field_num: 3002
+        type: int32
+        member: total_pdlp_iterations_
+    - total_pdhg_iterations:
+        field_num: 3003
+        type: int32
+        member: total_pdhg_iterations_
+    - last_candidate_kkt_score:
+        field_num: 3004
+        member: last_candidate_kkt_score_
+    - last_restart_kkt_score:
+        field_num: 3005
+        member: last_restart_kkt_score_
+    - sum_solution_weight:
+        field_num: 3006
+        member: sum_solution_weight_
+    - iterations_since_last_restart:
+        field_num: 3007
+        type: int32
+        member: iterations_since_last_restart_
+
+    arrays:
+    - current_primal_solution:
+        field_num: 1
+        array_id: 3
+        member: current_primal_solution_
+    - current_dual_solution:
+        field_num: 2
+        array_id: 4
+        member: current_dual_solution_
+    - initial_primal_average:
+        field_num: 3
+        array_id: 5
+        member: initial_primal_average_
+    - initial_dual_average:
+        field_num: 4
+        array_id: 6
+        member: initial_dual_average_
+    - current_ATY:
+        field_num: 5
+        array_id: 7
+        member: current_ATY_
+    - sum_primal_solutions:
+        field_num: 6
+        array_id: 8
+        member: sum_primal_solutions_
+    - sum_dual_solutions:
+        field_num: 7
+        array_id: 9
+        member: sum_dual_solutions_
+    - last_restart_duality_gap_primal_solution:
+        field_num: 8
+        array_id: 10
+        member: last_restart_duality_gap_primal_solution_
+    - last_restart_duality_gap_dual_solution:
+        field_num: 9
+        array_id: 11
+        member: last_restart_duality_gap_dual_solution_
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MIP Solution
+# ─────────────────────────────────────────────────────────────────────────────
+mip_solution:
+  cpp_type: "cpu_mip_solution_t<i_t, f_t>"
+
+  scalars:
+  - mip_termination_status:
+      field_num: 2000
+      type: mip_termination_status
+      getter: get_termination_status()
+  - mip_error_message:
+      field_num: 2001
+      type: string
+      getter: "get_error_status().what()"
+      proto_only: true
+  - mip_objective:
+      field_num: 2002
+      getter: get_objective_value()
+  - mip_gap:
+      field_num: 2003
+  - solution_bound:
+      field_num: 2004
+  - total_solve_time:
+      field_num: 2005
+      getter: get_solve_time()
+  - presolve_time:
+      field_num: 2006
+  - max_constraint_violation:
+      field_num: 2007
+  - max_int_violation:
+      field_num: 2008
+  - max_variable_bound_violation:
+      field_num: 2009
+  - nodes:
+      field_num: 2010
+      type: int32
+      getter: get_num_nodes()
+  - simplex_iterations:
+      field_num: 2011
+      type: int32
+      getter: get_num_simplex_iterations()
+
+  arrays:
+  - mip_solution:
+      field_num: 1
+      array_id: 12
+      getter: get_solution_host()
+
+  constructor_args:
+    scalars:
+    - mip_termination_status
+    - mip_objective
+    - mip_gap
+    - solution_bound
+    - total_solve_time
+    - presolve_time
+    - max_constraint_violation
+    - max_int_violation
+    - max_variable_bound_violation
+    - nodes
+    - simplex_iterations
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDLP Solver Settings
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Settings use nested YAML to mirror C++ struct hierarchy.
+# A list-valued entry is a sub-struct group (e.g. tolerances).
+#
+pdlp_settings:
+  cpp_type: "pdlp_solver_settings_t<i_t, f_t>"
+  proto_type: "cuopt::remote::PDLPSolverSettings"
+
+  fields:
+    # Termination tolerances (nested: settings.tolerances.<field>)
+  - tolerances:
+    - absolute_gap_tolerance:
+        field_num: 1
+    - relative_gap_tolerance:
+        field_num: 2
+    - primal_infeasible_tolerance:
+        field_num: 3
+    - dual_infeasible_tolerance:
+        field_num: 4
+    - absolute_dual_tolerance:
+        field_num: 5
+    - relative_dual_tolerance:
+        field_num: 6
+    - absolute_primal_tolerance:
+        field_num: 7
+    - relative_primal_tolerance:
+        field_num: 8
+
+    # Limits
+  - time_limit:
+      field_num: 9
+  - iteration_limit:
+      field_num: 10
+      type: int64
+      sentinel:
+        to_proto: "std::numeric_limits<i_t>::max()"
+        proto_value: -1
+        from_proto_guard: ">= 0"
+        from_proto_cast: "i_t"
+
+    # Solver configuration
+  - log_to_console:
+      field_num: 11
+      type: bool
+  - detect_infeasibility:
+      field_num: 12
+      type: bool
+  - strict_infeasibility:
+      field_num: 13
+      type: bool
+  - pdlp_solver_mode:
+      field_num: 14
+      type: pdlp_solver_mode
+  - method:
+      field_num: 15
+      type: lp_method
+  - presolver:
+      field_num: 16
+      type: int32
+      to_proto_cast: "int32_t"
+      from_proto_cast: "presolver_t"
+  - dual_postsolve:
+      field_num: 17
+      type: bool
+  - crossover:
+      field_num: 18
+      type: bool
+  - num_gpus:
+      field_num: 19
+      type: int32
+
+  - per_constraint_residual:
+      field_num: 20
+      type: bool
+  - cudss_deterministic:
+      field_num: 21
+      type: bool
+  - folding:
+      field_num: 22
+      type: int32
+  - augmented:
+      field_num: 23
+      type: int32
+  - dualize:
+      field_num: 24
+      type: int32
+  - ordering:
+      field_num: 25
+      type: int32
+  - barrier_dual_initial_point:
+      field_num: 26
+      type: int32
+  - eliminate_dense_columns:
+      field_num: 27
+      type: bool
+  - save_best_primal_so_far:
+      field_num: 28
+      type: bool
+  - first_primal_feasible:
+      field_num: 29
+      type: bool
+  - pdlp_precision:
+      field_num: 30
+      type: int32
+      to_proto_cast: "int32_t"
+      from_proto_cast: "pdlp_precision_t"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MIP Solver Settings
+# ─────────────────────────────────────────────────────────────────────────────
+mip_settings:
+  cpp_type: "mip_solver_settings_t<i_t, f_t>"
+  proto_type: "cuopt::remote::MIPSolverSettings"
+
+  fields:
+    # Limits
+  - time_limit:
+      field_num: 1
+
+    # Tolerances (nested: settings.tolerances.<field>)
+  - tolerances:
+    - relative_mip_gap:
+        field_num: 2
+    - absolute_mip_gap:
+        field_num: 3
+    - integrality_tolerance:
+        field_num: 4
+    - absolute_tolerance:
+        field_num: 5
+    - relative_tolerance:
+        field_num: 6
+    - presolve_absolute_tolerance:
+        field_num: 7
+
+    # Solver configuration
+  - log_to_console:
+      field_num: 8
+      type: bool
+  - heuristics_only:
+      field_num: 9
+      type: bool
+  - num_cpu_threads:
+      field_num: 10
+      type: int32
+  - num_gpus:
+      field_num: 11
+      type: int32
+  - presolver:
+      field_num: 12
+      type: int32
+      to_proto_cast: "int32_t"
+      from_proto_cast: "presolver_t"
+  - mip_scaling:
+      field_num: 13
+      type: int32
+
+    # Additional limits
+  - work_limit:
+      field_num: 14
+  - node_limit:
+      field_num: 15
+      type: int32
+      sentinel:
+        to_proto: "std::numeric_limits<i_t>::max()"
+        proto_value: -1
+        from_proto_guard: ">= 0"
+        from_proto_cast: "i_t"
+
+    # Branching
+  - reliability_branching:
+      field_num: 16
+      type: int32
+  - mip_batch_pdlp_strong_branching:
+      field_num: 17
+      type: int32
+  - mip_batch_pdlp_reliability_branching:
+      field_num: 29
+      type: int32
+  - strong_branching_simplex_iteration_limit:
+      field_num: 30
+      type: int32
+
+    # Cut configuration
+  - max_cut_passes:
+      field_num: 18
+      type: int32
+  - mir_cuts:
+      field_num: 19
+      type: int32
+  - mixed_integer_gomory_cuts:
+      field_num: 20
+      type: int32
+  - knapsack_cuts:
+      field_num: 21
+      type: int32
+  - clique_cuts:
+      field_num: 22
+      type: int32
+  - implied_bound_cuts:
+      field_num: 31
+      type: int32
+  - strong_chvatal_gomory_cuts:
+      field_num: 23
+      type: int32
+  - reduced_cost_strengthening:
+      field_num: 24
+      type: int32
+  - cut_change_threshold:
+      field_num: 25
+  - cut_min_orthogonality:
+      field_num: 26
+
+    # Determinism and reproducibility
+  - determinism_mode:
+      field_num: 27
+      type: int32
+  - seed:
+      field_num: 28
+      type: int32
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Optimization Problem (cpu_optimization_problem_t)
+# ─────────────────────────────────────────────────────────────────────────────
+optimization_problem:
+  cpp_type: "cpu_optimization_problem_t<i_t, f_t>"
+  proto_message: OptimizationProblem
+
+  scalars:
+  - problem_name:
+      field_num: 1
+      type: string
+  - objective_name:
+      field_num: 2
+      type: string
+  - maximize:
+      field_num: 3
+      type: bool
+      getter: get_sense()
+  - objective_scaling_factor:
+      field_num: 4
+  - objective_offset:
+      field_num: 5
+
+  arrays:
+  - variable_names:
+      field_num: 7
+      array_id: 0
+      type: repeated string
+  - row_names:
+      field_num: 8
+      array_id: 1
+      type: repeated string
+  - A_values:
+      field_num: 9
+      array_id: 2
+      setter_getter_root: constraint_matrix_values
+      setter_group: csr_constraint_matrix
+  - A_indices:
+      field_num: 10
+      array_id: 3
+      setter_getter_root: constraint_matrix_indices
+      type: repeated int32
+      setter_group: csr_constraint_matrix
+  - A_offsets:
+      field_num: 11
+      array_id: 4
+      setter_getter_root: constraint_matrix_offsets
+      type: repeated int32
+      setter_group: csr_constraint_matrix
+  - c:
+      field_num: 12
+      array_id: 5
+      setter_getter_root: objective_coefficients
+  - b:
+      field_num: 13
+      array_id: 6
+      setter_getter_root: constraint_bounds
+      conditional: true
+  - variable_lower_bounds:
+      field_num: 14
+      array_id: 7
+  - variable_upper_bounds:
+      field_num: 15
+      array_id: 8
+  - constraint_lower_bounds:
+      field_num: 16
+      array_id: 9
+      conditional: true
+  - constraint_upper_bounds:
+      field_num: 17
+      array_id: 10
+      conditional: true
+  - row_types:
+      field_num: 18
+      array_id: 11
+      type: bytes
+      conditional: true
+  - variable_types:
+      field_num: 19
+      array_id: 12
+      type: repeated variable_type
+  - initial_primal_solution:
+      field_num: 20
+      array_id: 13
+      skip_conversion: true
+  - initial_dual_solution:
+      field_num: 21
+      array_id: 14
+      skip_conversion: true
+  - Q_values:
+      field_num: 22
+      array_id: 15
+      setter_getter_root: quadratic_objective_values
+      setter_group: quadratic_objective
+  - Q_indices:
+      field_num: 23
+      array_id: 16
+      setter_getter_root: quadratic_objective_indices
+      type: repeated int32
+      setter_group: quadratic_objective
+  - Q_offsets:
+      field_num: 24
+      array_id: 17
+      setter_getter_root: quadratic_objective_offsets
+      type: repeated int32
+      setter_group: quadratic_objective
+
+  setter_groups:
+    csr_constraint_matrix:
+      setter: set_csr_constraint_matrix
+      fields: [A_values, A_indices, A_offsets]
+    quadratic_objective:
+      setter: set_quadratic_objective_matrix
+      fields: [Q_values, Q_indices, Q_offsets]
