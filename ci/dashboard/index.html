@@ -259,6 +259,11 @@ async function init() {
     // Already have consolidated data from embedding
     populateTestTypeFilters();
     render();
+    // Mark date selector with current date when embedded
+    if (S.embedded) {
+      const sel = document.getElementById('date-select');
+      sel.value = S.current.date || '';
+    }
   } else {
     const dates = Object.keys(S.index.dates || {}).sort().reverse();
     if (dates.length > 0) {
@@ -281,6 +286,20 @@ function deriveBaseUrl() {
 /* ================================================================== */
 async function loadDate(dateStr) {
   const main = document.getElementById('main-content');
+
+  // If embedded and this is the embedded date, use embedded data
+  if (S.embedded && S.current && S.current.date === dateStr) {
+    populateTestTypeFilters();
+    render();
+    return;
+  }
+
+  // If embedded with no S3 access, can't load other dates
+  if (S.embedded && !S.baseUrl) {
+    showEmpty(`Only the latest run (${esc(S.current?.date || 'unknown')}) is available in this view. Download per-date reports from S3 for historical data.`);
+    return;
+  }
+
   main.innerHTML = '<div class="loading">Loading data for ' + esc(dateStr) + '...</div>';
 
   try {
