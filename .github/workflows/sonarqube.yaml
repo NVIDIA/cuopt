@@ -4,9 +4,6 @@
 name: SonarQube Analysis
 
 on:
-  push:
-    branches:
-      - "enable-sonarqube-nightly"
   workflow_dispatch:
     inputs:
       branch:

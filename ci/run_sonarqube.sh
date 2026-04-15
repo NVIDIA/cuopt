@@ -20,13 +20,14 @@ SONAR_SCANNER_DIR="/tmp/sonar-scanner"
 mkdir -p "${SONAR_SCANNER_DIR}"
 curl -sSLo /tmp/sonar-scanner.zip \
   "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
-unzip -q /tmp/sonar-scanner.zip -d "${SONAR_SCANNER_DIR}"
+unzip -qo /tmp/sonar-scanner.zip -d "${SONAR_SCANNER_DIR}"
 SONAR_SCANNER_BIN="${SONAR_SCANNER_DIR}/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin/sonar-scanner"
 rm /tmp/sonar-scanner.zip
 
 echo "Running SonarQube analysis for branch: ${BRANCH}"
 
 "${SONAR_SCANNER_BIN}" \
-  -Dsonar.branch.name="${BRANCH}"
+  -Dsonar.branch.name="${BRANCH}" \
+  -Dsonar.scanner.socketTimeout=300
 
 echo "SonarQube analysis completed successfully"
