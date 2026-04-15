@@ -1419,9 +1419,9 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit)
 {
-  i_t local_mins       = 0;
-  auto loop_start      = std::chrono::high_resolution_clock::now();
-  auto time_limit      = std::chrono::milliseconds(std::floor(in_time_limit * 1000.0));
+  i_t local_mins  = 0;
+  auto loop_start = std::chrono::high_resolution_clock::now();
+  auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
   // Initialize feature tracking
