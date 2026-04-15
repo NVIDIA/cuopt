@@ -277,6 +277,8 @@ jobs:
       - wheel-build-cuopt-sh-client
       - wheel-publish-cuopt-sh-client
       - docs-build
+      - tests
+      - build-images
     runs-on: linux-amd64-cpu4
     container:
       image: python:3.12-slim
