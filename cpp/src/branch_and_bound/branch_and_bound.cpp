@@ -1887,7 +1887,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                           basic_list,    \
                           nonbasic_list, \
                           root_vstatus_, \
-                          edge_norms_) default(none)
+                          edge_norms_) default(none) depend(out : root_status)
   {
     root_status = solve_linear_program_with_advanced_basis(original_lp_,
                                                            exploration_stats_.start_time,
@@ -1942,9 +1942,9 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 
     // Check if crossover was stopped by dual simplex
     if (crossover_status == crossover_status_t::OPTIMAL) {
-      set_root_concurrent_halt(1);  // Stop dual simplex
-#pragma omp taskwait                // Wait for dual simplex to finish
-      set_root_concurrent_halt(0);  // Clear the concurrent halt flag
+      set_root_concurrent_halt(1);             // Stop dual simplex
+#pragma omp taskwait depend(in : root_status)  // Wait for dual simplex to finish
+      set_root_concurrent_halt(0);             // Clear the concurrent halt flag
       // Override the root relaxation solution with the crossover solution
       root_relax_soln = root_crossover_soln_;
       root_vstatus    = crossover_vstatus_;
@@ -1994,14 +1994,14 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       solver_name    = method_to_string(root_relax_solved_by);
 
     } else {
-#pragma omp taskwait
+#pragma omp taskwait depend(in : root_status)
       user_objective       = root_relax_soln_.user_objective;
       iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
       solver_name          = "Dual Simplex";
     }
   } else {
-#pragma omp taskwait
+#pragma omp taskwait depend(in : root_status)
     user_objective       = root_relax_soln_.user_objective;
     iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;

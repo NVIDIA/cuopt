@@ -912,9 +912,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
            modification_vector_pool,                                                       \
            substitution_vector_pool)
     for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
-      size_t n                   = step_end - step_start;
-      size_t begin               = std::floor(static_cast<f_t>(n) * task_id / num_tasks);
-      size_t end                 = std::floor(static_cast<f_t>(n) * (task_id + 1) / num_tasks);
+      size_t n     = step_end - step_start;
+      size_t begin = step_start + std::floor(static_cast<f_t>(n) * task_id / num_tasks);
+      size_t end   = std::floor(static_cast<f_t>(n) * (task_id + 1) / num_tasks);
       auto& multi_probe_presolve = multi_probe_presolve_pool[task_id];
       auto& modification_vector  = modification_vector_pool[task_id];
       auto& substitution_vector  = substitution_vector_pool[task_id];
@@ -924,7 +924,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
         auto var_idx = priority_indices[i];
         if (timer.check_time_limit()) { continue; }
 
-        CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, id);
+        CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, task_id);
         compute_cache_for_var<i_t, f_t>(var_idx,
                                         bound_presolve,
                                         problem,
