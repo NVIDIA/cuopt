@@ -23,6 +23,18 @@
 
 namespace cuopt::linear_programming::detail {
 
+namespace {
+
+constexpr double sc_infinity_threshold = 1e30;
+
+template <typename f_t>
+bool is_effectively_infinite_sc_upper_bound(f_t ub)
+{
+  return !std::isfinite(ub) || ub >= static_cast<f_t>(sc_infinity_threshold);
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
 bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
                                  const mip_solver_settings_t<i_t, f_t>& settings,
@@ -30,11 +42,27 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 {
   // 1. Identify semi-continuous variables
   auto var_types = op_problem.get_variable_types_host();
+  auto var_ub    = op_problem.get_variable_upper_bounds_host();
   std::vector<i_t> sc_indices;
+  bool normalized_large_sc_ub = false;
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
-    if (var_types[i] == var_t::SEMI_CONTINUOUS) { sc_indices.push_back(i); }
+    if (var_types[i] != var_t::SEMI_CONTINUOUS) { continue; }
+    sc_indices.push_back(i);
+    if (is_effectively_infinite_sc_upper_bound(var_ub[i])) {
+      CUOPT_LOG_WARN(
+        "Semi-continuous var %d upper bound %.6g exceeds semi-continuous infinity "
+        "threshold %.6g; treating it as +inf",
+        i,
+        static_cast<double>(var_ub[i]),
+        sc_infinity_threshold);
+      var_ub[i]              = std::numeric_limits<f_t>::infinity();
+      normalized_large_sc_ub = true;
+    }
   }
   if (sc_indices.empty()) { return false; }
+  if (normalized_large_sc_ub) {
+    op_problem.set_variable_upper_bounds(var_ub.data(), var_ub.size());
+  }
 
   const i_t n_orig       = op_problem.get_n_variables();
   const i_t n_sc         = static_cast<i_t>(sc_indices.size());
@@ -50,7 +78,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
   {
     auto relaxed_types = var_types;
-    auto relaxed_ub    = op_problem.get_variable_upper_bounds_host();
+    auto relaxed_ub    = var_ub;
     auto relaxed_lb    = op_problem.get_variable_lower_bounds_host();
     for (i_t idx : sc_indices) {
       relaxed_types[idx] = var_t::CONTINUOUS;
@@ -65,7 +93,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   // 3. Run GPU bounds propagation on the relaxed problem to tighten UBs.
   //    Skip propagation when there are no constraints (nothing to propagate).
-  auto tight_ub = op_problem.get_variable_upper_bounds_host();  // fallback: original UBs
+  auto tight_ub = var_ub;  // fallback: normalized original UBs
 
   if (op_relaxed.get_n_constraints() > 0) {
     problem_t<i_t, f_t> temp_pb(op_relaxed, settings.get_tolerances());
@@ -85,7 +113,6 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   // 4. Fetch all host arrays we need to extend with the new binary variables
   //    and linking constraints.
   auto var_lb = op_problem.get_variable_lower_bounds_host();
-  auto var_ub = op_problem.get_variable_upper_bounds_host();
   auto obj_c  = op_problem.get_objective_coefficients_host();
   auto A_vals = op_problem.get_constraint_matrix_values_host();
   auto A_idx  = op_problem.get_constraint_matrix_indices_host();
