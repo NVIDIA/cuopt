@@ -20,25 +20,29 @@ if [ -z "${SLACK_WEBHOOK_URL}" ] && [ -z "${SLACK_BOT_TOKEN}" ]; then
 fi
 
 # Fetch workflow job statuses
-JOBS_JSON=""
+JOBS_FILE=$(mktemp)
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
     echo "Fetching build job statuses from GitHub API..."
-    JOBS_JSON=$(curl -s -L \
+    curl -s -L \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100")
+        "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+        > "${JOBS_FILE}"
+else
+    echo "{}" > "${JOBS_FILE}"
 fi
 
 # Generate Slack payload
 PAYLOAD=$(python3 -c "
 import json, sys
 
-jobs_json = sys.argv[1]
+with open(sys.argv[1]) as f:
+    data = json.load(f)
 branch = sys.argv[2]
 date = sys.argv[3]
 run_url = sys.argv[4]
 
-jobs = json.loads(jobs_json).get('jobs', []) if jobs_json else []
+jobs = data.get('jobs', [])
 
 # Filter out build-summary itself and compute-matrix helpers
 jobs = [j for j in jobs
@@ -113,7 +117,9 @@ print(json.dumps({
     'icon_emoji': ':package:',
     'blocks': blocks,
 }))
-" "${JOBS_JSON}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}")
+" "${JOBS_FILE}" "${BRANCH}" "${RUN_DATE}" "${GITHUB_RUN_URL}")
+
+rm -f "${JOBS_FILE}"
 
 # Send via bot token (preferred) or webhook
 echo "Sending build summary to Slack..."
