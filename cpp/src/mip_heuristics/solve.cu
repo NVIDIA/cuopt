@@ -37,6 +37,10 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
+#include <branch_and_bound/symmetry.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <pdlp/translate.hpp>
+
 #include <mps_parser/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -301,6 +305,17 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     for (auto callback : settings.get_mip_callbacks()) {
       callback->template setup<f_t>(op_problem.get_n_variables());
+    }
+
+    // Start symmetry detection
+    {
+      detail::problem_t<i_t, f_t> problem(op_problem);
+      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex_settings.set_log(true);
+      simplex_settings.time_limit = settings.time_limit;
+      dual_simplex::user_problem_t<i_t, f_t> user_problem =
+        cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
+      dual_simplex::detect_symmetry(user_problem, simplex_settings);
     }
 
     auto timer = timer_t(time_limit);
