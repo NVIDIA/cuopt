@@ -88,7 +88,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
                                  mip_solver_settings_t<i_t, f_t> const& settings,
                                  timer_t& timer,
                                  f_t& initial_upper_bound,
-                                 std::vector<f_t>& initial_incumbent_assignment)
+                                 std::vector<f_t>& initial_incumbent_assignment,
+                                 std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
@@ -165,6 +166,7 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     // It will be converted to the target solver-space at each consumption point.
     solver.context.initial_upper_bound          = initial_upper_bound;
     solver.context.initial_incumbent_assignment = initial_incumbent_assignment;
+    solver.context.symmetry                     = std::move(symmetry);
     if (timer.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached before main solve");
       detail::solution_t<i_t, f_t> sol(problem);
@@ -308,6 +310,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
 
     // Start symmetry detection
+    bool has_symmetry = false;
+    std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+    if (1)
     {
       detail::problem_t<i_t, f_t> problem(op_problem);
       dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
@@ -315,7 +320,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       simplex_settings.time_limit = settings.time_limit;
       dual_simplex::user_problem_t<i_t, f_t> user_problem =
         cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
-      dual_simplex::detect_symmetry(user_problem, simplex_settings);
+      symmetry = dual_simplex::detect_symmetry(user_problem, simplex_settings, has_symmetry);
+      if (has_symmetry) { settings.presolver = presolver_t::None; }
     }
 
     auto timer = timer_t(time_limit);
@@ -487,7 +493,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     // early_best_user_obj is in user-space.
     // run_mip stores it in context.initial_upper_bound and converts to target spaces as needed.
-    auto sol = run_mip(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
+    auto sol = run_mip(problem, settings, timer, early_best_user_obj, early_best_user_assignment,
+                       std::move(symmetry));
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
 
     if (run_presolve) {

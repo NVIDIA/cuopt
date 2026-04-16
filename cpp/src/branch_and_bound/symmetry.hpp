@@ -15,14 +15,72 @@
 
 #include "dejavu.h"
 
+#include <memory>
 #include <sstream>
 
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-void detect_symmetry(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& settings)
+struct mip_symmetry_t {
+  mip_symmetry_t(std::unique_ptr<dejavu::groups::random_schreier> schreier_,
+                 i_t domain_size_,
+                 i_t num_original_vars_,
+                 const std::vector<variable_type_t>& var_types)
+    : schreier(std::move(schreier_)),
+      domain_size(domain_size_),
+      num_original_vars(num_original_vars_),
+      marked_variables(num_original_vars_, 0),
+      orbit_has_b1(domain_size_, 0),
+      orbit_has_b0(domain_size_, 0),
+      orbit_has_continuous(domain_size_, 0),
+      orbit_has_f0(domain_size_, 0),
+      orbit_has_f1(domain_size_, 0),
+      marked_b0(num_original_vars_, 0),
+      marked_b1(num_original_vars_, 0),
+      marked_f0(num_original_vars_, 0),
+      marked_f1(num_original_vars_, 0)
+  {
+    for (i_t j = 0; j < num_original_vars_; j++) {
+      if (var_types[j] == variable_type_t::CONTINUOUS) {
+        continuous_variables.push_back(j);
+      }
+    }
+    f0.reserve(num_original_vars_);
+    f1.reserve(num_original_vars_);
+  }
+
+  std::unique_ptr<dejavu::groups::random_schreier> schreier;
+  i_t domain_size;
+  i_t num_original_vars;
+  std::vector<i_t> marked_variables;
+  std::vector<i_t> orbit_has_b1;
+  std::vector<i_t> orbit_has_b0;
+  std::vector<i_t> orbit_has_continuous;
+  std::vector<i_t> orbit_has_f0;
+  std::vector<i_t> orbit_has_f1;
+  std::vector<i_t> continuous_variables;
+  std::vector<i_t> marked_b0;
+  std::vector<i_t> marked_b1;
+  std::vector<i_t> f0;
+  std::vector<i_t> f1;
+  std::vector<i_t> marked_f0;
+  std::vector<i_t> marked_f1;
+};
+
+template <typename i_t, typename f_t>
+std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
+  const user_problem_t<i_t, f_t>& user_problem,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  bool& has_symmetry)
 {
+  has_symmetry = false;
+
+  for (i_t j = 0; j < user_problem.num_cols; j++) {
+    if (user_problem.var_types[j] != variable_type_t::CONTINUOUS) {
+      if (user_problem.lower[j] != 0.0 || user_problem.upper[j] != 1.0) { return nullptr; }
+    }
+  }
+
   f_t start_time = tic();
   lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
   std::vector<i_t> new_slacks;
@@ -301,17 +359,83 @@ void detect_symmetry(const user_problem_t<i_t, f_t>& user_problem,
     g.add_edge(std::min(u, v), std::max(u, v));
   }
 
+  auto schreier = std::make_unique<dejavu::groups::random_schreier>(num_vertices);
+  std::vector<int> base;
+  base.reserve(user_problem.num_cols);
+  for (i_t j = 0; j < user_problem.num_cols; j++) {
+    base.push_back(j);
+  }
+  schreier->set_base(base);
+
+  dejavu::hooks::schreier_hook s_hook(*schreier);
+
+  i_t num_generators          = 0;
+  const i_t num_original_vars = user_problem.num_cols;
+  dejavu_hook counting_hook = [&num_generators, num_original_vars](int, const int*, int nsupp, const int* supp) {
+    for (int s = 0; s < nsupp; s++) {
+      if (supp[s] < num_original_vars) {
+        num_generators++;
+        return;
+      }
+    }
+  };
+
+  dejavu::hooks::multi_hook combined;
+  combined.add_hook(s_hook.get_hook());
+  combined.add_hook(&counting_hook);
+
   dejavu::solver d;
-  i_t num_generators        = 0;
-  dejavu_hook counting_hook = [&](int, const int*, int, const int*) { num_generators++; };
-  d.automorphisms(&g, counting_hook);
+  d.automorphisms(&g, combined);
 
   std::ostringstream grp_size_str;
   grp_size_str << d.get_automorphism_group_size();
   settings.log.printf(
     "Automorphism group size %s, %d generators\n", grp_size_str.str().c_str(), num_generators);
   settings.log.printf("Dejavu time %f\n", toc(dejavu_start_time));
+
+  has_symmetry = false;
+  if (num_generators > 0) {
+    dejavu::groups::orbit orb;
+    orb.initialize(num_vertices);
+    schreier->get_stabilizer_orbit(0, orb);
+
+    i_t num_nontrivial_orbits = 0;
+    i_t max_orbit_size = 0;
+    i_t total_vars_in_orbits = 0;
+    std::vector<i_t> orbit_histogram(num_original_vars + 1, 0);
+    for (i_t j = 0; j < num_original_vars; j++) {
+      if (orb.represents_orbit(j)) {
+        i_t sz = orb.orbit_size(j);
+        if (sz >= 2) {
+          num_nontrivial_orbits++;
+          max_orbit_size = std::max(max_orbit_size, sz);
+          total_vars_in_orbits += sz;
+          orbit_histogram[sz]++;
+        }
+      }
+    }
+    settings.log.printf("Orbits: %d non-trivial, max size %d, %d/%d (%.1f%%) variables in orbits\n",
+                        num_nontrivial_orbits, max_orbit_size, total_vars_in_orbits, num_original_vars,
+                        100.0 * total_vars_in_orbits / num_original_vars);
+    settings.log.printf("Orbit histogram (orbit size: number of orbits):");
+    for (i_t sz = 2; sz <= max_orbit_size; sz++) {
+      if (orbit_histogram[sz] > 0) {
+        settings.log.printf(" %d:%d", sz, orbit_histogram[sz]);
+      }
+    }
+    settings.log.printf("\n");
+
+    has_symmetry = (max_orbit_size >= 4) ||
+                    (num_nontrivial_orbits >= 3 && max_orbit_size >= 2) ||
+                    (total_vars_in_orbits >= 10);
+  }
+
   settings.log.printf("Total symmetry detection time %f\n", toc(start_time));
+
+  if (!has_symmetry) { return nullptr; }
+
+  return std::make_unique<mip_symmetry_t<i_t, f_t>>(
+    std::move(schreier), num_vertices, user_problem.num_cols, var_types);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

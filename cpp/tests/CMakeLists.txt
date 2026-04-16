@@ -1,4 +1,4 @@
-﻿# cmake-format: off
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
@@ -17,6 +17,7 @@ if(BUILD_TESTS)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${dejavu_SOURCE_DIR}"
   )
 
   target_link_libraries(cuopttestutils
@@ -51,6 +52,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
         "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}

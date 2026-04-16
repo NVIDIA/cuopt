@@ -47,6 +47,9 @@ struct clique_table_t;
 
 namespace cuopt::linear_programming::dual_simplex {
 
+template <typename i_t, typename f_t>
+struct mip_symmetry_t;
+
 enum class mip_status_t {
   OPTIMAL    = 0,  // The optimal integer solution was found
   UNBOUNDED  = 1,  // The problem is unbounded
@@ -80,7 +83,8 @@ class branch_and_bound_t {
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
+                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                     mip_symmetry_t<i_t, f_t>* symmetry = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -162,6 +166,7 @@ class branch_and_bound_t {
   const simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  mip_symmetry_t<i_t, f_t>* symmetry_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
   std::atomic<bool> signal_extend_cliques_{false};
 
