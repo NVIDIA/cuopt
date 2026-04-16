@@ -296,7 +296,7 @@ rmm::device_uvector<int> data(100, stream);
 | CUDA out of memory | Reduce problem size |
 | Slow debug library loading | Device symbols cause delay |
 <!-- skill-evolution:start — Cross-cutting change discipline -->
-| CI state doesn't persist between runs | CI containers are ephemeral. Never write persistent state to repo files from CI — use S3 (`CUOPT_DATASET_S3_URI`) or artifact stores. Ask: "After this container dies, does tomorrow's run see today's data?" |
+| CI state doesn't persist between runs | CI containers are ephemeral. Never write persistent state to repo files from CI — use S3 (`CUOPT_S3_URI`) or artifact stores. Ask: "After this container dies, does tomorrow's run see today's data?" |
 | CI state transitions go unreported | When CI tracks state over time (e.g. test failures), every transition (new failure, recurring, stabilized) needs an explicit notification path. Ask: "When state X changes to Y, who learns about it and how?" |
 | Designing CI features without lifecycle check | Before shipping any CI feature that tracks state: (1) Where does state live between runs? (2) What writes/reads it? (3) What happens on state transitions? Verify end-to-end, not just the happy-path logic. |
 | Change applied to only some targets | Before implementing, audit the full scope of what needs the change. For CI: `ls ci/test*.sh`. For APIs: grep all callers. For patterns: find every instance. Enumerate ALL targets first, implement second. |
