@@ -40,11 +40,12 @@ fi
 
 S3_BASE="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
 BRANCH_SLUG=$(echo "${BRANCH}" | tr '/' '-')
-# Per-matrix summaries are uploaded by rapidsai shared workflows which use
-# a flat date-based path (RAPIDS_BRANCH inside those containers is always "main").
-# Only our outputs (consolidated, dashboard) use branch-separated paths.
-S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/"
-S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/"
+# Per-matrix summaries are uploaded by test jobs under summaries/{date}/{branch}/.
+# For production nightlies (main, release/*), RAPIDS_BRANCH matches the branch input.
+# For feature branch testing, RAPIDS_BRANCH may default to "main" in rapidsai containers,
+# so we search the date prefix recursively (s3_list handles this).
+S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
+S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/"
 S3_CONSOLIDATED_JSON="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/consolidated.json"
 S3_CONSOLIDATED_HTML="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/consolidated.html"
 S3_INDEX_URI="${S3_BASE}/index.json"

@@ -72,9 +72,9 @@ generate_nightly_report() {
 
     if [ -n "${CUOPT_DATASET_S3_URI:-}" ]; then
         local s3_base="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
-        s3_history_uri="${s3_base}/history/${test_type}-${branch_slug}-${matrix_label}.json"
-        s3_summary_uri="${s3_base}/summaries/${run_date}/${test_type}-${matrix_label}.json"
-        s3_html_uri="${s3_base}/reports/${run_date}/${test_type}-${matrix_label}.html"
+        s3_history_uri="${s3_base}/history/${branch_slug}/${test_type}-${matrix_label}.json"
+        s3_summary_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${test_type}-${matrix_label}.json"
+        s3_html_uri="${s3_base}/reports/${run_date}/${branch_slug}/${test_type}-${matrix_label}.html"
     fi
 
     # --- Run nightly report ---
