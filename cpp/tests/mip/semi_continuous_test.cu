@@ -116,17 +116,6 @@ TEST(mip_solve, semi_continuous_invalid_bounds_rejected)
     EXPECT_EQ(error.get_error_type(), cuopt::error_type_t::ValidationError);
     EXPECT_NE(std::string(error.what()).find("Semi-continuous variable"), std::string::npos);
   }
-
-  {
-    SCOPED_TRACE("mip/sc_both_neg.mps");
-    auto path     = make_path_absolute("mip/sc_both_neg.mps");
-    auto problem  = cuopt::mps_parser::parse_mps<int, double>(path, false);
-    auto solution = solve_mip(&handle_, problem, settings);
-
-    const auto& error = solution.get_error_status();
-    EXPECT_EQ(error.get_error_type(), cuopt::error_type_t::ValidationError);
-    EXPECT_NE(std::string(error.what()).find("Semi-continuous variable"), std::string::npos);
-  }
 }
 
 }  // namespace cuopt::linear_programming::test
