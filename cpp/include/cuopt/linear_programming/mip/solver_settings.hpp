@@ -32,6 +32,14 @@ template <typename i_t, typename f_t>
 class solver_settings_t;
 
 template <typename i_t, typename f_t>
+class mip_solver_settings_t;
+
+namespace detail {
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor;
+}  // namespace detail
+
+template <typename i_t, typename f_t>
 class mip_solver_settings_t {
  public:
   mip_solver_settings_t() = default;
@@ -148,6 +156,19 @@ class mip_solver_settings_t {
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
   friend class solver_settings_t<i_t, f_t>;
+  friend struct detail::mip_solver_settings_accessor<i_t, f_t>;
 };
+
+namespace detail {
+
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor {
+  static void clear_mip_callbacks(mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    settings.mip_callbacks_.clear();
+  }
+};
+
+}  // namespace detail
 
 }  // namespace cuopt::linear_programming

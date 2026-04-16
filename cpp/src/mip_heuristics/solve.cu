@@ -335,6 +335,12 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::vector<uint8_t> sc_used_fallback_big_m;
     const bool had_sc =
       detail::reformulate_semi_continuous(op_problem, settings, &sc_used_fallback_big_m);
+    if (had_sc && !settings.get_mip_callbacks().empty()) {
+      CUOPT_LOG_WARN(
+        "Disabling MIP get/set callbacks: semi-continuous models are not supported "
+        "with callbacks");
+      detail::mip_solver_settings_accessor<i_t, f_t>::clear_mip_callbacks(settings);
+    }
 
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
@@ -377,7 +383,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       }
     }
     if (run_presolve && has_set_solution_callback) {
-      CUOPT_LOG_WARN("Presolve is disabled because set_solution callbacks are provided.");
+      CUOPT_LOG_INFO("Presolve is disabled because set_solution callbacks are provided.");
       run_presolve = false;
     }
 
