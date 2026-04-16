@@ -662,12 +662,16 @@ def extract(file, dir, type):
     if basefile.endswith(".bz2"):
         outfile = basefile.replace(".bz2", ".mps")
         unzippedfile = basefile.replace(".bz2", "")
-        subprocess.run(f"cd {dir} && bzip2 -d {basefile}", shell=True)
+        subprocess.run(
+            f"cd {dir} && bzip2 -d {basefile}", shell=True, check=True
+        )
     elif basefile.endswith(".gz"):
         outfile = basefile.replace(".gz", ".mps")
         unzippedfile = basefile.replace(".gz", "")
         subprocess.run(
-            f"cd {dir} && gunzip -c {basefile} > {unzippedfile}", shell=True
+            f"cd {dir} && gunzip -c {basefile} > {unzippedfile}",
+            shell=True,
+            check=True,
         )
     else:
         raise Exception(f"Unknown file extension found for extraction {file}")
@@ -678,11 +682,15 @@ def extract(file, dir, type):
         file = os.path.join(dir, "emps.c")
         download(url, file)
         subprocess.run(
-            f"cd {dir} && gcc -Wno-implicit-int emps.c -o emps", shell=True
+            f"cd {dir} && gcc -Wno-implicit-int emps.c -o emps",
+            shell=True,
+            check=True,
         )
         # determine output file and run emps
         subprocess.run(
-            f"cd {dir} && ./emps {unzippedfile} > {outfile}", shell=True
+            f"cd {dir} && ./emps {unzippedfile} > {outfile}",
+            shell=True,
+            check=True,
         )
         # cleanup emps and emps.c
         subprocess.run(f"rm -rf {dir}/emps*", shell=True)
@@ -733,6 +741,10 @@ def main():
         datasets_to_download.extend(args.datasets)
     if args.benchmarks:
         for bench in args.benchmarks:
+            if bench not in MittelmannInstances["benchmarks"]:
+                print(f"ERROR: Unknown benchmark '{bench}'")
+                failed.append(bench)
+                continue
             datasets_to_download.extend(
                 MittelmannInstances["benchmarks"][bench]
             )
