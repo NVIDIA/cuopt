@@ -163,16 +163,6 @@ pre.error { background: #263238; color: #e0e0e0; padding: 10px; border-radius: 6
     <div id="test-type-filters"></div>
   </div>
 
-  <div class="filter-group">
-    <label>Status</label>
-    <div id="status-filters">
-      <span class="filter-chip active" data-status="all">All</span>
-      <span class="filter-chip" data-status="failed-new">New Fail</span>
-      <span class="filter-chip" data-status="failed-recurring">Recurring</span>
-      <span class="filter-chip" data-status="flaky">Flaky</span>
-      <span class="filter-chip" data-status="passed">Passed</span>
-    </div>
-  </div>
 
   <div class="status-legend">
     <div><span class="dot" style="background:var(--pass)"></span> Passed</div>
@@ -665,16 +655,6 @@ function setupEventListeners() {
     loadDate(e.target.value);
   });
 
-  // Status filter chips
-  for (const chip of document.querySelectorAll('#status-filters .filter-chip')) {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('#status-filters .filter-chip')
-        .forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      S.filters.status = chip.dataset.status;
-      renderTab(S.activeTab);
-    });
-  }
 }
 
 function statusBadge(status) {
