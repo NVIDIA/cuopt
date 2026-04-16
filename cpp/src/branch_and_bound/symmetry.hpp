@@ -12,10 +12,13 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <branch_and_bound/mip_node.hpp>
+
 
 #include "dejavu.h"
 
 #include <memory>
+#include <numeric>
 #include <sstream>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -25,46 +28,282 @@ struct mip_symmetry_t {
   mip_symmetry_t(std::unique_ptr<dejavu::groups::random_schreier> schreier_,
                  i_t domain_size_,
                  i_t num_original_vars_,
-                 const std::vector<variable_type_t>& var_types)
+                 const std::vector<variable_type_t>& var_types,
+                 const std::vector<f_t>& lower,
+                 const std::vector<f_t>& upper)
     : schreier(std::move(schreier_)),
       domain_size(domain_size_),
       num_original_vars(num_original_vars_),
-      marked_variables(num_original_vars_, 0),
-      orbit_has_b1(domain_size_, 0),
-      orbit_has_b0(domain_size_, 0),
-      orbit_has_continuous(domain_size_, 0),
-      orbit_has_f0(domain_size_, 0),
-      orbit_has_f1(domain_size_, 0),
-      marked_b0(num_original_vars_, 0),
-      marked_b1(num_original_vars_, 0),
-      marked_f0(num_original_vars_, 0),
-      marked_f1(num_original_vars_, 0)
+      is_binary(num_original_vars_, 0)
   {
     for (i_t j = 0; j < num_original_vars_; j++) {
       if (var_types[j] == variable_type_t::CONTINUOUS) {
         continuous_variables.push_back(j);
+      } else if (lower[j] == 0.0 && upper[j] == 1.0) {
+        is_binary[j] = 1;
+      } else {
+        general_integer_variables.push_back(j);
       }
     }
-    f0.reserve(num_original_vars_);
-    f1.reserve(num_original_vars_);
   }
 
   std::unique_ptr<dejavu::groups::random_schreier> schreier;
   i_t domain_size;
   i_t num_original_vars;
-  std::vector<i_t> marked_variables;
-  std::vector<i_t> orbit_has_b1;
-  std::vector<i_t> orbit_has_b0;
-  std::vector<i_t> orbit_has_continuous;
-  std::vector<i_t> orbit_has_f0;
-  std::vector<i_t> orbit_has_f1;
   std::vector<i_t> continuous_variables;
-  std::vector<i_t> marked_b0;
-  std::vector<i_t> marked_b1;
-  std::vector<i_t> f0;
-  std::vector<i_t> f1;
-  std::vector<i_t> marked_f0;
-  std::vector<i_t> marked_f1;
+  std::vector<i_t> general_integer_variables;
+  std::vector<i_t> is_binary;
+};
+
+template <typename i_t, typename f_t>
+class orbital_fixing_t {
+ public:
+  explicit orbital_fixing_t(mip_symmetry_t<i_t, f_t>& root)
+    : domain_size_(root.domain_size),
+      num_original_vars_(root.num_original_vars),
+      marked_variables_(root.num_original_vars, 0),
+      orbit_has_b1_(root.domain_size, 0),
+      orbit_has_b0_(root.domain_size, 0),
+      orbit_has_continuous_(root.domain_size, 0),
+      orbit_has_f0_(root.domain_size, 0),
+      orbit_has_f1_(root.domain_size, 0),
+      marked_b0_(root.num_original_vars, 0),
+      marked_b1_(root.num_original_vars, 0),
+      marked_f0_(root.num_original_vars, 0),
+      marked_f1_(root.num_original_vars, 0)
+  {
+    f0_.reserve(root.num_original_vars);
+    f1_.reserve(root.num_original_vars);
+
+    // Clone the root Schreier structure into a per-worker copy. The root structure
+    // is shared and read-only, but set_base/get_stabilizer_orbit mutate internal state,
+    // so each worker needs its own copy. Since random_schreier is not copyable, we
+    // reconstruct it by creating a fresh structure with the same base and sifting all
+    // generators from the root into it.
+    schreier_ = std::make_unique<dejavu::groups::random_schreier>(root.domain_size);
+    std::vector<int> base(root.num_original_vars);
+    std::iota(base.begin(), base.end(), 0);
+    schreier_->set_base(base);
+
+    int num_gens = root.schreier->get_number_of_generators();
+    dejavu::groups::automorphism_workspace ws(root.domain_size);
+    for (int i = 0; i < num_gens; i++) {
+      root.schreier->get_generator(i, ws);
+      schreier_->sift(ws);
+    }
+  }
+
+  bool disabled () const { return disabled_; }
+  void disable() { disabled_ = true; }
+  void enable() { disabled_ = false; }
+
+  void orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const std::vector<variable_type_t>& var_types,
+                      mip_node_t<i_t, f_t>* node_ptr,
+                      lp_problem_t<i_t, f_t>& problem)
+  {
+    // Collect binary branchings only; skip general integer branchings
+    std::vector<i_t> branched_zero;
+    std::vector<i_t> branched_one;
+    branched_zero.reserve(node_ptr->depth);
+    branched_one.reserve(node_ptr->depth);
+    mip_node_t<i_t, f_t>* node = node_ptr;
+    while (node != nullptr && node->branch_var >= 0) {
+      i_t v = node->branch_var;
+      bool is_binary = (symmetry->is_binary[v] == 1);
+      if (is_binary) {
+        if (node->branch_var_upper == 0.0) {
+          branched_zero.push_back(v);
+          marked_b0_[v] = 1;
+        } else if (node->branch_var_lower == 1.0) {
+          branched_one.push_back(v);
+          marked_b1_[v] = 1;
+        }
+      }
+      node = node->parent;
+    }
+
+    for (i_t j = 0; j < num_original_vars_; j++) {
+      if (var_types[j] == variable_type_t::CONTINUOUS) continue;
+      if (marked_b1_[j] == 0 && problem.lower[j] == 1.0) {
+        f1_.push_back(j);
+        marked_f1_[j] = 1;
+      }
+      if (marked_b0_[j] == 0 && problem.upper[j] == 0.0) {
+        f0_.push_back(j);
+        marked_f0_[j] = 1;
+      }
+    }
+
+    // Compute Stab(G', B1) where G' = Stab(G, general_integer_variables)
+    // Base order: [general_int_vars, B1, remaining_vars]
+    const auto& gen_int = symmetry->general_integer_variables;
+    std::vector<i_t> new_base;
+    new_base.reserve(num_original_vars_);
+    for (i_t j : gen_int) {
+      new_base.push_back(j);
+      marked_variables_[j] = 1;
+    }
+    for (i_t j : branched_one) {
+      new_base.push_back(j);
+      marked_variables_[j] = 1;
+    }
+    for (i_t j = 0; j < num_original_vars_; j++) {
+      if (marked_variables_[j] == 0) { new_base.push_back(j); }
+    }
+    for (i_t j : gen_int) {
+      marked_variables_[j] = 0;
+    }
+    for (i_t j : branched_one) {
+      marked_variables_[j] = 0;
+    }
+
+    schreier_->set_base(new_base);
+
+    dejavu::groups::orbit orb;
+    orb.initialize(domain_size_);
+    i_t stabilizer_level = static_cast<i_t>(gen_int.size() + branched_one.size());
+    schreier_->get_stabilizer_orbit(static_cast<int>(stabilizer_level), orb);
+
+    // Check if the stabilizer is trivial (all orbits are singletons)
+    bool trivial_stabilizer = true;
+    for (i_t j = 0; j < num_original_vars_; j++) {
+      if (orb.orbit_size(orb.find_orbit(j)) > 1) {
+        trivial_stabilizer = false;
+        break;
+      }
+    }
+
+    if (trivial_stabilizer) {
+      disabled_ = true;
+      for (i_t v : branched_one) {
+        marked_b1_[v] = 0;
+      }
+      for (i_t v : branched_zero) {
+        marked_b0_[v] = 0;
+      }
+      for (i_t v : f0_) {
+        marked_f0_[v] = 0;
+      }
+      for (i_t v : f1_) {
+        marked_f1_[v] = 0;
+      }
+      f0_.clear();
+      f1_.clear();
+    } else {
+      for (i_t v : branched_one) {
+        orbit_has_b1_[orb.find_orbit(v)] = 1;
+      }
+
+      for (i_t v : branched_zero) {
+        orbit_has_b0_[orb.find_orbit(v)] = 1;
+      }
+
+      for (i_t v : symmetry->continuous_variables) {
+        orbit_has_continuous_[orb.find_orbit(v)] = 1;
+      }
+
+      for (i_t v : f0_) {
+        orbit_has_f0_[orb.find_orbit(v)] = 1;
+      }
+
+      for (i_t v : f1_) {
+        orbit_has_f1_[orb.find_orbit(v)] = 1;
+      }
+
+      std::vector<i_t> fix_zero;  // The set L0 of variables that can be fixed to 0
+      std::vector<i_t> fix_one;   // The set L1 of variables that can be fixed to 1
+
+      for (i_t j = 0; j < num_original_vars_; j++) {
+        i_t o = orb.find_orbit(j);
+        if (orb.orbit_size(o) < 2) continue;
+
+        if (orbit_has_b1_[o] == 1 || orbit_has_continuous_[o] == 1) {
+          // The orbit contains variables in B1 or continuous variables
+          // So we can't fix any variables in this orbit
+          continue;
+        }
+
+        if (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1) {
+          // The orbit of this variable contains variables in B0 or F0
+          // So we can fix this variable to zero (provided its not already in B0 or F0)
+          if (marked_b0_[j] == 0 && marked_f0_[j] == 0) { fix_zero.push_back(j); }
+        }
+
+        if (orbit_has_f1_[o] == 1) {
+          // The orbit of this variable contains variables in F1
+          // So we can fix this variable to one (provided its not already in F1)
+          if (marked_f1_[j] == 0) { fix_one.push_back(j); }
+        }
+      }
+
+      // Restore the work arrays
+      for (i_t v : branched_one) {
+        orbit_has_b1_[orb.find_orbit(v)] = 0;
+        marked_b1_[v]                    = 0;
+      }
+
+      for (i_t v : branched_zero) {
+        orbit_has_b0_[orb.find_orbit(v)] = 0;
+        marked_b0_[v]                    = 0;
+      }
+
+      for (i_t v : symmetry->continuous_variables) {
+        orbit_has_continuous_[orb.find_orbit(v)] = 0;
+      }
+
+      for (i_t v : f0_) {
+        orbit_has_f0_[orb.find_orbit(v)] = 0;
+        marked_f0_[v]                    = 0;
+      }
+
+      for (i_t v : f1_) {
+        orbit_has_f1_[orb.find_orbit(v)] = 0;
+        marked_f1_[v]                    = 0;
+      }
+
+      f0_.clear();
+      f1_.clear();
+
+      if (fix_zero.size() > 0 || fix_one.size() > 0) {
+        settings.log.printf("Orbital fixing at node %d (depth %d): fixing %d to 0 and %d to 1\n",
+                            node_ptr->node_id,
+                            node_ptr->depth,
+                            (int)fix_zero.size(),
+                            (int)fix_one.size());
+      }
+
+      // Finally fix the variables in L0 and L1
+      for (i_t v : fix_zero) {
+        problem.lower[v] = 0.0;
+        problem.upper[v] = 0.0;
+      }
+      for (i_t v : fix_one) {
+        problem.lower[v] = 1.0;
+        problem.upper[v] = 1.0;
+      }
+    }
+  }
+
+ private:
+  std::unique_ptr<dejavu::groups::random_schreier> schreier_;
+  i_t domain_size_;
+  i_t num_original_vars_;
+  bool disabled_ = false;
+
+  std::vector<i_t> marked_variables_;
+  std::vector<i_t> orbit_has_b1_;     // orbit_has_b1_[o] = 1 if the orbit o contains variables in B1
+  std::vector<i_t> orbit_has_b0_;     // orbit_has_b0_[o] = 1 if the orbit o contains variables in B0
+  std::vector<i_t> orbit_has_continuous_; // orbit_has_continuous_[o] = 1 if the orbit o contains continuous variables
+  std::vector<i_t> orbit_has_f0_;     // orbit_has_f0_[o] = 1 if the orbit o contains variables in F0
+  std::vector<i_t> orbit_has_f1_;     // orbit_has_f1_[o] = 1 if the orbit o contains variables in F1
+  std::vector<i_t> marked_b0_;        // marked_b0_[v] = 1 if the variable v has been branched down
+  std::vector<i_t> marked_b1_;        // marked_b1_[v] = 1 if the variable v has been branched up
+  std::vector<i_t> f0_;               // set of variables that can be fixed to 0
+  std::vector<i_t> f1_;               // set of variables that can be fixed to 1
+  std::vector<i_t> marked_f0_;        // marked_f0_[v] = 1 if the variable v has been branched down
+  std::vector<i_t> marked_f1_;        // marked_f1_[v] = 1 if the variable v has been branched up
 };
 
 template <typename i_t, typename f_t>
@@ -74,12 +313,6 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   bool& has_symmetry)
 {
   has_symmetry = false;
-
-  for (i_t j = 0; j < user_problem.num_cols; j++) {
-    if (user_problem.var_types[j] != variable_type_t::CONTINUOUS) {
-      if (user_problem.lower[j] != 0.0 || user_problem.upper[j] != 1.0) { return nullptr; }
-    }
-  }
 
   f_t start_time = tic();
   lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
@@ -435,7 +668,8 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   if (!has_symmetry) { return nullptr; }
 
   return std::make_unique<mip_symmetry_t<i_t, f_t>>(
-    std::move(schreier), num_vertices, user_problem.num_cols, var_types);
+    std::move(schreier), num_vertices, user_problem.num_cols, var_types,
+    user_problem.lower, user_problem.upper);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

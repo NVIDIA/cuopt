@@ -309,10 +309,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       callback->template setup<f_t>(op_problem.get_n_variables());
     }
 
+    auto timer = timer_t(time_limit);
     // Start symmetry detection
     bool has_symmetry = false;
     std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
-    if (1)
+    if (settings.symmetry != 0)
     {
       detail::problem_t<i_t, f_t> problem(op_problem);
       dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
@@ -324,7 +325,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       if (has_symmetry) { settings.presolver = presolver_t::None; }
     }
 
-    auto timer = timer_t(time_limit);
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);

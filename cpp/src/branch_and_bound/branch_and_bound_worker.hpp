@@ -8,6 +8,7 @@
 #pragma once
 
 #include <branch_and_bound/mip_node.hpp>
+#include <branch_and_bound/symmetry.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
@@ -72,6 +73,8 @@ class branch_and_bound_worker_t {
   mip_node_t<i_t, f_t>* start_node;
 
   pcgenerator_t rng;
+
+  std::unique_ptr<orbital_fixing_t<i_t, f_t>> orbital_fixing;
 
   bool recompute_basis  = true;
   bool recompute_bounds = true;
@@ -169,6 +172,7 @@ class branch_and_bound_worker_pool_t {
             const lp_problem_t<i_t, f_t>& original_lp,
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<variable_type_t>& var_type,
+            mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     workers_.resize(num_workers);
@@ -176,6 +180,10 @@ class branch_and_bound_worker_pool_t {
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] = std::make_unique<branch_and_bound_worker_t<i_t, f_t>>(
         i, original_lp, Arow, var_type, settings);
+      if (symmetry != nullptr) {
+        workers_[i]->orbital_fixing =
+          std::make_unique<orbital_fixing_t<i_t, f_t>>(*symmetry);
+      }
       idle_workers_.push_front(i);
     }
 

@@ -1393,161 +1393,11 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
   if (feasible) {
 
-
     // Perform orbital fixing
-    if (symmetry_ != nullptr) {
-      // First get the set of variables that have been branched down and branched up on
-      std::vector<i_t> branched_zero;
-      std::vector<i_t> branched_one;
-      branched_zero.reserve(node_ptr->depth);
-      branched_one.reserve(node_ptr->depth);
-      mip_node_t<i_t, f_t>* node = node_ptr;
-      while (node != nullptr && node->branch_var >= 0) {
-        if (node->branch_var_upper == 0.0) {
-          branched_zero.push_back(node->branch_var);
-          symmetry_->marked_b0[node->branch_var] = 1;
-        } else if (node->branch_var_lower == 1.0) {
-          branched_one.push_back(node->branch_var);
-          symmetry_->marked_b1[node->branch_var] = 1;
-        } else {
-          assert(false); // Unexpected non-binary variable. Only binaries supported in symmetry handling.
-        }
-        node = node->parent;
-      }
-
-      {
-        for (i_t j = 0; j < symmetry_->num_original_vars; j++) {
-          if (var_types_[j] == variable_type_t::CONTINUOUS) continue;
-          if (symmetry_->marked_b1[j] == 0 && worker->leaf_problem.lower[j] == 1.0) {
-            symmetry_->f1.push_back(j);
-            symmetry_->marked_f1[j] = 1;
-          }
-          if (symmetry_->marked_b0[j] == 0 && worker->leaf_problem.upper[j] == 0.0) {
-            symmetry_->f0.push_back(j);
-            symmetry_->marked_f0[j] = 1;
-          }
-        }
-
-        // Compute Stab(G, B1) and its orbits
-        std::vector<i_t> new_base;
-        new_base.reserve(symmetry_->num_original_vars);
-        for (i_t j: branched_one) {
-          new_base.push_back(j);
-          symmetry_->marked_variables[j] = 1;
-        }
-        for (i_t j = 0; j < symmetry_->num_original_vars; j++) {
-          if (symmetry_->marked_variables[j] == 0) {
-            new_base.push_back(j);
-          }
-        }
-        for (i_t j: branched_one) {
-          symmetry_->marked_variables[j] = 0;
-        }
-
-        symmetry_->schreier->set_base(new_base);
-
-        dejavu::groups::orbit orb;
-        orb.initialize(symmetry_->domain_size);
-        symmetry_->schreier->get_stabilizer_orbit(static_cast<int>(branched_one.size()), orb);
-
-        for (i_t v : branched_one) {
-          symmetry_->orbit_has_b1[orb.find_orbit(v)] = 1;
-        }
-
-        for (i_t v : branched_zero) {
-          symmetry_->orbit_has_b0[orb.find_orbit(v)] = 1;
-        }
-
-        for (i_t v: symmetry_->continuous_variables) {
-          symmetry_->orbit_has_continuous[orb.find_orbit(v)] = 1;
-        }
-
-        for (i_t v: symmetry_->f0) {
-          symmetry_->orbit_has_f0[orb.find_orbit(v)] = 1;
-        }
-
-        for (i_t v: symmetry_->f1) {
-          symmetry_->orbit_has_f1[orb.find_orbit(v)] = 1;
-        }
-
-        std::vector<i_t> fix_zero; // The set L0 of variables that can be fixed to 0
-        std::vector<i_t> fix_one;  // The set L1 of variables that can be fixed to 1
-
-        for (i_t j = 0; j < symmetry_->num_original_vars; j++) {
-          i_t o = orb.find_orbit(j);
-          if (orb.orbit_size(o) < 2) continue;
-
-          if (symmetry_->orbit_has_b1[o] == 1 || symmetry_->orbit_has_continuous[o] == 1) {
-            // The orbit contains variables in B1 or continuous variables
-            // So we can't fix any variables in this orbit to 0
-            continue;
-          }
-
-          if (symmetry_->orbit_has_b0[o] == 1 || symmetry_->orbit_has_f0[o] == 1) {
-            // The orbit of this variable contains variables in B0 or F0
-            // So we can fix this variable to zero (provided its not already in B0 or F0)
-            if (symmetry_->marked_b0[j] == 0 && symmetry_->marked_f0[j] == 0) {
-              fix_zero.push_back(j);
-            }
-          }
-
-          if (symmetry_->orbit_has_f1[o] == 1) {
-            // The orbit of this variable contains variables in F1
-            // So we can fix this variable to one (provided its not already in F1)
-            if (symmetry_->marked_f1[j] == 0) {
-              fix_one.push_back(j);
-            }
-          }
-        }
-
-        // Restore the work arrays
-        for (i_t v: branched_one) {
-          symmetry_->orbit_has_b1[orb.find_orbit(v)] = 0;
-          symmetry_->marked_b1[v] = 0;
-        }
-
-        for (i_t v: branched_zero) {
-          symmetry_->orbit_has_b0[orb.find_orbit(v)] = 0;
-          symmetry_->marked_b0[v] = 0;
-        }
-
-        for (i_t v: symmetry_->continuous_variables) {
-          symmetry_->orbit_has_continuous[orb.find_orbit(v)] = 0;
-        }
-
-        for (i_t v: symmetry_->f0) {
-          symmetry_->orbit_has_f0[orb.find_orbit(v)] = 0;
-          symmetry_->marked_f0[v] = 0;
-        }
-
-        for (i_t v: symmetry_->f1) {
-          symmetry_->orbit_has_f1[orb.find_orbit(v)] = 0;
-          symmetry_->marked_f1[v] = 0;
-        }
-
-        symmetry_->f0.clear();
-        symmetry_->f1.clear();
-
-        settings_.log.printf(
-          "Orbital fixing at node %d: fixing %d variables to 0 and %d variables to 1\n",
-          node_ptr->node_id,
-          fix_zero.size(),
-          fix_one.size());
-        // Finally fix the variables in L0 and L1
-        for (i_t v: fix_zero) {
-          settings_.log.printf("Orbital fixing at node %d: fixing variable %d to 0\n", node_ptr->node_id, v);
-          worker->leaf_problem.lower[v] = 0.0;
-          worker->leaf_problem.upper[v] = 0.0;
-        }
-        for (i_t v: fix_one) {
-          settings_.log.printf("Orbital fixing at node %d: fixing variable %d to 1\n", node_ptr->node_id, v);
-          worker->leaf_problem.lower[v] = 1.0;
-          worker->leaf_problem.upper[v] = 1.0;
-        }
-      }
+    auto* of = worker->orbital_fixing.get();
+    if (of != nullptr && !of->disabled()) {
+      of->orbital_fixing(symmetry_, settings_, var_types_, node_ptr, worker->leaf_problem);
     }
-
-
 
     i_t node_iter     = 0;
     f_t lp_start_time = tic();
@@ -1598,6 +1448,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   stack.push_front(worker->start_node);
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
+  if (worker->orbital_fixing) { worker->orbital_fixing->enable(); }
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
@@ -1723,6 +1574,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>* worker)
 {
   raft::common::nvtx::range scope("BB::diving_thread");
+  if (worker->orbital_fixing) { worker->orbital_fixing->disable(); }
   logger_t log;
   log.log = false;
 
@@ -1819,7 +1671,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
   std::array<i_t, num_search_strategies> max_num_workers_per_type =
     get_max_workers(num_workers, strategies);
 
-  worker_pool_.init(num_workers, original_lp_, Arow_, var_types_, settings_);
+  worker_pool_.init(num_workers, original_lp_, Arow_, var_types_, symmetry_, settings_);
   active_workers_per_strategy_.fill(0);
 
 #ifdef CUOPT_LOG_DEBUG
@@ -1961,7 +1813,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
-  worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
+  worker_pool_.init(1, original_lp_, Arow_, var_types_, symmetry_, settings_);
   branch_and_bound_worker_t<i_t, f_t>* worker = worker_pool_.get_idle_worker();
 
   f_t lower_bound = get_lower_bound();
