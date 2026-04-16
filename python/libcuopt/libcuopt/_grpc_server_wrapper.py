@@ -8,11 +8,9 @@ import sys
 
 def main():
     """
-    Wrapper that launches the cuopt_grpc_server binary from the libcuopt package.
+    This connects to the gRPC server binary situated under libcuopt/bin folder.
     """
-    import libcuopt
-
     server_path = os.path.join(
-        os.path.dirname(libcuopt.__file__), "bin", "cuopt_grpc_server"
+        os.path.dirname(__file__), "bin", "cuopt_grpc_server"
     )
     sys.exit(subprocess.call([server_path] + sys.argv[1:]))
