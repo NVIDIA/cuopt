@@ -435,6 +435,51 @@ cdef class SolverSettings:
                 warm_start_data.iterations_since_last_restart # noqa
             )
 
+    def dump_parameters_to_file(self, path, hyperparameters_only=True):
+        """Apply ``settings_dict`` / warm start to C++, then dump parameters to *path*.
+
+        Calls :meth:`set_c_solver_settings` then the C++ ``solver_settings_t::dump_parameters_to_file``.
+
+        Parameters
+        ----------
+        path : str
+            Output path (e.g. file path or ``/dev/stdout``).
+        hyperparameters_only : bool, optional
+            Forwarded to C++; when ``True``, dump hyperparameter subset only.
+
+        Returns
+        -------
+        bool
+            ``True`` if the C++ layer reports success.
+        """
+        self.set_c_solver_settings()
+        cdef solver_settings_t[int, double]* c_ss = self.c_solver_settings.get()
+        cdef string c_path = path.encode("utf-8")
+        return c_ss.dump_parameters_to_file(c_path, hyperparameters_only)
+
+    def load_parameters_from_file(self, path):
+        """Load parameters from a cuOpt config file into the C++ settings object.
+
+        After a successful load, :attr:`settings_dict` is refreshed from C++
+        for every name in :data:`solver_params` so :meth:`get_parameter` matches
+        the loaded state.
+
+        Parameters
+        ----------
+        path : str
+            Path to a parameter file with ``name = value`` lines (see C++
+            ``solver_settings_t::load_parameters_from_file``).
+        """
+        cdef solver_settings_t[int, double]* c_ss = self.c_solver_settings.get()
+        cdef string c_path = path.encode("utf-8")
+        cdef string c_name
+        cdef string c_val
+        c_ss.load_parameters_from_file(c_path)
+        for name in solver_params:
+            c_name = name.encode("utf-8")
+            c_val = c_ss.get_parameter_as_string(c_name)
+            self.settings_dict[name] = self.to_base_type(c_val.decode("utf-8"))
+
     def toDict(self):
         solver_config = {}
         solver_config["tolerances"] = {}

@@ -8,6 +8,7 @@
 # cython: language_level = 3
 
 from libcpp.memory cimport unique_ptr
+from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
@@ -81,6 +82,13 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
             base_solution_callback_t* callback,
             void* user_data
         ) except +
+
+        bool dump_parameters_to_file(
+            const string& path,
+            bool hyperparameters_only,
+        ) except +
+
+        void load_parameters_from_file(const string& path) except +
 
 
 cdef class SolverSettings:

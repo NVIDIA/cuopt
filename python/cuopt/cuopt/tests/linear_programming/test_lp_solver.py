@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import os
+from enum import IntEnum
 
 import cuopt_mps_parser
 import numpy as np
@@ -13,6 +15,7 @@ from cuopt.linear_programming import (
     solver_settings,
 )
 from cuopt.linear_programming.solver.solver_parameters import (
+    solver_params,
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
@@ -196,7 +199,86 @@ def test_set_get_fields():
     assert data_model_obj.get_sense()
 
 
-def test_solver_settings():
+def _cuopt_commented_dump_to_loadable(src_path, dst_path, param_names):
+    """Turn ``dump_parameters_to_file`` output (commented ``# name = value``) into a loadable file.
+
+    C++ ``load_parameters_from_file`` skips commented lines; the dump format is
+    intentionally commented, so tests strip the leading ``#`` for assignment lines.
+    """
+    names_by_len = sorted(param_names, key=len, reverse=True)
+    with open(src_path, encoding="utf-8") as src, open(dst_path, "w", encoding="utf-8") as dst:
+        for line in src:
+            stripped = line.strip()
+            for name in names_by_len:
+                prefix = f"# {name} = "
+                if stripped.startswith(prefix):
+                    dst.write(f"{name} = {stripped[len(prefix):]}\n")
+                    break
+
+
+def _assert_solver_param_equal(name, expected, got):
+    """Compare get_parameter values across dump/load; enums and floats may differ in type."""
+    exp = int(expected) if isinstance(expected, IntEnum) else expected
+    g = int(got) if isinstance(got, IntEnum) else got
+    if isinstance(exp, float) and isinstance(g, float):
+        if math.isnan(exp) and math.isnan(g):
+            return
+        assert g == pytest.approx(exp), (name, got, expected)
+    else:
+        assert g == exp, (name, got, expected)
+
+
+def _non_default_solver_param_value(name, current):
+    """Pick a valid but non-default value for each registered solver parameter."""
+    if name.startswith("mip_hyper"):
+        return current
+    if name in ("user_problem_file", "solution_file"):
+        return ""
+    if name == "time_limit":
+        return 3600.0
+    if name == "iteration_limit":
+        return 9_999_999
+    if name == "method":
+        cur_i = int(current) if current is not None else -1
+        return (
+            SolverMethod.DualSimplex
+            if cur_i != int(SolverMethod.DualSimplex)
+            else SolverMethod.PDLP
+        )
+    if name == "pdlp_solver_mode":
+        cur_i = int(current) if current is not None else -1
+        return (
+            PDLPSolverMode.Fast1
+            if cur_i != int(PDLPSolverMode.Fast1)
+            else PDLPSolverMode.Stable2
+        )
+    if name == "presolve":
+        return 0 if int(current) == 1 else 1
+    if name == "pdlp_precision":
+        return 1 if int(current) == 0 else 0
+    if isinstance(current, bool):
+        return not current
+    if isinstance(current, str):
+        low = current.lower()
+        if low == "true":
+            return False
+        if low == "false":
+            return True
+        return current + "_x" if current else "1"
+    if isinstance(current, float):
+        if not math.isfinite(current):
+            return 7200.0
+        if abs(current) < 1e-30:
+            return 1e-2
+        return current * 2.0 if abs(current) < 1.0 else current * 0.5
+    if isinstance(current, int):
+        if int(current) > 1:
+            return int(current) - 1
+        return int(current) + 1
+    return current
+
+
+def test_solver_settings_basic():
     settings = solver_settings.SolverSettings()
 
     tolerance_value = 1e-5
@@ -249,6 +331,47 @@ def test_solver_settings():
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
     )
+
+
+def test_solver_settings(tmp_path):
+    """Push every registered parameter to the C++ layer via set_c_solver_settings."""
+    settings = solver_settings.SolverSettings()
+    for name in list(set(solver_params)):
+        current = settings.get_parameter(name)
+        new_val = _non_default_solver_param_value(name, current)
+        settings.set_parameter(name, new_val)
+
+    expected_by_name = {name: settings.get_parameter(name) for name in solver_params}
+
+    dump_path = tmp_path / "solver_settings_dump.config"
+    load_path = tmp_path / "solver_settings_load.config"
+    assert settings.dump_parameters_to_file(
+        str(dump_path), hyperparameters_only=False
+    )
+    _cuopt_commented_dump_to_loadable(
+        str(dump_path), str(load_path), solver_params
+    )
+    reloaded = solver_settings.SolverSettings()
+    reloaded.load_parameters_from_file(str(load_path))
+    for name in solver_params:
+        _assert_solver_param_equal(
+            name,
+            expected_by_name[name],
+            reloaded.get_parameter(name),
+        )
+
+    settings.set_c_solver_settings()
+    data_model_obj = data_model.DataModel()
+    A_values = np.array([1.0, 1.0])
+    A_indices = np.array([0, 0])
+    A_offsets = np.array([0, 1, 2])
+    data_model_obj.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+    data_model_obj.set_constraint_bounds(np.array([1.0, 1.0]))
+    data_model_obj.set_objective_coefficients(np.array([1.0]))
+    data_model_obj.set_row_types(np.array(["L", "L"]))
+
+    solution = solver.Solve(data_model_obj, settings)
+    assert solution.get_termination_reason() == "Optimal"
 
 
 def test_check_data_model_validity():
