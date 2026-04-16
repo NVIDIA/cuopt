@@ -127,9 +127,8 @@ class omp_atomic_t {
   T fetch_sub(T inc) { return fetch_add(-inc); }
 
   // Get the underlying value without atomics
-  T& get_no_atomic() { return val; }
-
-  T get_no_atomic() const { return val; }
+  T& underlying() { return val; }
+  T underlying() const { return val; }
 
  private:
   T val;

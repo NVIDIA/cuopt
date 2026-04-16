@@ -255,10 +255,10 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
     Base::pseudo_cost_sum_up.resize(n);
 
     for (i_t i = 0; i < n; ++i) {
-      Base::pseudo_cost_num_down[i] = other.pseudo_cost_num_down[i].get_no_atomic();
-      Base::pseudo_cost_num_up[i]   = other.pseudo_cost_num_up[i].get_no_atomic();
-      Base::pseudo_cost_sum_down[i] = other.pseudo_cost_sum_down[i].get_no_atomic();
-      Base::pseudo_cost_sum_up[i]   = other.pseudo_cost_sum_up[i].get_no_atomic();
+      Base::pseudo_cost_num_down[i] = other.pseudo_cost_num_down[i].underlying();
+      Base::pseudo_cost_num_up[i]   = other.pseudo_cost_num_up[i].underlying();
+      Base::pseudo_cost_sum_down[i] = other.pseudo_cost_sum_down[i].underlying();
+      Base::pseudo_cost_sum_up[i]   = other.pseudo_cost_sum_up[i].underlying();
     }
 
     return *this;
