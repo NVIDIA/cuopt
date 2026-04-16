@@ -3,6 +3,7 @@
 
 import os
 import sys
+import time
 import urllib.request
 import urllib.parse
 import subprocess
@@ -819,14 +820,30 @@ MittelmannInstances = {
 }
 
 
-def download(url, dst):
+def download(url, dst, max_retries=3, timeout=60):
     if os.path.exists(dst):
         return
-    print(f"Downloading {url} into {dst}...")
-    response = urllib.request.urlopen(url)
-    data = response.read()
-    with open(dst, "wb") as fp:
-        fp.write(data)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    for attempt in range(1, max_retries + 1):
+        print(
+            f"Downloading {url} into {dst} (attempt {attempt}/{max_retries})..."
+        )
+        try:
+            response = urllib.request.urlopen(url, timeout=timeout)
+            data = response.read()
+            with open(dst, "wb") as fp:
+                fp.write(data)
+            return
+        except Exception as e:
+            if os.path.exists(dst):
+                os.remove(dst)
+            if attempt < max_retries:
+                wait = 2**attempt
+                print(f"  Failed: {e}. Retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                print(f"  Failed after {max_retries} attempts: {e}")
+                raise
 
 
 def extract(file, dir, type):
@@ -899,9 +916,24 @@ def download_mip_dataset(name, dir):
 datasets_path = sys.argv[1]
 dataset_type = sys.argv[2]
 
+failed = []
 if dataset_type == "lp":
     for name in LPFeasibleMittelmannSet:
-        download_lp_dataset(name, datasets_path)
+        try:
+            download_lp_dataset(name, datasets_path)
+        except Exception as e:
+            print(f"ERROR: Failed to download LP dataset '{name}': {e}")
+            failed.append(name)
 elif dataset_type == "mip":
     for name in MiplibInstances:
-        download_mip_dataset(name, datasets_path)
+        try:
+            download_mip_dataset(name, datasets_path)
+        except Exception as e:
+            print(f"ERROR: Failed to download MIP dataset '{name}': {e}")
+            failed.append(name)
+
+if failed:
+    print(
+        f"\n{len(failed)} dataset(s) failed to download: {', '.join(failed)}"
+    )
+    sys.exit(1)
