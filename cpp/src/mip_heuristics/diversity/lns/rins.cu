@@ -224,7 +224,7 @@ void rins_t<i_t, f_t>::run_rins()
                           true);
   fj_cpu->log_prefix = "[RINS] ";
 
-  CUOPT_LOG_INFO("Launching CPUFJ (RINS) task");
+  CUOPT_LOG_DEBUG("Launching CPUFJ (RINS) task");
 #pragma omp task shared(fj_cpu) firstprivate(time_limit) default(none)
   cpufj_solve(fj_cpu.get(), time_limit);
 
@@ -298,6 +298,7 @@ void rins_t<i_t, f_t>::run_rins()
   }
 
 #pragma omp taskwait  // Wait for the CPU FJ (RINS) to finish
+  CUOPT_LOG_DEBUG("CPUFJ (RINS) task was stopped");
 
   CUOPT_LOG_DEBUG("RINS FJ ran for %d iterations", fj_cpu->iterations);
   if (fj_cpu->feasible_found) {
