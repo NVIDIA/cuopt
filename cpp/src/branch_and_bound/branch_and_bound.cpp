@@ -1591,7 +1591,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     worker->integer_infeasible = start_node->integer_infeasible;
     worker->node_queue.unlock();
 
-    if (get_cutoff() < start_node->lower_bound) {
+    if (upper_bound_.load() < start_node->lower_bound) {
       // This node was put on the heap earlier but its lower bound is now greater than the
       // current upper bound
       search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
@@ -1726,7 +1726,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   bfs_worker->node_queue.lock();
   mip_node_t<i_t, f_t>* start_node = bfs_worker->node_queue.pop_diving();
 
-  if (!start_node || get_cutoff() < start_node->lower_bound || start_node->depth < min_node_depth) {
+  if (!start_node || upper_bound_.load() < start_node->lower_bound ||
+      start_node->depth < min_node_depth) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     bfs_worker->node_queue.unlock();
     return false;
