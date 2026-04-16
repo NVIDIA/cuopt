@@ -86,6 +86,16 @@ static void normalize_zero_lb_semi_continuous(optimization_problem_t<i_t, f_t>& 
   if (modified) { op_problem.set_variable_types(var_types.data(), var_types.size()); }
 }
 
+template <typename i_t, typename f_t>
+static bool has_semi_continuous_variables(const optimization_problem_t<i_t, f_t>& op_problem)
+{
+  if (op_problem.get_variable_types().is_empty()) { return false; }
+
+  auto var_types = op_problem.get_variable_types_host();
+  return std::any_of(
+    var_types.begin(), var_types.end(), [](var_t type) { return type == var_t::SEMI_CONTINUOUS; });
+}
+
 template <typename f_t>
 static void invoke_solution_callbacks(
   const std::vector<internals::base_solution_callback_t*>& mip_callbacks,
@@ -308,6 +318,12 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 
     // This is required as user might forget to set some fields
     normalize_zero_lb_semi_continuous(op_problem);
+    if (has_semi_continuous_variables(op_problem) && !settings.initial_solutions.empty()) {
+      CUOPT_LOG_WARN(
+        "Ignoring %zu user initial solution(s): semi-continuous warm starts are not supported yet",
+        settings.initial_solutions.size());
+      settings.initial_solutions.clear();
+    }
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
@@ -319,12 +335,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::vector<uint8_t> sc_used_fallback_big_m;
     const bool had_sc =
       detail::reformulate_semi_continuous(op_problem, settings, &sc_used_fallback_big_m);
-    if (had_sc && !settings.initial_solutions.empty()) {
-      CUOPT_LOG_WARN(
-        "Ignoring %zu user initial solution(s): semi-continuous warm starts are not supported yet",
-        settings.initial_solutions.size());
-      settings.initial_solutions.clear();
-    }
 
     CUOPT_LOG_INFO(
       "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
