@@ -20,11 +20,9 @@ namespace cuopt {
 class omp_mutex_t {
  public:
   omp_mutex_t() : mutex(new omp_lock_t) { omp_init_lock(mutex.get()); }
-
-  omp_mutex_t(const omp_mutex_t&) = delete;
-
   omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
 
+  omp_mutex_t(const omp_mutex_t&)            = delete;
   omp_mutex_t& operator=(const omp_mutex_t&) = delete;
 
   omp_mutex_t& operator=(omp_mutex_t&& other)
