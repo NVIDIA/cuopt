@@ -136,8 +136,9 @@ endif(BUILD_TESTS)
 
 # ##################################################################################################
 # * mps_parser Install ----------------------------------------------------------------------------
+rapids_cmake_install_lib_dir(mps_parser_lib_dir)
 install(TARGETS mps_parser
-  DESTINATION lib
+  DESTINATION ${mps_parser_lib_dir}
   EXPORT mps-parser-exports)
 
 install(DIRECTORY include/mps_parser/
