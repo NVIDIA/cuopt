@@ -181,6 +181,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (!std::isfinite(U)) { U = orig_u; }
     if (!std::isfinite(U)) {
+      cuopt_assert(std::isfinite(big_m) && big_m >= L,
+                   "Semi-continuous fallback sc_big_m must be finite and >= lower bound");
       U = big_m;
       CUOPT_LOG_DEBUG(
         "Semi-continuous var %d has no finite upper bound after bounds "
