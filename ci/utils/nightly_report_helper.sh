@@ -70,8 +70,8 @@ generate_nightly_report() {
     local s3_summary_uri=""
     local s3_html_uri=""
 
-    if [ -n "${CUOPT_DATASET_S3_URI:-}" ]; then
-        local s3_base="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
+    if [ -n "${CUOPT_S3_URI:-}" ]; then
+        local s3_base="${CUOPT_S3_URI}ci_test_reports/nightly"
         s3_history_uri="${s3_base}/history/${branch_slug}/${test_type}-${matrix_label}.json"
         s3_summary_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${test_type}-${matrix_label}.json"
         s3_html_uri="${s3_base}/reports/${run_date}/${branch_slug}/${test_type}-${matrix_label}.html"

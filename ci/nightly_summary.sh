@@ -32,13 +32,12 @@ export AWS_ACCESS_KEY_ID="${CUOPT_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
 export AWS_SECRET_ACCESS_KEY="${CUOPT_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
 unset AWS_SESSION_TOKEN
 
-if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
-    echo "WARNING: CUOPT_DATASET_S3_URI is not set. Skipping nightly aggregation." >&2
-    echo "The per-matrix reports (uploaded by individual test jobs) are still available on S3."
+if [ -z "${CUOPT_S3_URI:-}" ]; then
+    echo "WARNING: CUOPT_S3_URI is not set. Skipping nightly aggregation." >&2
     exit 0
 fi
 
-S3_BASE="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
+S3_BASE="${CUOPT_S3_URI}ci_test_reports/nightly"
 BRANCH_SLUG=$(echo "${BRANCH}" | tr '/' '-')
 # Per-matrix summaries are uploaded by test jobs under summaries/{date}/{branch}/.
 # For production nightlies (main, release/*), RAPIDS_BRANCH matches the branch input.

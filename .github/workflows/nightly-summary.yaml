@@ -39,7 +39,7 @@ on:
         required: false
         type: string
     secrets:
-      CUOPT_DATASET_S3_URI:
+      CUOPT_S3_URI:
         required: true
       CUOPT_AWS_ACCESS_KEY_ID:
         required: true
@@ -67,7 +67,7 @@ jobs:
           pip install awscli
       - name: Run nightly summary
         env:
-          CUOPT_DATASET_S3_URI: ${{ secrets.CUOPT_DATASET_S3_URI }}
+          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
           CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
           CUOPT_SLACK_WEBHOOK_URL: ${{ secrets.CUOPT_SLACK_WEBHOOK_URL }}
