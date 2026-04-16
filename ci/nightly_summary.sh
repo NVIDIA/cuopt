@@ -67,22 +67,16 @@ else
 fi
 
 
-echo "RUN_DATE=${RUN_DATE}, BRANCH=${BRANCH}, BRANCH_SLUG=${BRANCH_SLUG}"
-echo "Listing S3 summaries at ${S3_SUMMARIES_PREFIX}:"
-aws s3 ls "${S3_SUMMARIES_PREFIX}" 2>&1 || echo "(no files or access error)"
-# Diagnostic: show what's on S3 for this date
-echo "=== S3 diagnostics ==="
-echo "RUN_DATE=${RUN_DATE} BRANCH=${BRANCH} BRANCH_SLUG=${BRANCH_SLUG}"
-echo "Looking for summaries at: ${S3_SUMMARIES_PREFIX}"
-aws s3 ls "${S3_SUMMARIES_PREFIX}" 2>&1 | head -5 || true
-echo "All summaries for ${RUN_DATE}:"
-aws s3 ls "${S3_BASE}/summaries/${RUN_DATE}/" 2>&1 | head -10 || true
-echo "=== End diagnostics ==="
+# Fallback: search the date-level prefix if branch-specific path is empty.
+# This handles the case where RAPIDS_BRANCH in rapidsai containers differs
+# from the branch input (e.g., feature branch testing where RAPIDS_BRANCH=main).
+S3_SUMMARIES_FALLBACK="${S3_BASE}/summaries/${RUN_DATE}/"
 
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
 python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
     --s3-summaries-prefix "${S3_SUMMARIES_PREFIX}" \
+    --s3-summaries-fallback "${S3_SUMMARIES_FALLBACK}" \
     --s3-reports-prefix "${S3_REPORTS_PREFIX}" \
     --s3-output-uri "${S3_CONSOLIDATED_JSON}" \
     --s3-html-output-uri "${S3_CONSOLIDATED_HTML}" \

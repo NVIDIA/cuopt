@@ -38,8 +38,11 @@ from s3_helpers import s3_download, s3_upload, s3_list  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def download_summaries(s3_prefix, local_dir):
+def download_summaries(s3_prefix, local_dir, s3_fallback_prefix=""):
     """Download all JSON summaries from S3 prefix into local_dir.
+    If s3_fallback_prefix is set and no summaries found at s3_prefix,
+    retries with the fallback (used when RAPIDS_BRANCH in rapidsai
+    containers doesn't match the branch input).
     Returns list of loaded summary dicts."""
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +52,18 @@ def download_summaries(s3_prefix, local_dir):
         u for u in uris
         if u.endswith(".json") and not u.endswith("/consolidated.json")
     ]
+
+    # Fallback: search the parent date prefix if branch-specific path is empty
+    if not json_uris and s3_fallback_prefix and s3_fallback_prefix != s3_prefix:
+        print(f"No summaries at {s3_prefix}, trying fallback: {s3_fallback_prefix}")
+        uris = s3_list(s3_fallback_prefix)
+        json_uris = [
+            u for u in uris
+            if u.endswith(".json") and not u.endswith("/consolidated.json")
+        ]
+        if json_uris:
+            s3_prefix = s3_fallback_prefix
+
     print(f"Found {len(json_uris)} summary file(s) at {s3_prefix}")
 
     summaries = []
@@ -568,6 +583,11 @@ def main():
         help="S3 prefix for per-matrix JSON summaries (e.g., s3://bucket/.../summaries/2026-04-13/)",
     )
     parser.add_argument(
+        "--s3-summaries-fallback",
+        default="",
+        help="Fallback S3 prefix if no summaries found at primary prefix",
+    )
+    parser.add_argument(
         "--s3-reports-prefix",
         default="",
         help="S3 prefix where per-matrix HTML reports live (for linking)",
@@ -633,7 +653,9 @@ def main():
         summaries = load_local_summaries(args.local_summaries_dir)
     elif args.s3_summaries_prefix:
         download_dir = output_dir / "downloaded_summaries"
-        summaries = download_summaries(args.s3_summaries_prefix, download_dir)
+        summaries = download_summaries(
+            args.s3_summaries_prefix, download_dir, args.s3_summaries_fallback
+        )
     else:
         print(
             "ERROR: Provide --s3-summaries-prefix or --local-summaries-dir",
