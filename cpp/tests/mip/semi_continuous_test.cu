@@ -69,7 +69,11 @@ TEST(mip_solve, semi_continuous_regressions)
   settings.time_limit = 10.;
 
   const std::vector<sc_result_t> valid_test_instances = {
-    {"mip/sc_standard.mps", 8., 0.}, {"mip/sc_no_ub.mps", 8., 0.}, {"mip/sc_lb_zero.mps", 8., 0.}};
+    {"mip/sc_standard.mps", 8., 0.},
+    {"mip/sc_no_ub.mps", 8., 0.},
+    {"mip/sc_lb_zero.mps", 8., 0.},
+    {"mip/sc_inferred_ub.mps", -4., 4.},
+  };
 
   for (const auto& test_instance : valid_test_instances) {
     auto path     = make_path_absolute(test_instance.file);
