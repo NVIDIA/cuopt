@@ -289,13 +289,6 @@ find_package(CUDSS REQUIRED)
 # ##################################################################################################
 # - gRPC and Protobuf setup (REQUIRED) ------------------------------------------------------------
 
-if(NOT TARGET OpenSSL::SSL)
-  find_package(OpenSSL CONFIG QUIET)
-  if(NOT OpenSSL_FOUND AND NOT OPENSSL_FOUND)
-    find_package(OpenSSL REQUIRED)
-  endif()
-endif()
-
 # gRPC is required for this branch - it provides remote execution features
 # gRPC can come from either:
 # - an installed CMake package (gRPCConfig.cmake), or
