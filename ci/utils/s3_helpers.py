@@ -91,11 +91,13 @@ def s3_upload(local_path, s3_uri):
 
 
 def s3_list(s3_prefix):
-    """List objects under an S3 prefix. Returns list of S3 URIs."""
+    """List objects under an S3 prefix (recursive). Returns list of S3 URIs."""
     env = s3_env()
+    # Extract bucket and prefix from s3_prefix for reconstructing full URIs
+    # s3_prefix looks like "s3://bucket/path/to/prefix/"
     try:
         result = subprocess.run(
-            ["aws", "s3", "ls", s3_prefix],
+            ["aws", "s3", "ls", "--recursive", s3_prefix],
             env=env,
             check=True,
             capture_output=True,
@@ -105,9 +107,18 @@ def s3_list(s3_prefix):
         print(f"WARNING: S3 ls failed: {exc}", file=sys.stderr)
         return []
 
+    # --recursive output format: "2026-04-16 12:00:00  1234 path/to/file.json"
+    # We need to reconstruct full S3 URIs from the key paths
+    # Parse bucket from s3_prefix
+    if not s3_prefix.startswith("s3://"):
+        return []
+    without_scheme = s3_prefix[5:]  # remove "s3://"
+    bucket = without_scheme.split("/")[0]
+    base_uri = f"s3://{bucket}/"
+
     uris = []
     for line in result.stdout.strip().splitlines():
-        parts = line.split()
-        if parts:
-            uris.append(f"{s3_prefix}{parts[-1]}")
+        parts = line.split(None, 3)  # date, time, size, key
+        if len(parts) == 4:
+            uris.append(f"{base_uri}{parts[3]}")
     return uris
