@@ -22,7 +22,7 @@
 #   RAPIDS_CUDA_VERSION   - CUDA version (e.g., "12.9")
 #   RAPIDS_PY_VERSION     - Python version (e.g., "3.12"), used with --with-python-version
 #   RAPIDS_BRANCH         - branch name (e.g., "main")
-#   CUOPT_DATASET_S3_URI  - S3 base URI for reports
+#   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/)
 #   GITHUB_SHA            - commit SHA
 #   GITHUB_STEP_SUMMARY   - path for GitHub Actions step summary
 

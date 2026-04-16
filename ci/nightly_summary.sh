@@ -6,8 +6,7 @@
 # consolidated Slack notification.  Runs as a post-test job after all
 # matrix CI jobs finish.
 #
-# The script needs S3 access. It tries CUOPT_DATASET_S3_URI first, then
-# falls back to standard AWS env vars set by aws-actions/configure-aws-credentials.
+# The script needs S3 access via CUOPT_S3_URI (bucket root) and CUOPT_AWS_* credentials.
 #
 # Optional:
 #   CUOPT_SLACK_WEBHOOK_URL       - sends Slack if set

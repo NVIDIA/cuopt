@@ -299,8 +299,8 @@ jobs:
       script: ci/test_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -323,8 +323,8 @@ jobs:
       script: ci/test_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -384,8 +384,8 @@ jobs:
       script: ci/test_wheel_cuopt.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -424,8 +424,8 @@ jobs:
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
