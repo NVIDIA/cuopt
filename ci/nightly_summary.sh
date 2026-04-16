@@ -40,8 +40,11 @@ fi
 
 S3_BASE="${CUOPT_DATASET_S3_URI}ci_test_reports/nightly"
 BRANCH_SLUG=$(echo "${BRANCH}" | tr '/' '-')
-S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
-S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/"
+# Per-matrix summaries are uploaded by rapidsai shared workflows which use
+# a flat date-based path (RAPIDS_BRANCH inside those containers is always "main").
+# Only our outputs (consolidated, dashboard) use branch-separated paths.
+S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/"
+S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/"
 S3_CONSOLIDATED_JSON="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/consolidated.json"
 S3_CONSOLIDATED_HTML="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/consolidated.html"
 S3_INDEX_URI="${S3_BASE}/index.json"
@@ -62,6 +65,18 @@ else
     echo "{}" > "${WORKFLOW_JOBS_JSON}"
 fi
 
+
+echo "RUN_DATE=${RUN_DATE}, BRANCH=${BRANCH}, BRANCH_SLUG=${BRANCH_SLUG}"
+echo "Listing S3 summaries at ${S3_SUMMARIES_PREFIX}:"
+aws s3 ls "${S3_SUMMARIES_PREFIX}" 2>&1 || echo "(no files or access error)"
+# Diagnostic: show what's on S3 for this date
+echo "=== S3 diagnostics ==="
+echo "RUN_DATE=${RUN_DATE} BRANCH=${BRANCH} BRANCH_SLUG=${BRANCH_SLUG}"
+echo "Looking for summaries at: ${S3_SUMMARIES_PREFIX}"
+aws s3 ls "${S3_SUMMARIES_PREFIX}" 2>&1 | head -5 || true
+echo "All summaries for ${RUN_DATE}:"
+aws s3 ls "${S3_BASE}/summaries/${RUN_DATE}/" 2>&1 | head -10 || true
+echo "=== End diagnostics ==="
 
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
