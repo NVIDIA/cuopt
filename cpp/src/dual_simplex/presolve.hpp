@@ -50,27 +50,6 @@ struct lp_problem_t {
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   bool objective_is_integral{false};
 
-  void write_problem(const std::string& path) const
-  {
-    FILE* fid = fopen(path.c_str(), "w");
-    if (fid) {
-      fwrite(&num_rows, sizeof(i_t), 1, fid);
-      fwrite(&num_cols, sizeof(i_t), 1, fid);
-      fwrite(&obj_constant, sizeof(f_t), 1, fid);
-      fwrite(&obj_scale, sizeof(f_t), 1, fid);
-      i_t is_integral = objective_is_integral ? 1 : 0;
-      fwrite(&is_integral, sizeof(i_t), 1, fid);
-      fwrite(objective.data(), sizeof(f_t), num_cols, fid);
-      fwrite(rhs.data(), sizeof(f_t), num_rows, fid);
-      fwrite(lower.data(), sizeof(f_t), num_cols, fid);
-      fwrite(upper.data(), sizeof(f_t), num_cols, fid);
-      fwrite(A.col_start.data(), sizeof(i_t), A.col_start.size(), fid);
-      fwrite(A.i.data(), sizeof(i_t), A.i.size(), fid);
-      fwrite(A.x.data(), sizeof(f_t), A.x.size(), fid);
-      fclose(fid);
-    }
-  }
-
   void write_mps(const std::string& path) const
   {
     std::ofstream mps_file(path);
