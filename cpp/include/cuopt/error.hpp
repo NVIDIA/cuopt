@@ -100,9 +100,7 @@ inline void cuopt_expects(bool cond, error_type_t error_type, const char* fmt, .
   if (not cond) {
     va_list args;
     va_start(args, fmt);
-
     char msg[2048];
-    va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
