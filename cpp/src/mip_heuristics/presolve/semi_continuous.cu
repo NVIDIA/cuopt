@@ -157,7 +157,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
     if (!needs_binary[s]) {
       // 0 already lies in [L, U], so the SC disjunction is just the interval itself.
-      CUOPT_LOG_WARN(
+      CUOPT_LOG_DEBUG(
         "SC var %d interval [%.6g, %.6g] already contains 0; treating it as continuous",
         idx,
         L,
