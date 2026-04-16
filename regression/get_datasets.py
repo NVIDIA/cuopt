@@ -5,7 +5,6 @@ import os
 import sys
 import urllib.request
 import urllib.parse
-import ssl
 import subprocess
 
 
@@ -824,14 +823,7 @@ def download(url, dst):
     if os.path.exists(dst):
         return
     print(f"Downloading {url} into {dst}...")
-    # Bypass SSL verification for plato.asu.edu URLs
-    if "plato.asu.edu" in url:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        response = urllib.request.urlopen(url, context=context)
-    else:
-        response = urllib.request.urlopen(url)
+    response = urllib.request.urlopen(url)
     data = response.read()
     with open(dst, "wb") as fp:
         fp.write(data)

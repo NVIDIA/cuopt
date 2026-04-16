@@ -18,6 +18,7 @@
 #include <rmm/device_uvector.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
 #include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <shared_mutex>
 #include <unordered_map>
 
 namespace cuopt {
@@ -175,24 +176,49 @@ HDI To bit_cast(const From& src)
   return *(To*)(&src);
 }
 
+/**
+ * @brief Raises the dynamic shared-memory limit for a CUDA kernel, with caching.
+ *
+ * Calls cudaFuncSetAttribute(cudaFuncAttributeMaxDynamicSharedMemorySize) only when
+ * @p dynamic_request_size exceeds the previously set limit for @p function.  The
+ * per-kernel high-water mark is stored in a process-wide cache so that repeated
+ * calls with the same or smaller sizes are cheap shared-lock reads.
+ *
+ * Thread safety: safe to call concurrently from multiple host threads.
+ *
+ * @param function             Host pointer to the __global__ kernel function.
+ * @param dynamic_request_size Requested dynamic shared memory in bytes.
+ *                             A value of 0 is a no-op and always returns true.
+ * @return true  if the attribute was successfully set (or was already sufficient).
+ * @return false if cudaFuncSetAttribute failed (e.g. size exceeds device limit);
+ *               the sticky CUDA error is consumed so it cannot surface later.
+ */
 template <typename Function>
 inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
 {
-  static std::mutex mtx;
+  static std::shared_mutex mtx;
   static std::unordered_map<Function*, size_t> shmem_sizes;
 
   if (dynamic_request_size != 0) {
     dynamic_request_size = raft::alignTo(dynamic_request_size, size_t(1024));
-    size_t current_size  = shmem_sizes[function];
-    if (dynamic_request_size > current_size) {
-      std::lock_guard<std::mutex> lock(mtx);
-      current_size = shmem_sizes[function];
 
-      if (dynamic_request_size > current_size) {
-        cudaFuncSetAttribute(
-          function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+    {
+      std::shared_lock<std::shared_mutex> rlock(mtx);
+      auto it = shmem_sizes.find(function);
+      if (it != shmem_sizes.end() && dynamic_request_size <= it->second) { return true; }
+    }
+
+    std::unique_lock<std::shared_mutex> wlock(mtx);
+    size_t current_size = shmem_sizes.count(function) ? shmem_sizes[function] : 0;
+    if (dynamic_request_size > current_size) {
+      auto err = cudaFuncSetAttribute(
+        function, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_request_size);
+      if (err == cudaSuccess) {
         shmem_sizes[function] = dynamic_request_size;
-        return (cudaSuccess == cudaGetLastError());
+        return true;
+      } else {
+        cudaGetLastError();  // clear sticky error so later RAFT_CHECK_CUDA doesn't catch it
+        return false;
       }
     }
   }
