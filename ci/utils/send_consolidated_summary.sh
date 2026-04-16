@@ -107,15 +107,11 @@ untracked_count = len(untracked_failed)
 
 if has_failures and (has_new or untracked_count > 0):
     emoji = ":rotating_light:"
-    wf_list = ", ".join(sorted(failing_workflows)[:5])
-    if len(failing_workflows) > 5:
-        wf_list += f" +{len(failing_workflows) - 5} more"
-    text = f"Failures in: {wf_list}"
+    text = f"{len(failing_workflows)} workflow(s) with failures"
     mention = ""
 elif has_failures:
     emoji = ":x:"
-    wf_list = ", ".join(sorted(failing_workflows)[:5])
-    text = f"Recurring failures in: {wf_list}"
+    text = f"Recurring failures in {len(failing_workflows)} workflow(s)"
     mention = ""
 elif flaky_workflows:
     emoji = ":large_yellow_circle:"
@@ -272,33 +268,6 @@ if issues_by_wf:
 
         print(make_payload(wf_blocks))
 
-# ── Thread 2: CI Workflow Status (only failures + summary) ────────────
-if workflow_jobs:
-    wf_groups = {}
-    for j in workflow_jobs:
-        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
-        wf_groups.setdefault(prefix, []).append(j)
-
-    failed_lines = []
-    passed_count = 0
-    for group_name, group_jobs in sorted(wf_groups.items()):
-        passed = sum(1 for j in group_jobs if j["conclusion"] == "success")
-        failed = sum(1 for j in group_jobs if j["conclusion"] == "failure")
-        total = len(group_jobs)
-
-        if failed > 0:
-            failed_lines.append(f":x:  *{group_name}* — {failed}/{total} failed")
-        else:
-            passed_count += 1
-
-    if failed_lines:
-        text = "*Failed CI Workflows:*\n" + "\n".join(failed_lines)
-        if passed_count > 0:
-            text += f"\n_{passed_count} other workflow(s) passed_"
-        print(make_payload([{
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": text},
-        }]))
 PYEOF
 )
 
