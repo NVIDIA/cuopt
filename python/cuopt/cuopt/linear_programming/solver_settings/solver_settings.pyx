@@ -1,12 +1,51 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
-from enum import IntEnum, auto
 
-from cuopt.linear_programming.solver.solver_parameters import (
-    solver_params,
-    get_solver_setting,
-)
+# cython: profile=False
+# distutils: language = c++
+# cython: embedsignature = True
+# cython: language_level = 3
+
+from libcpp.memory cimport unique_ptr
+from libc.stdint cimport uintptr_t
+from libcpp.string cimport string
+from libcpp.vector cimport vector
+
+
+def get_solver_setting(name):
+    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
+
+    unique_solver_settings.reset(new solver_settings_t[int, double]())
+
+    cdef solver_settings_t[int, double]* c_solver_settings = (
+        unique_solver_settings.get()
+    )
+    return c_solver_settings.get_parameter_as_string(
+        name.encode('utf-8')
+    ).decode('utf-8')
+
+
+cpdef get_solver_parameter_names():
+    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
+    unique_solver_settings.reset(new solver_settings_t[int, double]())
+    cdef solver_settings_t[int, double]* c_solver_settings = (
+        unique_solver_settings.get()
+    )
+    cdef vector[string] parameter_names = c_solver_settings.get_parameter_names()
+
+    cdef list py_parameter_names = []
+    cdef size_t i
+    for i in range(parameter_names.size()):
+        # std::string -> Python str
+        py_parameter_names.append(parameter_names[i].decode("utf-8"))
+    return py_parameter_names
+
+
+solver_params = get_solver_parameter_names()
+for param in solver_params: globals()["CUOPT_"+param.upper()] = param
+
+from enum import IntEnum, auto
 
 
 class SolverMethod(IntEnum):
@@ -67,8 +106,9 @@ class PDLPSolverMode(IntEnum):
         return "%d" % self.value
 
 
-class SolverSettings:
+cdef class SolverSettings:
     def __init__(self):
+        self.c_solver_settings.reset(new solver_settings_t[int, double]())
         self.settings_dict = {}
         self.pdlp_warm_start_data = None
         self.mip_callbacks = []
@@ -300,6 +340,100 @@ class SolverSettings:
 
         """
         return self.pdlp_warm_start_data
+
+    def set_c_solver_settings(self):
+        # All cdef declarations must precede other statements in this function.
+        cdef solver_settings_t[int, double]* c_solver_settings
+        cdef uintptr_t c_current_primal_solution
+        cdef uintptr_t c_current_dual_solution
+        cdef uintptr_t c_initial_primal_average
+        cdef uintptr_t c_initial_dual_average
+        cdef uintptr_t c_current_ATY
+        cdef uintptr_t c_sum_primal_solutions
+        cdef uintptr_t c_sum_dual_solutions
+        cdef uintptr_t c_last_restart_duality_gap_primal_solution
+        cdef uintptr_t c_last_restart_duality_gap_dual_solution
+
+        c_solver_settings = self.c_solver_settings.get()
+
+        for name, value in self.settings_dict.items():
+            c_solver_settings.set_parameter_from_string(
+                name.encode('utf-8'),
+                str(value).encode('utf-8')
+            )
+
+        if self.get_pdlp_warm_start_data() is not None:
+            from cuopt.linear_programming.solver.solver_wrapper import (
+                get_data_ptr,
+            )
+
+            warm_start_data = self.get_pdlp_warm_start_data()
+            c_current_primal_solution = (
+                get_data_ptr(
+                    warm_start_data.current_primal_solution # noqa
+                )
+            )
+            c_current_dual_solution = (
+                get_data_ptr(
+                    warm_start_data.current_dual_solution
+                )
+            )
+            c_initial_primal_average = (
+                get_data_ptr(
+                    warm_start_data.initial_primal_average # noqa
+                )
+            )
+            c_initial_dual_average = (
+                get_data_ptr(
+                    warm_start_data.initial_dual_average
+                )
+            )
+            c_current_ATY = (
+                get_data_ptr(
+                    warm_start_data.current_ATY
+                )
+            )
+            c_sum_primal_solutions = (
+                get_data_ptr(
+                    warm_start_data.sum_primal_solutions
+                )
+            )
+            c_sum_dual_solutions = (
+                get_data_ptr(
+                    warm_start_data.sum_dual_solutions
+                )
+            )
+            c_last_restart_duality_gap_primal_solution = (
+                get_data_ptr(
+                    warm_start_data.last_restart_duality_gap_primal_solution # noqa
+                )
+            )
+            c_last_restart_duality_gap_dual_solution = (
+                get_data_ptr(
+                    warm_start_data.last_restart_duality_gap_dual_solution # noqa
+                )
+            )
+            c_solver_settings.set_pdlp_warm_start_data(
+                <const double *> c_current_primal_solution,
+                <const double *> c_current_dual_solution,
+                <const double *> c_initial_primal_average,
+                <const double *> c_initial_dual_average,
+                <const double *> c_current_ATY,
+                <const double *> c_sum_primal_solutions,
+                <const double *> c_sum_dual_solutions,
+                <const double *> c_last_restart_duality_gap_primal_solution,
+                <const double *> c_last_restart_duality_gap_dual_solution,
+                warm_start_data.last_restart_duality_gap_primal_solution.shape[0], # Primal size # noqa
+                warm_start_data.last_restart_duality_gap_dual_solution.shape[0], # Dual size # noqa
+                warm_start_data.initial_primal_weight,
+                warm_start_data.initial_step_size,
+                warm_start_data.total_pdlp_iterations,
+                warm_start_data.total_pdhg_iterations,
+                warm_start_data.last_candidate_kkt_score,
+                warm_start_data.last_restart_kkt_score,
+                warm_start_data.sum_solution_weight,
+                warm_start_data.iterations_since_last_restart # noqa
+            )
 
     def toDict(self):
         solver_config = {}

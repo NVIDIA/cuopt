@@ -6,6 +6,7 @@
 add_subdirectory(distance_engine)
 add_subdirectory(linear_programming/data_model)
 add_subdirectory(linear_programming/solver)
+add_subdirectory(linear_programming/solver_settings)
 
 # We don't need to have mps_parser within cuOpt
 # Remove subdirectory addition in future

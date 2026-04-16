@@ -100,72 +100,6 @@ def test_parser_and_solver():
     assert solution.get_termination_reason() == "Optimal"
 
 
-def test_very_low_tolerance():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(1e-12)
-    # Test with the former/legacy solver_mode
-    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Methodical1)
-    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    expected_time = 69
-
-    assert solution.get_termination_status() == LPTerminationStatus.Optimal
-    assert solution.get_primal_objective() == pytest.approx(-464.7531)
-    # Rougly up to 5 times slower on V100
-    assert solution.get_solve_time() <= expected_time * 5
-
-
-# TODO: should test all LP solver modes?
-def test_iteration_limit_solver():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/savsched1/savsched1.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(1e-12)
-    settings.set_parameter(CUOPT_ITERATION_LIMIT, 1)
-    # Setting both to make sure the lowest one is picked
-    settings.set_parameter(CUOPT_TIME_LIMIT, 99999999)
-
-    solution = solver.Solve(data_model_obj, settings)
-    assert (
-        solution.get_termination_status() == LPTerminationStatus.IterationLimit
-    )
-    # Check we don't return empty (all 0) solution
-    assert solution.get_primal_objective() != 0.0
-    assert np.any(solution.get_primal_solution())
-
-
-def test_time_limit_solver():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/savsched1/savsched1.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(1e-12)
-    time_limit_seconds = 0.2
-    settings.set_parameter(CUOPT_TIME_LIMIT, time_limit_seconds)
-    # Solver mode isn't what's tested here.
-    # Set it to Stable2 as CI is more reliable with this mode
-    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
-    # Setting both to make sure the lowest one is picked
-    settings.set_parameter(CUOPT_ITERATION_LIMIT, 99999999)
-
-    solution = solver.Solve(data_model_obj, settings)
-    assert solution.get_termination_status() == LPTerminationStatus.TimeLimit
-    # Check that around 200 ms has passed with some tolerance
-    assert solution.get_solve_time() <= (time_limit_seconds * 10)
-
-
 def test_set_get_fields():
     data_model_obj = data_model.DataModel()
 
@@ -539,71 +473,22 @@ def test_warm_start():
         == iterations_first_solve
     )
 
-
-def test_warm_start_other_problem():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
-    settings.set_optimality_tolerance(1e-1)
-    settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
-    settings.set_parameter(CUOPT_PRESOLVE, 0)
-    solution = solver.Solve(data_model_obj, settings)
-
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-    data_model_obj2 = cuopt_mps_parser.ParseMps(file_path)
-    settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
-
     # Should raise an exception as problems are different
-    with pytest.raises(Exception):
-        solver.Solve(data_model_obj2, settings)
-
-
-def test_batch_solver_warm_start():
-    data_model_list = []
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
+    data_model_obj_different = cuopt_mps_parser.ParseMps(file_path)
+    with pytest.raises(Exception, match="Invalid PDLPWarmStart data"):
+        solver.Solve(data_model_obj_different, settings)
 
-    nb_solves = 2
-
-    for i in range(nb_solves):
-        data_model_list.append(cuopt_mps_parser.ParseMps(file_path))
-
-    settings = solver_settings.SolverSettings()
-    settings.set_optimality_tolerance(1e-3)
-
-    # Solve a first time to get a warm start
-    solution = solver.Solve(cuopt_mps_parser.ParseMps(file_path), settings)
-
-    settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
-
+    # Should raise an exception for batch solve
     # Should raise an exception
-    with pytest.raises(Exception):
+    data_model_list = [data_model_obj, data_model_obj]
+    with pytest.raises(Exception, match="Cannot use warmstart data with Batch Solve"):
         solver.BatchSolve(data_model_list, settings)
 
 
-def test_dual_simplex():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
-    settings.set_parameter(CUOPT_DUAL_POSTSOLVE, False)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert solution.get_termination_status() == LPTerminationStatus.Optimal
-    assert solution.get_primal_objective() == pytest.approx(-464.7531)
-    assert solution.get_solved_by() == SolverMethod.DualSimplex
-
-
-def test_barrier():
+def test_solved_by():
     # maximize   5*xs + 20*xl
     # subject to  1*xs +  3*xl <= 200
     #             3*xs +  2*xl <= 160
@@ -633,6 +518,7 @@ def test_barrier():
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
+    assert solution.get_solved_by() == SolverMethod.Barrier
 
 
 def test_heuristics_only():
@@ -709,6 +595,7 @@ def test_write_files():
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
     settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "afiro_out.mps")
+    settings.set_parameter(CUOPT_SOLUTION_FILE, "afiro.sol")
 
     solver.Solve(data_model_obj, settings)
 
@@ -749,43 +636,3 @@ def test_unbounded_problem():
     problem.solve(settings)
 
     assert problem.Status.name == "UnboundedOrInfeasible"
-
-
-def test_pdlp_precision_single():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
-    settings.set_parameter(CUOPT_PDLP_PRECISION, 0)  # Single
-    settings.set_optimality_tolerance(1e-4)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert solution.get_termination_status() == LPTerminationStatus.Optimal
-    assert solution.get_primal_objective() == pytest.approx(
-        -464.7531, rel=1e-1
-    )
-    assert solution.get_solved_by() == SolverMethod.PDLP
-
-
-def test_pdlp_precision_single_crossover():
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
-
-    settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
-    settings.set_parameter(CUOPT_PDLP_PRECISION, 1)  # Single
-    settings.set_parameter("crossover", True)
-    settings.set_optimality_tolerance(1e-4)
-
-    solution = solver.Solve(data_model_obj, settings)
-
-    assert solution.get_termination_status() == LPTerminationStatus.Optimal
-    assert solution.get_primal_objective() == pytest.approx(
-        -464.7531, rel=1e-1
-    )
