@@ -74,8 +74,6 @@ cache:
       - make
       - ninja
       - git
-      - python
-      - pyyaml
       - tbb-devel
       - zlib
       - bzip2

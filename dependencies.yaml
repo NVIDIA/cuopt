@@ -299,7 +299,7 @@ dependencies:
         packages:
           - libboost-devel
           - cpp-argparse
-          - pyyaml
+          - &pyyaml pyyaml>=6.0.0
           - tbb-devel
           - zlib
           - bzip2
@@ -314,7 +314,7 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
-          - pyyaml
+          - *pyyaml
   test_cpp_cuopt:
     common:
       - output_types: [conda]
@@ -357,7 +357,7 @@ dependencies:
           - numba-cuda>=0.22.1
           - numba>=0.60.0,<0.65.0
           - &pandas pandas>=2.0
-          - &pyyaml pyyaml>=6.0.0
+          - *pyyaml
           - scipy>=1.14.1
     specific:
       - output_types: [conda, requirements, pyproject]

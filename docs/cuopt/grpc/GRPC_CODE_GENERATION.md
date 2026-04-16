@@ -25,7 +25,7 @@ commit the regenerated files.
 
 ## File Layout
 
-```
+```text
 cpp/src/grpc/codegen/
 ├── field_registry.yaml          # Source of truth for all fields
 ├── generate_conversions.py      # Generator script

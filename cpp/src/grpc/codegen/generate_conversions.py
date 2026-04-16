@@ -55,7 +55,7 @@ def parse_field(entry):
         return {"name": entry}
     if isinstance(entry, dict):
         assert len(entry) == 1, f"Expected single-key dict, got {entry}"
-        name = list(entry.keys())[0]
+        name = next(iter(entry))
         val = entry[name]
         if isinstance(val, str):
             return {"name": name, "type": val}
@@ -72,7 +72,7 @@ def parse_settings_fields(entries, prefix=""):
     """Parse settings fields, handling nested sub-structs (e.g. tolerances)."""
     for entry in entries:
         assert isinstance(entry, dict) and len(entry) == 1
-        name = list(entry.keys())[0]
+        name = next(iter(entry))
         val = entry[name]
         if isinstance(val, list):
             yield from parse_settings_fields(val, prefix=f"{prefix}{name}.")
@@ -97,7 +97,7 @@ def parse_enum_entry(entry, index=0):
     if isinstance(entry, str):
         return entry, index
     assert isinstance(entry, dict) and len(entry) == 1
-    name = list(entry.keys())[0]
+    name = next(iter(entry))
     num = entry[name]
     return name, num if num is not None else index
 
@@ -1923,7 +1923,7 @@ def _collect_field_nums(entries, key_name="field_num"):
     nums = set()
     for entry in entries:
         if isinstance(entry, dict) and len(entry) == 1:
-            name = list(entry.keys())[0]
+            name = next(iter(entry))
             val = entry[name]
             if isinstance(val, dict) and key_name in val:
                 nums.add(val[key_name])
@@ -1935,7 +1935,7 @@ def _collect_settings_field_nums(entries):
     nums = set()
     for entry in entries:
         if isinstance(entry, dict) and len(entry) == 1:
-            name = list(entry.keys())[0]
+            name = next(iter(entry))
             val = entry[name]
             if isinstance(val, list):
                 nums |= _collect_settings_field_nums(val)
@@ -1971,7 +1971,7 @@ def _assign_to_field_list(entries, key_name, lo, hi, existing, label):
             continue
         if not isinstance(entry, dict) or len(entry) != 1:
             continue
-        name = list(entry.keys())[0]
+        name = next(iter(entry))
         val = entry[name]
         if val is None:
             try:
@@ -2007,7 +2007,7 @@ def _assign_to_settings_fields(entries, lo, hi, existing, label):
     for entry in entries:
         if not isinstance(entry, dict) or len(entry) != 1:
             continue
-        name = list(entry.keys())[0]
+        name = next(iter(entry))
         val = entry[name]
         if isinstance(val, list):
             sub_assigned = _assign_to_settings_fields(
