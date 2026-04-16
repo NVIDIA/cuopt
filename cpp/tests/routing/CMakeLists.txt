@@ -33,4 +33,5 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/objective_function.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/batch_tsp.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
 )
