@@ -1598,7 +1598,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
 
-  f_t lower_bound = std::min(get_lower_bound(), worker->start_node->lower_bound);
+  f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
@@ -1742,7 +1742,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
   dive_stats.nodes_explored      = 0;
   dive_stats.nodes_unexplored    = 1;
 
-  f_t lower_bound = std::min(get_lower_bound(), worker->start_node->lower_bound);
+  f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
