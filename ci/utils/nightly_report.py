@@ -98,28 +98,12 @@ def parse_junit_xml(xml_path):
                 status = "failed"
                 message = failure.get("message", "")
                 if failure.text:
-                    # Keep the last 500 chars (where the assertion/error is)
-                    # plus the first line for context
-                    text = failure.text.strip()
-                    lines = text.splitlines()
-                    first_line = lines[0] if lines else ""
-                    last_chunk = text[-500:] if len(text) > 500 else text
-                    if len(text) > 500:
-                        message = first_line + "\n...\n" + last_chunk
-                    else:
-                        message = text
+                    message = failure.text.strip()
             elif error is not None:
                 status = "error"
                 message = error.get("message", "")
                 if error.text:
-                    text = error.text.strip()
-                    lines = text.splitlines()
-                    first_line = lines[0] if lines else ""
-                    last_chunk = text[-500:] if len(text) > 500 else text
-                    if len(text) > 500:
-                        message = first_line + "\n...\n" + last_chunk
-                    else:
-                        message = text
+                    message = error.text.strip()
             else:
                 status = "passed"
                 message = ""
@@ -560,7 +544,7 @@ def generate_json_summary(
                 "suite": e["suite"],
                 "name": e["name"],
                 "classname": e["classname"],
-                "message": e.get("message", "")[:200],
+                "message": e.get("message", ""),
             }
             for e in new_failures
         ],
@@ -570,7 +554,7 @@ def generate_json_summary(
                 "name": e["name"],
                 "classname": e["classname"],
                 "first_seen": e.get("first_seen", "unknown"),
-                "message": e.get("message", "")[:200],
+                "message": e.get("message", ""),
             }
             for e in recurring_failures
         ],
