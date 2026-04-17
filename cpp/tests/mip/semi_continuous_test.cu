@@ -32,18 +32,21 @@ struct sc_result_t {
 
 optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle,
                                                     double sc_lb,
-                                                    double sc_ub)
+                                                    double sc_ub,
+                                                    double row_rhs = 1.0,
+                                                    double aux_lb  = 0.0,
+                                                    double aux_ub  = 1.0)
 {
   optimization_problem_t<int, double> problem(handle);
 
   const std::vector<double> coefficients = {1.0, 1.0};
   const std::vector<int> indices         = {0, 1};
   const std::vector<int> offsets         = {0, 2};
-  const std::vector<double> row_lower    = {1.0};
-  const std::vector<double> row_upper    = {1.0};
+  const std::vector<double> row_lower    = {row_rhs};
+  const std::vector<double> row_upper    = {row_rhs};
   const std::vector<double> obj          = {1.0, 0.0};
-  const std::vector<double> var_lower    = {sc_lb, 0.0};
-  const std::vector<double> var_upper    = {sc_ub, 1.0};
+  const std::vector<double> var_lower    = {sc_lb, aux_lb};
+  const std::vector<double> var_upper    = {sc_ub, aux_ub};
   const std::vector<var_t> var_types     = {var_t::SEMI_CONTINUOUS, var_t::CONTINUOUS};
 
   problem.set_csr_constraint_matrix(coefficients.data(),
@@ -103,7 +106,6 @@ TEST(mip_solve, semi_continuous_invalid_bounds_rejected)
     {-3.0, 5.0},
     {-5.0, -1.0},
     {-4.0, 0.0},
-    {5.0, 5.0},
     {6.0, 5.0},
   };
 
@@ -115,6 +117,35 @@ TEST(mip_solve, semi_continuous_invalid_bounds_rejected)
     const auto& error = solution.get_error_status();
     EXPECT_EQ(error.get_error_type(), cuopt::error_type_t::ValidationError);
     EXPECT_NE(std::string(error.what()).find("Semi-continuous variable"), std::string::npos);
+  }
+}
+
+TEST(mip_solve, semi_continuous_equal_bounds_supported)
+{
+  const raft::handle_t handle_{};
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.;
+
+  {
+    auto problem  = make_sc_problem(&handle_, 5.0, 5.0);
+    auto solution = solve_mip(problem, settings);
+
+    EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+    auto host_solution =
+      cuopt::host_copy(solution.get_solution(), solution.get_solution().stream());
+    EXPECT_NEAR(solution.get_objective_value(), 0.0, 1e-6);
+    EXPECT_NEAR(host_solution[0], 0.0, 1e-6);
+  }
+
+  {
+    auto problem  = make_sc_problem(&handle_, 5.0, 5.0, 5.0, 0.0, 0.0);
+    auto solution = solve_mip(problem, settings);
+
+    EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+    auto host_solution =
+      cuopt::host_copy(solution.get_solution(), solution.get_solution().stream());
+    EXPECT_NEAR(solution.get_objective_value(), 5.0, 1e-6);
+    EXPECT_NEAR(host_solution[0], 5.0, 1e-6);
   }
 }
 

@@ -241,9 +241,9 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
                     "Semi-continuous variable must have a strictly positive upper bound, but has "
                     "upper bound %g.",
                     static_cast<double>(var_ub[i]));
-      cuopt_expects(var_lb[i] < var_ub[i],
+      cuopt_expects(var_lb[i] <= var_ub[i],
                     error_type_t::ValidationError,
-                    "Semi-continuous variable must satisfy lower bound < upper bound, but has "
+                    "Semi-continuous variable must satisfy lower bound <= upper bound, but has "
                     "bounds [%g, %g].",
                     static_cast<double>(var_lb[i]),
                     static_cast<double>(var_ub[i]));

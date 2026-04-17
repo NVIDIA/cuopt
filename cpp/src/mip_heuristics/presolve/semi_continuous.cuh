@@ -15,7 +15,7 @@ namespace cuopt::linear_programming::detail {
 /**
  * @brief Reformulate semi-continuous variables in-place inside the MIP solver.
  *
- * A semi-continuous variable x satisfies: x = 0  OR  L <= x <= U  (0 < L < U).
+ * A semi-continuous variable x satisfies: x = 0  OR  L <= x <= U  (0 < L <= U).
  * Reformulation adds a binary variable b and two linking constraints when needed.
  * Added binaries are appended at the end of the variable arrays, and their linking
  * constraints are appended at the end of the CSR row arrays in the same order.
