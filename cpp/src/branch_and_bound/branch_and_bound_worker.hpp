@@ -75,6 +75,14 @@ class branch_and_bound_worker_t {
   pcgenerator_t rng;
 
   std::unique_ptr<orbital_fixing_t<i_t, f_t>> orbital_fixing;
+  mip_symmetry_t<i_t, f_t>* symmetry_ptr = nullptr;
+
+  void ensure_orbital_fixing()
+  {
+    if (orbital_fixing == nullptr && symmetry_ptr != nullptr) {
+      orbital_fixing = std::make_unique<orbital_fixing_t<i_t, f_t>>(*symmetry_ptr);
+    }
+  }
 
   bool recompute_basis  = true;
   bool recompute_bounds = true;
@@ -180,10 +188,7 @@ class branch_and_bound_worker_pool_t {
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] = std::make_unique<branch_and_bound_worker_t<i_t, f_t>>(
         i, original_lp, Arow, var_type, settings);
-      if (symmetry != nullptr) {
-        workers_[i]->orbital_fixing =
-          std::make_unique<orbital_fixing_t<i_t, f_t>>(*symmetry);
-      }
+      workers_[i]->symmetry_ptr = symmetry;
       idle_workers_.push_front(i);
     }
 

@@ -18,6 +18,7 @@
 #include "dejavu.h"
 
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <sstream>
 
@@ -25,48 +26,32 @@ namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t {
-  mip_symmetry_t(std::unique_ptr<dejavu::groups::random_schreier> schreier_,
-                 i_t domain_size_,
-                 i_t num_original_vars_,
-                 const std::vector<variable_type_t>& var_types,
-                 const std::vector<f_t>& lower,
-                 const std::vector<f_t>& upper)
-    : schreier(std::move(schreier_)),
-      domain_size(domain_size_),
-      num_original_vars(num_original_vars_),
-      is_binary(num_original_vars_, 0)
-  {
-    for (i_t j = 0; j < num_original_vars_; j++) {
-      if (var_types[j] == variable_type_t::CONTINUOUS) {
-        continuous_variables.push_back(j);
-      } else if (lower[j] == 0.0 && upper[j] == 1.0) {
-        is_binary[j] = 1;
-      } else {
-        general_integer_variables.push_back(j);
-      }
-    }
-  }
-
+  // Schreier projected onto original variables (domain = num_original_vars).
+  // Generators that permute continuous variables are excluded.
   std::unique_ptr<dejavu::groups::random_schreier> schreier;
-  i_t domain_size;
   i_t num_original_vars;
-  std::vector<i_t> continuous_variables;
+  int num_generators = 0;
   std::vector<i_t> general_integer_variables;
   std::vector<i_t> is_binary;
+
+  // Precomputed orbit representative for each original variable under the projected group.
+  // orbit_rep[j] = orbit representative of variable j (for j < num_original_vars).
+  std::vector<i_t> orbit_rep;
+
+  // Mutex protecting schreier->get_generator() for concurrent orbital_fixing_t construction.
+  std::mutex generator_mutex;
 };
 
 template <typename i_t, typename f_t>
 class orbital_fixing_t {
  public:
   explicit orbital_fixing_t(mip_symmetry_t<i_t, f_t>& root)
-    : domain_size_(root.domain_size),
-      num_original_vars_(root.num_original_vars),
+    : num_original_vars_(root.num_original_vars),
       marked_variables_(root.num_original_vars, 0),
-      orbit_has_b1_(root.domain_size, 0),
-      orbit_has_b0_(root.domain_size, 0),
-      orbit_has_continuous_(root.domain_size, 0),
-      orbit_has_f0_(root.domain_size, 0),
-      orbit_has_f1_(root.domain_size, 0),
+      orbit_has_b1_(root.num_original_vars, 0),
+      orbit_has_b0_(root.num_original_vars, 0),
+      orbit_has_f0_(root.num_original_vars, 0),
+      orbit_has_f1_(root.num_original_vars, 0),
       marked_b0_(root.num_original_vars, 0),
       marked_b1_(root.num_original_vars, 0),
       marked_f0_(root.num_original_vars, 0),
@@ -75,20 +60,21 @@ class orbital_fixing_t {
     f0_.reserve(root.num_original_vars);
     f1_.reserve(root.num_original_vars);
 
-    // Clone the root Schreier structure into a per-worker copy. The root structure
-    // is shared and read-only, but set_base/get_stabilizer_orbit mutate internal state,
-    // so each worker needs its own copy. Since random_schreier is not copyable, we
-    // reconstruct it by creating a fresh structure with the same base and sifting all
-    // generators from the root into it.
-    schreier_ = std::make_unique<dejavu::groups::random_schreier>(root.domain_size);
-    std::vector<int> base(root.num_original_vars);
+    // Clone the projected Schreier (domain = num_original_vars, only integer-variable
+    // permutations). The mutex protects get_generator (which may not be thread-safe),
+    // while the expensive sift calls operate on the per-worker copy and run in parallel.
+    schreier_ = std::make_unique<dejavu::groups::random_schreier>(num_original_vars_);
+    std::vector<int> base(num_original_vars_);
     std::iota(base.begin(), base.end(), 0);
     schreier_->set_base(base);
 
-    int num_gens = root.schreier->get_number_of_generators();
-    dejavu::groups::automorphism_workspace ws(root.domain_size);
+    int num_gens = root.num_generators;
+    dejavu::groups::automorphism_workspace ws(num_original_vars_);
     for (int i = 0; i < num_gens; i++) {
-      root.schreier->get_generator(i, ws);
+      {
+        std::lock_guard<std::mutex> lock(root.generator_mutex);
+        root.schreier->get_generator(i, ws);
+      }
       schreier_->sift(ws);
     }
   }
@@ -136,7 +122,7 @@ class orbital_fixing_t {
       }
     }
 
-    // Compute Stab(G', B1) where G' = Stab(G, general_integer_variables)
+    // Compute Stab(G', B1) where G' already excludes continuous-variable permutations.
     // Base order: [general_int_vars, B1, remaining_vars]
     const auto& gen_int = symmetry->general_integer_variables;
     std::vector<i_t> new_base;
@@ -162,7 +148,7 @@ class orbital_fixing_t {
     schreier_->set_base(new_base);
 
     dejavu::groups::orbit orb;
-    orb.initialize(domain_size_);
+    orb.initialize(num_original_vars_);
     i_t stabilizer_level = static_cast<i_t>(gen_int.size() + branched_one.size());
     schreier_->get_stabilizer_orbit(static_cast<int>(stabilizer_level), orb);
 
@@ -200,9 +186,8 @@ class orbital_fixing_t {
         orbit_has_b0_[orb.find_orbit(v)] = 1;
       }
 
-      for (i_t v : symmetry->continuous_variables) {
-        orbit_has_continuous_[orb.find_orbit(v)] = 1;
-      }
+      // No orbit_has_continuous_ needed: generators that permute continuous
+      // variables were excluded when building the projected schreier.
 
       for (i_t v : f0_) {
         orbit_has_f0_[orb.find_orbit(v)] = 1;
@@ -219,8 +204,8 @@ class orbital_fixing_t {
         i_t o = orb.find_orbit(j);
         if (orb.orbit_size(o) < 2) continue;
 
-        if (orbit_has_b1_[o] == 1 || orbit_has_continuous_[o] == 1) {
-          // The orbit contains variables in B1 or continuous variables
+        if (orbit_has_b1_[o] == 1) {
+          // The orbit contains variables in B1
           // So we can't fix any variables in this orbit
           continue;
         }
@@ -247,10 +232,6 @@ class orbital_fixing_t {
       for (i_t v : branched_zero) {
         orbit_has_b0_[orb.find_orbit(v)] = 0;
         marked_b0_[v]                    = 0;
-      }
-
-      for (i_t v : symmetry->continuous_variables) {
-        orbit_has_continuous_[orb.find_orbit(v)] = 0;
       }
 
       for (i_t v : f0_) {
@@ -288,22 +269,20 @@ class orbital_fixing_t {
 
  private:
   std::unique_ptr<dejavu::groups::random_schreier> schreier_;
-  i_t domain_size_;
   i_t num_original_vars_;
   bool disabled_ = false;
 
-  std::vector<i_t> marked_variables_;
-  std::vector<i_t> orbit_has_b1_;     // orbit_has_b1_[o] = 1 if the orbit o contains variables in B1
-  std::vector<i_t> orbit_has_b0_;     // orbit_has_b0_[o] = 1 if the orbit o contains variables in B0
-  std::vector<i_t> orbit_has_continuous_; // orbit_has_continuous_[o] = 1 if the orbit o contains continuous variables
-  std::vector<i_t> orbit_has_f0_;     // orbit_has_f0_[o] = 1 if the orbit o contains variables in F0
-  std::vector<i_t> orbit_has_f1_;     // orbit_has_f1_[o] = 1 if the orbit o contains variables in F1
-  std::vector<i_t> marked_b0_;        // marked_b0_[v] = 1 if the variable v has been branched down
-  std::vector<i_t> marked_b1_;        // marked_b1_[v] = 1 if the variable v has been branched up
-  std::vector<i_t> f0_;               // set of variables that can be fixed to 0
-  std::vector<i_t> f1_;               // set of variables that can be fixed to 1
-  std::vector<i_t> marked_f0_;        // marked_f0_[v] = 1 if the variable v has been branched down
-  std::vector<i_t> marked_f1_;        // marked_f1_[v] = 1 if the variable v has been branched up
+  std::vector<i_t> marked_variables_;    // marked_variables_[j] = 1 if variable j is in the base prefix
+  std::vector<i_t> orbit_has_b1_;        // orbit_has_b1_[o] = 1 if orbit o contains variables in B1
+  std::vector<i_t> orbit_has_b0_;        // orbit_has_b0_[o] = 1 if orbit o contains variables in B0
+  std::vector<i_t> orbit_has_f0_;        // orbit_has_f0_[o] = 1 if orbit o contains variables in F0
+  std::vector<i_t> orbit_has_f1_;        // orbit_has_f1_[o] = 1 if orbit o contains variables in F1
+  std::vector<i_t> marked_b0_;           // marked_b0_[v] = 1 if variable v has been branched down
+  std::vector<i_t> marked_b1_;           // marked_b1_[v] = 1 if variable v has been branched up
+  std::vector<i_t> f0_;                  // set of variables fixed to 0 by bound propagation
+  std::vector<i_t> f1_;                  // set of variables fixed to 1 by bound propagation
+  std::vector<i_t> marked_f0_;           // marked_f0_[v] = 1 if variable v is in F0
+  std::vector<i_t> marked_f1_;           // marked_f1_[v] = 1 if variable v is in F1
 };
 
 template <typename i_t, typename f_t>
@@ -658,6 +637,41 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
     }
     settings.log.printf("\n");
 
+    // Binary-only orbit statistics: count orbits that consist entirely of binary variables
+    i_t bin_nontrivial_orbits = 0;
+    i_t bin_max_orbit_size = 0;
+    i_t bin_total_vars = 0;
+    std::vector<i_t> bin_orbit_histogram(num_original_vars + 1, 0);
+    i_t num_binary_vars = 0;
+    for (i_t j = 0; j < num_original_vars; j++) {
+      bool is_bin = (user_problem.var_types[j] != variable_type_t::CONTINUOUS &&
+                     user_problem.lower[j] == 0.0 && user_problem.upper[j] == 1.0);
+      if (is_bin && orb.represents_orbit(j)) {
+        i_t sz = orb.orbit_size(j);
+        if (sz >= 2) {
+          bin_nontrivial_orbits++;
+          bin_max_orbit_size = std::max(bin_max_orbit_size, sz);
+          bin_total_vars += sz;
+          bin_orbit_histogram[sz]++;
+        }
+      }
+      if (is_bin) { num_binary_vars++; }
+    }
+    if (num_binary_vars < num_original_vars) {
+      settings.log.printf("Binary orbits: %d non-trivial, max size %d, %d/%d (%.1f%%) binary variables in orbits\n",
+                          bin_nontrivial_orbits, bin_max_orbit_size, bin_total_vars, num_binary_vars,
+                          num_binary_vars > 0 ? 100.0 * bin_total_vars / num_binary_vars : 0.0);
+      if (bin_max_orbit_size >= 2) {
+        settings.log.printf("Binary orbit histogram (orbit size: number of orbits):");
+        for (i_t sz = 2; sz <= bin_max_orbit_size; sz++) {
+          if (bin_orbit_histogram[sz] > 0) {
+            settings.log.printf(" %d:%d", sz, bin_orbit_histogram[sz]);
+          }
+        }
+        settings.log.printf("\n");
+      }
+    }
+
     has_symmetry = (max_orbit_size >= 4) ||
                     (num_nontrivial_orbits >= 3 && max_orbit_size >= 2) ||
                     (total_vars_in_orbits >= 10);
@@ -667,9 +681,80 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   if (!has_symmetry) { return nullptr; }
 
-  return std::make_unique<mip_symmetry_t<i_t, f_t>>(
-    std::move(schreier), num_vertices, user_problem.num_cols, var_types,
-    user_problem.lower, user_problem.upper);
+  auto result = std::make_unique<mip_symmetry_t<i_t, f_t>>();
+  result->num_original_vars = num_original_vars;
+  result->is_binary.resize(num_original_vars, 0);
+  for (i_t j = 0; j < num_original_vars; j++) {
+    if (var_types[j] != variable_type_t::CONTINUOUS) {
+      if (user_problem.lower[j] == 0.0 && user_problem.upper[j] == 1.0) {
+        result->is_binary[j] = 1;
+      } else {
+        result->general_integer_variables.push_back(j);
+      }
+    }
+  }
+
+  // Project generators from the full graph (num_vertices) onto original variables
+  // (num_original_vars). Skip generators that permute any continuous variable.
+  result->schreier = std::make_unique<dejavu::groups::random_schreier>(num_original_vars);
+  {
+    std::vector<int> base(num_original_vars);
+    std::iota(base.begin(), base.end(), 0);
+    result->schreier->set_base(base);
+  }
+
+  int full_num_gens = schreier->get_number_of_generators();
+  dejavu::groups::automorphism_workspace full_ws(num_vertices);
+  dejavu::groups::automorphism_workspace proj_ws(num_original_vars);
+  int projected_count = 0;
+  int skipped_continuous = 0;
+  for (int i = 0; i < full_num_gens; i++) {
+    schreier->get_generator(i, full_ws);
+    const int* full_p = full_ws.p();
+
+    // Project onto original variables and check for continuous variable movement
+    proj_ws.reset();
+    bool moves_continuous = false;
+    bool is_identity = true;
+    for (i_t j = 0; j < num_original_vars; j++) {
+      i_t mapped = full_p[j];
+      if (mapped != j) {
+        if (var_types[j] == variable_type_t::CONTINUOUS) {
+          moves_continuous = true;
+          break;
+        }
+        proj_ws.write_single_map(j, mapped);
+        is_identity = false;
+      }
+    }
+    if (moves_continuous) {
+      skipped_continuous++;
+      continue;
+    }
+    if (!is_identity) {
+      result->schreier->sift(proj_ws);
+      projected_count++;
+    }
+  }
+
+  result->num_generators = result->schreier->get_number_of_generators();
+  settings.log.printf("Projected %d/%d generators onto %d variables (%d skipped continuous), "
+                      "%d stored in projected schreier\n",
+                      projected_count, full_num_gens, (int)num_original_vars,
+                      skipped_continuous, result->num_generators);
+
+  // Precompute orbit representatives from the projected group's orbits.
+  result->orbit_rep.resize(num_original_vars);
+  {
+    dejavu::groups::orbit orb_final;
+    orb_final.initialize(num_original_vars);
+    result->schreier->get_stabilizer_orbit(0, orb_final);
+    for (i_t j = 0; j < num_original_vars; j++) {
+      result->orbit_rep[j] = orb_final.find_orbit(j);
+    }
+  }
+
+  return result;
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

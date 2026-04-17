@@ -27,6 +27,9 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+template <typename i_t, typename f_t>
+struct mip_symmetry_t;
+
 template <typename i_t>
 struct branch_variable_t {
   i_t variable;
@@ -556,6 +559,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<i_t>& basic_list,
                       const std::vector<i_t>& nonbasic_list,
                       basis_update_mpf_t<i_t, f_t>& basis_factors,
+                      mip_symmetry_t<i_t, f_t>* symmetry,
                       pseudo_costs_t<i_t, f_t>& pc);
 
 }  // namespace cuopt::linear_programming::dual_simplex

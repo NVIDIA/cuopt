@@ -7,6 +7,7 @@
 
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <branch_and_bound/symmetry.hpp>
 
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -983,21 +984,21 @@ static void batch_pdlp_reliability_branching_task(
 }
 
 template <typename i_t, typename f_t>
-void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
-                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                      f_t start_time,
-                      const std::vector<i_t>& new_slacks,
-                      const std::vector<variable_type_t>& var_types,
-                      const lp_solution_t<i_t, f_t>& root_solution,
-                      const std::vector<i_t>& fractional,
-                      f_t root_obj,
-                      f_t upper_bound,
-                      const std::vector<variable_status_t>& root_vstatus,
-                      const std::vector<f_t>& edge_norms,
-                      const std::vector<i_t>& basic_list,
-                      const std::vector<i_t>& nonbasic_list,
-                      basis_update_mpf_t<i_t, f_t>& basis_factors,
-                      pseudo_costs_t<i_t, f_t>& pc)
+void strong_branching_neccesary(const lp_problem_t<i_t, f_t>& original_lp,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                f_t start_time,
+                                const std::vector<i_t>& new_slacks,
+                                const std::vector<variable_type_t>& var_types,
+                                const lp_solution_t<i_t, f_t>& root_solution,
+                                const std::vector<i_t>& fractional,
+                                f_t root_obj,
+                                f_t upper_bound,
+                                const std::vector<variable_status_t>& root_vstatus,
+                                const std::vector<f_t>& edge_norms,
+                                const std::vector<i_t>& basic_list,
+                                const std::vector<i_t>& nonbasic_list,
+                                basis_update_mpf_t<i_t, f_t>& basis_factors,
+                                pseudo_costs_t<i_t, f_t>& pc)
 {
   constexpr bool verbose = false;
 
@@ -1226,7 +1227,95 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
   }
 
-  pc.update_pseudo_costs_from_strong_branching(fractional, root_solution.x);
+
+}
+
+template <typename i_t, typename f_t>
+void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      f_t start_time,
+                      const std::vector<i_t>& new_slacks,
+                      const std::vector<variable_type_t>& var_types,
+                      const lp_solution_t<i_t, f_t>& root_solution,
+                      const std::vector<i_t>& fractional,
+                      f_t root_obj,
+                      f_t upper_bound,
+                      const std::vector<variable_status_t>& root_vstatus,
+                      const std::vector<f_t>& edge_norms,
+                      const std::vector<i_t>& basic_list,
+                      const std::vector<i_t>& nonbasic_list,
+                      basis_update_mpf_t<i_t, f_t>& basis_factors,
+                      mip_symmetry_t<i_t, f_t>* symmetry,
+                      pseudo_costs_t<i_t, f_t>& pc)
+{
+  if (symmetry == nullptr) {
+    strong_branching_neccesary(original_lp,
+                               settings,
+                               start_time,
+                               new_slacks,
+                               var_types,
+                               root_solution,
+                               fractional,
+                               root_obj,
+                               upper_bound,
+                               root_vstatus,
+                               edge_norms,
+                               basic_list,
+                               nonbasic_list,
+                               basis_factors,
+                               pc);
+    pc.update_pseudo_costs_from_strong_branching(fractional, root_solution.x);
+  } else {
+    // Use precomputed orbit representatives from the full group G. Variables
+    // in the same orbit have identical branching behavior by symmetry.
+    // Keep only one fractional variable per orbit. We use the first fractional
+    // variable encountered as the orbit's delegate (not the orbit representative,
+    // which might not be fractional itself).
+    // orbit_delegate[rep] maps each orbit representative to the fractional delegate.
+    std::vector<i_t> orbit_delegate(symmetry->num_original_vars, -1);
+    std::vector<i_t> necessary_fractional;
+    for (i_t j : fractional) {
+      i_t rep = symmetry->orbit_rep[j];
+      if (orbit_delegate[rep] == -1) {
+        orbit_delegate[rep] = j;
+        necessary_fractional.push_back(j);
+      }
+    }
+
+    if (necessary_fractional.size() < fractional.size()) {
+      settings.log.printf("Strong branching: %d fractional variables reduced to %d by symmetry\n",
+                          (int)fractional.size(), (int)necessary_fractional.size());
+    }
+
+    strong_branching_neccesary(original_lp,
+                               settings,
+                               start_time,
+                               new_slacks,
+                               var_types,
+                               root_solution,
+                               necessary_fractional,
+                               root_obj,
+                               upper_bound,
+                               root_vstatus,
+                               edge_norms,
+                               basic_list,
+                               nonbasic_list,
+                               basis_factors,
+                               pc);
+
+    // Copy the pseudocosts from each orbit's delegate to all other
+    // fractional variables in the same orbit
+    for (i_t j : fractional) {
+      i_t delegate = orbit_delegate[symmetry->orbit_rep[j]];
+      if (j == delegate) continue;
+      pc.pseudo_cost_sum_down[j] = pc.pseudo_cost_sum_down[delegate];
+      pc.pseudo_cost_sum_up[j]   = pc.pseudo_cost_sum_up[delegate];
+      pc.pseudo_cost_num_down[j] = pc.pseudo_cost_num_down[delegate];
+      pc.pseudo_cost_num_up[j]   = pc.pseudo_cost_num_up[delegate];
+    }
+
+    pc.update_pseudo_costs_from_strong_branching(fractional, root_solution.x);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1850,6 +1939,7 @@ template void strong_branching<int, double>(const lp_problem_t<int, double>& ori
                                             const std::vector<int>& basic_list,
                                             const std::vector<int>& nonbasic_list,
                                             basis_update_mpf_t<int, double>& basis_factors,
+                                            mip_symmetry_t<int, double>* symmetry,
                                             pseudo_costs_t<int, double>& pc);
 
 #endif

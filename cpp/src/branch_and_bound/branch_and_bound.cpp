@@ -1448,6 +1448,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   stack.push_front(worker->start_node);
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
+  worker->ensure_orbital_fixing();
   if (worker->orbital_fixing) { worker->orbital_fixing->enable(); }
 
   f_t lower_bound = get_lower_bound();
@@ -2536,6 +2537,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                basic_list,
                                nonbasic_list,
                                basis_update,
+                               symmetry_,
                                pc_);
   }
 
