@@ -24,14 +24,9 @@ on:
         description: "build_type: one of [branch, nightly, pull-request]"
         type: string
         default: nightly
-      summary-only:
-        description: "If true, skip all test jobs and run only nightly-summary"
-        type: boolean
-        default: false
 
 jobs:
   conda-cpp-tests:
-    if: ${{ !inputs.summary-only }}
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -48,7 +43,6 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   conda-python-tests:
-    if: ${{ !inputs.summary-only }}
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     with:
       run_codecov: false
@@ -66,7 +60,6 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   wheel-tests-cuopt:
-    if: ${{ !inputs.summary-only }}
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -83,7 +76,6 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   wheel-tests-cuopt-server:
-    if: ${{ !inputs.summary-only }}
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -100,7 +92,6 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   conda-notebook-tests:
-    if: ${{ !inputs.summary-only }}
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
