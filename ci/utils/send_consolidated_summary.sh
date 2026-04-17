@@ -283,18 +283,6 @@ if issues_by_wf:
             if len(issues[category]) > limit:
                 wf_text += f"_...+{len(issues[category]) - limit} more {label}_\n"
 
-        # Per-job log links: find workflow_jobs matching this workflow prefix
-        job_urls = [j["url"] for j in workflow_jobs
-                    if j.get("url") and j["name"].split(" / ")[0] == wf_name
-                    and j["conclusion"] == "failure"]
-        if not job_urls:
-            # Also try matching by test_type prefix for tracked jobs
-            job_urls = [j["url"] for j in workflow_jobs
-                        if j.get("url") and j["name"].startswith(wf_name)
-                        and j["conclusion"] == "failure"]
-        if job_urls:
-            wf_text += f"<{job_urls[0]}|:link: View Logs>\n"
-
         # Chunk if needed
         while wf_text:
             chunk = wf_text[:2900]
@@ -305,6 +293,27 @@ if issues_by_wf:
             wf_text = wf_text[2900:]
 
         print(make_payload(wf_blocks))
+
+# ── Thread: Failed job log links ──────────────────────────────────────
+failed_job_links = [j for j in workflow_jobs if j["conclusion"] == "failure" and j.get("url")]
+if failed_job_links:
+    link_blocks = []
+    current = "*Failed Job Logs:*\n"
+    for j in failed_job_links:
+        line = f":x:  <{j['url']}|{j['name']}>\n"
+        if len(current) + len(line) > 2900:
+            link_blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": current.rstrip()},
+            })
+            current = ""
+        current += line
+    if current.strip():
+        link_blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": current.rstrip()},
+        })
+    print(make_payload(link_blocks))
 
 PYEOF
 )
