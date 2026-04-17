@@ -70,7 +70,7 @@ TEST(mip_solve, run_small_tests)
   }
 }
 
-//
+// See https://github.com/NVIDIA/cuopt/pull/1111
 TEST(mip_solve, low_thread_count_test)
 {
   mip_solver_settings_t<int, double> settings;
