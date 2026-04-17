@@ -258,7 +258,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     pc_(1),
     solver_status_(mip_status_t::UNSET),
     rng_(settings_.random_seed ^ pcgenerator_t::default_seed,
-         settings_.random_seed ^ pcgenerator_t::default_stream ^ settings_.random_seed)
+         settings_.random_seed ^ pcgenerator_t::default_stream)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX
@@ -1124,7 +1124,12 @@ struct deterministic_diving_policy_t
           this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::LINE_SEARCH_DIVING:
-        return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
+        if (this->worker.root_solution) {
+          return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
+        } else {
+          return pseudocost_diving(
+            this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
+        }
 
       case search_strategy_t::GUIDED_DIVING:
         if (this->worker.incumbent_snapshot.empty()) {
@@ -1817,15 +1822,24 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
     if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
          time_since_last_log >= 1) ||
         (time_since_last_log > 30) || now > settings_.time_limit) {
-      i_t node_depth = std::numeric_limits<i_t>::max();
-      i_t int_infeas = 0;
+      i_t node_depth             = std::numeric_limits<i_t>::max();
+      i_t int_infeas             = 0;
+      i_t bfs_node_queue_size    = 0;
+      i_t diving_node_queue_size = 0;
+
       for (int k = 0; k < num_bfs_workers; ++k) {
         bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(k);
         if (worker->is_active) {
           node_depth = std::min(node_depth, worker->node_depth.load());
           int_infeas = std::max(int_infeas, worker->integer_infeasible.load());
         }
+
+        bfs_node_queue_size += worker->node_queue.best_first_queue_size();
+        diving_node_queue_size += worker->node_queue.diving_queue_size();
       }
+
+      std::cout << std::format("bfs={}, diving={}", bfs_node_queue_size, diving_node_queue_size)
+                << std::endl;
 
       report(' ', upper_bound_, lower_bound, node_depth, int_infeas);
       exploration_stats_.last_log             = tic();
@@ -1840,10 +1854,16 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
     for (i_t k = 0; k < num_bfs_workers && bfs_worker_pool_.num_idle_workers() > 0; ++k) {
       bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(k);
       if (worker->is_active && worker->node_queue.best_first_queue_size() > 1) {
-        std::lock_guard lock(worker->node_queue);
-        mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
+        mip_node_t<i_t, f_t>* node = nullptr;
+        {
+          std::lock_guard lock(worker->node_queue);
+          node = worker->node_queue.pop_best_first();
+        }
         if (!node) { continue; }
-        if (!launch_bfs_worker(node)) { break; }
+        if (!launch_bfs_worker(node)) {
+          worker->node_queue.push(node);
+          break;
+        }
         launched_any_task = true;
       }
     }
@@ -1889,6 +1909,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   bfs_worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
   bfs_worker_t<i_t, f_t>* worker     = bfs_worker_pool_.get_worker(0);
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
+  node_queue.push(search_tree_.root.get_down_child());
+  node_queue.push(search_tree_.root.get_up_child());
 
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);

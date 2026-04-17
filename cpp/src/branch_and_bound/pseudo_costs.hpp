@@ -86,10 +86,10 @@ struct batch_pdlp_warm_cache_t {
 
 template <typename i_t, typename f_t>
 struct pseudo_cost_averages_t {
-  f_t down_avg;
-  i_t num_init_down;
-  f_t up_avg;
-  i_t num_init_up;
+  f_t down_avg      = 0;
+  i_t num_init_down = 0;
+  f_t up_avg        = 0;
+  i_t num_init_up   = 0;
 };
 
 template <typename i_t, typename f_t>

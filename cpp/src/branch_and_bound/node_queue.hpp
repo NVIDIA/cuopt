@@ -76,16 +76,6 @@ class heap_t {
 };
 
 // A queue storing the nodes waiting to be explored/dived from.
-//
-// Both heaps share ownership of heap_entry_t via shared_ptr. This keeps the entry alive even
-// after the mip_node_t it points to has been freed, so pop_diving() can safely check
-// entry->node without a dangling dereference.
-//
-// Cross-heap invalidation: pop_best_first() nulls entry->node via std::exchange; pop_diving()
-// skips entries where entry->node == nullptr.
-//
-// Lock-free reads: best_first_queue_size(), diving_queue_size(), and get_lower_bound() read
-// atomic shadow variables and do not acquire the mutex.
 template <typename i_t, typename f_t>
 class node_queue_t {
  public:
@@ -105,7 +95,8 @@ class node_queue_t {
   {
     if (best_first_heap_.empty()) { return nullptr; }
     auto entry                 = best_first_heap_.pop();
-    lower_bound_               = get_lower_bound();
+    lower_bound_               = best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity()
+                                                          : best_first_heap_.top()->lower_bound;
     mip_node_t<i_t, f_t>* node = std::exchange(entry->node, nullptr);
     --diving_live_size_;
     return node;
