@@ -72,8 +72,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variable(s) before presolve", n_sc);
 
-  // 2. Build a relaxed copy where SC vars become continuous over the convex hull
-  //    [min(0, L), max(0, U)].
+  // 2. Build a relaxed copy where SC vars become continuous [0, original_ub].
   //    This lets GPU bounds propagation derive tight upper bounds from the
   //    constraint structure without the binary domain {0} ∪ [L, U].
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
@@ -83,8 +82,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     auto relaxed_lb    = op_problem.get_variable_lower_bounds_host();
     for (i_t idx : sc_indices) {
       relaxed_types[idx] = var_t::CONTINUOUS;
-      // Relax to the convex hull of {0} U [L, U] before running GPU bound propagation.
-      relaxed_lb[idx] = std::min(f_t(0), relaxed_lb[idx]);
+      relaxed_lb[idx]    = std::min(f_t(0), relaxed_lb[idx]);
       if (std::isfinite(relaxed_ub[idx])) { relaxed_ub[idx] = std::max(f_t(0), relaxed_ub[idx]); }
     }
     op_relaxed.set_variable_types(relaxed_types.data(), n_orig);
@@ -198,7 +196,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     const i_t b_idx = n_orig + binary_count;
     ++binary_count;
 
-    // Convert SC var to the convex hull of {0} U [L, U].
+    // Convert SC var to the continuous interval [0, U].
     var_types[idx] = var_t::CONTINUOUS;
     var_lb[idx]    = std::min(f_t(0), L);
     var_ub[idx]    = std::max(f_t(0), U);
