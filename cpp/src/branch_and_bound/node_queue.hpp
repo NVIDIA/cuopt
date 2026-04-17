@@ -98,7 +98,6 @@ class node_queue_t {
     best_first_heap_.push(entry);
     diving_heap_.push(entry);
     lower_bound_ = best_first_heap_.top()->lower_bound;
-    ++diving_live_size_;
   }
 
   // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
@@ -110,7 +109,6 @@ class node_queue_t {
     lower_bound_               = best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity()
                                                           : best_first_heap_.top()->lower_bound;
     mip_node_t<i_t, f_t>* node = std::exchange(entry->node, nullptr);
-    --diving_live_size_;
     return node;
   }
 
@@ -118,14 +116,9 @@ class node_queue_t {
   // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_diving()
   {
-    compact_diving_heap();
-
     while (!diving_heap_.empty()) {
       auto entry = diving_heap_.pop();
-      if (entry->node != nullptr) {
-        --diving_live_size_;
-        return entry->node;
-      }
+      if (entry->node != nullptr) { return entry->node; }
     }
     return nullptr;
   }
@@ -133,7 +126,7 @@ class node_queue_t {
   void lock() { mutex_.lock(); }
   void unlock() { mutex_.unlock(); }
 
-  i_t diving_queue_size() { return diving_live_size_; }
+  i_t diving_queue_size() { return diving_heap_.size(); }
   i_t best_first_queue_size() { return best_first_heap_.size(); }
 
   f_t get_lower_bound()
@@ -142,21 +135,6 @@ class node_queue_t {
   }
 
  private:
-  void compact_diving_heap()
-  {
-    // Allow a maximum of 1024 "dead" entries
-    constexpr i_t max_dead_entries = 1024;
-
-    i_t heap_size = static_cast<i_t>(diving_heap_.size());
-    i_t live      = diving_live_size_.load();
-    if (heap_size <= live) { return; }
-    i_t dead = heap_size - live;
-    if (dead >= max_dead_entries) {
-      diving_heap_.compact(
-        [](const std::shared_ptr<heap_entry_t>& e) { return e->node == nullptr; });
-    }
-  }
-
   struct heap_entry_t {
     mip_node_t<i_t, f_t>* node = nullptr;
     f_t lower_bound            = -std::numeric_limits<f_t>::infinity();
@@ -193,7 +171,6 @@ class node_queue_t {
   omp_mutex_t mutex_;
 
   omp_atomic_t<f_t> lower_bound_{std::numeric_limits<f_t>::infinity()};
-  omp_atomic_t<i_t> diving_live_size_{0};
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

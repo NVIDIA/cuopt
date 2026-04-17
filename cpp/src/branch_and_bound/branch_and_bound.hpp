@@ -240,7 +240,7 @@ class branch_and_bound_t {
 
   // Count the number of workers per type that either are being executed or
   // are waiting to be executed.
-  std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
+  std::array<omp_atomic_t<i_t>, num_search_strategies> num_active_workers_;
 
   // Worker pool dedicated to the best-first search
   bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
@@ -292,8 +292,7 @@ class branch_and_bound_t {
 
   bool launch_bfs_worker(mip_node_t<i_t, f_t>* start_node);
   bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker,
-                            std::vector<search_strategy_t>::value_type diving_type,
-                            i_t min_node_depth);
+                            std::vector<search_strategy_t>::value_type diving_type);
 
   void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
 

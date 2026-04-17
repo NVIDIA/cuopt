@@ -211,6 +211,8 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
+#define SHOW_DIVING_TYPE
+
 #ifdef SHOW_DIVING_TYPE
 inline char feasible_solution_symbol(search_strategy_t strategy)
 {
@@ -1578,9 +1580,40 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
+  i_t num_workers = bfs_worker_pool_.num_workers() + diving_worker_pool_.num_workers();
+  diving_heuristics_settings_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  if (!has_solver_space_incumbent()) { diving_settings.guided_diving = false; }
+  std::vector<search_strategy_t> search_strategies = get_search_strategies(diving_settings);
+  std::array<i_t, num_search_strategies> max_num_workers =
+    get_max_workers(num_workers, search_strategies);
+
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol &&
          worker->node_queue.best_first_queue_size() > 0) {
+    // If the guided diving was disabled previously due to the lack of an incumbent solution,
+    // re-enable as soon as a new incumbent is found.
+    if (settings_.diving_settings.guided_diving != diving_settings.guided_diving) {
+      if (has_solver_space_incumbent()) {
+        diving_settings.guided_diving = settings_.diving_settings.guided_diving;
+        search_strategies             = get_search_strategies(diving_settings);
+        max_num_workers               = get_max_workers(num_workers, search_strategies);
+      }
+    }
+
+    if (diving_worker_pool_.num_idle_workers() > 0 && worker->node_queue.diving_queue_size() > 0) {
+      for (int i = 1; i < search_strategies.size(); ++i) {
+        auto strategy = search_strategies[i];
+
+        if (worker->node_queue.diving_queue_size() == 0 ||
+            diving_worker_pool_.num_idle_workers() == 0) {
+          break;
+        }
+
+        if (num_active_workers_[strategy] >= max_num_workers[strategy]) { continue; }
+        launch_diving_worker(worker, strategy);
+      }
+    }
+
     worker->recompute_basis  = true;
     worker->recompute_bounds = true;
 
@@ -1612,7 +1645,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   }
 
   bfs_worker_pool_.return_worker_to_pool(worker);
-  active_workers_per_strategy_[BEST_FIRST]--;
+  num_active_workers_[BEST_FIRST]--;
 }
 
 template <typename i_t, typename f_t>
@@ -1701,7 +1734,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
   }
 
   diving_worker_pool_.return_worker_to_pool(worker);
-  active_workers_per_strategy_[search_strategy]--;
+  num_active_workers_[search_strategy]--;
 }
 
 template <typename i_t, typename f_t>
@@ -1711,7 +1744,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_bfs_worker(mip_node_t<i_t, f_t>* start
   if (!idle_worker) { return false; }
 
   idle_worker->init(start_node);
-  active_workers_per_strategy_[BEST_FIRST]++;
+  num_active_workers_[BEST_FIRST]++;
 
 #pragma omp task affinity(idle_worker)
   best_first_search_with(idle_worker);
@@ -1721,8 +1754,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_bfs_worker(mip_node_t<i_t, f_t>* start
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker,
-                                                        search_strategy_t diving_type,
-                                                        i_t min_node_depth)
+                                                        search_strategy_t diving_type)
 {
   // Get an idle worker.
   diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.pop_idle_worker();
@@ -1732,7 +1764,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   mip_node_t<i_t, f_t>* start_node = bfs_worker->node_queue.pop_diving();
 
   if (!start_node || upper_bound_.load() < start_node->lower_bound ||
-      start_node->depth < min_node_depth) {
+      start_node->depth < settings_.diving_settings.min_node_depth) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     bfs_worker->node_queue.unlock();
     return false;
@@ -1747,7 +1779,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     return false;
   }
 
-  active_workers_per_strategy_[diving_type]++;
+  num_active_workers_[diving_type]++;
 
 #pragma omp task affinity(diving_worker)
   dive_with(diving_worker);
@@ -1762,25 +1794,16 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
   const i_t num_workers                                  = 2 * settings_.num_threads;
 
   if (!has_solver_space_incumbent()) { diving_settings.guided_diving = false; }
-  std::vector<search_strategy_t> strategies = get_search_strategies(diving_settings);
+  std::vector<search_strategy_t> search_strategies = get_search_strategies(diving_settings);
   std::array<i_t, num_search_strategies> max_num_workers_per_type =
-    get_max_workers(num_workers, strategies);
+    get_max_workers(num_workers, search_strategies);
 
   const i_t num_bfs_workers    = max_num_workers_per_type[BEST_FIRST];
   const i_t num_diving_workers = num_workers - num_bfs_workers;
   bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_);
   diving_worker_pool_.init(
     num_diving_workers, original_lp_, Arow_, var_types_, settings_, num_bfs_workers);
-  active_workers_per_strategy_.fill(0);
-
-#ifdef CUOPT_LOG_DEBUG
-  for (auto strategy : strategies) {
-    settings_.log.debug("%c%d: max num of workers = %d",
-                        feasible_solution_symbol(strategy),
-                        strategy,
-                        max_num_workers_per_type[strategy]);
-  }
-#endif
+  num_active_workers_.fill(0);
 
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
@@ -1790,29 +1813,10 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
   launch_bfs_worker(search_tree_.root.get_down_child());
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol && active_workers_per_strategy_[0] > 0) {
+         rel_gap > settings_.relative_mip_gap_tol && num_active_workers_[BEST_FIRST] > 0) {
     bool launched_any_task = false;
 
     repair_heuristic_solutions();
-
-    // If the guided diving was disabled previously due to the lack of an incumbent solution,
-    // re-enable as soon as a new incumbent is found.
-    if (settings_.diving_settings.guided_diving != diving_settings.guided_diving) {
-      if (has_solver_space_incumbent()) {
-        diving_settings.guided_diving = settings_.diving_settings.guided_diving;
-        strategies                    = get_search_strategies(diving_settings);
-        max_num_workers_per_type      = get_max_workers(num_workers, strategies);
-
-#ifdef CUOPT_LOG_DEBUG
-        for (auto type : strategies) {
-          settings_.log.debug("%c%d: max num of workers = %d",
-                              feasible_solution_symbol(type),
-                              type,
-                              max_num_workers_per_type[type]);
-        }
-#endif
-      }
-    }
 
     f_t now = toc(exploration_stats_.start_time);
     f_t time_since_last_log =
@@ -1831,6 +1835,14 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
           node_depth = std::min(node_depth, worker->node_depth.load());
           int_infeas = std::max(int_infeas, worker->integer_infeasible.load());
         }
+      }
+
+      for (int i = 0; i < max_num_workers_per_type.size(); ++i) {
+        settings_.log.printf("%c%d: max num of workers = %d/%d",
+                             feasible_solution_symbol(static_cast<search_strategy_t>(i)),
+                             i,
+                             num_active_workers_[i],
+                             max_num_workers_per_type[i]);
       }
 
       report(' ', upper_bound_, lower_bound, node_depth, int_infeas);
@@ -1857,24 +1869,6 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
           break;
         }
         launched_any_task = true;
-      }
-    }
-
-    for (int i = 1; i < strategies.size(); ++i) {
-      auto diving_type = strategies[i];
-      i_t num_new_tasks =
-        max_num_workers_per_type[diving_type] - active_workers_per_strategy_[diving_type];
-
-      while (num_new_tasks > 0 && diving_worker_pool_.num_idle_workers() > 0) {
-        --num_new_tasks;
-        i_t k                              = rng_.uniform(0, num_bfs_workers);
-        bfs_worker_t<i_t, f_t>* bfs_worker = bfs_worker_pool_.get_worker(k);
-        if (!bfs_worker->is_active) { continue; }
-        if (bfs_worker->node_queue.diving_queue_size() == 0) { continue; }
-
-        if (launch_diving_worker(bfs_worker, diving_type, diving_settings.min_node_depth)) {
-          launched_any_task = true;
-        }
       }
     }
 
