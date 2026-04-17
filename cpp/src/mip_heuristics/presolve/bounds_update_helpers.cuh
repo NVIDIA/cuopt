@@ -9,6 +9,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/utils.cuh>
 #include "bounds_update_data.cuh"
+#include "clique_activity_corrections.cuh"
 
 namespace cuopt::linear_programming::detail {
 
@@ -378,6 +379,188 @@ __global__ void update_bounds_kernel(typename problem_t<i_t, f_t>::view_t pb,
   } else {
     update_bounds<i_t, f_t, BDIM>(
       pb, var_idx, var_offset, var_degree, is_int, upd_0, old_bnd_0, upd_1, old_bnd_1);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Clique-aware single-update variants
+//
+// These mirror the single-update update_bounds_per_cnst / update_bounds /
+// update_bounds_kernel above but apply a per-variable correction adjustment so
+// that when we peel variable v off the (already clique-corrected) activity, we
+// restore the correct group contribution "without v".
+//
+// Derivation of the adjustment (max side; min is symmetric):
+//   Let pos_v = max(coeff_v, 0). Group g's corrected max contribution is max1_g
+//   (the largest pos_u among unfixed u ∈ g). Removing v from the group:
+//     if pos_v == max1_g  →  group contribution becomes max2_g (second-best)
+//     else                →  group contribution stays max1_g
+//   The stock formula subtracts pos_v from max_a_corrected. The adjustment to
+//   reach activity_without_v is:
+//     max_a += (pos_v >= max1_g) ? max2_g : pos_v
+//   (The degenerate case n_unfixed<2 is handled by max1=max2=0 → adjustment=0.)
+// -----------------------------------------------------------------------------
+template <typename i_t, typename f_t>
+inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
+  typename problem_t<i_t, f_t>::view_t pb,
+  i_t var_idx,
+  f_t coeff,
+  i_t cnst_idx,
+  f_t cnst_lb,
+  f_t cnst_ub,
+  typename bounds_update_data_t<i_t, f_t>::view_t upd,
+  thrust::pair<f_t, f_t> bnd,
+  thrust::pair<f_t, f_t> old_bnd,
+  i_t group_id,
+  typename clique_group_table_t<i_t, f_t>::view_t cliq)
+{
+  auto min_a = upd.min_activity[cnst_idx];
+  auto max_a = upd.max_activity[cnst_idx];
+  if (check_infeasibility<i_t, f_t>(min_a,
+                                    max_a,
+                                    cnst_lb,
+                                    cnst_ub,
+                                    pb.tolerances.absolute_tolerance,
+                                    pb.tolerances.relative_tolerance)) {
+    return bnd;
+  }
+
+#if CUOPT_DEBUG_CLIQUE_TIGHTENING
+  // Keep the pre-adjustment (== stock, post-clique-activity-correction) values
+  // so we can compare against the clique-aware path below and only print when
+  // the clique adjustment strictly tightens the per-cnst contribution.
+  const f_t stock_min_a_pre = min_a;
+  const f_t stock_max_a_pre = max_a;
+#endif
+
+  // Apply per-variable clique adjustment before peeling off v's contribution.
+  // The top-2 stats live on upd (bounds_update_data_t), matching the per-probe
+  // lifetime of min_activity/max_activity.
+  if (group_id >= 0) {
+    cuopt_assert(group_id < cliq.n_groups, "clique group id out of range");
+    f_t pos_v = (coeff > 0) ? coeff : f_t{0};
+    f_t neg_v = (coeff < 0) ? coeff : f_t{0};
+    f_t max1  = upd.group_max_pos[group_id];
+    f_t max2  = upd.group_second_max_pos[group_id];
+    f_t min1  = upd.group_min_neg[group_id];
+    f_t min2  = upd.group_second_min_neg[group_id];
+    cuopt_assert(max1 >= max2, "top-2 max invariant violated (per-cnst)");
+    cuopt_assert(min1 <= min2, "top-2 min invariant violated (per-cnst)");
+    f_t max_adj = (pos_v >= max1) ? max2 : pos_v;
+    f_t min_adj = (neg_v <= min1) ? min2 : neg_v;
+    max_a += max_adj;
+    min_a += min_adj;
+  }
+
+  min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
+  max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
+  auto delta_min_act  = cnst_ub - min_a;
+  auto delta_max_act  = cnst_lb - max_a;
+  thrust::get<0>(bnd) = update_lb(thrust::get<0>(bnd), coeff, delta_min_act, delta_max_act);
+  thrust::get<1>(bnd) = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
+
+#if CUOPT_DEBUG_CLIQUE_TIGHTENING
+  if (group_id >= 0) {
+    // Re-derive the "stock" (no clique adjustment) per-cnst lb/ub contribution
+    // starting from old_bnd, then compare to the accumulated bnd after this
+    // constraint. Print only when the clique path produces a strictly tighter
+    // endpoint.
+    f_t s_min_a = stock_min_a_pre;
+    f_t s_max_a = stock_max_a_pre;
+    s_min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
+    s_max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
+    f_t s_dmin    = cnst_ub - s_min_a;
+    f_t s_dmax    = cnst_lb - s_max_a;
+    f_t s_lb      = update_lb(thrust::get<0>(old_bnd), coeff, s_dmin, s_dmax);
+    f_t s_ub      = update_ub(thrust::get<1>(old_bnd), coeff, s_dmin, s_dmax);
+    f_t c_lb      = update_lb(thrust::get<0>(old_bnd), coeff, delta_min_act, delta_max_act);
+    f_t c_ub      = update_ub(thrust::get<1>(old_bnd), coeff, delta_min_act, delta_max_act);
+    const f_t eps = (f_t)1e-9;
+    if (c_lb > s_lb + eps || c_ub < s_ub - eps) {
+      printf(
+        "[clique-tighten] var=%d cnst=%d group=%d coeff=%.6f | "
+        "stock per-cnst: lb=%.6f ub=%.6f | cliq per-cnst: lb=%.6f ub=%.6f\n",
+        (int)var_idx,
+        (int)cnst_idx,
+        (int)group_id,
+        (double)coeff,
+        (double)s_lb,
+        (double)s_ub,
+        (double)c_lb,
+        (double)c_ub);
+    }
+  }
+#endif
+
+  return bnd;
+}
+
+template <typename i_t, typename f_t, i_t BDIM>
+__device__ void update_bounds_cliq(typename problem_t<i_t, f_t>::view_t pb,
+                                   i_t var_idx,
+                                   i_t var_offset,
+                                   i_t var_degree,
+                                   bool is_int,
+                                   typename bounds_update_data_t<i_t, f_t>::view_t upd,
+                                   thrust::pair<f_t, f_t> old_bnd,
+                                   typename clique_group_table_t<i_t, f_t>::view_t cliq)
+{
+  using BlockReduce = cub::BlockReduce<f_t, BDIM>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  i_t var_changed = upd.changed_variables[var_idx];
+  if (!var_changed) { return; }
+
+  auto bnd = old_bnd;
+  for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
+    auto cnst_idx = pb.reverse_constraints[var_offset + i];
+    bool changed  = upd.changed_constraints[cnst_idx] == 1;
+    if (!changed) { continue; }
+    auto a       = pb.reverse_coefficients[var_offset + i];
+    auto cnst_ub = pb.constraint_upper_bounds[cnst_idx];
+    auto cnst_lb = pb.constraint_lower_bounds[cnst_idx];
+    // reverse_group_id is indexed on the reverse CSR position (same order as
+    // reverse_constraints / reverse_coefficients). -1 means v is not in any
+    // clique group for this constraint → behaves like the stock formula.
+    cuopt_assert((i_t)(var_offset + i) < (i_t)cliq.reverse_group_id.size(),
+                 "reverse_group_id index out of range");
+    i_t group_id = cliq.reverse_group_id[var_offset + i];
+    cuopt_assert(group_id == -1 || (group_id >= 0 && group_id < cliq.n_groups),
+                 "reverse_group_id carries invalid group id");
+    bnd = update_bounds_per_cnst_cliq<i_t, f_t>(
+      pb, var_idx, a, cnst_idx, cnst_lb, cnst_ub, upd, bnd, old_bnd, group_id, cliq);
+  }
+
+  thrust::get<0>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd), cuda::maximum());
+  __syncthreads();
+  thrust::get<1>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<1>(bnd), cuda::minimum());
+  __shared__ bool changed;
+  if (threadIdx.x == 0) { changed = write_updated_bounds(pb, var_idx, is_int, upd, bnd, old_bnd); }
+  __syncthreads();
+  for (i_t i = threadIdx.x; i < var_degree; i += blockDim.x) {
+    auto cnst_idx = pb.reverse_constraints[var_offset + i];
+    if (changed) { atomicExch(&upd.next_changed_constraints[cnst_idx], 1); }
+  }
+}
+
+template <typename i_t, typename f_t, i_t BDIM>
+__global__ void update_bounds_kernel_cliq(typename problem_t<i_t, f_t>::view_t pb,
+                                          typename bounds_update_data_t<i_t, f_t>::view_t upd,
+                                          typename clique_group_table_t<i_t, f_t>::view_t cliq)
+{
+  i_t var_idx    = blockIdx.x;
+  i_t var_offset = pb.reverse_offsets[var_idx];
+  i_t var_degree = pb.reverse_offsets[var_idx + 1] - var_offset;
+  bool is_int    = (pb.variable_types[var_idx] == var_t::INTEGER);
+
+  auto old_bnd = thrust::make_pair(upd.lb[var_idx], upd.ub[var_idx]);
+
+  auto skip = skip_update(old_bnd, pb.tolerances.integrality_tolerance);
+  if (skip) {
+    return;
+  } else {
+    update_bounds_cliq<i_t, f_t, BDIM>(
+      pb, var_idx, var_offset, var_degree, is_int, upd, old_bnd, cliq);
   }
 }
 

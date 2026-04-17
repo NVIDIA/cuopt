@@ -19,6 +19,7 @@
 #include <thrust/pair.h>
 
 #include "bounds_update_data.cuh"
+#include "clique_activity_corrections.cuh"
 #include "utils.cuh"
 
 #include <omp.h>
@@ -73,8 +74,15 @@ class bound_presolve_t {
   void copy_input_bounds(problem_t<i_t, f_t>& pb);
   void calc_and_set_updated_constraint_bounds(problem_t<i_t, f_t>& pb);
 
+  // Build (or reuse) the per-(constraint, clique) group table for clique-aware
+  // activity tightening. Safe to call every iteration — returns immediately if
+  // already built or if the problem has no clique_table.
+  void ensure_clique_data(problem_t<i_t, f_t>& pb);
+
   mip_solver_context_t<i_t, f_t>& context;
   bounds_update_data_t<i_t, f_t> upd;
+  clique_group_table_t<i_t, f_t> clique_data;
+  bool clique_data_built{false};
   std::vector<f_t> host_lb;
   std::vector<f_t> host_ub;
   settings_t settings;

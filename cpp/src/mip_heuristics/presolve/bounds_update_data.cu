@@ -21,7 +21,13 @@ bounds_update_data_t<i_t, f_t>::bounds_update_data_t(problem_t<i_t, f_t>& proble
     ub(problem.n_variables, problem.handle_ptr->get_stream()),
     changed_constraints(problem.n_constraints, problem.handle_ptr->get_stream()),
     next_changed_constraints(problem.n_constraints, problem.handle_ptr->get_stream()),
-    changed_variables(problem.n_variables, problem.handle_ptr->get_stream())
+    changed_variables(problem.n_variables, problem.handle_ptr->get_stream()),
+    group_max_correction(0, problem.handle_ptr->get_stream()),
+    group_min_correction(0, problem.handle_ptr->get_stream()),
+    group_max_pos(0, problem.handle_ptr->get_stream()),
+    group_second_max_pos(0, problem.handle_ptr->get_stream()),
+    group_min_neg(0, problem.handle_ptr->get_stream()),
+    group_second_min_neg(0, problem.handle_ptr->get_stream())
 {
 }
 
@@ -35,6 +41,26 @@ void bounds_update_data_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   next_changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   changed_variables.resize(problem.n_variables, problem.handle_ptr->get_stream());
+  // Invalidate clique buffers; the orchestrator will call resize_clique_buffers
+  // once it knows the new n_groups.
+  group_max_correction.resize(0, problem.handle_ptr->get_stream());
+  group_min_correction.resize(0, problem.handle_ptr->get_stream());
+  group_max_pos.resize(0, problem.handle_ptr->get_stream());
+  group_second_max_pos.resize(0, problem.handle_ptr->get_stream());
+  group_min_neg.resize(0, problem.handle_ptr->get_stream());
+  group_second_min_neg.resize(0, problem.handle_ptr->get_stream());
+}
+
+template <typename i_t, typename f_t>
+void bounds_update_data_t<i_t, f_t>::resize_clique_buffers(i_t n_groups,
+                                                           rmm::cuda_stream_view stream)
+{
+  group_max_correction.resize(n_groups, stream);
+  group_min_correction.resize(n_groups, stream);
+  group_max_pos.resize(n_groups, stream);
+  group_second_max_pos.resize(n_groups, stream);
+  group_min_neg.resize(n_groups, stream);
+  group_second_min_neg.resize(n_groups, stream);
 }
 
 template <typename i_t, typename f_t>
@@ -49,6 +75,12 @@ typename bounds_update_data_t<i_t, f_t>::view_t bounds_update_data_t<i_t, f_t>::
   v.changed_constraints      = make_span(changed_constraints);
   v.next_changed_constraints = make_span(next_changed_constraints);
   v.changed_variables        = make_span(changed_variables);
+  v.group_max_correction     = make_span(group_max_correction);
+  v.group_min_correction     = make_span(group_min_correction);
+  v.group_max_pos            = make_span(group_max_pos);
+  v.group_second_max_pos     = make_span(group_second_max_pos);
+  v.group_min_neg            = make_span(group_min_neg);
+  v.group_second_min_neg     = make_span(group_second_min_neg);
   return v;
 }
 

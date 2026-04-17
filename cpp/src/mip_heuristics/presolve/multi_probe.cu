@@ -74,6 +74,7 @@ multi_probe_t<i_t, f_t>::multi_probe_t(mip_solver_context_t<i_t, f_t>& context_,
   : context(context_),
     upd_0(*context.problem_ptr),
     upd_1(*context.problem_ptr),
+    clique_data(context.problem_ptr->handle_ptr->get_stream()),
     settings(in_settings)
 {
 }
@@ -85,6 +86,27 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd_1.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
+  // Problem structure may have changed; invalidate the clique group table so
+  // it gets rebuilt on the next bound_update_loop invocation.
+  clique_data_built    = false;
+  clique_data.n_groups = 0;
+}
+
+template <typename i_t, typename f_t>
+void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
+{
+  if (clique_data_built) return;
+  if (!pb.clique_table) {
+    clique_data_built = true;  // nothing to build; don't re-check every iter
+    return;
+  }
+  clique_data.build_from_host(pb, *pb.clique_table);
+  // Size each probe's dynamic correction buffers (owned by its own
+  // bounds_update_data_t) to match the freshly built static group table.
+  auto stream = pb.handle_ptr->get_stream();
+  upd_0.resize_clique_buffers(clique_data.n_groups, stream);
+  upd_1.resize_clique_buffers(clique_data.n_groups, stream);
+  clique_data_built = true;
 }
 
 template <typename i_t, typename f_t>
@@ -141,34 +163,93 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
-  if (skip_0 && skip_1) {
-    return false;
+  if (skip_0 && skip_1) { return false; }
+
+  auto stream = handle_ptr->get_stream();
+
+  // Helper: run clique-aware update for one probe. Each probe sources its
+  // dynamic correction buffers from its own bounds_update_data_t; the static
+  // group table is shared via `clique_data`.
+  auto run_clique_update_for_probe = [&](bounds_update_data_t<i_t, f_t>& upd) {
+    constexpr i_t warp = raft::WarpSize;
+    compute_clique_corrections_kernel<i_t, f_t, warp>
+      <<<clique_data.n_groups, warp, 0, stream>>>(make_span(clique_data.group_member_offsets),
+                                                  make_span(clique_data.group_member_vars),
+                                                  make_span(clique_data.group_member_coeffs),
+                                                  make_span(upd.lb),
+                                                  make_span(upd.ub),
+                                                  make_span(upd.group_max_correction),
+                                                  make_span(upd.group_min_correction),
+                                                  make_span(upd.group_max_pos),
+                                                  make_span(upd.group_second_max_pos),
+                                                  make_span(upd.group_min_neg),
+                                                  make_span(upd.group_second_min_neg),
+                                                  pb.tolerances.integrality_tolerance);
+    RAFT_CHECK_CUDA(stream);
+
+    constexpr i_t apply_tpb = 128;
+    const i_t apply_blocks  = (pb.n_constraints + apply_tpb - 1) / apply_tpb;
+    apply_clique_corrections_to_activity_kernel<i_t, f_t>
+      <<<apply_blocks, apply_tpb, 0, stream>>>(make_span(clique_data.constraint_group_offsets),
+                                               make_span(upd.group_max_correction),
+                                               make_span(upd.group_min_correction),
+                                               make_span(upd.min_activity),
+                                               make_span(upd.max_activity),
+                                               pb.n_constraints);
+    RAFT_CHECK_CUDA(stream);
+
+    update_bounds_kernel_cliq<i_t, f_t, n_threads>
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd.view(), clique_data.view());
+    RAFT_CHECK_CUDA(stream);
+  };
+
+  const bool use_cliques = !clique_data.empty();
+
+  if (use_cliques) {
+    // Clique-aware path: single-probe kernel per probe (no dual variant yet).
+    if (!skip_0) {
+      upd_0.bounds_changed.set_value_async(zero, stream);
+      run_clique_update_for_probe(upd_0);
+    }
+    if (!skip_1) {
+      upd_1.bounds_changed.set_value_async(zero, stream);
+      run_clique_update_for_probe(upd_1);
+    }
+    if (!skip_0) {
+      i_t h_bounds_changed_0 = upd_0.bounds_changed.value(stream);
+      CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
+      skip_0 = (h_bounds_changed_0 == zero);
+    }
+    if (!skip_1) {
+      i_t h_bounds_changed_1 = upd_1.bounds_changed.value(stream);
+      CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
+      skip_1 = (h_bounds_changed_1 == zero);
+    }
   } else if (skip_0) {
-    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    upd_1.bounds_changed.set_value_async(zero, stream);
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd_1.view());
+    RAFT_CHECK_CUDA(stream);
+    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(stream);
     CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
     skip_1 = (h_bounds_changed_1 == zero);
   } else if (skip_1) {
-    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    upd_0.bounds_changed.set_value_async(zero, stream);
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(pb.view(), upd_0.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd_0.view());
+    RAFT_CHECK_CUDA(stream);
+    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(stream);
     CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
     skip_0 = (h_bounds_changed_0 == zero);
   } else {
-    upd_0.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
-    upd_1.bounds_changed.set_value_async(zero, handle_ptr->get_stream());
+    upd_0.bounds_changed.set_value_async(zero, stream);
+    upd_1.bounds_changed.set_value_async(zero, stream);
     update_bounds_kernel<i_t, f_t, n_threads>
-      <<<pb.n_variables, n_threads, 0, handle_ptr->get_stream()>>>(
-        pb.view(), upd_0.view(), upd_1.view());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
-    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(handle_ptr->get_stream());
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd_0.view(), upd_1.view());
+    RAFT_CHECK_CUDA(stream);
+    i_t h_bounds_changed_0 = upd_0.bounds_changed.value(stream);
     CUOPT_LOG_TRACE("Bounds changed upd 0 %d", h_bounds_changed_0);
-    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(handle_ptr->get_stream());
+    i_t h_bounds_changed_1 = upd_1.bounds_changed.value(stream);
     CUOPT_LOG_TRACE("Bounds changed upd 1 %d", h_bounds_changed_1);
 
     skip_0 = (h_bounds_changed_0 == zero);
@@ -280,6 +361,7 @@ termination_criterion_t multi_probe_t<i_t, f_t>::bound_update_loop(problem_t<i_t
     // reset for the next calls on the same object
     init_changed_constraints = true;
   }
+  ensure_clique_data(pb);
   for (i_t iter = 0; iter < settings.iteration_limit; ++iter) {
     if (timer.check_time_limit()) {
       criteria = termination_criterion_t::TIME_LIMIT;

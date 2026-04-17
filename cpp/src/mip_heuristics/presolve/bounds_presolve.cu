@@ -78,7 +78,10 @@ struct detect_infeas_redun_t {
 template <typename i_t, typename f_t>
 bound_presolve_t<i_t, f_t>::bound_presolve_t(mip_solver_context_t<i_t, f_t>& context_,
                                              settings_t in_settings)
-  : context(context_), upd(*context.problem_ptr), settings(in_settings)
+  : context(context_),
+    upd(*context.problem_ptr),
+    clique_data(context.problem_ptr->handle_ptr->get_stream()),
+    settings(in_settings)
 {
 }
 
@@ -88,6 +91,25 @@ void bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
+  // Problem structure may have changed; invalidate the clique group table so
+  // it gets rebuilt on the next bound_update_loop invocation.
+  clique_data_built    = false;
+  clique_data.n_groups = 0;
+}
+
+template <typename i_t, typename f_t>
+void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
+{
+  if (clique_data_built) return;
+  if (!pb.clique_table) {
+    clique_data_built = true;  // nothing to build; don't re-check every iter
+    return;
+  }
+  clique_data.build_from_host(pb, *pb.clique_table);
+  // Size the per-probe dynamic correction buffers (owned by bounds_update_data_t)
+  // to match the freshly built static group table.
+  upd.resize_clique_buffers(clique_data.n_groups, pb.handle_ptr->get_stream());
+  clique_data_built = true;
 }
 
 template <typename i_t, typename f_t>
@@ -119,10 +141,49 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
   constexpr auto n_threads = 256;
 
   upd.bounds_changed.set_value_async(zero, pb.handle_ptr->get_stream());
-  update_bounds_kernel<i_t, f_t, n_threads>
-    <<<pb.n_variables, n_threads, 0, pb.handle_ptr->get_stream()>>>(pb.view(), upd.view());
-  RAFT_CHECK_CUDA(pb.handle_ptr->get_stream());
-  i_t h_bounds_changed = upd.bounds_changed.value(pb.handle_ptr->get_stream());
+
+  auto stream = pb.handle_ptr->get_stream();
+
+  if (!clique_data.empty()) {
+    // Clique-aware path:
+    //   1) compute per-group corrections from current (lb, ub)
+    //   2) fold them into (min_activity, max_activity) deterministically
+    //   3) run the clique-aware bounds-update kernel
+    constexpr i_t warp = raft::WarpSize;
+    compute_clique_corrections_kernel<i_t, f_t, warp>
+      <<<clique_data.n_groups, warp, 0, stream>>>(make_span(clique_data.group_member_offsets),
+                                                  make_span(clique_data.group_member_vars),
+                                                  make_span(clique_data.group_member_coeffs),
+                                                  make_span(upd.lb),
+                                                  make_span(upd.ub),
+                                                  make_span(upd.group_max_correction),
+                                                  make_span(upd.group_min_correction),
+                                                  make_span(upd.group_max_pos),
+                                                  make_span(upd.group_second_max_pos),
+                                                  make_span(upd.group_min_neg),
+                                                  make_span(upd.group_second_min_neg),
+                                                  pb.tolerances.integrality_tolerance);
+    RAFT_CHECK_CUDA(stream);
+
+    constexpr i_t apply_tpb = 128;
+    const i_t apply_blocks  = (pb.n_constraints + apply_tpb - 1) / apply_tpb;
+    apply_clique_corrections_to_activity_kernel<i_t, f_t>
+      <<<apply_blocks, apply_tpb, 0, stream>>>(make_span(clique_data.constraint_group_offsets),
+                                               make_span(upd.group_max_correction),
+                                               make_span(upd.group_min_correction),
+                                               make_span(upd.min_activity),
+                                               make_span(upd.max_activity),
+                                               pb.n_constraints);
+    RAFT_CHECK_CUDA(stream);
+
+    update_bounds_kernel_cliq<i_t, f_t, n_threads>
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd.view(), clique_data.view());
+  } else {
+    update_bounds_kernel<i_t, f_t, n_threads>
+      <<<pb.n_variables, n_threads, 0, stream>>>(pb.view(), upd.view());
+  }
+  RAFT_CHECK_CUDA(stream);
+  i_t h_bounds_changed = upd.bounds_changed.value(stream);
   return h_bounds_changed != zero;
 }
 
@@ -174,6 +235,7 @@ termination_criterion_t bound_presolve_t<i_t, f_t>::bound_update_loop(problem_t<
 
   i_t iter;
   upd.init_changed_constraints(pb.handle_ptr);
+  ensure_clique_data(pb);
   for (iter = 0; iter < settings.iteration_limit; ++iter) {
     calculate_activity(pb);
     if (timer.check_time_limit()) {

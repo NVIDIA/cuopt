@@ -15,6 +15,7 @@
 #include <utilities/timer.hpp>
 
 #include "bounds_update_data.cuh"
+#include "clique_activity_corrections.cuh"
 #include "utils.cuh"
 
 namespace cuopt::linear_programming::detail {
@@ -67,9 +68,19 @@ class multi_probe_t {
   void update_host_bounds(const raft::handle_t* handle_ptr,
                           const raft::device_span<typename type_2<f_t>::type> variable_bounds);
   void update_device_bounds(const raft::handle_t* handle_ptr);
+
+  // Build (or reuse) the per-(constraint, clique) group table for clique-aware
+  // activity tightening. The static group table is shared by both probes;
+  // each probe's dynamic correction buffers live on its own bounds_update_data_t.
+  void ensure_clique_data(problem_t<i_t, f_t>& pb);
+
   mip_solver_context_t<i_t, f_t>& context;
   bounds_update_data_t<i_t, f_t> upd_0;
   bounds_update_data_t<i_t, f_t> upd_1;
+
+  clique_group_table_t<i_t, f_t> clique_data;
+  bool clique_data_built{false};
+
   std::vector<f_t> host_lb;
   std::vector<f_t> host_ub;
   bool skip_0;
