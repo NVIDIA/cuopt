@@ -580,8 +580,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     num_threads = settings_const.num_cpu_threads;
   }
 
-  if (num_threads < 4) {
-    CUOPT_LOG_ERROR("The MIP solver requires at least 4 CPU threads!");
+  if (num_threads < 2) {
+    CUOPT_LOG_ERROR("The MIP solver requires at least 2 CPU threads!");
     return mip_solution_t<i_t, f_t>{
       cuopt::logic_error("The number of CPU threads is below than expected.",
                          cuopt::error_type_t::RuntimeError),

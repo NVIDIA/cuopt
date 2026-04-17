@@ -246,7 +246,7 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
   std::vector<int2> constraint_pairs_h(max_pair_per_row * problem.n_constraints, {-1, -1});
   std::unordered_set<int> cnstr_pair;
 
-  i_t num_tasks = omp_get_num_threads() - 4;
+  i_t num_tasks = std::max(omp_get_num_threads(), 1);
 
   CUOPT_LOG_INFO("Selecting constraint pairs with %d tasks", num_tasks);
 #pragma omp taskloop num_tasks(num_tasks) private(cnstr_pair) default(shared)

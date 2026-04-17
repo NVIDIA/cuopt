@@ -51,8 +51,10 @@ local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
 {
-  pop_ptr = &population;
+  // TODO: Find a way to enable this in low core count scenarios
+  if (omp_get_num_threads() < 8) return;
 
+  pop_ptr = &population;
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
   solution_t<i_t, f_t> solution(*context.problem_ptr);
@@ -103,6 +105,9 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   population_t<i_t, f_t>& population)
 {
+  // TODO: Find a way to enable this in low core count scenarios
+  if (omp_get_num_threads() < 8) return;
+
   pop_ptr = &population;
 
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
@@ -137,6 +142,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
+  if (omp_get_num_threads() < 8) return;
+
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     scratch_cpu_fj[i]->halted = true;
 #pragma omp taskwait depend(in : *scratch_cpu_fj[i])  // Wait for each scratch CPU FJ task to finish
@@ -155,6 +162,8 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_deterministic(
   dual_simplex::branch_and_bound_t<i_t, f_t>& bb)
 {
+  if (omp_get_num_threads() < 8) return;
+
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
   solution_t<i_t, f_t> solution(*context.problem_ptr);
@@ -253,11 +262,12 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // Start CPU solver in background thread
 #pragma omp taskgroup
   {
-    if (ls_cpu_fj.size() > 0) {
-      CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", ls_cpu_fj.size());
+    if (ls_cpu_fj.size() > 0 && omp_get_num_threads() > 3) {
+      size_t n = std::min<size_t>(omp_get_num_threads() - 1, ls_cpu_fj.size());
+      CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", n);
 
-#pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(ls_cpu_fj.size()) nogroup
-      for (size_t i = 0; i < ls_cpu_fj.size(); ++i) {
+#pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(n) nogroup
+      for (size_t i = 0; i < n; ++i) {
         cpufj_solve(ls_cpu_fj[i].get());
       }
     }

@@ -1012,7 +1012,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
   // 0: no batch PDLP, 1: cooperative batch PDLP and DS, 2: batch PDLP only
   const i_t effective_batch_pdlp =
-    (settings.sub_mip || (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1))
+    (settings.sub_mip ||
+     (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) ||
+     omp_get_num_threads() < 3)  // 1: heuristics, 1: B&B, 1: batch PDLP
       ? 0
       : settings.mip_batch_pdlp_strong_branching;
 
@@ -1419,11 +1421,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   constexpr i_t min_num_candidates_for_pdlp                       = 5;
   constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
   // Batch PDLP is either forced or we use the heuristic to decide if it should be used
-  const bool use_pdlp = (rb_mode == 2) || (rb_mode != 0 && !settings.sub_mip &&
-                                           !settings.deterministic && pdlp_warm_cache.populated &&
-                                           unreliable_list.size() > min_num_candidates_for_pdlp &&
-                                           pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
-                                             min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
+  const bool use_pdlp =
+    (rb_mode == 2) ||
+    (rb_mode != 0 && !settings.sub_mip && !settings.deterministic && pdlp_warm_cache.populated &&
+     unreliable_list.size() > min_num_candidates_for_pdlp &&
+     pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
+       min_percent_solved_by_batch_pdlp_at_root_for_pdlp &&
+     omp_get_num_threads() >= 3);  // 1: heuristics, 1: B&B, 1: batch PDLP);
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
@@ -1446,7 +1450,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
-  const int num_tasks     = std::max(max_num_tasks, 10);
+  const int num_tasks     = std::max(max_num_tasks, 1);
   const int task_priority = reliability_branching_settings.task_priority;
   // If both batch PDLP and DS are used we double the max number of candidates
   const i_t max_num_candidates = use_pdlp ? 2 * reliability_branching_settings.max_num_candidates

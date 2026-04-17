@@ -30,7 +30,8 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::start()
 {
-  if (fj_cpu_) { return; }
+  // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
+  if (fj_cpu_ || omp_get_num_threads() > 3) { return; }
 
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
