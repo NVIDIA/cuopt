@@ -92,20 +92,27 @@ blocks.append({
 
 blocks.append({"type": "divider"})
 
+def chunk_lines_to_blocks(header, lines, blocks, limit=2900):
+    """Add lines as section blocks, chunking to stay under Slack's char limit."""
+    current = f"*{header}*\n"
+    for line in lines:
+        if len(current) + len(line) + 1 > limit:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": current.rstrip()}})
+            current = ""
+        current += line + "\n"
+    if current.strip():
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": current.rstrip()}})
+
 # --- Genuine failures ---
 if failed > 0:
     lines = []
     for f_entry in d.get("new_failures", []):
-        msg = f_entry.get("message", "")[:60].replace("\n", " ")
+        msg = f_entry.get("message", "")[:150].replace("\n", " ")
         lines.append(f"  :new:  `{f_entry['name']}` ({f_entry['suite']}) \u2014 {msg}")
     for f_entry in d.get("recurring_failures", []):
-        msg = f_entry.get("message", "")[:60].replace("\n", " ")
         first = f_entry.get("first_seen", "?")
         lines.append(f"  :repeat:  `{f_entry['name']}` ({f_entry['suite']}) \u2014 since {first}")
-    blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": "*Genuine Failures:*\n" + "\n".join(lines)},
-    })
+    chunk_lines_to_blocks("Genuine Failures:", lines, blocks)
 
 # --- Stabilized tests ---
 resolved_list = d.get("resolved_tests", [])
@@ -119,13 +126,7 @@ if resolved_list:
             f"  :white_check_mark:  `{r['name']}` ({r['suite']}) \u2014 "
             f"failing since {since}, failed {count}x{flaky_tag}"
         )
-    blocks.append({
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": "*Stabilized (were failing, now pass):*\n" + "\n".join(lines),
-        },
-    })
+    chunk_lines_to_blocks("Stabilized (were failing, now pass):", lines, blocks)
 
 # --- Flaky tests ---
 flaky_list = d.get("flaky_tests", [])
@@ -134,10 +135,7 @@ if flaky_list:
     for f_entry in flaky_list:
         retries = f_entry.get("retry_count", "?")
         lines.append(f"  :warning:  `{f_entry['name']}` ({f_entry['suite']}) \u2014 {retries} retries")
-    blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": "*Flaky Tests (passed on retry):*\n" + "\n".join(lines)},
-    })
+    chunk_lines_to_blocks("Flaky Tests (passed on retry):", lines, blocks)
 
 # --- Links ---
 link_parts = []

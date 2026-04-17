@@ -185,10 +185,21 @@ if failing_workflows:
         else:
             lines.append(f":x:  *{wf}* — failed{label_suffix}")
     blocks.append({"type": "divider"})
-    blocks.append({
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": "\n".join(lines)},
-    })
+    # Chunk to stay within Slack's 3000-char block limit
+    current = ""
+    for line in lines:
+        if current and len(current) + len(line) + 1 > 2900:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": current.rstrip()},
+            })
+            current = ""
+        current += line + "\n"
+    if current.strip():
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": current.rstrip()},
+        })
 
 # Links in main message
 link_parts = []

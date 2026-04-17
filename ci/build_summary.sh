@@ -100,13 +100,14 @@ for group_name, group_jobs in sorted(groups.items()):
         detail = f'{g_passed}/{g_total} passed'
     lines.append(f'{icon}  *{group_name}* \u2014 {detail}')
 
-text = '\n'.join(lines)
-if len(text) > 2900:
-    text = text[:2900] + '\n_...truncated_'
-blocks.append({
-    'type': 'section',
-    'text': {'type': 'mrkdwn', 'text': text},
-})
+current = ''
+for line in lines:
+    if current and len(current) + len(line) + 1 > 2900:
+        blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': current.rstrip()}})
+        current = ''
+    current += line + '\n'
+if current.strip():
+    blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': current.rstrip()}})
 
 # Link
 if run_url:
