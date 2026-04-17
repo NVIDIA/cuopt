@@ -72,7 +72,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variable(s) before presolve", n_sc);
 
-  // 2. Build a relaxed copy where SC vars become continuous [0, original_ub].
+  // 2. Build a relaxed copy where SC vars become continuous over the convex hull
+  //    [min(0, L), max(0, U)].
   //    This lets GPU bounds propagation derive tight upper bounds from the
   //    constraint structure without the binary domain {0} ∪ [L, U].
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);

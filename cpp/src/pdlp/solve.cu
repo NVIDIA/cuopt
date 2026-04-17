@@ -30,6 +30,7 @@
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -1596,8 +1597,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
-  raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
+  raft::handle_t const* handle_ptr, const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
 {
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
@@ -1632,15 +1632,10 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   }
   if (data_model.get_variable_types().size() != 0) {
     std::vector<var_t> enum_variable_types(data_model.get_variable_types().size());
-    std::transform(
-      data_model.get_variable_types().cbegin(),
-      data_model.get_variable_types().cend(),
-      enum_variable_types.begin(),
-      [](const auto val) -> var_t {
-        if (val == 'I' || val == 'B') return var_t::INTEGER;
-        if (val == 'S') return var_t::SEMI_CONTINUOUS;
-        return var_t::CONTINUOUS;
-      });
+    std::transform(data_model.get_variable_types().cbegin(),
+                   data_model.get_variable_types().cend(),
+                   enum_variable_types.begin(),
+                   detail::char_to_var_type);
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 
@@ -1819,7 +1814,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                        \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
     raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);              \
+    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT

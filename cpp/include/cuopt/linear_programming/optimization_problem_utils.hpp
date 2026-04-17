@@ -16,6 +16,17 @@
 
 namespace cuopt::linear_programming {
 
+namespace detail {
+
+inline constexpr var_t char_to_var_type(char variable_type)
+{
+  if (variable_type == 'I' || variable_type == 'B') { return var_t::INTEGER; }
+  if (variable_type == 'S') { return var_t::SEMI_CONTINUOUS; }
+  return var_t::CONTINUOUS;
+}
+
+}  // namespace detail
+
 /**
  * @brief Helper function to populate optimization_problem_interface_t from mps_data_model_t
  *
@@ -87,14 +98,7 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
   if (!char_variable_types.empty()) {
     std::vector<var_t> enum_variable_types(char_variable_types.size());
     for (size_t i = 0; i < char_variable_types.size(); ++i) {
-      const char c = char_variable_types[i];
-      if (c == 'I' || c == 'B') {
-        enum_variable_types[i] = var_t::INTEGER;
-      } else if (c == 'S') {
-        enum_variable_types[i] = var_t::SEMI_CONTINUOUS;
-      } else {
-        enum_variable_types[i] = var_t::CONTINUOUS;
-      }
+      enum_variable_types[i] = detail::char_to_var_type(char_variable_types[i]);
     }
     problem->set_variable_types(enum_variable_types.data(), enum_variable_types.size());
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
@@ -257,11 +261,7 @@ void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* p
       data_model->get_variable_types().data(),
       data_model->get_variable_types().data() + data_model->get_variable_types().size(),
       enum_variable_types.begin(),
-      [](const auto val) -> var_t {
-        if (val == 'I' || val == 'B') return var_t::INTEGER;
-        if (val == 'S') return var_t::SEMI_CONTINUOUS;
-        return var_t::CONTINUOUS;
-      });
+      detail::char_to_var_type);
     problem->set_variable_types(enum_variable_types.data(), enum_variable_types.size());
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
   }

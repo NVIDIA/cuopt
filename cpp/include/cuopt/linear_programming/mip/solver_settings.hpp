@@ -94,7 +94,7 @@ class mip_solver_settings_t {
 
   f_t time_limit                = std::numeric_limits<f_t>::infinity();
   f_t work_limit                = std::numeric_limits<f_t>::infinity();
-  f_t sc_big_m                  = f_t(1e5);
+  f_t sc_big_m                  = f_t(1e10);
   i_t node_limit                = std::numeric_limits<i_t>::max();
   bool heuristics_only          = false;
   i_t reliability_branching     = -1;

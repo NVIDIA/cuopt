@@ -75,9 +75,7 @@ static void normalize_zero_lb_semi_continuous(optimization_problem_t<i_t, f_t>& 
 
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
     if (var_types[i] == var_t::SEMI_CONTINUOUS && var_lb[i] == f_t(0)) {
-      CUOPT_LOG_WARN(
-        "SC var %d has zero lower bound; treating it as continuous to match common solver behavior",
-        i);
+      CUOPT_LOG_WARN("SC var %d has zero lower bound; treating it as continuous", i);
       var_types[i] = var_t::CONTINUOUS;
       modified     = true;
     }
