@@ -69,6 +69,18 @@ class heap_t {
   // Read-only access to underlying buffer for iteration without modification
   const std::vector<T>& data() const { return buffer; }
 
+  // Remove entries matching `should_remove` and rebuild the heap.
+  // Caller must hold any external lock before calling this.
+  template <typename Pred>
+  void compact(Pred&& should_remove)
+  {
+    auto it = std::remove_if(buffer.begin(), buffer.end(), std::forward<Pred>(should_remove));
+    size_t removed = std::distance(it, buffer.end());
+    buffer.erase(it, buffer.end());
+    num_entries_ = buffer.size();
+    if (removed > 0) { std::make_heap(buffer.begin(), buffer.end(), comp); }
+  }
+
  private:
   std::vector<T> buffer;
   omp_atomic_t<size_t> num_entries_{0};
@@ -106,6 +118,8 @@ class node_queue_t {
   // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_diving()
   {
+    compact_diving_heap();
+
     while (!diving_heap_.empty()) {
       auto entry = diving_heap_.pop();
       if (entry->node != nullptr) {
@@ -120,7 +134,6 @@ class node_queue_t {
   void unlock() { mutex_.unlock(); }
 
   i_t diving_queue_size() { return diving_live_size_; }
-
   i_t best_first_queue_size() { return best_first_heap_.size(); }
 
   f_t get_lower_bound()
@@ -129,6 +142,21 @@ class node_queue_t {
   }
 
  private:
+  void compact_diving_heap()
+  {
+    // Allow a maximum of 1024 "dead" entries
+    constexpr i_t max_dead_entries = 1024;
+
+    i_t heap_size = static_cast<i_t>(diving_heap_.size());
+    i_t live      = diving_live_size_.load();
+    if (heap_size <= live) { return; }
+    i_t dead = heap_size - live;
+    if (dead >= max_dead_entries) {
+      diving_heap_.compact(
+        [](const std::shared_ptr<heap_entry_t>& e) { return e->node == nullptr; });
+    }
+  }
+
   struct heap_entry_t {
     mip_node_t<i_t, f_t>* node = nullptr;
     f_t lower_bound            = -std::numeric_limits<f_t>::infinity();

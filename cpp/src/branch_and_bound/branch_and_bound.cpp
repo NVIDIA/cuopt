@@ -1822,10 +1822,8 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
     if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
          time_since_last_log >= 1) ||
         (time_since_last_log > 30) || now > settings_.time_limit) {
-      i_t node_depth             = std::numeric_limits<i_t>::max();
-      i_t int_infeas             = 0;
-      i_t bfs_node_queue_size    = 0;
-      i_t diving_node_queue_size = 0;
+      i_t node_depth = std::numeric_limits<i_t>::max();
+      i_t int_infeas = 0;
 
       for (int k = 0; k < num_bfs_workers; ++k) {
         bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(k);
@@ -1833,13 +1831,7 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
           node_depth = std::min(node_depth, worker->node_depth.load());
           int_infeas = std::max(int_infeas, worker->integer_infeasible.load());
         }
-
-        bfs_node_queue_size += worker->node_queue.best_first_queue_size();
-        diving_node_queue_size += worker->node_queue.diving_queue_size();
       }
-
-      std::cout << std::format("bfs={}, diving={}", bfs_node_queue_size, diving_node_queue_size)
-                << std::endl;
 
       report(' ', upper_bound_, lower_bound, node_depth, int_infeas);
       exploration_stats_.last_log             = tic();
