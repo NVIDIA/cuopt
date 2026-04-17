@@ -147,10 +147,13 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-          # Doc files and meta that never affect builds/tests.
-          # docs/ content is .rst and is kept via the '**' include above;
-          # only human-readable Markdown (READMEs, CHANGELOG, etc.) is excluded.
-          - '!**/*.md'
+          # Root-level Markdown files that are not part of the docs build.
+          # docs/cuopt/source/release-notes.md is a symlink to RELEASE-NOTES.md
+          # and docs also ingests *.md via MyST-NB, so RELEASE-NOTES.md and
+          # docs/**/*.md must keep triggering build_docs.
+          - '!README.md'
+          - '!CONTRIBUTING.md'
+          - '!CHANGELOG.md'
           - '!LICENSE'
           - '!.gitattributes'
           - '!.gitignore'
