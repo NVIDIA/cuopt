@@ -439,6 +439,23 @@ def generate_consolidated_html(
             )
         parts.append("</table></section>")
 
+    # --- Flaky ---
+    if agg["all_flaky_tests"]:
+        parts.append("<section><h2>Flaky Tests</h2><table>")
+        parts.append(
+            "<tr><th>Test Type</th><th>Matrix</th><th>Suite</th>"
+            "<th>Test</th><th>Retries</th></tr>"
+        )
+        for e in agg["all_flaky_tests"]:
+            parts.append(
+                f"<tr><td>{_html_escape(e['test_type'])}</td>"
+                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
+                f"<td>{_html_escape(e['suite'])}</td>"
+                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{e.get('retry_count', '?')}</td></tr>"
+            )
+        parts.append("</table></section>")
+
     # --- Recurring failures ---
     if agg["all_recurring_failures"]:
         parts.append("<section><h2>Recurring Failures</h2><table>")
@@ -475,23 +492,6 @@ def generate_consolidated_html(
                 f"<td><code>{_html_escape(e['name'])}</code></td>"
                 f"<td>{_html_escape(e.get('first_seen', '?'))}</td>"
                 f"<td>{e.get('failure_count', '?')}</td></tr>"
-            )
-        parts.append("</table></section>")
-
-    # --- Flaky ---
-    if agg["all_flaky_tests"]:
-        parts.append("<section><h2>Flaky Tests</h2><table>")
-        parts.append(
-            "<tr><th>Test Type</th><th>Matrix</th><th>Suite</th>"
-            "<th>Test</th><th>Retries</th></tr>"
-        )
-        for e in agg["all_flaky_tests"]:
-            parts.append(
-                f"<tr><td>{_html_escape(e['test_type'])}</td>"
-                f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
-                f"<td>{_html_escape(e['suite'])}</td>"
-                f"<td><code>{_html_escape(e['name'])}</code></td>"
-                f"<td>{e.get('retry_count', '?')}</td></tr>"
             )
         parts.append("</table></section>")
 

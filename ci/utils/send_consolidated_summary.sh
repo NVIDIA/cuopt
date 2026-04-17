@@ -107,8 +107,8 @@ untracked_count = len(untracked_failed)
 
 if has_failures and (has_new or untracked_count > 0):
     emoji = ":rotating_light:"
-    text = f"{len(failing_workflows)} workflow(s) with failures"
-    mention = ""
+    text = f"{len(failing_workflows)} workflow(s) with NEW failures"
+    mention = "<@rgsl888prabhu> "
 elif has_failures:
     emoji = ":x:"
     text = f"Recurring failures in {len(failing_workflows)} workflow(s)"
@@ -243,22 +243,22 @@ if issues_by_wf:
         wf_blocks = []
         wf_text = f"*{wf_name}*\n"
 
-        # New failures (show more error context — 150 chars)
+        # New failures first (most urgent, show more error context)
         for f_entry in issues["new"][:10]:
             msg = f_entry.get("message", "")[:150].replace("\n", " ")
             matrix = f_entry.get("matrix_label", "")
             wf_text += f":new:  `{f_entry['name']}` ({matrix}) — {msg}\n"
 
-        # Recurring failures (shorter — just show since date)
+        # Flaky (actionable — tests that are unstable)
+        for f_entry in issues["flaky"][:10]:
+            matrix = f_entry.get("matrix_label", "")
+            wf_text += f":warning:  `{f_entry['name']}` ({matrix})\n"
+
+        # Recurring failures (known issues)
         for f_entry in issues["recurring"][:10]:
             matrix = f_entry.get("matrix_label", "")
             first = f_entry.get("first_seen", "?")
             wf_text += f":repeat:  `{f_entry['name']}` ({matrix}) — since {first}\n"
-
-        # Flaky
-        for f_entry in issues["flaky"][:10]:
-            matrix = f_entry.get("matrix_label", "")
-            wf_text += f":warning:  `{f_entry['name']}` ({matrix})\n"
 
         # Resolved
         for r in issues["resolved"][:5]:
