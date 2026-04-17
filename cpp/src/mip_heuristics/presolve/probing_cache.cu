@@ -890,7 +890,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // are visible before any per-thread kernel can reference that memory.
   problem.handle_ptr->sync_stream();
 
-  CUOPT_LOG_INFO("Running probing cache with %d tasks", num_tasks);
+  CUOPT_LOG_INFO("Running probing cache with %zu tasks", num_tasks);
 
   // Main parallel loop
   for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
@@ -911,7 +911,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
         auto var_idx = priority_indices[i];
         if (timer.check_time_limit()) { continue; }
 
-        CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, task_id);
+        CUOPT_LOG_TRACE("Computing probing cache for var %d on task %zu", var_idx, task_id);
         compute_cache_for_var<i_t, f_t>(var_idx,
                                         bound_presolve,
                                         problem,
