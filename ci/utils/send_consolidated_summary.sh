@@ -159,16 +159,31 @@ for j in workflow_jobs:
     if j["conclusion"] == "failure":
         wf_counts[prefix]["failed"] += 1
 
+# Build a lookup: workflow prefix -> list of failing matrix_labels from grid
+wf_failing_labels = {}
+for g in grid:
+    if g["status"].startswith("failed"):
+        wf_failing_labels.setdefault(g["test_type"], []).append(g["matrix_label"])
+
 if failing_workflows:
     lines = []
     for wf in sorted(failing_workflows):
         counts = wf_counts.get(wf, {})
         f_count = counts.get("failed", 0)
         t_count = counts.get("total", 0)
+        # Append failing matrix labels (up to 3, then "+N more")
+        labels = wf_failing_labels.get(wf, [])
+        label_suffix = ""
+        if labels:
+            shown = labels[:3]
+            label_suffix = " (" + ", ".join(shown)
+            if len(labels) > 3:
+                label_suffix += f", +{len(labels) - 3} more"
+            label_suffix += ")"
         if t_count > 0:
-            lines.append(f":x:  *{wf}* — {f_count}/{t_count} failed")
+            lines.append(f":x:  *{wf}* — {f_count}/{t_count} failed{label_suffix}")
         else:
-            lines.append(f":x:  *{wf}* — failed")
+            lines.append(f":x:  *{wf}* — failed{label_suffix}")
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "section",
@@ -228,13 +243,13 @@ if issues_by_wf:
         wf_blocks = []
         wf_text = f"*{wf_name}*\n"
 
-        # New failures
+        # New failures (show more error context — 150 chars)
         for f_entry in issues["new"][:10]:
-            msg = f_entry.get("message", "")[:60].replace("\n", " ")
+            msg = f_entry.get("message", "")[:150].replace("\n", " ")
             matrix = f_entry.get("matrix_label", "")
             wf_text += f":new:  `{f_entry['name']}` ({matrix}) — {msg}\n"
 
-        # Recurring failures
+        # Recurring failures (shorter — just show since date)
         for f_entry in issues["recurring"][:10]:
             matrix = f_entry.get("matrix_label", "")
             first = f_entry.get("first_seen", "?")
@@ -256,6 +271,18 @@ if issues_by_wf:
                                         ("flaky", "flaky", 10), ("resolved", "resolved", 5)]:
             if len(issues[category]) > limit:
                 wf_text += f"_...+{len(issues[category]) - limit} more {label}_\n"
+
+        # Per-job log links: find workflow_jobs matching this workflow prefix
+        job_urls = [j["url"] for j in workflow_jobs
+                    if j.get("url") and j["name"].split(" / ")[0] == wf_name
+                    and j["conclusion"] == "failure"]
+        if not job_urls:
+            # Also try matching by test_type prefix for tracked jobs
+            job_urls = [j["url"] for j in workflow_jobs
+                        if j.get("url") and j["name"].startswith(wf_name)
+                        and j["conclusion"] == "failure"]
+        if job_urls:
+            wf_text += f"<{job_urls[0]}|:link: View Logs>\n"
 
         # Chunk if needed
         while wf_text:

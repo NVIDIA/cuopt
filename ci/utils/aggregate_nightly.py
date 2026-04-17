@@ -401,6 +401,24 @@ def generate_consolidated_html(
   <div class="summary-card"><div class="num pass">{totals["resolved"]}</div><div class="lbl">Stabilized</div></div>
 </div>""")
 
+    # Helper: build a GitHub source link for test names when suite looks like a file path
+    def _test_name_html(entry):
+        """Return HTML for the test name, linked to source if suite looks like a file path."""
+        name_escaped = _html_escape(entry['name'])
+        suite = entry.get('suite', '')
+        # Find the sha from the matching grid entry
+        sha = "unknown"
+        for g in agg["matrix_grid"]:
+            if (g["test_type"] == entry.get("test_type")
+                    and g["matrix_label"] == entry.get("matrix_label")
+                    and g.get("sha")):
+                sha = g["sha"]
+                break
+        if sha != "unknown" and suite and ('/' in suite or suite.endswith('.py')):
+            url = f"https://github.com/NVIDIA/cuopt/blob/{_html_escape(sha)}/{_html_escape(suite)}"
+            return f'<a href="{url}" style="color:#1565c0;text-decoration:none"><code>{name_escaped}</code></a>'
+        return f"<code>{name_escaped}</code>"
+
     # --- New failures ---
     if agg["all_new_failures"]:
         parts.append("<section><h2>New Failures</h2><table>")
@@ -415,7 +433,7 @@ def generate_consolidated_html(
                 f"<tr><td>{_html_escape(e['test_type'])}</td>"
                 f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
                 f"<td>{_html_escape(e['suite'])}</td>"
-                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{_test_name_html(e)}</td>"
                 f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'
             )
@@ -435,7 +453,7 @@ def generate_consolidated_html(
                 f"<tr><td>{_html_escape(e['test_type'])}</td>"
                 f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
                 f"<td>{_html_escape(e['suite'])}</td>"
-                f"<td><code>{_html_escape(e['name'])}</code></td>"
+                f"<td>{_test_name_html(e)}</td>"
                 f"<td>{_html_escape(e.get('first_seen', '?'))}</td>"
                 f"<td><details><summary>{short}</summary>"
                 f'<pre class="error">{msg}</pre></details></td></tr>'

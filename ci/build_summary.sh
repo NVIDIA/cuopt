@@ -88,6 +88,10 @@ for group_name, group_jobs in sorted(groups.items()):
     if g_failed > 0:
         icon = ':x:'
         detail = f'{g_failed}/{g_total} failed'
+        # Add clickable log links for failed jobs
+        failed_in_group = [j for j in group_jobs if j.get('conclusion') == 'failure']
+        if failed_in_group and failed_in_group[0].get('html_url'):
+            detail += f'  <{failed_in_group[0]["html_url"]}|View Logs>'
     elif g_passed == g_total:
         icon = ':white_check_mark:'
         detail = f'{g_total} passed'
