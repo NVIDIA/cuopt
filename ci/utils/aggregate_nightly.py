@@ -419,6 +419,25 @@ def generate_consolidated_html(
             return f'<a href="{url}" style="color:#1565c0;text-decoration:none"><code>{name_escaped}</code></a>'
         return f"<code>{name_escaped}</code>"
 
+    def _error_summary(message, max_len=200):
+        """Extract the most useful part of an error message for display.
+        Prefers the last line (usually the assertion) over the first
+        (usually the test method signature)."""
+        if not message:
+            return ""
+        lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
+        # Use the last non-empty line (typically the assertion/error)
+        if lines:
+            summary = lines[-1]
+            # If the last line is very short, include the previous line too
+            if len(summary) < 40 and len(lines) > 1:
+                summary = lines[-2] + " — " + summary
+        else:
+            summary = message
+        if len(summary) > max_len:
+            summary = summary[:max_len] + "..."
+        return summary
+
     # --- New failures ---
     if agg["all_new_failures"]:
         parts.append("<section><h2>New Failures</h2><table>")
@@ -428,7 +447,7 @@ def generate_consolidated_html(
         )
         for e in agg["all_new_failures"]:
             msg = _html_escape(e.get("message", ""))
-            short = _html_escape(e.get("message", "")[:100])
+            short = _html_escape(_error_summary(e.get("message", "")))
             parts.append(
                 f"<tr><td>{_html_escape(e['test_type'])}</td>"
                 f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
@@ -465,7 +484,7 @@ def generate_consolidated_html(
         )
         for e in agg["all_recurring_failures"]:
             msg = _html_escape(e.get("message", ""))
-            short = _html_escape(e.get("message", "")[:100])
+            short = _html_escape(_error_summary(e.get("message", "")))
             parts.append(
                 f"<tr><td>{_html_escape(e['test_type'])}</td>"
                 f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
