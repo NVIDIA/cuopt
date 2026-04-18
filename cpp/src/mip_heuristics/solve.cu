@@ -313,6 +313,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     if (settings.seed >= 0) { cuopt::seed_generator::set_seed(settings.seed); }
 
     raft::common::nvtx::range fun_scope("Running solver");
+    auto timer = timer_t(time_limit);
 
     // This is required as user might forget to set some fields
     normalize_zero_lb_semi_continuous(op_problem);
@@ -359,7 +360,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       callback->template setup<f_t>(op_problem.get_n_variables());
     }
 
-    auto timer = timer_t(time_limit);
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);
