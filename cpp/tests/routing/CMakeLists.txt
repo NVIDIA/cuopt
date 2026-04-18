@@ -32,6 +32,7 @@ set_tests_properties(RETAIL_L1TEST ROUTING_L1TEST PROPERTIES DISABLED TRUE)
 ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/ev_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_fixed_costs.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_order_match.cu

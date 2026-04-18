@@ -180,6 +180,46 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::add_vehicle_ev_break(i_t vehicle_id,
+                                                       f_t distance_min,
+                                                       f_t distance_max,
+                                                       i_t charge_duration,
+                                                       i_t const* break_locations,
+                                                       i_t num_break_locations,
+                                                       bool validate_input)
+{
+  cuopt_expects(distance_max > distance_min,
+                error_type_t::ValidationError,
+                "EV break distance_max must be greater than distance_min!");
+  cuopt_expects(charge_duration >= 0,
+                error_type_t::ValidationError,
+                "charge_duration must be non-negative!");
+
+  if (validate_input && num_break_locations > 0) {
+    cuopt_expects(
+      detail::check_min_max_values(
+        break_locations, num_break_locations, 0, num_locations_ - 1, handle_ptr_->get_stream()),
+      error_type_t::ValidationError,
+      "Break locations should be at the end of the matrix");
+    rmm::device_uvector<i_t> tmp_break_nodes(num_break_locations, handle_ptr_->get_stream());
+    raft::copy(
+      tmp_break_nodes.begin(), break_locations, num_break_locations, handle_ptr_->get_stream());
+    auto end      = thrust::unique(
+      handle_ptr_->get_thrust_policy(), tmp_break_nodes.begin(), tmp_break_nodes.end());
+    i_t unique_items = end - tmp_break_nodes.begin();
+    cuopt_expects(num_break_locations == unique_items,
+                  error_type_t::ValidationError,
+                  "There should be unique break locations");
+  }
+
+  vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t>(
+    static_cast<float>(distance_min),
+    static_cast<float>(distance_max),
+    charge_duration,
+    raft::device_span<const i_t>(break_locations, num_break_locations)));
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_objective_function(objective_t const* objective,
                                                          f_t const* objective_weights,
                                                          i_t n_objectives)

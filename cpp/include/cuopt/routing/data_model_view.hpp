@@ -162,6 +162,34 @@ class data_model_view_t {
                          bool validate_input = true);
 
   /**
+   * @brief Add a distance-windowed EV charging break for a vehicle.
+   *
+   * The solver inserts one charging stop per call within the distance
+   * interval [distance_min, distance_max] (measured along the cost matrix).
+   * Call this function multiple times for the same vehicle to model successive
+   * charge cycles (e.g. first charge: [0, 150], second charge: [150, 300]).
+   *
+   * @param vehicle_id         Vehicle to apply the break to.
+   * @param distance_min       Earliest cumulative route distance at which the
+   *                           vehicle may stop for charging.
+   * @param distance_max       Latest cumulative route distance by which the
+   *                           vehicle must have stopped for charging.
+   * @param charge_duration    Service time at the charging station (same unit
+   *                           as other service times in the model).
+   * @param break_locations    Device pointer to eligible charging station
+   *                           location IDs. Pass nullptr to allow any location.
+   * @param num_break_locations Number of entries in break_locations.
+   * @param validate_input     Run input validation. Defaults to true.
+   */
+  void add_vehicle_ev_break(i_t vehicle_id,
+                            f_t distance_min,
+                            f_t distance_max,
+                            i_t charge_duration,
+                            i_t const* break_locations,
+                            i_t num_break_locations,
+                            bool validate_input = true);
+
+  /**
    * @brief During improvement phase the solver only optimizes for the cost.
    * This function is used to select the best solution accross all climbers
    * based on other criterias (see objective_t enum). The value for the VEHICLE

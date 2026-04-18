@@ -482,6 +482,39 @@ cdef class DataModel:
             vehicle_id, earliest, latest, duration,
             <const int *> c_locations_ptr, len(locations))
 
+    def add_vehicle_ev_break(
+        self, vehicle_id, distance_min, distance_max, duration, locations
+    ):
+        dim = 0
+        if vehicle_id in self.non_uniform_breaks:
+            dim = len(self.non_uniform_breaks[vehicle_id])
+
+        if dim == 0:
+            self.non_uniform_breaks[vehicle_id] = {}
+
+        self.non_uniform_breaks[vehicle_id][dim] = {
+            "distance_min": distance_min,
+            "distance_max": distance_max,
+            "duration": duration,
+            "locations": type_cast(
+                locations, np.int32, "breaklocations"
+            )
+        }
+
+        current_breaks = self.non_uniform_breaks[vehicle_id][dim]["locations"]
+
+        cdef uintptr_t c_locations_ptr = (
+            current_breaks.__cuda_array_interface__['data'][0]
+        )
+
+        self.c_data_model_view.get().add_vehicle_ev_break(
+            vehicle_id,
+            <float> distance_min,
+            <float> distance_max,
+            duration,
+            <const int *> c_locations_ptr,
+            len(locations))
+
     def add_capacity_dimension(self, name, demand, capacity):
         self.demand_name.append(name)
         self.demand.append(type_cast(demand, np.int32, "demand"))

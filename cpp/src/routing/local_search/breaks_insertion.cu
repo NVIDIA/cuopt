@@ -89,6 +89,13 @@ __global__ void find_break_insertions_kernel(
 
       curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
 
+      if (!break_nodes.distance_min.empty()) {
+        double dist  = break_node.distance_dim.distance_forward;
+        float d_min  = break_nodes.distance_min[break_node_id];
+        float d_max  = break_nodes.distance_max[break_node_id];
+        if (dist < (double)d_min || dist > (double)d_max) { continue; }
+      }
+
       if (!break_node.forward_feasible(sh_route.vehicle_info(), weights, route_excess)) {
         continue;
       }

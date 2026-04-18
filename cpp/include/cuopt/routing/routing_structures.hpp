@@ -60,7 +60,27 @@ template <typename i_t>
 class vehicle_break_t {
  public:
   vehicle_break_t(i_t earliest, i_t latest, i_t duration, raft::device_span<const i_t> locations)
-    : earliest_(earliest), latest_(latest), duration_(duration), locations_(locations)
+    : earliest_(earliest),
+      latest_(latest),
+      duration_(duration),
+      locations_(locations),
+      is_distance_based_(false),
+      distance_min_(0.f),
+      distance_max_(std::numeric_limits<float>::max())
+  {
+  }
+
+  vehicle_break_t(float distance_min,
+                  float distance_max,
+                  i_t duration,
+                  raft::device_span<const i_t> locations)
+    : earliest_(0),
+      latest_(std::numeric_limits<i_t>::max()),
+      duration_(duration),
+      locations_(locations),
+      is_distance_based_(true),
+      distance_min_(distance_min),
+      distance_max_(distance_max)
   {
   }
 
@@ -68,6 +88,9 @@ class vehicle_break_t {
   i_t latest_;
   i_t duration_;
   raft::device_span<const i_t> locations_{};
+  bool is_distance_based_;
+  float distance_min_;
+  float distance_max_;
 };
 
 template <typename i_t, typename f_t>

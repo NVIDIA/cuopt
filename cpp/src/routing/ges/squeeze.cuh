@@ -461,6 +461,13 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
 
       curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
 
+      if (!break_nodes.distance_min.empty()) {
+        double dist = break_node.distance_dim.distance_forward;
+        float d_min = break_nodes.distance_min[break_node_id];
+        float d_max = break_nodes.distance_max[break_node_id];
+        if (dist < (double)d_min || dist > (double)d_max) { continue; }
+      }
+
       double cost_difference = break_node.calculate_forward_all_and_delta(next_node,
                                                                           sh_route.vehicle_info(),
                                                                           include_objective,

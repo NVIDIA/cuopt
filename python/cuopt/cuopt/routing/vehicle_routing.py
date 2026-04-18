@@ -393,6 +393,65 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         )
 
     @catch_cuopt_exception
+    def add_ev_break(
+        self,
+        vehicle_ids,
+        max_range,
+        charge_duration,
+        charging_stations=cudf.Series(),
+        min_range=0.0,
+        n_cycles=None,
+    ):
+        """
+        Add distance-based EV charging breaks for a set of vehicles.
+
+        Each call to this function models one full day of operation for the
+        given vehicles. The solver will insert one mandatory charging stop per
+        cycle within the distance window [k * max_range + min_range,
+        (k+1) * max_range] for k = 0, 1, ..., n_cycles - 1.
+
+        Parameters
+        ----------
+        vehicle_ids : list[int] or int
+            Vehicle IDs to apply the EV break schedule to.
+        max_range : float
+            Maximum distance a vehicle can travel between charges.
+        charge_duration : int
+            Service time at the charging station (same unit as service times).
+        charging_stations : cudf.Series dtype int32, optional
+            Location IDs eligible for charging. Defaults to all locations.
+        min_range : float, optional
+            Minimum distance before the vehicle may stop for charging.
+            Defaults to 0.
+        n_cycles : int, optional
+            Number of charge cycles per route. When None, a single
+            cycle [min_range, max_range] is added. Pass an integer to
+            model multiple successive charge cycles.
+
+        Examples
+        --------
+        >>> d.add_ev_break(
+        ...     vehicle_ids=[0, 1],
+        ...     max_range=150.0,
+        ...     charge_duration=20,
+        ...     charging_stations=cudf.Series([5, 8, 12]),
+        ...     n_cycles=3,
+        ... )
+        """
+        if isinstance(vehicle_ids, int):
+            vehicle_ids = [vehicle_ids]
+
+        cycles = n_cycles if n_cycles is not None else 1
+        for vid in vehicle_ids:
+            validate_range(vid, "vehicle id", 0, self.get_fleet_size())
+            for k in range(cycles):
+                d_min = k * max_range + min_range
+                d_max = (k + 1) * max_range
+                super().add_vehicle_ev_break(
+                    vid, d_min, d_max, charge_duration, charging_stations
+                )
+
+    @catch_cuopt_exception
     def set_objective_function(self, objectives, objective_weights):
         """
         The objective function can be defined as a linear combination of
