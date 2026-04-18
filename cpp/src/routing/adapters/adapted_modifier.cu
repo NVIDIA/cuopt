@@ -33,7 +33,7 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::perturbate(
   // another PR removes it completely
   resource.ls.set_active_weights(gpu_weight, std::numeric_limits<double>::max());
   for (i_t i = 0; i < perturbation_count; ++i) {
-    resource.ls.run_random_local_search(adapted_solution.sol, false);
+    resource.ls.run_random_local_search(adapted_solution.sol, true, 1000);
   }
   adapted_solution.populate_host_data(true);
   adapted_solution.check_device_host_coherence();
@@ -53,12 +53,10 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::improve(
   // set the excess limit to to the total excess with some multiplier
   auto gpu_weight          = get_cuopt_cost(weight);
   bool consider_unserviced = true;
-  bool time_limit_enabled  = true;
-
   resource.ls.set_active_weights(gpu_weight);
-  resource.ls.start_timer(time_limit);
+  // Use work estimate instead of time limit for determinism
   resource.ls.run_best_local_search(
-    adapted_solution.sol, consider_unserviced, time_limit_enabled, run_cycle_finder);
+    adapted_solution.sol, consider_unserviced, true, 10000, run_cycle_finder);
   adapted_solution.populate_host_data();
   adapted_solution.check_device_host_coherence();
   cuopt_func_call(adapted_solution.sol.check_cost_coherence(gpu_weight));

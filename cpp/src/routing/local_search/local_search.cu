@@ -240,9 +240,13 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
 template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_t, REQUEST>& sol,
                                                               const bool consider_unserviced,
-                                                              const bool time_limit_enabled,
+                                                              const bool use_work_estimate_,
+                                                              const i_t work_estimate_limit_,
                                                               const bool run_cycle_finder)
 {
+  use_work_estimate = use_work_estimate_;
+  work_limit = work_estimate_limit_;
+  reset_work_counter();
   // Handle a corner case when there is no single task that is feasible
   if (sol.n_routes == 0) { return; }
   // for production use working weights
@@ -263,13 +267,15 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     consider_unserviced && !sol.problem_ptr->has_prize_collection();
   sol.global_runtime_checks(should_all_nodes_be_served, false, "run_best_local_search_begin");
   [[maybe_unused]] double cost_before = 0., cost_after = 0.;
-  while (iter < iter_limit) {
+  while (iter < iter_limit && !check_work_estimate()) {
     if constexpr (REQUEST == request_t::VRP) { extract_nodes_to_search(sol, move_candidates); }
-    iter++;
+  iter++;
+  increment_work_counter();
     // fast loop, insider this sliding, fast vrp search and fast cross search happens
     while (true) {
-      if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
+      if (use_work_estimate && check_work_estimate()) { break; }
       iter++;
+      increment_work_counter();
       if (run_fast_search(sol, sol.problem_ptr->is_tsp && iter == 2)) { continue; }
       if (consider_unserviced && sol.problem_ptr->has_prize_collection() &&
           run_collect_prizes(sol)) {
@@ -318,9 +324,8 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     }
 
     // If there is no improvement at all, break the local search loop
-    bool time_limit_reached =
-      (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit());
-    if (time_limit_reached || !improved) {
+    bool work_estimate_reached = (use_work_estimate && check_work_estimate());
+    if (work_estimate_reached || !improved) {
       cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
       break;
     }
@@ -331,8 +336,12 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
 
 template <typename i_t, typename f_t, request_t REQUEST>
 void local_search_t<i_t, f_t, REQUEST>::run_random_local_search(solution_t<i_t, f_t, REQUEST>& sol,
-                                                                bool time_limit_enabled)
+                                                               bool use_work_estimate_,
+                                                               i_t work_estimate_limit_)
 {
+  use_work_estimate = use_work_estimate_;
+  work_limit = work_estimate_limit_;
+  reset_work_counter();
   // Handle a corner case when there is no single task that is feasible
   if (sol.n_routes == 0) { return; }
   if (sol.n_routes > 1024) { return; }
@@ -352,11 +361,10 @@ void local_search_t<i_t, f_t, REQUEST>::run_random_local_search(solution_t<i_t, 
   sol.sol_handle->sync_stream();
   populate_random_moves(sol);
 
-  bool time_limit_reached =
-    (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit());
+  bool work_estimate_reached = (use_work_estimate && check_work_estimate());
   // if there is no more insertions found
   if (move_candidates.move_path.n_insertions.value(sol.sol_handle->get_stream()) == 0 ||
-      time_limit_reached) {
+      work_estimate_reached) {
     return;
   }
   perform_moves(sol, move_candidates);

@@ -48,7 +48,7 @@ bool adapted_generator_t<i_t, f_t, REQUEST>::make_feasible(
   // fprintf(f.file_ptr, "EP size after ejection: %d \n", resource.ges.EP.size());
   constexpr i_t perturbation_count = 1;
   for (i_t i = 0; i < perturbation_count; ++i) {
-    resource.ls.run_random_local_search(adapted_solution.sol, false);
+    resource.ls.run_random_local_search(adapted_solution.sol, true, 1000);
   }
   resource.ges.fixed_route_loop();
 
