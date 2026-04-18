@@ -1396,7 +1396,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     // Perform orbital fixing
     auto* of = worker->orbital_fixing.get();
     if (of != nullptr && !of->disabled()) {
-      of->orbital_fixing(symmetry_, settings_, var_types_, node_ptr, worker->leaf_problem);
+      of->orbital_fixing(symmetry_, settings_, node_ptr, worker->leaf_problem);
     }
 
     i_t node_iter     = 0;
