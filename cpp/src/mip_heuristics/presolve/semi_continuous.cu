@@ -9,9 +9,13 @@
 
 #include "bounds_presolve.cuh"
 
+#include <dual_simplex/bounds_strengthening.hpp>
+#include <dual_simplex/presolve.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver_context.cuh>
+#include <pdlp/translate.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/util/cudart_utils.hpp>
@@ -31,6 +35,54 @@ template <typename f_t>
 bool is_effectively_infinite_sc_upper_bound(f_t ub)
 {
   return !std::isfinite(ub) || ub >= static_cast<f_t>(sc_infinity_threshold);
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t> call_host_bounds_strenghtening(const optimization_problem_t<i_t, f_t>& op_problem,
+                                                const mip_solver_settings_t<i_t, f_t>& settings)
+{
+  auto user_problem =
+    cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
+
+  dual_simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
+  std::vector<i_t> new_slacks;
+  dual_simplex::dualize_info_t<i_t, f_t> dualize_info;
+  dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+  simplex_settings.primal_tol  = settings.tolerances.presolve_absolute_tolerance;
+  simplex_settings.integer_tol = settings.tolerances.integrality_tolerance;
+  simplex_settings.set_log(false);
+
+  dual_simplex::convert_user_problem(
+    user_problem, simplex_settings, lp_problem, new_slacks, dualize_info);
+
+  std::vector<char> row_sense(lp_problem.num_rows, 'E');
+  for (i_t i = 0; i < user_problem.num_rows; ++i) {
+    if (user_problem.row_sense[i] == 'G') {
+      row_sense[i] = 'L';
+    } else {
+      row_sense[i] = user_problem.row_sense[i];
+    }
+  }
+  for (i_t row : user_problem.range_rows) {
+    row_sense[row] = 'E';
+  }
+
+  auto var_types = user_problem.var_types;
+  var_types.resize(lp_problem.num_cols, dual_simplex::variable_type_t::CONTINUOUS);
+
+  dual_simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  lp_problem.A.to_compressed_row(Arow);
+
+  dual_simplex::bounds_strengthening_t<i_t, f_t> strengthening(
+    lp_problem, Arow, row_sense, var_types);
+  std::vector<bool> bounds_changed(lp_problem.num_cols, true);
+  auto lower = lp_problem.lower;
+  auto upper = lp_problem.upper;
+  auto ok    = strengthening.bounds_strengthening(simplex_settings, bounds_changed, lower, upper);
+  if (!ok) { return op_problem.get_variable_upper_bounds_host(); }
+
+  upper.resize(user_problem.num_cols);
+  return upper;
 }
 
 }  // namespace
@@ -73,7 +125,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variable(s) before presolve", n_sc);
 
   // 2. Build a relaxed copy where SC vars become continuous [0, original_ub].
-  //    This lets GPU bounds propagation derive tight upper bounds from the
+  //    This lets deterministic CPU bounds strengthening derive tight upper bounds from the
   //    constraint structure without the binary domain {0} ∪ [L, U].
   optimization_problem_t<i_t, f_t> op_relaxed(op_problem);
   {
@@ -90,23 +142,12 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     op_relaxed.set_variable_upper_bounds(relaxed_ub.data(), n_orig);
   }
 
-  // 3. Run GPU bounds propagation on the relaxed problem to tighten UBs.
-  //    Skip propagation when there are no constraints (nothing to propagate).
+  // 3. Run deterministic CPU bounds strengthening on the relaxed problem to tighten UBs.
+  //    Skip strengthening when there are no constraints (nothing to propagate).
   auto tight_ub = var_ub;  // fallback: normalized original UBs
 
   if (op_relaxed.get_n_constraints() > 0) {
-    problem_t<i_t, f_t> temp_pb(op_relaxed, settings.get_tolerances());
-    mip_solver_context_t<i_t, f_t> ctx(handle_ptr, &temp_pb, settings);
-
-    typename bound_presolve_t<i_t, f_t>::settings_t bp_settings;
-    bp_settings.time_limit = 5.0;
-    bound_presolve_t<i_t, f_t> bps(ctx, bp_settings);
-    bps.resize(temp_pb);
-    bps.solve(temp_pb);
-
-    // Copy tightened upper bounds from GPU to host
-    raft::copy(tight_ub.data(), bps.upd.ub.data(), n_orig, handle_ptr->get_stream());
-    handle_ptr->sync_stream();
+    tight_ub = call_host_bounds_strenghtening(op_relaxed, settings);
   }
 
   // 4. Fetch all host arrays we need to extend with the new binary variables
@@ -165,7 +206,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
       continue;
     }
 
-    // Use GPU-propagated upper bound for positive-side SC variables when available.
+    // Use CPU-strengthened upper bound for positive-side SC variables when available.
     // For negative-side intervals, keep the original upper bound because the relaxed
     // convex hull includes 0 and is not useful for tightening the negative upper edge.
     f_t U = orig_u;
@@ -173,7 +214,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     if (!std::isfinite(orig_u) && std::isfinite(U)) {
       CUOPT_LOG_DEBUG(
         "Semi-continuous var %d upper bound was tightened from %.6g to %.6g by "
-        "bounds strengthening",
+        "CPU bounds strengthening",
         idx,
         static_cast<double>(orig_u),
         static_cast<double>(U));
