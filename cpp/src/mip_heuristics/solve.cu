@@ -64,36 +64,6 @@ static void init_handler(const raft::handle_t* handle_ptr)
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 }
 
-template <typename i_t, typename f_t>
-static void normalize_zero_lb_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem)
-{
-  if (op_problem.get_variable_types().is_empty()) { return; }
-
-  auto var_types = op_problem.get_variable_types_host();
-  auto var_lb    = op_problem.get_variable_lower_bounds_host();
-  bool modified  = false;
-
-  for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
-    if (var_types[i] == var_t::SEMI_CONTINUOUS && var_lb[i] == f_t(0)) {
-      CUOPT_LOG_WARN("SC var %d has zero lower bound; treating it as continuous", i);
-      var_types[i] = var_t::CONTINUOUS;
-      modified     = true;
-    }
-  }
-
-  if (modified) { op_problem.set_variable_types(var_types.data(), var_types.size()); }
-}
-
-template <typename i_t, typename f_t>
-static bool has_semi_continuous_variables(const optimization_problem_t<i_t, f_t>& op_problem)
-{
-  if (op_problem.get_variable_types().is_empty()) { return false; }
-
-  auto var_types = op_problem.get_variable_types_host();
-  return std::any_of(
-    var_types.begin(), var_types.end(), [](var_t type) { return type == var_t::SEMI_CONTINUOUS; });
-}
-
 template <typename f_t>
 static void invoke_solution_callbacks(
   const std::vector<internals::base_solution_callback_t*>& mip_callbacks,
@@ -315,14 +285,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     raft::common::nvtx::range fun_scope("Running solver");
     auto timer = timer_t(time_limit);
 
-    // This is required as user might forget to set some fields
-    normalize_zero_lb_semi_continuous(op_problem);
-    if (has_semi_continuous_variables(op_problem) && !settings.initial_solutions.empty()) {
-      CUOPT_LOG_WARN(
-        "Ignoring %zu user initial solution(s): semi-continuous warm starts are not supported yet",
-        settings.initial_solutions.size());
-      settings.initial_solutions.clear();
-    }
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
@@ -332,8 +294,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // from the solution before returning it to the caller.
     const i_t n_orig_before_sc = op_problem.get_n_variables();
     std::vector<uint8_t> sc_used_fallback_big_m;
-    const bool had_sc =
-      detail::reformulate_semi_continuous(op_problem, settings, &sc_used_fallback_big_m);
+    std::vector<i_t> binary_to_semi_continuous_indices;
+    const bool had_sc = detail::reformulate_semi_continuous(
+      op_problem, settings, &sc_used_fallback_big_m, &binary_to_semi_continuous_indices);
+    if (had_sc && !settings.initial_solutions.empty()) {
+      detail::expand_initial_solutions_for_semi_continuous(
+        settings, binary_to_semi_continuous_indices, op_problem.get_handle_ptr()->get_stream());
+    }
     if (had_sc && !settings.get_mip_callbacks().empty()) {
       CUOPT_LOG_WARN(
         "Disabling MIP get/set callbacks: semi-continuous models are not supported "

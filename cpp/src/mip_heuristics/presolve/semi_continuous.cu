@@ -16,6 +16,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <pdlp/translate.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/util/cudart_utils.hpp>
@@ -90,15 +91,24 @@ std::vector<f_t> call_host_bounds_strenghtening(const optimization_problem_t<i_t
 template <typename i_t, typename f_t>
 bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
                                  const mip_solver_settings_t<i_t, f_t>& settings,
-                                 std::vector<uint8_t>* used_fallback_big_m)
+                                 std::vector<uint8_t>* used_fallback_big_m,
+                                 std::vector<i_t>* binary_to_semi_continuous_indices)
 {
   // 1. Identify semi-continuous variables
   auto var_types = op_problem.get_variable_types_host();
+  auto var_lb    = op_problem.get_variable_lower_bounds_host();
   auto var_ub    = op_problem.get_variable_upper_bounds_host();
   std::vector<i_t> sc_indices;
+  bool normalized_zero_lb_sc  = false;
   bool normalized_large_sc_ub = false;
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
     if (var_types[i] != var_t::SEMI_CONTINUOUS) { continue; }
+    if (var_lb[i] == f_t(0)) {
+      CUOPT_LOG_WARN("SC var %d has zero lower bound; treating it as continuous", i);
+      var_types[i]          = var_t::CONTINUOUS;
+      normalized_zero_lb_sc = true;
+      continue;
+    }
     sc_indices.push_back(i);
     if (is_effectively_infinite_sc_upper_bound(var_ub[i])) {
       CUOPT_LOG_WARN(
@@ -111,6 +121,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
       normalized_large_sc_ub = true;
     }
   }
+  if (normalized_zero_lb_sc) { op_problem.set_variable_types(var_types.data(), var_types.size()); }
   if (sc_indices.empty()) { return false; }
   if (normalized_large_sc_ub) {
     op_problem.set_variable_upper_bounds(var_ub.data(), var_ub.size());
@@ -152,7 +163,6 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   // 4. Fetch all host arrays we need to extend with the new binary variables
   //    and linking constraints.
-  auto var_lb = op_problem.get_variable_lower_bounds_host();
   auto obj_c  = op_problem.get_objective_coefficients_host();
   auto A_vals = op_problem.get_constraint_matrix_values_host();
   auto A_idx  = op_problem.get_constraint_matrix_indices_host();
@@ -185,6 +195,10 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   var_lb.resize(n_orig + n_binary_needed, f_t(0));
   var_ub.resize(n_orig + n_binary_needed, f_t(1));
   obj_c.resize(n_orig + n_binary_needed, f_t(0));
+  if (binary_to_semi_continuous_indices != nullptr) {
+    binary_to_semi_continuous_indices->clear();
+    binary_to_semi_continuous_indices->reserve(n_binary_needed);
+  }
 
   // 6. For each SC variable: derive U when needed, then either add binary + 2
   //    linking constraints or simply relax to continuous if 0 is already in
@@ -236,6 +250,9 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
     const i_t b_idx = n_orig + binary_count;
     ++binary_count;
+    if (binary_to_semi_continuous_indices != nullptr) {
+      binary_to_semi_continuous_indices->push_back(idx);
+    }
 
     // Convert SC var to the continuous interval [0, U].
     var_types[idx] = var_t::CONTINUOUS;
@@ -289,16 +306,53 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   return true;
 }
 
+template <typename i_t, typename f_t>
+void expand_initial_solutions_for_semi_continuous(
+  mip_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<i_t>& binary_to_semi_continuous_indices,
+  rmm::cuda_stream_view stream)
+{
+  if (binary_to_semi_continuous_indices.empty()) { return; }
+
+  const f_t active_tol =
+    std::max(settings.tolerances.absolute_tolerance, settings.tolerances.integrality_tolerance);
+  for (auto& initial_solution : settings.initial_solutions) {
+    if (initial_solution == nullptr || initial_solution->is_empty()) { continue; }
+
+    auto host_initial = cuopt::host_copy(*initial_solution, stream);
+    std::vector<f_t> expanded_initial(host_initial.begin(), host_initial.end());
+    expanded_initial.reserve(host_initial.size() + binary_to_semi_continuous_indices.size());
+    for (i_t idx : binary_to_semi_continuous_indices) {
+      cuopt_expects(idx >= 0 && idx < static_cast<i_t>(host_initial.size()),
+                    error_type_t::ValidationError,
+                    "Semi-continuous warm start references an invalid parent variable index %d.",
+                    idx);
+      expanded_initial.push_back(host_initial[idx] <= active_tol ? f_t(0) : f_t(1));
+    }
+
+    initial_solution = std::make_shared<rmm::device_uvector<f_t>>(expanded_initial.size(), stream);
+    raft::copy(initial_solution->data(), expanded_initial.data(), expanded_initial.size(), stream);
+  }
+}
+
 #if MIP_INSTANTIATE_FLOAT
 template bool reformulate_semi_continuous<int, float>(optimization_problem_t<int, float>&,
                                                       const mip_solver_settings_t<int, float>&,
-                                                      std::vector<uint8_t>*);
+                                                      std::vector<uint8_t>*,
+                                                      std::vector<int>*);
+template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, float>&,
+                                                           const std::vector<int>&,
+                                                           rmm::cuda_stream_view);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template bool reformulate_semi_continuous<int, double>(optimization_problem_t<int, double>&,
                                                        const mip_solver_settings_t<int, double>&,
-                                                       std::vector<uint8_t>*);
+                                                       std::vector<uint8_t>*,
+                                                       std::vector<int>*);
+template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, double>&,
+                                                           const std::vector<int>&,
+                                                           rmm::cuda_stream_view);
 #endif
 
 }  // namespace cuopt::linear_programming::detail
