@@ -392,9 +392,9 @@ Scaling
 
 ``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
 
-* ``0``: Scaling is off (default).
+* ``0``: Scaling is off.
 * ``1``: Scaling is on.
-* ``2``: Scaling is not applied to the objective.
+* ``2``: Scaling is not applied to the objective (default).
 
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
