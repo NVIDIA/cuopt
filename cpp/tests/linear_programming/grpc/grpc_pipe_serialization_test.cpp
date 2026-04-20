@@ -294,7 +294,7 @@ TEST(PipeSerialization, Result_RoundTrip)
   PipePair pp;
 
   ChunkedResultHeader header;
-  header.set_is_mip(false);
+  header.set_problem_category(cuopt::remote::LP);
   header.set_lp_termination_status(PDLP_OPTIMAL);
   header.set_primal_objective(42.5);
   header.set_solve_time(1.23);
@@ -319,7 +319,7 @@ TEST(PipeSerialization, Result_RoundTrip)
   ASSERT_TRUE(write_ok);
   ASSERT_TRUE(read_ok);
 
-  EXPECT_FALSE(header_out.is_mip());
+  EXPECT_EQ(header_out.problem_category(), cuopt::remote::LP);
   EXPECT_EQ(header_out.lp_termination_status(), PDLP_OPTIMAL);
   EXPECT_DOUBLE_EQ(header_out.primal_objective(), 42.5);
   EXPECT_DOUBLE_EQ(header_out.solve_time(), 1.23);
@@ -334,11 +334,11 @@ TEST(PipeSerialization, Result_MIPFields)
   PipePair pp;
 
   ChunkedResultHeader header;
-  header.set_is_mip(true);
+  header.set_problem_category(cuopt::remote::MIP);
   header.set_mip_termination_status(MIP_OPTIMAL);
   header.set_mip_objective(99.0);
   header.set_mip_gap(0.001);
-  header.set_error_message("");
+  header.set_mip_error_message("");
 
   auto solution = make_pattern(2000 * 8, 0x33);
   std::map<int32_t, std::vector<uint8_t>> arrays;
@@ -356,7 +356,7 @@ TEST(PipeSerialization, Result_MIPFields)
   ASSERT_TRUE(write_ok);
   ASSERT_TRUE(read_ok);
 
-  EXPECT_TRUE(header_out.is_mip());
+  EXPECT_EQ(header_out.problem_category(), cuopt::remote::MIP);
   EXPECT_EQ(header_out.mip_termination_status(), MIP_OPTIMAL);
   EXPECT_DOUBLE_EQ(header_out.mip_objective(), 99.0);
 
@@ -369,7 +369,7 @@ TEST(PipeSerialization, Result_EmptyArrays)
   PipePair pp;
 
   ChunkedResultHeader header;
-  header.set_is_mip(false);
+  header.set_problem_category(cuopt::remote::LP);
   header.set_error_message("solver failed");
 
   std::map<int32_t, std::vector<uint8_t>> arrays;  // no arrays (error case)
@@ -398,7 +398,7 @@ TEST(PipeSerialization, ProtobufRoundTrip)
   PipePair pp;
 
   ChunkedResultHeader msg;
-  msg.set_is_mip(true);
+  msg.set_problem_category(cuopt::remote::MIP);
   msg.set_primal_objective(3.14);
   msg.set_error_message("hello");
 
@@ -412,7 +412,7 @@ TEST(PipeSerialization, ProtobufRoundTrip)
 
   ASSERT_TRUE(write_ok);
   ASSERT_TRUE(read_ok);
-  EXPECT_TRUE(msg_out.is_mip());
+  EXPECT_EQ(msg_out.problem_category(), cuopt::remote::MIP);
   EXPECT_DOUBLE_EQ(msg_out.primal_objective(), 3.14);
   EXPECT_EQ(msg_out.error_message(), "hello");
 }
@@ -426,7 +426,7 @@ TEST(PipeSerialization, Result_LargeArray)
   PipePair pp;
 
   ChunkedResultHeader header;
-  header.set_is_mip(false);
+  header.set_problem_category(cuopt::remote::LP);
   header.set_primal_objective(0.0);
 
   // ~4 MiB array — large enough to require many kernel-level pipe iterations.

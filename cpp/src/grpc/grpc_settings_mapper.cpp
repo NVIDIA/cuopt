@@ -202,6 +202,33 @@ void map_mip_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
   pb_settings->set_num_gpus(settings.num_gpus);
   pb_settings->set_presolver(static_cast<int32_t>(settings.presolver));
   pb_settings->set_mip_scaling(settings.mip_scaling);
+
+  // Additional limits
+  pb_settings->set_work_limit(settings.work_limit);
+  if (settings.node_limit == std::numeric_limits<i_t>::max()) {
+    pb_settings->set_node_limit(-1);
+  } else {
+    pb_settings->set_node_limit(static_cast<int32_t>(settings.node_limit));
+  }
+
+  // Branching
+  pb_settings->set_reliability_branching(settings.reliability_branching);
+  pb_settings->set_mip_batch_pdlp_strong_branching(settings.mip_batch_pdlp_strong_branching);
+
+  // Cut configuration
+  pb_settings->set_max_cut_passes(settings.max_cut_passes);
+  pb_settings->set_mir_cuts(settings.mir_cuts);
+  pb_settings->set_mixed_integer_gomory_cuts(settings.mixed_integer_gomory_cuts);
+  pb_settings->set_knapsack_cuts(settings.knapsack_cuts);
+  pb_settings->set_clique_cuts(settings.clique_cuts);
+  pb_settings->set_strong_chvatal_gomory_cuts(settings.strong_chvatal_gomory_cuts);
+  pb_settings->set_reduced_cost_strengthening(settings.reduced_cost_strengthening);
+  pb_settings->set_cut_change_threshold(settings.cut_change_threshold);
+  pb_settings->set_cut_min_orthogonality(settings.cut_min_orthogonality);
+
+  // Determinism and reproducibility
+  pb_settings->set_determinism_mode(settings.determinism_mode);
+  pb_settings->set_seed(settings.seed);
 }
 
 template <typename i_t, typename f_t>
@@ -236,6 +263,31 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
                              ? sv
                              : CUOPT_MIP_SCALING_ON;
   }
+
+  // Additional limits
+  settings.work_limit = pb_settings.work_limit();
+  if (pb_settings.node_limit() >= 0) {
+    settings.node_limit = static_cast<i_t>(pb_settings.node_limit());
+  }
+
+  // Branching
+  settings.reliability_branching           = pb_settings.reliability_branching();
+  settings.mip_batch_pdlp_strong_branching = pb_settings.mip_batch_pdlp_strong_branching();
+
+  // Cut configuration
+  settings.max_cut_passes             = pb_settings.max_cut_passes();
+  settings.mir_cuts                   = pb_settings.mir_cuts();
+  settings.mixed_integer_gomory_cuts  = pb_settings.mixed_integer_gomory_cuts();
+  settings.knapsack_cuts              = pb_settings.knapsack_cuts();
+  settings.clique_cuts                = pb_settings.clique_cuts();
+  settings.strong_chvatal_gomory_cuts = pb_settings.strong_chvatal_gomory_cuts();
+  settings.reduced_cost_strengthening = pb_settings.reduced_cost_strengthening();
+  settings.cut_change_threshold       = pb_settings.cut_change_threshold();
+  settings.cut_min_orthogonality      = pb_settings.cut_min_orthogonality();
+
+  // Determinism and reproducibility
+  settings.determinism_mode = pb_settings.determinism_mode();
+  settings.seed             = pb_settings.seed();
 }
 
 // Explicit template instantiations

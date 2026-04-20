@@ -84,7 +84,7 @@ template <typename i_t, typename f_t>
 void map_lp_solution_to_proto(const cpu_lp_solution_t<i_t, f_t>& solution,
                               cuopt::remote::LPSolution* pb_solution)
 {
-  pb_solution->set_termination_status(to_proto_pdlp_status(solution.get_termination_status()));
+  pb_solution->set_lp_termination_status(to_proto_pdlp_status(solution.get_termination_status()));
   pb_solution->set_error_message(solution.get_error_status().what());
 
   // Solution vectors - CPU solution already has data in host memory
@@ -157,7 +157,7 @@ cpu_lp_solution_t<i_t, f_t> map_proto_to_lp_solution(const cuopt::remote::LPSolu
   std::vector<f_t> reduced_cost(pb_solution.reduced_cost().begin(),
                                 pb_solution.reduced_cost().end());
 
-  auto status    = from_proto_pdlp_status(pb_solution.termination_status());
+  auto status    = from_proto_pdlp_status(pb_solution.lp_termination_status());
   auto obj       = static_cast<f_t>(pb_solution.primal_objective());
   auto dual_obj  = static_cast<f_t>(pb_solution.dual_objective());
   auto solve_t   = pb_solution.solve_time();
@@ -233,17 +233,17 @@ template <typename i_t, typename f_t>
 void map_mip_solution_to_proto(const cpu_mip_solution_t<i_t, f_t>& solution,
                                cuopt::remote::MIPSolution* pb_solution)
 {
-  pb_solution->set_termination_status(to_proto_mip_status(solution.get_termination_status()));
-  pb_solution->set_error_message(solution.get_error_status().what());
+  pb_solution->set_mip_termination_status(to_proto_mip_status(solution.get_termination_status()));
+  pb_solution->set_mip_error_message(solution.get_error_status().what());
 
   // Solution vector - CPU solution already has data in host memory
   const auto& sol_vec = solution.get_solution_host();
   for (const auto& v : sol_vec) {
-    pb_solution->add_solution(static_cast<double>(v));
+    pb_solution->add_mip_solution(static_cast<double>(v));
   }
 
   // Solution statistics
-  pb_solution->set_objective(solution.get_objective_value());
+  pb_solution->set_mip_objective(solution.get_objective_value());
   pb_solution->set_mip_gap(solution.get_mip_gap());
   pb_solution->set_solution_bound(solution.get_solution_bound());
   pb_solution->set_total_solve_time(solution.get_solve_time());
@@ -260,12 +260,13 @@ cpu_mip_solution_t<i_t, f_t> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution)
 {
   // Convert solution vector
-  std::vector<f_t> solution_vec(pb_solution.solution().begin(), pb_solution.solution().end());
+  std::vector<f_t> solution_vec(pb_solution.mip_solution().begin(),
+                                pb_solution.mip_solution().end());
 
   // Create CPU MIP solution with data
   return cpu_mip_solution_t<i_t, f_t>(std::move(solution_vec),
-                                      from_proto_mip_status(pb_solution.termination_status()),
-                                      static_cast<f_t>(pb_solution.objective()),
+                                      from_proto_mip_status(pb_solution.mip_termination_status()),
+                                      static_cast<f_t>(pb_solution.mip_objective()),
                                       static_cast<f_t>(pb_solution.mip_gap()),
                                       static_cast<f_t>(pb_solution.solution_bound()),
                                       pb_solution.total_solve_time(),
@@ -344,7 +345,7 @@ template <typename i_t, typename f_t>
 void populate_chunked_result_header_lp(const cpu_lp_solution_t<i_t, f_t>& solution,
                                        cuopt::remote::ChunkedResultHeader* header)
 {
-  header->set_is_mip(false);
+  header->set_problem_category(cuopt::remote::LP);
   header->set_lp_termination_status(to_proto_pdlp_status(solution.get_termination_status()));
   header->set_error_message(solution.get_error_status().what());
   header->set_l2_primal_residual(solution.get_l2_primal_residual());
@@ -416,7 +417,7 @@ template <typename i_t, typename f_t>
 void populate_chunked_result_header_mip(const cpu_mip_solution_t<i_t, f_t>& solution,
                                         cuopt::remote::ChunkedResultHeader* header)
 {
-  header->set_is_mip(true);
+  header->set_problem_category(cuopt::remote::MIP);
   header->set_mip_termination_status(to_proto_mip_status(solution.get_termination_status()));
   header->set_mip_error_message(solution.get_error_status().what());
   header->set_mip_objective(solution.get_objective_value());

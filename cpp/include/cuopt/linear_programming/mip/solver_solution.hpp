@@ -75,6 +75,7 @@ class mip_solution_t : public base_solution_t {
   const std::vector<std::string>& get_variable_names() const;
   const std::vector<rmm::device_uvector<f_t>>& get_solution_pool() const;
   void write_to_sol_file(std::string_view filename, rmm::cuda_stream_view stream_view) const;
+  void log_detailed_summary() const;
   void log_summary() const;
 
  private:

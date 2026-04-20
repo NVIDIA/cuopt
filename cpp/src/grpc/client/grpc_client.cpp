@@ -1034,7 +1034,7 @@ bool grpc_client_t::download_chunked_result(const std::string& job_id,
   GRPC_CLIENT_DEBUG_LOG(config_,
                         "[grpc_client] ChunkedDownload started, download_id="
                           << download_id << " arrays=" << header->arrays_size()
-                          << " is_mip=" << header->is_mip());
+                          << " problem_category=" << header->problem_category());
 
   // --- 2. Fetch each array via GetResultChunk RPCs ---
   int64_t chunk_data_budget = config_.chunk_size_bytes;

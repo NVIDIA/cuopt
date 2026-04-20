@@ -55,6 +55,7 @@ jobs:
           cp ./LICENSE ./ci/docker/context/LICENSE
           cp ./VERSION ./ci/docker/context/VERSION
           cp ./thirdparty/THIRD_PARTY_LICENSES ./ci/docker/context/THIRD_PARTY_LICENSES
+          cp ./ci/docker/entrypoint.sh ./ci/docker/context/entrypoint.sh
       - name: Copy Commit SHA and commit time
         run: |
           git rev-parse HEAD > ./ci/docker/context/COMMIT_SHA

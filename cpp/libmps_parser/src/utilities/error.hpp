@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -49,9 +49,7 @@ inline void mps_parser_expects(bool cond, error_type_t error_type, const char* f
   if (not cond) {
     va_list args;
     va_start(args, fmt);
-
     char msg[2048];
-    va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
 
@@ -75,9 +73,7 @@ inline void mps_parser_expects_fatal(bool cond, error_type_t error_type, const c
   if (not cond) {
     va_list args;
     va_start(args, fmt);
-
     char msg[2048];
-    va_start(args, fmt);
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
     std::string error_string = error_to_string(error_type);

@@ -36,6 +36,30 @@
   var V_CONDA_NEXT = nextMajor + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
   var V_NEXT = nextMajor + "." + nextMinor;
 
+  /* Shared Docker image lines: same tags are typically published to Docker Hub and NGC */
+  var CONTAINER_CUOPT_LIB = {
+    stable: {
+      cu12: {
+        default: "docker pull nvidia/cuopt:latest-cuda12.9-py3.13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda12.9-py3.13 /bin/bash",
+      },
+      cu13: {
+        default: "docker pull nvidia/cuopt:latest-cuda13.0-py3.13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda13.0-py3.13 /bin/bash",
+      },
+    },
+    nightly: {
+      cu12: {
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13 /bin/bash",
+      },
+      cu13: {
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13 /bin/bash",
+      },
+    },
+  };
+
   var COMMANDS = {
     python: {
       pip: {
@@ -82,48 +106,27 @@
             ".* cuda-version=13.0",
         },
       },
-      container: {
-        stable: {
-          cu12: {
-            default: "docker pull nvidia/cuopt:latest-cuda12.9-py3.13",
-            run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda12.9-py3.13 /bin/bash",
-          },
-          cu13: {
-            default: "docker pull nvidia/cuopt:latest-cuda13.0-py3.13",
-            run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda13.0-py3.13 /bin/bash",
-          },
-        },
-        nightly: {
-          cu12: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13",
-            run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13 /bin/bash",
-          },
-          cu13: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13",
-            run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13 /bin/bash",
-          },
-        },
-      },
+      container: CONTAINER_CUOPT_LIB,
     },
     c: {
       pip: {
         stable: {
           cu12:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" +
+            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" +
             V +
             ".*'",
           cu13:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" +
+            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" +
             V +
             ".*'",
         },
         nightly: {
           cu12:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" +
+            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" +
             V_NEXT +
             ".*'",
           cu13:
-            "pip uninstall -y cuopt-thin-client 2>/dev/null; pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" +
+            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" +
             V_NEXT +
             ".*'",
         },
@@ -131,11 +134,11 @@
       conda: {
         stable: {
           cu12:
-            "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
+            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
             ".* cuda-version=12.9",
           cu13:
-            "conda remove cuopt-thin-client --yes 2>/dev/null; conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
+            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
             V_CONDA +
             ".* cuda-version=13.0",
         },
@@ -150,7 +153,7 @@
             ".* cuda-version=13.0",
         },
       },
-      container: null,
+      container: CONTAINER_CUOPT_LIB,
     },
     server: {
       pip: {
@@ -228,9 +231,9 @@
 
   var SUPPORTED_METHODS = {
     python: ["pip", "conda", "container"],
-    c: ["pip", "conda"],
+    c: ["pip", "conda", "container"],
     server: ["pip", "conda", "container"],
-    cli: ["pip", "conda"],
+    cli: ["pip", "conda", "container"],
   };
 
   function getSelectedValue(name) {
@@ -264,7 +267,41 @@
     if (method === "container") {
       var cudaKey = cuda || "cu12";
       var c = data[release][cudaKey] || data[release].cu12;
-      cmd = c.default + "\n\n# Run the container:\n" + c.run;
+      var hubPull = c.default;
+      var tag = "latest-cuda12.9-py3.13";
+      var tm = hubPull.match(/docker pull nvidia\/cuopt:(\S+)/);
+      if (tm) tag = tm[1];
+      var registry = getSelectedValue("cuopt-registry") || "hub";
+      var runLine = c.run;
+      if (registry === "ngc" && release === "nightly") {
+        cmd =
+          "# Nightly cuOpt container images are not published to NVIDIA NGC; use Docker Hub for nightly builds.\n" +
+          "# (Select \"Docker Hub\" above for the same commands without this note.)\n\n" +
+          "# Docker Hub (docker.io) — no registry login required for public pulls\n" +
+          hubPull +
+          "\n\n" +
+          "# Run the container:\n" +
+          runLine;
+      } else if (registry === "ngc") {
+        runLine = runLine.replace(/nvidia\/cuopt:/g, "nvcr.io/nvidia/cuopt/cuopt:");
+        cmd =
+          "# NVIDIA NGC (nvcr.io) — authenticate once per session, then pull:\n" +
+          "docker login nvcr.io\n" +
+          "# Username: $oauthtoken\n" +
+          "# Password: <NGC API key>\n\n" +
+          "docker pull nvcr.io/nvidia/cuopt/cuopt:" +
+          tag +
+          "\n\n" +
+          "# Run the container:\n" +
+          runLine;
+      } else {
+        cmd =
+          "# Docker Hub (docker.io) — no registry login required for public pulls\n" +
+          hubPull +
+          "\n\n" +
+          "# Run the container:\n" +
+          runLine;
+      }
     } else {
       var key = data[release].cu12 && data[release].cu13 ? cuda : "default";
       cmd = data[release][key] || data[release].cu12 || data[release].cu13 || data[release].default || "";
@@ -302,9 +339,17 @@
     var cudaRow = document.getElementById("cuopt-cuda-row");
     var releaseRow = document.getElementById("cuopt-release-row");
     var releaseVisible = iface !== "cli";
-    var showCuda = releaseVisible && (method === "pip" || method === "conda" || method === "container") && hasCudaVariants(iface, method);
+    var ifaceForVariants = iface === "cli" ? "c" : iface;
+    var showCuda =
+      releaseVisible &&
+      (method === "pip" || method === "conda" || method === "container") &&
+      hasCudaVariants(ifaceForVariants, method);
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = releaseVisible ? "table-row" : "none";
+    var registryRow = document.getElementById("cuopt-registry-row");
+    if (registryRow) {
+      registryRow.style.display = method === "container" ? "table-row" : "none";
+    }
     updateOutput();
   }
 
@@ -350,13 +395,17 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-cuda" value="cu12" checked> 12.x</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-cuda" value="cu13"> 13.x</label>' +
       '</td></tr>' +
+      '<tr id="cuopt-registry-row" style="display:none;"><td class="cuopt-opt-label">Registry</td><td class="cuopt-opt-group" role="group" aria-label="Container registry">' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="hub" checked> Docker Hub</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="ngc"> NVIDIA NGC</label>' +
+      '</td></tr>' +
       "</table>" +
       '<div class="cuopt-install-output">' +
       '<textarea id="cuopt-cmd-out" class="cuopt-install-cmd-out" readonly rows="6" style="display:none;"></textarea>' +
       '<div class="cuopt-install-copy-wrap"><button type="button" id="cuopt-copy-btn" class="cuopt-install-copy-btn" style="display:none;">Copy command</button></div>' +
       "</div></div>";
 
-    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda"].forEach(
+    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-registry"].forEach(
       function (name) {
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(function (input) {

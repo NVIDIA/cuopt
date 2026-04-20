@@ -16,6 +16,11 @@ enum ProblemCategory {
   MIP = 1;
 }
 
+enum VariableType {
+  CONTINUOUS = 0;
+  INTEGER = 1;
+}
+
 // Optimization problem representation (field names match cpu_optimization_problem_t)
 message OptimizationProblem {
   // Problem metadata
@@ -26,40 +31,39 @@ message OptimizationProblem {
   double objective_offset = 5;
 
   // Variable and row names (optional)
-  repeated string variable_names = 6;
-  repeated string row_names = 7;
+  repeated string variable_names = 7;
+  repeated string row_names = 8;
 
   // Constraint matrix A in CSR format
-  repeated double A = 8;
-  repeated int32 A_indices = 9;
-  repeated int32 A_offsets = 10;
+  repeated double A_values = 9;
+  repeated int32 A_indices = 10;
+  repeated int32 A_offsets = 11;
 
   // Problem vectors
-  repeated double c = 11;              // objective coefficients
-  repeated double b = 12;              // constraint bounds (RHS)
-  repeated double variable_lower_bounds = 13;
-  repeated double variable_upper_bounds = 14;
+  repeated double c = 12;              // objective coefficients
+  repeated double b = 13;              // constraint bounds (RHS)
+  repeated double variable_lower_bounds = 14;
+  repeated double variable_upper_bounds = 15;
 
   // Constraint bounds (alternative to b + row_types)
-  repeated double constraint_lower_bounds = 15;
-  repeated double constraint_upper_bounds = 16;
-  bytes row_types = 17;  // char array: 'E' (=), 'L' (<=), 'G' (>=), 'N' (objective)
+  repeated double constraint_lower_bounds = 16;
+  repeated double constraint_upper_bounds = 17;
+  bytes row_types = 18;  // char array: 'E' (=), 'L' (<=), 'G' (>=), 'N' (objective)
 
-  // Variable types
-  bytes variable_types = 18;  // char array: 'C' (continuous), 'I' (integer), 'B' (binary)
+  // Variable types (enum-based: CONTINUOUS or INTEGER)
+  repeated VariableType variable_types = 19;
 
   // Initial solutions
-  repeated double initial_primal_solution = 19;
-  repeated double initial_dual_solution = 20;
+  repeated double initial_primal_solution = 20;
+  repeated double initial_dual_solution = 21;
 
   // Quadratic objective matrix Q in CSR format
-  repeated double Q_values = 21;
-  repeated int32 Q_indices = 22;
-  repeated int32 Q_offsets = 23;
+  repeated double Q_values = 22;
+  repeated int32 Q_indices = 23;
+  repeated int32 Q_offsets = 24;
 }
 
 // PDLP solver mode enum (matches cuOpt pdlp_solver_mode_t)
-// Matches cuOpt pdlp_solver_mode_t enum values
 enum PDLPSolverMode {
   Stable1 = 0;
   Stable2 = 1;
@@ -77,6 +81,7 @@ enum LPMethod {
 }
 
 // PDLP solver settings (field names match cuOpt Python/C++ API)
+// Dense numbering: tolerances 1-8, limits 9-10, config 11-30
 message PDLPSolverSettings {
   // Termination tolerances
   double absolute_gap_tolerance = 1;
@@ -89,39 +94,42 @@ message PDLPSolverSettings {
   double relative_primal_tolerance = 8;
 
   // Limits
-  double time_limit = 10;
+  double time_limit = 9;
   // Iteration limit. Sentinel: set to -1 to mean "unset/use server defaults".
   // Note: proto3 numeric fields default to 0 when omitted, so clients should
   // explicitly use -1 (or a positive value) to avoid accidentally requesting 0 iterations.
-  int64 iteration_limit = 11;
+  int64 iteration_limit = 10;
 
   // Solver configuration
-  bool log_to_console = 20;
-  bool detect_infeasibility = 21;
-  bool strict_infeasibility = 22;
-  PDLPSolverMode pdlp_solver_mode = 23;
-  LPMethod method = 24;
-  int32 presolver = 25;
-  bool dual_postsolve = 26;
-  bool crossover = 27;
-  int32 num_gpus = 28;
+  bool log_to_console = 11;
+  bool detect_infeasibility = 12;
+  bool strict_infeasibility = 13;
+  PDLPSolverMode pdlp_solver_mode = 14;
+  LPMethod method = 15;
+  int32 presolver = 16;
+  bool dual_postsolve = 17;
+  bool crossover = 18;
+  int32 num_gpus = 19;
 
-  bool per_constraint_residual = 30;
-  bool cudss_deterministic = 31;
-  int32 folding = 32;
-  int32 augmented = 33;
-  int32 dualize = 34;
-  int32 ordering = 35;
-  int32 barrier_dual_initial_point = 36;
-  bool eliminate_dense_columns = 37;
-  bool save_best_primal_so_far = 38;
-  bool first_primal_feasible = 39;
-  int32 pdlp_precision = 40;
+  bool per_constraint_residual = 20;
+  bool cudss_deterministic = 21;
+  int32 folding = 22;
+  int32 augmented = 23;
+  int32 dualize = 24;
+  int32 ordering = 25;
+  int32 barrier_dual_initial_point = 26;
+  bool eliminate_dense_columns = 27;
+  bool save_best_primal_so_far = 28;
+  bool first_primal_feasible = 29;
+  int32 pdlp_precision = 30;
 
   // Warm start data (if provided)
   PDLPWarmStartData warm_start_data = 50;
 }
 
+// PDLP warm start data for continuing from a previous solve.
+// Array field numbers 1-9, scalar field numbers in 3000-range
+// (shared with ChunkedResultHeader for consistent chunked transfer numbering).
 message PDLPWarmStartData {
   repeated double current_primal_solution = 1;
   repeated double current_dual_solution = 2;
@@ -133,17 +141,18 @@ message PDLPWarmStartData {
   repeated double last_restart_duality_gap_primal_solution = 8;
   repeated double last_restart_duality_gap_dual_solution = 9;
 
-  double initial_primal_weight = 10;
-  double initial_step_size = 11;
-  int32 total_pdlp_iterations = 12;
-  int32 total_pdhg_iterations = 13;
-  double last_candidate_kkt_score = 14;
-  double last_restart_kkt_score = 15;
-  double sum_solution_weight = 16;
-  int32 iterations_since_last_restart = 17;
+  double initial_primal_weight = 3000;
+  double initial_step_size = 3001;
+  int32 total_pdlp_iterations = 3002;
+  int32 total_pdhg_iterations = 3003;
+  double last_candidate_kkt_score = 3004;
+  double last_restart_kkt_score = 3005;
+  double sum_solution_weight = 3006;
+  int32 iterations_since_last_restart = 3007;
 }
 
 // MIP solver settings (field names match cuOpt Python/C++ API)
+// Dense numbering 1-28
 message MIPSolverSettings {
   // Limits
   double time_limit = 1;
@@ -157,12 +166,35 @@ message MIPSolverSettings {
   double presolve_absolute_tolerance = 7;
 
   // Solver configuration
-  bool log_to_console = 10;
-  bool heuristics_only = 11;
-  int32 num_cpu_threads = 12;
-  int32 num_gpus = 13;
-  int32 presolver = 14;
-  int32 mip_scaling = 15;
+  bool log_to_console = 8;
+  bool heuristics_only = 9;
+  int32 num_cpu_threads = 10;
+  int32 num_gpus = 11;
+  int32 presolver = 12;
+  int32 mip_scaling = 13;
+
+  // Additional limits
+  double work_limit = 14;
+  int32 node_limit = 15;
+
+  // Branching
+  int32 reliability_branching = 16;
+  int32 mip_batch_pdlp_strong_branching = 17;
+
+  // Cut configuration
+  int32 max_cut_passes = 18;
+  int32 mir_cuts = 19;
+  int32 mixed_integer_gomory_cuts = 20;
+  int32 knapsack_cuts = 21;
+  int32 clique_cuts = 22;
+  int32 strong_chvatal_gomory_cuts = 23;
+  int32 reduced_cost_strengthening = 24;
+  double cut_change_threshold = 25;
+  double cut_min_orthogonality = 26;
+
+  // Determinism and reproducibility
+  int32 determinism_mode = 27;
+  int32 seed = 28;
 }
 
 // LP solve request
@@ -181,6 +213,8 @@ message SolveMIPRequest {
 }
 
 // LP solution
+// Array field numbers 1-4, scalar field numbers in 1000-range
+// (shared with ChunkedResultHeader for consistent chunked transfer numbering).
 message LPSolution {
   // Solution vectors
   repeated double primal_solution = 1;
@@ -191,18 +225,18 @@ message LPSolution {
   PDLPWarmStartData warm_start_data = 4;
 
   // Termination information
-  PDLPTerminationStatus termination_status = 10;
-  string error_message = 11;
+  PDLPTerminationStatus lp_termination_status = 1000;
+  string error_message = 1001;
 
   // Solution statistics
-  double l2_primal_residual = 20;
-  double l2_dual_residual = 21;
-  double primal_objective = 22;
-  double dual_objective = 23;
-  double gap = 24;
-  int32 nb_iterations = 25;
-  double solve_time = 26;
-  int32 solved_by = 27;
+  double l2_primal_residual = 1002;
+  double l2_dual_residual = 1003;
+  double primal_objective = 1004;
+  double dual_objective = 1005;
+  double gap = 1006;
+  int32 nb_iterations = 1007;
+  double solve_time = 1008;
+  int32 solved_by = 1009;
 }
 
 enum PDLPTerminationStatus {
@@ -218,22 +252,24 @@ enum PDLPTerminationStatus {
 }
 
 // MIP solution
+// Array field number 1, scalar field numbers in 2000-range
+// (shared with ChunkedResultHeader for consistent chunked transfer numbering).
 message MIPSolution {
-  repeated double solution = 1;
+  repeated double mip_solution = 1;
 
-  MIPTerminationStatus termination_status = 10;
-  string error_message = 11;
+  MIPTerminationStatus mip_termination_status = 2000;
+  string mip_error_message = 2001;
 
-  double objective = 20;
-  double mip_gap = 21;
-  double solution_bound = 22;
-  double total_solve_time = 23;
-  double presolve_time = 24;
-  double max_constraint_violation = 25;
-  double max_int_violation = 26;
-  double max_variable_bound_violation = 27;
-  int32 nodes = 28;
-  int32 simplex_iterations = 29;
+  double mip_objective = 2002;
+  double mip_gap = 2003;
+  double solution_bound = 2004;
+  double total_solve_time = 2005;
+  double presolve_time = 2006;
+  double max_constraint_violation = 2007;
+  double max_int_violation = 2008;
+  double max_variable_bound_violation = 2009;
+  int32 nodes = 2010;
+  int32 simplex_iterations = 2011;
 }
 
 enum MIPTerminationStatus {
@@ -246,47 +282,46 @@ enum MIPTerminationStatus {
   MIP_WORK_LIMIT = 6;
 }
 
-// Array field identifiers for chunked array transfers
-// Used to identify which problem array a chunk belongs to
+// Array field identifiers for chunked array transfers.
+// Numbering matches codegen field_registry.yaml array_id values.
 enum ArrayFieldId {
-  FIELD_A_VALUES = 0;
-  FIELD_A_INDICES = 1;
-  FIELD_A_OFFSETS = 2;
-  FIELD_C = 3;
-  FIELD_B = 4;
-  FIELD_VARIABLE_LOWER_BOUNDS = 5;
-  FIELD_VARIABLE_UPPER_BOUNDS = 6;
-  FIELD_CONSTRAINT_LOWER_BOUNDS = 7;
-  FIELD_CONSTRAINT_UPPER_BOUNDS = 8;
-  FIELD_ROW_TYPES = 9;
-  FIELD_VARIABLE_TYPES = 10;
-  FIELD_Q_VALUES = 11;
-  FIELD_Q_INDICES = 12;
-  FIELD_Q_OFFSETS = 13;
-  FIELD_INITIAL_PRIMAL = 14;
-  FIELD_INITIAL_DUAL = 15;
-  // String arrays (null-separated bytes, sent as chunks alongside numeric data)
-  FIELD_VARIABLE_NAMES = 20;
-  FIELD_ROW_NAMES = 21;
+  FIELD_VARIABLE_NAMES = 0;
+  FIELD_ROW_NAMES = 1;
+  FIELD_A_VALUES = 2;
+  FIELD_A_INDICES = 3;
+  FIELD_A_OFFSETS = 4;
+  FIELD_C = 5;
+  FIELD_B = 6;
+  FIELD_VARIABLE_LOWER_BOUNDS = 7;
+  FIELD_VARIABLE_UPPER_BOUNDS = 8;
+  FIELD_CONSTRAINT_LOWER_BOUNDS = 9;
+  FIELD_CONSTRAINT_UPPER_BOUNDS = 10;
+  FIELD_ROW_TYPES = 11;
+  FIELD_VARIABLE_TYPES = 12;
+  FIELD_INITIAL_PRIMAL_SOLUTION = 13;
+  FIELD_INITIAL_DUAL_SOLUTION = 14;
+  FIELD_Q_VALUES = 15;
+  FIELD_Q_INDICES = 16;
+  FIELD_Q_OFFSETS = 17;
 }
 
-// Result array field identifiers for chunked result downloads
-// Used to identify which result array a chunk belongs to
+// Result array field identifiers for chunked result downloads.
+// Numbering matches codegen field_registry.yaml array_id values.
 enum ResultFieldId {
   RESULT_PRIMAL_SOLUTION = 0;
   RESULT_DUAL_SOLUTION = 1;
   RESULT_REDUCED_COST = 2;
-  RESULT_MIP_SOLUTION = 3;
   // Warm start arrays (LP only)
-  RESULT_WS_CURRENT_PRIMAL = 10;
-  RESULT_WS_CURRENT_DUAL = 11;
-  RESULT_WS_INITIAL_PRIMAL_AVG = 12;
-  RESULT_WS_INITIAL_DUAL_AVG = 13;
-  RESULT_WS_CURRENT_ATY = 14;
-  RESULT_WS_SUM_PRIMAL = 15;
-  RESULT_WS_SUM_DUAL = 16;
-  RESULT_WS_LAST_RESTART_GAP_PRIMAL = 17;
-  RESULT_WS_LAST_RESTART_GAP_DUAL = 18;
+  RESULT_WS_CURRENT_PRIMAL = 3;
+  RESULT_WS_CURRENT_DUAL = 4;
+  RESULT_WS_INITIAL_PRIMAL_AVG = 5;
+  RESULT_WS_INITIAL_DUAL_AVG = 6;
+  RESULT_WS_CURRENT_ATY = 7;
+  RESULT_WS_SUM_PRIMAL = 8;
+  RESULT_WS_SUM_DUAL = 9;
+  RESULT_WS_LAST_RESTART_GAP_PRIMAL = 10;
+  RESULT_WS_LAST_RESTART_GAP_DUAL = 11;
+  RESULT_MIP_SOLUTION = 12;
 }
 
 // Job status for async operations

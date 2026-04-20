@@ -293,6 +293,14 @@ find_package(CUDSS REQUIRED)
 # gRPC can come from either:
 # - an installed CMake package (gRPCConfig.cmake), or
 # - an in-tree build (e.g. python/libcuopt uses FetchContent(grpc), which defines gRPC::grpc++).
+
+if(NOT TARGET OpenSSL::SSL)
+  find_package(OpenSSL CONFIG QUIET)
+  if(NOT OpenSSL_FOUND AND NOT OPENSSL_FOUND)
+    find_package(OpenSSL REQUIRED)
+  endif()
+endif()
+
 if(NOT TARGET gRPC::grpc++)
   find_package(gRPC CONFIG REQUIRED)
 endif()
