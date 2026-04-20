@@ -146,7 +146,9 @@ def classify_failures(results):
     """
     test_groups = defaultdict(list)
     for r in results:
-        key = f"{r['suite']}::{r['classname']}::{r['name']}"
+        # Group by classname+name (not suite) so rerun entries from
+        # supplementary XML files match the main XML entries
+        key = f"{r['classname']}::{r['name']}"
         test_groups[key].append(r)
 
     classified = {

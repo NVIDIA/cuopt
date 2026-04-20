@@ -30,8 +30,11 @@ for arg in "$@"; do
     fi
 done
 
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+export PYTHONPATH="${SCRIPT_DIR}/utils:${PYTHONPATH:-}"
+
 rc=0
-pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
+pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 
 if [ "${rc}" -le 128 ]; then
     exit ${rc}

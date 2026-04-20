@@ -31,8 +31,12 @@ for arg in "$@"; do
     fi
 done
 
+# Add CI utils to PYTHONPATH so the rerun XML plugin is importable
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+export PYTHONPATH="${SCRIPT_DIR}/utils:${PYTHONPATH:-}"
+
 rc=0
-pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
+pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 
 # If not a crash, exit normally
 if [ "${rc}" -le 128 ]; then
