@@ -50,12 +50,12 @@
     },
     nightly: {
       cu12: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13 /bin/bash",
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14 /bin/bash",
       },
       cu13: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13 /bin/bash",
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14 /bin/bash",
       },
     },
   };
@@ -217,12 +217,12 @@
         },
         nightly: {
           cu12: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.13",
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
           },
           cu13: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda13.0-py3.13",
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
           },
         },
       },
