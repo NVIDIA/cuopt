@@ -31,11 +31,7 @@ for arg in "$@"; do
 done
 
 rc=0
-if [ "${IS_NIGHTLY}" = "nightly" ]; then
-    pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
-else
-    pytest -s --cache-clear "$@" tests || rc=$?
-fi
+pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
 
 if [ "${rc}" -le 128 ]; then
     exit ${rc}

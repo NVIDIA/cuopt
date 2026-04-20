@@ -135,12 +135,11 @@ run_gtest_with_retry() {
         return 0
     fi
 
-    # For non-nightly builds, fail immediately — no retries or crash isolation
-    if [ "${IS_NIGHTLY}" != "nightly" ]; then
-        if was_signal_death "${rc}"; then
-            echo "CRASH: ${test_name} died from $(signal_name ${rc}) (exit code ${rc})"
-        fi
-        echo "FAILED: ${test_name} (exit code ${rc})"
+    # For non-nightly builds: retry failed tests but skip crash isolation
+    # (crash isolation reruns all untested tests individually — too slow for PRs)
+    if [ "${IS_NIGHTLY}" != "nightly" ] && was_signal_death "${rc}"; then
+        echo "CRASH: ${test_name} died from $(signal_name ${rc}) (exit code ${rc})"
+        echo "FAILED: ${test_name} — crash isolation only runs in nightly builds"
         OVERALL_RC=1
         return 1
     fi
