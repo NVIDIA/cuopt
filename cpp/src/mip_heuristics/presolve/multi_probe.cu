@@ -86,10 +86,26 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd_1.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Problem structure may have changed; invalidate the clique group table so
-  // it gets rebuilt on the next bound_update_loop invocation.
-  clique_data_built    = false;
-  clique_data.n_groups = 0;
+  // Only invalidate the clique group table if problem dims actually changed.
+  // See bound_presolve_t::resize for the rationale — keeping clique_data
+  // alive across same-dim resizes avoids needlessly dropping to the stock
+  // path while B&B's cut passes are still holding the ready_for_heuristics
+  // flag low.
+  if (clique_data_built && clique_data.n_groups > 0) {
+    const bool dims_mismatch =
+      (i_t)clique_data.constraint_group_offsets.size() != problem.n_constraints + 1 ||
+      (i_t)clique_data.reverse_group_id.size() != problem.nnz;
+    if (dims_mismatch) {
+      clique_data_built    = false;
+      clique_data.n_groups = 0;
+    } else {
+      // upd_{0,1}.resize above dropped group correction buffers to 0.
+      // Restore them to match the clique_data we're keeping.
+      auto stream = problem.handle_ptr->get_stream();
+      upd_0.resize_clique_buffers(clique_data.n_groups, stream);
+      upd_1.resize_clique_buffers(clique_data.n_groups, stream);
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -100,6 +116,9 @@ void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
     clique_data_built = true;  // nothing to build; don't re-check every iter
     return;
   }
+  // Gate: same handshake as in bound_presolve_t::ensure_clique_data. Skip
+  // clique-aware setup until B&B has finished mutating the clique table.
+  if (!pb.clique_table->ready_for_heuristics.load(std::memory_order_acquire)) { return; }
   clique_data.build_from_host(pb, *pb.clique_table);
   // Size each probe's dynamic correction buffers (owned by its own
   // bounds_update_data_t) to match the freshly built static group table.

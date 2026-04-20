@@ -454,6 +454,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // std::async and std::future allow us to get the return value of bb::solve()
     // without having to manually manage the thread
     // std::future.get() performs a join() operation to wait until the return status is available
+    //
+    // Handshake: B&B's cut passes will mutate context.problem_ptr->clique_table
+    // (the lazy caches in adj_list_small_cliques / var_degrees, via
+    // get_adj_set_of_var / get_degree_of_var from cut generation). Heuristics
+    // read those same structures to build their clique group table, which
+    // would be a data race. Clear the flag here — before the async launch —
+    // so heuristics skip clique-aware setup until B&B signals it's safe
+    // again (after its cut-pass loop completes, in branch_and_bound.cpp).
+    if (context.problem_ptr->clique_table) {
+      context.problem_ptr->clique_table->ready_for_heuristics.store(false,
+                                                                    std::memory_order_release);
+    }
     branch_and_bound_status_future = std::async(std::launch::async,
                                                 &dual_simplex::branch_and_bound_t<i_t, f_t>::solve,
                                                 branch_and_bound.get(),

@@ -72,6 +72,36 @@ struct clique_table_t {
   {
   }
 
+  // std::atomic is neither copyable nor movable, so adding ready_for_heuristics
+  // below would implicitly delete the struct's copy and move operations. We
+  // keep the copy forbidden (atomic state should not be duplicated) but
+  // provide an explicit move that transfers the flag via load/store, which is
+  // required by tests that return clique_table_t by value through NRVO.
+  clique_table_t(const clique_table_t&)            = delete;
+  clique_table_t& operator=(const clique_table_t&) = delete;
+
+  clique_table_t(clique_table_t&& other) noexcept
+    : first(std::move(other.first)),
+      addtl_cliques(std::move(other.addtl_cliques)),
+      var_clique_map_first(std::move(other.var_clique_map_first)),
+      var_clique_map_addtl(std::move(other.var_clique_map_addtl)),
+      first_var_positions(std::move(other.first_var_positions)),
+      adj_list_small_cliques(std::move(other.adj_list_small_cliques)),
+      var_degrees(std::move(other.var_degrees)),
+      n_variables(other.n_variables),
+      min_clique_size(other.min_clique_size),
+      max_clique_size_for_extension(other.max_clique_size_for_extension),
+      tolerances(other.tolerances),
+      ready_for_heuristics(other.ready_for_heuristics.load(std::memory_order_relaxed))
+  {
+  }
+
+  // Move-assign is intentionally not provided: the const members
+  // (n_variables, min_clique_size, max_clique_size_for_extension) make it
+  // ill-formed, and no caller needs it. Callers that need re-seating use a
+  // pointer / unique_ptr / shared_ptr.
+  clique_table_t& operator=(clique_table_t&&) = delete;
+
   std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx);
   i_t get_degree_of_var(i_t var_idx);
   bool check_adjacency(i_t var_idx1, i_t var_idx2);
@@ -97,6 +127,29 @@ struct clique_table_t {
   const i_t min_clique_size;
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
+
+  // Handshake flag used to gate access to this table from the heuristics
+  // threads while Branch-and-Bound may still be mutating it.
+  //
+  // Why this exists:
+  //   B&B's cut generation lazily caches into `adj_list_small_cliques` and
+  //   `var_degrees` via get_adj_set_of_var / get_degree_of_var. Meanwhile,
+  //   `clique_group_table_t::build_from_host` reads those same containers
+  //   (const iteration over unordered_map / vector) from the heuristics
+  //   thread. Concurrent mutation of std::unordered_map / std::vector during
+  //   a read is UB, so we gate heuristics access with this atomic.
+  //
+  // Contract:
+  //   - Initially false (constructor default).
+  //   - Set to true once by the single-threaded presolve phase after the
+  //     initial clique table has been built and assigned to problem_t.
+  //   - Set to false just before the B&B thread is launched (cut passes will
+  //     mutate the table).
+  //   - Set back to true after B&B's cut-pass loop completes (B&B no longer
+  //     mutates the table beyond that point).
+  //   - Heuristics check the flag (acquire) before calling build_from_host
+  //     and skip clique-aware data construction until it becomes true.
+  std::atomic<bool> ready_for_heuristics{false};
 };
 
 template <typename i_t, typename f_t>

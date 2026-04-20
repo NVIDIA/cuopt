@@ -391,14 +391,23 @@ __global__ void update_bounds_kernel(typename problem_t<i_t, f_t>::view_t pb,
 // restore the correct group contribution "without v".
 //
 // Derivation of the adjustment (max side; min is symmetric):
-//   Let pos_v = max(coeff_v, 0). Group g's corrected max contribution is max1_g
-//   (the largest pos_u among unfixed u ∈ g). Removing v from the group:
-//     if pos_v == max1_g  →  group contribution becomes max2_g (second-best)
-//     else                →  group contribution stays max1_g
-//   The stock formula subtracts pos_v from max_a_corrected. The adjustment to
-//   reach activity_without_v is:
-//     max_a += (pos_v >= max1_g) ? max2_g : pos_v
-//   (The degenerate case n_unfixed<2 is handled by max1=max2=0 → adjustment=0.)
+//   Group g's top-2 stats (max1, max2, min1, min2) live on the EFFECTIVE
+//   literal coefficient b_j = sign_j * a_j (so positive and complement
+//   literals share the same formula — see clique_activity_corrections.cu).
+//   When v is a member of group g with literal sign s_v, its effective coeff
+//   is b_v = s_v * coeff_v, and:
+//     pos_v_b = max(b_v, 0).  Group g's corrected max contribution is max1_g
+//     (the largest pos_b among unfixed u ∈ g). Removing v from the group:
+//       if pos_v_b == max1_g  →  group contribution becomes max2_g (second-best)
+//       else                  →  group contribution stays max1_g
+//     The stock formula subtracts pos_v_b from max_a_corrected. The adjustment
+//     to reach activity_without_v is:
+//       max_a += (pos_v_b >= max1_g) ? max2_g : pos_v_b
+//     (The degenerate case n_unfixed<2 is handled by max1=max2=0 →
+//     adjustment=0.)
+//   NOTE: the subsequent "peel raw coeff" step still uses the raw a_v because
+//   the activity itself was built from raw coefficients; only the top-2 math
+//   is in literal space.
 // -----------------------------------------------------------------------------
 template <typename i_t, typename f_t>
 inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
@@ -412,6 +421,7 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   thrust::pair<f_t, f_t> bnd,
   thrust::pair<f_t, f_t> old_bnd,
   i_t group_id,
+  i_t member_sign,
   typename clique_group_table_t<i_t, f_t>::view_t cliq)
 {
   auto min_a = upd.min_activity[cnst_idx];
@@ -426,20 +436,38 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   }
 
 #if CUOPT_DEBUG_CLIQUE_TIGHTENING
-  // Keep the pre-adjustment (== stock, post-clique-activity-correction) values
-  // so we can compare against the clique-aware path below and only print when
-  // the clique adjustment strictly tightens the per-cnst contribution.
-  const f_t stock_min_a_pre = min_a;
-  const f_t stock_max_a_pre = max_a;
+  // For the "stock" (no clique correction at all) comparison baseline we need
+  // the RAW min/max activity as it would have been without
+  // apply_clique_corrections_to_activity_kernel having subtracted the group
+  // corrections. Undo those here by adding back the per-group corrections for
+  // this constraint. Snapshotting now, before the per-var adjustment below,
+  // keeps the arithmetic straightforward.
+  f_t raw_min_a = min_a;
+  f_t raw_max_a = max_a;
+  {
+    i_t g_begin = cliq.constraint_group_offsets[cnst_idx];
+    i_t g_end   = cliq.constraint_group_offsets[cnst_idx + 1];
+    for (i_t g = g_begin; g < g_end; ++g) {
+      raw_max_a += upd.group_max_correction[g];
+      raw_min_a += upd.group_min_correction[g];
+    }
+  }
 #endif
 
   // Apply per-variable clique adjustment before peeling off v's contribution.
   // The top-2 stats live on upd (bounds_update_data_t), matching the per-probe
-  // lifetime of min_activity/max_activity.
+  // lifetime of min_activity/max_activity. They are computed in LITERAL space
+  // (b_j = sign_j * a_j), so the adjustment must compare against
+  // b_v = member_sign * coeff — NOT the raw coeff. Getting this wrong is a
+  // silent source of over-tightening for cliques that contain complement
+  // literals (member_sign == -1 with positive a_j, or vice versa).
   if (group_id >= 0) {
     cuopt_assert(group_id < cliq.n_groups, "clique group id out of range");
-    f_t pos_v = (coeff > 0) ? coeff : f_t{0};
-    f_t neg_v = (coeff < 0) ? coeff : f_t{0};
+    cuopt_assert(member_sign == 1 || member_sign == -1,
+                 "member_sign must be +/-1 when group_id >= 0");
+    f_t b_v   = static_cast<f_t>(member_sign) * coeff;
+    f_t pos_v = (b_v > 0) ? b_v : f_t{0};
+    f_t neg_v = (b_v < 0) ? b_v : f_t{0};
     f_t max1  = upd.group_max_pos[group_id];
     f_t max2  = upd.group_second_max_pos[group_id];
     f_t min1  = upd.group_min_neg[group_id];
@@ -450,6 +478,8 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
     f_t min_adj = (neg_v <= min1) ? min2 : neg_v;
     max_a += max_adj;
     min_a += min_adj;
+  } else {
+    cuopt_assert(member_sign == 0, "member_sign must be 0 when group_id == -1");
   }
 
   min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
@@ -460,21 +490,22 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   thrust::get<1>(bnd) = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
 
 #if CUOPT_DEBUG_CLIQUE_TIGHTENING
-  if (group_id >= 0) {
-    // Re-derive the "stock" (no clique adjustment) per-cnst lb/ub contribution
-    // starting from old_bnd, then compare to the accumulated bnd after this
-    // constraint. Print only when the clique path produces a strictly tighter
-    // endpoint.
-    f_t s_min_a = stock_min_a_pre;
-    f_t s_max_a = stock_max_a_pre;
+  // Genuine comparison: clique-aware per-cnst (lb, ub) vs the non-clique path
+  // run on the RAW activity. Fires for EVERY (var, cnst) — clique-aware
+  // tightening most often shows up on variables that are NOT themselves
+  // members of any clique (the bound on y in the canonical "x0+x1+x2+y ≥ 2"
+  // example), so we can't limit this to group_id >= 0.
+  {
+    f_t s_min_a = raw_min_a;
+    f_t s_max_a = raw_max_a;
     s_min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
     s_max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
     f_t s_dmin    = cnst_ub - s_min_a;
     f_t s_dmax    = cnst_lb - s_max_a;
     f_t s_lb      = update_lb(thrust::get<0>(old_bnd), coeff, s_dmin, s_dmax);
     f_t s_ub      = update_ub(thrust::get<1>(old_bnd), coeff, s_dmin, s_dmax);
-    f_t c_lb      = update_lb(thrust::get<0>(old_bnd), coeff, delta_min_act, delta_max_act);
-    f_t c_ub      = update_ub(thrust::get<1>(old_bnd), coeff, delta_min_act, delta_max_act);
+    f_t c_lb      = thrust::get<0>(bnd);
+    f_t c_ub      = thrust::get<1>(bnd);
     const f_t eps = (f_t)1e-9;
     if (c_lb > s_lb + eps || c_ub < s_ub - eps) {
       printf(
@@ -522,13 +553,18 @@ __device__ void update_bounds_cliq(typename problem_t<i_t, f_t>::view_t pb,
     // reverse_group_id is indexed on the reverse CSR position (same order as
     // reverse_constraints / reverse_coefficients). -1 means v is not in any
     // clique group for this constraint → behaves like the stock formula.
+    // reverse_member_sign is parallel; 0 when group_id == -1, ±1 otherwise
+    // (carries the literal polarity of this member).
     cuopt_assert((i_t)(var_offset + i) < (i_t)cliq.reverse_group_id.size(),
                  "reverse_group_id index out of range");
-    i_t group_id = cliq.reverse_group_id[var_offset + i];
+    cuopt_assert((i_t)(var_offset + i) < (i_t)cliq.reverse_member_sign.size(),
+                 "reverse_member_sign index out of range");
+    i_t group_id    = cliq.reverse_group_id[var_offset + i];
+    i_t member_sign = cliq.reverse_member_sign[var_offset + i];
     cuopt_assert(group_id == -1 || (group_id >= 0 && group_id < cliq.n_groups),
                  "reverse_group_id carries invalid group id");
     bnd = update_bounds_per_cnst_cliq<i_t, f_t>(
-      pb, var_idx, a, cnst_idx, cnst_lb, cnst_ub, upd, bnd, old_bnd, group_id, cliq);
+      pb, var_idx, a, cnst_idx, cnst_lb, cnst_ub, upd, bnd, old_bnd, group_id, member_sign, cliq);
   }
 
   thrust::get<0>(bnd) = BlockReduce(temp_storage).Reduce(thrust::get<0>(bnd), cuda::maximum());

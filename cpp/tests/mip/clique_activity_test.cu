@@ -193,10 +193,12 @@ TEST(clique_activity, build_from_host_basic_large_clique)
   EXPECT_EQ(count_out, 1);
 }
 
-TEST(clique_activity, build_from_host_skips_complement_literal_clique)
+TEST(clique_activity, build_from_host_accepts_complement_literal_clique)
 {
-  // Clique contains a complement literal (v >= n_vars). The first-implementation
-  // code drops cliques that mix complements, so no group should be emitted.
+  // Clique {x0, x1, ~x2} on constraint x0 + x1 + x2 + y >= 2. The third
+  // member is a complement literal, so its effective literal coefficient is
+  // -1 * 1 = -1 while the first two stay at +1. The group should be emitted
+  // with those three underlying vars and coeffs {+1, +1, -1}.
   const raft::handle_t handle{};
   const int n_vars = 4;
   auto pb          = make_problem(handle,
@@ -213,7 +215,21 @@ TEST(clique_activity, build_from_host_skips_complement_literal_clique)
 
   detail::clique_group_table_t<int, double> data(handle.get_stream());
   data.build_from_host(*pb, *ct);
-  EXPECT_TRUE(data.empty());
+  ASSERT_EQ(data.n_groups, 1);
+
+  auto stream       = handle.get_stream();
+  auto h_mem_vars   = host_copy(data.group_member_vars, stream);
+  auto h_mem_coeffs = host_copy(data.group_member_coeffs, stream);
+  ASSERT_EQ(h_mem_vars.size(), 3u);
+  // Build (var → effective coeff) map so we can check by identity.
+  std::unordered_map<int, double> got;
+  for (std::size_t i = 0; i < h_mem_vars.size(); ++i) {
+    got[h_mem_vars[i]] = h_mem_coeffs[i];
+  }
+  ASSERT_EQ(got.size(), 3u);
+  EXPECT_DOUBLE_EQ(got[0], 1.0);
+  EXPECT_DOUBLE_EQ(got[1], 1.0);
+  EXPECT_DOUBLE_EQ(got[2], -1.0);
 }
 
 TEST(clique_activity, build_from_host_small_adj_list_fallback)
@@ -419,6 +435,43 @@ TEST(clique_activity, bound_propagation_tightens_with_clique)
     EXPECT_DOUBLE_EQ(h_lb_cliq[i], 0.0);
     EXPECT_DOUBLE_EQ(h_ub_cliq[i], 1.0);
   }
+}
+
+TEST(clique_activity, bound_propagation_tightens_with_complement_literal_clique)
+{
+  // Constraint: x0 + x1 - x2 + y >= 1, all binary.
+  //   Stock max_a = 1 + 1 + 0 + 1 = 3.
+  // Clique: { x0, x1, ~x2 } — at most one of {x0=1, x1=1, x2=0} is true.
+  // Effective literal coeffs b = {+1, +1, -1*(-1)} = {+1, +1, +1}.
+  //   sum_pos = 3, max1 = 1 → max_correction = 2. Corrected max_a = 1.
+  //   For y (not in the clique): max_a_without_y = 1 - 1 = 0.
+  //   new_lb_y = ceil((1 - 0)/1) = 1.
+  const raft::handle_t handle{};
+  const int n_vars = 4;
+  auto pb          = make_problem(handle,
+                                  {0, 4},
+                                  {0, 1, 2, 3},
+                                  {1.0, 1.0, -1.0, 1.0},
+                                  {1.0},
+                                  {std::numeric_limits<double>::infinity()},
+                                  {0.0, 0.0, 0.0, 0.0},
+                                  {1.0, 1.0, 1.0, 1.0},
+                                  {'I', 'I', 'I', 'I'});
+
+  mip_solver_settings_t<int, double> settings{};
+  detail::mip_solver_context_t<int, double> context(pb->handle_ptr, pb.get(), settings);
+
+  detail::bound_presolve_t<int, double> bp_no_clique(context);
+  bp_no_clique.solve(*pb);
+  auto stream    = handle.get_stream();
+  auto h_lb_base = host_copy(bp_no_clique.upd.lb, stream);
+  EXPECT_DOUBLE_EQ(h_lb_base[3], 0.0);
+
+  pb->clique_table = make_clique_table(n_vars, /*first=*/{{0, 1, n_vars + 2}});
+  detail::bound_presolve_t<int, double> bp_with_clique(context);
+  bp_with_clique.solve(*pb);
+  auto h_lb_cliq = host_copy(bp_with_clique.upd.lb, stream);
+  EXPECT_DOUBLE_EQ(h_lb_cliq[3], 1.0);
 }
 
 TEST(clique_activity, bound_propagation_matches_when_clique_is_noop)

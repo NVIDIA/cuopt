@@ -91,10 +91,34 @@ void bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Problem structure may have changed; invalidate the clique group table so
-  // it gets rebuilt on the next bound_update_loop invocation.
-  clique_data_built    = false;
-  clique_data.n_groups = 0;
+  // Only invalidate the clique group table if problem dims actually changed.
+  // clique_data is a pure function of (n_constraints, n_variables, nnz,
+  // clique_table), and clique_table is stable after presolve, so a resize
+  // that lands on the same dims can safely keep reusing the existing build.
+  //
+  // This matters for the B&B-heuristics handshake: ensure_clique_data is
+  // gated on clique_table->ready_for_heuristics being true, which is cleared
+  // while B&B is running its cut passes. If resize() unconditionally cleared
+  // clique_data_built here, every heuristic iteration during B&B's cut-pass
+  // phase would drop back to the stock path and stay there, because
+  // ensure_clique_data can't rebuild until the flag flips back.
+  //
+  // Only check dims when we actually have a populated CSR (n_groups > 0);
+  // an empty built state (no cliques on this problem) is independent of
+  // dims and can always be reused as-is.
+  if (clique_data_built && clique_data.n_groups > 0) {
+    const bool dims_mismatch =
+      (i_t)clique_data.constraint_group_offsets.size() != problem.n_constraints + 1 ||
+      (i_t)clique_data.reverse_group_id.size() != problem.nnz;
+    if (dims_mismatch) {
+      clique_data_built    = false;
+      clique_data.n_groups = 0;
+    } else {
+      // upd.resize above dropped group_{max,min}_correction / top-2 buffers
+      // to size 0. We're keeping clique_data, so restore them to match.
+      upd.resize_clique_buffers(clique_data.n_groups, problem.handle_ptr->get_stream());
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -105,6 +129,11 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
     clique_data_built = true;  // nothing to build; don't re-check every iter
     return;
   }
+  // Gate: while B&B's cut passes may still be mutating the clique table
+  // (adj_list_small_cliques / var_degrees lazy caches), we must NOT read it
+  // from the heuristics thread. Leave clique_data_built = false so we try
+  // again on the next iteration once B&B flips the flag.
+  if (!pb.clique_table->ready_for_heuristics.load(std::memory_order_acquire)) { return; }
   clique_data.build_from_host(pb, *pb.clique_table);
   // Size the per-probe dynamic correction buffers (owned by bounds_update_data_t)
   // to match the freshly built static group table.

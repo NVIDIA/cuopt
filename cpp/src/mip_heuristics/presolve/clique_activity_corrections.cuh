@@ -60,6 +60,13 @@ struct clique_group_table_t {
     raft::device_span<const f_t> group_member_coeffs;
     raft::device_span<const i_t> constraint_group_offsets;
     raft::device_span<const i_t> reverse_group_id;
+    // Parallel to reverse_group_id (indexed on reverse-CSR slot). Holds the
+    // literal sign of the member for this (var, cnst) entry: +1 for positive
+    // literal, -1 for complement literal, 0 when reverse_group_id[pos] == -1
+    // (not a clique-group member for this cnst). Needed by the per-var
+    // adjustment because the group's top-2 stats live on the EFFECTIVE literal
+    // coefficient b_j = sign_j * a_j, while the per-nnz raw coeff is a_j.
+    raft::device_span<const i_t> reverse_member_sign;
     i_t n_groups;
   };
 
@@ -69,7 +76,8 @@ struct clique_group_table_t {
       group_member_vars(0, stream),
       group_member_coeffs(0, stream),
       constraint_group_offsets(0, stream),
-      reverse_group_id(0, stream)
+      reverse_group_id(0, stream),
+      reverse_member_sign(0, stream)
   {
   }
 
@@ -89,9 +97,14 @@ struct clique_group_table_t {
   // host clique table. Returns silently with n_groups=0 if no (constraint,
   // clique) pair has ≥2 members.
   //
-  // NOTE: For the first implementation, only cliques consisting entirely of
-  // positive literals are used. Cliques containing complement literals are
-  // skipped. This is conservative but may leave some propagation on the table.
+  // Literal handling: conflict-graph vertices are literals (v < n_vars is the
+  // positive literal of var v, v >= n_vars is the complement). Cliques may
+  // freely mix both polarities. Each group member stores its underlying var
+  // in group_member_vars and the *effective literal coefficient*
+  // `sign_j * a_j` (where sign_j is +1 for positive, -1 for complement) in
+  // group_member_coeffs. This choice is what lets the downstream correction
+  // kernel use the same formula for positive and complement literals — the
+  // constant `sum_{j in Q-} a_j` offset cancels in stock-minus-true.
   void build_from_host(problem_t<i_t, f_t>& problem, clique_table_t<i_t, f_t>& clique_table);
 
   view_t view();
@@ -105,6 +118,7 @@ struct clique_group_table_t {
   rmm::device_uvector<f_t> group_member_coeffs;
   rmm::device_uvector<i_t> constraint_group_offsets;
   rmm::device_uvector<i_t> reverse_group_id;
+  rmm::device_uvector<i_t> reverse_member_sign;
 
   i_t n_groups{0};
 };
