@@ -24,7 +24,7 @@ on:
         description: 'JSON array of CUDA versions to build for'
       python_ver:
         type: string
-        default: '["3.14.1"]'
+        default: '["3.14.4"]'
         description: 'JSON array of Python versions to build for'
       linux_ver:
         type: string
