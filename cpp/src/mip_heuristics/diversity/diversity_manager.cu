@@ -265,6 +265,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     problem_ptr->get_host_user_problem(host_problem);
     std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
     constexpr bool modify_problem_with_cliques = false;
+    // Snapshot the pre-build reverse_original_ids before find_initial_cliques
+    // runs. This snapshot records the user-input N-idx → clique-build M-idx
+    // map that corresponds to the id space encoded inside clique_table's
+    // vertex ids. It must be taken BEFORE the optional
+    // modify_problem_with_cliques trivial_presolve block below, because
+    // that block would change problem_ptr->reverse_original_ids while
+    // clique_table's ids remain anchored to the pre-mod snapshot.
+    std::vector<i_t> clique_build_reverse_original_ids = problem_ptr->reverse_original_ids;
     find_initial_cliques(host_problem,
                          context.settings.tolerances,
                          &clique_table,
@@ -283,7 +291,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
       trivial_presolve(*problem_ptr, remap_cache_ids);
     }
     if (clique_table) {
-      problem_ptr->clique_table = clique_table;
+      // Attach the id-space snapshot taken before find_initial_cliques ran
+      // (see above). This is what lets clique_group_table_t::build_from_host
+      // translate the table's vertex ids into sub-problem ids when
+      // fp_recombiner / bp_recombiner / sub_mip drive constraint_prop on
+      // a fixed_problem. See clique_table_t.cuh and build_from_host for
+      // the remap derivation.
+      clique_table->build_reverse_original_ids = std::move(clique_build_reverse_original_ids);
+      problem_ptr->clique_table                = clique_table;
       problem_ptr->clique_table->ready_for_heuristics.store(true, std::memory_order_release);
       CUOPT_LOG_DEBUG("Stored clique table on problem: %zu base cliques, %zu additional",
                       clique_table->first.size(),

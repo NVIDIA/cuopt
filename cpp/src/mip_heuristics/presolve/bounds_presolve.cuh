@@ -83,6 +83,18 @@ class bound_presolve_t {
   bounds_update_data_t<i_t, f_t> upd;
   clique_group_table_t<i_t, f_t> clique_data;
   bool clique_data_built{false};
+  // Fingerprint of the (problem, clique_table) pair the current `clique_data`
+  // was built against. Used by ensure_clique_data() to detect the caller
+  // switching problems under us (e.g. local_search alternating between
+  // *problem_ptr and problem_with_objective_cut — two instances that can
+  // even share dims while having different matrices). A pure dim check is
+  // not sufficient; we also compare the raw pointers. See the design doc
+  // `design_summaries/CLIQUE_AWARE_BOUND_PROP.md` §6 for rationale.
+  const problem_t<i_t, f_t>* last_built_problem           = nullptr;
+  const clique_table_t<i_t, f_t>* last_built_clique_table = nullptr;
+  i_t last_built_n_variables                              = -1;
+  i_t last_built_n_constraints                            = -1;
+  i_t last_built_nnz                                      = -1;
   std::vector<f_t> host_lb;
   std::vector<f_t> host_ub;
   settings_t settings;

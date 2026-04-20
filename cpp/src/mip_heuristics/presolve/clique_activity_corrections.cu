@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -59,6 +60,73 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
                  clique_table.var_clique_map_first.empty(),
                "var_clique_map_first sized inconsistently with problem");
 
+  // --- Clique-build idx space vs. problem idx space -------------------------
+  //
+  // The clique_table encodes literal vertices in [0, 2 * M) where
+  // M = clique_table.n_variables = problem.n_variables at the moment
+  // find_initial_cliques ran (the "clique-build snapshot", in M-space).
+  // Heuristics may drive this function against:
+  //   (a) the root problem (M == n_vars): identity map; or
+  //   (b) problem_with_objective_cut (same n_vars, extra row): identity; or
+  //   (c) a further-reduced sub-problem from solution_t::fix_variables
+  //       used by fp_recombiner / bp_recombiner / sub_mip. Its
+  //       `original_ids` lives in user-input N-space (not M-space) because
+  //       fix_variables composes with the parent problem's original_ids.
+  //
+  // For (c) we must translate clique-build vertex ids into the sub-problem's
+  // own idx space via the two-step chain
+  //     M-idx  ← clique_table.build_reverse_original_ids[N-idx] ←
+  //     N-idx  ← problem.original_ids[sub-idx] ← sub-idx
+  // and then drop clique members whose underlying var was fixed/removed.
+  //
+  // Builds a forward map `build_var_to_pb[m] = p` (or -1 if m was removed)
+  // so the rest of this function can operate entirely in pb-space and the
+  // closures below use n_vars without caring about M.
+  const i_t n_build_vars = clique_table.n_variables;
+  const bool ids_match   = (n_build_vars == n_vars);
+  std::vector<i_t> build_var_to_pb;
+  if (ids_match) {
+    // Fast path: same id space (root / +objective-cut problem). Identity.
+    build_var_to_pb.resize(n_build_vars);
+    std::iota(build_var_to_pb.begin(), build_var_to_pb.end(), i_t{0});
+  } else {
+    // Sub-problem path. Requires the snapshot recorded in
+    // diversity_manager_t::run_presolve when the clique table was attached.
+    cuopt_assert(
+      !clique_table.build_reverse_original_ids.empty(),
+      "clique_table.n_variables differs from problem.n_variables but the table has no "
+      "build_reverse_original_ids snapshot — the clique table was attached without recording its "
+      "id space; cannot safely remap to this sub-problem.");
+    cuopt_assert((i_t)problem.original_ids.size() == n_vars,
+                 "problem.original_ids must be sized to problem.n_variables to run clique-aware "
+                 "propagation on a sub-problem");
+    const i_t n_input = static_cast<i_t>(clique_table.build_reverse_original_ids.size());
+    build_var_to_pb.assign(n_build_vars, -1);
+    for (i_t p = 0; p < n_vars; ++p) {
+      i_t input_idx = problem.original_ids[p];
+      if (input_idx < 0 || input_idx >= n_input) continue;
+      i_t build_idx = clique_table.build_reverse_original_ids[input_idx];
+      if (build_idx < 0 || build_idx >= n_build_vars) continue;
+      // fix_variables is injective after restriction, so each clique-build
+      // var maps to at most one pb var.
+      cuopt_assert(build_var_to_pb[build_idx] == -1,
+                   "Duplicate forward remap entry for a clique-build var");
+      build_var_to_pb[build_idx] = p;
+    }
+  }
+
+  // Translate a literal vertex id from clique-build space to pb literal
+  // space. Returns -1 if the underlying var is not in pb.
+  auto remap_vertex_to_pb = [&](i_t vertex) -> i_t {
+    cuopt_assert(vertex >= 0 && vertex < 2 * n_build_vars,
+                 "vertex out of clique-build literal range");
+    const bool neg      = (vertex >= n_build_vars);
+    const i_t build_var = neg ? (vertex - n_build_vars) : vertex;
+    const i_t pb_var    = build_var_to_pb[build_var];
+    if (pb_var < 0) return -1;
+    return neg ? (n_vars + pb_var) : pb_var;
+  };
+
   // --- Pull problem structure to host ---------------------------------------
   auto& handle_ptr = problem.handle_ptr;
   auto stream      = handle_ptr->get_stream();
@@ -101,8 +169,21 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
   };
   auto literal_sign = [&](i_t vertex) -> i_t { return vertex < n_vars ? i_t{+1} : i_t{-1}; };
 
+  // Remap source cliques into pb literal space. Members whose underlying var
+  // was removed between clique-build time and now are dropped; cliques that
+  // shrink below 2 members are discarded wholesale (trivially non-tightening).
+  auto push_remapped_clique = [&](const std::vector<i_t>& src) {
+    std::vector<i_t> dst;
+    dst.reserve(src.size());
+    for (i_t v_build : src) {
+      i_t v_pb = remap_vertex_to_pb(v_build);
+      if (v_pb >= 0) dst.push_back(v_pb);
+    }
+    if (dst.size() >= 2) all_cliques.push_back(std::move(dst));
+  };
+
   for (auto const& clique : clique_table.first) {
-    all_cliques.push_back(clique);
+    push_remapped_clique(clique);
   }
   // Additional cliques = {vertex_idx} ∪ first[clique_idx][start_pos_on_clique:]
   for (auto const& addtl : clique_table.addtl_cliques) {
@@ -113,12 +194,11 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
     for (i_t i = addtl.start_pos_on_clique; i < (i_t)base.size(); ++i) {
       mat.push_back(base[i]);
     }
-    all_cliques.push_back(std::move(mat));
+    push_remapped_clique(mat);
   }
 
-  // Reverse index: underlying var → indices into all_cliques. A var v is
-  // considered "in" clique ci if EITHER v or (n_vars + v) appears in the
-  // clique's literal list.
+  // Reverse index: underlying var → indices into all_cliques. All vertex ids
+  // in all_cliques are already in pb literal space after the remap above.
   std::vector<std::vector<i_t>> var_to_cliques(n_vars);
   for (i_t ci = 0; ci < (i_t)all_cliques.size(); ++ci) {
     for (i_t vertex : all_cliques[ci]) {
@@ -126,13 +206,32 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
     }
   }
 
-  // --- Small-clique adjacency helper ----------------------------------------
+  // --- Small-clique adjacency (remapped if needed) --------------------------
   //
-  // Returns true iff there's an adjacency edge (u, v) in adj_list_small_cliques.
-  // Adjacency is symmetric, so we can look up either direction.
+  // When the id spaces match, we query clique_table.adj_list_small_cliques
+  // directly to avoid copying. Otherwise we build a pb-space shadow so the
+  // rest of the loop below needs no further translation.
+  std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_shadow;
+  if (!ids_match && has_small_adj) {
+    for (auto const& [u_build, neighbors_build] : clique_table.adj_list_small_cliques) {
+      i_t u_pb = remap_vertex_to_pb(u_build);
+      if (u_pb < 0) continue;
+      auto& set = adj_list_shadow[u_pb];
+      for (i_t v_build : neighbors_build) {
+        i_t v_pb = remap_vertex_to_pb(v_build);
+        if (v_pb >= 0) set.insert(v_pb);
+      }
+      if (set.empty()) adj_list_shadow.erase(u_pb);
+    }
+  }
+  const auto& adj_for_build = ids_match ? clique_table.adj_list_small_cliques : adj_list_shadow;
+  const bool has_small_adj_for_build = ids_match ? has_small_adj : !adj_list_shadow.empty();
+
+  // Returns true iff there's an adjacency edge (u, v) in adj_for_build.
+  // Adjacency is symmetric, so either direction works.
   auto has_small_edge = [&](i_t u, i_t v) -> bool {
-    auto it = clique_table.adj_list_small_cliques.find(u);
-    if (it == clique_table.adj_list_small_cliques.end()) return false;
+    auto it = adj_for_build.find(u);
+    if (it == adj_for_build.end()) return false;
     return it->second.count(v) > 0;
   };
 
@@ -256,7 +355,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
     //     the greedy walk works on literals directly, with the extra
     //     bookkeeping that each underlying var may appear at most once per
     //     group.
-    if (has_small_adj) {
+    if (has_small_adj_for_build) {
       unassigned_binaries.clear();
       for (auto& [var, _coeff] : var_to_coeff) {
         if (h_is_binary[var] && !assigned_vars.count(var)) { unassigned_binaries.push_back(var); }
@@ -271,8 +370,8 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
         for (i_t seed_sign : {i_t{+1}, i_t{-1}}) {
           if (assigned_vars.count(seed_var)) break;
           i_t seed_lit = (seed_sign == +1) ? seed_var : (n_vars + seed_var);
-          auto adj_it  = clique_table.adj_list_small_cliques.find(seed_lit);
-          if (adj_it == clique_table.adj_list_small_cliques.end()) continue;
+          auto adj_it  = adj_for_build.find(seed_lit);
+          if (adj_it == adj_for_build.end()) continue;
 
           // Candidate literals adjacent to the seed whose underlying var is in
           // this constraint, binary, and still unassigned.

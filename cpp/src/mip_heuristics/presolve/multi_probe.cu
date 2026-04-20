@@ -86,48 +86,39 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd_1.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Only invalidate the clique group table if problem dims actually changed.
-  // See bound_presolve_t::resize for the rationale — keeping clique_data
-  // alive across same-dim resizes avoids needlessly dropping to the stock
-  // path while B&B's cut passes are still holding the ready_for_heuristics
-  // flag low.
-  if (clique_data_built && clique_data.n_groups > 0) {
-    const bool dims_mismatch =
-      (i_t)clique_data.constraint_group_offsets.size() != problem.n_constraints + 1 ||
-      (i_t)clique_data.reverse_group_id.size() != problem.nnz;
-    if (dims_mismatch) {
-      clique_data_built    = false;
-      clique_data.n_groups = 0;
-    } else {
-      // upd_{0,1}.resize above dropped group correction buffers to 0.
-      // Restore them to match the clique_data we're keeping.
-      auto stream = problem.handle_ptr->get_stream();
-      upd_0.resize_clique_buffers(clique_data.n_groups, stream);
-      upd_1.resize_clique_buffers(clique_data.n_groups, stream);
-    }
-  }
+  // Clique-group cache validity is owned by ensure_clique_data via a full
+  // (problem, clique_table, dims) fingerprint; see bound_presolve_t::resize.
 }
 
 template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
-  if (clique_data_built) return;
-  if (!pb.clique_table) {
-    // No clique_table yet — one may be attached later in the pipeline. Keep
-    // re-checking on subsequent solves; see bound_presolve_t::ensure_clique_data
-    // for the detailed rationale.
+  auto* current_ct     = pb.clique_table.get();
+  const bool cache_hit = clique_data_built                                //
+                         && last_built_problem == &pb                     //
+                         && last_built_clique_table == current_ct         //
+                         && last_built_n_variables == pb.n_variables      //
+                         && last_built_n_constraints == pb.n_constraints  //
+                         && last_built_nnz == pb.nnz;
+  if (cache_hit) return;
+
+  if (!current_ct) {
+    clique_data.n_groups = 0;
+    clique_data_built    = false;
     return;
   }
-  // Note: see bound_presolve_t::ensure_clique_data for why we no longer gate
-  // on pb.clique_table->ready_for_heuristics. B&B's cut-pass writes
-  // (var_degrees lazy cache) are disjoint from build_from_host's reads.
-  clique_data.build_from_host(pb, *pb.clique_table);
-  // Size each probe's dynamic correction buffers (owned by its own
-  // bounds_update_data_t) to match the freshly built static group table.
+  // Note: see bound_presolve_t::ensure_clique_data for why we do not gate on
+  // current_ct->ready_for_heuristics.
+  clique_data.build_from_host(pb, *current_ct);
   auto stream = pb.handle_ptr->get_stream();
   upd_0.resize_clique_buffers(clique_data.n_groups, stream);
   upd_1.resize_clique_buffers(clique_data.n_groups, stream);
-  clique_data_built = true;
+  last_built_problem       = &pb;
+  last_built_clique_table  = current_ct;
+  last_built_n_variables   = pb.n_variables;
+  last_built_n_constraints = pb.n_constraints;
+  last_built_nnz           = pb.nnz;
+  clique_data_built        = true;
 }
 
 template <typename i_t, typename f_t>

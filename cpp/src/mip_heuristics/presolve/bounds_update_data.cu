@@ -41,14 +41,14 @@ void bounds_update_data_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   next_changed_constraints.resize(problem.n_constraints, problem.handle_ptr->get_stream());
   changed_variables.resize(problem.n_variables, problem.handle_ptr->get_stream());
-  // Invalidate clique buffers; the orchestrator will call resize_clique_buffers
-  // once it knows the new n_groups.
-  group_max_correction.resize(0, problem.handle_ptr->get_stream());
-  group_min_correction.resize(0, problem.handle_ptr->get_stream());
-  group_max_pos.resize(0, problem.handle_ptr->get_stream());
-  group_second_max_pos.resize(0, problem.handle_ptr->get_stream());
-  group_min_neg.resize(0, problem.handle_ptr->get_stream());
-  group_second_min_neg.resize(0, problem.handle_ptr->get_stream());
+  // NOTE: the six clique-group buffers (group_max_correction,
+  // group_min_correction, group_max_pos, group_second_max_pos, group_min_neg,
+  // group_second_min_neg) are intentionally NOT touched here. Their size is
+  // keyed to clique_data.n_groups, not to problem.{n_variables,n_constraints},
+  // and their lifetime is managed by bound_presolve_t::ensure_clique_data /
+  // multi_probe_t::ensure_clique_data via resize_clique_buffers. Zeroing them
+  // on every problem resize would force a free/realloc cycle on every
+  // heuristic iteration, even when the cached clique build is still valid.
 }
 
 template <typename i_t, typename f_t>

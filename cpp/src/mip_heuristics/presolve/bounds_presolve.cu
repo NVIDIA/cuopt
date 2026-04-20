@@ -91,63 +91,48 @@ void bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Only invalidate the clique group table if problem dims actually changed.
-  // clique_data is a pure function of (n_constraints, n_variables, nnz,
-  // clique_table), and clique_table is stable after presolve, so a resize
-  // that lands on the same dims can safely keep reusing the existing build.
-  //
-  // This matters for the B&B-heuristics handshake: ensure_clique_data is
-  // gated on clique_table->ready_for_heuristics being true, which is cleared
-  // while B&B is running its cut passes. If resize() unconditionally cleared
-  // clique_data_built here, every heuristic iteration during B&B's cut-pass
-  // phase would drop back to the stock path and stay there, because
-  // ensure_clique_data can't rebuild until the flag flips back.
-  //
-  // Only check dims when we actually have a populated CSR (n_groups > 0);
-  // an empty built state (no cliques on this problem) is independent of
-  // dims and can always be reused as-is.
-  if (clique_data_built && clique_data.n_groups > 0) {
-    const bool dims_mismatch =
-      (i_t)clique_data.constraint_group_offsets.size() != problem.n_constraints + 1 ||
-      (i_t)clique_data.reverse_group_id.size() != problem.nnz;
-    if (dims_mismatch) {
-      clique_data_built    = false;
-      clique_data.n_groups = 0;
-    } else {
-      // upd.resize above dropped group_{max,min}_correction / top-2 buffers
-      // to size 0. We're keeping clique_data, so restore them to match.
-      upd.resize_clique_buffers(clique_data.n_groups, problem.handle_ptr->get_stream());
-    }
-  }
+  // Intentionally no clique-group invalidation here. `ensure_clique_data`
+  // below owns cache validity via a full (problem, clique_table, dims)
+  // fingerprint; a dim-only check at this layer is both insufficient
+  // (different problems can share dims — see §6 of the design doc) and
+  // redundant with the fingerprint check.
 }
 
 template <typename i_t, typename f_t>
 void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
-  if (clique_data_built) return;
-  if (!pb.clique_table) {
-    // No clique_table attached to the problem yet — but one may be set later
-    // in the pipeline (e.g. diversity_manager's run_presolve attaches it AFTER
-    // the first bound_update_loop call). Don't latch clique_data_built=true
-    // here; keep re-checking on subsequent solves so that the initial clique-
-    // aware pass fires as soon as the table is ready. The check itself is a
-    // nullptr test, negligible overhead.
+  // Cache-hit fingerprint: same problem instance, same clique_table instance,
+  // and matching dims. Any mismatch — including the problem_t* changing
+  // underneath us while dims happen to coincide (local_search alternates
+  // between *problem_ptr and problem_with_objective_cut) — forces a rebuild.
+  auto* current_ct     = pb.clique_table.get();
+  const bool cache_hit = clique_data_built                                //
+                         && last_built_problem == &pb                     //
+                         && last_built_clique_table == current_ct         //
+                         && last_built_n_variables == pb.n_variables      //
+                         && last_built_n_constraints == pb.n_constraints  //
+                         && last_built_nnz == pb.nnz;
+  if (cache_hit) return;
+
+  if (!current_ct) {
+    // No clique_table attached (yet). May be set later in the pipeline, so
+    // don't latch — leave the fingerprint unchanged (still mismatching) so
+    // the next call re-checks and builds as soon as the table is attached.
+    clique_data.n_groups = 0;
+    clique_data_built    = false;
     return;
   }
-  // Note: we intentionally do NOT gate on
-  // pb.clique_table->ready_for_heuristics here. B&B's cut generation only
-  // writes to clique_table_t::var_degrees (lazy cache, fixed-size vector,
-  // per-index scalar stores), and build_from_host below reads a disjoint set
-  // of containers (`first`, `addtl_cliques`, `var_clique_map_first`,
-  // `adj_list_small_cliques`) — all populated once by find_initial_cliques
-  // and stable afterwards. Gating here would make heuristics drop to the
-  // stock path for the entire B&B cut-pass phase with no safety benefit.
+  // Note: we intentionally do NOT gate on current_ct->ready_for_heuristics.
+  // B&B's cut-pass writes touch only var_degrees (disjoint from our reads).
   // See clique_table_t::ready_for_heuristics for the full rationale.
-  clique_data.build_from_host(pb, *pb.clique_table);
-  // Size the per-probe dynamic correction buffers (owned by bounds_update_data_t)
-  // to match the freshly built static group table.
+  clique_data.build_from_host(pb, *current_ct);
   upd.resize_clique_buffers(clique_data.n_groups, pb.handle_ptr->get_stream());
-  clique_data_built = true;
+  last_built_problem       = &pb;
+  last_built_clique_table  = current_ct;
+  last_built_n_variables   = pb.n_variables;
+  last_built_n_constraints = pb.n_constraints;
+  last_built_nnz           = pb.nnz;
+  clique_data_built        = true;
 }
 
 template <typename i_t, typename f_t>

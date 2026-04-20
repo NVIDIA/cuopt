@@ -27,7 +27,7 @@
 // non-trivial correction and one line per (var, cnst) where the clique-aware
 // bound is strictly tighter than what the stock formula would produce.
 #ifndef CUOPT_DEBUG_CLIQUE_TIGHTENING
-#define CUOPT_DEBUG_CLIQUE_TIGHTENING 1
+#define CUOPT_DEBUG_CLIQUE_TIGHTENING 0
 #endif
 
 namespace cuopt::linear_programming::detail {

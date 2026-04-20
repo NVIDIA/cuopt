@@ -80,6 +80,13 @@ class multi_probe_t {
 
   clique_group_table_t<i_t, f_t> clique_data;
   bool clique_data_built{false};
+  // Fingerprint of the (problem, clique_table) pair the current `clique_data`
+  // was built against. See bound_presolve_t for rationale.
+  const problem_t<i_t, f_t>* last_built_problem           = nullptr;
+  const clique_table_t<i_t, f_t>* last_built_clique_table = nullptr;
+  i_t last_built_n_variables                              = -1;
+  i_t last_built_n_constraints                            = -1;
+  i_t last_built_nnz                                      = -1;
 
   std::vector<f_t> host_lb;
   std::vector<f_t> host_ub;
