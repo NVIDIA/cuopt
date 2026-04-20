@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
@@ -154,6 +155,8 @@ class mip_solver_settings_t {
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
+  std::optional<i_t> semi_continuous_original_num_variables_;
+  std::vector<i_t> semi_continuous_binary_to_original_indices_;
 
   friend class solver_settings_t<i_t, f_t>;
   friend struct detail::mip_solver_settings_accessor<i_t, f_t>;
@@ -166,6 +169,32 @@ struct mip_solver_settings_accessor {
   static void clear_mip_callbacks(mip_solver_settings_t<i_t, f_t>& settings)
   {
     settings.mip_callbacks_.clear();
+  }
+
+  static void set_semi_continuous_callback_translation(mip_solver_settings_t<i_t, f_t>& settings,
+                                                       i_t original_num_variables,
+                                                       std::vector<i_t> binary_to_original_indices)
+  {
+    settings.semi_continuous_original_num_variables_     = original_num_variables;
+    settings.semi_continuous_binary_to_original_indices_ = std::move(binary_to_original_indices);
+  }
+
+  static bool has_semi_continuous_callback_translation(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.has_value();
+  }
+
+  static i_t get_semi_continuous_original_num_variables(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.value_or(0);
+  }
+
+  static const std::vector<i_t>& get_semi_continuous_binary_to_original_indices(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_binary_to_original_indices_;
   }
 };
 

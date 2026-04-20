@@ -37,22 +37,34 @@ namespace cuopt::linear_programming::detail {
  *                                    when variable i uses settings.sc_big_m as a fallback upper
  *                                    bound during reformulation. Used to reject the final solution
  * if its upper bound lands on big-m within integrality tolerance.
- * @param[out]    binary_to_semi_continuous_indices Optional mapping for appended auxiliary
+ * @param[out]    semi_continuous_binary_to_original_indices Optional mapping for appended
+ *                                    auxiliary
  *                                    binaries. Entry k stores the original semi-continuous
  *                                    variable index that produced appended binary k, in append
  *                                    order.
  * @returns true if any semi-continuous variables were found and reformulated.
  */
 template <typename i_t, typename f_t>
-bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
-                                 const mip_solver_settings_t<i_t, f_t>& settings,
-                                 std::vector<uint8_t>* used_fallback_big_m,
-                                 std::vector<i_t>* binary_to_semi_continuous_indices = nullptr);
+bool reformulate_semi_continuous(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  const mip_solver_settings_t<i_t, f_t>& settings,
+  std::vector<uint8_t>* used_fallback_big_m,
+  std::vector<i_t>* semi_continuous_binary_to_original_indices = nullptr);
 
 template <typename i_t, typename f_t>
 void expand_initial_solutions_for_semi_continuous(
   mip_solver_settings_t<i_t, f_t>& settings,
-  const std::vector<i_t>& binary_to_semi_continuous_indices,
+  const std::vector<i_t>& semi_continuous_binary_to_original_indices,
   rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void append_semi_continuous_auxiliaries_to_assignment(
+  std::vector<f_t>& assignment,
+  const std::vector<i_t>& semi_continuous_binary_to_original_indices,
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances);
+
+template <typename i_t, typename f_t>
+void strip_semi_continuous_auxiliaries_from_assignment(std::vector<f_t>& assignment,
+                                                       i_t original_num_variables);
 
 }  // namespace cuopt::linear_programming::detail

@@ -92,7 +92,7 @@ template <typename i_t, typename f_t>
 bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
                                  const mip_solver_settings_t<i_t, f_t>& settings,
                                  std::vector<uint8_t>* used_fallback_big_m,
-                                 std::vector<i_t>* binary_to_semi_continuous_indices)
+                                 std::vector<i_t>* semi_continuous_binary_to_original_indices)
 {
   // 1. Identify semi-continuous variables
   auto var_types = op_problem.get_variable_types_host();
@@ -195,9 +195,9 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   var_lb.resize(n_orig + n_binary_needed, f_t(0));
   var_ub.resize(n_orig + n_binary_needed, f_t(1));
   obj_c.resize(n_orig + n_binary_needed, f_t(0));
-  if (binary_to_semi_continuous_indices != nullptr) {
-    binary_to_semi_continuous_indices->clear();
-    binary_to_semi_continuous_indices->reserve(n_binary_needed);
+  if (semi_continuous_binary_to_original_indices != nullptr) {
+    semi_continuous_binary_to_original_indices->clear();
+    semi_continuous_binary_to_original_indices->reserve(n_binary_needed);
   }
 
   // 6. For each SC variable: derive U when needed, then either add binary + 2
@@ -250,8 +250,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
     const i_t b_idx = n_orig + binary_count;
     ++binary_count;
-    if (binary_to_semi_continuous_indices != nullptr) {
-      binary_to_semi_continuous_indices->push_back(idx);
+    if (semi_continuous_binary_to_original_indices != nullptr) {
+      semi_continuous_binary_to_original_indices->push_back(idx);
     }
 
     // Convert SC var to the continuous interval [0, U].
@@ -307,28 +307,54 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 }
 
 template <typename i_t, typename f_t>
+void append_semi_continuous_auxiliaries_to_assignment(
+  std::vector<f_t>& assignment,
+  const std::vector<i_t>& semi_continuous_binary_to_original_indices,
+  typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances)
+{
+  if (semi_continuous_binary_to_original_indices.empty()) { return; }
+
+  const auto original_size = static_cast<i_t>(assignment.size());
+  const f_t active_tol = std::max(tolerances.absolute_tolerance, tolerances.integrality_tolerance);
+  assignment.reserve(assignment.size() + semi_continuous_binary_to_original_indices.size());
+  for (i_t idx : semi_continuous_binary_to_original_indices) {
+    cuopt_expects(idx >= 0 && idx < original_size,
+                  error_type_t::ValidationError,
+                  "Semi-continuous callback solution references an invalid parent variable index "
+                  "%d.",
+                  idx);
+    assignment.push_back(assignment[idx] <= active_tol ? f_t(0) : f_t(1));
+  }
+}
+
+template <typename i_t, typename f_t>
+void strip_semi_continuous_auxiliaries_from_assignment(std::vector<f_t>& assignment,
+                                                       i_t original_num_variables)
+{
+  if (assignment.size() <= static_cast<size_t>(original_num_variables)) { return; }
+  cuopt_expects(
+    original_num_variables >= 0 && original_num_variables <= static_cast<i_t>(assignment.size()),
+    error_type_t::ValidationError,
+    "Semi-continuous callback translation has invalid original variable count %d.",
+    original_num_variables);
+  assignment.resize(original_num_variables);
+}
+
+template <typename i_t, typename f_t>
 void expand_initial_solutions_for_semi_continuous(
   mip_solver_settings_t<i_t, f_t>& settings,
-  const std::vector<i_t>& binary_to_semi_continuous_indices,
+  const std::vector<i_t>& semi_continuous_binary_to_original_indices,
   rmm::cuda_stream_view stream)
 {
-  if (binary_to_semi_continuous_indices.empty()) { return; }
+  if (semi_continuous_binary_to_original_indices.empty()) { return; }
 
-  const f_t active_tol =
-    std::max(settings.tolerances.absolute_tolerance, settings.tolerances.integrality_tolerance);
   for (auto& initial_solution : settings.initial_solutions) {
     if (initial_solution == nullptr || initial_solution->is_empty()) { continue; }
 
     auto host_initial = cuopt::host_copy(*initial_solution, stream);
     std::vector<f_t> expanded_initial(host_initial.begin(), host_initial.end());
-    expanded_initial.reserve(host_initial.size() + binary_to_semi_continuous_indices.size());
-    for (i_t idx : binary_to_semi_continuous_indices) {
-      cuopt_expects(idx >= 0 && idx < static_cast<i_t>(host_initial.size()),
-                    error_type_t::ValidationError,
-                    "Semi-continuous warm start references an invalid parent variable index %d.",
-                    idx);
-      expanded_initial.push_back(host_initial[idx] <= active_tol ? f_t(0) : f_t(1));
-    }
+    append_semi_continuous_auxiliaries_to_assignment(
+      expanded_initial, semi_continuous_binary_to_original_indices, settings.get_tolerances());
 
     initial_solution = std::make_shared<rmm::device_uvector<f_t>>(expanded_initial.size(), stream);
     raft::copy(initial_solution->data(), expanded_initial.data(), expanded_initial.size(), stream);
@@ -340,6 +366,9 @@ template bool reformulate_semi_continuous<int, float>(optimization_problem_t<int
                                                       const mip_solver_settings_t<int, float>&,
                                                       std::vector<uint8_t>*,
                                                       std::vector<int>*);
+template void append_semi_continuous_auxiliaries_to_assignment(
+  std::vector<float>&, const std::vector<int>&, mip_solver_settings_t<int, float>::tolerances_t);
+template void strip_semi_continuous_auxiliaries_from_assignment(std::vector<float>&, int);
 template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, float>&,
                                                            const std::vector<int>&,
                                                            rmm::cuda_stream_view);
@@ -350,6 +379,9 @@ template bool reformulate_semi_continuous<int, double>(optimization_problem_t<in
                                                        const mip_solver_settings_t<int, double>&,
                                                        std::vector<uint8_t>*,
                                                        std::vector<int>*);
+template void append_semi_continuous_auxiliaries_to_assignment(
+  std::vector<double>&, const std::vector<int>&, mip_solver_settings_t<int, double>::tolerances_t);
+template void strip_semi_continuous_auxiliaries_from_assignment(std::vector<double>&, int);
 template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t<int, double>&,
                                                            const std::vector<int>&,
                                                            rmm::cuda_stream_view);
