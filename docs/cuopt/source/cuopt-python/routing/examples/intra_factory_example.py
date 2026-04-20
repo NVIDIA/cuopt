@@ -35,9 +35,11 @@ TARGET_LOCATIONS = np.array([DEPOT, STATION_A, STATION_B, STATION_C])
 FACTORY_OPEN = 0
 FACTORY_CLOSE = 100
 
-# Weighted waypoint graph of the factory floor in CSR form.
-# See cost_matrix_and_waypoint_graph_creation.ipynb in cuopt-examples
-# for how to construct this from a floor plan.
+# Weighted waypoint graph of the factory floor in Compressed Sparse Row
+# (CSR) form: for node i, GRAPH_OFFSETS[i]:GRAPH_OFFSETS[i+1] indexes into
+# GRAPH_EDGES (destination nodes) and GRAPH_WEIGHTS (edge costs). See the
+# `cuopt.distance_engine.WaypointMatrix` API reference in the cuOpt User
+# Guide for input requirements.
 GRAPH_OFFSETS = np.array([0, 1, 3, 7, 9, 11, 13, 15, 17, 20, 22])
 GRAPH_EDGES = np.array(
     [2, 2, 4, 0, 1, 3, 5, 2, 6, 1, 7, 2, 8, 3, 9, 4, 8, 5, 7, 9, 6, 8]
