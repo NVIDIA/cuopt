@@ -240,9 +240,7 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
     handle_ptr_->get_thrust_policy(),
     variable_types_.begin(),
     variable_types_.end(),
-    [] __device__(auto val) {
-      return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
-    });
+    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
   if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
   } else if (n_discrete > 0) {
