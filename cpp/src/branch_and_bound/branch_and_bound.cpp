@@ -2760,17 +2760,9 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   deterministic_horizon_step_ = 0.50;
 
   // Compute worker counts using the same formula as reliability-branching scheduler
-  const i_t num_workers                            = 2 * settings_.num_threads;
-  std::vector<search_strategy_t> search_strategies = {};
-  // get_search_strategies(settings_.diving_settings);
-  std::array<i_t, num_search_strategies> max_num_workers = {};
-  // get_max_workers(num_workers, search_strategies);
-
-  const int num_bfs_workers = max_num_workers[search_strategy_t::BEST_FIRST];
-  int num_diving_workers    = 0;
-  for (size_t i = 1; i < search_strategies.size(); ++i) {
-    num_diving_workers += max_num_workers[search_strategies[i]];
-  }
+  const i_t num_workers        = 2 * settings_.num_threads;
+  const i_t num_bfs_workers    = std::max(num_workers / 4, 1);
+  const i_t num_diving_workers = num_workers - num_bfs_workers;
 
   deterministic_mode_enabled_              = true;
   deterministic_current_horizon_           = deterministic_horizon_step_;
