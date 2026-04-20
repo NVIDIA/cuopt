@@ -1,11 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
+
+#include "../utilities/inline_mps_test_utils.hpp"
 
 #include <cuopt/linear_programming/solve.hpp>
 #include <mps_parser/parser.hpp>
@@ -17,8 +19,6 @@
 
 #include <gtest/gtest.h>
 
-#include <filesystem>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -32,93 +32,6 @@ struct sc_result_t {
   double objective;
   double sc_value;
 };
-
-static inline const char sc_standard_mps[] = R"(NAME sc_standard
-ROWS
- N  OBJ
- G  cover
-COLUMNS
-    x         OBJ       3
-    x         cover     1
-    y         OBJ       2
-    y         cover     1
-RHS
-    RHS1      cover     4
-BOUNDS
- LO BND1      x         2
- SC BND1      x         10
- LO BND1      y         -10
- UP BND1      y         10
-ENDATA
-)";
-
-static inline const char sc_no_ub_mps[] = R"(NAME sc_no_ub
-ROWS
- N  OBJ
- G  cover
-COLUMNS
-    x         OBJ       3
-    x         cover     1
-    y         OBJ       2
-    y         cover     1
-RHS
-    RHS1      cover     4
-BOUNDS
- LO BND1      x         2
- SC BND1      x         1e+30
- LO BND1      y         -10
- UP BND1      y         10
-ENDATA
-)";
-
-static inline const char sc_lb_zero_mps[] = R"(NAME sc_lb_zero
-ROWS
- N  OBJ
- G  cover
-COLUMNS
-    x         OBJ       3
-    x         cover     1
-    y         OBJ       2
-    y         cover     1
-RHS
-    RHS1      cover     4
-BOUNDS
- SC BND1      x         10
- LO BND1      y         -10
- UP BND1      y         10
-ENDATA
-)";
-
-static inline const char sc_inferred_ub_mps[] = R"(NAME sc_inferred_ub
-ROWS
- N  OBJ
- L  cap
-COLUMNS
-    x         OBJ       -1
-    x         cap       1
-    y         cap       1
-RHS
-    RHS1      cap       4
-BOUNDS
- LO BND1      x         2
- SC BND1      x         1e+30
- UP BND1      y         10
-ENDATA
-)";
-
-cuopt::mps_parser::mps_data_model_t<int, double> parse_inline_mps(const std::string& name,
-                                                                  const std::string& mps_text)
-{
-  const auto path = std::filesystem::temp_directory_path() / (name + ".mps");
-  {
-    std::ofstream out(path);
-    if (!out.good()) { throw std::runtime_error("failed to open temporary MPS file for writing"); }
-    out << mps_text;
-  }
-  auto problem = cuopt::mps_parser::parse_mps<int, double>(path.string(), false);
-  std::filesystem::remove(path);
-  return problem;
-}
 
 optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle,
                                                     double sc_lb,
@@ -162,14 +75,14 @@ TEST(mip_solve, semi_continuous_regressions)
   settings.time_limit = 10.;
 
   const std::vector<sc_result_t> valid_test_instances = {
-    {"sc_standard", sc_standard_mps, 8., 0.},
-    {"sc_no_ub", sc_no_ub_mps, 8., 0.},
-    {"sc_lb_zero", sc_lb_zero_mps, 8., 0.},
-    {"sc_inferred_ub", sc_inferred_ub_mps, -4., 4.},
+    {"sc_standard", cuopt::test::inline_mps::sc_standard_mps, 8., 0.},
+    {"sc_no_ub", cuopt::test::inline_mps::sc_no_ub_mps, 8., 0.},
+    {"sc_lb_zero", cuopt::test::inline_mps::sc_lb_zero_mps, 8., 0.},
+    {"sc_inferred_ub", cuopt::test::inline_mps::sc_inferred_ub_mps, -4., 4.},
   };
 
   for (const auto& test_instance : valid_test_instances) {
-    auto problem  = parse_inline_mps(test_instance.name, test_instance.mps);
+    auto problem = cuopt::test::inline_mps::parse_inline_mps(test_instance.name, test_instance.mps);
     auto solution = solve_mip(&handle_, problem, settings);
 
     EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal)

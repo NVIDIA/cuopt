@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <utilities/common_utils.hpp>
+#include <utilities/inline_mps_test_utils.hpp>
 
 #include <mps_parser.hpp>
 #include <mps_parser/mps_writer.hpp>
@@ -425,27 +426,31 @@ TEST(mps_bounds, upper_inf_var_bound)
 TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
 {
   struct Case {
-    const char* file;
+    const char* name;
+    const char* mps;
     int n_vars;
     double lower;
     double upper;
   };
   const std::vector<Case> cases = {
-    {"mip/sc_standard.mps", 2, 2.0, 10.0},
-    {"mip/sc_lb_zero.mps", 2, 0.0, 10.0},
-    {"mip/sc_no_ub.mps", 2, 2.0, 1e30},
+    {"sc_standard", cuopt::test::inline_mps::sc_standard_mps, 2, 2.0, 10.0},
+    {"sc_lb_zero", cuopt::test::inline_mps::sc_lb_zero_mps, 2, 0.0, 10.0},
+    {"sc_no_ub", cuopt::test::inline_mps::sc_no_ub_mps, 2, 2.0, 1e30},
   };
 
   for (const auto& c : cases) {
-    SCOPED_TRACE(c.file);
-    auto mps = read_from_mps(c.file, false);
+    SCOPED_TRACE(c.name);
+    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.name, c.mps);
+    const auto& var_types = mps.get_variable_types();
+    const auto& lower     = mps.get_variable_lower_bounds();
+    const auto& upper     = mps.get_variable_upper_bounds();
 
-    ASSERT_EQ(c.n_vars, static_cast<int>(mps.var_types.size()));
-    EXPECT_EQ('S', mps.var_types[0]);
-    ASSERT_EQ(c.n_vars, static_cast<int>(mps.variable_lower_bounds.size()));
-    ASSERT_EQ(c.n_vars, static_cast<int>(mps.variable_upper_bounds.size()));
-    EXPECT_DOUBLE_EQ(c.lower, mps.variable_lower_bounds[0]);
-    EXPECT_DOUBLE_EQ(c.upper, mps.variable_upper_bounds[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(var_types.size()));
+    EXPECT_EQ('S', var_types[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(lower.size()));
+    ASSERT_EQ(c.n_vars, static_cast<int>(upper.size()));
+    EXPECT_DOUBLE_EQ(c.lower, lower[0]);
+    EXPECT_DOUBLE_EQ(c.upper, upper[0]);
   }
 }
 
