@@ -320,7 +320,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // Re-run initial bound propagation now that the clique table is attached,
   // so the first propagation pass is clique-aware instead of needing to wait
   // until a later heuristics iteration.
-  if (!problem_ptr->empty && problem_ptr->clique_table) {
+  if (!problem_ptr->empty && problem_ptr->clique_table &&
+      (problem_ptr->clique_table->first.size() > 0 ||
+       problem_ptr->clique_table->addtl_cliques.size() > 0)) {
     // Problem size may have shrunk since the earlier solve() at line ~230
     // (compute_probing_cache / trivial_presolve can remove variables and
     // constraints). The resize() at line ~299 is only taken when the user
