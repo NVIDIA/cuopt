@@ -6,10 +6,14 @@ set -euo pipefail
 
 # It is essential to cd into python/cuopt_server/cuopt_server as `pytest-xdist` + `coverage` seem to work only at this directory level.
 
+# Resolve paths before cd (BASH_SOURCE is relative and won't resolve after cd)
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
 # Support invoking run_cuopt_server_pytests.sh outside the script directory
-cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/cuopt_server/cuopt_server/
+cd "${SCRIPT_DIR}/../python/cuopt_server/cuopt_server/"
 
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
+export RAPIDS_TESTS_DIR
 PYTEST_MAX_CRASH_RETRIES=${PYTEST_MAX_CRASH_RETRIES:-2}
 IS_NIGHTLY="${RAPIDS_BUILD_TYPE:-}"
 
@@ -30,7 +34,7 @@ for arg in "$@"; do
     fi
 done
 
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# Add CI utils to PYTHONPATH so the rerun XML plugin is importable
 export PYTHONPATH="${SCRIPT_DIR}/utils:${PYTHONPATH:-}"
 
 rc=0
