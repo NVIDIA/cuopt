@@ -194,6 +194,7 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
       <<<apply_blocks, apply_tpb, 0, stream>>>(make_span(clique_data.constraint_group_offsets),
                                                make_span(upd.group_max_correction),
                                                make_span(upd.group_min_correction),
+                                               make_span(upd.changed_constraints),
                                                make_span(upd.min_activity),
                                                make_span(upd.max_activity),
                                                pb.n_constraints);

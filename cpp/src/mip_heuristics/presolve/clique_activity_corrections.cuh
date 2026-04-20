@@ -273,12 +273,24 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
 // (contiguous range in the sorted group array) and subtracts their corrections
 // from the activity. Summation order is fixed (ascending group index), so the
 // FP arithmetic is bit-exact deterministic.
+//
+// MUST be gated on the SAME `changed_constraints[c]` flag that
+// calc_activity_kernel uses. Rationale: calc_activity_kernel early-returns
+// when the constraint is "not changed", leaving min/max_activity[c] at their
+// previous-iteration values, which were ALREADY clique-corrected. If we
+// unconditionally subtract the fresh correction here, constraints that stay
+// untouched across iterations get their activity double-corrected, which
+// compounds and drives max_activity below cnst_lb → spurious "infeasible in
+// presolve". When changed_constraints[c] == 0, no member bound changed, so
+// the correction is identical anyway and the already-corrected stored value
+// is still valid — skipping is exact, not approximate.
 // -----------------------------------------------------------------------------
 template <typename i_t, typename f_t>
 __global__ void apply_clique_corrections_to_activity_kernel(
   raft::device_span<const i_t> constraint_group_offsets,
   raft::device_span<const f_t> group_max_correction,
   raft::device_span<const f_t> group_min_correction,
+  raft::device_span<const i_t> changed_constraints,
   raft::device_span<f_t> min_activity,
   raft::device_span<f_t> max_activity,
   i_t n_constraints)
@@ -287,6 +299,8 @@ __global__ void apply_clique_corrections_to_activity_kernel(
   if (c >= n_constraints) return;
   cuopt_assert(c + 1 < (i_t)constraint_group_offsets.size(),
                "constraint id out of range for group offsets");
+  // Must match calc_activity_kernel's gate exactly. See comment above.
+  if (changed_constraints[c] == 0) return;
 
   i_t g_begin = constraint_group_offsets[c];
   i_t g_end   = constraint_group_offsets[c + 1];
