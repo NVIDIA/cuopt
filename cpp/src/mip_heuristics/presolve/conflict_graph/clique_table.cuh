@@ -128,27 +128,37 @@ struct clique_table_t {
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
 
-  // Handshake flag used to gate access to this table from the heuristics
-  // threads while Branch-and-Bound may still be mutating it.
+  // Handshake flag originally introduced to gate heuristics reads while B&B's
+  // cut passes might still be mutating this table. In the current code paths
+  // this is NOT actually required for safety, and we deliberately no longer
+  // gate on it from ensure_clique_data() — doing so made heuristics fall back
+  // to the stock (non-clique) path for the entire duration of B&B's cut-pass
+  // loop, which erased most of the clique-awareness benefit in practice.
   //
-  // Why this exists:
-  //   B&B's cut generation lazily caches into `adj_list_small_cliques` and
-  //   `var_degrees` via get_adj_set_of_var / get_degree_of_var. Meanwhile,
-  //   `clique_group_table_t::build_from_host` reads those same containers
-  //   (const iteration over unordered_map / vector) from the heuristics
-  //   thread. Concurrent mutation of std::unordered_map / std::vector during
-  //   a read is UB, so we gate heuristics access with this atomic.
+  // Why the gate is not needed today:
+  //   During cut generation B&B only ever writes to `var_degrees` (via the
+  //   lazy `get_degree_of_var` cache — each slot in a fixed-size vector,
+  //   never resized). Heuristics' `clique_group_table_t::build_from_host`
+  //   reads `first`, `addtl_cliques`, `var_clique_map_first`, and
+  //   `adj_list_small_cliques`; it does NOT read `var_degrees`. All of the
+  //   containers build_from_host touches are populated once by
+  //   `find_initial_cliques` (which includes `remove_small_cliques` that
+  //   seeds `adj_list_small_cliques`) and then remain structurally stable
+  //   for the rest of the solve. So B&B's write set and heuristics' read
+  //   set are disjoint.
   //
-  // Contract:
+  // Why we keep the flag at all:
+  //   It's a documented hook so future code that does mutate the
+  //   heuristics-visible containers during cut generation (e.g. extending
+  //   cliques into `first` / `addtl_cliques` on the fly) can re-enable
+  //   gating without reintroducing the plumbing.
+  //
+  // Current contract:
   //   - Initially false (constructor default).
-  //   - Set to true once by the single-threaded presolve phase after the
-  //     initial clique table has been built and assigned to problem_t.
-  //   - Set to false just before the B&B thread is launched (cut passes will
-  //     mutate the table).
-  //   - Set back to true after B&B's cut-pass loop completes (B&B no longer
-  //     mutates the table beyond that point).
-  //   - Heuristics check the flag (acquire) before calling build_from_host
-  //     and skip clique-aware data construction until it becomes true.
+  //   - Set to true after the initial clique table has been built and
+  //     attached to problem_t.
+  //   - Solver toggles it around the B&B async launch for documentation
+  //     / future-proofing, but ensure_clique_data() does not block on it.
   std::atomic<bool> ready_for_heuristics{false};
 };
 

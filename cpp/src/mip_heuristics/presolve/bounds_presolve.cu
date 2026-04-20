@@ -126,14 +126,23 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
   if (clique_data_built) return;
   if (!pb.clique_table) {
-    clique_data_built = true;  // nothing to build; don't re-check every iter
+    // No clique_table attached to the problem yet — but one may be set later
+    // in the pipeline (e.g. diversity_manager's run_presolve attaches it AFTER
+    // the first bound_update_loop call). Don't latch clique_data_built=true
+    // here; keep re-checking on subsequent solves so that the initial clique-
+    // aware pass fires as soon as the table is ready. The check itself is a
+    // nullptr test, negligible overhead.
     return;
   }
-  // Gate: while B&B's cut passes may still be mutating the clique table
-  // (adj_list_small_cliques / var_degrees lazy caches), we must NOT read it
-  // from the heuristics thread. Leave clique_data_built = false so we try
-  // again on the next iteration once B&B flips the flag.
-  if (!pb.clique_table->ready_for_heuristics.load(std::memory_order_acquire)) { return; }
+  // Note: we intentionally do NOT gate on
+  // pb.clique_table->ready_for_heuristics here. B&B's cut generation only
+  // writes to clique_table_t::var_degrees (lazy cache, fixed-size vector,
+  // per-index scalar stores), and build_from_host below reads a disjoint set
+  // of containers (`first`, `addtl_cliques`, `var_clique_map_first`,
+  // `adj_list_small_cliques`) — all populated once by find_initial_cliques
+  // and stable afterwards. Gating here would make heuristics drop to the
+  // stock path for the entire B&B cut-pass phase with no safety benefit.
+  // See clique_table_t::ready_for_heuristics for the full rationale.
   clique_data.build_from_host(pb, *pb.clique_table);
   // Size the per-probe dynamic correction buffers (owned by bounds_update_data_t)
   // to match the freshly built static group table.

@@ -113,12 +113,14 @@ void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
   if (clique_data_built) return;
   if (!pb.clique_table) {
-    clique_data_built = true;  // nothing to build; don't re-check every iter
+    // No clique_table yet — one may be attached later in the pipeline. Keep
+    // re-checking on subsequent solves; see bound_presolve_t::ensure_clique_data
+    // for the detailed rationale.
     return;
   }
-  // Gate: same handshake as in bound_presolve_t::ensure_clique_data. Skip
-  // clique-aware setup until B&B has finished mutating the clique table.
-  if (!pb.clique_table->ready_for_heuristics.load(std::memory_order_acquire)) { return; }
+  // Note: see bound_presolve_t::ensure_clique_data for why we no longer gate
+  // on pb.clique_table->ready_for_heuristics. B&B's cut-pass writes
+  // (var_degrees lazy cache) are disjoint from build_from_host's reads.
   clique_data.build_from_host(pb, *pb.clique_table);
   // Size each probe's dynamic correction buffers (owned by its own
   // bounds_update_data_t) to match the freshly built static group table.
