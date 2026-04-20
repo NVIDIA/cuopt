@@ -87,21 +87,20 @@ class heap_t {
   Comp comp;
 };
 
-// A queue storing the nodes waiting to be explored/dived from.
+// A queue storing the nodes waiting to be explored. Before calling pop or push in parallel,
+// the mutex NEEDS to be acquired via the `lock()` method. It must the released afterwards with
+// `unlock()`.
 template <typename i_t, typename f_t>
 class node_queue_t {
  public:
   void push(mip_node_t<i_t, f_t>* new_node)
   {
-    std::lock_guard lock(mutex_);
     auto entry = std::make_shared<heap_entry_t>(new_node);
     best_first_heap_.push(entry);
     diving_heap_.push(entry);
     lower_bound_ = best_first_heap_.top()->lower_bound;
   }
 
-  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
-  // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_best_first()
   {
     if (best_first_heap_.empty()) { return nullptr; }
@@ -112,8 +111,6 @@ class node_queue_t {
     return node;
   }
 
-  // This **MUST** only be called after acquiring the mutex with `lock()`. Remember to call
-  // `unlock()` afterward.
   mip_node_t<i_t, f_t>* pop_diving()
   {
     while (!diving_heap_.empty()) {

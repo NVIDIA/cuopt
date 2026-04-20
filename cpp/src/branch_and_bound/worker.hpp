@@ -173,24 +173,25 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     }
 
     total_max_diving_workers = 0;
-    for (size_t i = 1, k = 0; i < num_search_strategies; ++i) {
-      // Calculate the number of workers for a given diving heuristic
-      i_t start            = std::floor((double)k * total_diving_workers / num_active);
-      i_t end              = std::floor((double)(k + 1) * total_diving_workers / num_active);
-      i_t workers_per_type = end - start;
+    max_diving_workers.fill(0);
+    if (num_active == 0) { return; }
 
-      // Calculate the number of diving workers allocated to this (best-first) worker
-      start = std::floor((double)Base::worker_id * workers_per_type / num_bfs_workers);
-      end   = std::floor((double)(Base::worker_id + 1) * workers_per_type / num_bfs_workers);
-      max_diving_workers[i] = end - start;
-      total_max_diving_workers += max_diving_workers[i];
-      ++k;
+    for (size_t i = 1, k = 0; i < num_search_strategies; ++i) {
+      if (is_search_strategy_enabled(search_strategies[i], has_incumbent, settings)) {
+        // Calculate the number of workers for a given diving heuristic
+        i_t start            = std::floor((double)k * total_diving_workers / num_active);
+        i_t end              = std::floor((double)(k + 1) * total_diving_workers / num_active);
+        i_t workers_per_type = end - start;
+
+        // Calculate the number of diving workers allocated to this (best-first) worker
+        start = std::floor((double)Base::worker_id * workers_per_type / num_bfs_workers);
+        end   = std::floor((double)(Base::worker_id + 1) * workers_per_type / num_bfs_workers);
+        max_diving_workers[i] = end - start;
+        total_max_diving_workers += max_diving_workers[i];
+        ++k;
+      }
     }
   }
-
-  // Flag to indicate if this worker is responsible for reporting, checking the convergence
-  // and repairing the heuristic solutions.
-  bool is_main_worker = false;
 
   // The worker-local node heap.
   node_queue_t<i_t, f_t> node_queue;
@@ -203,11 +204,11 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Keep track of the total number of active diving worker that are associated with this
   // (best-first) worker
-  omp_atomic_t<i_t> total_active_diving_workers;
+  omp_atomic_t<i_t> total_active_diving_workers{0};
 
   // The maximum number of diving worker that are associated with this
   // (best-first) worker
-  i_t total_max_diving_workers;
+  i_t total_max_diving_workers{0};
 };
 
 template <typename i_t, typename f_t>
@@ -241,15 +242,15 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   void set_inactive()
   {
     Base::is_active = false;
-    --bfs_worker->total_active_diving_workers;
     --bfs_worker->active_diving_workers[Base::search_strategy];
+    --bfs_worker->total_active_diving_workers;
   }
 
   mip_node_t<i_t, f_t> start_node;
 
   // The best-first worker that is associated with this diving worker. Used for controlling the
   // number of active diving workers.
-  bfs_worker_t<i_t, f_t>* bfs_worker;
+  bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

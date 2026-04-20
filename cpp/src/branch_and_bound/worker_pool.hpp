@@ -31,7 +31,7 @@ class worker_pool_t {
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] =
         std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
-      idle_workers_.push_front(i);
+      idle_workers_.push_back(i);
     }
 
     is_initialized = true;

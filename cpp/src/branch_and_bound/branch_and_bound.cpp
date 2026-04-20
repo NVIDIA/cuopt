@@ -1458,7 +1458,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
-    if (worker->is_main_worker) { repair_heuristic_solutions(); }
+    if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
@@ -1482,7 +1482,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     f_t now = toc(exploration_stats_.start_time);
 
-    if (worker->is_main_worker) {
+    if (worker->worker_id == 0) {
       f_t time_since_last_log =
         exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
       i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
@@ -1544,14 +1544,18 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       if (stack.size() > 0) {
         mip_node_t<i_t, f_t>* node = stack.back();
         stack.pop_back();
+        worker->node_queue.lock();
         worker->node_queue.push(node);
+        worker->node_queue.unlock();
       }
 
       exploration_stats_.nodes_unexplored += 2;
 
       if (round_dir == rounding_direction_t::UP) {
         if (worker->node_queue.best_first_queue_size() < min_node_queue_size_) {
+          worker->node_queue.lock();
           worker->node_queue.push(node_ptr->get_down_child());
+          worker->node_queue.unlock();
         } else {
           stack.push_front(node_ptr->get_down_child());
         }
@@ -1559,7 +1563,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
         stack.push_front(node_ptr->get_up_child());
       } else {
         if (worker->node_queue.best_first_queue_size() < min_node_queue_size_) {
+          worker->node_queue.lock();
           worker->node_queue.push(node_ptr->get_up_child());
+          worker->node_queue.unlock();
         } else {
           stack.push_front(node_ptr->get_up_child());
         }
@@ -1572,12 +1578,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     upper_bound = upper_bound_;
     rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::OPTIMAL;
-      break;
-    }
 
     // Launch a new diving task if any worker is idle
     if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
@@ -1602,7 +1602,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   while (!stack.empty()) {
     auto node = stack.front();
     stack.pop_front();
+    worker->node_queue.lock();
     worker->node_queue.push(node);
+    worker->node_queue.unlock();
   }
 }
 
@@ -1615,7 +1617,7 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
 
   idle_worker->init(start_node);
 
-#pragma omp task affinity(idle_worker)
+#pragma omp task affinity(*idle_worker) priority(99)
   best_first_search_with(idle_worker);
 
   return idle_worker;
@@ -1671,6 +1673,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     lower_bound = get_lower_bound();
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
     rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::OPTIMAL;
+      break;
+    }
   }
 
   worker->set_inactive();
@@ -1799,12 +1807,14 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
       bfs_worker->active_diving_workers[strategy]++;
       bfs_worker->total_active_diving_workers++;
 
-#pragma omp task affinity(diving_worker)
+#pragma omp task affinity(*diving_worker)
       dive_with(diving_worker);
 
       return true;
     }
   }
+
+  diving_worker_pool_.return_worker_to_pool(diving_worker);
   return false;
 }
 
@@ -1813,7 +1823,6 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
   bfs_worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
   bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[0];
-  worker->is_main_worker         = true;
 
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
   node_queue.push(search_tree_.root.get_down_child());
@@ -2589,8 +2598,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
 #pragma omp master
       {
-        auto worker            = launch_bfs_worker(search_tree_.root.get_up_child());
-        worker->is_main_worker = true;
+        auto worker = launch_bfs_worker(search_tree_.root.get_up_child());
+        std::cout << std::format("Worker {} is the main one", worker->worker_id) << std::endl;
         launch_bfs_worker(search_tree_.root.get_down_child());
       }
     }
