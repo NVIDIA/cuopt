@@ -65,19 +65,27 @@ def build_orders():
     return cudf.DataFrame(
         {
             "pickup_location": [
-                STATION_A, STATION_B, STATION_C,
-                STATION_C, STATION_B, STATION_A,
+                STATION_A,
+                STATION_B,
+                STATION_C,
+                STATION_C,
+                STATION_B,
+                STATION_A,
             ],
             "delivery_location": [
-                STATION_B, STATION_C, DEPOT,
-                STATION_B, STATION_A, DEPOT,
+                STATION_B,
+                STATION_C,
+                DEPOT,
+                STATION_B,
+                STATION_A,
+                DEPOT,
             ],
             "demand": [1, 1, 1, 1, 1, 1],
-            "earliest_pickup":   [0, 0, 0, 0, 0, 0],
-            "latest_pickup":     [10, 20, 30, 10, 20, 30],
+            "earliest_pickup": [0, 0, 0, 0, 0, 0],
+            "latest_pickup": [10, 20, 30, 10, 20, 30],
             "earliest_delivery": [0, 0, 0, 0, 0, 0],
-            "latest_delivery":   [45, 45, 45, 45, 45, 45],
-            "pickup_service_time":   [2, 2, 2, 2, 2, 2],
+            "latest_delivery": [45, 45, 45, 45, 45, 45],
+            "pickup_service_time": [2, 2, 2, 2, 2, 2],
             "delivery_service_time": [2, 2, 2, 2, 2, 2],
         }
     )
@@ -85,9 +93,9 @@ def build_orders():
 
 def build_fleet():
     """Two AMRs, each able to carry two parts at once."""
-    return cudf.DataFrame(
-        {"robot_id": [0, 1], "capacity": [2, 2]}
-    ).set_index("robot_id")
+    return cudf.DataFrame({"robot_id": [0, 1], "capacity": [2, 2]}).set_index(
+        "robot_id"
+    )
 
 
 def build_data_model(cost_matrix, orders, fleet, wp_to_idx):
@@ -189,7 +197,9 @@ def main():
 
     solution = routing.Solve(data_model, settings)
     if solution.get_status() != 0:
-        print(f"cuOpt failed to find a solution (status={solution.get_status()})")
+        print(
+            f"cuOpt failed to find a solution (status={solution.get_status()})"
+        )
         return
 
     print_schedule(solution, graph, wp_to_idx)
