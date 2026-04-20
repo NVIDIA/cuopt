@@ -1390,6 +1390,9 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible            = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms  = edge_norms_;
+  if (worker->recompute_bounds && worker->orbital_fixing) {
+    worker->orbital_fixing->reset(symmetry_, node_ptr);
+  }
 
   if (feasible) {
 
@@ -1449,7 +1452,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
   worker->ensure_orbital_fixing();
-  if (worker->orbital_fixing) { worker->orbital_fixing->enable(); }
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;

@@ -209,6 +209,8 @@ class orbital_fixing_t {
  public:
   explicit orbital_fixing_t(mip_symmetry_t<i_t, f_t>& root)
     : num_original_vars_(root.num_original_vars),
+      max_generators_(root.num_generators),
+      start_plunge_(true),
       orb_(root.num_original_vars),
       orbit_has_b1_(root.num_original_vars, 0),
       orbit_has_b0_(root.num_original_vars, 0),
@@ -219,13 +221,54 @@ class orbital_fixing_t {
       marked_f0_(root.num_original_vars, 0),
       marked_f1_(root.num_original_vars, 0)
   {
+    branched_zero_.reserve(root.num_original_vars);
+    branched_one_.reserve(root.num_original_vars);
     f0_.reserve(root.num_original_vars);
     f1_.reserve(root.num_original_vars);
+    fix_zero_.reserve(root.num_original_vars);
+    fix_one_.reserve(root.num_original_vars);
+
+    surviving_generators_.resize(max_generators_);
+    std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
   }
 
-  bool disabled () const { return disabled_; }
-  void disable() { disabled_ = true; }
-  void enable() { disabled_ = false; }
+  bool disabled () const { return surviving_generators_.empty(); }
+  void disable() { surviving_generators_.clear(); }
+
+  void reset(mip_symmetry_t<i_t, f_t>* symmetry, mip_node_t<i_t, f_t>* node_ptr) {
+    for (i_t j : branched_zero_) {
+        marked_b0_[j] = 0;
+        orbit_has_b0_[orb_.find_orbit(j)] = 0;
+    }
+    for (i_t j : branched_one_) {
+        marked_b1_[j] = 0;
+        orbit_has_b1_[orb_.find_orbit(j)] = 0;
+    }
+    branched_zero_.clear();
+    branched_one_.clear();
+    orb_.reset();
+
+    mip_node_t<i_t, f_t>* node = node_ptr;
+    while (node != nullptr && node->branch_var >= 0) {
+        i_t v = node->branch_var;
+        bool is_binary = (symmetry->is_binary[v] == 1);
+        if (is_binary) {
+          if (node->branch_var_upper == 0.0) {
+            branched_zero_.push_back(v);
+            marked_b0_[v] = 1;
+          } else if (node->branch_var_lower == 1.0) {
+            branched_one_.push_back(v);
+            marked_b1_[v] = 1;
+          }
+        }
+        node = node->parent;
+    }
+
+    surviving_generators_.resize(max_generators_);
+    std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
+
+    start_plunge_ = true;
+  }
 
   void orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -233,24 +276,18 @@ class orbital_fixing_t {
                       lp_problem_t<i_t, f_t>& problem)
   {
     // Collect binary branchings only; skip general integer branchings
-    std::vector<i_t> branched_zero;
-    std::vector<i_t> branched_one;
-    branched_zero.reserve(node_ptr->depth);
-    branched_one.reserve(node_ptr->depth);
-    mip_node_t<i_t, f_t>* node = node_ptr;
-    while (node != nullptr && node->branch_var >= 0) {
-      i_t v = node->branch_var;
-      bool is_binary = (symmetry->is_binary[v] == 1);
-      if (is_binary) {
-        if (node->branch_var_upper == 0.0) {
-          branched_zero.push_back(v);
-          marked_b0_[v] = 1;
-        } else if (node->branch_var_lower == 1.0) {
-          branched_one.push_back(v);
-          marked_b1_[v] = 1;
-        }
+    i_t v = node_ptr->branch_var;
+    bool is_binary = (symmetry->is_binary[v] == 1);
+    bool should_recompute = start_plunge_;
+    if (is_binary) {
+      if (node_ptr->branch_var_upper == 0.0) {
+        branched_zero_.push_back(v);
+        marked_b0_[v] = 1;
+      } else if (node_ptr->branch_var_lower == 1.0) {
+        branched_one_.push_back(v);
+        marked_b1_[v] = 1;
+        should_recompute = true;
       }
-      node = node->parent;
     }
 
     for (i_t j : symmetry->binary_variables) {
@@ -268,145 +305,151 @@ class orbital_fixing_t {
     // Instead we compute a subgroup H of G' that is just
     // H = { g in generators(G) | g(B1) = B1 }
     // This means that we will miss some fixings. But every fixing we perform will be valid.
-    std::vector<i_t> surviving_generators;
-    surviving_generators.reserve(symmetry->generators.num_generators());
-    for (size_t k = 0; k < symmetry->generators.num_generators(); k++) {
-      const permutation_t<i_t>& perm = symmetry->generators.get_generator(k);
-      const std::vector<i_t>& p      = perm.dense_permutation();
-      bool stabilizes_b1             = true;
+    //
+    // We are called within the context of a plunge within the branch and bound tree
+    // Suppose we computed H for the parent node.
+    // If we branched on a binary variable x_j then we are in one of two cases:
+    // Case 1: x_j = 0, then B1 remains unchanged and we do not need to recompute H or its orbits
+    // Case 2: x_j = 1, then B1 becomes B1 union {x_j} and we only need to check the generators
+    //                  used to construct H for the parent node. We call these the "surviving generators".
+    //
+    // Note that when we restart the plunge we need to recompute everything.
+    if (should_recompute) {
+      for (size_t k = 0; k < surviving_generators_.size(); k++) {
+        const i_t h                    = surviving_generators_[k];
+        const permutation_t<i_t>& perm = symmetry->generators.get_generator(h);
+        const std::vector<i_t>& p = perm.dense_permutation();
+        bool stabilizes_b1        = true;
 
-      for (i_t j : branched_one) {
-        const i_t mapped = p[j];
-        if (marked_b1_[mapped] == 0) {
-          stabilizes_b1 = false;
-          break;
+        if (start_plunge_) {
+          // At the start of a plunge, surviving_generators_ was reset to all generators.
+          // We need to check each generator against all of B1.
+          for (i_t j : branched_one_) {
+            if (marked_b1_[p[j]] == 0) {
+              stabilizes_b1 = false;
+              break;
+            }
+          }
+        } else {
+          // B1 = v union B1_from_parent. So the surviving generators already stabilize B1_from_parent.
+          // We only need to check if the generators stabilize v.
+          if (marked_b1_[p[v]] == 0) {
+            stabilizes_b1 = false;
+          }
+        }
+
+        if (!stabilizes_b1) {
+          std::swap(surviving_generators_[k], surviving_generators_.back());
+          surviving_generators_.pop_back();
+          k--;
         }
       }
 
-      if (stabilizes_b1) { surviving_generators.push_back(static_cast<i_t>(k)); }
-    }
+      // Clear old orbit_has values before orbits change
+      for (i_t v : branched_one_) {
+        orbit_has_b1_[orb_.find_orbit(v)] = 0;
+      }
+      for (i_t v : branched_zero_) {
+        orbit_has_b0_[orb_.find_orbit(v)] = 0;
+      }
 
-    orb_.compute_orbits(surviving_generators, symmetry->generators);
+      orb_.reset();
+      orb_.compute_orbits(surviving_generators_, symmetry->generators);
 
-    // Check if the stabilizer is trivial (all binary orbits are singletons)
-    bool trivial_stabilizer = true;
-    for (i_t j : symmetry->binary_variables) {
-      if (orb_.orbit_size(orb_.find_orbit(j)) > 1) {
-        trivial_stabilizer = false;
-        break;
-      }
-    }
-
-    if (trivial_stabilizer) {
-      disabled_ = true;
-      for (i_t v : branched_one) {
-        marked_b1_[v] = 0;
-      }
-      for (i_t v : branched_zero) {
-        marked_b0_[v] = 0;
-      }
-      for (i_t v : f0_) {
-        marked_f0_[v] = 0;
-      }
-      for (i_t v : f1_) {
-        marked_f1_[v] = 0;
-      }
-      f0_.clear();
-      f1_.clear();
-    } else {
-      for (i_t v : branched_one) {
+      for (i_t v : branched_one_) {
         orbit_has_b1_[orb_.find_orbit(v)] = 1;
       }
-
-      for (i_t v : branched_zero) {
+      for (i_t v : branched_zero_) {
         orbit_has_b0_[orb_.find_orbit(v)] = 1;
       }
+    } else if (is_binary && node_ptr->branch_var_upper == 0.0) {
+      orbit_has_b0_[orb_.find_orbit(v)] = 1;
+    }
+    start_plunge_ = false;
 
-      for (i_t v : f0_) {
-        orbit_has_f0_[orb_.find_orbit(v)] = 1;
+    for (i_t v : f0_) {
+      orbit_has_f0_[orb_.find_orbit(v)] = 1;
+    }
+
+    for (i_t v : f1_) {
+      orbit_has_f1_[orb_.find_orbit(v)] = 1;
+    }
+
+    fix_zero_.clear();
+    fix_one_.clear();
+    bool stabilizer_nontrivial = false;
+    for (i_t j : symmetry->binary_variables) {
+      i_t o = orb_.find_orbit(j);
+      if (orb_.orbit_size(o) < 2) continue;
+
+      if (orbit_has_b1_[o] == 1) {
+        // The orbit contains variables in B1
+        // So we can't fix any variables in this orbit
+        continue;
       }
 
-      for (i_t v : f1_) {
-        orbit_has_f1_[orb_.find_orbit(v)] = 1;
+      // A non-B1 orbit of size >= 2 exists, so the stabilizer may produce fixings
+      // in this node or a descendant.
+      stabilizer_nontrivial = true;
+
+      if (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1) {
+        // The orbit of this variable contains variables in B0 or F0
+        // So we can fix this variable to zero (provided its not already in B0 or F0)
+        if (marked_b0_[j] == 0 && marked_f0_[j] == 0) { fix_zero_.push_back(j); }
       }
 
-      std::vector<i_t> fix_zero;  // The set L0 of variables that can be fixed to 0
-      std::vector<i_t> fix_one;   // The set L1 of variables that can be fixed to 1
-
-      for (i_t j : symmetry->binary_variables) {
-        i_t o = orb_.find_orbit(j);
-        if (orb_.orbit_size(o) < 2) continue;
-
-        if (orbit_has_b1_[o] == 1) {
-          // The orbit contains variables in B1
-          // So we can't fix any variables in this orbit
-          continue;
-        }
-
-        if (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1) {
-          // The orbit of this variable contains variables in B0 or F0
-          // So we can fix this variable to zero (provided its not already in B0 or F0)
-          if (marked_b0_[j] == 0 && marked_f0_[j] == 0) { fix_zero.push_back(j); }
-        }
-
-        if (orbit_has_f1_[o] == 1) {
-          // The orbit of this variable contains variables in F1
-          // So we can fix this variable to one (provided its not already in F1)
-          if (marked_f1_[j] == 0) { fix_one.push_back(j); }
-        }
-      }
-
-      // Restore the work arrays
-      for (i_t v : branched_one) {
-        orbit_has_b1_[orb_.find_orbit(v)] = 0;
-        marked_b1_[v]                    = 0;
-      }
-
-      for (i_t v : branched_zero) {
-        orbit_has_b0_[orb_.find_orbit(v)] = 0;
-        marked_b0_[v]                    = 0;
-      }
-
-      for (i_t v : f0_) {
-        orbit_has_f0_[orb_.find_orbit(v)] = 0;
-        marked_f0_[v]                    = 0;
-      }
-
-      for (i_t v : f1_) {
-        orbit_has_f1_[orb_.find_orbit(v)] = 0;
-        marked_f1_[v]                    = 0;
-      }
-
-      f0_.clear();
-      f1_.clear();
-
-      if (fix_zero.size() > 0 || fix_one.size() > 0) {
-        settings.log.printf("Orbital fixing at node %d (depth %d): fixing %d to 0 and %d to 1\n",
-                            node_ptr->node_id,
-                            node_ptr->depth,
-                            (int)fix_zero.size(),
-                            (int)fix_one.size());
-      }
-
-      // Finally fix the variables in L0 and L1
-      for (i_t v : fix_zero) {
-        problem.lower[v] = 0.0;
-        problem.upper[v] = 0.0;
-      }
-      for (i_t v : fix_one) {
-        problem.lower[v] = 1.0;
-        problem.upper[v] = 1.0;
+      if (orbit_has_f1_[o] == 1) {
+        // The orbit of this variable contains variables in F1
+        // So we can fix this variable to one (provided its not already in F1)
+        if (marked_f1_[j] == 0) { fix_one_.push_back(j); }
       }
     }
 
-    // Reset orbits for reuse
-    orb_.reset();
+    if (!stabilizer_nontrivial) { surviving_generators_.clear(); }
+
+    // Restore the work arrays
+    for (i_t v : f0_) {
+      orbit_has_f0_[orb_.find_orbit(v)] = 0;
+      marked_f0_[v]                     = 0;
+    }
+
+    for (i_t v : f1_) {
+      orbit_has_f1_[orb_.find_orbit(v)] = 0;
+      marked_f1_[v]                     = 0;
+    }
+
+    f0_.clear();
+    f1_.clear();
+
+    if (fix_zero_.size() > 0 || fix_one_.size() > 0) {
+      settings.log.printf("Orbital fixing at node %d (depth %d): fixing %d to 0 and %d to 1\n",
+                          node_ptr->node_id,
+                          node_ptr->depth,
+                          (int)fix_zero_.size(),
+                          (int)fix_one_.size());
+    }
+
+    // Finally fix the variables in L0 and L1
+    for (i_t v : fix_zero_) {
+      problem.lower[v] = 0.0;
+      problem.upper[v] = 0.0;
+    }
+    for (i_t v : fix_one_) {
+      problem.lower[v] = 1.0;
+      problem.upper[v] = 1.0;
+    }
   }
 
  private:
   i_t num_original_vars_;
-  bool disabled_ = false;
+  i_t max_generators_;
+  bool start_plunge_;
   orbits_t<i_t> orb_;
+
+  std::vector<i_t> branched_zero_;
+  std::vector<i_t> branched_one_;
+
+  std::vector<i_t> surviving_generators_;
 
   std::vector<i_t> orbit_has_b1_;        // orbit_has_b1_[o] = 1 if orbit o contains variables in B1
   std::vector<i_t> orbit_has_b0_;        // orbit_has_b0_[o] = 1 if orbit o contains variables in B0
@@ -418,6 +461,8 @@ class orbital_fixing_t {
   std::vector<i_t> f1_;                  // set of variables fixed to 1 by bound propagation
   std::vector<i_t> marked_f0_;           // marked_f0_[v] = 1 if variable v is in F0
   std::vector<i_t> marked_f1_;           // marked_f1_[v] = 1 if variable v is in F1
+  std::vector<i_t> fix_zero_;            // set of variables fixed to 0 by orbital fixing
+  std::vector<i_t> fix_one_;             // set of variables fixed to 1 by orbital fixing
 };
 
 template <typename i_t, typename f_t>
