@@ -1493,79 +1493,106 @@ mps_parser::mps_data_model_t<int, double> create_flow_cover_problem_example_9_8(
   return problem;
 }
 
-// End-to-end test: solve the Example 9.8 problem with flow cover cuts enabled.
-// The flow cover cut x0 + x2 - x4 <= 1 should cut off the fractional LP solution.
-TEST(cuts, flow_cover_example_9_8_end_to_end)
+struct flow_cover_test_problem_t {
+  raft::handle_t handle;
+  dual_simplex::simplex_solver_settings_t<int, double> settings;
+  dual_simplex::lp_problem_t<int, double> lp;
+  dual_simplex::csr_matrix_t<int, double> Arow;
+  std::vector<int> new_slacks;
+  std::vector<dual_simplex::variable_type_t> var_types;
+
+  flow_cover_test_problem_t() : handle(), settings(), lp(&handle, 1, 1, 1), Arow(0, 0, 0) {}
+};
+
+flow_cover_test_problem_t build_flow_cover_test_problem()
 {
-  const raft::handle_t handle_{};
-  mip_solver_settings_t<int, double> settings;
+  flow_cover_test_problem_t test_problem;
+  auto model      = create_flow_cover_problem_example_9_8();
+  auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
+  detail::problem_t<int, double> mip_problem(op_problem);
+  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip_problem.get_host_user_problem(host_problem);
 
-  auto problem = create_flow_cover_problem_example_9_8();
-
-  settings.time_limit      = 5.0;
-  settings.max_cut_passes  = 10;
-  settings.flow_cover_cuts = 1;  // explicitly enable flow cover cuts
-  settings.presolver       = presolver_t::None;
-
-  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
-  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
-
-  // The integer optimal: x0=1, x1=0, x2=0, x3=1, x4=0, x5=0
-  // gives 3(1) + 3(0) + 6(0) - 3(1) - 5(0) - 1(0) = 0 <= 4, feasible.
-  // Objective = -3(1) + 0 + -6(0) + -3(1) + 0 + 0 = -6
-  //
-  // With x0=1, x2=1, x3=1, x4=1:
-  // 3(1)+3(0)+6(1)-3(1)-5(1)-1(0) = 3+6-3-5 = 1 <= 4, feasible.
-  // Objective = -3-6-3 = -12. Even better.
-  //
-  // With x0=1, x1=1, x2=1, x3=1, x4=1, x5=1:
-  // 3+3+6-3-5-1 = 3 <= 4, feasible.
-  // Objective = -3+0-6-3+0+0 = -12 (x1, x4, x5 have zero obj coeff).
-  // Actually x0=1, x2=1, x3=1, x4=1: obj = -3-6-3 = -12
-  double obj_val = solution.get_objective_value();
-  EXPECT_LE(obj_val, -6.0 + 1e-3);  // at least as good as -6
+  dual_simplex::dualize_info_t<int, double> dualize_info;
+  dual_simplex::convert_user_problem(
+    host_problem, test_problem.settings, test_problem.lp, test_problem.new_slacks, dualize_info);
+  test_problem.var_types = host_problem.var_types;
+  if (test_problem.lp.num_cols > static_cast<int>(test_problem.var_types.size())) {
+    test_problem.var_types.resize(test_problem.lp.num_cols,
+                                  dual_simplex::variable_type_t::CONTINUOUS);
+  }
+  test_problem.lp.A.to_compressed_row(test_problem.Arow);
+  return test_problem;
 }
 
-// Test that the flow cover cut from Example 9.8 violates the LP relaxation.
-// The fractional point is x* = (1, 0, 2/3, 1, 0, 0).
-// The flow cover inequality (simplified) is: x0 + x2 - x4 <= 1.
-// Violation: 1 + 2/3 - 0 = 5/3 > 1.
-TEST(cuts, flow_cover_example_9_8_violation_check)
+TEST(cuts, flow_cover_example_9_8_generates_expected_cut)
 {
-  // Verify the cut violation algebraically
-  // LP relaxation: x* = (1, 0, 2/3, 1, 0, 0)
-  std::vector<double> xstar = {1.0, 0.0, 2.0 / 3.0, 1.0, 0.0, 0.0};
+  auto test_problem = build_flow_cover_test_problem();
+  std::vector<double> xstar(test_problem.lp.num_cols, 0.0);
+  xstar[0] = 1.0;
+  xstar[2] = 2.0 / 3.0;
+  xstar[3] = 1.0;
 
-  // Flow cover inequality from Example 9.8:
-  // y1 + y3 + 1*(1-x1) + 4*(1-x3) <= 7 + 2*x5 + y6
-  // With y_j = a_j * x_j:
-  //   3*x0 + 6*x2 + 1*(1-x0) + 4*(1-x2) <= 7 + 2*x4 + 1*x5
-  //   3*x0 + 6*x2 + 1 - x0 + 4 - 4*x2 <= 7 + 2*x4 + x5
-  //   2*x0 + 2*x2 + 5 <= 7 + 2*x4 + x5
-  //   2*x0 + 2*x2 - 2*x4 - x5 <= 2
-  // Dividing is not needed for the violation check.
-  //
-  // LHS = 2(1) + 2(2/3) - 2(0) - 0 = 2 + 4/3 = 10/3
-  // RHS = 2
-  // Violation = 10/3 - 2 = 4/3
+  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
+                                                             test_problem.settings,
+                                                             test_problem.Arow,
+                                                             test_problem.new_slacks,
+                                                             test_problem.var_types);
+  ASSERT_EQ(generator.num_flow_cover_constraints(), 1);
 
-  double lhs       = 2.0 * xstar[0] + 2.0 * xstar[2] - 2.0 * xstar[4] - 1.0 * xstar[5];
-  double rhs       = 2.0;
-  double violation = lhs - rhs;
+  dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
+  const int status = generator.generate_flow_cover_cut(test_problem.lp,
+                                                       test_problem.settings,
+                                                       test_problem.Arow,
+                                                       test_problem.new_slacks,
+                                                       test_problem.var_types,
+                                                       xstar,
+                                                       generator.get_flow_cover_constraints()[0],
+                                                       cut);
+  ASSERT_EQ(status, 0);
 
-  EXPECT_GT(violation, 1.0);  // violation is 4/3 ~ 1.333
-  EXPECT_NEAR(violation, 4.0 / 3.0, 1e-10);
+  ASSERT_EQ(cut.size(), 4);
+  EXPECT_EQ(cut.index(0), 0);
+  EXPECT_EQ(cut.index(1), 2);
+  EXPECT_EQ(cut.index(2), 4);
+  EXPECT_EQ(cut.index(3), 5);
+  EXPECT_NEAR(cut.coeff(0), -2.0, 1e-10);
+  EXPECT_NEAR(cut.coeff(1), -2.0, 1e-10);
+  EXPECT_NEAR(cut.coeff(2), 5.0, 1e-10);
+  EXPECT_NEAR(cut.coeff(3), 1.0, 1e-10);
+  EXPECT_NEAR(cut.rhs, -2.0, 1e-10);
 
-  // Also verify that any integer feasible solution satisfies the cut.
-  // x0=1, x2=1, x3=1, x4=1 => lhs = 2+2-2-0 = 2 <= 2. Tight but feasible.
-  std::vector<double> x_int = {1.0, 0.0, 1.0, 1.0, 1.0, 0.0};
-  double lhs_int            = 2.0 * x_int[0] + 2.0 * x_int[2] - 2.0 * x_int[4] - 1.0 * x_int[5];
-  EXPECT_LE(lhs_int, rhs + 1e-10);
+  const double dot = cut.vector.dot(xstar);
+  EXPECT_LT(dot, cut.rhs - 1e-6);
+  EXPECT_NEAR(dot - cut.rhs, -4.0 / 3.0, 1e-10);
+}
 
-  // x0=1, x2=0, x3=1 => lhs = 2+0-0-0 = 2 <= 2. Feasible.
-  std::vector<double> x_int2 = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
-  double lhs_int2 = 2.0 * x_int2[0] + 2.0 * x_int2[2] - 2.0 * x_int2[4] - 1.0 * x_int2[5];
-  EXPECT_LE(lhs_int2, rhs + 1e-10);
+TEST(cuts, flow_cover_example_9_8_skips_nonviolated_point)
+{
+  auto test_problem = build_flow_cover_test_problem();
+  std::vector<double> xstar(test_problem.lp.num_cols, 0.0);
+  xstar[0] = 1.0;
+  xstar[2] = 1.0;
+  xstar[3] = 1.0;
+  xstar[4] = 1.0;
+
+  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
+                                                             test_problem.settings,
+                                                             test_problem.Arow,
+                                                             test_problem.new_slacks,
+                                                             test_problem.var_types);
+  ASSERT_EQ(generator.num_flow_cover_constraints(), 1);
+
+  dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
+  const int status = generator.generate_flow_cover_cut(test_problem.lp,
+                                                       test_problem.settings,
+                                                       test_problem.Arow,
+                                                       test_problem.new_slacks,
+                                                       test_problem.var_types,
+                                                       xstar,
+                                                       generator.get_flow_cover_constraints()[0],
+                                                       cut);
+  EXPECT_EQ(status, -1);
 }
 
 }  // namespace cuopt::linear_programming::test

@@ -955,181 +955,180 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   inequality_t<i_t, f_t>& cut)
 {
   const bool verbose = false;
-  // Get the row: sum_{j in N1} a_j x_j - sum_{j in N2} a_j x_j <= b
-  // which represents: sum_{j in N1} y_j <= b + sum_{j in N2} y_j
-  // where y_j = a_j * x_j for binary x_j.
+  static_cast<void>(new_slacks);
   inequality_t<i_t, f_t> inequality(Arow, flow_cover_row, lp.rhs[flow_cover_row]);
   inequality_t<i_t, f_t> rational_inequality = inequality;
   if (!rational_coefficients(var_types, inequality, rational_inequality)) { return -1; }
   inequality = rational_inequality;
 
-  // Separate into N1 (positive coefficients) and N2 (negative coefficients)
-  // N1: j with a_j > 0 (left-hand side flows)
-  // N2: j with a_j < 0 (right-hand side flows, stored as negative in the constraint)
   struct flow_var_t {
-    i_t j;    // variable index
-    f_t a_j;  // absolute value of coefficient
+    i_t j;
+    f_t a_j;
+    bool in_n2;
   };
-  std::vector<flow_var_t> N1, N2;
-  N1.reserve(inequality.size());
-  N2.reserve(inequality.size());
+  std::vector<flow_var_t> flow_vars;
+  flow_vars.reserve(inequality.size());
 
-  f_t b = inequality.rhs;  // RHS of the constraint
+  std::vector<i_t> complemented_variables;
+  complemented_variables.reserve(inequality.size());
+
+  f_t b         = inequality.rhs;
+  f_t sum_all_a = 0.0;
+  f_t sum_n2_a  = 0.0;
 
   for (i_t k = 0; k < inequality.size(); k++) {
     const i_t j  = inequality.index(k);
     const f_t aj = inequality.coeff(k);
     if (is_slack_[j]) { continue; }
     if (aj > 0.0) {
-      N1.push_back({j, aj});
+      flow_vars.push_back({j, aj, false});
+      sum_all_a += aj;
     } else if (aj < 0.0) {
-      N2.push_back({j, -aj});  // store absolute value
+      const f_t weight = -aj;
+      flow_vars.push_back({j, weight, true});
+      complemented_variables.push_back(j);
+      is_complemented_[j] = 1;
+      sum_all_a += weight;
+      sum_n2_a += weight;
     }
   }
 
-  if (N1.empty() || N2.empty()) { return -1; }
-
-  // Solve the separation knapsack problem to find cover C = (C1, C2)
-  // minimize   sum_{j in N1} (1 - x_j*) z_j + sum_{j in N2} (-x_j*) z_j  (note: N2 values negative)
-  // subject to sum_{j in N1} a_j z_j - sum_{j in N2} a_j z_j > b
-  //            z in {0,1}^n
-  //
-  // Convert to maximization knapsack (zbar_j = 1 - z_j):
-  // maximize   sum_{j in N1} (1 - x_j*) zbar_j + sum_{j in N2} x_j* zbar_j
-  // subject to sum_{j in N1} a_j zbar_j + sum_{j in N2} a_j zbar_j <= sum_all_a - b - epsilon
-  //
-  // Wait, let's be more careful. The separation problem objective is:
-  //   zeta = sum_{j in N1} (1 - x_j*) z_j - sum_{j in N2} x_j* z_j
-  // We want to minimize this. A violated flow cover exists when zeta < 1 - sum_{j in N2} x_j*.
-  //
-  // Convert to maximize by flipping with zbar = 1 - z:
-  //   maximize sum_{j in N1} (1 - x_j*) zbar_j + sum_{j in N2} x_j* zbar_j
-  //   subject to sum_{j in N1} a_j (1 - zbar_j) - sum_{j in N2} a_j (1 - zbar_j) > b
-  //   which is: sum_N1 a_j - sum_N1 a_j zbar_j - sum_N2 a_j + sum_N2 a_j zbar_j > b
-  //   =>  -sum_N1 a_j zbar_j + sum_N2 a_j zbar_j > b - sum_N1 a_j + sum_N2 a_j
-  //   =>  sum_N1 a_j zbar_j - sum_N2 a_j zbar_j < sum_N1 a_j - sum_N2 a_j - b
-  //
-  // This is a knapsack: maximize value s.t. sum weights <= capacity
-  // where weights for N1 items = a_j, weights for N2 items = -a_j (negative weights!)
-  //
-  // Negative weights complicate this. Instead, let's use the greedy approach directly
-  // on the separation problem. We solve:
-  //   minimize sum_{j in N1} (1 - x_j*) z_j - sum_{j in N2} x_j* z_j
-  //   s.t. sum_{j in N1} a_j z_j - sum_{j in N2} a_j z_j > b
-  //
-  // Greedy: sort N1 by (1-x_j*)/a_j ascending, N2 by x_j*/a_j descending
-  // Include all of N2 first (they help the constraint and reduce objective),
-  // then greedily add N1 items.
-
-  // Greedy separation heuristic
-  f_t constraint_lhs = 0.0;
-  f_t objective      = 0.0;
-
-  // Start by including all N2 variables in the cover (z_j = 1 for j in N2)
-  // This contributes -a_j to constraint and -x_j* to objective
-  std::vector<bool> in_cover_n2(N2.size(), true);
-  for (i_t k = 0; k < static_cast<i_t>(N2.size()); k++) {
-    constraint_lhs -= N2[k].a_j;
-    objective -= xstar[N2[k].j];
+  if (flow_vars.empty() || sum_n2_a <= 0.0 || sum_n2_a >= sum_all_a) {
+    restore_complemented(complemented_variables);
+    return -1;
   }
 
-  // Sort N1 by (1 - x_j*) / a_j ratio (ascending = cheapest first)
-  std::vector<i_t> n1_perm(N1.size());
-  std::iota(n1_perm.begin(), n1_perm.end(), 0);
-  std::sort(n1_perm.begin(), n1_perm.end(), [&](i_t a, i_t idx_b) {
-    f_t ratio_a = (1.0 - xstar[N1[a].j]) / N1[a].a_j;
-    f_t ratio_b = (1.0 - xstar[N1[idx_b].j]) / N1[idx_b].a_j;
-    return ratio_a < ratio_b;
-  });
-
-  // Add N1 variables greedily until constraint > b
-  std::vector<bool> in_cover_n1(N1.size(), false);
-  for (i_t idx : n1_perm) {
-    constraint_lhs += N1[idx].a_j;
-    objective += (1.0 - xstar[N1[idx].j]);
-    in_cover_n1[idx] = true;
-    if (constraint_lhs > b) { break; }
+  const f_t transformed_beta = b + sum_n2_a;
+  f_t separation_rhs         = sum_all_a - (transformed_beta + 1.0);
+  if (separation_rhs <= 0.0) {
+    restore_complemented(complemented_variables);
+    return -1;
   }
 
-  if (constraint_lhs <= b) { return -1; }  // Could not find a cover
+  std::vector<f_t> values;
+  std::vector<f_t> weights;
+  std::vector<i_t> indices;
+  std::vector<f_t> fixed_values;
+  std::vector<i_t> fixed_variables;
+  values.reserve(flow_vars.size());
+  weights.reserve(flow_vars.size());
+  indices.reserve(flow_vars.size());
+  fixed_values.reserve(flow_vars.size());
+  fixed_variables.reserve(flow_vars.size());
 
-  // Remove N2 variables that are expensive (high x_j*) and not needed
-  // Sort N2 by x_j*/a_j descending (most expensive first)
-  std::vector<i_t> n2_perm(N2.size());
-  std::iota(n2_perm.begin(), n2_perm.end(), 0);
-  std::sort(n2_perm.begin(), n2_perm.end(), [&](i_t a, i_t idx_b) {
-    f_t ratio_a = xstar[N2[a].j] / N2[a].a_j;
-    f_t ratio_b = xstar[N2[idx_b].j] / N2[idx_b].a_j;
-    return ratio_a > ratio_b;
-  });
-
-  for (i_t idx : n2_perm) {
-    // Try removing this N2 variable from the cover
-    if (constraint_lhs + N2[idx].a_j > b) {
-      constraint_lhs += N2[idx].a_j;
-      objective += xstar[N2[idx].j];
-      in_cover_n2[idx] = false;
+  f_t objective_constant = 0.0;
+  const f_t x_tol        = 1e-5;
+  for (const auto& flow_var : flow_vars) {
+    const i_t j                 = flow_var.j;
+    const f_t transformed_xstar = flow_var.in_n2 ? 1.0 - xstar[j] : xstar[j];
+    complemented_xstar_[j]      = transformed_xstar;
+    const f_t value             = std::min(1.0, std::max(0.0, 1.0 - transformed_xstar));
+    if (transformed_xstar < x_tol) {
+      fixed_variables.push_back(j);
+      fixed_values.push_back(0.0);
+      separation_rhs -= flow_var.a_j;
+      continue;
     }
+    if (transformed_xstar > 1.0 - x_tol) {
+      fixed_variables.push_back(j);
+      fixed_values.push_back(1.0);
+      objective_constant += value;
+      continue;
+    }
+    objective_constant += value;
+    values.push_back(value);
+    weights.push_back(flow_var.a_j);
+    indices.push_back(j);
   }
 
-  // Build C1 (subset of N1 in cover) and C2 (subset of N2 in cover)
+  if (separation_rhs <= 0.0) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
+
+  std::vector<f_t> solution(values.size(), 0.0);
+  f_t objective = 0.0;
+  if (!values.empty()) {
+    objective = solve_knapsack_problem(values, weights, separation_rhs, solution);
+  }
+  if (std::isnan(objective)) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
+
+  const f_t separation_value = -objective + objective_constant;
+  const f_t tol              = 1e-6;
+  if (separation_value >= 1.0 - tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
+
   std::vector<i_t> C1_indices, C2_indices;
   std::vector<f_t> C1_coeffs, C2_coeffs;
-  for (i_t k = 0; k < static_cast<i_t>(N1.size()); k++) {
-    if (in_cover_n1[k]) {
-      C1_indices.push_back(N1[k].j);
-      C1_coeffs.push_back(N1[k].a_j);
-    }
+  std::vector<i_t> transformed_cover_n2_indices;
+  std::vector<f_t> transformed_cover_n2_coeffs;
+  std::fill(is_marked_.begin(), is_marked_.end(), 0);
+
+  for (i_t k = 0; k < static_cast<i_t>(solution.size()); k++) {
+    const i_t j = indices[k];
+    if (solution[k] != 0.0) { continue; }
+    is_marked_[j] = 1;
   }
-  for (i_t k = 0; k < static_cast<i_t>(N2.size()); k++) {
-    if (in_cover_n2[k]) {
-      C2_indices.push_back(N2[k].j);
-      C2_coeffs.push_back(N2[k].a_j);
+  for (i_t k = 0; k < static_cast<i_t>(fixed_variables.size()); k++) {
+    if (fixed_values[k] != 1.0) { continue; }
+    const i_t j   = fixed_variables[k];
+    is_marked_[j] = 1;
+  }
+
+  for (const auto& flow_var : flow_vars) {
+    const i_t j = flow_var.j;
+    if (!flow_var.in_n2) {
+      if (is_marked_[j]) {
+        C1_indices.push_back(j);
+        C1_coeffs.push_back(flow_var.a_j);
+      }
+    } else if (is_marked_[j]) {
+      transformed_cover_n2_indices.push_back(j);
+      transformed_cover_n2_coeffs.push_back(flow_var.a_j);
+    } else {
+      C2_indices.push_back(j);
+      C2_coeffs.push_back(flow_var.a_j);
     }
   }
 
-  if (C1_indices.empty()) { return -1; }
+  if (C1_indices.empty()) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
 
-  // Compute lambda = sum_{j in C1} a_j - sum_{j in C2} a_j - b
   f_t sum_C1 = std::accumulate(C1_coeffs.begin(), C1_coeffs.end(), 0.0);
   f_t sum_C2 = std::accumulate(C2_coeffs.begin(), C2_coeffs.end(), 0.0);
   f_t lambda = sum_C1 - sum_C2 - b;
+  if (lambda <= tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
 
-  if (lambda <= 1e-10) { return -1; }
-
-  // Determine L2 = {j in N2 \ C2 : lambda * x_j* < a_j * x_j*}
-  //             = {j in N2 \ C2 : lambda < a_j}  (for x_j* > 0)
-  // Actually from the theory: L2 = {j in N2 \ C2 : lambda * x_j* < y_j*}
-  // where y_j* = a_j * x_j* for binary variables.
-  // So: lambda * x_j* < a_j * x_j*, which simplifies to lambda < a_j when x_j* > 0.
-  // When x_j* = 0, both sides are 0, so j is not in L2.
   std::vector<i_t> L2_indices;
-  std::vector<f_t> L2_coeffs;
-  std::vector<i_t> rest_N2_indices;  // N2 \ (C2 union L2)
+  std::vector<i_t> rest_N2_indices;
   std::vector<f_t> rest_N2_coeffs;
-
-  for (i_t k = 0; k < static_cast<i_t>(N2.size()); k++) {
-    if (in_cover_n2[k]) { continue; }  // skip C2
-    const i_t j  = N2[k].j;
-    const f_t aj = N2[k].a_j;
-    if (xstar[j] > 1e-10 && lambda < aj) {
+  for (i_t k = 0; k < static_cast<i_t>(transformed_cover_n2_indices.size()); k++) {
+    const i_t j  = transformed_cover_n2_indices[k];
+    const f_t aj = transformed_cover_n2_coeffs[k];
+    if (lambda * xstar[j] < aj * xstar[j] - tol) {
       L2_indices.push_back(j);
-      L2_coeffs.push_back(aj);
     } else {
       rest_N2_indices.push_back(j);
       rest_N2_coeffs.push_back(aj);
     }
   }
 
-  // Evaluate the flow cover inequality violation:
-  // LHS = sum_{j in C1} y_j* + sum_{j in C1} (a_j - lambda)^+ (1 - x_j*)
-  // RHS = b + sum_{j in C2} a_j + lambda * sum_{j in L2} x_j* + sum_{j in rest_N2} y_j*
   f_t lhs = 0.0;
   for (i_t k = 0; k < static_cast<i_t>(C1_indices.size()); k++) {
     const i_t j  = C1_indices[k];
     const f_t aj = C1_coeffs[k];
-    lhs += aj * xstar[j];                                  // y_j* = a_j * x_j*
-    lhs += std::max(0.0, aj - lambda) * (1.0 - xstar[j]);  // (a_j - lambda)^+ (1 - x_j*)
+    lhs += aj * xstar[j];
+    lhs += std::max(0.0, aj - lambda) * (1.0 - xstar[j]);
   }
 
   f_t rhs = b + sum_C2;
@@ -1137,52 +1136,30 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     rhs += lambda * xstar[L2_indices[k]];
   }
   for (i_t k = 0; k < static_cast<i_t>(rest_N2_indices.size()); k++) {
-    rhs += rest_N2_coeffs[k] * xstar[rest_N2_indices[k]];  // y_j* = a_j * x_j*
+    rhs += rest_N2_coeffs[k] * xstar[rest_N2_indices[k]];
   }
 
-  f_t violation = lhs - rhs;
-  const f_t tol = 1e-6;
-  if (violation <= tol) { return -1; }
+  const f_t violation = lhs - rhs;
+  if (violation <= tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
 
   if (verbose) {
     settings.log.printf(
       "Flow cover cut row %d violation %e lambda %e\n", flow_cover_row, violation, lambda);
   }
 
-  // Build the cut inequality: LHS <= RHS
-  // sum_{j in C1} a_j x_j + sum_{j in C1} (a_j - lambda)^+ (1 - x_j) <= b + sum_C2 + lambda *
-  // sum_{j in L2} x_j + sum_{j in rest_N2} a_j x_j
-  //
-  // Rearranging to >= form for cut pool (cut'*x >= rhs):
-  // -sum_{j in C1} a_j x_j - sum_{j in C1} (a_j - lambda)^+ (1 - x_j) + lambda sum_{j in L2} x_j
-  //   + sum_{j in rest_N2} a_j x_j >= -(b + sum_C2)
-  //
-  // Expanding (a_j - lambda)^+ (1 - x_j):
-  //   For j with a_j > lambda: (a_j - lambda)(1 - x_j) = (a_j - lambda) - (a_j - lambda) x_j
-  //   So the x_j coefficient for C1 becomes: -a_j + (a_j - lambda)^+ = -min(a_j, lambda)
-  //   And there's a constant: -sum_{j in C1} (a_j - lambda)^+
-  //
-  // In >= form:
-  //   sum_{j in C1} min(a_j, lambda) x_j + lambda sum_{j in L2} x_j + sum_{j in rest_N2} a_j x_j
-  //   >= sum_{j in C1} (a_j - lambda)^+ - (b + sum_C2)
-  //   = sum_{j in C1} a_j - |C1^+| lambda ... hmm let me just build it directly.
-
-  // Build cut in the form: cut'*x >= cut.rhs
-  // From: sum_{j in C1} y_j + sum_{j in C1} (a_j-lambda)^+(1-x_j) <= b + sum_C2 + lambda*sum_L2
-  // x_j + sum_rest a_j x_j Negate for >= form.
   cut.clear();
   cut.reserve(C1_indices.size() + L2_indices.size() + rest_N2_indices.size());
 
-  f_t constant = 0.0;
+  f_t lift_sum = 0.0;
   for (i_t k = 0; k < static_cast<i_t>(C1_indices.size()); k++) {
     const i_t j    = C1_indices[k];
     const f_t aj   = C1_coeffs[k];
     const f_t lift = std::max(0.0, aj - lambda);
-    // Coefficient of x_j: -a_j + lift = -(a_j - lift) = -min(a_j, lambda)
-    // But also the constant from lift*(1-x_j): -lift
-    f_t coeff = -aj + lift;  // = -min(a_j, lambda)
-    cut.push_back(j, coeff);
-    constant -= lift;
+    cut.push_back(j, -aj + lift);
+    lift_sum += lift;
   }
   for (i_t k = 0; k < static_cast<i_t>(L2_indices.size()); k++) {
     cut.push_back(L2_indices[k], lambda);
@@ -1190,14 +1167,16 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   for (i_t k = 0; k < static_cast<i_t>(rest_N2_indices.size()); k++) {
     cut.push_back(rest_N2_indices[k], rest_N2_coeffs[k]);
   }
-  cut.rhs = -(b + sum_C2) + constant;
-
-  // Verify violation
-  f_t dot           = cut.vector.dot(xstar);
-  f_t cut_violation = dot - cut.rhs;
-  if (cut_violation >= -tol) { return -1; }
+  cut.rhs = -(b + sum_C2) + lift_sum;
 
   cut.sort();
+  const f_t dot = cut.vector.dot(xstar);
+  if (dot >= cut.rhs - tol) {
+    restore_complemented(complemented_variables);
+    return -1;
+  }
+
+  restore_complemented(complemented_variables);
   return 0;
 }
 
