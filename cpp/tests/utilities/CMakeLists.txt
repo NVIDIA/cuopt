@@ -5,3 +5,6 @@
 
 # Add CLI end-to-end test
 ConfigureTest(CLI_TEST test_cli.cpp)
+
+# Intentionally flaky test for CI validation — remove once validated
+ConfigureTest(FLAKY_VALIDATION_TEST test_flaky_validation.cpp)
