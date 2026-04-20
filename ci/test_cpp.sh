@@ -49,7 +49,8 @@ trap "EXITCODE=1" ERR
 set +e
 
 # Run gtests from libcuopt-tests package
-export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
+# XML output and retry logic handled by run_ctests.sh
+export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
 timeout 40m ./ci/run_ctests.sh
