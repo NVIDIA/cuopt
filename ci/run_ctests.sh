@@ -36,14 +36,19 @@ fi
 
 GTEST_MAX_RETRIES=${GTEST_MAX_RETRIES:-2}
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
-COREDUMP_DIR="${RAPIDS_TESTS_DIR}/coredumps"
-mkdir -p "${COREDUMP_DIR}"
+IS_NIGHTLY="${RAPIDS_BUILD_TYPE:-}"
 
-# Enable coredumps
-ulimit -c unlimited 2>/dev/null || true
-# Set coredump path if possible (requires root or sysctl access)
-if [ -w /proc/sys/kernel/core_pattern ] 2>/dev/null; then
-    echo "${COREDUMP_DIR}/core.%e.%p" > /proc/sys/kernel/core_pattern
+# Crash isolation and retries only for nightly builds
+if [ "${IS_NIGHTLY}" = "nightly" ]; then
+    COREDUMP_DIR="${RAPIDS_TESTS_DIR}/coredumps"
+    mkdir -p "${COREDUMP_DIR}"
+    # Enable coredumps
+    ulimit -c unlimited 2>/dev/null || true
+    if [ -w /proc/sys/kernel/core_pattern ] 2>/dev/null; then
+        echo "${COREDUMP_DIR}/core.%e.%p" > /proc/sys/kernel/core_pattern
+    fi
+else
+    COREDUMP_DIR=""
 fi
 
 # Extract failing test case names from a gtest JUnit XML file
@@ -128,6 +133,16 @@ run_gtest_with_retry() {
 
     if [ "${rc}" -eq 0 ]; then
         return 0
+    fi
+
+    # For non-nightly builds, fail immediately — no retries or crash isolation
+    if [ "${IS_NIGHTLY}" != "nightly" ]; then
+        if was_signal_death "${rc}"; then
+            echo "CRASH: ${test_name} died from $(signal_name ${rc}) (exit code ${rc})"
+        fi
+        echo "FAILED: ${test_name} (exit code ${rc})"
+        OVERALL_RC=1
+        return 1
     fi
 
     # Determine which tests to retry

@@ -11,6 +11,7 @@ cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/../python/cuopt_server/cuopt_s
 
 RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
 PYTEST_MAX_CRASH_RETRIES=${PYTEST_MAX_CRASH_RETRIES:-2}
+IS_NIGHTLY="${RAPIDS_BUILD_TYPE:-}"
 
 signal_name() {
     local sig=$(($1 - 128))
@@ -30,13 +31,21 @@ for arg in "$@"; do
 done
 
 rc=0
-pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
+if [ "${IS_NIGHTLY}" = "nightly" ]; then
+    pytest -s --cache-clear --reruns 2 --reruns-delay 5 "$@" tests || rc=$?
+else
+    pytest -s --cache-clear "$@" tests || rc=$?
+fi
 
 if [ "${rc}" -le 128 ]; then
     exit ${rc}
 fi
 
 echo "CRASH: pytest process died from $(signal_name ${rc}) (exit code ${rc})"
+
+if [ "${IS_NIGHTLY}" != "nightly" ]; then
+    exit ${rc}
+fi
 
 echo "INFO: Collecting test list for individual retry..."
 test_list=$(pytest --collect-only -q tests 2>/dev/null | grep "::" | head -500 || echo "")
