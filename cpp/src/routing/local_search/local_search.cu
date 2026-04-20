@@ -355,11 +355,14 @@ void local_search_t<i_t, f_t, REQUEST>::run_random_local_search(solution_t<i_t, 
   move_candidates.reset(sol.sol_handle);
   move_candidates.random_move_candidates.reset(sol.sol_handle);
   calculate_route_compatibility(sol);
+  if (use_work_estimate) increment_work_counter();
   find_insertions<i_t, f_t, REQUEST>(sol, move_candidates, search_type_t::RANDOM);
+  if (use_work_estimate) increment_work_counter();
 
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   sol.sol_handle->sync_stream();
   populate_random_moves(sol);
+  if (use_work_estimate) increment_work_counter();
 
   bool work_estimate_reached = (use_work_estimate && check_work_estimate());
   // if there is no more insertions found
@@ -368,6 +371,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_random_local_search(solution_t<i_t, 
     return;
   }
   perform_moves(sol, move_candidates);
+  if (use_work_estimate) increment_work_counter();
 
   sol.global_runtime_checks(false, is_originally_feasible, "run_random_local_search_end");
   sol.sol_handle->sync_stream();

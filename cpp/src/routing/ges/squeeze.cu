@@ -247,7 +247,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_and_save()
   solution_ptr->global_runtime_checks(true, false, "squeeze_all_and_save_before_ls");
   const bool consider_unserviced = false;
   const bool use_work_estimate = true;
-  const int work_estimate_limit = 10000; // Example value, can be parameterized
+  // Derive work_estimate_limit from remaining_time (fallback to default if not available)
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
     *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);
@@ -340,7 +342,8 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
   // Use work estimate instead of time limit for determinism
   const bool consider_unserviced = false;
   const bool use_work_estimate = true;
-  const int work_estimate_limit = 10000;
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
     *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);
@@ -403,7 +406,8 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_breaks_feasible()
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights, false);
   const bool consider_unserviced = false;
   const bool use_work_estimate = true;
-  const int work_estimate_limit = 10000;
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
     *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);

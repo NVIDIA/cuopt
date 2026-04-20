@@ -54,9 +54,11 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::improve(
   auto gpu_weight          = get_cuopt_cost(weight);
   bool consider_unserviced = true;
   resource.ls.set_active_weights(gpu_weight);
-  // Use work estimate instead of time limit for determinism
+  // Use work estimate derived from time_limit for determinism
+  int work_estimate_limit = static_cast<int>(time_limit * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   resource.ls.run_best_local_search(
-    adapted_solution.sol, consider_unserviced, true, 10000, run_cycle_finder);
+    adapted_solution.sol, consider_unserviced, true, work_estimate_limit, run_cycle_finder);
   adapted_solution.populate_host_data();
   adapted_solution.check_device_host_coherence();
   cuopt_func_call(adapted_solution.sol.check_cost_coherence(gpu_weight));
