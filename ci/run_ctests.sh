@@ -130,12 +130,61 @@ run_gtest_with_retry() {
         return 0
     fi
 
-    # Check for signal death (segfault, abort)
+    # Determine which tests to retry
+    local tests_to_retry=""
+
     if was_signal_death "${rc}"; then
         echo "CRASH: ${test_name} died from $(signal_name ${rc}) (exit code ${rc})"
         collect_coredumps "${test_name}"
-        # Write a minimal JUnit XML for the crash so it appears in reports
-        if [ ! -f "${xml_file}" ] || ! grep -q 'testcase' "${xml_file}" 2>/dev/null; then
+
+        # Find tests that didn't get to run (not in the partial XML)
+        # plus any that failed. Only retry those, not the ones that passed.
+        echo "INFO: Finding tests that need retry in ${test_name}"
+        local all_tests
+        all_tests=$("${gt}" --gtest_list_tests "$@" 2>/dev/null | python3 -c "
+import sys
+suite = ''
+for line in sys.stdin:
+    line = line.rstrip()
+    if not line or line.startswith('#'):
+        continue
+    if not line.startswith(' '):
+        suite = line.rstrip('.')
+    else:
+        print(f'{suite}.{line.strip().split()[0]}')
+" || echo "")
+
+        # Extract tests that already passed from partial XML
+        local passed_tests=""
+        if [ -f "${xml_file}" ]; then
+            passed_tests=$(python3 -c "
+import sys
+from xml.etree import ElementTree
+try:
+    tree = ElementTree.parse(sys.argv[1])
+    for tc in tree.iter('testcase'):
+        if tc.find('failure') is None and tc.find('error') is None:
+            cls = tc.get('classname', '')
+            name = tc.get('name', '')
+            if cls and name:
+                print(f'{cls}.{name}')
+except Exception:
+    pass
+" "${xml_file}" || echo "")
+        fi
+
+        # Retry = all_tests - passed_tests
+        if [ -n "${passed_tests}" ]; then
+            tests_to_retry=$(comm -23 \
+                <(echo "${all_tests}" | sort) \
+                <(echo "${passed_tests}" | sort))
+        else
+            tests_to_retry="${all_tests}"
+        fi
+
+        if [ -z "${tests_to_retry}" ]; then
+            echo "FAILED: Could not list tests in ${test_name}, cannot retry"
+            # Write crash marker XML
             cat > "${xml_file}" <<XMLEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
@@ -150,26 +199,25 @@ This may indicate a segfault, double-free, or stack overflow.
   </testsuite>
 </testsuites>
 XMLEOF
+            OVERALL_RC=1
+            return 1
         fi
-        OVERALL_RC=1
-        return 1
+    else
+        # Normal failure — extract which test cases failed from XML
+        tests_to_retry=$(extract_failed_tests "${xml_file}")
+
+        if [ -z "${tests_to_retry}" ]; then
+            echo "FAILED: ${test_name} failed but could not identify failing test cases"
+            OVERALL_RC=1
+            return 1
+        fi
     fi
 
-    # Extract which test cases failed
-    local failed_tests
-    failed_tests=$(extract_failed_tests "${xml_file}")
+    local num_to_retry
+    num_to_retry=$(echo "${tests_to_retry}" | wc -l)
+    echo "INFO: Retrying ${num_to_retry} test case(s) from ${test_name} individually"
 
-    if [ -z "${failed_tests}" ]; then
-        echo "FAILED: ${test_name} failed but could not identify failing test cases"
-        OVERALL_RC=1
-        return 1
-    fi
-
-    local num_failed
-    num_failed=$(echo "${failed_tests}" | wc -l)
-    echo "INFO: ${num_failed} test case(s) failed in ${test_name}, retrying individually"
-
-    # Retry each failing test case individually
+    # Retry each test case individually
     local all_passed=true
     while IFS= read -r tc; do
         local tc_passed=false
@@ -188,8 +236,22 @@ XMLEOF
 
             if was_signal_death "${retry_rc}"; then
                 echo "  CRASH: ${tc} died from $(signal_name ${retry_rc}) on retry ${attempt}"
-                collect_coredumps "${test_name}-${tc}"
-                break
+                collect_coredumps "${test_name}-$(echo "${tc}" | tr '/' '_')"
+                # Write crash marker XML for this specific test
+                cat > "${retry_xml}" <<XMLEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="${test_name}" tests="1" failures="1">
+    <testcase name="${tc}" classname="${test_name}">
+      <failure message="${tc} crashed with $(signal_name ${retry_rc}) on retry ${attempt}">
+Process terminated by $(signal_name ${retry_rc}).
+This test causes intermittent crashes — needs urgent investigation.
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+XMLEOF
+                # Don't break — keep retrying, might be a flaky crash
             fi
         done
 
@@ -197,7 +259,7 @@ XMLEOF
             echo "  FAILED: ${tc} failed after $((GTEST_MAX_RETRIES + 1)) attempts"
             all_passed=false
         fi
-    done <<< "${failed_tests}"
+    done <<< "${tests_to_retry}"
 
     if [ "${all_passed}" = false ]; then
         OVERALL_RC=1
