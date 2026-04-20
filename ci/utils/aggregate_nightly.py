@@ -49,16 +49,24 @@ def download_summaries(s3_prefix, local_dir, s3_fallback_prefix=""):
 
     uris = s3_list(s3_prefix)
     json_uris = [
-        u for u in uris
+        u
+        for u in uris
         if u.endswith(".json") and not u.endswith("/consolidated.json")
     ]
 
     # Fallback: search the parent date prefix if branch-specific path is empty
-    if not json_uris and s3_fallback_prefix and s3_fallback_prefix != s3_prefix:
-        print(f"No summaries at {s3_prefix}, trying fallback: {s3_fallback_prefix}")
+    if (
+        not json_uris
+        and s3_fallback_prefix
+        and s3_fallback_prefix != s3_prefix
+    ):
+        print(
+            f"No summaries at {s3_prefix}, trying fallback: {s3_fallback_prefix}"
+        )
         uris = s3_list(s3_fallback_prefix)
         json_uris = [
-            u for u in uris
+            u
+            for u in uris
             if u.endswith(".json") and not u.endswith("/consolidated.json")
         ]
         if json_uris:
@@ -219,13 +227,15 @@ def parse_workflow_jobs(workflow_jobs_path):
             if "compute-matrix" in name.lower():
                 continue
             tracked = any(name.startswith(p) for p in TRACKED_PREFIXES)
-            result.append({
-                "name": name,
-                "conclusion": job.get("conclusion", "unknown"),
-                "status": job.get("status", "unknown"),
-                "url": job.get("html_url", ""),
-                "has_test_details": tracked,
-            })
+            result.append(
+                {
+                    "name": name,
+                    "conclusion": job.get("conclusion", "unknown"),
+                    "status": job.get("status", "unknown"),
+                    "url": job.get("html_url", ""),
+                    "has_test_details": tracked,
+                }
+            )
         return result
     except (json.JSONDecodeError, OSError) as exc:
         print(
@@ -235,8 +245,9 @@ def parse_workflow_jobs(workflow_jobs_path):
         return []
 
 
-def generate_consolidated_json(agg, date_str, branch, github_run_url="",
-                               workflow_jobs=None):
+def generate_consolidated_json(
+    agg, date_str, branch, github_run_url="", workflow_jobs=None
+):
     """Generate the consolidated JSON for Slack and dashboard."""
     total_jobs = len(agg["matrix_grid"])
     failed_jobs = sum(
@@ -404,17 +415,23 @@ def generate_consolidated_html(
     # Helper: build a GitHub source link for test names when suite looks like a file path
     def _test_name_html(entry):
         """Return HTML for the test name, linked to source if suite looks like a file path."""
-        name_escaped = _html_escape(entry['name'])
-        suite = entry.get('suite', '')
+        name_escaped = _html_escape(entry["name"])
+        suite = entry.get("suite", "")
         # Find the sha from the matching grid entry
         sha = "unknown"
         for g in agg["matrix_grid"]:
-            if (g["test_type"] == entry.get("test_type")
-                    and g["matrix_label"] == entry.get("matrix_label")
-                    and g.get("sha")):
+            if (
+                g["test_type"] == entry.get("test_type")
+                and g["matrix_label"] == entry.get("matrix_label")
+                and g.get("sha")
+            ):
                 sha = g["sha"]
                 break
-        if sha != "unknown" and suite and ('/' in suite or suite.endswith('.py')):
+        if (
+            sha != "unknown"
+            and suite
+            and ("/" in suite or suite.endswith(".py"))
+        ):
             url = f"https://github.com/NVIDIA/cuopt/blob/{_html_escape(sha)}/{_html_escape(suite)}"
             return f'<a href="{url}" style="color:#1565c0;text-decoration:none"><code>{name_escaped}</code></a>'
         return f"<code>{name_escaped}</code>"
@@ -793,7 +810,7 @@ def main():
             embedded_path = output_dir / "dashboard.html"
             embedded_path.write_text(dashboard_html)
             s3_upload(str(embedded_path), args.s3_dashboard_uri)
-            print(f"Dashboard uploaded with embedded data")
+            print("Dashboard uploaded with embedded data")
         else:
             print(
                 f"WARNING: Dashboard not found at {dashboard_file}",

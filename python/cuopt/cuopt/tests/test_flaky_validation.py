@@ -24,4 +24,6 @@ def test_flaky_fails_first_passes_on_retry():
         # First run — create marker and fail
         with open(MARKER, "w") as f:
             f.write("first_attempt")
-        assert False, "Intentional first-run failure for flaky detection validation"
+        assert False, (
+            "Intentional first-run failure for flaky detection validation"
+        )

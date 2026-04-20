@@ -236,7 +236,9 @@ XMLEOF
     while IFS= read -r tc; do
         local tc_passed=false
         for attempt in $(seq 1 "${GTEST_MAX_RETRIES}"); do
-            local retry_xml="${RAPIDS_TESTS_DIR}/${test_name}-retry${attempt}-$(echo "${tc}" | tr '/' '_').xml"
+            local tc_safe
+            tc_safe=$(echo "${tc}" | tr '/' '_')
+            local retry_xml="${RAPIDS_TESTS_DIR}/${test_name}-retry${attempt}-${tc_safe}.xml"
             echo "  Retry ${attempt}/${GTEST_MAX_RETRIES}: ${tc}"
 
             local retry_rc=0
