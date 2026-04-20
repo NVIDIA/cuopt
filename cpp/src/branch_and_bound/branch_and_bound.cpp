@@ -299,15 +299,17 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
+  const f_t upper_bound = upper_bound_.load();
+
   f_t lower_bound      = lower_bound_ceiling_.load();
   f_t heap_lower_bound = node_queue_.get_lower_bound();
   lower_bound          = std::min(heap_lower_bound, lower_bound);
   lower_bound          = std::min(worker_pool_.get_lower_bound(), lower_bound);
 
   if (std::isfinite(lower_bound)) {
-    return lower_bound;
+    return std::min(lower_bound, upper_bound);
   } else if (std::isfinite(root_objective_)) {
-    return root_objective_;
+    return std::min(root_objective_, upper_bound);
   } else {
     return -inf;
   }
