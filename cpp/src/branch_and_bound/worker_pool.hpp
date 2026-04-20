@@ -49,9 +49,9 @@ class worker_pool_t {
       return workers_[idx].get();
     }
   }
+
   void return_worker_to_pool(WorkerType* worker)
   {
-    worker->is_active = false;
     std::lock_guard lock(mutex_);
     idle_workers_.push_back(worker->worker_id);
     num_idle_workers_++;
@@ -70,7 +70,8 @@ class worker_pool_t {
     return lower_bound;
   }
 
-  WorkerType* get_worker(i_t id) { return workers_[id].get(); }
+  WorkerType* operator[](i_t id) { return workers_[id].get(); }
+  WorkerType* operator[](i_t id) const { return workers_[id].get(); }
 
   i_t num_idle_workers() const { return num_idle_workers_; }
   i_t num_workers() const { return workers_.size(); }
@@ -83,43 +84,6 @@ class worker_pool_t {
   circular_deque_t<i_t> idle_workers_;
   omp_atomic_t<i_t> num_idle_workers_;
 };
-
-template <typename f_t, typename i_t>
-std::vector<search_strategy_t> get_search_strategies(
-  diving_heuristics_settings_t<i_t, f_t> settings)
-{
-  std::vector<search_strategy_t> types;
-  types.reserve(num_search_strategies);
-  types.push_back(BEST_FIRST);
-  if (settings.pseudocost_diving != 0) { types.push_back(PSEUDOCOST_DIVING); }
-  if (settings.line_search_diving != 0) { types.push_back(LINE_SEARCH_DIVING); }
-  if (settings.guided_diving != 0) { types.push_back(GUIDED_DIVING); }
-  if (settings.coefficient_diving != 0) { types.push_back(COEFFICIENT_DIVING); }
-  return types;
-}
-
-template <typename i_t>
-std::array<i_t, num_search_strategies> get_max_workers(
-  i_t num_workers, const std::vector<search_strategy_t>& strategies)
-{
-  std::array<i_t, num_search_strategies> max_num_workers;
-  max_num_workers.fill(0);
-
-  i_t bfs_workers             = std::max(strategies.size() == 1 ? num_workers : num_workers / 4, 1);
-  max_num_workers[BEST_FIRST] = bfs_workers;
-
-  i_t diving_workers = (num_workers - bfs_workers);
-  i_t m              = strategies.size() - 1;
-
-  for (size_t i = 1, k = 0; i < strategies.size(); ++i) {
-    i_t start                      = (double)k * diving_workers / m;
-    i_t end                        = (double)(k + 1) * diving_workers / m;
-    max_num_workers[strategies[i]] = end - start;
-    ++k;
-  }
-
-  return max_num_workers;
-}
 
 template <typename i_t, typename f_t>
 using bfs_worker_pool_t = worker_pool_t<bfs_worker_t<i_t, f_t>>;

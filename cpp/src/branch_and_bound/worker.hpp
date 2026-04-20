@@ -9,16 +9,14 @@
 
 #include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
+#include <branch_and_bound/node_queue.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
 
 #include <utilities/pcgenerator.hpp>
 
-#include <deque>
 #include <vector>
-
-#include "node_queue.hpp"
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -33,6 +31,21 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<f_t> last_log             = 0.0;
 };
 
+template <typename f_t, typename i_t>
+bool is_search_strategy_enabled(search_strategy_t strategy,
+                                bool has_incumbent,
+                                diving_heuristics_settings_t<i_t, f_t> settings)
+{
+  switch (strategy) {
+    case BEST_FIRST: return true;
+    case PSEUDOCOST_DIVING: return settings.pseudocost_diving != 0;
+    case LINE_SEARCH_DIVING: return settings.line_search_diving != 0;
+    case GUIDED_DIVING: return settings.guided_diving != 0 && has_incumbent;
+    case COEFFICIENT_DIVING: return settings.coefficient_diving != 0;
+    default: return false;
+  }
+}
+
 template <typename i_t, typename f_t>
 class branch_and_bound_worker_t {
  public:
@@ -43,8 +56,6 @@ class branch_and_bound_worker_t {
   omp_atomic_t<search_strategy_t> search_strategy;
   omp_atomic_t<bool> is_active;
   omp_atomic_t<f_t> lower_bound;
-  omp_atomic_t<i_t> node_depth;
-  omp_atomic_t<i_t> integer_infeasible;
 
   lp_problem_t<i_t, f_t> leaf_problem;
   lp_solution_t<i_t, f_t> leaf_solution;
@@ -125,6 +136,10 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     Base::start_lower     = original_lp.lower;
     Base::start_upper     = original_lp.upper;
     Base::search_strategy = BEST_FIRST;
+
+    max_diving_workers.fill(0);
+    active_diving_workers.fill(0);
+    total_active_diving_workers = 0;
   }
 
   f_t get_lower_bound()
@@ -145,7 +160,54 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     Base::is_active   = true;
   }
 
+  void set_inactive() { Base::is_active = false; }
+
+  void calculate_num_diving_workers(i_t num_bfs_workers,
+                                    i_t total_diving_workers,
+                                    bool has_incumbent,
+                                    const diving_heuristics_settings_t<i_t, f_t>& settings)
+  {
+    i_t num_active = 0;
+    for (i_t i = 1; i < num_search_strategies; ++i) {
+      num_active += is_search_strategy_enabled(search_strategies[i], has_incumbent, settings);
+    }
+
+    total_max_diving_workers = 0;
+    for (size_t i = 1, k = 0; i < num_search_strategies; ++i) {
+      // Calculate the number of workers for a given diving heuristic
+      i_t start            = std::floor((double)k * total_diving_workers / num_active);
+      i_t end              = std::floor((double)(k + 1) * total_diving_workers / num_active);
+      i_t workers_per_type = end - start;
+
+      // Calculate the number of diving workers allocated to this (best-first) worker
+      start = std::floor((double)Base::worker_id * workers_per_type / num_bfs_workers);
+      end   = std::floor((double)(Base::worker_id + 1) * workers_per_type / num_bfs_workers);
+      max_diving_workers[i] = end - start;
+      total_max_diving_workers += max_diving_workers[i];
+      ++k;
+    }
+  }
+
+  // Flag to indicate if this worker is responsible for reporting, checking the convergence
+  // and repairing the heuristic solutions.
+  bool is_main_worker = false;
+
+  // The worker-local node heap.
   node_queue_t<i_t, f_t> node_queue;
+
+  // The number of diving workers of each type that this (best-first) worker can launch.
+  std::array<i_t, num_search_strategies> max_diving_workers;
+
+  // The number of active diving workers of each type associated with this (best-first) worker.
+  std::array<omp_atomic_t<i_t>, num_search_strategies> active_diving_workers;
+
+  // Keep track of the total number of active diving worker that are associated with this
+  // (best-first) worker
+  omp_atomic_t<i_t> total_active_diving_workers;
+
+  // The maximum number of diving worker that are associated with this
+  // (best-first) worker
+  i_t total_max_diving_workers;
 };
 
 template <typename i_t, typename f_t>
@@ -154,16 +216,13 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   using Base::Base;
 
-  void init(const mip_node_t<i_t, f_t>* node,
-            const lp_problem_t<i_t, f_t>& original_lp,
-            search_strategy_t strategy)
+  void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
   {
-    start_node            = node->detach_copy();
-    Base::start_lower     = original_lp.lower;
-    Base::start_upper     = original_lp.upper;
-    Base::search_strategy = strategy;
-    Base::lower_bound     = node->lower_bound;
-    Base::is_active       = true;
+    start_node        = node->detach_copy();
+    Base::start_lower = original_lp.lower;
+    Base::start_upper = original_lp.upper;
+    Base::lower_bound = node->lower_bound;
+    Base::is_active   = true;
     std::fill(Base::bounds_changed.begin(), Base::bounds_changed.end(), false);
     node->get_variable_bounds(Base::start_lower, Base::start_upper, Base::bounds_changed);
   }
@@ -179,7 +238,18 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     return Base::is_active ? Base::lower_bound.load() : std::numeric_limits<f_t>::infinity();
   }
 
+  void set_inactive()
+  {
+    Base::is_active = false;
+    --bfs_worker->total_active_diving_workers;
+    --bfs_worker->active_diving_workers[Base::search_strategy];
+  }
+
   mip_node_t<i_t, f_t> start_node;
+
+  // The best-first worker that is associated with this diving worker. Used for controlling the
+  // number of active diving workers.
+  bfs_worker_t<i_t, f_t>* bfs_worker;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #pragma once
+#include <array>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -23,6 +24,9 @@ enum search_strategy_t : int {
   GUIDED_DIVING      = 3,  // Guided diving (9.2.3).
   COEFFICIENT_DIVING = 4   // Coefficient diving (9.2.1)
 };
+
+constexpr std::array search_strategies = {
+  BEST_FIRST, PSEUDOCOST_DIVING, LINE_SEARCH_DIVING, GUIDED_DIVING, COEFFICIENT_DIVING};
 
 enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 

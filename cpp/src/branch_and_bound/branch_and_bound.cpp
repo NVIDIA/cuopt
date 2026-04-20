@@ -211,8 +211,6 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
-#define SHOW_DIVING_TYPE
-
 #ifdef SHOW_DIVING_TYPE
 inline char feasible_solution_symbol(search_strategy_t strategy)
 {
@@ -1126,12 +1124,7 @@ struct deterministic_diving_policy_t
           this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::LINE_SEARCH_DIVING:
-        if (this->worker.root_solution) {
-          return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
-        } else {
-          return pseudocost_diving(
-            this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
-        }
+        return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
 
       case search_strategy_t::GUIDED_DIVING:
         if (this->worker.incumbent_snapshot.empty()) {
@@ -1456,13 +1449,17 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   circular_deque_t<mip_node_t<i_t, f_t>*> stack(4);
   stack.push_front(start_node);
 
-  f_t lower_bound = get_lower_bound();
-  f_t upper_bound = upper_bound_;
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
+  f_t lower_bound          = get_lower_bound();
+  f_t upper_bound          = upper_bound_;
+  f_t rel_gap              = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap              = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
+  worker->recompute_basis  = true;
+  worker->recompute_bounds = true;
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
+    if (worker->is_main_worker) { repair_heuristic_solutions(); }
+
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -1472,9 +1469,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     // - The current node and its siblings uses the lower bound of the parent before solving the LP
     // relaxation
     // - The lower bound of the parent is lower or equal to its children
-    worker->lower_bound        = node_ptr->lower_bound;
-    worker->node_depth         = node_ptr->depth;
-    worker->integer_infeasible = node_ptr->integer_infeasible;
+    worker->lower_bound = node_ptr->lower_bound;
 
     if (node_ptr->lower_bound > upper_bound_.load()) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
@@ -1485,7 +1480,23 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       continue;
     }
 
-    if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+    f_t now = toc(exploration_stats_.start_time);
+
+    if (worker->is_main_worker) {
+      f_t time_since_last_log =
+        exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
+      i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
+
+      if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
+           time_since_last_log >= 1) ||
+          (time_since_last_log > 30) || now > settings_.time_limit) {
+        report(' ', upper_bound_, lower_bound, node_ptr->depth, node_ptr->integer_infeasible);
+        exploration_stats_.last_log             = tic();
+        exploration_stats_.nodes_since_last_log = 0;
+      }
+    }
+
+    if (now > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       break;
@@ -1561,6 +1572,28 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     upper_bound = upper_bound_;
     rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
+
+    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
+      node_concurrent_halt_ = 1;
+      solver_status_        = mip_status_t::OPTIMAL;
+      break;
+    }
+
+    // Launch a new diving task if any worker is idle
+    if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
+        worker->node_queue.diving_queue_size() > 0) {
+      launch_diving_worker(worker);
+    }
+
+    // If any best-first worker become idle,
+    if (bfs_worker_pool_.num_idle_workers() > 0 && worker->node_queue.best_first_queue_size() > 0) {
+      worker->node_queue.lock();
+      mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
+      if (node != nullptr) {
+        if (!launch_bfs_worker(node)) { worker->node_queue.push(node); }
+      }
+      worker->node_queue.unlock();
+    }
   }
 
   // If the solver was forced to stop, but we still have nodes to explore
@@ -1574,48 +1607,46 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 }
 
 template <typename i_t, typename f_t>
+bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
+  mip_node_t<i_t, f_t>* start_node)
+{
+  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
+  if (!idle_worker) { return nullptr; }
+
+  idle_worker->init(start_node);
+
+#pragma omp task affinity(idle_worker)
+  best_first_search_with(idle_worker);
+
+  return idle_worker;
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
 
-  i_t num_workers = bfs_worker_pool_.num_workers() + diving_worker_pool_.num_workers();
-  diving_heuristics_settings_t<i_t, f_t> diving_settings = settings_.diving_settings;
-  if (!has_solver_space_incumbent()) { diving_settings.guided_diving = false; }
-  std::vector<search_strategy_t> search_strategies = get_search_strategies(diving_settings);
-  std::array<i_t, num_search_strategies> max_num_workers =
-    get_max_workers(num_workers, search_strategies);
+  worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
+                                       diving_worker_pool_.num_workers(),
+                                       has_solver_space_incumbent(),
+                                       settings_.diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol &&
          worker->node_queue.best_first_queue_size() > 0) {
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
-    if (settings_.diving_settings.guided_diving != diving_settings.guided_diving) {
+    if (diving_worker_pool_.num_workers() > 0 && settings_.diving_settings.guided_diving != 0 &&
+        worker->max_diving_workers[GUIDED_DIVING] == 0) {
       if (has_solver_space_incumbent()) {
-        diving_settings.guided_diving = settings_.diving_settings.guided_diving;
-        search_strategies             = get_search_strategies(diving_settings);
-        max_num_workers               = get_max_workers(num_workers, search_strategies);
+        worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
+                                             diving_worker_pool_.num_workers(),
+                                             has_solver_space_incumbent(),
+                                             settings_.diving_settings);
       }
     }
-
-    if (diving_worker_pool_.num_idle_workers() > 0 && worker->node_queue.diving_queue_size() > 0) {
-      for (int i = 1; i < search_strategies.size(); ++i) {
-        auto strategy = search_strategies[i];
-
-        if (worker->node_queue.diving_queue_size() == 0 ||
-            diving_worker_pool_.num_idle_workers() == 0) {
-          break;
-        }
-
-        if (num_active_workers_[strategy] >= max_num_workers[strategy]) { continue; }
-        launch_diving_worker(worker, strategy);
-      }
-    }
-
-    worker->recompute_basis  = true;
-    worker->recompute_bounds = true;
 
     worker->node_queue.lock();
     mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
@@ -1624,9 +1655,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       continue;
     }
 
-    worker->lower_bound        = start_node->lower_bound;
-    worker->node_depth         = start_node->depth;
-    worker->integer_infeasible = start_node->integer_infeasible;
+    worker->lower_bound = start_node->lower_bound;
     worker->node_queue.unlock();
 
     if (upper_bound_.load() < start_node->lower_bound) {
@@ -1644,8 +1673,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   }
 
+  worker->set_inactive();
   bfs_worker_pool_.return_worker_to_pool(worker);
-  num_active_workers_[BEST_FIRST]--;
 }
 
 template <typename i_t, typename f_t>
@@ -1682,9 +1711,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
-    worker->lower_bound        = node_ptr->lower_bound;
-    worker->node_depth         = node_ptr->depth;
-    worker->integer_infeasible = node_ptr->integer_infeasible;
+    worker->lower_bound = node_ptr->lower_bound;
 
     if (node_ptr->lower_bound > upper_bound_.load()) {
       worker->recompute_basis  = true;
@@ -1733,28 +1760,12 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
+  worker->set_inactive();
   diving_worker_pool_.return_worker_to_pool(worker);
-  num_active_workers_[search_strategy]--;
 }
 
 template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::launch_bfs_worker(mip_node_t<i_t, f_t>* start_node)
-{
-  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
-  if (!idle_worker) { return false; }
-
-  idle_worker->init(start_node);
-  num_active_workers_[BEST_FIRST]++;
-
-#pragma omp task affinity(idle_worker)
-  best_first_search_with(idle_worker);
-
-  return true;
-}
-
-template <typename i_t, typename f_t>
-bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker,
-                                                        search_strategy_t diving_type)
+bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker)
 {
   // Get an idle worker.
   diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.pop_idle_worker();
@@ -1770,7 +1781,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     return false;
   }
 
-  diving_worker->init(start_node, original_lp_, diving_type);
+  diving_worker->init(start_node, original_lp_);
   bfs_worker->node_queue.unlock();
 
   bool is_feasible = diving_worker->presolve_start_bounds(settings_);
@@ -1779,176 +1790,35 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     return false;
   }
 
-  num_active_workers_[diving_type]++;
+  for (int i = 1; i < num_search_strategies; ++i) {
+    auto strategy = search_strategies[i];
+
+    if (bfs_worker->active_diving_workers[strategy] < bfs_worker->max_diving_workers[strategy]) {
+      diving_worker->search_strategy = strategy;
+      diving_worker->bfs_worker      = bfs_worker;
+      bfs_worker->active_diving_workers[strategy]++;
+      bfs_worker->total_active_diving_workers++;
 
 #pragma omp task affinity(diving_worker)
-  dive_with(diving_worker);
+      dive_with(diving_worker);
 
-  return true;
-}
-
-template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::run_scheduler()
-{
-  diving_heuristics_settings_t<i_t, f_t> diving_settings = settings_.diving_settings;
-  const i_t num_workers                                  = 2 * settings_.num_threads;
-
-  if (!has_solver_space_incumbent()) { diving_settings.guided_diving = false; }
-  std::vector<search_strategy_t> search_strategies = get_search_strategies(diving_settings);
-  std::array<i_t, num_search_strategies> max_num_workers_per_type =
-    get_max_workers(num_workers, search_strategies);
-
-  const i_t num_bfs_workers    = max_num_workers_per_type[BEST_FIRST];
-  const i_t num_diving_workers = num_workers - num_bfs_workers;
-  bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_);
-  diving_worker_pool_.init(
-    num_diving_workers, original_lp_, Arow_, var_types_, settings_, num_bfs_workers);
-  num_active_workers_.fill(0);
-
-  f_t lower_bound = get_lower_bound();
-  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
-  launch_bfs_worker(search_tree_.root.get_up_child());
-  launch_bfs_worker(search_tree_.root.get_down_child());
-
-  while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol && num_active_workers_[BEST_FIRST] > 0) {
-    bool launched_any_task = false;
-
-    repair_heuristic_solutions();
-
-    f_t now = toc(exploration_stats_.start_time);
-    f_t time_since_last_log =
-      exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
-    i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
-
-    if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
-         time_since_last_log >= 1) ||
-        (time_since_last_log > 30) || now > settings_.time_limit) {
-      i_t node_depth = std::numeric_limits<i_t>::max();
-      i_t int_infeas = 0;
-
-      for (int k = 0; k < num_bfs_workers; ++k) {
-        bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(k);
-        if (worker->is_active) {
-          node_depth = std::min(node_depth, worker->node_depth.load());
-          int_infeas = std::max(int_infeas, worker->integer_infeasible.load());
-        }
-      }
-
-      for (int i = 0; i < max_num_workers_per_type.size(); ++i) {
-        settings_.log.printf("%c%d: max num of workers = %d/%d",
-                             feasible_solution_symbol(static_cast<search_strategy_t>(i)),
-                             i,
-                             num_active_workers_[i],
-                             max_num_workers_per_type[i]);
-      }
-
-      report(' ', upper_bound_, lower_bound, node_depth, int_infeas);
-      exploration_stats_.last_log             = tic();
-      exploration_stats_.nodes_since_last_log = 0;
+      return true;
     }
-
-    if (now > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
-      break;
-    }
-
-    for (i_t k = 0; k < num_bfs_workers && bfs_worker_pool_.num_idle_workers() > 0; ++k) {
-      bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(k);
-      if (worker->is_active && worker->node_queue.best_first_queue_size() > 1) {
-        mip_node_t<i_t, f_t>* node = nullptr;
-        {
-          std::lock_guard lock(worker->node_queue);
-          node = worker->node_queue.pop_best_first();
-        }
-        if (!node) { continue; }
-        if (!launch_bfs_worker(node)) {
-          worker->node_queue.push(node);
-          break;
-        }
-        launched_any_task = true;
-      }
-    }
-
-    lower_bound = get_lower_bound();
-    abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-    rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      node_concurrent_halt_ = 1;
-      solver_status_        = mip_status_t::OPTIMAL;
-      break;
-    }
-
-    // If no new task was launched in this iteration, suspend temporarily the
-    // execution of the scheduler. As of 8/Jan/2026, GCC does not
-    // implement taskyield, but LLVM does.
-    if (!launched_any_task) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
   }
+  return false;
 }
 
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
   bfs_worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
-  bfs_worker_t<i_t, f_t>* worker     = bfs_worker_pool_.get_worker(0);
+  bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[0];
+  worker->is_main_worker         = true;
+
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
   node_queue.push(search_tree_.root.get_down_child());
   node_queue.push(search_tree_.root.get_up_child());
-
-  f_t lower_bound = get_lower_bound();
-  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
-  while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
-    repair_heuristic_solutions();
-
-    f_t now = toc(exploration_stats_.start_time);
-    f_t time_since_last_log =
-      exploration_stats_.last_log == 0 ? 1.0 : toc(exploration_stats_.last_log);
-    i_t nodes_since_last_log = exploration_stats_.nodes_since_last_log;
-
-    if (((nodes_since_last_log >= 1000 || abs_gap < 10 * settings_.absolute_mip_gap_tol) &&
-         time_since_last_log >= 1) ||
-        (time_since_last_log > 30) || now > settings_.time_limit) {
-      i_t depth      = worker->node_depth;
-      i_t int_infeas = worker->integer_infeasible;
-      report(' ', upper_bound_, lower_bound, depth, int_infeas);
-      exploration_stats_.last_log             = tic();
-      exploration_stats_.nodes_since_last_log = 0;
-    }
-
-    if (now > settings_.time_limit) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
-      break;
-    }
-
-    // If there any node left in the heap, we pop the top node and explore it.
-    mip_node_t<i_t, f_t>* start_node = node_queue.pop_best_first();
-
-    if (!start_node) { continue; }
-    if (upper_bound_.load() < start_node->lower_bound) {
-      // This node was put on the heap earlier but its lower bound is now greater than the
-      // current upper bound
-      search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
-      search_tree_.update(start_node, node_status_t::FATHOMED);
-      continue;
-    }
-
-    plunge_with(worker, start_node);
-
-    lower_bound = get_lower_bound();
-    abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-    rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-
-    if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
-      solver_status_ = mip_status_t::OPTIMAL;
-      break;
-    }
-  }
+  best_first_search_with(worker);
 }
 
 template <typename i_t, typename f_t>
@@ -1986,7 +1856,6 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   while (!root_crossover_solution_set_.load(std::memory_order_acquire) &&
          *get_root_concurrent_halt() == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    continue;
   }
 
   if (root_crossover_solution_set_.load(std::memory_order_acquire)) {
@@ -2709,10 +2578,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.deterministic) {
     run_deterministic_coordinator(Arow_);
   } else if (settings_.num_threads > 1) {
+    const i_t num_workers        = 2 * settings_.num_threads;
+    const i_t num_bfs_workers    = std::max(settings_.num_threads / 2, 1);
+    const i_t num_diving_workers = num_workers - num_bfs_workers;
+    bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_);
+    diving_worker_pool_.init(
+      num_diving_workers, original_lp_, Arow_, var_types_, settings_, num_bfs_workers);
+
 #pragma omp parallel num_threads(settings_.num_threads)
     {
 #pragma omp master
-      run_scheduler();
+      {
+        auto worker            = launch_bfs_worker(search_tree_.root.get_up_child());
+        worker->is_main_worker = true;
+        launch_bfs_worker(search_tree_.root.get_down_child());
+      }
     }
   } else {
     single_threaded_solve();
@@ -2729,7 +2609,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lower_bound = std::numeric_limits<f_t>::infinity();
 
     for (int i = 0; i < bfs_worker_pool_.num_workers(); ++i) {
-      bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.get_worker(i);
+      bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[i];
 
       // We need to clear the queue and use the info in the search tree for the lower bound
       while (worker->node_queue.best_first_queue_size() > 0) {
@@ -2880,11 +2760,11 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   deterministic_horizon_step_ = 0.50;
 
   // Compute worker counts using the same formula as reliability-branching scheduler
-  const i_t num_workers = 2 * settings_.num_threads;
-  std::vector<search_strategy_t> search_strategies =
-    get_search_strategies(settings_.diving_settings);
-  std::array<i_t, num_search_strategies> max_num_workers =
-    get_max_workers(num_workers, search_strategies);
+  const i_t num_workers                            = 2 * settings_.num_threads;
+  std::vector<search_strategy_t> search_strategies = {};
+  // get_search_strategies(settings_.diving_settings);
+  std::array<i_t, num_search_strategies> max_num_workers = {};
+  // get_max_workers(num_workers, search_strategies);
 
   const int num_bfs_workers = max_num_workers[search_strategy_t::BEST_FIRST];
   int num_diving_workers    = 0;

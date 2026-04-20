@@ -238,10 +238,6 @@ class branch_and_bound_t {
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
-  // Count the number of workers per type that either are being executed or
-  // are waiting to be executed.
-  std::array<omp_atomic_t<i_t>, num_search_strategies> num_active_workers_;
-
   // Worker pool dedicated to the best-first search
   bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
 
@@ -290,9 +286,8 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  bool launch_bfs_worker(mip_node_t<i_t, f_t>* start_node);
-  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker,
-                            std::vector<search_strategy_t>::value_type diving_type);
+  bfs_worker_t<i_t, f_t>* launch_bfs_worker(mip_node_t<i_t, f_t>* start_node);
+  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
 
   void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
 
@@ -304,11 +299,6 @@ class branch_and_bound_t {
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
   void dive_with(diving_worker_t<i_t, f_t>* worker);
-
-  // Run the scheduler whose will schedule and manage
-  // all the other workers.
-  void run_scheduler();
-
   // Run the branch-and-bound algorithm in single threaded mode.
   // This disable all diving heuristics.
   void single_threaded_solve();
@@ -445,6 +435,8 @@ class branch_and_bound_t {
     }
   };
   heap_t<diving_entry_t, diving_score_comp> diving_heap_;
+
+  friend class branch_and_bound_worker_t<i_t, f_t>;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex
