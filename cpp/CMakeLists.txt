@@ -113,7 +113,7 @@ endif (BUILD_SANITIZER)
 
 # To use ThreadSanitizer:
 # 1. Build with clang and the -tsan flag
-# 2. Run the binary with env var set: OMP_TOOL_LIBRARIES=/usr/lib/llvm-17/lib/libarcher.so ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppresions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
+# 2. Run the binary with env var set: OMP_TOOL_LIBRARIES=/usr/lib/llvm-17/lib/libarcher.so ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppressions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
 #     Replace with local llvm install path. libarcher.so must be presetn
 if (BUILD_TSAN)
     message(STATUS "Building with ThreadSanitizer enabled")
@@ -195,12 +195,8 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-find_package(OpenMP)
-
-if (OPENMP_FOUND)
-    message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
-endif ()
-
+find_package(OpenMP REQUIRED)
+message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
 # Debug options
 if (CMAKE_BUILD_TYPE MATCHES Debug)

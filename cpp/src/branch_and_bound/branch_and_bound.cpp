@@ -1821,7 +1821,7 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
   bfs_worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
-  bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[0];
+  bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.pop_idle_worker();
 
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
   node_queue.push(search_tree_.root.get_down_child());
