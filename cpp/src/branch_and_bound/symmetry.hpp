@@ -86,6 +86,37 @@ class generators_t {
   size_t num_generators() const { return generators_.size(); }
 
   const permutation_t<i_t>& get_generator(i_t i) const { return generators_[i]; }
+
+  // Remove generators that don't preserve the given bounds.
+  // A generator is invalid if it maps variable j to p[j] where
+  // lower[j] != lower[p[j]] or upper[j] != upper[p[j]].
+  template <typename f_t>
+  i_t prune_by_bounds(const std::vector<f_t>& lower, const std::vector<f_t>& upper)
+  {
+    i_t num_removed = 0;
+    size_t k = 0;
+    while (k < generators_.size()) {
+      const auto& perm = generators_[k];
+      const auto& p    = perm.dense_permutation();
+      bool valid       = true;
+      for (i_t j : perm.support()) {
+        i_t pj = p[j];
+        if (lower[j] != lower[pj] || upper[j] != upper[pj]) {
+          valid = false;
+          break;
+        }
+      }
+      if (!valid) {
+        std::swap(generators_[k], generators_.back());
+        generators_.pop_back();
+        num_removed++;
+      } else {
+        k++;
+      }
+    }
+    return num_removed;
+  }
+
  private:
   i_t n_;
   std::vector<permutation_t<i_t>> generators_;
@@ -248,7 +279,7 @@ class orbital_fixing_t {
     branched_one_.clear();
     orb_.reset();
 
-    mip_node_t<i_t, f_t>* node = node_ptr;
+    mip_node_t<i_t, f_t>* node = node_ptr->parent;
     while (node != nullptr && node->branch_var >= 0) {
         i_t v = node->branch_var;
         bool is_binary = (symmetry->is_binary[v] == 1);
@@ -392,20 +423,51 @@ class orbital_fixing_t {
       // in this node or a descendant.
       stabilizer_nontrivial = true;
 
+      // Only fix free variables (not already fixed by branching or propagation)
+      bool is_free = (marked_b0_[j] == 0 && marked_b1_[j] == 0 &&
+                       marked_f0_[j] == 0 && marked_f1_[j] == 0);
+      if (!is_free) continue;
+
       if (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1) {
         // The orbit of this variable contains variables in B0 or F0
-        // So we can fix this variable to zero (provided its not already in B0 or F0)
-        if (marked_b0_[j] == 0 && marked_f0_[j] == 0) { fix_zero_.push_back(j); }
+        // So we can fix this variable to zero
+        fix_zero_.push_back(j);
       }
 
       if (orbit_has_f1_[o] == 1) {
         // The orbit of this variable contains variables in F1
-        // So we can fix this variable to one (provided its not already in F1)
-        if (marked_f1_[j] == 0) { fix_one_.push_back(j); }
+        // So we can fix this variable to one
+        fix_one_.push_back(j);
       }
     }
 
     if (!stabilizer_nontrivial) { surviving_generators_.clear(); }
+
+    // Detect conflicts: variables in both fix_zero_ and fix_one_
+    i_t num_conflicts = 0;
+    {
+      std::vector<i_t> in_fix_zero(num_original_vars_, 0);
+      for (i_t v : fix_zero_) { in_fix_zero[v] = 1; }
+      for (i_t v : fix_one_) {
+        if (in_fix_zero[v]) { num_conflicts++; }
+      }
+    }
+
+    if (fix_zero_.size() > 0 || fix_one_.size() > 0 || num_conflicts > 0) {
+      settings.log.printf("Orbital fixing at node %d (depth %d): "
+                          "B0=%d B1=%d F0=%d F1=%d survivors=%d "
+                          "fixing %d to 0 and %d to 1 (conflicts=%d)\n",
+                          node_ptr->node_id,
+                          node_ptr->depth,
+                          (int)branched_zero_.size(),
+                          (int)branched_one_.size(),
+                          (int)f0_.size(),
+                          (int)f1_.size(),
+                          (int)surviving_generators_.size(),
+                          (int)fix_zero_.size(),
+                          (int)fix_one_.size(),
+                          (int)num_conflicts);
+    }
 
     // Restore the work arrays
     for (i_t v : f0_) {
@@ -420,14 +482,6 @@ class orbital_fixing_t {
 
     f0_.clear();
     f1_.clear();
-
-    if (fix_zero_.size() > 0 || fix_one_.size() > 0) {
-      settings.log.printf("Orbital fixing at node %d (depth %d): fixing %d to 0 and %d to 1\n",
-                          node_ptr->node_id,
-                          node_ptr->depth,
-                          (int)fix_zero_.size(),
-                          (int)fix_one_.size());
-    }
 
     // Finally fix the variables in L0 and L1
     for (i_t v : fix_zero_) {

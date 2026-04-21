@@ -2609,6 +2609,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   node_queue_.push(search_tree_.root.get_down_child());
   node_queue_.push(search_tree_.root.get_up_child());
 
+  if (symmetry_ != nullptr) {
+    i_t removed = symmetry_->generators.template prune_by_bounds<f_t>(
+      original_lp_.lower, original_lp_.upper);
+    if (removed > 0) {
+      symmetry_->num_generators = static_cast<int>(symmetry_->generators.num_generators());
+      settings_.log.printf(
+        "Pruned %d generators invalidated by root-level bound tightening, %d remain\n",
+        removed, symmetry_->num_generators);
+    }
+  }
+
   settings_.log.printf("Exploring the B&B tree using %d threads\n\n", settings_.num_threads);
   node_concurrent_halt_ = 0;
 
