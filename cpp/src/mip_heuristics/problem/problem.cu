@@ -17,6 +17,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/utils.cuh>
 
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
@@ -203,7 +204,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_)
     objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    clique_table(problem_.clique_table),
+    clique_table(problem_.get_clique_table_snapshot()),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
     related_vars_time_limit(problem_.related_vars_time_limit),
@@ -261,7 +262,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_,
     objective_is_integral(problem_.objective_is_integral),
     lp_state(problem_.lp_state, handle_ptr),
     fixing_helpers(problem_.fixing_helpers, handle_ptr),
-    clique_table(problem_.clique_table),
+    clique_table(problem_.get_clique_table_snapshot()),
     vars_with_objective_coeffs(problem_.vars_with_objective_coeffs),
     expensive_to_fix_vars(problem_.expensive_to_fix_vars),
     related_vars_time_limit(problem_.related_vars_time_limit),
@@ -287,7 +288,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     maximize(problem_.maximize),
     empty(problem_.empty),
     is_binary_pb(problem_.is_binary_pb),
-    clique_table(problem_.clique_table),
+    clique_table(problem_.get_clique_table_snapshot()),
     // Copy constructor used by PDLP and MIP
     // PDLP uses the version with no_deep_copy = false which deep copy some fields but doesn't
     // allocate others that are not needed in PDLP
@@ -476,6 +477,26 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
   // Copy sorted results back
   raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
   raft::copy(csc_values, val_sorted.data(), nnz, stream);
+}
+
+template <typename i_t, typename f_t>
+std::shared_ptr<clique_table_t<i_t, f_t>> problem_t<i_t, f_t>::get_clique_table_snapshot() const
+{
+  // Acquire-load so any shared_ptr state written by the publisher before its
+  // corresponding atomic_store is visible to us. Using std::atomic_load on a
+  // shared_ptr is deprecated in C++20 but still provided; it is the standard
+  // one-shot publication primitive for pre-C++20 shared_ptr.
+  return std::atomic_load_explicit(&clique_table, std::memory_order_acquire);
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::publish_clique_table(std::shared_ptr<clique_table_t<i_t, f_t>> ct)
+{
+  // Single-writer, many-reader publication. Invoked once from B&B's async
+  // clique-build task. Release-store pairs with the acquire-loads in
+  // get_clique_table_snapshot and in copy constructors that snapshot the
+  // shared_ptr during object duplication.
+  std::atomic_store_explicit(&clique_table, std::move(ct), std::memory_order_release);
 }
 
 template <typename i_t, typename f_t>

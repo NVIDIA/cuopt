@@ -10,7 +10,6 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem_helpers.cuh>
@@ -20,7 +19,6 @@
 #include <utilities/scope_guard.hpp>
 
 #include <memory>
-#include <numeric>
 
 constexpr bool fj_only_run = false;
 
@@ -253,91 +251,22 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
-  // Build the initial clique table from the current problem. We do this
-  // single-threaded so the heuristics path can read it immediately — hence
-  // flipping `ready_for_heuristics` to true here. The flag will be cleared
-  // again in mip_solver_t::solve just before the async B&B thread launches.
-  if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
-      !problem_ptr->empty) {
-    f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
-    timer_t clique_timer(time_limit_for_clique_table);
-    dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
-    problem_ptr->get_host_user_problem(host_problem);
-    std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
-    constexpr bool modify_problem_with_cliques = false;
-    // Snapshot the pre-build reverse_original_ids before find_initial_cliques
-    // runs. This snapshot records the user-input N-idx → clique-build M-idx
-    // map that corresponds to the id space encoded inside clique_table's
-    // vertex ids. It must be taken BEFORE the optional
-    // modify_problem_with_cliques trivial_presolve block below, because
-    // that block would change problem_ptr->reverse_original_ids while
-    // clique_table's ids remain anchored to the pre-mod snapshot.
-    std::vector<i_t> clique_build_reverse_original_ids = problem_ptr->reverse_original_ids;
-    find_initial_cliques(host_problem,
-                         context.settings.tolerances,
-                         &clique_table,
-                         clique_timer,
-                         modify_problem_with_cliques,
-                         nullptr);
-    if (modify_problem_with_cliques) {
-      problem_ptr->set_constraints_from_host_user_problem(host_problem);
-      cuopt_assert(host_problem.lower.size() == static_cast<size_t>(problem_ptr->n_variables),
-                   "host lower bound size mismatch");
-      cuopt_assert(host_problem.upper.size() == static_cast<size_t>(problem_ptr->n_variables),
-                   "host upper bound size mismatch");
-      std::vector<i_t> all_var_indices(problem_ptr->n_variables);
-      std::iota(all_var_indices.begin(), all_var_indices.end(), 0);
-      problem_ptr->update_variable_bounds(all_var_indices, host_problem.lower, host_problem.upper);
-      trivial_presolve(*problem_ptr, remap_cache_ids);
-    }
-    if (clique_table) {
-      // Attach the id-space snapshot taken before find_initial_cliques ran
-      // (see above). This is what lets clique_group_table_t::build_from_host
-      // translate the table's vertex ids into sub-problem ids when
-      // fp_recombiner / bp_recombiner / sub_mip drive constraint_prop on
-      // a fixed_problem. See clique_table_t.cuh and build_from_host for
-      // the remap derivation.
-      clique_table->build_reverse_original_ids = std::move(clique_build_reverse_original_ids);
-      problem_ptr->clique_table                = clique_table;
-      problem_ptr->clique_table->ready_for_heuristics.store(true, std::memory_order_release);
-      CUOPT_LOG_DEBUG("Stored clique table on problem: %zu base cliques, %zu additional",
-                      clique_table->first.size(),
-                      clique_table->addtl_cliques.size());
-    }
-  }
+  // The initial clique table is built asynchronously by B&B
+  // (find_initial_cliques) and published into problem_ptr->clique_table.
+  // Heuristics pick it up via the atomic snapshot accessor. We intentionally
+  // do not build a duplicate table here — it added 1-3 s to the critical path
+  // of presolve without materially changing what B&B produces.
   // May overconstrain if Papilo presolve has been run before
-  // if (context.settings.presolver == presolver_t::None) {
-  //   if (!problem_ptr->empty) {
-  //     // do the resizing no-matter what, bounds presolve might not change the bounds but initial
-  //     // trivial presolve might have
-  //     ls.constraint_prop.bounds_update.resize(*problem_ptr);
-  //     ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
-  //     ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
-  //       *problem_ptr, ls.constraint_prop.bounds_update);
-  //   }
-  //   if (!check_bounds_sanity(*problem_ptr)) { return false; }
-  // }
-  // Re-run initial bound propagation now that the clique table is attached,
-  // so the first propagation pass is clique-aware instead of needing to wait
-  // until a later heuristics iteration.
-  if (!problem_ptr->empty && problem_ptr->clique_table &&
-      (problem_ptr->clique_table->first.size() > 0 ||
-       problem_ptr->clique_table->addtl_cliques.size() > 0)) {
-    // Problem size may have shrunk since the earlier solve() at line ~230
-    // (compute_probing_cache / trivial_presolve can remove variables and
-    // constraints). The resize() at line ~299 is only taken when the user
-    // disables the Papilo presolver, so we must resize here to match the
-    // current problem before touching the bound buffers.
-    ls.constraint_prop.bounds_update.resize(*problem_ptr);
-    ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
-    auto term_crit_cliq = ls.constraint_prop.bounds_update.solve(*problem_ptr);
-    if (ls.constraint_prop.bounds_update.infeas_constraints_count > 0) {
-      stats.presolve_time = timer.elapsed_time();
-      return false;
+  if (context.settings.presolver == presolver_t::None) {
+    if (!problem_ptr->empty) {
+      // do the resizing no-matter what, bounds presolve might not change the bounds but initial
+      // trivial presolve might have
+      ls.constraint_prop.bounds_update.resize(*problem_ptr);
+      ls.constraint_prop.bounds_update.upd.init_changed_constraints(problem_ptr->handle_ptr);
+      ls.constraint_prop.conditional_bounds_update.update_constraint_bounds(
+        *problem_ptr, ls.constraint_prop.bounds_update);
     }
-    if (termination_criterion_t::NO_UPDATE != term_crit_cliq) {
-      ls.constraint_prop.bounds_update.set_updated_bounds(*problem_ptr);
-    }
+    if (!check_bounds_sanity(*problem_ptr)) { return false; }
   }
   stats.presolve_time = presolve_timer.elapsed_time();
   lp_optimal_solution.resize(problem_ptr->n_variables, problem_ptr->handle_ptr->get_stream());

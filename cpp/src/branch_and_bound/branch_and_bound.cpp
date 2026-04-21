@@ -2077,6 +2077,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                    std::shared_ptr<detail::clique_table_t<i_t, f_t>> table;
                    detail::find_initial_cliques(
                      problem_copy, tolerances_for_clique, &table, timer, false, signal_ptr);
+                   // Publish the built table to external observers (e.g. the
+                   // heuristics problem_t) before the future is marked ready.
+                   // The callback is responsible for id-space stamping and
+                   // atomic publication. We invoke it here so heuristics pick
+                   // up the table the moment it finishes — the cut-pass join
+                   // via clique_table_future_->get() can happen much later.
+                   if (clique_publish_callback_) { clique_publish_callback_(table); }
                    return table;
                  });
   }

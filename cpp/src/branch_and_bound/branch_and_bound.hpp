@@ -120,6 +120,20 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
+  // Install a callback invoked from the async clique-build task immediately
+  // after find_initial_cliques returns and before the task's future becomes
+  // ready. The callback receives ownership share of the built table and is
+  // responsible for publishing it to external observers (e.g. via
+  // problem_t::publish_clique_table). Invoked exactly once per B&B instance
+  // that launches an async build; may receive a null shared_ptr if the build
+  // was aborted (e.g. via signal).
+  using clique_publish_callback_t =
+    std::function<void(std::shared_ptr<detail::clique_table_t<i_t, f_t>>)>;
+  void set_clique_publish_callback(clique_publish_callback_t cb)
+  {
+    clique_publish_callback_ = std::move(cb);
+  }
+
   // Seed the global upper bound from an external source (e.g., early FJ during presolve).
   // `bound` must be in B&B's internal objective space.
   void set_initial_upper_bound(f_t bound);
@@ -164,6 +178,7 @@ class branch_and_bound_t {
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
   std::atomic<bool> signal_extend_cliques_{false};
+  clique_publish_callback_t clique_publish_callback_;
 
   work_limit_context_t work_unit_context_{"B&B"};
 

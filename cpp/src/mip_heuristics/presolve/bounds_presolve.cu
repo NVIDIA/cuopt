@@ -105,7 +105,15 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
   // and matching dims. Any mismatch — including the problem_t* changing
   // underneath us while dims happen to coincide (local_search alternates
   // between *problem_ptr and problem_with_objective_cut) — forces a rebuild.
-  auto* current_ct     = pb.clique_table.get();
+  //
+  // We snapshot the clique_table through get_clique_table_snapshot() because
+  // B&B's async clique-build task publishes the table via
+  // problem_t::publish_clique_table from a worker thread; a direct .get() on
+  // the shared_ptr would race with that publication. Holding the snapshot
+  // shared_ptr in `ct_snapshot` also guarantees the table stays alive for
+  // the duration of this call even if an unrelated publication replaces it.
+  auto ct_snapshot     = pb.get_clique_table_snapshot();
+  auto* current_ct     = ct_snapshot.get();
   const bool cache_hit = clique_data_built                                //
                          && last_built_problem == &pb                     //
                          && last_built_clique_table == current_ct         //
@@ -115,9 +123,10 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
   if (cache_hit) return;
 
   if (!current_ct) {
-    // No clique_table attached (yet). May be set later in the pipeline, so
-    // don't latch — leave the fingerprint unchanged (still mismatching) so
-    // the next call re-checks and builds as soon as the table is attached.
+    // No clique_table attached (yet). May be set later in the pipeline when
+    // B&B's async build publishes — leave the fingerprint unchanged (still
+    // mismatching) so the next call re-checks and builds as soon as the
+    // table is attached.
     clique_data.n_groups = 0;
     clique_data_built    = false;
     return;
@@ -125,7 +134,7 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
   // Note: we intentionally do NOT gate on current_ct->ready_for_heuristics.
   // B&B's cut-pass writes touch only var_degrees (disjoint from our reads).
   // See clique_table_t::ready_for_heuristics for the full rationale.
-  clique_data.build_from_host(pb, *current_ct);
+  clique_data.build_from_host(pb, context.problem_ptr->reverse_original_ids, *current_ct);
   upd.resize_clique_buffers(clique_data.n_groups, pb.handle_ptr->get_stream());
   last_built_problem       = &pb;
   last_built_clique_table  = current_ct;

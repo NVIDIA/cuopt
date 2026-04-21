@@ -131,7 +131,22 @@ class problem_t {
   bool is_integer(f_t val) const;
   bool integer_equal(f_t val1, f_t val2) const;
 
+  // Clique table shared with B&B cut generation. Heuristics read it through
+  // the thread-safe accessors below because B&B's async clique build may
+  // publish it from a worker thread while heuristics are running.
+  //
+  // - Publication: B&B's async clique-build task calls publish_clique_table
+  //   exactly once when the build completes. This is the only writer.
+  // - Observation: all heuristic readers go through get_clique_table_snapshot
+  //   (atomic_load on the shared_ptr). Copies of problem_t also snapshot via
+  //   this accessor so concurrent publication does not tear the source.
+  //
+  // Direct access to `clique_table` is reserved for code paths that know no
+  // concurrent writer can exist (e.g. single-threaded tests, destructor).
   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
+
+  std::shared_ptr<clique_table_t<i_t, f_t>> get_clique_table_snapshot() const;
+  void publish_clique_table(std::shared_ptr<clique_table_t<i_t, f_t>> ct);
 
   void get_host_user_problem(
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;

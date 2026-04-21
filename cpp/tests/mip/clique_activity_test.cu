@@ -125,7 +125,7 @@ TEST(clique_activity, build_from_host_no_cliques)
   auto ct = make_clique_table(/*n_vars=*/4, /*first=*/{});
 
   detail::clique_group_table_t<int, double> data(handle.get_stream());
-  data.build_from_host(*pb, *ct);
+  data.build_from_host(*pb, /*primary_reverse_original_ids=*/{}, *ct);
   EXPECT_TRUE(data.empty());
   EXPECT_EQ(data.n_groups, 0);
 }
@@ -147,7 +147,7 @@ TEST(clique_activity, build_from_host_basic_large_clique)
   auto ct = make_clique_table(/*n_vars=*/4, /*first=*/{{0, 1, 2}});
 
   detail::clique_group_table_t<int, double> data(handle.get_stream());
-  data.build_from_host(*pb, *ct);
+  data.build_from_host(*pb, /*primary_reverse_original_ids=*/{}, *ct);
   ASSERT_FALSE(data.empty());
   ASSERT_EQ(data.n_groups, 1);
 
@@ -214,7 +214,7 @@ TEST(clique_activity, build_from_host_accepts_complement_literal_clique)
     make_clique_table(n_vars, /*first=*/{{0, 1, n_vars + 2}});  // last entry is complement of x2
 
   detail::clique_group_table_t<int, double> data(handle.get_stream());
-  data.build_from_host(*pb, *ct);
+  data.build_from_host(*pb, /*primary_reverse_original_ids=*/{}, *ct);
   ASSERT_EQ(data.n_groups, 1);
 
   auto stream       = handle.get_stream();
@@ -255,7 +255,7 @@ TEST(clique_activity, build_from_host_small_adj_list_fallback)
   auto ct = make_clique_table(/*n_vars=*/3, /*first=*/{}, /*addtl=*/{}, adj);
 
   detail::clique_group_table_t<int, double> data(handle.get_stream());
-  data.build_from_host(*pb, *ct);
+  data.build_from_host(*pb, /*primary_reverse_original_ids=*/{}, *ct);
   ASSERT_EQ(data.n_groups, 1);
   auto stream = handle.get_stream();
   auto h_mem  = host_copy(data.group_member_vars, stream);

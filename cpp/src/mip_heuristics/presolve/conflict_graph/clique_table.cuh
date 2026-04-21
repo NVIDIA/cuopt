@@ -88,7 +88,6 @@ struct clique_table_t {
       first_var_positions(std::move(other.first_var_positions)),
       adj_list_small_cliques(std::move(other.adj_list_small_cliques)),
       var_degrees(std::move(other.var_degrees)),
-      build_reverse_original_ids(std::move(other.build_reverse_original_ids)),
       n_variables(other.n_variables),
       min_clique_size(other.min_clique_size),
       max_clique_size_for_extension(other.max_clique_size_for_extension),
@@ -123,24 +122,6 @@ struct clique_table_t {
   std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_small_cliques;
   // degrees of each vertex
   std::vector<i_t> var_degrees;
-  // Snapshot of the clique-build problem's `reverse_original_ids` at the
-  // moment this table was attached. Maps user-input variable idx (N-space)
-  // to the clique-build idx (M-space), or -1 if the variable was already
-  // eliminated by presolve before the clique table was built.
-  //
-  // Populated once by the caller (currently diversity_manager_t::run_presolve)
-  // right after `find_initial_cliques`; consumed by
-  // clique_group_table_t::build_from_host when a heuristic drives propagation
-  // on a further-reduced sub-problem (e.g. fp_recombiner / bp_recombiner /
-  // sub_mip each call solution_t::fix_variables, which produces a
-  // `fixed_problem` whose own variable idx space is a renumbered subset of
-  // M-space but whose `original_ids` still points into N-space). Without
-  // this snapshot we cannot translate clique-build vertex ids into
-  // sub-problem ids and would silently mis-index.
-  //
-  // Empty ⇒ no remap recorded; build_from_host then requires
-  // clique_table.n_variables == problem.n_variables (identity id space).
-  std::vector<i_t> build_reverse_original_ids;
   // number of variables in the original problem
   const i_t n_variables;
   const i_t min_clique_size;

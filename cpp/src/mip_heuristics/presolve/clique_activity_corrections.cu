@@ -37,8 +37,10 @@ typename clique_group_table_t<i_t, f_t>::view_t clique_group_table_t<i_t, f_t>::
 }
 
 template <typename i_t, typename f_t>
-void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& problem,
-                                                     clique_table_t<i_t, f_t>& clique_table)
+void clique_group_table_t<i_t, f_t>::build_from_host(
+  problem_t<i_t, f_t>& problem,
+  const std::vector<i_t>& primary_reverse_original_ids,
+  clique_table_t<i_t, f_t>& clique_table)
 {
   n_groups = 0;
 
@@ -60,28 +62,11 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
                  clique_table.var_clique_map_first.empty(),
                "var_clique_map_first sized inconsistently with problem");
 
-  // --- Clique-build idx space vs. problem idx space -------------------------
-  //
-  // The clique_table encodes literal vertices in [0, 2 * M) where
-  // M = clique_table.n_variables = problem.n_variables at the moment
-  // find_initial_cliques ran (the "clique-build snapshot", in M-space).
-  // Heuristics may drive this function against:
-  //   (a) the root problem (M == n_vars): identity map; or
-  //   (b) problem_with_objective_cut (same n_vars, extra row): identity; or
-  //   (c) a further-reduced sub-problem from solution_t::fix_variables
-  //       used by fp_recombiner / bp_recombiner / sub_mip. Its
-  //       `original_ids` lives in user-input N-space (not M-space) because
-  //       fix_variables composes with the parent problem's original_ids.
-  //
-  // For (c) we must translate clique-build vertex ids into the sub-problem's
-  // own idx space via the two-step chain
-  //     M-idx  ← clique_table.build_reverse_original_ids[N-idx] ←
-  //     N-idx  ← problem.original_ids[sub-idx] ← sub-idx
-  // and then drop clique members whose underlying var was fixed/removed.
-  //
-  // Builds a forward map `build_var_to_pb[m] = p` (or -1 if m was removed)
-  // so the rest of this function can operate entirely in pb-space and the
-  // closures below use n_vars without caring about M.
+  // Clique-build space (M) vs. pb space. For root / +objective-cut, M == n_vars
+  // (identity). For fixed sub-problems, remap via
+  //   M ← primary_reverse_original_ids[N] ← problem.original_ids[sub].
+  // `build_var_to_pb[m] = p` (or -1 if m was fixed/removed) lets the rest of
+  // this function stay in pb-space.
   const i_t n_build_vars = clique_table.n_variables;
   const bool ids_match   = (n_build_vars == n_vars);
   std::vector<i_t> build_var_to_pb;
@@ -90,22 +75,20 @@ void clique_group_table_t<i_t, f_t>::build_from_host(problem_t<i_t, f_t>& proble
     build_var_to_pb.resize(n_build_vars);
     std::iota(build_var_to_pb.begin(), build_var_to_pb.end(), i_t{0});
   } else {
-    // Sub-problem path. Requires the snapshot recorded in
-    // diversity_manager_t::run_presolve when the clique table was attached.
+    // Sub-problem path. Requires the primary's N→M map.
     cuopt_assert(
-      !clique_table.build_reverse_original_ids.empty(),
-      "clique_table.n_variables differs from problem.n_variables but the table has no "
-      "build_reverse_original_ids snapshot — the clique table was attached without recording its "
-      "id space; cannot safely remap to this sub-problem.");
+      !primary_reverse_original_ids.empty(),
+      "clique_table.n_variables differs from problem.n_variables but the caller provided no "
+      "primary_reverse_original_ids — cannot safely remap clique-build ids to this sub-problem.");
     cuopt_assert((i_t)problem.original_ids.size() == n_vars,
                  "problem.original_ids must be sized to problem.n_variables to run clique-aware "
                  "propagation on a sub-problem");
-    const i_t n_input = static_cast<i_t>(clique_table.build_reverse_original_ids.size());
+    const i_t n_input = static_cast<i_t>(primary_reverse_original_ids.size());
     build_var_to_pb.assign(n_build_vars, -1);
     for (i_t p = 0; p < n_vars; ++p) {
       i_t input_idx = problem.original_ids[p];
       if (input_idx < 0 || input_idx >= n_input) continue;
-      i_t build_idx = clique_table.build_reverse_original_ids[input_idx];
+      i_t build_idx = primary_reverse_original_ids[input_idx];
       if (build_idx < 0 || build_idx >= n_build_vars) continue;
       // fix_variables is injective after restriction, so each clique-build
       // var maps to at most one pb var.

@@ -93,7 +93,11 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
 template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
-  auto* current_ct     = pb.clique_table.get();
+  // Snapshot through the atomic accessor — B&B's async clique-build task may
+  // publish while we are running. See bound_presolve_t::ensure_clique_data
+  // for the full rationale.
+  auto ct_snapshot     = pb.get_clique_table_snapshot();
+  auto* current_ct     = ct_snapshot.get();
   const bool cache_hit = clique_data_built                                //
                          && last_built_problem == &pb                     //
                          && last_built_clique_table == current_ct         //
@@ -109,7 +113,7 @@ void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
   }
   // Note: see bound_presolve_t::ensure_clique_data for why we do not gate on
   // current_ct->ready_for_heuristics.
-  clique_data.build_from_host(pb, *current_ct);
+  clique_data.build_from_host(pb, context.problem_ptr->reverse_original_ids, *current_ct);
   auto stream = pb.handle_ptr->get_stream();
   upd_0.resize_clique_buffers(clique_data.n_groups, stream);
   upd_1.resize_clique_buffers(clique_data.n_groups, stream);

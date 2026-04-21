@@ -105,7 +105,12 @@ struct clique_group_table_t {
   // group_member_coeffs. This choice is what lets the downstream correction
   // kernel use the same formula for positive and complement literals — the
   // constant `sum_{j in Q-} a_j` offset cancels in stock-minus-true.
-  void build_from_host(problem_t<i_t, f_t>& problem, clique_table_t<i_t, f_t>& clique_table);
+  // `primary_reverse_original_ids` is the primary problem's
+  // reverse_original_ids (N→M map). Only read on the sub-problem path; may be
+  // empty when `problem` itself is in clique-build space.
+  void build_from_host(problem_t<i_t, f_t>& problem,
+                       const std::vector<i_t>& primary_reverse_original_ids,
+                       clique_table_t<i_t, f_t>& clique_table);
 
   view_t view();
 
