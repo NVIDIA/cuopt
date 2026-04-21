@@ -1,4 +1,4 @@
-﻿# cmake-format: off
+# cmake-format: off
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
@@ -34,8 +34,12 @@ endif()
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ################################################################ ------------------------------------------------------------------
+# ConfigureTest(NAME source1.cu source2.cu [LABELS label1 label2 ...])
+#
+# LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
 function(ConfigureTest CMAKE_TEST_NAME)
-    add_executable(${CMAKE_TEST_NAME} ${ARGN})
+    cmake_parse_arguments(CT "" "" "LABELS" ${ARGN})
+    add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
     set_target_properties(${CMAKE_TEST_NAME}
       PROPERTIES
       CXX_STANDARD 20
@@ -69,6 +73,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
     endif()
 
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+
+    if(CT_LABELS)
+        set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
+    endif()
 
     install(
         TARGETS ${CMAKE_TEST_NAME}
