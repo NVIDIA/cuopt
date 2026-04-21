@@ -38,11 +38,16 @@ fi
 
 S3_BASE="${CUOPT_S3_URI}ci_test_reports/nightly"
 BRANCH_SLUG=$(echo "${BRANCH}" | tr '/' '-')
-# Per-matrix summaries are uploaded by test jobs under summaries/{date}/{branch}/.
-# For production nightlies (main, release/*), RAPIDS_BRANCH matches the branch input.
-# For feature branch testing, RAPIDS_BRANCH may default to "main" in rapidsai containers,
-# so we search the date prefix recursively (s3_list handles this).
-S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
+
+# Summaries are scoped by GITHUB_RUN_ID so each workflow run is isolated.
+# The run-scoped path has no date component — the run ID is unique, and
+# dropping the date prevents mismatches when test jobs span midnight UTC.
+# Fallback: branch-scoped path for backwards compat or non-CI runs.
+if [ -n "${GITHUB_RUN_ID:-}" ]; then
+    S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/run-${GITHUB_RUN_ID}/"
+else
+    S3_SUMMARIES_PREFIX="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
+fi
 S3_REPORTS_PREFIX="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/"
 S3_CONSOLIDATED_JSON="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/consolidated.json"
 S3_CONSOLIDATED_HTML="${S3_BASE}/reports/${RUN_DATE}/${BRANCH_SLUG}/consolidated.html"
@@ -65,10 +70,10 @@ else
 fi
 
 
-# Fallback: search the date-level prefix if branch-specific path is empty.
-# This handles the case where RAPIDS_BRANCH in rapidsai containers differs
-# from the branch input (e.g., feature branch testing where RAPIDS_BRANCH=main).
-S3_SUMMARIES_FALLBACK="${S3_BASE}/summaries/${RUN_DATE}/"
+# Fallback: if the primary prefix is empty, try the branch-slug prefix.
+# This handles cases where GITHUB_RUN_ID wasn't available in test containers
+# (summaries were uploaded under the branch slug instead of run ID).
+S3_SUMMARIES_FALLBACK="${S3_BASE}/summaries/${RUN_DATE}/${BRANCH_SLUG}/"
 
 echo "Aggregating nightly summaries from ${S3_SUMMARIES_PREFIX}"
 
@@ -86,6 +91,67 @@ python3 "${SCRIPT_DIR}/utils/aggregate_nightly.py" \
     --branch "${BRANCH}" \
     --github-run-url "${GITHUB_RUN_URL}" \
     --workflow-jobs "${WORKFLOW_JOBS_JSON}"
+
+# --- Write GitHub Step Summary (if available) ---
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "${OUTPUT_DIR}/consolidated_summary.json" ]; then
+    python3 -c "
+import json, sys
+
+with open(sys.argv[1]) as f:
+    d = json.load(f)
+totals = d.get('test_totals', {})
+grid = d.get('matrix_grid', [])
+new_f = d.get('new_failures', [])
+recur = d.get('recurring_failures', [])
+flaky = d.get('flaky_tests', [])
+resolved = d.get('resolved_tests', [])
+
+print('# Nightly Test Summary — %s — %s' % (d.get('branch',''), d.get('date','')))
+print()
+print('| Metric | Count |')
+print('|--------|-------|')
+print('| Total | %d |' % totals.get('total', 0))
+print('| Passed | %d |' % totals.get('passed', 0))
+print('| **Failed** | **%d** |' % totals.get('failed', 0))
+print('| Flaky | %d |' % totals.get('flaky', 0))
+print('| Skipped | %d |' % totals.get('skipped', 0))
+print('| Stabilized | %d |' % totals.get('resolved', 0))
+print()
+if new_f:
+    print('## New Failures')
+    print('| Test Type | Matrix | Test | Error |')
+    print('|-----------|--------|------|-------|')
+    for e in new_f[:20]:
+        msg = (e.get('message','')[:80]).replace('\n',' ').replace('|','\\\\|')
+        print('| %s | %s | \`%s\` | %s |' % (e.get('test_type',''), e.get('matrix_label',''), e['name'], msg))
+    print()
+if flaky:
+    print('## Flaky Tests')
+    print('| Test Type | Matrix | Test | Retries |')
+    print('|-----------|--------|------|---------|')
+    for e in flaky[:20]:
+        print('| %s | %s | \`%s\` | %s |' % (e.get('test_type',''), e.get('matrix_label',''), e['name'], e.get('retry_count','?')))
+    print()
+if recur:
+    print('## Recurring Failures')
+    print('| Test Type | Matrix | Test | Since |')
+    print('|-----------|--------|------|-------|')
+    for e in recur[:20]:
+        print('| %s | %s | \`%s\` | %s |' % (e.get('test_type',''), e.get('matrix_label',''), e['name'], e.get('first_seen','?')))
+    print()
+if resolved:
+    print('## Stabilized Tests')
+    for e in resolved[:10]:
+        print('- \`%s\` (%s) — was failing %sx' % (e['name'], e.get('matrix_label',''), e.get('failure_count','?')))
+    print()
+print('## Matrix Overview')
+print('| Test Type | Matrix | Status | Passed | Failed | Flaky |')
+print('|-----------|--------|--------|--------|--------|-------|')
+for g in grid:
+    c = g.get('counts', {})
+    print('| %s | %s | %s | %d | %d | %d |' % (g['test_type'], g['matrix_label'], g['status'], c.get('passed',0), c.get('failed',0), c.get('flaky',0)))
+" "${OUTPUT_DIR}/consolidated_summary.json" >> "${GITHUB_STEP_SUMMARY}" || true
+fi
 
 # --- Generate presigned URLs for reports (7-day expiry) ---
 PRESIGN_EXPIRY=604800

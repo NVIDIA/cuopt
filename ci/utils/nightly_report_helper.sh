@@ -24,6 +24,7 @@
 #   RAPIDS_BRANCH         - branch name (e.g., "main")
 #   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/)
 #   GITHUB_SHA            - commit SHA
+#   GITHUB_RUN_ID         - GitHub Actions run ID (scopes summaries to this run)
 #   GITHUB_STEP_SUMMARY   - path for GitHub Actions step summary
 
 # Resolve the directory where THIS helper lives (ci/utils/)
@@ -55,8 +56,11 @@ generate_nightly_report() {
 
     local branch_slug
     branch_slug=$(echo "${RAPIDS_BRANCH:-main}" | tr '/' '-')
+    # Use RUN_DATE if set (nightly workflows pass the trigger date),
+    # fall back to local date.  This avoids mismatches between test
+    # jobs and the summary job when a run spans UTC midnight.
     local run_date
-    run_date="$(date +%F)"
+    run_date="${RUN_DATE:-$(date +%F)}"
 
     # --- Ensure results dir exists ---
     RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
@@ -67,13 +71,30 @@ generate_nightly_report() {
 
     # --- Build S3 URIs ---
     local s3_history_uri=""
+    local s3_history_seed_uri=""
     local s3_summary_uri=""
+    local s3_summary_branch_uri=""
     local s3_html_uri=""
 
     if [ -n "${CUOPT_S3_URI:-}" ]; then
         local s3_base="${CUOPT_S3_URI}ci_test_reports/nightly"
         s3_history_uri="${s3_base}/history/${branch_slug}/${test_type}-${matrix_label}.json"
-        s3_summary_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${test_type}-${matrix_label}.json"
+        # For non-main branches, seed history from main on first run so known
+        # failures are inherited (not re-reported as new on release branches).
+        if [ "${branch_slug}" != "main" ]; then
+            s3_history_seed_uri="${s3_base}/history/main/${test_type}-${matrix_label}.json"
+        fi
+        # Scope summaries by GITHUB_RUN_ID so each workflow run is isolated.
+        # The run-scoped path is date-free — the run ID is unique, and
+        # dropping the date prevents mismatches when jobs span midnight UTC.
+        # Also write to branch+date path for manual browsing.
+        local summary_filename="${test_type}-${matrix_label}.json"
+        if [ -n "${GITHUB_RUN_ID:-}" ]; then
+            s3_summary_uri="${s3_base}/summaries/run-${GITHUB_RUN_ID}/${summary_filename}"
+        else
+            s3_summary_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${summary_filename}"
+        fi
+        s3_summary_branch_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${summary_filename}"
         s3_html_uri="${s3_base}/reports/${run_date}/${branch_slug}/${test_type}-${matrix_label}.html"
     fi
 
@@ -86,7 +107,9 @@ generate_nightly_report() {
         --test-type "${test_type}" \
         --matrix-label "${matrix_label}" \
         --s3-history-uri "${s3_history_uri}" \
+        --s3-history-seed-uri "${s3_history_seed_uri}" \
         --s3-summary-uri "${s3_summary_uri}" \
+        --s3-summary-branch-uri "${s3_summary_branch_uri}" \
         --s3-html-uri "${s3_html_uri}" \
         --github-step-summary "${GITHUB_STEP_SUMMARY:-}" \
         || true

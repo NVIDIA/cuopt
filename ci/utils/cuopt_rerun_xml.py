@@ -9,6 +9,11 @@ This plugin collects rerun (failed) attempts and writes them to a
 separate XML file so nightly_report.py can classify flaky tests
 (tests that failed then passed on retry).
 
+The output filename is derived from the --junitxml argument so that
+multiple pytest invocations in the same job (e.g., test_python.sh
+running both cuopt and cuopt-server tests) each get their own file
+instead of overwriting each other.
+
 Usage: pytest -p cuopt_rerun_xml ...
 Requires RAPIDS_TESTS_DIR env var for output location.
 """
@@ -22,12 +27,13 @@ import pytest
 # Collect rerun failure reports keyed by nodeid
 _rerun_failures = defaultdict(list)
 _final_outcomes = {}
+_junitxml_path = ""
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_protocol(item, nextitem):
-    """Track each test's final outcome."""
-    yield
+def pytest_configure(config):
+    """Capture the --junitxml path to derive our output filename."""
+    global _junitxml_path  # noqa: PLW0603
+    _junitxml_path = config.option.xmlpath or ""
 
 
 @pytest.hookimpl(trylast=True)
@@ -89,7 +95,15 @@ def pytest_sessionfinish(session, exitstatus):
     if count > 0:
         suite.set("tests", str(count))
         suite.set("failures", str(count))
-        out_path = os.path.join(output_dir, "junit-pytest-reruns.xml")
+        # Derive filename from --junitxml to avoid overwrites when
+        # multiple pytest invocations share the same RAPIDS_TESTS_DIR
+        # (e.g., test_python.sh runs cuopt then server tests).
+        if _junitxml_path:
+            base = os.path.basename(_junitxml_path).replace(".xml", "")
+            rerun_filename = f"{base}-reruns.xml"
+        else:
+            rerun_filename = "junit-pytest-reruns.xml"
+        out_path = os.path.join(output_dir, rerun_filename)
         ElementTree(testsuites).write(
             out_path, xml_declaration=True, encoding="unicode"
         )

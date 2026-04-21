@@ -864,12 +864,31 @@ def main():
         ),
     )
     parser.add_argument(
+        "--s3-history-seed-uri",
+        default="",
+        help=(
+            "S3 URI to seed history from when this branch has no history yet "
+            "(e.g., first nightly on a new release branch). Typically points "
+            "to main's history so known failures are inherited, not re-reported "
+            "as new. Only used if --s3-history-uri download fails."
+        ),
+    )
+    parser.add_argument(
         "--s3-summary-uri",
         default="",
         help=(
             "S3 URI to upload this run's JSON snapshot for aggregation. "
-            "Example: s3://bucket/ci_test_reports/nightly/summaries/"
-            "2026-04-13/python-cuda12.9-py3.12-x86_64.json"
+            "Scoped by run ID to prevent cross-run pollution. "
+            "Example: s3://bucket/.../summaries/2026-04-13/run-12345/"
+            "python-cuda12.9-py3.12-x86_64.json"
+        ),
+    )
+    parser.add_argument(
+        "--s3-summary-branch-uri",
+        default="",
+        help=(
+            "S3 URI to also upload the JSON snapshot under the branch path "
+            "for manual browsing. Optional — same content as --s3-summary-uri."
         ),
     )
     parser.add_argument(
@@ -895,7 +914,16 @@ def main():
 
     # ---- Step 1: Download history from S3 ----
     if args.s3_history_uri:
-        s3_download(args.s3_history_uri, local_history_path)
+        if not s3_download(args.s3_history_uri, local_history_path):
+            # No history for this branch yet — seed from parent (e.g., main)
+            # so known failures are inherited and not re-reported as new.
+            if args.s3_history_seed_uri and s3_download(
+                args.s3_history_seed_uri, local_history_path
+            ):
+                print(
+                    f"Seeded history from {args.s3_history_seed_uri} "
+                    f"(first run on this branch)"
+                )
 
     # ---- Step 2: Collect and classify results ----
     print(f"Collecting test results from {args.results_dir} ...")
@@ -981,11 +1009,38 @@ def main():
         print(f"Wrote GitHub Step Summary to {args.github_step_summary}")
 
     # ---- Step 6: Upload per-run snapshot and HTML to S3 ----
+    s3_ok = True
     if args.s3_summary_uri:
-        s3_upload(str(json_path), args.s3_summary_uri)
+        if not s3_upload(str(json_path), args.s3_summary_uri):
+            print(
+                "ERROR: Failed to upload JSON summary to S3. "
+                "The nightly aggregate will NOT include this job's results.",
+                file=sys.stderr,
+            )
+            s3_ok = False
+
+    # Also upload to branch-scoped path for manual browsing
+    if (
+        args.s3_summary_branch_uri
+        and args.s3_summary_branch_uri != args.s3_summary_uri
+    ):
+        if not s3_upload(str(json_path), args.s3_summary_branch_uri):
+            # Non-critical — the run-scoped copy is what the aggregate needs
+            print(
+                "WARNING: Failed to upload branch-scoped JSON summary.",
+                file=sys.stderr,
+            )
 
     if args.s3_html_uri:
-        s3_upload(str(html_path), args.s3_html_uri)
+        if not s3_upload(str(html_path), args.s3_html_uri):
+            print(
+                "WARNING: Failed to upload HTML report to S3.",
+                file=sys.stderr,
+            )
+            s3_ok = False
+
+    if s3_ok and (args.s3_summary_uri or args.s3_html_uri):
+        print("S3 uploads completed successfully.")
 
     # ---- Exit code ----
     genuine_failures = len(classified["failed"]) + len(classified["error"])
