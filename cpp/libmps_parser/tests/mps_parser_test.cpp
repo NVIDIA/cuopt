@@ -587,16 +587,22 @@ TEST(mps_ranges, bad_value)
                std::logic_error);
 }
 
-TEST(mps_bounds, unsupported_or_invalid_mps_types)
+TEST(mps_bounds, semi_continuous_bound_type)
 {
-  std::stringstream ss;
-  static constexpr int NumMpsFiles = 2;
-  for (int i = 1; i <= NumMpsFiles; ++i) {
-    ss << "linear_programming/bad-mps-bound-" << i << ".mps";
-    ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
-    ss.str(std::string{});
-    ss.clear();
-  };
+  auto mps = read_from_mps("linear_programming/good-mps-semi-continuous-bound.mps", false);
+
+  ASSERT_EQ(int(2), mps.var_names.size());
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('S', mps.var_types[0]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_DOUBLE_EQ(0.0, mps.variable_lower_bounds[0]);
+  EXPECT_DOUBLE_EQ(2.0, mps.variable_upper_bounds[0]);
+}
+
+TEST(mps_bounds, invalid_bound_type)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
 }
 
 TEST(mps_parser, good_mps_file_mip_1)
