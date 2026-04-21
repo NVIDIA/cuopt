@@ -415,15 +415,16 @@ int main(int argc, char* argv[])
 
   // Only initialize CUDA resources if using GPU memory backend (not remote execution)
   auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
-  std::vector<std::shared_ptr<rmm::mr::device_memory_resource>> memory_resources;
+  std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
   if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
     const int num_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
 
+    memory_resources.reserve(std::min(raft::device_setter::get_device_count(), num_gpus));
     for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
       RAFT_CUDA_TRY(cudaSetDevice(i));
-      memory_resources.push_back(make_async());
-      rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back().get());
+      memory_resources.emplace_back();
+      rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back());
     }
     RAFT_CUDA_TRY(cudaSetDevice(0));
   }

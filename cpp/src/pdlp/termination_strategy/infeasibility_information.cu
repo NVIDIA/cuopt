@@ -15,6 +15,8 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <thrust/iterator/transform_output_iterator.h>
+
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
