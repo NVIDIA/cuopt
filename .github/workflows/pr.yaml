@@ -117,29 +117,48 @@ jobs:
         build_docs:
           - '**'
           - '!.ai/**'
+          - '!.clang-format'
           - '!.coderabbit.yaml'
-          - '!AGENTS.md'
-          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.gitattributes'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guide.md'
           - '!.github/CODEOWNERS'
+          - '!.github/CODE_OF_CONDUCT.md'
           - '!.github/ISSUE_TEMPLATE/**'
           - '!.github/PULL_REQUEST_TEMPLATE.md'
           - '!.github/SECURITY.md'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
           - '!.github/agents/**'
           - '!.github/copy-pr-bot.yaml'
           - '!.github/ops-bot.yaml'
+          - '!.github/release.yml'
+          - '!.github/workflows/build.yaml'
+          - '!.github/workflows/build_images.yaml'
+          - '!.github/workflows/build_test_publish_images.yaml'
+          - '!.github/workflows/cloud_ci.yaml'
+          - '!.github/workflows/inactivity_reminder.yaml'
+          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/test.yaml'
+          - '!.github/workflows/test_images.yaml'
+          - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!AGENTS.md'
+          - '!CHANGELOG.md'
+          - '!CONTRIBUTING.md'
+          - '!LICENSE'
+          - '!README.md'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/release/**'
-          - '!ci/run_ctests.sh'
           - '!ci/run_*.pytests.sh'
+          - '!ci/run_ctests.sh'
           - '!ci/test_cpp*.sh'
           - '!ci/test_notebooks.sh'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
+          - '!ci/thirdparty-testing/**'
           - '!container-builder/**'
           - '!helmchart/**'
           - '!ngc/**'
@@ -149,22 +168,41 @@ jobs:
           - '!utilities/**'
         test_cpp:
           - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
+          - '!**/*.md'
           - '!.ai/**'
+          - '!.clang-format'
+          - '!.claude-plugin/**'
           - '!.coderabbit.yaml'
-          - '!AGENTS.md'
-          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.cursor-plugin/**'
+          - '!.gitattributes'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guide.md'
           - '!.github/CODEOWNERS'
+          - '!.github/CODE_OF_CONDUCT.md'
           - '!.github/ISSUE_TEMPLATE/**'
           - '!.github/PULL_REQUEST_TEMPLATE.md'
           - '!.github/SECURITY.md'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
           - '!.github/agents/**'
           - '!.github/copy-pr-bot.yaml'
           - '!.github/ops-bot.yaml'
+          - '!.github/release.yml'
+          - '!.github/workflows/build.yaml'
+          - '!.github/workflows/build_images.yaml'
+          - '!.github/workflows/build_test_publish_images.yaml'
+          - '!.github/workflows/cloud_ci.yaml'
+          - '!.github/workflows/inactivity_reminder.yaml'
+          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/test.yaml'
+          - '!.github/workflows/test_images.yaml'
+          - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!AGENTS.md'
+          - '!CONTRIBUTING.md'
+          - '!LICENSE'
+          - '!README.md'
+          - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
@@ -173,85 +211,119 @@ jobs:
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
+          - '!ci/thirdparty-testing/**'
+          - '!ci/utils/sync_skills_version.sh'
+          - '!ci/utils/validate_skills.sh'
           - '!container-builder/**'
           - '!docs/**'
+          - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
           - '!ngc/**'
           - '!notebooks/**'
           - '!python/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/resources/**'
-          - '!ci/utils/validate_skills.sh'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!agents/**'
-          - '!.cursor-plugin/**'
-          - '!.claude-plugin/**'
-          - '!gemini-extension.json'
         test_python_conda:
           - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
+          - '!**/*.md'
           - '!.ai/**'
+          - '!.clang-format'
+          - '!.claude-plugin/**'
           - '!.coderabbit.yaml'
-          - '!AGENTS.md'
-          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.cursor-plugin/**'
+          - '!.gitattributes'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guide.md'
           - '!.github/CODEOWNERS'
+          - '!.github/CODE_OF_CONDUCT.md'
           - '!.github/ISSUE_TEMPLATE/**'
           - '!.github/PULL_REQUEST_TEMPLATE.md'
           - '!.github/SECURITY.md'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
           - '!.github/agents/**'
           - '!.github/copy-pr-bot.yaml'
           - '!.github/ops-bot.yaml'
+          - '!.github/release.yml'
+          - '!.github/workflows/build.yaml'
+          - '!.github/workflows/build_images.yaml'
+          - '!.github/workflows/build_test_publish_images.yaml'
+          - '!.github/workflows/cloud_ci.yaml'
+          - '!.github/workflows/inactivity_reminder.yaml'
+          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/test.yaml'
+          - '!.github/workflows/test_images.yaml'
+          - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!AGENTS.md'
+          - '!CONTRIBUTING.md'
+          - '!LICENSE'
+          - '!README.md'
+          - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/release/**'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
+          - '!ci/thirdparty-testing/**'
+          - '!ci/utils/sync_skills_version.sh'
+          - '!ci/utils/validate_skills.sh'
           - '!container-builder/**'
           - '!docs/**'
+          - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
           - '!ngc/**'
           - '!notebooks/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/resources/**'
-          - '!ci/utils/validate_skills.sh'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!agents/**'
-          - '!.cursor-plugin/**'
-          - '!.claude-plugin/**'
-          - '!gemini-extension.json'
         test_python_wheels:
           - '**'
-          - '!CONTRIBUTING.md'
-          - '!README.md'
+          - '!**/*.md'
           - '!.ai/**'
+          - '!.clang-format'
+          - '!.claude-plugin/**'
           - '!.coderabbit.yaml'
-          - '!AGENTS.md'
-          - '!.github/CODE_OF_CONDUCT.md'
+          - '!.cursor-plugin/**'
+          - '!.gitattributes'
+          - '!.github/.ai/**'
+          - '!.github/.coderabbit_review_guide.md'
           - '!.github/CODEOWNERS'
+          - '!.github/CODE_OF_CONDUCT.md'
           - '!.github/ISSUE_TEMPLATE/**'
           - '!.github/PULL_REQUEST_TEMPLATE.md'
           - '!.github/SECURITY.md'
-          - '!.github/.ai/**'
-          - '!.github/.coderabbit_review_guide.md'
           - '!.github/agents/**'
           - '!.github/copy-pr-bot.yaml'
           - '!.github/ops-bot.yaml'
+          - '!.github/release.yml'
+          - '!.github/workflows/build.yaml'
+          - '!.github/workflows/build_images.yaml'
+          - '!.github/workflows/build_test_publish_images.yaml'
+          - '!.github/workflows/cloud_ci.yaml'
+          - '!.github/workflows/inactivity_reminder.yaml'
+          - '!.github/workflows/issue_automation.yaml'
+          - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/test.yaml'
+          - '!.github/workflows/test_images.yaml'
+          - '!.github/workflows/trigger-breaking-change-alert.yaml'
+          - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!AGENTS.md'
+          - '!CONTRIBUTING.md'
+          - '!LICENSE'
+          - '!README.md'
+          - '!agents/**'
           - '!ci/build_cpp.sh'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
@@ -259,31 +331,34 @@ jobs:
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
           - '!ci/test_python.sh'
+          - '!ci/thirdparty-testing/**'
+          - '!ci/utils/sync_skills_version.sh'
+          - '!ci/utils/validate_skills.sh'
           - '!conda/**'
           - '!container-builder/**'
+          - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
           - '!ngc/**'
           - '!notebooks/**'
+          - '!skills/**/SKILL.md'
+          - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
-          - '!skills/**/SKILL.md'
-          - '!skills/**/resources/**'
-          - '!ci/utils/validate_skills.sh'
-          - '!ci/utils/sync_skills_version.sh'
-          - '!agents/**'
-          - '!.cursor-plugin/**'
-          - '!.claude-plugin/**'
-          - '!gemini-extension.json'
   checks:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
   conda-cpp-build:
-    needs: [checks, compute-matrix-filters]
+    needs: [checks, compute-matrix-filters, changed-files]
+    # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
@@ -306,7 +381,11 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-python-build:
-    needs: [conda-cpp-build, compute-matrix-filters]
+    needs: [conda-cpp-build, compute-matrix-filters, changed-files]
+    # Consumed by conda-python-tests and docs-build.
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
@@ -343,7 +422,9 @@ jobs:
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-mps-parser:
-    needs: compute-matrix-filters
+    needs: [compute-matrix-filters, changed-files]
+    # All wheel-build-* jobs feed the wheel test jobs, so they gate on the same group.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -355,7 +436,8 @@ jobs:
       # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.mps_parser_filter }}
   wheel-build-libcuopt:
-    needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters]
+    needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -366,7 +448,8 @@ jobs:
       build_type: pull-request
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
-    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters]
+    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -391,7 +474,8 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
-    needs: [checks, compute-matrix-filters]
+    needs: [checks, compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -403,7 +487,8 @@ jobs:
       # Only need 1 package per CUDA major version. This selects "ARCH=amd64 + the latest supported Python, 1 job per major CUDA version".
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
-    needs: compute-matrix-filters
+    needs: [compute-matrix-filters, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
