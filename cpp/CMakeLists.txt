@@ -368,7 +368,7 @@ if (NOT SKIP_GRPC_BUILD)
             --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
             --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc
             ${GRPC_PROTO_FILE}
-            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE}
+            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${PROTO_SRCS} ${PROTO_HDRS}
             COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
             VERBATIM
     )
