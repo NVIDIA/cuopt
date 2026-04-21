@@ -266,6 +266,15 @@ class orbital_fixing_t {
   bool disabled () const { return surviving_generators_.empty(); }
   void disable() { surviving_generators_.clear(); }
 
+  // Store the current cumulative orbital fixings into the node without
+  // running the full orbital fixing computation.  Called when orbital
+  // fixing is disabled (trivial stabilizer) so that children starting
+  // a new plunge still inherit ancestor fixings.
+  void propagate_cumulative_fixings(mip_node_t<i_t, f_t>* node_ptr) {
+    node_ptr->orbital_fix_zero = cumulative_fix_zero_;
+    node_ptr->orbital_fix_one  = cumulative_fix_one_;
+  }
+
   void reset(mip_symmetry_t<i_t, f_t>* symmetry, mip_node_t<i_t, f_t>* node_ptr) {
     for (i_t j : branched_zero_) {
         marked_b0_[j] = 0;
@@ -294,18 +303,54 @@ class orbital_fixing_t {
         }
         node = node->parent;
     }
+    if (node != nullptr && node->parent != nullptr && node->parent->parent != nullptr) {
+        printf("Orbital fixing at node %d (depth %d): parent is not the root\n",
+                            node_ptr->node_id,
+                            node_ptr->depth);
+    }
 
     surviving_generators_.resize(max_generators_);
     std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
 
+    // Seed cumulative fixings from the parent's stored orbital fixings.
+    // These were accumulated during the parent's plunge and represent all
+    // orbital fixing bound changes from root to parent.
+    cumulative_fix_zero_.clear();
+    cumulative_fix_one_.clear();
+    if (node_ptr->parent != nullptr) {
+      cumulative_fix_zero_ = node_ptr->parent->orbital_fix_zero;
+      cumulative_fix_one_  = node_ptr->parent->orbital_fix_one;
+    }
+
     start_plunge_ = true;
   }
 
-  void orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
-                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                      mip_node_t<i_t, f_t>* node_ptr,
-                      lp_problem_t<i_t, f_t>& problem)
+  // Returns the number of conflicts (variables in both fix_zero and fix_one).
+  // When conflicts > 0, no fixings are applied.
+  i_t orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
+                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                     mip_node_t<i_t, f_t>* node_ptr,
+                     lp_problem_t<i_t, f_t>& problem,
+                     const std::vector<f_t>& start_lower,
+                     const std::vector<f_t>& start_upper)
   {
+    // At the start of a new plunge, restore the parent's cumulative orbital
+    // fixings into the problem.  These bound changes were derived during the
+    // parent's plunge and are valid for the entire subtree.  Without this,
+    // orbital fixings from ancestors with larger stabilizers would be lost,
+    // causing the LP bound to regress and the global lower bound to become
+    // non-monotonic.
+    if (start_plunge_) {
+      for (i_t v : cumulative_fix_zero_) {
+        problem.lower[v] = 0.0;
+        problem.upper[v] = 0.0;
+      }
+      for (i_t v : cumulative_fix_one_) {
+        problem.lower[v] = 1.0;
+        problem.upper[v] = 1.0;
+      }
+    }
+
     // Collect binary branchings only; skip general integer branchings
     i_t v = node_ptr->branch_var;
     bool is_binary = (symmetry->is_binary[v] == 1);
@@ -321,12 +366,15 @@ class orbital_fixing_t {
       }
     }
 
+    // Collect F0/F1: variables fixed by node-level propagation only.
+    // Exclude root-level fixings (from reduced cost fixing / bound strengthening
+    // after cuts) because these can be asymmetric w.r.t. the symmetry group.
     for (i_t j : symmetry->binary_variables) {
-      if (marked_b1_[j] == 0 && problem.lower[j] == 1.0) {
+      if (marked_b1_[j] == 0 && problem.lower[j] == 1.0 && start_lower[j] < 1.0) {
         f1_.push_back(j);
         marked_f1_[j] = 1;
       }
-      if (marked_b0_[j] == 0 && problem.upper[j] == 0.0) {
+      if (marked_b0_[j] == 0 && problem.upper[j] == 0.0 && start_upper[j] > 0.0) {
         f0_.push_back(j);
         marked_f0_[j] = 1;
       }
@@ -453,7 +501,7 @@ class orbital_fixing_t {
       }
     }
 
-    if (fix_zero_.size() > 0 || fix_one_.size() > 0 || num_conflicts > 0) {
+    if (num_conflicts > 0) {
       settings.log.printf("Orbital fixing at node %d (depth %d): "
                           "B0=%d B1=%d F0=%d F1=%d survivors=%d "
                           "fixing %d to 0 and %d to 1 (conflicts=%d)\n",
@@ -483,7 +531,15 @@ class orbital_fixing_t {
     f0_.clear();
     f1_.clear();
 
-    // Finally fix the variables in L0 and L1
+    if (num_conflicts > 0) {
+      // Don't apply any fixings — we want to verify the LP is independently infeasible.
+      // Still store the cumulative fixings from ancestors (without this node's conflicting fixings).
+      node_ptr->orbital_fix_zero = cumulative_fix_zero_;
+      node_ptr->orbital_fix_one  = cumulative_fix_one_;
+      return num_conflicts;
+    }
+
+    // Apply the fixings
     for (i_t v : fix_zero_) {
       problem.lower[v] = 0.0;
       problem.upper[v] = 0.0;
@@ -492,6 +548,15 @@ class orbital_fixing_t {
       problem.lower[v] = 1.0;
       problem.upper[v] = 1.0;
     }
+
+    // Accumulate this node's fixings and store in the node so that
+    // children starting a new plunge can restore them.
+    cumulative_fix_zero_.insert(cumulative_fix_zero_.end(), fix_zero_.begin(), fix_zero_.end());
+    cumulative_fix_one_.insert(cumulative_fix_one_.end(), fix_one_.begin(), fix_one_.end());
+    node_ptr->orbital_fix_zero = cumulative_fix_zero_;
+    node_ptr->orbital_fix_one  = cumulative_fix_one_;
+
+    return 0;
   }
 
  private:
@@ -517,6 +582,12 @@ class orbital_fixing_t {
   std::vector<i_t> marked_f1_;           // marked_f1_[v] = 1 if variable v is in F1
   std::vector<i_t> fix_zero_;            // set of variables fixed to 0 by orbital fixing
   std::vector<i_t> fix_one_;             // set of variables fixed to 1 by orbital fixing
+
+  // Running accumulation of orbital fixings across the current plunge.
+  // Stored into node_ptr after each successful orbital_fixing() call,
+  // so children starting a new plunge can restore the parent's fixings.
+  std::vector<i_t> cumulative_fix_zero_;
+  std::vector<i_t> cumulative_fix_one_;
 };
 
 template <typename i_t, typename f_t>

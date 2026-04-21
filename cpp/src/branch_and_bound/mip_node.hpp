@@ -271,6 +271,8 @@ class mip_node_t {
     copy.children[1]        = nullptr;
     copy.status             = node_status_t::PENDING;
 
+    copy.orbital_fix_zero = orbital_fix_zero;
+    copy.orbital_fix_one  = orbital_fix_one;
     copy.origin_worker_id = origin_worker_id;
     copy.creation_seq     = creation_seq;
     return copy;
@@ -292,6 +294,12 @@ class mip_node_t {
   std::unique_ptr<mip_node_t> children[2];
 
   std::vector<variable_status_t> vstatus;
+
+  // Cumulative orbital fixing bound changes from root to this node.
+  // Stored so that when a child starts a new plunge, the parent's
+  // orbital fixings can be restored without re-derivation.
+  std::vector<i_t> orbital_fix_zero;
+  std::vector<i_t> orbital_fix_one;
 
   // Worker-local identification for deterministic ordering:
   // - origin_worker_id: which worker created this node
