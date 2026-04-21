@@ -390,11 +390,11 @@ the dual bound is improved on the CPU.
 Scaling
 ^^^^^^^
 
-``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem. When true scaling is applied,
-when false, no scaling is applied.
+``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
 
-.. note:: The default value is false.
-
+* ``0``: Scaling is off.
+* ``1``: Scaling is on.
+* ``2``: Scaling is not applied to the objective (default).
 
 Absolute Tolerance
 ^^^^^^^^^^^^^^^^^^
