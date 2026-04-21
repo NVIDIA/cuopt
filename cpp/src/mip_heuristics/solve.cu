@@ -632,6 +632,11 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
                     "Remote execution requires CPU memory backend");
       return solve_mip_remote(*cpu_prob, settings);
     }
+#else
+    cuopt_expects(
+      !is_remote_execution_enabled(),
+      error_type_t::ValidationError,
+      "Remote execution was requested, but this build was compiled without gRPC support");
 #endif
 
     // Local execution - dispatch to appropriate overload based on problem type

@@ -195,12 +195,8 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-find_package(OpenMP)
-
-if (OPENMP_FOUND)
-    message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
-endif ()
-
+find_package(OpenMP REQUIRED)
+message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
 # Debug options
 if (CMAKE_BUILD_TYPE MATCHES Debug)
