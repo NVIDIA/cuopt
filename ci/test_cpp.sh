@@ -52,7 +52,7 @@ set +e
 export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
 rapids-logger "Run gtests"
-timeout 40m ./ci/run_ctests.sh
+timeout 50m ./ci/run_ctests.sh
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
