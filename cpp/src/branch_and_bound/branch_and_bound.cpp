@@ -256,9 +256,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     root_relax_soln_(1, 1),
     root_crossover_soln_(1, 1),
     pc_(1),
-    solver_status_(mip_status_t::UNSET),
-    rng_(settings_.random_seed ^ pcgenerator_t::default_seed,
-         settings_.random_seed ^ pcgenerator_t::default_stream)
+    solver_status_(mip_status_t::UNSET)
 {
   exploration_stats_.start_time = start_time;
 #ifdef PRINT_CONSTRAINT_MATRIX
@@ -1615,6 +1613,7 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) { return nullptr; }
 
+  assert(start_node != nullptr);
   idle_worker->init(start_node);
 
 #pragma omp task affinity(*idle_worker) priority(99)
@@ -1784,8 +1783,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 
   if (!start_node || upper_bound_.load() < start_node->lower_bound ||
       start_node->depth < settings_.diving_settings.min_node_depth) {
-    diving_worker_pool_.return_worker_to_pool(diving_worker);
     bfs_worker->node_queue.unlock();
+    diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
 
@@ -2598,8 +2597,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
 #pragma omp master
       {
-        auto worker = launch_bfs_worker(search_tree_.root.get_up_child());
-        std::cout << std::format("Worker {} is the main one", worker->worker_id) << std::endl;
+        launch_bfs_worker(search_tree_.root.get_up_child());
         launch_bfs_worker(search_tree_.root.get_down_child());
       }
     }

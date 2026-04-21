@@ -82,7 +82,7 @@ class worker_pool_t {
 
   omp_mutex_t mutex_;
   circular_deque_t<i_t> idle_workers_;
-  omp_atomic_t<i_t> num_idle_workers_;
+  omp_atomic_t<i_t> num_idle_workers_{0};
 };
 
 template <typename i_t, typename f_t>

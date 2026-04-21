@@ -244,8 +244,6 @@ class branch_and_bound_t {
   // Worker pool dedicated to diving
   diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
-  pcgenerator_t rng_;
-
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
   omp_atomic_t<bool> is_running_{false};
