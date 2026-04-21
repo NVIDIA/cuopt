@@ -120,16 +120,17 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
-  return solve_linear_program_with_advanced_basis(original_lp,
-                                                  start_time,
-                                                  settings,
-                                                  original_solution,
-                                                  ft,
-                                                  basic_list,
-                                                  nonbasic_list,
-                                                  vstatus,
-                                                  edge_norms,
-                                                  work_unit_context);
+  lp_status_t result = solve_linear_program_with_advanced_basis(original_lp,
+                                                                start_time,
+                                                                settings,
+                                                                original_solution,
+                                                                ft,
+                                                                basic_list,
+                                                                nonbasic_list,
+                                                                vstatus,
+                                                                edge_norms,
+                                                                work_unit_context);
+  return result;
 }
 
 template <typename i_t, typename f_t>
@@ -222,7 +223,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
   if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
   if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
-  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
+    original_solution.iterations = iter;
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
   phase1_obj = phase1_solution.objective;
   if (phase1_obj > -settings.primal_tol) {
     settings.log.printf("Dual feasible solution found.\n");
@@ -309,7 +313,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
     if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
     if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
-    if (status == dual::status_t::CONCURRENT_LIMIT) { lp_status = lp_status_t::CONCURRENT_LIMIT; }
+    if (status == dual::status_t::CONCURRENT_LIMIT) {
+      original_solution.iterations = iter;
+      return lp_status_t::CONCURRENT_LIMIT;
+    }
     if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
     if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
@@ -581,6 +588,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     solution.iterations         = barrier_solution.iterations;
   }
 
+  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
+
   // If we aren't doing crossover, we're done
   if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
 
@@ -681,6 +690,10 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   std::vector<f_t> edge_norms;
   lp_status_t status = solve_linear_program_advanced(
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
+  if (status == lp_status_t::CONCURRENT_LIMIT) {
+    solution.iterations = lp_solution.iterations;
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
   uncrush_dual_solution(
     user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
