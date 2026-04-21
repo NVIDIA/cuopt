@@ -733,6 +733,11 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   settings_.log.printf("Explored %d nodes in %.2fs.\n",
                        exploration_stats_.nodes_explored,
                        toc(exploration_stats_.start_time));
+  if (exploration_stats_.orbital_fixing_nodes.load() > 0) {
+    settings_.log.printf("Orbital fixing applied at %lld nodes, %lld total variable fixings\n",
+                         (long long)exploration_stats_.orbital_fixing_nodes.load(),
+                         (long long)exploration_stats_.orbital_fixings_applied.load());
+  }
   settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
                        gap,
                        obj,
@@ -1400,8 +1405,14 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     i_t orbital_conflicts = 0;
     auto* of = worker->orbital_fixing.get();
     if (of != nullptr && !of->disabled()) {
+      i_t prev_fix = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
       orbital_conflicts = of->orbital_fixing(symmetry_, settings_, node_ptr, worker->leaf_problem,
                                              worker->start_lower, worker->start_upper);
+      i_t new_fix = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
+      if (new_fix > prev_fix) {
+        ++stats.orbital_fixing_nodes;
+        stats.orbital_fixings_applied += (new_fix - prev_fix);
+      }
     } else if (of != nullptr) {
       of->propagate_cumulative_fixings(node_ptr);
     }

@@ -47,6 +47,8 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<int64_t> total_lp_iters   = 0;
   omp_atomic_t<i_t> nodes_since_last_log = 0;
   omp_atomic_t<f_t> last_log             = 0.0;
+  omp_atomic_t<int64_t> orbital_fixing_nodes = 0;
+  omp_atomic_t<int64_t> orbital_fixings_applied = 0;
 };
 
 template <typename i_t, typename f_t>
