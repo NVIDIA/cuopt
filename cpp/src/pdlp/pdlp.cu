@@ -292,7 +292,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                                    ? -std::numeric_limits<f_t>::infinity()
                                                    : std::numeric_limits<f_t>::infinity();
   op_problem.check_problem_representation(true, false);
-  op_problem_scaled_.check_problem_representation(true, false);
 
   if (settings_.new_bounds.size() > 0) {
     batch_solution_to_return_.get_additional_termination_informations().resize(
@@ -2158,6 +2157,14 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
              stream_view_);
 }
 
+template <typename f_t>
+void poison_and_free(rmm::device_uvector<f_t>& uvec, rmm::cuda_stream_view stream) {
+  if (uvec.size() > 0) {
+    thrust::fill(thrust::cuda::par_nosync.on(stream), uvec.begin(), uvec.end(), 5);
+  }
+  uvec.resize(0, stream);
+}
+
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t>& primal_to_transpose,
@@ -2262,6 +2269,18 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Update FP32 matrix copies for mixed precision SpMV after scaling
   pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
+
+  // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets, indices),
+  // then free the duplicated structural vectors from the scaled copy to save device memory.
+  pdhg_solver_.get_cusparse_view().redirect_rows_and_cols(*problem_ptr);
+  poison_and_free<i_t>(op_problem_scaled_.variables, stream_view_);
+  poison_and_free<i_t>(op_problem_scaled_.offsets, stream_view_);
+  poison_and_free<i_t>(op_problem_scaled_.reverse_constraints, stream_view_);
+  poison_and_free<i_t>(op_problem_scaled_.reverse_offsets, stream_view_);
+  
+  // Remove unused device vectors
+  op_problem_scaled_.pdlp_lighten();
+  problem_ptr->pdlp_lighten();
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())

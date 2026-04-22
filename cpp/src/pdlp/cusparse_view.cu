@@ -1082,6 +1082,38 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
   }
 }
 
+template <typename i_t, typename f_t>
+void cusparse_view_t<i_t, f_t>::redirect_rows_and_cols(
+  const problem_t<i_t, f_t>& original_problem)
+{
+  RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
+                                            const_cast<i_t*>(original_problem.offsets.data()),
+                                            const_cast<i_t*>(original_problem.variables.data()),
+                                            const_cast<f_t*>(A_.data())));
+
+  RAFT_CUSPARSE_TRY(
+    cusparseCsrSetPointers(A_T,
+                           const_cast<i_t*>(original_problem.reverse_offsets.data()),
+                           const_cast<i_t*>(original_problem.reverse_constraints.data()),
+                           const_cast<f_t*>(A_T_.data())));
+
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (mixed_precision_enabled_) {
+      RAFT_CUSPARSE_TRY(
+        cusparseCsrSetPointers(A_mixed_,
+                               const_cast<i_t*>(original_problem.offsets.data()),
+                               const_cast<i_t*>(original_problem.variables.data()),
+                               A_float_.data()));
+
+      RAFT_CUSPARSE_TRY(
+        cusparseCsrSetPointers(A_T_mixed_,
+                               const_cast<i_t*>(original_problem.reverse_offsets.data()),
+                               const_cast<i_t*>(original_problem.reverse_constraints.data()),
+                               A_T_float_.data()));
+    }
+  }
+}
+
 // Mixed precision SpMV implementation: FP32 matrix with FP64 vectors and FP64 compute type
 size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
                                        cusparseOperation_t opA,
