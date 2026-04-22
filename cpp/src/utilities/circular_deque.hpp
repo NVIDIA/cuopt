@@ -32,6 +32,7 @@ class circular_deque_t {
       head_(0),
       tail_(0)
   {
+    assert(capacity > 0);
   }
 
   bool empty() const { return head_ == tail_; }
@@ -42,6 +43,7 @@ class circular_deque_t {
 
   void clear_resize(size_t new_capacity)
   {
+    assert(new_capacity > 0);
     head_     = 0;
     tail_     = 0;
     capacity_ = new_capacity + 1;

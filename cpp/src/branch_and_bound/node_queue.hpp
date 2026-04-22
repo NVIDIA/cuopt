@@ -44,6 +44,7 @@ class heap_t {
     buffer.emplace_back(std::forward<Args>(args)...);
     std::push_heap(buffer.begin(), buffer.end(), comp);
     ++num_entries_;
+    assert(num_entries_.load() == buffer.size());
   }
 
   T pop()
@@ -52,6 +53,7 @@ class heap_t {
     T node = std::move(buffer.back());
     buffer.pop_back();
     --num_entries_;
+    assert(num_entries_.load() == buffer.size());
     return node;
   }
 
@@ -95,6 +97,7 @@ class node_queue_t {
  public:
   void push(mip_node_t<i_t, f_t>* new_node)
   {
+    assert(new_node != nullptr);
     auto entry = std::make_shared<heap_entry_t>(new_node);
     best_first_heap_.push(entry);
     diving_heap_.push(entry);
@@ -108,6 +111,7 @@ class node_queue_t {
     lower_bound_               = best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity()
                                                           : best_first_heap_.top()->lower_bound;
     mip_node_t<i_t, f_t>* node = std::exchange(entry->node, nullptr);
+    assert(node != nullptr);
     return node;
   }
 
@@ -122,6 +126,11 @@ class node_queue_t {
 
   void lock() { mutex_.lock(); }
   void unlock() { mutex_.unlock(); }
+
+  mip_node_t<i_t, f_t>* bfs_top()
+  {
+    return best_first_heap_.empty() ? nullptr : best_first_heap_.top()->node;
+  }
 
   i_t diving_queue_size() { return diving_heap_.size(); }
   i_t best_first_queue_size() { return best_first_heap_.size(); }

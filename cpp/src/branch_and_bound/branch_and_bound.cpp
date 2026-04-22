@@ -834,7 +834,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   std::vector<f_t>& solution = worker->leaf_solution.x;
 
   switch (worker->search_strategy) {
-    case search_strategy_t::BEST_FIRST:
+    case BEST_FIRST:
 
       if (settings_.reliability_branching != 0) {
         branch_var = pc_.reliable_variable_selection(node_ptr,
@@ -856,17 +856,18 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
       return {branch_var, round_dir};
 
-    case search_strategy_t::COEFFICIENT_DIVING:
+    case COEFFICIENT_DIVING:
       return coefficient_diving(
         original_lp_, fractional, solution, var_up_locks_, var_down_locks_, log);
 
-    case search_strategy_t::LINE_SEARCH_DIVING:
+    case LINE_SEARCH_DIVING:
       return line_search_diving(fractional, solution, root_relax_soln_.x, log);
 
-    case search_strategy_t::PSEUDOCOST_DIVING:
+    case PSEUDOCOST_DIVING:
       return pseudocost_diving(pc_, fractional, solution, root_relax_soln_.x, log);
 
-    case search_strategy_t::GUIDED_DIVING:
+    case GUIDED_DIVING:
+      assert(incumbent_.has_incumbent);
       mutex_upper_.lock();
       current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
@@ -1442,6 +1443,9 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
                                                mip_node_t<i_t, f_t>* start_node)
 {
+  assert(worker != nullptr && worker->is_active.load());
+  assert(start_node != nullptr);
+
   // Stack holds at most 2 entries: the preferred child + its sibling.
   // The sibling is evicted to the queue before a new pair of children is added.
   circular_deque_t<mip_node_t<i_t, f_t>*> stack(4);
@@ -1458,6 +1462,23 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
+    // Launch a new diving task if any worker is idle
+    if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
+        worker->node_queue.diving_queue_size() > 0) {
+      launch_diving_worker(worker);
+    }
+
+    // If any best-first worker become idle,
+    if (bfs_worker_pool_.num_idle_workers() > 0 && worker->node_queue.best_first_queue_size() > 0) {
+      worker->node_queue.lock();
+      mip_node_t<i_t, f_t>* node = worker->node_queue.bfs_top();
+      if (node != nullptr) {
+        if (launch_bfs_worker(node)) { worker->node_queue.pop_best_first(); }
+      }
+      worker->node_queue.unlock();
+    }
+
+    assert(stack.size() <= 2);
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
 
@@ -1576,22 +1597,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     upper_bound = upper_bound_;
     rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
-
-    // Launch a new diving task if any worker is idle
-    if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
-        worker->node_queue.diving_queue_size() > 0) {
-      launch_diving_worker(worker);
-    }
-
-    // If any best-first worker become idle,
-    if (bfs_worker_pool_.num_idle_workers() > 0 && worker->node_queue.best_first_queue_size() > 0) {
-      worker->node_queue.lock();
-      mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
-      if (node != nullptr) {
-        if (!launch_bfs_worker(node)) { worker->node_queue.push(node); }
-      }
-      worker->node_queue.unlock();
-    }
   }
 
   // If the solver was forced to stop, but we still have nodes to explore
@@ -1806,6 +1811,11 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
       bfs_worker->active_diving_workers[strategy]++;
       bfs_worker->total_active_diving_workers++;
 
+      assert(bfs_worker->active_diving_workers[strategy].load() <=
+             bfs_worker->max_diving_workers[strategy]);
+      assert(bfs_worker->total_active_diving_workers.load() <=
+             bfs_worker->total_max_diving_workers);
+
 #pragma omp task affinity(*diving_worker)
       dive_with(diving_worker);
 
@@ -1826,6 +1836,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
   node_queue.push(search_tree_.root.get_down_child());
   node_queue.push(search_tree_.root.get_up_child());
+  worker->lower_bound = worker->node_queue.get_lower_bound();
+  worker->is_active   = true;
   best_first_search_with(worker);
 }
 

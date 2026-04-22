@@ -1381,8 +1381,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 
   // If `reliable_threshold == 0`, then we set the uninitialized pseudocosts to the average.
   // Otherwise, the best ones are initialized via strong branching, while the other are ignored.  //
-  // In the latter, we are not using the average pseudocost (which calculated in the `initialized`
-  // method).
+  // So we only need to initialize the average for the former.
   if (reliable_threshold == 0) {
     averages = compute_averages();
     log.printf("PC: num initialized down %d up %d avg down %e up %e\n",

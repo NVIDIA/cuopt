@@ -25,6 +25,9 @@ class worker_pool_t {
             const simplex_solver_settings_t<i_t, f_t>& settings,
             const uint64_t rng_offset = 0)
   {
+    assert(!is_initialized);
+    assert(num_workers > 0);
+
     workers_.resize(num_workers);
     num_idle_workers_ = num_workers;
     idle_workers_.clear_resize(num_workers);
@@ -46,6 +49,8 @@ class worker_pool_t {
       i_t idx = idle_workers_.front();
       idle_workers_.pop_front();
       num_idle_workers_--;
+      assert(idle_workers_.size() == static_cast<size_t>(num_idle_workers_.load()));
+      assert(idx >= 0 && static_cast<size_t>(idx) < workers_.size());
       return workers_[idx].get();
     }
   }
@@ -53,6 +58,12 @@ class worker_pool_t {
   void return_worker_to_pool(WorkerType* worker)
   {
     std::lock_guard lock(mutex_);
+    assert(worker != nullptr);
+    assert(workers_[worker->worker_id].get() == worker);
+    assert(!worker->is_active.load());
+    assert(static_cast<size_t>(num_idle_workers_.load()) == idle_workers_.size());
+    assert(idle_workers_.size() <= workers_.size());
+
     idle_workers_.push_back(worker->worker_id);
     num_idle_workers_++;
   }
@@ -70,8 +81,18 @@ class worker_pool_t {
     return lower_bound;
   }
 
-  WorkerType* operator[](i_t id) { return workers_[id].get(); }
-  WorkerType* operator[](i_t id) const { return workers_[id].get(); }
+  WorkerType* operator[](i_t id)
+  {
+    assert(id >= 0 && static_cast<size_t>(id) < workers_.size());
+    assert(workers_[id] != nullptr);
+    return workers_[id].get();
+  }
+  WorkerType* operator[](i_t id) const
+  {
+    assert(id >= 0 && static_cast<size_t>(id) < workers_.size());
+    assert(workers_[id] != nullptr);
+    return workers_[id].get();
+  }
 
   i_t num_idle_workers() const { return num_idle_workers_; }
   i_t num_workers() const { return workers_.size(); }

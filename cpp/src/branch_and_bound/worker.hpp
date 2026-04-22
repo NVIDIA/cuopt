@@ -155,6 +155,10 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void init(mip_node_t<i_t, f_t>* node)
   {
+    assert(!Base::is_active.load());
+    assert(node_queue.best_first_queue_size() == 0);
+    assert(node != nullptr);
+
     node_queue.push(node);
     Base::lower_bound = node->lower_bound;
     Base::is_active   = true;
@@ -241,6 +245,11 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void set_inactive()
   {
+    assert(Base::is_active.load());
+    assert(bfs_worker != nullptr);
+    assert(bfs_worker->active_diving_workers[Base::search_strategy].load() > 0);
+    assert(bfs_worker->total_active_diving_workers.load() > 0);
+
     Base::is_active = false;
     --bfs_worker->active_diving_workers[Base::search_strategy];
     --bfs_worker->total_active_diving_workers;
