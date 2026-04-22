@@ -9,7 +9,8 @@
 # The script needs S3 access via CUOPT_S3_URI (bucket root) and CUOPT_AWS_* credentials.
 #
 # Optional:
-#   CUOPT_SLACK_WEBHOOK_URL       - sends Slack if set
+#   CUOPT_SLACK_BOT_TOKEN         - sends Slack if set (with CUOPT_SLACK_CHANNEL_ID)
+#   CUOPT_SLACK_CHANNEL_ID        - Slack channel ID
 #   RAPIDS_BRANCH                 - branch name (default: main)
 #   RAPIDS_BUILD_TYPE             - build type (nightly, pull-request, etc.)
 #   GITHUB_TOKEN                  - for querying workflow job statuses
@@ -108,14 +109,13 @@ PRESIGNED_DASHBOARD=$(aws s3 presign "${S3_DASHBOARD_URI}" --expires-in "${PRESI
     PRESIGNED_DASHBOARD=""
 }
 
-# Send consolidated Slack notification if webhook is available and this is a nightly build
-if [ -n "${CUOPT_SLACK_WEBHOOK_URL:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ]; then
+# Send consolidated Slack notification if bot token is available and this is a nightly build
+if [ -n "${CUOPT_SLACK_BOT_TOKEN:-}" ] && [ -n "${CUOPT_SLACK_CHANNEL_ID:-}" ] && [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ]; then
     echo "Sending consolidated Slack notification"
     CONSOLIDATED_SUMMARY="${OUTPUT_DIR}/consolidated_summary.json" \
     CONSOLIDATED_HTML="${OUTPUT_DIR}/consolidated_report.html" \
-    SLACK_WEBHOOK_URL="${CUOPT_SLACK_WEBHOOK_URL}" \
-    SLACK_BOT_TOKEN="${CUOPT_SLACK_BOT_TOKEN:-}" \
-    SLACK_CHANNEL_ID="${CUOPT_SLACK_CHANNEL_ID:-}" \
+    SLACK_BOT_TOKEN="${CUOPT_SLACK_BOT_TOKEN}" \
+    SLACK_CHANNEL_ID="${CUOPT_SLACK_CHANNEL_ID}" \
     PRESIGNED_REPORT_URL="${PRESIGNED_HTML}" \
     PRESIGNED_DASHBOARD_URL="${PRESIGNED_DASHBOARD}" \
         bash "${SCRIPT_DIR}/utils/send_consolidated_summary.sh"

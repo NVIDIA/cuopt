@@ -10,12 +10,11 @@ set -euo pipefail
 BRANCH="${RAPIDS_BRANCH:-main}"
 RUN_DATE="$(date +%F)"
 GITHUB_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-NVIDIA/cuopt}/actions/runs/${GITHUB_RUN_ID:-}"
-SLACK_WEBHOOK_URL="${CUOPT_SLACK_WEBHOOK_URL:-}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
 
-if [ -z "${SLACK_WEBHOOK_URL}" ] && [ -z "${SLACK_BOT_TOKEN}" ]; then
-    echo "No Slack credentials set, skipping build summary."
+if [ -z "${SLACK_BOT_TOKEN}" ] || [ -z "${SLACK_CHANNEL_ID}" ]; then
+    echo "SLACK_BOT_TOKEN or SLACK_CHANNEL_ID not set, skipping build summary."
     exit 0
 fi
 
@@ -127,38 +126,24 @@ print(json.dumps({
 
 rm -f "${JOBS_FILE}"
 
-# Send via bot token (preferred) or webhook
+# Send via bot token
 echo "Sending build summary to Slack..."
-if [ -n "${SLACK_BOT_TOKEN}" ] && [ -n "${SLACK_CHANNEL_ID}" ]; then
-    BOT_PAYLOAD=$(python3 -c "
+BOT_PAYLOAD=$(python3 -c "
 import json, sys
 p = json.loads(sys.argv[1])
 p['channel'] = sys.argv[2]
 print(json.dumps(p))
 " "${PAYLOAD}" "${SLACK_CHANNEL_ID}")
 
-    RESPONSE=$(curl -s -X POST \
-        -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
-        -H "Content-Type: application/json" \
-        --data "${BOT_PAYLOAD}" \
-        "https://slack.com/api/chat.postMessage")
+RESPONSE=$(curl -s -X POST \
+    -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "${BOT_PAYLOAD}" \
+    "https://slack.com/api/chat.postMessage")
 
-    OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
-    if [ "${OK}" != "True" ]; then
-        echo "WARNING: chat.postMessage failed: ${RESPONSE}" >&2
-        # Fall back to webhook
-        curl -s -X POST -H 'Content-type: application/json' --data "${PAYLOAD}" "${SLACK_WEBHOOK_URL}" || true
-    else
-        echo "Build summary posted to Slack."
-    fi
-elif [ -n "${SLACK_WEBHOOK_URL}" ]; then
-    response=$(curl -s -X POST \
-        -H 'Content-type: application/json' \
-        --data "${PAYLOAD}" \
-        "${SLACK_WEBHOOK_URL}")
-    if [ "${response}" != "ok" ]; then
-        echo "WARNING: Slack webhook returned: ${response}" >&2
-    else
-        echo "Build summary posted to Slack."
-    fi
+OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
+if [ "${OK}" != "True" ]; then
+    echo "ERROR: chat.postMessage failed: ${RESPONSE}" >&2
+else
+    echo "Build summary posted to Slack."
 fi
