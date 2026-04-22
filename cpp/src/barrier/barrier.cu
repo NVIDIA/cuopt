@@ -1094,6 +1094,7 @@ class iteration_data_t {
     std::sort(column_nz_permutation.begin(),
               column_nz_permutation.end(),
               [&column_nz](i_t i, i_t j) { return column_nz[i] < column_nz[j]; });
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // We then compute the exact sparsity pattern for columns of A whose where
     // the number of nonzeros is less than a threshold. This part can be done
@@ -1124,6 +1125,7 @@ class iteration_data_t {
     // The best way to do that is to have A stored in CSR format.
     csr_matrix_t<i_t, f_t> A_row(0, 0, 0);
     A.to_compressed_row(A_row);
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     std::vector<i_t> histogram(m + 1, 0);
     for (i_t j = 0; j < n; j++) {
@@ -1253,6 +1255,7 @@ class iteration_data_t {
     std::sort(permutation.begin(), permutation.end(), [&delta_nz](i_t i, i_t j) {
       return delta_nz[i] < delta_nz[j];
     });
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     // Now we make a forward pass and compute the number of nonzeros in C
     // assuming we had included column j
@@ -2297,6 +2300,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     if (use_augmented) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.form_augmented();
+      // Check halt after form_augmented (synchronous) and before factorize (~1s).
+      // If halt was set while form_augmented ran, we catch it here and skip the
+      // expensive factorization entirely.
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+        return CONCURRENT_HALT_RETURN;
+      }
       status = data.chol->factorize(data.device_augmented);
 
 #ifdef CHOLESKY_DEBUG_CHECK
@@ -2305,6 +2314,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } else {
       // compute ADAT = A Dinv * A^T
       data.form_adat();
+      // Check halt after form_adat (synchronous) and before factorize (~1s).
+      // If halt was set while form_adat ran, we catch it here and skip the
+      // expensive Cholesky factorization entirely.
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+        return CONCURRENT_HALT_RETURN;
+      }
       // factorize
       status = data.chol->factorize(data.device_ADAT);
     }
