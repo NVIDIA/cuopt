@@ -1395,7 +1395,8 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible            = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms  = edge_norms_;
-  if (worker->recompute_bounds && worker->orbital_fixing) {
+  if (worker->recompute_bounds && worker->orbital_fixing &&
+      worker->search_strategy == BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
 

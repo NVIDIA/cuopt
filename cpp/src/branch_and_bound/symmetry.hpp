@@ -303,11 +303,6 @@ class orbital_fixing_t {
         }
         node = node->parent;
     }
-    if (node != nullptr && node->parent != nullptr && node->parent->parent != nullptr) {
-        printf("Orbital fixing at node %d (depth %d): parent is not the root\n",
-                            node_ptr->node_id,
-                            node_ptr->depth);
-    }
 
     surviving_generators_.resize(max_generators_);
     std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
@@ -456,6 +451,7 @@ class orbital_fixing_t {
 
     fix_zero_.clear();
     fix_one_.clear();
+    i_t num_conflicts = 0;
     bool stabilizer_nontrivial = false;
     for (i_t j : symmetry->binary_variables) {
       i_t o = orb_.find_orbit(j);
@@ -476,13 +472,24 @@ class orbital_fixing_t {
                        marked_f0_[j] == 0 && marked_f1_[j] == 0);
       if (!is_free) continue;
 
-      if (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1) {
+      bool has_zero_source = (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1);
+      bool has_one_source  = (orbit_has_f1_[o] == 1);
+
+      // An orbit with both fix-to-0 and fix-to-1 sources is conflicting:
+      // branching (B0) broke the symmetry within this orbit, so propagation
+      // produced asymmetric fixings. Skip it — no valid fixing can be derived.
+      if (has_zero_source && has_one_source) {
+        num_conflicts++;
+        continue;
+      }
+
+      if (has_zero_source) {
         // The orbit of this variable contains variables in B0 or F0
         // So we can fix this variable to zero
         fix_zero_.push_back(j);
       }
 
-      if (orbit_has_f1_[o] == 1) {
+      if (has_one_source) {
         // The orbit of this variable contains variables in F1
         // So we can fix this variable to one
         fix_one_.push_back(j);
@@ -491,20 +498,10 @@ class orbital_fixing_t {
 
     if (!stabilizer_nontrivial) { surviving_generators_.clear(); }
 
-    // Detect conflicts: variables in both fix_zero_ and fix_one_
-    i_t num_conflicts = 0;
-    {
-      std::vector<i_t> in_fix_zero(num_original_vars_, 0);
-      for (i_t v : fix_zero_) { in_fix_zero[v] = 1; }
-      for (i_t v : fix_one_) {
-        if (in_fix_zero[v]) { num_conflicts++; }
-      }
-    }
-
     if (num_conflicts > 0) {
       settings.log.printf("Orbital fixing at node %d (depth %d): "
                           "B0=%d B1=%d F0=%d F1=%d survivors=%d "
-                          "fixing %d to 0 and %d to 1 (conflicts=%d)\n",
+                          "fixing %d to 0 and %d to 1 (skipped %d vars in conflicting orbits)\n",
                           node_ptr->node_id,
                           node_ptr->depth,
                           (int)branched_zero_.size(),
@@ -531,15 +528,7 @@ class orbital_fixing_t {
     f0_.clear();
     f1_.clear();
 
-    if (num_conflicts > 0) {
-      // Don't apply any fixings — we want to verify the LP is independently infeasible.
-      // Still store the cumulative fixings from ancestors (without this node's conflicting fixings).
-      node_ptr->orbital_fix_zero = cumulative_fix_zero_;
-      node_ptr->orbital_fix_one  = cumulative_fix_one_;
-      return num_conflicts;
-    }
-
-    // Apply the fixings
+    // Apply the fixings from non-conflicting orbits
     for (i_t v : fix_zero_) {
       problem.lower[v] = 0.0;
       problem.upper[v] = 0.0;
@@ -957,6 +946,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   combined.add_hook(&generator_hook);
 
   dejavu::solver d;
+  d.set_print(false);
   d.automorphisms(&g, combined);
 
   std::ostringstream grp_size_str;
