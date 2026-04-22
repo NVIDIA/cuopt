@@ -175,7 +175,7 @@ if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
 endif()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
 if("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
+  list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Xcompiler=-Wno-unused-function)
 else()
   list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall -Wno-error=non-template-friend)
 endif()
@@ -200,6 +200,21 @@ if(NOT DISABLE_OPENMP)
 
   if(OPENMP_FOUND)
     message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
+
+    # Mixed OpenMP runtimes can yield different omp_lock_t layouts across translation units
+    # (e.g. clang/libomp for CXX and nvcc-hosted CUDA/libgomp), which later surfaces as
+    # new/delete type mismatches in inline wrappers such as utilities/omp_helpers.hpp.
+    if(DEFINED OpenMP_CXX_LIB_NAMES AND DEFINED OpenMP_CUDA_LIB_NAMES AND
+       NOT "${OpenMP_CXX_LIB_NAMES}" STREQUAL "${OpenMP_CUDA_LIB_NAMES}")
+      message(FATAL_ERROR
+        "cuOpt requires a consistent OpenMP runtime across CXX and CUDA compilation units. "
+        "Detected OpenMP_CXX_LIB_NAMES='${OpenMP_CXX_LIB_NAMES}' but "
+        "OpenMP_CUDA_LIB_NAMES='${OpenMP_CUDA_LIB_NAMES}'. "
+        "This configuration can mix libomp and libgomp, producing ABI mismatches such as "
+        "omp_lock_t size differences and ASAN new-delete-type-mismatch failures during teardown. "
+        "Configure both toolchains to use the same OpenMP runtime, typically by aligning the "
+        "CUDA host compiler with the CXX compiler/OpenMP implementation.")
+    endif()
   endif()
 endif()
 
