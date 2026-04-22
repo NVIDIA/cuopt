@@ -119,6 +119,8 @@ class branch_and_bound_worker_t {
     return node_presolver.bounds_strengthening(
       settings, bounds_changed, leaf_problem.lower, leaf_problem.upper);
   }
+
+  void set_active() { is_active = true; }
 };
 
 template <typename i_t, typename f_t>
@@ -161,7 +163,6 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
     node_queue.push(node);
     this->lower_bound = node->lower_bound;
-    this->is_active   = true;
   }
 
   void set_inactive() { this->is_active = false; }
@@ -175,15 +176,19 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
       return false;
     }
 
-    other->node_queue.lock();
-    this->node_queue.lock();
-    while (num_nodes > 0 && other->node_queue.best_first_queue_size() > 1) {
-      mip_node_t<i_t, f_t>* node = other->node_queue.pop_best_first();
+    while (num_nodes > 0) {
+      other->node_queue.lock();
+      mip_node_t<i_t, f_t>* node = other->node_queue.best_first_queue_size() > num_nodes
+                                     ? other->node_queue.pop_best_first()
+                                     : nullptr;
+      other->node_queue.unlock();
+      if (node == nullptr) { break; }
+
+      this->node_queue.lock();
       this->node_queue.push(node);
+      this->node_queue.unlock();
       --num_nodes;
     }
-    this->node_queue.unlock();
-    other->node_queue.unlock();
 
     return true;
   }
@@ -243,13 +248,13 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   using Base::Base;
 
+  // Set `is_active = true` when the worker is ready.
   void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
   {
     start_node        = node->detach_copy();
     this->start_lower = original_lp.lower;
     this->start_upper = original_lp.upper;
     this->lower_bound = node->lower_bound;
-    this->is_active   = true;
     std::fill(this->bounds_changed.begin(), this->bounds_changed.end(), false);
     node->get_variable_bounds(this->start_lower, this->start_upper, this->bounds_changed);
   }

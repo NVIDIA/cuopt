@@ -1451,12 +1451,13 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   circular_deque_t<mip_node_t<i_t, f_t>*> stack(4);
   stack.push_front(start_node);
 
-  f_t lower_bound          = get_lower_bound();
-  f_t upper_bound          = upper_bound_;
-  f_t rel_gap              = user_relative_gap(original_lp_, upper_bound, lower_bound);
-  f_t abs_gap              = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
+
+  f_t lower_bound = get_lower_bound();
+  f_t upper_bound = upper_bound_;
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
@@ -1620,11 +1621,13 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
 
   if (toc(exploration_stats_.start_time) > settings_.time_limit ||
       solver_status_ != mip_status_t::UNSET) {
+    bfs_worker_pool_.return_worker_to_pool(idle_worker);
     return nullptr;
   }
 
   assert(start_node != nullptr);
   idle_worker->init(start_node);
+  idle_worker->set_active();
 
 #pragma omp task affinity(*idle_worker) priority(99)
   best_first_search_with(idle_worker);
@@ -1818,6 +1821,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 
   if (toc(exploration_stats_.start_time) > settings_.time_limit ||
       solver_status_ != mip_status_t::UNSET) {
+    diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
 
@@ -1827,6 +1831,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     if (bfs_worker->active_diving_workers[strategy] < bfs_worker->max_diving_workers[strategy]) {
       diving_worker->search_strategy = strategy;
       diving_worker->bfs_worker      = bfs_worker;
+      diving_worker->set_active();
       bfs_worker->active_diving_workers[strategy]++;
       bfs_worker->total_active_diving_workers++;
 
@@ -1856,7 +1861,7 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   node_queue.push(search_tree_.root.get_down_child());
   node_queue.push(search_tree_.root.get_up_child());
   worker->lower_bound = worker->node_queue.get_lower_bound();
-  worker->is_active   = true;
+  worker->set_active();
   best_first_search_with(worker);
 }
 
