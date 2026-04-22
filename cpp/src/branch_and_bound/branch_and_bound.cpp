@@ -1485,6 +1485,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       stack.push_front(node_ptr);
       break;
     } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
+      stack.push_front(node_ptr);
       break;
     }
 

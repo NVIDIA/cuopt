@@ -77,6 +77,7 @@ class rins_t {
   void stop_rins();
 
   void run_rins();
+  void refresh_problem_copy();
 
   mip_solver_context_t<i_t, f_t>& context;
   problem_t<i_t, f_t>* problem_ptr;

@@ -58,45 +58,65 @@ void rins_t<i_t, f_t>::new_best_incumbent_callback(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objective)
 {
-  if (!enabled) return;
+  if (!enabled.load()) return;
 
   node_count++;
 
   if (node_count - node_count_at_last_improvement < settings.nodes_after_later_improvement) return;
 
-  if (node_count - node_count_at_last_rins > settings.node_freq) {
-    // opportunistic early test w/ atomic to avoid having to take the lock
-    if (!rins_thread->cpu_thread_done) return;
-    std::lock_guard<std::mutex> lock(rins_mutex);
-    bool population_ready = false;
-    if (rins_thread->cpu_thread_done) {
-      std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
-      population_ready = dm.population.current_size() > 0 && dm.population.is_feasible();
-    }
-    if (population_ready) {
-      lp_optimal_solution = solution;
-      rins_thread->start_cpu_solver();
-    }
+  if (node_count - node_count_at_last_rins <= settings.node_freq) { return; }
+
+  std::lock_guard<std::mutex> lock(rins_mutex);
+  if (!enabled.load() || !rins_thread) { return; }
+  if (!rins_thread->cpu_thread_done.load()) { return; }
+
+  bool population_ready = false;
+  {
+    std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
+    population_ready = dm.population.current_size() > 0 && dm.population.is_feasible();
   }
+  if (!population_ready) { return; }
+
+  refresh_problem_copy();
+  if (solution.size() != static_cast<std::vector<f_t>::size_type>(problem_copy->n_variables)) {
+    CUOPT_LOG_DEBUG("Skipping RINS launch due to stale LP solution size (%zu vs %d)",
+                    solution.size(),
+                    problem_copy->n_variables);
+    return;
+  }
+
+  lp_optimal_solution = solution;
+  rins_thread->start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::enable()
 {
+  std::lock_guard<std::mutex> lock(rins_mutex);
   rins_thread           = std::make_unique<rins_thread_t<i_t, f_t>>();
   rins_thread->rins_ptr = this;
   seed                  = cuopt::seed_generator::get_seed();
-  problem_ptr->handle_ptr->sync_stream();
-  problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr, &rins_handle);
+  refresh_problem_copy();
   enabled      = true;
 }
 
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::stop_rins()
 {
-  enabled = false;
-  if (rins_thread) rins_thread->request_termination();
-  rins_thread.reset();
+  std::unique_ptr<rins_thread_t<i_t, f_t>> local_thread;
+  {
+    std::lock_guard<std::mutex> lock(rins_mutex);
+    enabled      = false;
+    local_thread = std::move(rins_thread);
+  }
+  if (local_thread) { local_thread->request_termination(); }
+}
+
+template <typename i_t, typename f_t>
+void rins_t<i_t, f_t>::refresh_problem_copy()
+{
+  problem_ptr->handle_ptr->sync_stream();
+  problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr, &rins_handle);
 }
 
 template <typename i_t, typename f_t>
