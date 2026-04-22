@@ -15,7 +15,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -44,6 +44,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
    --skip-tests-build  - disable building of all tests
    --skip-routing-build - skip building routing components
+   --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
@@ -84,6 +85,7 @@ BUILD_MSAN=0
 SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
+SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
@@ -238,6 +240,7 @@ if hasArg -fsanitize; then
 fi
 if hasArg -tsan; then
     BUILD_TSAN=1
+    SKIP_GRPC_BUILD=1
 fi
 if hasArg -msan; then
     BUILD_MSAN=1
@@ -250,6 +253,9 @@ if hasArg --skip-tests-build; then
 fi
 if hasArg --skip-routing-build; then
     SKIP_ROUTING_BUILD=1
+fi
+if hasArg --skip-grpc-build; then
+    SKIP_GRPC_BUILD=1
 fi
 if hasArg --skip-fatbin-write; then
     WRITE_FATBIN=0
@@ -379,6 +385,7 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
+          -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \
