@@ -55,6 +55,7 @@ jobs = d.get("job_summary", {})
 totals = d.get("test_totals", {})
 grid = d.get("matrix_grid", [])
 has_new = d.get("has_new_failures", False)
+has_new_flaky = d.get("has_new_flaky", False)
 failed_ci_jobs = d.get("failed_ci_jobs", [])
 untracked_failed = d.get("untracked_failed_ci_jobs", [])
 workflow_jobs = d.get("workflow_jobs", [])
@@ -108,11 +109,21 @@ untracked_count = len(untracked_failed)
 if has_failures and (has_new or untracked_count > 0):
     emoji = ":rotating_light:"
     text = f"{len(failing_workflows)} workflow(s) with NEW failures"
-    mention = "<@rgsl888prabhu> "
+    if has_new_flaky:
+        text += " + NEW flaky tests"
+    mention = "<@ramakrishna_prabhu> "
+elif has_failures and has_new_flaky:
+    emoji = ":x:"
+    text = f"Recurring failures in {len(failing_workflows)} workflow(s) + NEW flaky tests"
+    mention = "<@ramakrishna_prabhu> "
 elif has_failures:
     emoji = ":x:"
     text = f"Recurring failures in {len(failing_workflows)} workflow(s)"
     mention = ""
+elif flaky_workflows and has_new_flaky:
+    emoji = ":large_yellow_circle:"
+    text = "All jobs passed but NEW flaky tests detected"
+    mention = "<@ramakrishna_prabhu> "
 elif flaky_workflows:
     emoji = ":large_yellow_circle:"
     text = "All jobs passed but flaky tests detected"
@@ -265,7 +276,8 @@ if issues_by_wf:
             matrix = f_entry.get("matrix_label", "")
             err = f_entry.get("message", "")[:100].replace("\n", " ")
             suffix = f" — {err}" if err else ""
-            wf_text += f":warning:  `{f_entry['name']}` ({matrix}){suffix}\n"
+            tag = ":new: :warning:" if f_entry.get("is_new") else ":warning:"
+            wf_text += f"{tag}  `{f_entry['name']}` ({matrix}){suffix}\n"
 
         # Recurring failures (known issues)
         for f_entry in issues["recurring"][:10]:

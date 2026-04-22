@@ -132,6 +132,7 @@ def aggregate_summaries(summaries):
     all_recurring_failures = []
     all_flaky_tests = []
     all_resolved_tests = []
+    any_new_flaky = False
 
     for s in summaries:
         test_type = s.get("test_type", "unknown")
@@ -142,6 +143,8 @@ def aggregate_summaries(summaries):
         failed = counts.get("failed", 0)
         flaky = counts.get("flaky", 0)
         has_new = s.get("has_new_failures", False)
+        if s.get("has_new_flaky", False):
+            any_new_flaky = True
 
         if failed > 0:
             status = "failed-new" if has_new else "failed-recurring"
@@ -187,6 +190,7 @@ def aggregate_summaries(summaries):
         "all_recurring_failures": all_recurring_failures,
         "all_flaky_tests": all_flaky_tests,
         "all_resolved_tests": all_resolved_tests,
+        "has_new_flaky": any_new_flaky,
     }
 
 
@@ -277,6 +281,7 @@ def generate_consolidated_json(
         },
         "test_totals": agg["totals"],
         "has_new_failures": len(agg["all_new_failures"]) > 0,
+        "has_new_flaky": agg.get("has_new_flaky", False),
         "matrix_grid": agg["matrix_grid"],
         "new_failures": agg["all_new_failures"],
         "recurring_failures": agg["all_recurring_failures"],

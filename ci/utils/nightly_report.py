@@ -228,7 +228,8 @@ def update_history(history, classified, sha, date_str):
     """
     Update failure history with this run's results.
 
-    Returns (history, new_failures, recurring_failures, resolved_tests).
+    Returns (history, new_failures, recurring_failures, resolved_tests,
+    new_flaky_tests).
 
     Classification logic:
       - "new failure": never seen before (no history entry at all)
@@ -242,6 +243,7 @@ def update_history(history, classified, sha, date_str):
     new_failures = []
     recurring_failures = []
     resolved_tests = []
+    new_flaky_tests = []
 
     # --- Genuine failures ---
     for entry in classified["failed"] + classified["error"]:
@@ -329,6 +331,7 @@ def update_history(history, classified, sha, date_str):
                 "bounce_count": 0,
                 "status": "active",
             }
+            new_flaky_tests.append(entry)
 
     # --- Resolve stabilized tests ---
     passed_keys = set()
@@ -356,7 +359,13 @@ def update_history(history, classified, sha, date_str):
         # If already "resolved" and passes again — no notification.
         # The resolved notification was sent once when it first stabilized.
 
-    return history, new_failures, recurring_failures, resolved_tests
+    return (
+        history,
+        new_failures,
+        recurring_failures,
+        resolved_tests,
+        new_flaky_tests,
+    )
 
 
 def save_history(history, history_path):
@@ -532,12 +541,18 @@ def generate_json_summary(
     new_failures,
     recurring_failures,
     resolved_tests,
+    new_flaky_tests=None,
     test_type="",
     matrix_label="",
     sha="",
     date_str="",
 ):
     """Generate a JSON summary for downstream tools (Slack notifier, dashboard)."""
+    if new_flaky_tests is None:
+        new_flaky_tests = []
+    new_flaky_keys = {
+        f"{e['classname']}::{e['name']}" for e in new_flaky_tests
+    }
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "test_type": test_type,
@@ -553,6 +568,7 @@ def generate_json_summary(
             "resolved": len(resolved_tests),
         },
         "has_new_failures": len(new_failures) > 0,
+        "has_new_flaky": len(new_flaky_tests) > 0,
         "new_failures": [
             {
                 "suite": e["suite"],
@@ -579,6 +595,7 @@ def generate_json_summary(
                 "classname": e["classname"],
                 "retry_count": e.get("retry_count", 0),
                 "message": e.get("message", ""),
+                "is_new": f"{e['classname']}::{e['name']}" in new_flaky_keys,
             }
             for e in classified["flaky"]
         ],
@@ -967,10 +984,18 @@ def main():
 
     # ---- Step 3: Update history ----
     history = load_history(local_history_path)
-    history, new_failures, recurring_failures, resolved_tests = update_history(
-        history, classified, args.sha, args.date
-    )
+    (
+        history,
+        new_failures,
+        recurring_failures,
+        resolved_tests,
+        new_flaky_tests,
+    ) = update_history(history, classified, args.sha, args.date)
 
+    if new_flaky_tests:
+        print(
+            f"NEW FLAKY: {len(new_flaky_tests)} test(s) flaky for the first time"
+        )
     if resolved_tests:
         print(
             f"Stabilized: {len(resolved_tests)} previously-failing test(s) now pass"
@@ -1020,6 +1045,7 @@ def main():
         new_failures,
         recurring_failures,
         resolved_tests,
+        new_flaky_tests,
         **report_kwargs,
     )
     json_path = output_dir / "nightly_summary.json"
