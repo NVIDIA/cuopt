@@ -1638,7 +1638,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   f_t lower_bound  = get_lower_bound();
   f_t abs_gap      = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t steal_chance = settings_.bnb_node_steal_chance >= 0 ? settings_.bnb_node_steal_chance : 0.05;
+  f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
 
   worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
                                        diving_worker_pool_.num_workers(),

@@ -356,6 +356,21 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         ? 2
         : context.settings.reduced_cost_strengthening;
 
+    char* steal_chance_str = std::getenv("CUOPT_BNB_STEAL_CHANCE");
+    if (steal_chance_str != nullptr) {
+      branch_and_bound_settings.bnb_steal_chance = atof(steal_chance_str);
+    }
+
+    char* max_steal_attempts_str = std::getenv("CUOPT_BNB_MAX_STEAL_ATTEMPTS");
+    if (max_steal_attempts_str != nullptr) {
+      branch_and_bound_settings.bnb_max_steal_attempts = atoi(max_steal_attempts_str);
+    }
+
+    char* nodes_per_steal_str = std::getenv("CUOPT_BNB_NODES_PER_STEAL");
+    if (nodes_per_steal_str != nullptr) {
+      branch_and_bound_settings.bnb_nodes_per_steal = atoi(nodes_per_steal_str);
+    }
+
     if (context.settings.num_cpu_threads < 0) {
       branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);
     } else {
