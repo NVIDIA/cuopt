@@ -2344,7 +2344,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       mutex_original_lp_.unlock();
       f_t add_cuts_time = toc(add_cuts_start_time);
       if (add_cuts_time > 1.0) {
-        settings_.log.debug("Add cuts time %.2f seconds\n", add_cuts_time);
+        settings_.log.printf("Add cuts time %.2f seconds\n", add_cuts_time);
       }
       if (add_cuts_status != 0) {
         settings_.log.printf("Failed to add cuts\n");
@@ -2415,7 +2415,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       exploration_stats_.total_lp_iters += iter;
       f_t dual_phase2_time = toc(dual_phase2_start_time);
       if (dual_phase2_time > 1.0) {
-        settings_.log.debug("Dual phase2 time %.2f seconds\n", dual_phase2_time);
+        settings_.log.printf("Dual phase2 time %.2f seconds\n", dual_phase2_time);
       }
       if (cut_status == dual::status_t::TIME_LIMIT) {
         solver_status_ = mip_status_t::TIME_LIMIT;
@@ -2471,7 +2471,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       mutex_original_lp_.unlock();
       f_t remove_cuts_time = toc(remove_cuts_start_time);
       if (remove_cuts_time > 1.0) {
-        settings_.log.debug("Remove cuts time %.2f seconds\n", remove_cuts_time);
+        settings_.log.printf("Remove cuts time %.2f seconds\n", remove_cuts_time);
       }
       fractional.clear();
       num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);

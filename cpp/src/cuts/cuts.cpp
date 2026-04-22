@@ -356,6 +356,11 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                     static_cast<long long>(clique_vertices.size()));
   const f_t initial_clique_size = static_cast<f_t>(clique_vertices.size());
 
+  const f_t addtl_cliques_scan_cost = static_cast<f_t>(graph.addtl_cliques.size());
+  if (add_work_estimate(
+        addtl_cliques_scan_cost * initial_clique_size, work_estimate, max_work_estimate)) {
+    return;
+  }
   i_t smallest_degree     = std::numeric_limits<i_t>::max();
   i_t smallest_degree_var = -1;
   for (auto v : clique_vertices) {
@@ -367,6 +372,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
     }
   }
 
+  if (add_work_estimate(addtl_cliques_scan_cost, work_estimate, max_work_estimate)) { return; }
   auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
   std::unordered_set<i_t> clique_members(clique_vertices.begin(), clique_vertices.end());
   std::vector<i_t> candidates;
@@ -1789,7 +1795,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.printf("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1799,7 +1805,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1809,21 +1815,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
-    }
-  }
-
-  // Generate Clique cuts (last to give background clique table generation maximum time)
-  if (settings.clique_cuts != 0) {
-    f_t cut_start_time = tic();
-    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
-    if (!feasible) {
-      settings.log.printf("Clique cuts proved infeasible\n");
-      return false;
-    }
-    f_t cut_generation_time = toc(cut_start_time);
-    if (cut_generation_time > 1.0) {
-      settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.printf("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1833,7 +1825,22 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.printf("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+
+  // Generate Clique cuts (last to give background clique table generation maximum time)
+  if (settings.clique_cuts != 0) {
+    f_t cut_start_time = tic();
+    settings.log.printf("Generating clique cuts\n");
+    bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    if (!feasible) {
+      settings.log.printf("Clique cuts proved infeasible\n");
+      return false;
+    }
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.printf("Clique cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
   return true;
@@ -1913,7 +1920,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   // TODO this can be problem dependent
   const i_t max_calls         = 100000;
   f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 1e8;
+  const f_t max_work_estimate = 1e5;
 
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "User problem var_types size mismatch");
@@ -1959,15 +1966,20 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   work_estimate += 3.0 * static_cast<f_t>(vertices.size());
   if (work_estimate > max_work_estimate) { return true; }
 
+  const f_t addtl_cliques_scan_cost = static_cast<f_t>(clique_table_->addtl_cliques.size());
   std::vector<std::vector<i_t>> adj_local(vertices.size());
   size_t total_adj_entries = 0;
   size_t kept_adj_entries  = 0;
   for (size_t idx = 0; idx < vertices.size(); ++idx) {
     if (toc(start_time) >= settings.time_limit) { return true; }
+    work_estimate += 1.0 + addtl_cliques_scan_cost;
+    if (work_estimate > max_work_estimate) { return true; }
     i_t vertex_idx = vertices[idx];
     // returns the complement as well
     auto adj_set = clique_table_->get_adj_set_of_var(vertex_idx);
     total_adj_entries += adj_set.size();
+    work_estimate += static_cast<f_t>(adj_set.size());
+    if (work_estimate > max_work_estimate) { return true; }
     auto& adj = adj_local[idx];
     adj.reserve(adj_set.size());
     for (const auto neighbor : adj_set) {
@@ -1979,6 +1991,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       adj.push_back(local_neighbor);
     }
     kept_adj_entries += adj.size();
+    work_estimate += 2.0 * static_cast<f_t>(adj.size());
 #ifdef ASSERT_MODE
     {
       std::unordered_set<i_t> adj_global;
@@ -1993,9 +2006,6 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     }
 #endif
   }
-  work_estimate += static_cast<f_t>(vertices.size()) + static_cast<f_t>(total_adj_entries) +
-                   2.0 * static_cast<f_t>(kept_adj_entries);
-  if (work_estimate > max_work_estimate) { return true; }
   CLIQUE_CUTS_DEBUG("generate_clique_cuts adjacency raw_entries=%lld kept_entries=%lld",
                     static_cast<long long>(total_adj_entries),
                     static_cast<long long>(kept_adj_entries));
