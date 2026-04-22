@@ -320,8 +320,8 @@ class orbital_fixing_t {
     start_plunge_ = true;
   }
 
-  // Returns the number of conflicts (variables in both fix_zero and fix_one).
-  // When conflicts > 0, no fixings are applied.
+  // Returns the number of free variables in conflicting orbits (orbits with
+  // both zero and one sources).
   i_t orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
                      const simplex_solver_settings_t<i_t, f_t>& settings,
                      mip_node_t<i_t, f_t>* node_ptr,
@@ -354,6 +354,9 @@ class orbital_fixing_t {
       if (node_ptr->branch_var_upper == 0.0) {
         branched_zero_.push_back(v);
         marked_b0_[v] = 1;
+        // Need to recompute: propagation at this node may have fixed new variables
+        // to 1, invalidating generators that map B0 variables to those newly-fixed vars.
+        should_recompute = true;
       } else if (node_ptr->branch_var_lower == 1.0) {
         branched_one_.push_back(v);
         marked_b1_[v] = 1;
@@ -376,43 +379,61 @@ class orbital_fixing_t {
     }
 
     // In true orbital fixing we would compute the group G' = stabilizer(G, B1)
-    // Instead we compute a subgroup H of G' that is just
-    // H = { g in generators(G) | g(B1) = B1 }
-    // This means that we will miss some fixings. But every fixing we perform will be valid.
+    // Instead we compute a subgroup H of G' using generator filtering, additionally
+    // checking that for each variable in B0, its image is not fixed to 1.
+    // This is necessary because propagation using asymmetric cuts can fix variables
+    // to 1 that the symmetry group maps to 0-branched variables, creating false conflicts.
+    // See van Doornmalen & Hojny (2022), "A Unified Framework for Symmetry Handling".
     //
-    // We are called within the context of a plunge within the branch and bound tree
-    // Suppose we computed H for the parent node.
-    // If we branched on a binary variable x_j then we are in one of two cases:
-    // Case 1: x_j = 0, then B1 remains unchanged and we do not need to recompute H or its orbits
-    // Case 2: x_j = 1, then B1 becomes B1 union {x_j} and we only need to check the generators
-    //                  used to construct H for the parent node. We call these the "surviving generators".
-    //
-    // Note that when we restart the plunge we need to recompute everything.
+    // We always recompute because propagation at each node can invalidate generators.
     if (should_recompute) {
       for (size_t k = 0; k < surviving_generators_.size(); k++) {
         const i_t h                    = surviving_generators_[k];
         const permutation_t<i_t>& perm = symmetry->generators.get_generator(h);
         const std::vector<i_t>& p = perm.dense_permutation();
-        bool stabilizes_b1        = true;
+        bool stabilizes = true;
 
         if (start_plunge_) {
           // At the start of a plunge, surviving_generators_ was reset to all generators.
-          // We need to check each generator against all of B1.
+          // We need to check each generator against all of B1 and B0.
           for (i_t j : branched_one_) {
             if (marked_b1_[p[j]] == 0) {
-              stabilizes_b1 = false;
+              stabilizes = false;
               break;
             }
           }
+          // Check B0: for each variable branched to 0, its image must not be fixed to 1.
+          if (stabilizes) {
+            for (i_t j : branched_zero_) {
+              if (problem.lower[p[j]] >= 1.0) {
+                stabilizes = false;
+                break;
+              }
+            }
+          }
         } else {
-          // B1 = v union B1_from_parent. So the surviving generators already stabilize B1_from_parent.
-          // We only need to check if the generators stabilize v.
-          if (marked_b1_[p[v]] == 0) {
-            stabilizes_b1 = false;
+          // Incremental check. The surviving generators already stabilize the parent's B1.
+          // Check the new branching variable.
+          if (is_binary && node_ptr->branch_var_lower == 1.0) {
+            // Branched to 1: check g(v) is also in B1
+            if (marked_b1_[p[v]] == 0) {
+              stabilizes = false;
+            }
+          }
+          // Check B0: propagation at this node may have newly fixed variables to 1.
+          // A generator that was valid at the parent may now map a B0 variable to
+          // something that propagation fixed to 1.
+          if (stabilizes) {
+            for (i_t j : branched_zero_) {
+              if (problem.lower[p[j]] >= 1.0) {
+                stabilizes = false;
+                break;
+              }
+            }
           }
         }
 
-        if (!stabilizes_b1) {
+        if (!stabilizes) {
           std::swap(surviving_generators_[k], surviving_generators_.back());
           surviving_generators_.pop_back();
           k--;
@@ -436,8 +457,9 @@ class orbital_fixing_t {
       for (i_t v : branched_zero_) {
         orbit_has_b0_[orb_.find_orbit(v)] = 1;
       }
-    } else if (is_binary && node_ptr->branch_var_upper == 0.0) {
-      orbit_has_b0_[orb_.find_orbit(v)] = 1;
+    } else if (!is_binary) {
+      // Non-binary variable branching: no symmetry recomputation needed.
+      // (Non-binary variables are excluded from orbital fixing.)
     }
     start_plunge_ = false;
 
@@ -475,9 +497,8 @@ class orbital_fixing_t {
       bool has_zero_source = (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1);
       bool has_one_source  = (orbit_has_f1_[o] == 1);
 
-      // An orbit with both fix-to-0 and fix-to-1 sources is conflicting:
-      // branching (B0) broke the symmetry within this orbit, so propagation
-      // produced asymmetric fixings. Skip it — no valid fixing can be derived.
+      // An orbit with both zero and one sources is conflicting.
+      // Skip the orbit — no valid additional fixing can be derived from it.
       if (has_zero_source && has_one_source) {
         num_conflicts++;
         continue;
@@ -498,33 +519,15 @@ class orbital_fixing_t {
 
     if (!stabilizer_nontrivial) { surviving_generators_.clear(); }
 
-    if (num_conflicts > 0) {
-      settings.log.printf("Orbital fixing at node %d (depth %d): "
-                          "B0=%d B1=%d F0=%d F1=%d survivors=%d "
-                          "fixing %d to 0 and %d to 1 (skipped %d vars in conflicting orbits)\n",
-                          node_ptr->node_id,
-                          node_ptr->depth,
-                          (int)branched_zero_.size(),
-                          (int)branched_one_.size(),
-                          (int)f0_.size(),
-                          (int)f1_.size(),
-                          (int)surviving_generators_.size(),
-                          (int)fix_zero_.size(),
-                          (int)fix_one_.size(),
-                          (int)num_conflicts);
-    }
-
     // Restore the work arrays
     for (i_t v : f0_) {
       orbit_has_f0_[orb_.find_orbit(v)] = 0;
       marked_f0_[v]                     = 0;
     }
-
     for (i_t v : f1_) {
       orbit_has_f1_[orb_.find_orbit(v)] = 0;
       marked_f1_[v]                     = 0;
     }
-
     f0_.clear();
     f1_.clear();
 
@@ -545,7 +548,7 @@ class orbital_fixing_t {
     node_ptr->orbital_fix_zero = cumulative_fix_zero_;
     node_ptr->orbital_fix_one  = cumulative_fix_one_;
 
-    return 0;
+    return num_conflicts;
   }
 
  private:

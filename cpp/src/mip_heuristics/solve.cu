@@ -159,7 +159,18 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
+    const i_t n_vars_before = scaled_problem.n_variables;
     detail::trivial_presolve(scaled_problem);
+    // Trivial presolve may remove unused variables and renumber the remaining ones.
+    // When that happens the symmetry generators and binary_variables reference the
+    // original (pre-trivial-presolve) column indices which are now invalid.
+    // Discard symmetry to avoid out-of-bounds accesses in orbital fixing.
+    if (symmetry != nullptr && scaled_problem.n_variables != n_vars_before) {
+      CUOPT_LOG_INFO("Trivial presolve changed variable count (%d -> %d); "
+                     "disabling orbital fixing to avoid index mismatch",
+                     n_vars_before, scaled_problem.n_variables);
+      symmetry.reset();
+    }
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
