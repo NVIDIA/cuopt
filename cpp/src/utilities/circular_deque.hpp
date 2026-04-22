@@ -23,7 +23,7 @@ namespace cuopt {
 template <typename T>
 class circular_deque_t {
  public:
-  circular_deque_t() : buffer_(1), capacity_(1), head_(0), tail_(0) {}
+  circular_deque_t() = default;
 
   // Allocates storage for exactly `capacity` elements up front.
   explicit circular_deque_t(size_t capacity)

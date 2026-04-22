@@ -144,17 +144,6 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     total_active_diving_workers = 0;
   }
 
-  f_t get_lower_bound()
-  {
-    f_t lower_bound = std::numeric_limits<f_t>::infinity();
-
-    if (this->is_active) {
-      lower_bound = std::min(node_queue.get_lower_bound(), this->lower_bound.load());
-    }
-
-    return lower_bound;
-  }
-
   void init(mip_node_t<i_t, f_t>* node)
   {
     assert(!this->is_active.load());
@@ -263,11 +252,6 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   {
     return this->node_presolver.bounds_strengthening(
       settings, this->bounds_changed, this->start_lower, this->start_upper);
-  }
-
-  f_t get_lower_bound()
-  {
-    return this->is_active ? this->lower_bound.load() : std::numeric_limits<f_t>::infinity();
   }
 
   void set_inactive()

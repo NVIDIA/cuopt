@@ -74,7 +74,9 @@ class worker_pool_t {
 
     if (is_initialized) {
       for (i_t i = 0; i < workers_.size(); ++i) {
-        lower_bound = std::min(workers_[i]->get_lower_bound(), lower_bound);
+        if (workers_[i]->is_active.load()) {
+          lower_bound = std::min(workers_[i]->lower_bound.load(), lower_bound);
+        }
       }
     }
 

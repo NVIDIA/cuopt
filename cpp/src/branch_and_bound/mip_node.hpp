@@ -297,7 +297,7 @@ class mip_node_t {
 
   // Indicate if we can dive from this node or not. This is set to false when
   // this node was already selected for diving once.
-  bool can_dive{true};
+  omp_atomic_t<bool> can_dive{true};
 
   // Worker-local identification for deterministic ordering:
   // - origin_worker_id: which worker created this node
