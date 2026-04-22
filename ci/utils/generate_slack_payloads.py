@@ -12,6 +12,7 @@ Usage:
 """
 
 import json
+import os
 import sys
 
 
@@ -44,6 +45,12 @@ def main():
     failed_ci_jobs = d.get("failed_ci_jobs", [])
     untracked_failed = d.get("untracked_failed_ci_jobs", [])
     workflow_jobs = d.get("workflow_jobs", [])
+
+    # Slack user/group to mention on new failures or new flaky tests.
+    # Set CUOPT_SLACK_MENTION_ID to a Slack user ID (e.g., U01ABCDEF) or
+    # group handle. Empty disables mentions.
+    mention_id = os.environ.get("CUOPT_SLACK_MENTION_ID", "")
+    mention_tag = f"<@{mention_id}> " if mention_id else ""
 
     total_jobs = jobs.get("total", 0)
 
@@ -78,11 +85,11 @@ def main():
         text = f"{len(failing_workflows)} workflow(s) with NEW failures"
         if has_new_flaky:
             text += " + NEW flaky tests"
-        mention = "<@ramakrishna_prabhu> "
+        mention = mention_tag
     elif has_failures and has_new_flaky:
         emoji = ":x:"
         text = f"Recurring failures in {len(failing_workflows)} workflow(s) + NEW flaky tests"
-        mention = "<@ramakrishna_prabhu> "
+        mention = mention_tag
     elif has_failures:
         emoji = ":x:"
         text = f"Recurring failures in {len(failing_workflows)} workflow(s)"
@@ -90,7 +97,7 @@ def main():
     elif flaky_workflows and has_new_flaky:
         emoji = ":large_yellow_circle:"
         text = "All jobs passed but NEW flaky tests detected"
-        mention = "<@ramakrishna_prabhu> "
+        mention = mention_tag
     elif flaky_workflows:
         emoji = ":large_yellow_circle:"
         text = "All jobs passed but flaky tests detected"
