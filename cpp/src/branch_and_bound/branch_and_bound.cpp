@@ -1618,6 +1618,11 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) { return nullptr; }
 
+  if (toc(exploration_stats_.start_time) > settings_.time_limit ||
+      solver_status_ != mip_status_t::UNSET) {
+    return nullptr;
+  }
+
   assert(start_node != nullptr);
   idle_worker->init(start_node);
 
@@ -1630,9 +1635,10 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
-  f_t lower_bound = get_lower_bound();
-  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t lower_bound  = get_lower_bound();
+  f_t abs_gap      = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t steal_chance = settings_.bnb_node_steal_chance >= 0 ? settings_.bnb_node_steal_chance : 0.05;
 
   worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
                                        diving_worker_pool_.num_workers(),
@@ -1682,6 +1688,14 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       node_concurrent_halt_ = 1;
       solver_status_        = mip_status_t::OPTIMAL;
       break;
+    }
+
+    if (worker->node_queue.best_first_queue_size() == 0 ||
+        worker->rng.next_double() < steal_chance) {
+      for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
+        i_t k = worker->rng.uniform(0, bfs_worker_pool_.num_workers());
+        if (worker->steal_node_from(bfs_worker_pool_[k], settings_.bnb_nodes_per_steal)) { break; }
+      }
     }
   }
 
@@ -1799,6 +1813,11 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   bool is_feasible = diving_worker->presolve_start_bounds(settings_);
   if (!is_feasible) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
+    return false;
+  }
+
+  if (toc(exploration_stats_.start_time) > settings_.time_limit ||
+      solver_status_ != mip_status_t::UNSET) {
     return false;
   }
 

@@ -133,9 +133,9 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
                uint64_t rng_offset = 0)
     : Base(worker_id, original_lp, Arow, var_type, settings, rng_offset)
   {
-    Base::start_lower     = original_lp.lower;
-    Base::start_upper     = original_lp.upper;
-    Base::search_strategy = BEST_FIRST;
+    this->start_lower     = original_lp.lower;
+    this->start_upper     = original_lp.upper;
+    this->search_strategy = BEST_FIRST;
 
     max_diving_workers.fill(0);
     active_diving_workers.fill(0);
@@ -146,8 +146,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   {
     f_t lower_bound = std::numeric_limits<f_t>::infinity();
 
-    if (Base::is_active) {
-      lower_bound = std::min(node_queue.get_lower_bound(), Base::lower_bound.load());
+    if (this->is_active) {
+      lower_bound = std::min(node_queue.get_lower_bound(), this->lower_bound.load());
     }
 
     return lower_bound;
@@ -155,16 +155,38 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void init(mip_node_t<i_t, f_t>* node)
   {
-    assert(!Base::is_active.load());
+    assert(!this->is_active.load());
     assert(node_queue.best_first_queue_size() == 0);
     assert(node != nullptr);
 
     node_queue.push(node);
-    Base::lower_bound = node->lower_bound;
-    Base::is_active   = true;
+    this->lower_bound = node->lower_bound;
+    this->is_active   = true;
   }
 
-  void set_inactive() { Base::is_active = false; }
+  void set_inactive() { this->is_active = false; }
+
+  bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
+  {
+    assert(num_nodes > 0);
+
+    if (!other->is_active || this == other ||
+        other->node_queue.best_first_queue_size() < 2 * num_nodes) {
+      return false;
+    }
+
+    other->node_queue.lock();
+    this->node_queue.lock();
+    while (num_nodes > 0 && other->node_queue.best_first_queue_size() > 1) {
+      mip_node_t<i_t, f_t>* node = other->node_queue.pop_best_first();
+      this->node_queue.push(node);
+      --num_nodes;
+    }
+    this->node_queue.unlock();
+    other->node_queue.unlock();
+
+    return true;
+  }
 
   void calculate_num_diving_workers(i_t num_bfs_workers,
                                     i_t total_diving_workers,
@@ -188,8 +210,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
         i_t workers_per_type = end - start;
 
         // Calculate the number of diving workers allocated to this (best-first) worker
-        start = std::floor((double)Base::worker_id * workers_per_type / num_bfs_workers);
-        end   = std::floor((double)(Base::worker_id + 1) * workers_per_type / num_bfs_workers);
+        start = std::floor((double)this->worker_id * workers_per_type / num_bfs_workers);
+        end   = std::floor((double)(this->worker_id + 1) * workers_per_type / num_bfs_workers);
         max_diving_workers[i] = end - start;
         total_max_diving_workers += max_diving_workers[i];
         ++k;
@@ -224,34 +246,34 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
   {
     start_node        = node->detach_copy();
-    Base::start_lower = original_lp.lower;
-    Base::start_upper = original_lp.upper;
-    Base::lower_bound = node->lower_bound;
-    Base::is_active   = true;
-    std::fill(Base::bounds_changed.begin(), Base::bounds_changed.end(), false);
-    node->get_variable_bounds(Base::start_lower, Base::start_upper, Base::bounds_changed);
+    this->start_lower = original_lp.lower;
+    this->start_upper = original_lp.upper;
+    this->lower_bound = node->lower_bound;
+    this->is_active   = true;
+    std::fill(this->bounds_changed.begin(), this->bounds_changed.end(), false);
+    node->get_variable_bounds(this->start_lower, this->start_upper, this->bounds_changed);
   }
 
   bool presolve_start_bounds(const simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    return Base::node_presolver.bounds_strengthening(
-      settings, Base::bounds_changed, Base::start_lower, Base::start_upper);
+    return this->node_presolver.bounds_strengthening(
+      settings, this->bounds_changed, this->start_lower, this->start_upper);
   }
 
   f_t get_lower_bound()
   {
-    return Base::is_active ? Base::lower_bound.load() : std::numeric_limits<f_t>::infinity();
+    return this->is_active ? this->lower_bound.load() : std::numeric_limits<f_t>::infinity();
   }
 
   void set_inactive()
   {
-    assert(Base::is_active.load());
+    assert(this->is_active.load());
     assert(bfs_worker != nullptr);
-    assert(bfs_worker->active_diving_workers[Base::search_strategy].load() > 0);
+    assert(bfs_worker->active_diving_workers[this->search_strategy].load() > 0);
     assert(bfs_worker->total_active_diving_workers.load() > 0);
 
-    Base::is_active = false;
-    --bfs_worker->active_diving_workers[Base::search_strategy];
+    this->is_active = false;
+    --bfs_worker->active_diving_workers[this->search_strategy];
     --bfs_worker->total_active_diving_workers;
   }
 

@@ -100,7 +100,7 @@ class node_queue_t {
     assert(new_node != nullptr);
     auto entry = std::make_shared<heap_entry_t>(new_node);
     best_first_heap_.push(entry);
-    diving_heap_.push(entry);
+    if (new_node->can_dive) diving_heap_.push(entry);
     lower_bound_ = best_first_heap_.top()->lower_bound;
   }
 
@@ -119,7 +119,10 @@ class node_queue_t {
   {
     while (!diving_heap_.empty()) {
       auto entry = diving_heap_.pop();
-      if (entry->node != nullptr) { return entry->node; }
+      if (entry->node != nullptr) {
+        entry->node->can_dive = false;
+        return entry->node;
+      }
     }
     return nullptr;
   }
