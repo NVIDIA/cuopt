@@ -118,8 +118,8 @@ jobs:
       build_type: ${{ inputs.build_type }}
       date: ${{ inputs.date }}
     secrets:
-      CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
       CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
       CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
       CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}

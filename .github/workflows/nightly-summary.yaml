@@ -39,11 +39,11 @@ on:
         required: false
         type: string
     secrets:
-      CUOPT_S3_URI:
-        required: true
       CUOPT_AWS_ACCESS_KEY_ID:
         required: true
       CUOPT_AWS_SECRET_ACCESS_KEY:
+        required: true
+      CUOPT_S3_URI:
         required: true
       CUOPT_SLACK_BOT_TOKEN:
         required: false
@@ -65,16 +65,16 @@ jobs:
           pip install awscli
       - name: Run nightly summary
         env:
-          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
           CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
           CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
-          RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
-          RAPIDS_BRANCH: ${{ inputs.branch }}
-          RUN_DATE: ${{ inputs.date }}
-          GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RAPIDS_BRANCH: ${{ inputs.branch }}
+          RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
+          RUN_DATE: ${{ inputs.date }}
         run: bash ci/nightly_summary.sh
