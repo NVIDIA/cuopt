@@ -442,7 +442,9 @@ def generate_consolidated_html(
         (usually the test method signature)."""
         if not message:
             return ""
-        lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
+        lines = [
+            ln.strip() for ln in message.strip().splitlines() if ln.strip()
+        ]
         # Use the last non-empty line (typically the assertion/error)
         if lines:
             summary = lines[-1]
@@ -480,15 +482,19 @@ def generate_consolidated_html(
         parts.append("<section><h2>Flaky Tests</h2><table>")
         parts.append(
             "<tr><th>Test Type</th><th>Matrix</th><th>Suite</th>"
-            "<th>Test</th><th>Retries</th></tr>"
+            "<th>Test</th><th>Retries</th><th>Error</th></tr>"
         )
         for e in agg["all_flaky_tests"]:
+            msg = _html_escape(e.get("message", ""))
+            short = _html_escape(_error_summary(e.get("message", "")))
             parts.append(
                 f"<tr><td>{_html_escape(e['test_type'])}</td>"
                 f"<td><code>{_html_escape(e['matrix_label'])}</code></td>"
                 f"<td>{_html_escape(e['suite'])}</td>"
                 f"<td><code>{_html_escape(e['name'])}</code></td>"
-                f"<td>{e.get('retry_count', '?')}</td></tr>"
+                f"<td>{e.get('retry_count', '?')}</td>"
+                f"<td><details><summary>{short}</summary>"
+                f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
 

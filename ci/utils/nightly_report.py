@@ -171,6 +171,13 @@ def classify_failures(results):
                 entry["retry_count"] = sum(
                     1 for s in statuses if s in ("failed", "error")
                 )
+                # Capture the error message from the failed attempt
+                # (entries[-1] is the passing entry with no message)
+                failed = [
+                    e for e in entries if e["status"] in ("failed", "error")
+                ]
+                if failed:
+                    entry["message"] = failed[-1].get("message", "")
                 classified["flaky"].append(entry)
             else:
                 classified["passed"].append(entries[-1])
@@ -481,12 +488,17 @@ def generate_markdown_report(
     if classified["flaky"]:
         lines.append("## Flaky Tests (passed on retry)")
         lines.append("")
-        lines.append("| Suite | Test | Retries needed |")
-        lines.append("|-------|------|----------------|")
+        lines.append("| Suite | Test | Retries needed | Error |")
+        lines.append("|-------|------|----------------|-------|")
         for entry in classified["flaky"]:
             retry_count = entry.get("retry_count", "?")
+            short_msg = (
+                entry.get("message", "")[:80]
+                .replace("\n", " ")
+                .replace("|", "\\|")
+            )
             lines.append(
-                f"| {entry['suite']} | `{entry['name']}` | {retry_count} |"
+                f"| {entry['suite']} | `{entry['name']}` | {retry_count} | {short_msg} |"
             )
         lines.append("")
 
@@ -566,6 +578,7 @@ def generate_json_summary(
                 "name": e["name"],
                 "classname": e["classname"],
                 "retry_count": e.get("retry_count", 0),
+                "message": e.get("message", ""),
             }
             for e in classified["flaky"]
         ],
@@ -772,13 +785,23 @@ def generate_html_report(
     # --- Flaky ---
     if classified["flaky"]:
         parts.append("<section><h2>Flaky Tests (passed on retry)</h2><table>")
-        parts.append("<tr><th>Suite</th><th>Test</th><th>Retries</th></tr>")
+        parts.append(
+            "<tr><th>Suite</th><th>Test</th><th>Retries</th>"
+            "<th>Error</th></tr>"
+        )
         for e in classified["flaky"]:
+            msg = _html_escape(e.get("message", ""))
+            raw_msg = e.get("message", "").strip()
+            # Use last non-empty line as the short summary (typically the assertion)
+            lines = [ln for ln in raw_msg.splitlines() if ln.strip()]
+            short = _html_escape(lines[-1][:150] if lines else "")
             parts.append(
                 f"<tr><td>{_html_escape(e['suite'])}</td>"
                 f"<td><code>{_html_escape(e['name'])}</code> "
                 f'<span class="badge badge-flaky">FLAKY</span></td>'
-                f"<td>{e.get('retry_count', '?')}</td></tr>"
+                f"<td>{e.get('retry_count', '?')}</td>"
+                f"<td><details><summary>{short}</summary>"
+                f'<pre class="error">{msg}</pre></details></td></tr>'
             )
         parts.append("</table></section>")
 

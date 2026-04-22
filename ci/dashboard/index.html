@@ -457,32 +457,17 @@ function renderFlaky() {
     return '<p class="empty-state">No flaky tests matching current filters.</p>';
 
   let html = '<section><h2>Flaky Tests (passed on retry)</h2><table>';
-  html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Flake Count</th><th>Flake Rate</th></tr>';
+  html += '<tr><th>Test Type</th><th>Matrix</th><th>Suite</th><th>Test</th><th>Flake Count</th><th>Error</th></tr>';
   for (const e of items) {
-    // Compute flake rate from index data if available (flaky / total across runs)
-    let flakeRate = '—';
-    if (S.index && S.index.dates) {
-      const currentBranch = S.current?.branch || 'main';
-      const dateEntries = Object.values(S.index.dates)
-        .filter(v => (v.branch || 'main') === currentBranch);
-      const totalRuns = dateEntries.length;
-      if (totalRuns > 0) {
-        const totalFlaky = dateEntries.reduce((sum, v) =>
-          sum + ((v.test_totals || {}).flaky || 0), 0);
-        const totalTests = dateEntries.reduce((sum, v) =>
-          sum + ((v.test_totals || {}).total || 0), 0);
-        if (totalTests > 0) {
-          flakeRate = (totalFlaky / totalTests * 100).toFixed(2) + '%';
-        }
-      }
-    }
+    const msg = esc(e.message || '');
+    const short = esc((e.message || '').split('\n').filter(l=>l.trim()).pop() || '').slice(0, 150);
     html += `<tr>
       <td>${esc(e.test_type||'')}</td>
       <td><code>${esc(e.matrix_label||'')}</code></td>
       <td>${esc(e.suite)}</td>
       <td><code>${esc(e.name)}</code> <span class="badge badge-flaky">FLAKY</span></td>
       <td>${e.retry_count||'?'}</td>
-      <td>${flakeRate}</td>
+      <td><details><summary>${short || '—'}</summary><pre class="error">${msg}</pre></details></td>
     </tr>`;
   }
   html += '</table></section>';

@@ -263,7 +263,9 @@ if issues_by_wf:
         # Flaky (actionable — tests that are unstable)
         for f_entry in issues["flaky"][:10]:
             matrix = f_entry.get("matrix_label", "")
-            wf_text += f":warning:  `{f_entry['name']}` ({matrix})\n"
+            err = f_entry.get("message", "")[:100].replace("\n", " ")
+            suffix = f" — {err}" if err else ""
+            wf_text += f":warning:  `{f_entry['name']}` ({matrix}){suffix}\n"
 
         # Recurring failures (known issues)
         for f_entry in issues["recurring"][:10]:
