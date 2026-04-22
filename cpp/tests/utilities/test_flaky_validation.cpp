@@ -21,7 +21,9 @@ std::string get_marker_path(const std::string& test_name)
 {
   const char* tmpdir = std::getenv("TMPDIR");
   if (!tmpdir) tmpdir = "/tmp";
-  return std::string(tmpdir) + "/cuopt_flaky_validation_" + test_name;
+  // Include parent PID so parallel test binaries don't collide
+  return std::string(tmpdir) + "/cuopt_flaky_validation_" + test_name + "_" +
+         std::to_string(getppid());
 }
 
 }  // namespace

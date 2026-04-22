@@ -64,18 +64,18 @@ print(json.dumps(p))
 " "${payload}" "${SLACK_CHANNEL_ID}" "${THREAD_TS}")
     fi
 
-    RESPONSE=$(curl -s -X POST \
+    RESPONSE=$(curl -s --max-time 30 -X POST \
         -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
         -H "Content-Type: application/json" \
         --data "${BOT_PAYLOAD}" \
-        "https://slack.com/api/chat.postMessage")
+        "https://slack.com/api/chat.postMessage" || echo '{"ok":false,"error":"curl_failed"}')
 
     OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
 
     if [ "${FIRST}" = true ]; then
         if [ "${OK}" != "True" ]; then
-            echo "ERROR: chat.postMessage failed: ${RESPONSE}" >&2
-            exit 1
+            echo "WARNING: Main Slack message failed: ${RESPONSE}" >&2
+            break
         fi
         THREAD_TS=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ts',''))" 2>/dev/null || echo "")
         echo "Main message posted (ts=${THREAD_TS})"

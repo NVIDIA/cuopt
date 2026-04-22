@@ -12,7 +12,11 @@ import os
 import tempfile
 
 
-MARKER = os.path.join(tempfile.gettempdir(), "cuopt_flaky_validation_server")
+# Include PID so parallel workers and separate pytest invocations don't collide.
+MARKER = os.path.join(
+    tempfile.gettempdir(),
+    f"cuopt_flaky_validation_server_{os.getppid()}",
+)
 
 
 def test_flaky_fails_first_passes_on_retry():

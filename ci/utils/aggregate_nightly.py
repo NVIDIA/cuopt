@@ -806,11 +806,15 @@ def main():
 
             # Inject data into dashboard HTML so it works without S3 fetches
             dashboard_html = dashboard_file.read_text()
+            # Escape </ sequences to prevent premature </script> closing
+            # when test names or error messages contain HTML-like content
+            safe_index = json.dumps(index_data).replace("</", r"<\/")
+            safe_consolidated = json.dumps(consolidated).replace("</", r"<\/")
             inject_script = (
                 "<script>\n"
                 "// Embedded data — injected by aggregate_nightly.py\n"
-                f"window.__EMBEDDED_INDEX__ = {json.dumps(index_data)};\n"
-                f"window.__EMBEDDED_CONSOLIDATED__ = {json.dumps(consolidated)};\n"
+                f"window.__EMBEDDED_INDEX__ = {safe_index};\n"
+                f"window.__EMBEDDED_CONSOLIDATED__ = {safe_consolidated};\n"
                 "</script>\n"
             )
             # Insert before </head>

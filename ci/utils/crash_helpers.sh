@@ -76,7 +76,10 @@ pytest_crash_isolate() {
     if [ -z "${test_list}" ]; then
         echo "FAILED: Could not collect test list, cannot isolate crashing test"
         if [ -n "${xml_file}" ]; then
-            write_crash_xml "${xml_file}" "pytest-crash" "PROCESS_CRASH" \
+            # Write crash marker to a separate file to preserve any partial
+            # results already written to xml_file by the crashed pytest run
+            local crash_marker="${RAPIDS_TESTS_DIR}/crash-marker-collection-failed.xml"
+            write_crash_xml "${crash_marker}" "pytest-crash" "PROCESS_CRASH" \
                 "pytest crashed with $(signal_name "${rc}") (exit code ${rc})" \
                 "pytest process terminated by $(signal_name "${rc}"). Could not collect test list for retry."
         fi

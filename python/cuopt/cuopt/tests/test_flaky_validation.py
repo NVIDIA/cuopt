@@ -12,7 +12,12 @@ import os
 import tempfile
 
 
-MARKER = os.path.join(tempfile.gettempdir(), "cuopt_flaky_validation_python")
+# Include PID so parallel workers and separate pytest invocations don't collide.
+# The marker is created by the test process and read by the same process on rerun.
+MARKER = os.path.join(
+    tempfile.gettempdir(),
+    f"cuopt_flaky_validation_python_{os.getppid()}",
+)
 
 
 def test_flaky_fails_first_passes_on_retry():
