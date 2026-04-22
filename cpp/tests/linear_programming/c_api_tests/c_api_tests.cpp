@@ -48,10 +48,10 @@ TEST_P(TimeLimitTestFixture, time_limit)
   double target_solve_time                = std::get<1>(GetParam());
   int method                              = std::get<2>(GetParam());
 
-  // The MIP case overshoots the 3s tolerance on CPU-thread-constrained CI runners
+  // supportcase22.mps overshoots the 3s tolerance on CPU-thread-constrained CI runners
   // because solve_time includes Papilo presolve and post-B&B serial wind-down.
   // Tracked in https://github.com/NVIDIA/cuopt/issues/1135.
-  if (filename.find("/mip/") != std::string::npos) {
+  if (std::get<0>(GetParam()) == "/mip/supportcase22.mps") {
     GTEST_SKIP() << "Disabled pending NVIDIA/cuopt#1135";
   }
 
