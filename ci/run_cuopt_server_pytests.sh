@@ -9,6 +9,9 @@ set -euo pipefail
 # Resolve paths before cd (BASH_SOURCE is relative and won't resolve after cd)
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "${SCRIPT_DIR}/utils/crash_helpers.sh"
+
 # Support invoking run_cuopt_server_pytests.sh outside the script directory
 cd "${SCRIPT_DIR}/../python/cuopt_server/cuopt_server/"
 
@@ -16,15 +19,6 @@ RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
 export RAPIDS_TESTS_DIR
 PYTEST_MAX_CRASH_RETRIES=${PYTEST_MAX_CRASH_RETRIES:-2}
 IS_NIGHTLY="${RAPIDS_BUILD_TYPE:-}"
-
-signal_name() {
-    local sig=$(($1 - 128))
-    case "${sig}" in
-        6)  echo "SIGABRT" ;;
-        11) echo "SIGSEGV (segfault)" ;;
-        *)  echo "signal ${sig}" ;;
-    esac
-}
 
 xml_file=""
 for arg in "$@"; do
@@ -56,39 +50,16 @@ test_list=$(pytest --collect-only -q tests 2>/dev/null | grep "::" | head -500 |
 if [ -z "${test_list}" ]; then
     echo "FAILED: Could not collect test list, cannot isolate crashing test"
     if [ -n "${xml_file}" ]; then
-        cat > "${xml_file}" <<XMLEOF
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuites>
-  <testsuite name="pytest-crash" tests="1" failures="1">
-    <testcase name="PROCESS_CRASH" classname="pytest">
-      <failure message="pytest crashed with $(signal_name ${rc}) (exit code ${rc})">
-pytest process terminated by $(signal_name ${rc}).
-Could not collect test list for retry.
-      </failure>
-    </testcase>
-  </testsuite>
-</testsuites>
-XMLEOF
+        write_crash_xml "${xml_file}" "pytest-crash" "PROCESS_CRASH" \
+            "pytest crashed with $(signal_name ${rc}) (exit code ${rc})" \
+            "pytest process terminated by $(signal_name ${rc}). Could not collect test list for retry."
     fi
     exit ${rc}
 fi
 
 passed_tests=""
 if [ -n "${xml_file}" ] && [ -f "${xml_file}" ]; then
-    passed_tests=$(python3 -c "
-import sys
-from xml.etree import ElementTree
-try:
-    tree = ElementTree.parse(sys.argv[1])
-    for tc in tree.iter('testcase'):
-        if tc.find('failure') is None and tc.find('error') is None and tc.find('skipped') is None:
-            cls = tc.get('classname', '')
-            name = tc.get('name', '')
-            if cls and name:
-                print(f'{cls}::{name}')
-except Exception:
-    pass
-" "${xml_file}" 2>/dev/null || echo "")
+    passed_tests=$(python3 "${SCRIPT_DIR}/utils/junit_helpers.py" passed "${xml_file}" --sep "::" 2>/dev/null || echo "")
 fi
 
 if [ -n "${passed_tests}" ]; then
@@ -129,19 +100,9 @@ while IFS= read -r test_id; do
             if [ "${attempt}" -eq "${PYTEST_MAX_CRASH_RETRIES}" ]; then
                 echo "  FAILED: ${test_id} — crashes consistently"
                 crash_tests+=("${test_id}")
-                cat > "${retry_xml}" <<XMLEOF
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuites>
-  <testsuite name="pytest-crash" tests="1" failures="1">
-    <testcase name="${test_id}" classname="pytest-crash">
-      <failure message="${test_id} crashed with $(signal_name ${retry_rc}) on ${attempt} attempts">
-Consistent crash: $(signal_name ${retry_rc}).
-This test needs urgent investigation.
-      </failure>
-    </testcase>
-  </testsuite>
-</testsuites>
-XMLEOF
+                write_crash_xml "${retry_xml}" "pytest-crash" "${test_id}" \
+                    "${test_id} crashed with $(signal_name ${retry_rc}) on ${attempt} attempts" \
+                    "Consistent crash: $(signal_name ${retry_rc}). This test needs urgent investigation."
             fi
         else
             break
