@@ -112,8 +112,9 @@ if (BUILD_SANITIZER)
 endif (BUILD_SANITIZER)
 
 # To use ThreadSanitizer:
-# 1. Build with clang and the -tsan flag
-# 2. Run the binary with env var set: OMP_TOOL_LIBRARIES=/usr/lib/llvm-17/lib/libarcher.so ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppressions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
+# 1. Install clangxx and llvm-openmp into the conda environment. For some reason: libarcher.so was renamed to libarcher.so.bak
+# 2. Build with clang and the -tsan flag
+# 3. Run the binary with env var set: OMP_TOOL_LIBRARIES=<conda env path>/lib/libarcher.so.bak ARCHER_OPTIONS='verbose=1' TSAN_OPTIONS='suppressions=cpp/utilities/tsan_suppressions.txt:ignore_noninstrumented_modules=1:halt_on_error=1'
 #     Replace with local llvm install path. libarcher.so must be presetn
 if (BUILD_TSAN)
     message(STATUS "Building with ThreadSanitizer enabled")
@@ -195,6 +196,7 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
+# The MIP solver requires OpenMP to work
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
@@ -368,7 +370,7 @@ if (NOT SKIP_GRPC_BUILD)
             --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN_EXECUTABLE}
             --proto_path ${CMAKE_CURRENT_SOURCE_DIR}/src/grpc
             ${GRPC_PROTO_FILE}
-            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE}
+            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${PROTO_SRCS} ${PROTO_HDRS}
             COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
             VERBATIM
     )
