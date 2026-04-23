@@ -132,6 +132,16 @@ reviews:
 
         Do not require benchmarks here — benchmarks live in benchmarks/ and regression/.
 
+        IMPORTANT — dataset references: tests resolve problem data via
+        RAPIDS_DATASET_ROOT_DIR (see cpp/tests/utilities/common_utils.hpp,
+        `get_rdrd_or_default()`). Most datasets are downloaded at test time
+        by datasets/get_test_data.sh, datasets/linear_programming/download_pdlp_test_dataset.sh,
+        or datasets/mip/download_miplib_test_dataset.sh — they are NOT committed.
+        Do NOT flag a test for referencing a dataset path that isn't in the tree
+        UNLESS the filename does not appear in any download script (in which
+        case the download script likely needs updating too). See Common Bug
+        Patterns §7 "When NOT to flag" in the review guide.
+
     - path: "python/**/*.py"
       instructions: |
         Python code. ruff (E,F,W ignoring E501), ruff-format, and pydocstyle
@@ -177,6 +187,15 @@ reviews:
         - Edge cases: empty, infeasible, unbounded, degenerate problems
         - No leaked GPU state across tests
         - Regression coverage for fixed bugs
+
+        IMPORTANT — dataset references: tests resolve problem data via
+        os.getenv("RAPIDS_DATASET_ROOT_DIR"). Most datasets are downloaded at
+        test time by scripts under datasets/ (get_test_data.sh,
+        linear_programming/download_pdlp_test_dataset.sh,
+        mip/download_miplib_test_dataset.sh) — they are NOT committed.
+        Do NOT flag a test for referencing a dataset path that isn't in the tree
+        UNLESS the filename does not appear in any download script. See Common
+        Bug Patterns §7 "When NOT to flag" in the review guide.
 
     - path: "**/CMakeLists.txt"
       instructions: |
