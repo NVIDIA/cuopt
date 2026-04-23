@@ -239,13 +239,13 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
     }
 
-    auto cudss_device_idx   = handle_ptr_->get_device();
-    auto cudss_device_count = 1;
+    f_t cudss_create_mg_time = tic();
+    auto cudss_device_idx    = handle_ptr_->get_device();
+    auto cudss_device_count  = 1;
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssCreateMg(&handle, cudss_device_count, &cudss_device_idx), status, "cudssCreateMg");
-
     CUDSS_CALL_AND_CHECK_EXIT(cudssSetStream(handle, stream), status, "cudaStreamCreate");
-
+    settings.log.printf("cuDSS context creation time : %.2fs\n", toc(cudss_create_mg_time));
     mem_handler.ctx          = reinterpret_cast<void*>(handle_ptr_->get_workspace_resource());
     mem_handler.device_alloc = cudss_device_alloc<void>;
     mem_handler.device_free  = cudss_device_dealloc<void>;
