@@ -16,6 +16,22 @@ import os
 import sys
 
 
+def _esc(text):
+    """Escape Slack mrkdwn special characters in dynamic text."""
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _job_prefix(job):
+    """Extract workflow prefix from a GitHub Actions job name."""
+    name = job.get("name", "unknown")
+    return name.split(" / ")[0] if " / " in name else name
+
+
 def make_payload(blocks):
     return json.dumps(
         {
@@ -56,7 +72,7 @@ def main():
 
     total_ci_jobs = len(workflow_jobs)
     passed_ci_count = sum(
-        1 for j in workflow_jobs if j["conclusion"] == "success"
+        1 for j in workflow_jobs if j.get("conclusion") == "success"
     )
 
     # ==================================================================
@@ -67,15 +83,14 @@ def main():
     # Identify which workflows have failures (from both CI jobs and matrix grid)
     failing_workflows = set()
     for j in failed_ci_jobs:
-        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
-        failing_workflows.add(prefix)
+        failing_workflows.add(_job_prefix(j))
     for g in grid:
-        if g["status"].startswith("failed"):
-            failing_workflows.add(g["test_type"])
+        if str(g.get("status", "")).startswith("failed"):
+            failing_workflows.add(g.get("test_type", "unknown"))
     flaky_workflows = set()
     for g in grid:
-        if g["status"] == "flaky":
-            flaky_workflows.add(g["test_type"])
+        if g.get("status") == "flaky":
+            flaky_workflows.add(g.get("test_type", "unknown"))
 
     has_failures = len(failing_workflows) > 0
     untracked_count = len(untracked_failed)
@@ -113,7 +128,12 @@ def main():
         emoji = ":white_check_mark:"
         text = f"All {total_jobs} matrix jobs passed"
         if total_ci_jobs > 0:
-            text += f", all {passed_ci_count} CI jobs succeeded"
+            if passed_ci_count == total_ci_jobs:
+                text += f", all {total_ci_jobs} CI jobs succeeded"
+            else:
+                text += (
+                    f", {passed_ci_count}/{total_ci_jobs} CI jobs succeeded"
+                )
         mention = ""
 
     stats_parts = []
@@ -142,7 +162,7 @@ def main():
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{mention}{emoji} *{text}*\n\n{stats}",
+                "text": f"{mention}{emoji} *{_esc(text)}*\n\n{_esc(stats)}",
             },
         }
     )
@@ -151,19 +171,19 @@ def main():
     # Build a lookup: workflow prefix -> (failed, total) from workflow_jobs
     wf_counts = {}
     for j in workflow_jobs:
-        prefix = j["name"].split(" / ")[0] if " / " in j["name"] else j["name"]
+        prefix = _job_prefix(j)
         wf_counts.setdefault(prefix, {"failed": 0, "total": 0})
         wf_counts[prefix]["total"] += 1
-        if j["conclusion"] == "failure":
+        if j.get("conclusion") == "failure":
             wf_counts[prefix]["failed"] += 1
 
     # Build a lookup: workflow prefix -> list of failing matrix_labels from grid
     wf_failing_labels = {}
     for g in grid:
-        if g["status"].startswith("failed"):
-            wf_failing_labels.setdefault(g["test_type"], []).append(
-                g["matrix_label"]
-            )
+        if str(g.get("status", "")).startswith("failed"):
+            wf_failing_labels.setdefault(
+                g.get("test_type", "unknown"), []
+            ).append(g.get("matrix_label", "unknown"))
 
     if failing_workflows:
         lines = []
@@ -182,10 +202,12 @@ def main():
                 label_suffix += ")"
             if t_count > 0:
                 lines.append(
-                    f":x:  *{wf}* \u2014 {f_count}/{t_count} failed{label_suffix}"
+                    f":x:  *{_esc(wf)}* \u2014 {f_count}/{t_count} failed{_esc(label_suffix)}"
                 )
             else:
-                lines.append(f":x:  *{wf}* \u2014 failed{label_suffix}")
+                lines.append(
+                    f":x:  *{_esc(wf)}* \u2014 failed{_esc(label_suffix)}"
+                )
         blocks.append({"type": "divider"})
         # Chunk to stay within Slack's 3000-char block limit
         current = ""
@@ -271,37 +293,41 @@ def main():
     if issues_by_wf:
         for wf_name, issues in sorted(issues_by_wf.items()):
             wf_blocks = []
-            wf_text = f"*{wf_name}*\n"
+            wf_text = f"*{_esc(wf_name)}*\n"
 
             # New failures first (most urgent, show more error context)
             for f_entry in issues["new"][:10]:
-                msg = f_entry.get("message", "")[:150].replace("\n", " ")
-                matrix = f_entry.get("matrix_label", "")
-                wf_text += (
-                    f":new:  `{f_entry['name']}` ({matrix}) \u2014 {msg}\n"
-                )
+                msg = _esc(f_entry.get("message", "")[:150].replace("\n", " "))
+                matrix = _esc(f_entry.get("matrix_label", ""))
+                name = _esc(f_entry.get("name", "unknown"))
+                wf_text += f":new:  `{name}` ({matrix}) \u2014 {msg}\n"
 
             # Flaky (actionable -- tests that are unstable)
             for f_entry in issues["flaky"][:10]:
-                matrix = f_entry.get("matrix_label", "")
-                err = f_entry.get("message", "")[:100].replace("\n", " ")
+                matrix = _esc(f_entry.get("matrix_label", ""))
+                err = _esc(f_entry.get("message", "")[:100].replace("\n", " "))
                 suffix = f" \u2014 {err}" if err else ""
                 tag = (
                     ":new: :warning:" if f_entry.get("is_new") else ":warning:"
                 )
-                wf_text += f"{tag}  `{f_entry['name']}` ({matrix}){suffix}\n"
+                name = _esc(f_entry.get("name", "unknown"))
+                wf_text += f"{tag}  `{name}` ({matrix}){suffix}\n"
 
             # Recurring failures (known issues)
             for f_entry in issues["recurring"][:10]:
-                matrix = f_entry.get("matrix_label", "")
-                first = f_entry.get("first_seen", "?")
-                wf_text += f":repeat:  `{f_entry['name']}` ({matrix}) \u2014 since {first}\n"
+                matrix = _esc(f_entry.get("matrix_label", ""))
+                first = _esc(f_entry.get("first_seen", "?"))
+                name = _esc(f_entry.get("name", "unknown"))
+                wf_text += (
+                    f":repeat:  `{name}` ({matrix}) \u2014 since {first}\n"
+                )
 
             # Resolved
             for r in issues["resolved"][:5]:
-                matrix = r.get("matrix_label", "")
+                matrix = _esc(r.get("matrix_label", ""))
                 count = r.get("failure_count", "?")
-                wf_text += f":white_check_mark:  `{r['name']}` ({matrix}) \u2014 was failing {count}x\n"
+                name = _esc(r.get("name", "unknown"))
+                wf_text += f":white_check_mark:  `{name}` ({matrix}) \u2014 was failing {count}x\n"
 
             # Truncation notes
             for category, label, limit in [
@@ -332,13 +358,15 @@ def main():
     failed_job_links = [
         j
         for j in workflow_jobs
-        if j["conclusion"] == "failure" and j.get("url")
+        if j.get("conclusion") == "failure" and j.get("url")
     ]
     if failed_job_links:
         link_blocks = []
         current = "*Failed Job Logs:*\n"
         for j in failed_job_links:
-            line = f":x:  <{j['url']}|{j['name']}>\n"
+            url = j.get("url", "")
+            name = _esc(j.get("name", "unknown"))
+            line = f":x:  <{url}|{name}>\n"
             if len(current) + len(line) > 2900:
                 link_blocks.append(
                     {
