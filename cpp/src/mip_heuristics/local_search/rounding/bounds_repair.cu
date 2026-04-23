@@ -400,7 +400,7 @@ bool bounds_repair_t<i_t, f_t>::repair_problem(problem_t<i_t, f_t>& problem,
     i_t curr_cstr = get_random_cstr();
     // best way would be to check a variable cycle, but this is easier and more performant
     bool is_cycle = detect_cycle(curr_cstr);
-    if (is_cycle) { CUOPT_LOG_DEBUG("Repair: cycle detected at cstr %d", curr_cstr); }
+    if (is_cycle) { CUOPT_LOG_TRACE("Repair: cycle detected at cstr %d", curr_cstr); }
     // in parallel compute the best shift and best respective damage
     i_t n_candidates = compute_best_shift(problem, original_problem, curr_cstr);
     // if no candidate is there continue with another constraint

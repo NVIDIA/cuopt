@@ -33,6 +33,13 @@ namespace cuopt::linear_programming::detail {
 struct clique_config_t {
   int min_clique_size               = 512;
   int max_clique_size_for_extension = 128;
+  // Work budget for extend_cliques. Extension runs at least `min_extend_work`
+  // units before honoring the cut-gen signal, and never exceeds
+  // `max_extend_work`. One unit ≈ one hash/scan op inside the extension
+  // kernels (see `extend_clique`), so wall time per unit is roughly constant
+  // across instances. The external (master) timer is honored separately.
+  double min_extend_work = 1e7;
+  double max_extend_work = 2e9;
 };
 
 template <typename i_t, typename f_t>
@@ -167,7 +174,6 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          bool modify_problem,
                           std::atomic<bool>* signal_extend = nullptr);
 
 template <typename i_t, typename f_t>
