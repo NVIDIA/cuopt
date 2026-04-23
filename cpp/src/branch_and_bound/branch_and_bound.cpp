@@ -29,6 +29,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -2417,6 +2418,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (dual_phase2_time > 1.0) {
         settings_.log.printf("Dual phase2 time %.2f seconds\n", dual_phase2_time);
       }
+      settings_.log.debug("Dual phase2 status after %d cuts: %s (iters=%d)\n",
+                          num_cuts,
+                          dual::status_to_string(cut_status).c_str(),
+                          iter);
       if (cut_status == dual::status_t::TIME_LIMIT) {
         solver_status_ = mip_status_t::TIME_LIMIT;
         set_final_solution(solution, root_objective_);
@@ -2424,7 +2429,23 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
 
       if (cut_status != dual::status_t::OPTIMAL) {
-        settings_.log.printf("Numerical issue at root node. Resolving from scratch\n");
+        settings_.log.printf(
+          "Numerical issue at root node (status=%s, cuts=%d). Resolving from scratch\n",
+          dual::status_to_string(cut_status).c_str(),
+          num_cuts);
+        {
+          // Breakdown of the cut types just added so we know which family to blame.
+          std::array<i_t, 16> type_counts{};
+          for (const auto t : cut_types) {
+            const auto ti = static_cast<size_t>(t);
+            if (ti < type_counts.size()) { type_counts[ti]++; }
+          }
+          for (size_t ti = 0; ti < type_counts.size(); ++ti) {
+            if (type_counts[ti] > 0) {
+              settings_.log.printf("  cut_type=%zu count=%d\n", ti, type_counts[ti]);
+            }
+          }
+        }
         lp_status_t scratch_status =
           solve_linear_program_with_advanced_basis(original_lp_,
                                                    exploration_stats_.start_time,
@@ -2442,9 +2463,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
         } else {
           settings_.log.printf("Cut status %s\n", dual::status_to_string(cut_status).c_str());
-#ifdef WRITE_CUT_INFEASIBLE_MPS
           original_lp_.write_mps("cut_infeasible.mps");
-#endif
+          settings_.log.printf("Wrote LP with cuts to cut_infeasible.mps\n");
           return mip_status_t::NUMERICAL;
         }
       }
