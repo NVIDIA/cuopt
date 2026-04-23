@@ -29,15 +29,22 @@ reviews:
 
   # Exclude paths CodeRabbit should not review.
   # Formatting/lint/style for these is already handled (or not applicable).
+  # datasets/ is NOT fully excluded — shell scripts there download test data
+  # and are worth reviewing; only the bulk data files are filtered out.
   path_filters:
     - "!thirdparty/**"
-    - "!datasets/**"
-    - "!regression/**"
     - "!notebooks/**"
     - "!docs/**/_build/**"
     - "!**/*.mps"
     - "!**/*.qps"
     - "!**/*.lp"
+    - "!datasets/**/*.json"
+    - "!datasets/**/*.yaml"
+    - "!datasets/**/*.yml"
+    - "!datasets/**/*.txt"
+    - "!regression/**/*.json"
+    - "!regression/**/*.csv"
+    - "!regression/**/*.html"
 
   # Path-specific review instructions.
   # Keep each block narrow — the main review guide is in
@@ -170,6 +177,63 @@ reviews:
         - Edge cases: empty, infeasible, unbounded, degenerate problems
         - No leaked GPU state across tests
         - Regression coverage for fixed bugs
+
+    - path: "**/CMakeLists.txt"
+      instructions: |
+        Flag any new entry in add_library / add_executable / target_sources /
+        add_subdirectory / install(FILES ...) that references a source, header,
+        or directory not present in this PR or in the base branch — this is the
+        most common place a forgotten `git add` surfaces. See Common Bug
+        Patterns §7 in the review guide. The right ask is "did you mean to
+        include `<path>` in this PR?" rather than a generic style comment.
+
+    - path: "**/*.cmake"
+      instructions: |
+        Same as CMakeLists.txt: cross-check any added file-list entries against
+        the PR contents (Common Bug Patterns §7).
+
+    - path: ".github/workflows/**"
+      instructions: |
+        GitHub Actions workflows. Primary concern is Common Bug Patterns §7:
+        any `run:` step invoking `ci/*.sh`, `python ci/*.py`, or a repo-local
+        binary must reference a file present in the PR or the base branch.
+        Also check for:
+        - Referenced composite actions (`uses: ./.github/actions/<name>`) that don't exist
+        - `needs:` dependencies on jobs that were renamed or removed
+        - Secrets / environment variables newly referenced without being documented
+        Do not flag style of YAML formatting.
+
+    - path: "ci/**/*.sh"
+      instructions: |
+        CI shell scripts. Primary concern is Common Bug Patterns §7:
+        - `source` / `.` lines pointing at helper scripts not in the PR or tree
+        - `bash path/to/foo.sh` / direct script invocations referencing missing files
+        - `RAPIDS_DATASET_ROOT_DIR`-relative paths not produced by an in-tree script
+        Also: `set -euo pipefail` hygiene for new scripts, proper quoting on
+        interpolated paths. Do not re-raise shellcheck warnings (pre-commit
+        runs shellcheck at --severity=warning).
+
+    - path: "datasets/**/*.sh"
+      instructions: |
+        Dataset download/setup scripts. Same as ci/**/*.sh, with emphasis on:
+        - URLs reachable and versioned (not pinned to `latest`)
+        - Referenced helper scripts exist in the PR or tree (Common Bug Patterns §7)
+        - Exit on failure; no silent download errors
+
+    - path: "**/Dockerfile*"
+      instructions: |
+        Dockerfiles. Primary concern is Common Bug Patterns §7: `COPY` / `ADD`
+        paths must exist in the build context at the referenced location.
+        Also check for:
+        - Pinned base image tags (not `:latest`)
+        - Multi-stage builds don't leak secrets
+        - No credentials baked into layers
+
+    - path: "helmchart/**"
+      instructions: |
+        Helm charts. Same as CMakeLists.txt philosophy: new references to
+        ConfigMaps, Secrets, values keys, or template files must exist in
+        this PR (Common Bug Patterns §7). Do not flag chart style nits.
 
 knowledge_base:
   opt_out: false
