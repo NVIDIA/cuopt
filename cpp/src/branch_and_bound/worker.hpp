@@ -156,6 +156,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void set_inactive() { this->is_active = false; }
 
+  // Steal nodes from another worker
   bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
   {
     assert(num_nodes > 0);
@@ -182,6 +183,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     return true;
   }
 
+  // Calculate the number of diving workers that this worker can launch. Having a fixed number
+  // of workers allows the solver to be more deterministic.
   void calculate_num_diving_workers(i_t num_bfs_workers,
                                     i_t total_diving_workers,
                                     bool has_incumbent,
@@ -240,6 +243,9 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Set `is_active = true` when the worker is ready.
   void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
   {
+    // Creates a copy of the node that is disconnected from the main tree, such that the
+    // diving does not modify the main tree. We need to store the variables bounds
+    // associated with this node, since we cannot retrieve it from the tree
     start_node        = node->detach_copy();
     this->start_lower = original_lp.lower;
     this->start_upper = original_lp.upper;
@@ -248,12 +254,14 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     node->get_variable_bounds(this->start_lower, this->start_upper, this->bounds_changed);
   }
 
+  // Apply bound strengthening to the starting variable bounds
   bool presolve_start_bounds(const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     return this->node_presolver.bounds_strengthening(
       settings, this->bounds_changed, this->start_lower, this->start_upper);
   }
 
+  // Set this node inactive
   void set_inactive()
   {
     assert(this->is_active.load());

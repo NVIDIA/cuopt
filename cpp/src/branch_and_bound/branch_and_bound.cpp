@@ -1612,8 +1612,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   }
 
   // If the solver was forced to stop, but we still have nodes to explore
-  // in the stack, then we should add all the pending nodes back to the heap so the lower
-  // bound of the solver is set to the correct value.
+  // in the stack, then we should add all the pending nodes back to the heap so the global lower
+  // bound is set to the correct value.
   while (!stack.empty()) {
     auto node = stack.front();
     stack.pop_front();
@@ -1627,6 +1627,7 @@ template <typename i_t, typename f_t>
 bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   mip_node_t<i_t, f_t>* start_node)
 {
+  // Take an idle node from the pool
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
   if (!idle_worker) { return nullptr; }
 
@@ -1704,6 +1705,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       break;
     }
 
+    // Steal a node with some probability or when it is empty. The victim is determined at random.
     if (worker->node_queue.best_first_queue_size() == 0 ||
         worker->rng.next_double() < steal_chance) {
       for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
@@ -2615,7 +2617,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_unexplored     = 2;
   exploration_stats_.nodes_since_last_log = 0;
   exploration_stats_.last_log             = tic();
-  min_node_queue_size_                    = 2 * settings_.num_threads;
+  min_node_queue_size_                    = 20;
 
   if (settings_.diving_settings.coefficient_diving != 0) {
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
