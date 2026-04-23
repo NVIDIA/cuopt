@@ -60,7 +60,7 @@ DASHBOARD_DIR="${SCRIPT_DIR}/dashboard"
 WORKFLOW_JOBS_JSON="${OUTPUT_DIR}/workflow_jobs.json"
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
     echo "Fetching workflow job statuses from GitHub API..."
-    curl -s -L \
+    curl -s -L --max-time 30 \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \

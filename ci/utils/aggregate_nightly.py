@@ -564,8 +564,9 @@ def generate_consolidated_html(
         report_link = ""
         if s3_reports_prefix:
             report_filename = f"{g['test_type']}-{g['matrix_label']}.html"
+            prefix = s3_reports_prefix.rstrip("/") + "/"
             report_link = (
-                f'<a class="matrix-link" href="{_html_escape(s3_reports_prefix)}'
+                f'<a class="matrix-link" href="{_html_escape(prefix)}'
                 f'{_html_escape(report_filename)}">View</a>'
             )
         parts.append(
