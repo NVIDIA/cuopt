@@ -135,11 +135,11 @@ p['channel'] = sys.argv[2]
 print(json.dumps(p))
 " "${PAYLOAD}" "${SLACK_CHANNEL_ID}")
 
-RESPONSE=$(curl -s -X POST \
+RESPONSE=$(curl -s --max-time 30 -X POST \
     -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
     -H "Content-Type: application/json" \
     --data "${BOT_PAYLOAD}" \
-    "https://slack.com/api/chat.postMessage")
+    "https://slack.com/api/chat.postMessage" || echo '{"ok":false,"error":"curl_failed"}')
 
 OK=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok',''))" 2>/dev/null || echo "")
 if [ "${OK}" != "True" ]; then
