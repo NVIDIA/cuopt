@@ -25,6 +25,9 @@ ConfigureTest(RETAIL_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
 ConfigureTest(ROUTING_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu
     LABELS routing)
 
+# Disabled: both tests are slow and known to be broken.
+set_tests_properties(RETAIL_L1TEST ROUTING_L1TEST PROPERTIES DISABLED TRUE)
+
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
 ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu

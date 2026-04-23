@@ -16,8 +16,6 @@
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
-#include <rmm/mr/cuda_async_memory_resource.hpp>
-#include <rmm/mr/limiting_resource_adaptor.hpp>
 #include <shared_mutex>
 #include <unordered_map>
 
@@ -242,25 +240,10 @@ DI void sorted_insert(T* array, T item, int curr_size, int max_size)
 
 inline size_t get_device_memory_size()
 {
-  // Otherwise, we need to get the free memory from the device
   size_t free_mem, total_mem;
-  cudaMemGetInfo(&free_mem, &total_mem);
-
-  auto res = rmm::mr::get_current_device_resource();
-  auto limiting_adaptor =
-    dynamic_cast<rmm::mr::limiting_resource_adaptor<rmm::mr::cuda_async_memory_resource>*>(res);
-  // Did we specifiy an explicit memory limit?
-  if (limiting_adaptor) {
-    printf("limiting_adaptor->get_allocation_limit(): %fMiB\n",
-           limiting_adaptor->get_allocation_limit() / (double)1e6);
-    printf("used_mem: %fMiB\n", limiting_adaptor->get_allocated_bytes() / (double)1e6);
-    printf("free_mem: %fMiB\n",
-           (limiting_adaptor->get_allocation_limit() - limiting_adaptor->get_allocated_bytes()) /
-             (double)1e6);
-    return std::min(total_mem, limiting_adaptor->get_allocation_limit());
-  } else {
-    return total_mem;
-  }
+  RAFT_CUDA_TRY(cudaMemGetInfo(&free_mem, &total_mem));
+  // TODO (bdice): Restore limiting adaptor check after updating CCCL to support resource_cast
+  return total_mem;
 }
 
 }  // namespace cuopt
