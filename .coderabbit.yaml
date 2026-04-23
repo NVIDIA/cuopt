@@ -96,21 +96,28 @@ reviews:
 
     - path: "cpp/src/**/*.{cpp,hpp,h}"
       instructions: |
-        C++ host code. Reference the Google C++ Style Guide
-        (https://google.github.io/styleguide/cppguide.html) by rule name
-        for substantive issues. Note cuOpt deviations: exceptions ARE used
-        (see cpp/include/cuopt/error.hpp — cuopt_expects / CUOPT_EXPECTS
-        macros throw cuopt::logic_error); column limit is 100, not 80.
+        C++ host code. cuOpt has its own established style — match nearby code.
+        Conventions (do NOT comment on these as if they were issues):
+          - snake_case for functions/variables; snake_case_t with _t suffix
+            for types/classes/enums (e.g. logic_error, error_type_t)
+          - Trailing underscore on private members (error_type_)
+          - Project macros: CUOPT_ prefix, SCREAMING_SNAKE_CASE
+          - Exceptions are used: throw + cuopt_expects / CUOPT_EXPECTS from
+            cpp/include/cuopt/error.hpp
+          - Column limit is 100; formatting handled by clang-format
 
-        Focus on:
-        - Header self-containment, include-what-you-use
-        - explicit on single-arg constructors
-        - override/final on virtual methods
-        - std::unique_ptr for owning pointers; avoid raw owning pointers
-        - const/constexpr correctness
-        - C++-style casts; avoid dynamic_cast in favor of virtual dispatch
+        Cite the Google C++ Style Guide ONLY for these named language-level
+        practices that cuOpt actually follows:
+          - Header self-containment, Include What You Use, avoid fwd decls
+          - explicit on single-arg constructors
+          - override/final on virtual methods
+          - std::unique_ptr for owning pointers; no raw owning pointers
+          - const/constexpr correctness
+          - C++-style casts; avoid dynamic_cast (prefer virtual dispatch)
+          - No `using namespace` at file scope
 
-        Do not flag exception use or formatting.
+        Do NOT cite Google for naming, exception use, or column limit —
+        cuOpt's convention wins there. Do not flag formatting.
 
     - path: "cpp/src/grpc/**"
       instructions: |
