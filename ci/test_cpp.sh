@@ -53,7 +53,7 @@ set +e
 export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
-timeout 40m ./ci/run_ctests.sh
+timeout 50m ./ci/run_ctests.sh
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"

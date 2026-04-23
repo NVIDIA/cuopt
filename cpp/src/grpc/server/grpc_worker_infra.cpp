@@ -12,15 +12,15 @@ void cleanup_shared_memory()
 {
   if (job_queue) {
     munmap(job_queue, sizeof(JobQueueEntry) * MAX_JOBS);
-    shm_unlink(SHM_JOB_QUEUE);
+    shm_unlink(SHM_JOB_QUEUE.c_str());
   }
   if (result_queue) {
     munmap(result_queue, sizeof(ResultQueueEntry) * MAX_RESULTS);
-    shm_unlink(SHM_RESULT_QUEUE);
+    shm_unlink(SHM_RESULT_QUEUE.c_str());
   }
   if (shm_ctrl) {
     munmap(shm_ctrl, sizeof(SharedMemoryControl));
-    shm_unlink(SHM_CONTROL);
+    shm_unlink(SHM_CONTROL.c_str());
   }
 }
 
