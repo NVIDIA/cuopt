@@ -288,9 +288,12 @@ class iteration_data_t {
     std::vector<i_t> dense_columns_unordered;
 
     f_t start_column_density = tic();
-    // Ignore Q matrix for now
-    find_dense_columns(
-      lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+
+    // Do not look for dense columns if Q is not diagonal
+    if (!has_Q || Q_diagonal) {
+      find_dense_columns(
+        lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+    }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
     for (i_t j : dense_columns_unordered) {
