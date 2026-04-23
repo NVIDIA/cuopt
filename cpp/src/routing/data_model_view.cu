@@ -296,8 +296,19 @@ void data_model_view_t<i_t, f_t>::add_vehicle_order_match(const i_t vehicle_id,
                                                           i_t const* orders,
                                                           const i_t norders)
 {
-  cuopt_expects(
-    orders != nullptr, error_type_t::ValidationError, "vehicle_order_match cannot be null");
+  cuopt_expects(vehicle_id >= 0 && vehicle_id < fleet_size_,
+                error_type_t::ValidationError,
+                "vehicle_id in vehicle_order_match must be between 0 and fleet size");
+  cuopt_expects(norders > 0,
+                error_type_t::ValidationError,
+                "number of orders in vehicle_order_match must be positive");
+  cuopt_expects(orders != nullptr,
+                error_type_t::ValidationError,
+                "vehicle_order_match cannot be null");
+  cuopt_expects(detail::check_min_max_values(
+                  orders, norders, 0, num_orders_ - 1, handle_ptr_->get_stream()),
+                error_type_t::ValidationError,
+                "orders in vehicle_order_match must be between 0 and num_orders");
   vehicle_order_match_[vehicle_id] = raft::device_span<i_t const>(orders, norders);
 }
 
@@ -306,8 +317,19 @@ void data_model_view_t<i_t, f_t>::add_order_vehicle_match(const i_t order_id,
                                                           i_t const* vehicles,
                                                           const i_t nvehicles)
 {
-  cuopt_expects(
-    vehicles != nullptr, error_type_t::ValidationError, "order_vehicle_match cannot be null");
+  cuopt_expects(order_id >= 0 && order_id < num_orders_,
+                error_type_t::ValidationError,
+                "order_id in order_vehicle_match must be between 0 and num_orders");
+  cuopt_expects(nvehicles > 0,
+                error_type_t::ValidationError,
+                "number of vehicles in order_vehicle_match must be positive");
+  cuopt_expects(vehicles != nullptr,
+                error_type_t::ValidationError,
+                "order_vehicle_match cannot be null");
+  cuopt_expects(detail::check_min_max_values(
+                  vehicles, nvehicles, 0, fleet_size_ - 1, handle_ptr_->get_stream()),
+                error_type_t::ValidationError,
+                "vehicles in order_vehicle_match must be between 0 and fleet size");
   order_vehicle_match_[order_id] = raft::device_span<i_t const>(vehicles, nvehicles);
 }
 

@@ -123,8 +123,8 @@ struct node_stack_t {
     double transit_time_forward;
     double latest_arrival_forward;
     double unavoidable_wait_forward;
-    f_t departure_forward;
-    f_t excess_forward;
+    double departure_forward;
+    double excess_forward;
     i_t intra_idx;
     i_t from_idx;
     // TODO later we might use multiple node inheritence, but for now this will be in shared memory
