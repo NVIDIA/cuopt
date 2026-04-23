@@ -80,11 +80,18 @@ def main():
     has_failures = len(failing_workflows) > 0
     untracked_count = len(untracked_failed)
 
-    if has_failures and (has_new or untracked_count > 0):
+    if has_failures and has_new:
         emoji = ":rotating_light:"
         text = f"{len(failing_workflows)} workflow(s) with NEW failures"
         if has_new_flaky:
             text += " + NEW flaky tests"
+        mention = mention_tag
+    elif has_failures and untracked_count > 0:
+        emoji = ":rotating_light:"
+        text = (
+            f"Recurring failures in {len(failing_workflows)} workflow(s)"
+            f" + {untracked_count} CI job(s) failed (no test details)"
+        )
         mention = mention_tag
     elif has_failures and has_new_flaky:
         emoji = ":x:"
