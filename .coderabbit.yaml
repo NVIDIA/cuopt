@@ -27,33 +27,154 @@ reviews:
   request_changes_workflow: false
   review_status: false
 
-  # Path-specific review instructions
+  # Exclude paths CodeRabbit should not review.
+  # Formatting/lint/style for these is already handled (or not applicable).
+  path_filters:
+    - "!thirdparty/**"
+    - "!datasets/**"
+    - "!regression/**"
+    - "!notebooks/**"
+    - "!docs/**/_build/**"
+    - "!**/*.mps"
+    - "!**/*.qps"
+    - "!**/*.lp"
+
+  # Path-specific review instructions.
+  # Keep each block narrow — the main review guide is in
+  # .github/.coderabbit_review_guide.md (see knowledge_base below).
   path_instructions:
     - path: "docs/**/*"
       instructions: |
         For documentation changes, focus on:
-        - Accuracy: Verify code examples compile and run correctly
-        - Completeness: Check if API changes (parameters, return values, errors) are documented
-        - Clarity: Flag confusing explanations, missing prerequisites, or unclear examples
-        - Consistency: Version numbers, parameter types, and terminology match code
-        - Examples: Suggest adding examples for complex features or new APIs
-        - Missing docs: If PR changes public APIs without updating docs, flag as HIGH priority
+        - Accuracy: verify code examples compile and run correctly
+        - Completeness: check if API changes (parameters, return values, errors) are documented
+        - Clarity: flag confusing explanations, missing prerequisites, unclear examples
+        - Consistency: version numbers, parameter types, and terminology match code
+        - Missing docs: if the PR changes public APIs without updating docs, flag as HIGH
 
-        When code changes affect docs:
-        - Suggest specific doc files that need updates (e.g., docs/cuopt/api.rst)
-        - Identify outdated information contradicting the code changes
-        - Recommend documenting performance characteristics, GPU requirements, or numerical tolerances
+        When code changes affect docs, suggest specific files (e.g. docs/cuopt/source/*.rst)
+        and recommend documenting performance characteristics, GPU requirements, or tolerances.
 
     - path: "cpp/include/cuopt/**/*"
       instructions: |
-        For public header files (C++ API):
-        - Check if new public functions/classes have documentation comments (Doxygen format)
+        Public C++ headers:
+        - New public functions/classes need Doxygen-style documentation
         - Flag API changes that may need corresponding docs/ updates
         - Verify parameter descriptions match actual types/behavior
-        - Suggest documenting thread-safety, GPU requirements, and numerical behavior
-        - For breaking changes, recommend updating docs and migration guides
+        - Suggest documenting thread-safety, GPU requirements, numerical behavior
+        - For breaking changes, recommend migration notes
+
+    - path: "cpp/include/cuopt/linear_programming/cuopt_c.h"
+      instructions: |
+        This is the C ABI surface. Flag ANY change to struct layout, function
+        signatures, enum values, or typedef shape as potentially ABI-breaking.
+        Ask the author to confirm the change is intentional and documented,
+        since there is no formal ABI-versioning macro today. Do not suggest
+        adding one unless the PR is specifically about API stability.
+
+    - path: "cpp/src/**/*.{cu,cuh}"
+      instructions: |
+        CUDA source files. Apply cuOpt's RAPIDS idioms:
+        - CUDA errors must be checked with RAFT_CUDA_TRY (251 existing uses); flag bare cuda* calls
+        - Prefer rmm::device_uvector / rmm::device_buffer over raw cudaMalloc/cudaFree
+          (only ~3 files use raw allocators legitimately — pinned-host allocators)
+        - Streams should come from raft::handle_t::get_stream(); flag ad-hoc cudaStreamCreate
+          unless no handle is in scope (and then it must be paired with cudaStreamDestroy)
+        - Prefer thrust::/cuda::std:: (CCCL) over hand-rolled reductions, scans, sorts, transforms
+        - Watch for default-stream reliance in code that must run concurrently
+
+        DO NOT comment on formatting (clang-format handles it) or exception use
+        (cuOpt uses exceptions as its canonical error mechanism; this deviates
+        from Google C++ intentionally).
+
+    - path: "cpp/src/**/*.{cpp,hpp,h}"
+      instructions: |
+        C++ host code. Reference the Google C++ Style Guide
+        (https://google.github.io/styleguide/cppguide.html) by rule name
+        for substantive issues. Note cuOpt deviations: exceptions ARE used
+        (see cpp/include/cuopt/error.hpp — cuopt_expects / CUOPT_EXPECTS
+        macros throw cuopt::logic_error); column limit is 100, not 80.
+
+        Focus on:
+        - Header self-containment, include-what-you-use
+        - explicit on single-arg constructors
+        - override/final on virtual methods
+        - std::unique_ptr for owning pointers; avoid raw owning pointers
+        - const/constexpr correctness
+        - C++-style casts; avoid dynamic_cast in favor of virtual dispatch
+
+        Do not flag exception use or formatting.
+
+    - path: "cpp/src/grpc/**"
+      instructions: |
+        gRPC server C++ code. In addition to cpp/src rules:
+        - Input validation on all request fields reaching the solver
+        - Size limits on problem data to prevent resource exhaustion
+        - No credential/internal-path leakage in error messages or logs
+        - Safe deserialization of problem payloads
+        - Thread-safety on shared state across RPCs
+
+    - path: "cpp/tests/**"
+      instructions: |
+        C++ tests (gtest). Focus on:
+        - Numerical correctness validation (not just "runs without error")
+        - Edge cases: empty, infeasible, unbounded, degenerate, singleton problems
+        - Test isolation — no leaked GPU state or global mutation across tests
+        - Flakiness: GPU timing races, uninitialized memory, non-deterministic order
+        - When a bug fix lands, a regression test should cover the specific case
+
+        Do not require benchmarks here — benchmarks live in benchmarks/ and regression/.
+
+    - path: "python/**/*.py"
+      instructions: |
+        Python code. ruff (E,F,W ignoring E501), ruff-format, and pydocstyle
+        handle formatting, imports, and docstring format. Focus on what they
+        do NOT cover:
+        - Type hints on NEW public functions/classes (do not require them on existing code;
+          there is no mypy config and the codebase is mixed)
+        - Signature changes on public APIs must emit DeprecationWarning with a
+          removal version before breaking (see the pattern in
+          python/cuopt/cuopt/linear_programming/problem.py around the deprecated helpers)
+        - Docstring CONTENT on new public APIs — params, returns, raises — even
+          when pydocstyle format rules pass
+        - Error messages that expose internals vs. user-actionable messages
+
+        Do not re-raise ruff/pydocstyle-covered issues.
+
+    - path: "python/**/*.pyx"
+      instructions: |
+        Cython implementation files:
+        - C++ calls that may throw must use `except +` on the cdef declaration
+        - Use `nogil` on blocking C calls unless the GIL is needed
+        - Memoryview lifetimes: the Python object owning the buffer must outlive the view
+        - Prefer cpdef only when the function should be callable from Python
+
+    - path: "python/**/*.pxd"
+      instructions: |
+        Cython declaration files. Check that C++ signatures match their .hpp
+        counterparts (argument types, const-qualification, throw-specification).
+
+    - path: "python/cuopt_server/**"
+      instructions: |
+        Python server code. In addition to python/**/*.py rules:
+        - Input validation on all fields from the REST payload
+        - Size/shape limits on problem data
+        - No credential or internal-path leakage in error responses or logs
+        - Safe deserialization (no pickle on untrusted input)
+        - Rate limiting considerations on expensive endpoints
+
+    - path: "python/**/tests/**"
+      instructions: |
+        Python tests (pytest). Focus on:
+        - Numerical correctness validation
+        - Edge cases: empty, infeasible, unbounded, degenerate problems
+        - No leaked GPU state across tests
+        - Regression coverage for fixed bugs
+
 knowledge_base:
   opt_out: false
   code_guidelines:
     filePatterns:
       - ".github/.coderabbit_review_guide.md"
+      - "CONTRIBUTING.md"
+      - "CONVENTIONS.md"
