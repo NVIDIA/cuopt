@@ -31,7 +31,7 @@
 
 namespace cuopt::linear_programming::test {
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -141,7 +141,7 @@ multi_probe_results(
 void test_multi_probe(std::string path)
 {
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
   const raft::handle_t handle_{};
   cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, false);

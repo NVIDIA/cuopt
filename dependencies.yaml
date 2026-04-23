@@ -782,7 +782,6 @@ dependencies:
           - *msgpack_python
           - *msgpack_numpy
           - myst-parser
-          - myst-nb
           - numpydoc
           - pyrsistent
           - breathe
