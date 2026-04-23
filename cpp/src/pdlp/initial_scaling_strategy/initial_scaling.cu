@@ -28,6 +28,13 @@
 
 namespace cuopt::linear_programming::detail {
 
+template <typename f_t>
+void poison_and_free(rmm::device_uvector<f_t>& uvec, rmm::cuda_stream_view stream) {
+  if (uvec.size() > 0) {
+    thrust::fill(thrust::cuda::par_nosync.on(stream), uvec.begin(), uvec.end(), 5);
+  }
+  uvec.resize(0, stream);
+}
 template <typename i_t, typename f_t>
 pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   raft::handle_t const* handle_ptr,
@@ -81,6 +88,9 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
                f_t(1));
 
   compute_scaling_vectors(number_of_ruiz_iterations, alpha);
+
+  poison_and_free(iteration_constraint_matrix_scaling_, stream_view_);
+  poison_and_free(iteration_variable_scaling_, stream_view_);
 }
 
 template <typename i_t, typename f_t>
