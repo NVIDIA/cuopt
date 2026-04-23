@@ -116,7 +116,7 @@ pytest_crash_isolate() {
     while IFS= read -r test_id; do
         [ -z "${test_id}" ] && continue
         local safe_name
-        safe_name=$(echo "${test_id}" | tr '/:' '__')
+        safe_name=$(echo "${test_id}" | tr -c '[:alnum:]._-' '_')
 
         for attempt in $(seq 1 "${PYTEST_MAX_CRASH_RETRIES}"); do
             local retry_rc=0
