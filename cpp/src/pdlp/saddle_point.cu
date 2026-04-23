@@ -20,7 +20,8 @@ template <typename i_t, typename f_t>
 saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handle_ptr,
                                                      const i_t primal_size,
                                                      const i_t dual_size,
-                                                     const size_t batch_size)
+                                                     const size_t batch_size,
+                                                     const bool is_cupdlpx)
   : primal_size_{primal_size},
     dual_size_{dual_size},
     primal_solution_{batch_size * primal_size, handle_ptr->get_stream()},
