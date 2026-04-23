@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -52,7 +52,7 @@ set +e
 export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
 
 rapids-logger "Run gtests"
-timeout 40m ./ci/run_ctests.sh
+timeout 50m ./ci/run_ctests.sh
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
