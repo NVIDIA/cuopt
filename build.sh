@@ -55,7 +55,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libcuopt' then 'cuopt' (pass 'docs' explicitly to build documentation)
+ default action (no args) is to build and install 'libmps_parser', 'libcuopt', 'cuopt', 'cuopt_mps_parser', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
