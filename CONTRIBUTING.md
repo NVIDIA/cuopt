@@ -218,9 +218,8 @@ cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
-ctest --test-dir ${CUOPT_HOME}/cpp/build -E L1TEST  # libcuopt
+ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
-`L1TEST`s are excluded because they are expensive and not run as part of the typical development process.
 
 To run python tests, run
 

@@ -123,88 +123,88 @@ TEST(optimization_problem_t, test_set_get_fields)
   problem.set_csr_constraint_matrix(A_host, 3, indices_host, 3, indices_host, 3);
 
   // Test set_A_values
-  cudaMemcpy(result.data(),
-             problem.get_constraint_matrix_values().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_constraint_matrix_values().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(1.0, result[0], 1e-5);
   EXPECT_NEAR(2.0, result[1], 1e-5);
   EXPECT_NEAR(3.0, result[2], 1e-5);
 
   // Test A_indices
-  cudaMemcpy(result_int.data(),
-             problem.get_constraint_matrix_indices().data(),
-             3 * sizeof(int),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result_int.data(),
+                           problem.get_constraint_matrix_indices().data(),
+                           3 * sizeof(int),
+                           cudaMemcpyDeviceToHost));
   EXPECT_EQ(0, result_int[0]);
   EXPECT_EQ(1, result_int[1]);
   EXPECT_EQ(2, result_int[2]);
 
   // Test A_offsets_
-  cudaMemcpy(result_int.data(),
-             problem.get_constraint_matrix_offsets().data(),
-             3 * sizeof(int),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result_int.data(),
+                           problem.get_constraint_matrix_offsets().data(),
+                           3 * sizeof(int),
+                           cudaMemcpyDeviceToHost));
   EXPECT_EQ(0, result_int[0]);
   EXPECT_EQ(1, result_int[1]);
   EXPECT_EQ(2, result_int[2]);
 
   // Test b_
   problem.set_constraint_bounds(b_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_constraint_bounds().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(4.0, result[0], 1e-5);
   EXPECT_NEAR(5.0, result[1], 1e-5);
   EXPECT_NEAR(6.0, result[2], 1e-5);
 
   // Test c_
   problem.set_objective_coefficients(c_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_objective_coefficients().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_objective_coefficients().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(7.0, result[0], 1e-5);
   EXPECT_NEAR(8.0, result[1], 1e-5);
   EXPECT_NEAR(9.0, result[2], 1e-5);
 
   // Test variable_lower_bounds_
   problem.set_variable_lower_bounds(var_lb_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_variable_lower_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_variable_lower_bounds().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(0.0, result[0], 1e-5);
   EXPECT_NEAR(0.1, result[1], 1e-5);
   EXPECT_NEAR(0.2, result[2], 1e-5);
 
   // Test variable_upper_bounds_
   problem.set_variable_upper_bounds(var_ub_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_variable_upper_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_variable_upper_bounds().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(1.0, result[0], 1e-5);
   EXPECT_NEAR(1.1, result[1], 1e-5);
   EXPECT_NEAR(1.2, result[2], 1e-5);
 
   // Test constraint_lower_bounds_
   problem.set_constraint_lower_bounds(con_lb_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_lower_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_constraint_lower_bounds().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(0.5, result[0], 1e-5);
   EXPECT_NEAR(0.6, result[1], 1e-5);
   EXPECT_NEAR(0.7, result[2], 1e-5);
 
   // Test constraint_upper_bounds_
   problem.set_constraint_upper_bounds(con_ub_host, 3);
-  cudaMemcpy(result.data(),
-             problem.get_constraint_upper_bounds().data(),
-             3 * sizeof(double),
-             cudaMemcpyDeviceToHost);
+  RAFT_CUDA_TRY(cudaMemcpy(result.data(),
+                           problem.get_constraint_upper_bounds().data(),
+                           3 * sizeof(double),
+                           cudaMemcpyDeviceToHost));
   EXPECT_NEAR(1.5, result[0], 1e-5);
   EXPECT_NEAR(1.6, result[1], 1e-5);
   EXPECT_NEAR(1.7, result[2], 1e-5);
