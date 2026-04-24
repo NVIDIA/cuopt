@@ -799,11 +799,14 @@ if (NOT SKIP_GRPC_BUILD)
             CXX_STANDARD 20
             CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
+            POSITION_INDEPENDENT_CODE ON
     )
 
     target_compile_options(cuopt_grpc_server
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     )
+
+    target_link_options(cuopt_grpc_server PRIVATE -pie)
 
     target_include_directories(cuopt_grpc_server
             PRIVATE
