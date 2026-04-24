@@ -23,8 +23,8 @@ namespace cuopt::linear_programming::detail {
  *   x - U * b <= 0      (forces x <= U when b=1; forces x=0 when b=0)
  *   b in {0, 1},  x in [0, U]
  *
- * Deterministic CPU bounds strengthening is used to derive tight upper bounds
- * for SC variables that have infinite original upper bounds. If strengthening cannot
+ * Deterministic CPU bounds strengthening is seeded only from SC variables to derive tight upper
+ * bounds for SC variables that have infinite original upper bounds. If strengthening cannot
  * derive a finite bound, settings.sc_big_m is used as a fallback.
  *
  * This must be called before problem_t construction and Papilo presolve.

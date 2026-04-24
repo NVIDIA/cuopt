@@ -39,8 +39,9 @@ bool is_effectively_infinite_sc_upper_bound(f_t ub)
 }
 
 template <typename i_t, typename f_t>
-std::vector<f_t> call_host_bounds_strenghtening(const optimization_problem_t<i_t, f_t>& op_problem,
-                                                const mip_solver_settings_t<i_t, f_t>& settings)
+std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t, f_t>& op_problem,
+                                                const mip_solver_settings_t<i_t, f_t>& settings,
+                                                const std::vector<i_t>& sc_indices)
 {
   auto user_problem =
     cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
@@ -76,7 +77,10 @@ std::vector<f_t> call_host_bounds_strenghtening(const optimization_problem_t<i_t
 
   dual_simplex::bounds_strengthening_t<i_t, f_t> strengthening(
     lp_problem, Arow, row_sense, var_types);
-  std::vector<bool> bounds_changed(lp_problem.num_cols, true);
+  std::vector<bool> bounds_changed(lp_problem.num_cols, false);
+  for (i_t idx : sc_indices) {
+    bounds_changed[idx] = true;
+  }
   auto lower = lp_problem.lower;
   auto upper = lp_problem.upper;
   auto ok    = strengthening.bounds_strengthening(simplex_settings, bounds_changed, lower, upper);
@@ -158,7 +162,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   auto tight_ub = var_ub;  // fallback: normalized original UBs
 
   if (op_relaxed.get_n_constraints() > 0) {
-    tight_ub = call_host_bounds_strenghtening(op_relaxed, settings);
+    tight_ub = call_host_bounds_strengthening(op_relaxed, settings, sc_indices);
   }
 
   // 4. Fetch all host arrays we need to extend with the new binary variables
