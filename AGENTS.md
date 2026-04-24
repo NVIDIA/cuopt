@@ -59,4 +59,4 @@ Finish solving the problem first, then evaluate. Not every correction warrants a
 
 ### Support
 - [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
-- [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
+- [GitHub Discussions](https://github.com/NVIDIA/cuopt/discussions)
