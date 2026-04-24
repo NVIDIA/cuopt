@@ -167,9 +167,18 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     // Discard symmetry to avoid out-of-bounds accesses in orbital fixing.
     if (symmetry != nullptr && scaled_problem.n_variables != n_vars_before) {
       CUOPT_LOG_INFO("Trivial presolve changed variable count (%d -> %d); "
-                     "disabling orbital fixing to avoid index mismatch",
+                     "re-detecting symmetry on reduced problem",
                      n_vars_before, scaled_problem.n_variables);
       symmetry.reset();
+      if (settings.symmetry != 0) {
+        dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex_settings.set_log(true);
+        simplex_settings.time_limit = settings.time_limit;
+        dual_simplex::user_problem_t<i_t, f_t> reduced_user_problem =
+          cuopt_problem_to_simplex_problem<i_t, f_t>(scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+        bool has_symmetry_reduced = false;
+        symmetry = dual_simplex::detect_symmetry(reduced_user_problem, simplex_settings, has_symmetry_reduced);
+      }
     }
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);

@@ -742,9 +742,10 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
                          (long long)exploration_stats_.orbital_conflict_nodes.load());
   }
   if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
-    settings_.log.printf("Lexical reduction applied at %lld nodes, %lld total variable fixings\n",
+    settings_.log.printf("Lexical reduction applied at %lld nodes, %lld total variable fixings, %lld nodes pruned\n",
                          (long long)exploration_stats_.lexical_reduction_nodes.load(),
-                         (long long)exploration_stats_.lexical_reduction_fixings_applied.load());
+                         (long long)exploration_stats_.lexical_reduction_fixings_applied.load(),
+                         (long long)exploration_stats_.lexical_reduction_pruned_nodes.load());
   }
   settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
                        gap,
@@ -1433,7 +1434,10 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         stats.lexical_reduction_nodes++;
         stats.lexical_reduction_fixings_applied += lexical_reductions_info;
       }
-      if (lexical_reductions_info == -1) { feasible = false; }
+      if (lexical_reductions_info == -1) {
+        feasible = false;
+        stats.lexical_reduction_pruned_nodes++;
+      }
     }
 
     if (feasible) {

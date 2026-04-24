@@ -597,9 +597,7 @@ template <typename i_t, typename f_t>
 class lexical_reduction_t {
  public:
   lexical_reduction_t(i_t num_original_vars)
-    : branched_lower_(num_original_vars, 0.0), branched_upper_(num_original_vars, 1.0)
   {
-    fixings_.reserve(num_original_vars);
     reverse_branched_variables_.reserve(num_original_vars);
   }
   // Return -1 to prune the node, otherwise return the number of fixings applied.
@@ -613,13 +611,9 @@ class lexical_reduction_t {
       i_t v = node->branch_var;
       if (symmetry->is_binary[v] == 1) {
         reverse_branched_variables_.push_back(v);
-        branched_lower_[v] = node->branch_var_lower;
-        branched_upper_[v] = node->branch_var_upper;
       }
       node               = node->parent;
     }
-
-    fixings_.clear();
 
     bool prune      = false;
     i_t num_fixings = 0;
@@ -642,9 +636,9 @@ class lexical_reduction_t {
         // x[j] = free, x[p[j]] = any, stop (continue to next generator)
         // clang-format on
         i_t val_j = -1;
-        if (branched_lower_[j] == branched_upper_[j]) { val_j = branched_lower_[j]; }
+        if (problem.lower[j] == problem.upper[j]) { val_j = static_cast<i_t>(problem.lower[j]); }
         i_t val_p_j = -1;
-        if (branched_lower_[p_j] == branched_upper_[p_j]) { val_p_j = branched_lower_[p_j]; }
+        if (problem.lower[p_j] == problem.upper[p_j]) { val_p_j = static_cast<i_t>(problem.lower[p_j]); }
         if (val_j == -1) {  // free. continue to next generator
           break;
         }
@@ -667,9 +661,6 @@ class lexical_reduction_t {
         if (val_j == 0 && val_p_j == -1) {
           problem.lower[p_j] = 0.0;
           problem.upper[p_j] = 0.0;
-          branched_lower_[p_j] = 0.0;
-          branched_upper_[p_j] = 0.0;
-          fixings_.push_back(p_j);
           num_fixings++;
           continue;  // continue to the next pair
         }
@@ -677,23 +668,10 @@ class lexical_reduction_t {
       if (prune) break;
     }
 
-    for (i_t v : reverse_branched_variables_) {
-      branched_lower_[v] = 0.0;
-      branched_upper_[v] = 1.0;
-    }
-
-    for (i_t v : fixings_) {
-      branched_lower_[v] = 0.0;
-      branched_upper_[v] = 1.0;
-    }
-
     return prune ? -1 : num_fixings;
   }
 
  private:
-  std::vector<f_t> branched_lower_;
-  std::vector<f_t> branched_upper_;
-  std::vector<i_t> fixings_;
   std::vector<i_t> reverse_branched_variables_;
 };
 

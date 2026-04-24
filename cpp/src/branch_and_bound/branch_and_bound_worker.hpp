@@ -52,6 +52,7 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<int64_t> orbital_conflict_nodes = 0;
   omp_atomic_t<int64_t> lexical_reduction_nodes = 0;
   omp_atomic_t<int64_t> lexical_reduction_fixings_applied = 0;
+  omp_atomic_t<int64_t> lexical_reduction_pruned_nodes = 0;
 };
 
 template <typename i_t, typename f_t>
