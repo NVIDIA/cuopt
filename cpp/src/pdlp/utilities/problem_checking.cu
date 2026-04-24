@@ -240,14 +240,14 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
     auto var_ub    = op_problem.get_variable_upper_bounds_host();
     for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
       if (var_types[i] != var_t::SEMI_CONTINUOUS) { continue; }
-      cuopt_expects(var_lb[i] > f_t(0),
+      cuopt_expects(var_lb[i] >= f_t(0),
                     error_type_t::ValidationError,
-                    "Semi-continuous variable must have a strictly positive lower bound, but has "
+                    "Semi-continuous variable must have a non-negative lower bound, but has "
                     "lower bound %g.",
                     static_cast<double>(var_lb[i]));
-      cuopt_expects(var_ub[i] > f_t(0),
+      cuopt_expects(var_ub[i] >= f_t(0),
                     error_type_t::ValidationError,
-                    "Semi-continuous variable must have a strictly positive upper bound, but has "
+                    "Semi-continuous variable must have a non-negative upper bound, but has "
                     "upper bound %g.",
                     static_cast<double>(var_ub[i]));
       cuopt_expects(var_lb[i] <= var_ub[i],
