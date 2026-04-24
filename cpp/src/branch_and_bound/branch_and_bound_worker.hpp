@@ -50,6 +50,8 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<int64_t> orbital_fixing_nodes = 0;
   omp_atomic_t<int64_t> orbital_fixings_applied = 0;
   omp_atomic_t<int64_t> orbital_conflict_nodes = 0;
+  omp_atomic_t<int64_t> lexical_reduction_nodes = 0;
+  omp_atomic_t<int64_t> lexical_reduction_fixings_applied = 0;
 };
 
 template <typename i_t, typename f_t>
@@ -78,12 +80,16 @@ class branch_and_bound_worker_t {
   pcgenerator_t rng;
 
   std::unique_ptr<orbital_fixing_t<i_t, f_t>> orbital_fixing;
+  std::unique_ptr<lexical_reduction_t<i_t, f_t>> lexical_reduction;
   mip_symmetry_t<i_t, f_t>* symmetry_ptr = nullptr;
 
   void ensure_orbital_fixing()
   {
     if (orbital_fixing == nullptr && symmetry_ptr != nullptr) {
       orbital_fixing = std::make_unique<orbital_fixing_t<i_t, f_t>>(*symmetry_ptr);
+    }
+    if (lexical_reduction == nullptr && symmetry_ptr != nullptr) {
+      lexical_reduction = std::make_unique<lexical_reduction_t<i_t, f_t>>(symmetry_ptr->num_original_vars);
     }
   }
 

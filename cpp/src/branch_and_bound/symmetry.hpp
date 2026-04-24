@@ -51,6 +51,15 @@ class permutation_t {
   const std::vector<i_t>& dense_permutation() const { return p_; }
   const std::vector<i_t>& support() const { return support_; }
 
+  permutation_t<i_t> inverse() const {
+    std::vector<i_t> pinv(n_);
+    for (i_t k = 0; k < n_; k++) {
+      pinv[p_[k]] = k;
+    }
+    return permutation_t<i_t>(std::move(pinv), support_);
+  }
+
+
  private:
   i_t n_;
   std::vector<i_t> p_;
@@ -232,6 +241,8 @@ struct mip_symmetry_t {
   // Precomputed orbit representative for each original variable under the projected group.
   // orbit_rep[j] = orbit representative of variable j (for j < num_original_vars).
   std::vector<i_t> orbit_rep;
+
+  generators_t<i_t> inverse_generators;
 
 };
 
@@ -580,6 +591,107 @@ class orbital_fixing_t {
   // so children starting a new plunge can restore the parent's fixings.
   std::vector<i_t> cumulative_fix_zero_;
   std::vector<i_t> cumulative_fix_one_;
+};
+
+template <typename i_t, typename f_t>
+class lexical_reduction_t {
+ public:
+  lexical_reduction_t(i_t num_original_vars)
+    : branched_lower_(num_original_vars, 0.0), branched_upper_(num_original_vars, 1.0)
+  {
+    fixings_.reserve(num_original_vars);
+    reverse_branched_variables_.reserve(num_original_vars);
+  }
+  // Return -1 to prune the node, otherwise return the number of fixings applied.
+  i_t lexical_reduce(mip_symmetry_t<i_t, f_t>* symmetry,
+                     mip_node_t<i_t, f_t>* node_ptr,
+                     lp_problem_t<i_t, f_t>& problem)
+  {
+    reverse_branched_variables_.clear();
+    mip_node_t<i_t, f_t>* node = node_ptr;
+    while (node != nullptr && node->branch_var >= 0) {
+      i_t v = node->branch_var;
+      if (symmetry->is_binary[v] == 1) {
+        reverse_branched_variables_.push_back(v);
+        branched_lower_[v] = node->branch_var_lower;
+        branched_upper_[v] = node->branch_var_upper;
+      }
+      node               = node->parent;
+    }
+
+    fixings_.clear();
+
+    bool prune      = false;
+    i_t num_fixings = 0;
+    for (size_t k = 0; k < symmetry->inverse_generators.num_generators(); k++) {
+      const permutation_t<i_t>& perm = symmetry->inverse_generators.get_generator(k);
+      const std::vector<i_t>& p      = perm.dense_permutation();
+      const size_t reverse_size = reverse_branched_variables_.size();
+      for (size_t h = reverse_size; h > 0; --h) {
+        i_t j = reverse_branched_variables_[h-1]; // This orders the variables from the root down to the current node
+        const i_t p_j = p[j];
+        if (p_j == j) continue;
+        // Compare x[j] with x[p[j]
+        // x[j]  = 1, x[p[j]] = 1, continue to next variable
+        // x[j] = 1, x[p[j]] = 0, strict greater. stop (continue to next generator), constraint is
+        // satisfied x[j] = 1, x[p[j]] = free, stop (continue to next generator) x[j] = 0, x[p[j]]
+        // = 0, continue to next variable x[j] = 0, x[p[j]] = 1, violated. Prune the node x[j] =
+        // 0, x[p[j]] = free, fix x[p[j]] to 0, continue to the next pair x[j] = free, x[p[j]] =
+        // any, stop (continue to next generator)
+        i_t val_j = -1;
+        if (branched_lower_[j] == branched_upper_[j]) { val_j = branched_lower_[j]; }
+        i_t val_p_j = -1;
+        if (branched_lower_[p_j] == branched_upper_[p_j]) { val_p_j = branched_lower_[p_j]; }
+        if (val_j == -1) {  // free. continue to next generator
+          break;
+        }
+        if (val_j == 1 && val_p_j == 1) {
+          continue;  // continue to next variable
+        }
+        if (val_j == 1 && val_p_j == 0) {
+          break;  // stop. continue to next generator. Lex constraint is satisfied
+        }
+        if (val_j == 1 && val_p_j == -1) {
+          break;  // stop. continue to the next generator.
+        }
+        if (val_j == 0 && val_p_j == 0) {
+          continue;  // continue to next variable
+        }
+        if (val_j == 0 && val_p_j == 1) {
+          prune = true;  // violated. Prune the node
+          break;
+        }
+        if (val_j == 0 && val_p_j == -1) {
+          problem.lower[p_j] = 0.0;
+          problem.upper[p_j] = 0.0;
+          branched_lower_[p_j] = 0.0;
+          branched_upper_[p_j] = 0.0;
+          fixings_.push_back(p_j);
+          num_fixings++;
+          continue;  // continue to the next pair
+        }
+      }
+      if (prune) break;
+    }
+
+    for (i_t v : reverse_branched_variables_) {
+      branched_lower_[v] = 0.0;
+      branched_upper_[v] = 1.0;
+    }
+
+    for (i_t v : fixings_) {
+      branched_lower_[v] = 0.0;
+      branched_upper_[v] = 1.0;
+    }
+
+    return prune ? -1 : num_fixings;
+  }
+
+ private:
+  std::vector<f_t> branched_lower_;
+  std::vector<f_t> branched_upper_;
+  std::vector<i_t> fixings_;
+  std::vector<i_t> reverse_branched_variables_;
 };
 
 template <typename i_t, typename f_t>
@@ -1013,6 +1125,10 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   result->orbit_rep.resize(num_original_vars);
   for (i_t j = 0; j < num_original_vars; j++) {
     result->orbit_rep[j] = orb.find_orbit(j);
+  }
+
+  for (size_t i = 0; i < result->generators.num_generators(); i++) {
+    result->inverse_generators.add_generator(result->generators.get_generator(i).inverse());
   }
 
   return result;

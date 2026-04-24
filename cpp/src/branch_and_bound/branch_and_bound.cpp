@@ -741,6 +741,11 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
                          (long long)exploration_stats_.orbital_fixings_applied.load(),
                          (long long)exploration_stats_.orbital_conflict_nodes.load());
   }
+  if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
+    settings_.log.printf("Lexical reduction applied at %lld nodes, %lld total variable fixings\n",
+                         (long long)exploration_stats_.lexical_reduction_nodes.load(),
+                         (long long)exploration_stats_.lexical_reduction_fixings_applied.load());
+  }
   settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
                        gap,
                        obj,
@@ -1421,40 +1426,53 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
       of->propagate_cumulative_fixings(node_ptr);
     }
 
-    i_t node_iter     = 0;
-    f_t lp_start_time = tic();
-
-    lp_status = dual_phase2_with_advanced_basis(2,
-                                                0,
-                                                worker->recompute_basis,
-                                                lp_start_time,
-                                                worker->leaf_problem,
-                                                lp_settings,
-                                                leaf_vstatus,
-                                                worker->basis_factors,
-                                                worker->basic_list,
-                                                worker->nonbasic_list,
-                                                worker->leaf_solution,
-                                                node_iter,
-                                                worker->leaf_edge_norms);
-
-    if (lp_status == dual::status_t::NUMERICAL) {
-      log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
-      lp_status_t second_status = solve_linear_program_with_advanced_basis(worker->leaf_problem,
-                                                                           lp_start_time,
-                                                                           lp_settings,
-                                                                           worker->leaf_solution,
-                                                                           worker->basis_factors,
-                                                                           worker->basic_list,
-                                                                           worker->nonbasic_list,
-                                                                           leaf_vstatus,
-                                                                           worker->leaf_edge_norms);
-
-      lp_status = convert_lp_status_to_dual_status(second_status);
+    if (settings_.symmetry == 2 && worker->lexical_reduction != nullptr) {
+      i_t lexical_reductions_info =
+        worker->lexical_reduction->lexical_reduce(symmetry_, node_ptr, worker->leaf_problem);
+      if (lexical_reductions_info > 0) {
+        stats.lexical_reduction_nodes++;
+        stats.lexical_reduction_fixings_applied += lexical_reductions_info;
+      }
+      if (lexical_reductions_info == -1) { feasible = false; }
     }
 
-    stats.total_lp_solve_time += toc(lp_start_time);
-    stats.total_lp_iters += node_iter;
+    if (feasible) {
+      i_t node_iter     = 0;
+      f_t lp_start_time = tic();
+
+      lp_status = dual_phase2_with_advanced_basis(2,
+                                                  0,
+                                                  worker->recompute_basis,
+                                                  lp_start_time,
+                                                  worker->leaf_problem,
+                                                  lp_settings,
+                                                  leaf_vstatus,
+                                                  worker->basis_factors,
+                                                  worker->basic_list,
+                                                  worker->nonbasic_list,
+                                                  worker->leaf_solution,
+                                                  node_iter,
+                                                  worker->leaf_edge_norms);
+
+      if (lp_status == dual::status_t::NUMERICAL) {
+        log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+        lp_status_t second_status =
+          solve_linear_program_with_advanced_basis(worker->leaf_problem,
+                                                   lp_start_time,
+                                                   lp_settings,
+                                                   worker->leaf_solution,
+                                                   worker->basis_factors,
+                                                   worker->basic_list,
+                                                   worker->nonbasic_list,
+                                                   leaf_vstatus,
+                                                   worker->leaf_edge_norms);
+
+        lp_status = convert_lp_status_to_dual_status(second_status);
+      }
+
+      stats.total_lp_solve_time += toc(lp_start_time);
+      stats.total_lp_iters += node_iter;
+    }
   }
 
 #ifdef LOG_NODE_SIMPLEX
