@@ -24,11 +24,11 @@ cuOpt Examples and Tutorials Videos
 ------------------------------------------------------------------------------------------------------------------------
 Please note that you need to choose a `Runtime` as `GPU` in order to run the notebooks.
 
-`File a Bug <https://github.com/NVIDIA/cuopt/issues>`_
------------------------------------------------------------------
+`File a Bug <https://github.com/NVIDIA/cuopt/issues/new?template=bug_report.md>`_
+---------------------------------------------------------------------------------
 
-`Ask questions on GitHub Discussions <https://github.com/NVIDIA/cuopt/discussions>`_
-------------------------------------------------------------------------------------
+`Ask a Question <https://github.com/NVIDIA/cuopt/issues/new?template=submit-question.md>`_
+------------------------------------------------------------------------------------------
 
 `Blogs <https://developer.nvidia.com/blog/recent-posts/?products=cuOpt>`_
 ----------------------------------------------------------------------------
