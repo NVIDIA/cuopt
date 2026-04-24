@@ -292,14 +292,14 @@ void run_single_file_mp(std::string file_path,
   exit(sol_found);
 }
 
-void bind_process_to_cpu_partition(int gpu_id, int n_gpus)
+int bind_process_to_cpu_partition(int gpu_id, int n_gpus)
 {
   cpu_set_t parent_mask;
   CPU_ZERO(&parent_mask);
 
   if (sched_getaffinity(0, sizeof(parent_mask), &parent_mask) != 0) {
     perror("sched_getaffinity");
-    return;
+    return -1;
   }
 
   std::vector<int> visible_cpus;
@@ -320,6 +320,7 @@ void bind_process_to_cpu_partition(int gpu_id, int n_gpus)
   }
 
   if (sched_setaffinity(0, sizeof(child_mask), &child_mask) != 0) { perror("sched_setaffinity"); }
+  return cpus_per_gpu;
 }
 
 void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
@@ -446,11 +447,6 @@ int main(int argc, char* argv[])
   int reliability_branching = program.get<int>("--reliability-branching");
   bool deterministic        = program.get<bool>("--determinism");
 
-  if (num_cpu_threads < 0) {
-    num_cpu_threads = omp_get_max_threads() / n_gpus;
-    num_cpu_threads = std::max(num_cpu_threads, 1);
-  }
-
   if (program.is_used("--out-dir")) {
     out_dir     = program.get<std::string>("--out-dir");
     result_file = out_dir + "/final_result.csv";
@@ -525,7 +521,9 @@ int main(int argc, char* argv[])
           }
           if (sys_pid == 0) {
             RAFT_CUDA_TRY(cudaSetDevice(gpu_id));
-            bind_process_to_cpu_partition(gpu_id, n_gpus);
+            int assigned_cpus = bind_process_to_cpu_partition(gpu_id, n_gpus);
+            omp_set_num_threads(assigned_cpus);
+            num_cpu_threads = assigned_cpus;
             run_single_file_mp(file_name,
                                gpu_id,
                                batch_num,
