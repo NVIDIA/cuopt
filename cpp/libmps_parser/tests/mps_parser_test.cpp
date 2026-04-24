@@ -454,6 +454,29 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
   }
 }
 
+TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
+{
+  auto mps              = cuopt::test::inline_mps::parse_inline_mps("sc_missing_lower",
+                                                       cuopt::test::inline_mps::sc_lb_zero_mps);
+  const auto& var_types = mps.get_variable_types();
+  const auto& lower     = mps.get_variable_lower_bounds();
+  const auto& upper     = mps.get_variable_upper_bounds();
+
+  ASSERT_EQ(2, static_cast<int>(var_types.size()));
+  EXPECT_EQ('S', var_types[0]);
+  ASSERT_EQ(2, static_cast<int>(lower.size()));
+  ASSERT_EQ(2, static_cast<int>(upper.size()));
+  EXPECT_DOUBLE_EQ(0.0, lower[0]);
+  EXPECT_DOUBLE_EQ(10.0, upper[0]);
+}
+
+TEST(mps_bounds, semi_continuous_missing_upper_rejected)
+{
+  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(
+                 "sc_missing_upper", cuopt::test::inline_mps::sc_missing_upper_mps),
+               std::logic_error);
+}
+
 TEST(mps_ranges, fixed_ranges)
 {
   std::string file = "linear_programming/good-mps-fixed-ranges.mps";

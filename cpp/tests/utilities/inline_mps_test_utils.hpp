@@ -92,6 +92,21 @@ BOUNDS
 ENDATA
 )";
 
+static inline const char sc_missing_upper_mps[] = R"(NAME sc_missing_upper
+ROWS
+ N  OBJ
+ G  cover
+COLUMNS
+    x         OBJ       3
+    x         cover     1
+RHS
+    RHS1      cover     4
+BOUNDS
+ LO BND1      x         2
+ SC BND1      x
+ENDATA
+)";
+
 inline cuopt::mps_parser::mps_data_model_t<int, double> parse_inline_mps(
   const std::string& name, const std::string& mps_text)
 {

@@ -1435,19 +1435,23 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
     case SemiContinuousVariable:
       // SC bound type: value is the upper bound U.
       if (fixed_mps_format) {
-        const auto maybe_value =
-          start == std::string_view::npos ? std::string_view{} : trim(line.substr(start, 12));
-        variable_upper_bounds[var_id] = maybe_value.empty() ? +std::numeric_limits<f_t>::infinity()
-                                                            : get_numerical_bound(line, start);
+        const auto maybe_value = start == std::string_view::npos || start >= line.size()
+                                   ? std::string_view{}
+                                   : trim(line.substr(start, 12));
+        mps_parser_expects(!maybe_value.empty(),
+                           error_type_t::ValidationError,
+                           "SC bound requires an upper bound value! Line=%s",
+                           std::string(line).c_str());
+        variable_upper_bounds[var_id] = get_numerical_bound(line, start);
       } else {
-        const auto maybe_value =
-          start == std::string_view::npos ? std::string_view{} : trim(line.substr(start));
-        if (!maybe_value.empty()) {
-          std::stringstream ss{std::string(maybe_value)};
-          ss >> variable_upper_bounds[var_id];
-        } else {
-          variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
-        }
+        const auto maybe_value = start == std::string_view::npos || start >= line.size()
+                                   ? std::string_view{}
+                                   : trim(line.substr(start));
+        mps_parser_expects(!maybe_value.empty(),
+                           error_type_t::ValidationError,
+                           "SC bound requires an upper bound value! Line=%s",
+                           std::string(line).c_str());
+        variable_upper_bounds[var_id] = get_numerical_bound(line, start);
       }
       var_types[var_id] = 'S';
       break;
