@@ -147,36 +147,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 
   // ------- Objective coefficients scaling -------
 
-  // If climbers have different objective coefficients, we first compute the average objective coefficients for each variable
-  // Then compute the weighted L2 norm of the average objective coefficients.
-  if (op_problem_scaled_.objective_coefficients.size() > static_cast<size_t>(primal_size_h_))
-  {
-    cuopt_assert(op_problem_scaled_.objective_coefficients.size() > 0, "Objective coefficients size must be greater than 0");
-    cuopt_assert(op_problem_scaled_.objective_coefficients.size() % primal_size_h_ == 0, "Objective coefficients size must be divisible by primal size");
-    // Compute the average objective coefficients for each variable
-    rmm::device_uvector<f_t> average_objective_coefficients(primal_size_h_, stream_view_);
-    segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
-    segmented_sum_handler.segmented_sum_helper(op_problem_scaled_.objective_coefficients.data(),
-                                               average_objective_coefficients.data(),
-                                               (i_t)op_problem_scaled_.objective_coefficients.size() / primal_size_h_,
-                                               primal_size_h_);
-                                               const f_t inv_bs = f_t(1.0) / static_cast<f_t>(op_problem_scaled_.objective_coefficients.size() / primal_size_h_);                                     
-                                               cub::DeviceTransform::Transform(                                                                                                                       
-                                                   average_objective_coefficients.data(),
-                                                   average_objective_coefficients.data(),                                                                                                             
-                                                   primal_size_h_,                                       
-                                                   [inv_bs] __device__(f_t x) { return x * inv_bs; },                                                                                                 
-                                                   stream_view_);                                                                                                                                                                                  
-    detail::my_l2_weighted_norm<i_t, f_t>(average_objective_coefficients,
-      hyper_params_.initial_primal_weight_c_scaling,
-      objective_rescaling_,
-      stream_view_);                                        
-  } else {
-      detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
+  // If climbers have different objective coefficients, we just compute the norm with the first climber
+  const i_t n_variables = op_problem_scaled_.n_variables;
+  detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients.data(),
+  n_variables,
                                             hyper_params_.initial_primal_weight_c_scaling,
                                             objective_rescaling_,
                                             stream_view_);
-   }
 
   // sqrt already applied
   h_objective_rescaling = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));

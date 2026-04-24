@@ -569,7 +569,8 @@ void inline my_l2_norm(const rmm::device_uvector<f_t>& input_vector,
 }
 
 template <typename i_t, typename f_t>
-void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
+void inline my_l2_weighted_norm(const f_t* input_vector,
+                                size_t size,
                                 f_t weight,
                                 rmm::device_scalar<f_t>& result,
                                 rmm::cuda_stream_view stream)
@@ -577,8 +578,8 @@ void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
   auto fin_op  = [] __device__(f_t in) { return raft::sqrt(in); };
   auto main_op = [weight] __device__(f_t in, i_t _) { return in * in * weight; };
   raft::linalg::reduce<true, true, f_t, f_t, i_t>(result.data(),
-                                                  input_vector.data(),
-                                                  (i_t)input_vector.size(),
+                                                  input_vector,
+                                                  (i_t)size,
                                                   1,
                                                   f_t(0.0),
                                                   stream,
@@ -586,6 +587,15 @@ void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
                                                   main_op,
                                                   raft::Sum<f_t>(),
                                                   fin_op);
+}
+
+template <typename i_t, typename f_t>
+void inline my_l2_weighted_norm(rmm::device_uvector<f_t>& input_vector,
+                                f_t weight,
+                                rmm::device_scalar<f_t>& result,
+                                rmm::cuda_stream_view stream)
+{
+  my_l2_weighted_norm<i_t, f_t>(input_vector.data(), input_vector.size(), weight, result, stream);
 }
 
 template <typename f_t>
