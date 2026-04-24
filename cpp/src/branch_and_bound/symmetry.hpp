@@ -631,6 +631,7 @@ class lexical_reduction_t {
         i_t j = reverse_branched_variables_[h-1]; // This orders the variables from the root down to the current node
         const i_t p_j = p[j];
         if (p_j == j) continue;
+        // clang-format off
         // Compare x[j] with x[p[j]
         // x[j] = 1, x[p[j]] = 1, continue to next variable
         // x[j] = 1, x[p[j]] = 0, strict greater. stop (continue to next generator), constraint is satisfied
@@ -639,6 +640,7 @@ class lexical_reduction_t {
         // x[j] = 0, x[p[j]] = 1, violated. Prune the node
         // x[j] = 0, x[p[j]] = free, fix x[p[j]] to 0, continue to the next variable
         // x[j] = free, x[p[j]] = any, stop (continue to next generator)
+        // clang-format on
         i_t val_j = -1;
         if (branched_lower_[j] == branched_upper_[j]) { val_j = branched_lower_[j]; }
         i_t val_p_j = -1;
