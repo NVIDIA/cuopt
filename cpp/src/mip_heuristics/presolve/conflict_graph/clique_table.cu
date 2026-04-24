@@ -242,47 +242,35 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
       to_delete[clique_idx] = true;
     }
   }
+  std::vector<bool> addtl_to_delete(clique_table.addtl_cliques.size(), false);
   for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
     const auto& addtl_clique   = clique_table.addtl_cliques[addtl_c];
     const auto base_clique_idx = static_cast<size_t>(addtl_clique.clique_idx);
     cuopt_assert(base_clique_idx < to_delete.size(),
                  "Additional clique points to invalid base clique index");
-    // Remove additional cliques whose base clique is scheduled for deletion.
-    if (to_delete[base_clique_idx]) {
-      // Materialize conflicts represented by:
-      //   addtl_clique.vertex_idx + first[base_clique_idx][start_pos_on_clique:]
-      // before deleting both the additional and base clique entries.
-      for (size_t i = addtl_clique.start_pos_on_clique;
-           i < clique_table.first[base_clique_idx].size();
-           i++) {
-        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
-          addtl_clique.vertex_idx);
-        clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
-          clique_table.first[base_clique_idx][i]);
-      }
-      clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
-      addtl_c--;
-      num_removed_addtl++;
-      continue;
-    }
-    i_t size_of_clique =
+    const bool drop_because_base = to_delete[base_clique_idx];
+    const i_t extended_size =
       clique_table.first[base_clique_idx].size() - addtl_clique.start_pos_on_clique + 1;
-    if (size_of_clique < clique_table.min_clique_size) {
-      // the items from first clique are already added to the adjlist
-      // only add the items that are coming from the new var in the additional clique
-      for (size_t i = addtl_clique.start_pos_on_clique;
-           i < clique_table.first[base_clique_idx].size();
-           i++) {
-        // insert conflicts both way
-        clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
-          addtl_clique.vertex_idx);
-        clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
-          clique_table.first[base_clique_idx][i]);
-      }
-      clique_table.addtl_cliques.erase(clique_table.addtl_cliques.begin() + addtl_c);
-      addtl_c--;
-      num_removed_addtl++;
+    const bool drop_because_small = extended_size < clique_table.min_clique_size;
+    if (!drop_because_base && !drop_because_small) { continue; }
+
+    for (size_t i = addtl_clique.start_pos_on_clique;
+         i < clique_table.first[base_clique_idx].size();
+         i++) {
+      clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
+        addtl_clique.vertex_idx);
+      clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
+        clique_table.first[base_clique_idx][i]);
     }
+    addtl_to_delete[addtl_c] = true;
+    num_removed_addtl++;
+  }
+  {
+    size_t old_addtl_idx = 0;
+    auto addtl_it        = std::remove_if(clique_table.addtl_cliques.begin(),
+                                   clique_table.addtl_cliques.end(),
+                                   [&](const auto&) { return addtl_to_delete[old_addtl_idx++]; });
+    clique_table.addtl_cliques.erase(addtl_it, clique_table.addtl_cliques.end());
   }
   CUOPT_LOG_DEBUG("Number of removed cliques from first: %d, additional: %d",
                   num_removed_first,
@@ -342,8 +330,11 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
     }
   }
 
-  for (const auto& adj_vertex : adj_list_small_cliques[var_idx]) {
-    adj_set.insert(adj_vertex);
+  {
+    auto it = adj_list_small_cliques.find(var_idx);
+    if (it != adj_list_small_cliques.end()) {
+      adj_set.insert(it->second.begin(), it->second.end());
+    }
   }
   // Add the complement of var_idx to the adjacency set
   i_t complement_idx = (var_idx >= n_variables) ? (var_idx - n_variables) : (var_idx + n_variables);
