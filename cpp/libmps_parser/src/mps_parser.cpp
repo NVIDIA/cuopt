@@ -1434,26 +1434,13 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       break;
     case SemiContinuousVariable:
       // SC bound type: value is the upper bound U.
-      if (fixed_mps_format) {
-        const auto maybe_value = start == std::string_view::npos || start >= line.size()
-                                   ? std::string_view{}
-                                   : trim(line.substr(start, 12));
-        mps_parser_expects(!maybe_value.empty(),
-                           error_type_t::ValidationError,
-                           "SC bound requires an upper bound value! Line=%s",
-                           std::string(line).c_str());
-        variable_upper_bounds[var_id] = get_numerical_bound(line, start);
-      } else {
-        const auto maybe_value = start == std::string_view::npos || start >= line.size()
-                                   ? std::string_view{}
-                                   : trim(line.substr(start));
-        mps_parser_expects(!maybe_value.empty(),
-                           error_type_t::ValidationError,
-                           "SC bound requires an upper bound value! Line=%s",
-                           std::string(line).c_str());
-        variable_upper_bounds[var_id] = get_numerical_bound(line, start);
-      }
-      var_types[var_id] = 'S';
+      mps_parser_expects(start >= 0 && static_cast<size_t>(start) < line.size() &&
+                           !trim(line.substr(static_cast<size_t>(start))).empty(),
+                         error_type_t::ValidationError,
+                         "SC bound requires an upper bound value! Line=%s",
+                         std::string(line).c_str());
+      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+      var_types[var_id]             = 'S';
       break;
     default:
       mps_parser_expects(false,
