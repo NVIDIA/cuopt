@@ -23,8 +23,6 @@
 #include <rmm/mr/pool_memory_resource.hpp>
 #include <rmm/mr/tracking_resource_adaptor.hpp>
 
-#include <rmm/mr/owning_wrapper.hpp>
-
 #include <fcntl.h>
 #include <omp.h>
 #include <sys/file.h>
@@ -85,7 +83,7 @@ void write_to_output_file(const std::string& out_dir,
   }
 }
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
 void read_single_solution_from_path(const std::string& path,
                                     const std::vector<std::string>& var_names,
@@ -274,7 +272,7 @@ void run_single_file_mp(std::string file_path,
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
@@ -292,6 +290,36 @@ void run_single_file_mp(std::string file_path,
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
+}
+
+void bind_process_to_cpu_partition(int gpu_id, int n_gpus)
+{
+  cpu_set_t parent_mask;
+  CPU_ZERO(&parent_mask);
+
+  if (sched_getaffinity(0, sizeof(parent_mask), &parent_mask) != 0) {
+    perror("sched_getaffinity");
+    return;
+  }
+
+  std::vector<int> visible_cpus;
+  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+    if (CPU_ISSET(cpu, &parent_mask)) { visible_cpus.push_back(cpu); }
+  }
+
+  int cpus_per_gpu = std::max(1, static_cast<int>(visible_cpus.size()) / n_gpus);
+  int start        = gpu_id * cpus_per_gpu;
+  int end          = std::min(start + cpus_per_gpu, static_cast<int>(visible_cpus.size()));
+
+  cpu_set_t child_mask;
+  CPU_ZERO(&child_mask);
+
+  for (int i = start; i < end; ++i) {
+    CPU_SET(visible_cpus[i], &child_mask);
+    std::cout << "Binding process to CPU " << visible_cpus[i] << std::endl;
+  }
+
+  if (sched_setaffinity(0, sizeof(child_mask), &child_mask) != 0) { perror("sched_setaffinity"); }
 }
 
 void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
@@ -420,12 +448,6 @@ int main(int argc, char* argv[])
 
   if (num_cpu_threads < 0) {
     num_cpu_threads = omp_get_max_threads() / n_gpus;
-    // std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
-    // if (smt_file.is_open()) {
-    //   int smt_active = 0;
-    //   smt_file >> smt_active;
-    //   if (smt_active) { num_cpu_threads /= 2; }
-    // }
     num_cpu_threads = std::max(num_cpu_threads, 1);
   }
 
@@ -503,6 +525,7 @@ int main(int argc, char* argv[])
           }
           if (sys_pid == 0) {
             RAFT_CUDA_TRY(cudaSetDevice(gpu_id));
+            bind_process_to_cpu_partition(gpu_id, n_gpus);
             run_single_file_mp(file_name,
                                gpu_id,
                                batch_num,
@@ -535,31 +558,36 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
+    auto run_single      = [&]() {
+      run_single_file(path,
+                      0,
+                      0,
+                      n_gpus,
+                      out_dir,
+                      initial_solution_file,
+                      heuristics_only,
+                      num_cpu_threads,
+                      write_log_file,
+                      log_to_console,
+                      reliability_branching,
+                      time_limit,
+                      work_limit,
+                      deterministic);
+    };
     if (memory_limit > 0) {
       auto limiting_adaptor =
-        rmm::mr::limiting_resource_adaptor(memory_resource.get(), memory_limit * 1024ULL * 1024ULL);
-      rmm::mr::set_current_device_resource(&limiting_adaptor);
+        rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
+      rmm::mr::set_current_device_resource(limiting_adaptor);
+      run_single();
     } else if (track_allocations) {
-      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource.get(),
+      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
-      rmm::mr::set_current_device_resource(&tracking_adaptor);
+      rmm::mr::set_current_device_resource(tracking_adaptor);
+      run_single();
     } else {
-      rmm::mr::set_current_device_resource(memory_resource.get());
+      rmm::mr::set_current_device_resource(memory_resource);
+      run_single();
     }
-    run_single_file(path,
-                    0,
-                    0,
-                    n_gpus,
-                    out_dir,
-                    initial_solution_file,
-                    heuristics_only,
-                    num_cpu_threads,
-                    write_log_file,
-                    log_to_console,
-                    reliability_branching,
-                    time_limit,
-                    work_limit,
-                    deterministic);
   }
 
   return 0;
