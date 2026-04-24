@@ -81,43 +81,18 @@ reviews:
 
     - path: "cpp/src/**/*.{cu,cuh}"
       instructions: |
-        CUDA source files. Apply cuOpt's RAPIDS idioms:
-        - CUDA errors must be checked with RAFT_CUDA_TRY (251 existing uses); flag bare cuda* calls
-        - Prefer rmm::device_uvector / rmm::device_buffer over raw cudaMalloc/cudaFree
-          (only ~3 files use raw allocators legitimately — pinned-host allocators)
-        - Streams should come from raft::handle_t::get_stream(); flag ad-hoc cudaStreamCreate
-          unless no handle is in scope (and then it must be paired with cudaStreamDestroy)
-        - Prefer thrust::/cuda::std:: (CCCL) over hand-rolled reductions, scans, sorts, transforms
-        - Watch for default-stream reliance in code that must run concurrently
-
-        DO NOT comment on formatting (clang-format handles it) or exception use
-        (cuOpt uses exceptions as its canonical error mechanism; this deviates
-        from Google C++ intentionally).
+        CUDA source files. Apply "CUDA / GPU — cuOpt idioms" from
+        .github/.coderabbit_review_guide.md. Do NOT comment on formatting
+        (clang-format handles it) or exception use (cuOpt uses exceptions
+        as its canonical error mechanism).
 
     - path: "cpp/src/**/*.{cpp,hpp,h}"
       instructions: |
-        C++ host code. cuOpt has its own established style — match nearby code.
-        Conventions (do NOT comment on these as if they were issues):
-          - snake_case for functions/variables; snake_case_t with _t suffix
-            for types/classes/enums (e.g. logic_error, error_type_t)
-          - Trailing underscore on private members (error_type_)
-          - Project macros: CUOPT_ prefix, SCREAMING_SNAKE_CASE
-          - Exceptions are used: throw + cuopt_expects / CUOPT_EXPECTS from
-            cpp/include/cuopt/error.hpp
-          - Column limit is 100; formatting handled by clang-format
-
-        Cite the Google C++ Style Guide ONLY for these named language-level
-        practices that cuOpt actually follows:
-          - Header self-containment, Include What You Use, avoid fwd decls
-          - explicit on single-arg constructors
-          - override/final on virtual methods
-          - std::unique_ptr for owning pointers; no raw owning pointers
-          - const/constexpr correctness
-          - C++-style casts; avoid dynamic_cast (prefer virtual dispatch)
-          - No `using namespace` at file scope
-
-        Do NOT cite Google for naming, exception use, or column limit —
-        cuOpt's convention wins there. Do not flag formatting.
+        C++ host code. Follow "C++ — cuOpt conventions" and "C++ —
+        language-level practices we follow from Google C++" in
+        .github/.coderabbit_review_guide.md. Match nearby code; cuOpt's
+        naming, exception use, and column limit override Google where they
+        disagree. Do not flag formatting.
 
     - path: "cpp/src/grpc/**"
       instructions: |
