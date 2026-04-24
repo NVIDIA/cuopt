@@ -170,6 +170,15 @@ void pdhg_solver_t<i_t, f_t>::swap_context(
   matrix_swap(reflected_dual_, dual_size_h_, swap_pairs);
   matrix_swap(dual_slack_, primal_size_h_, swap_pairs);
   current_saddle_point_state_.swap_context(swap_pairs);
+  // Swap per-climber scaled problem fields (objectives, constraint bounds) — all in COL-major
+  // during the convergence block when swap_context is invoked.
+  if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
+    matrix_swap(problem_ptr->objective_coefficients, primal_size_h_, swap_pairs);
+  }
+  if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
+    matrix_swap(problem_ptr->constraint_lower_bounds, dual_size_h_, swap_pairs);
+    matrix_swap(problem_ptr->constraint_upper_bounds, dual_size_h_, swap_pairs);
+  }
   if (new_bounds_idx_.size() != 0) {
     const auto [grid_size, block_size] =
       kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
@@ -210,6 +219,13 @@ void pdhg_solver_t<i_t, f_t>::resize_context(i_t new_size)
     new_bounds_idx_.resize(new_size, stream_view_);
     new_bounds_lower_.resize(new_size, stream_view_);
     new_bounds_upper_.resize(new_size, stream_view_);
+  }
+  if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
+    problem_ptr->objective_coefficients.resize(new_size * primal_size_h_, stream_view_);
+  }
+  if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
+    problem_ptr->constraint_lower_bounds.resize(new_size * dual_size_h_, stream_view_);
+    problem_ptr->constraint_upper_bounds.resize(new_size * dual_size_h_, stream_view_);
   }
   batch_size_divisor_ = cuda::fast_mod_div<size_t>(new_size);
 }
@@ -600,7 +616,7 @@ template <typename f_t>
 struct primal_reflected_major_projection_bulk_op {
   using f_t2 = typename type_2<f_t>::type;
   const f_t* primal_solution;
-  const f_t* objective_coefficients;
+  const f_t* objective_coefficients;  // ROW-major when per_climber, else single-problem
   const f_t* current_AtY;
   const f_t2* variable_bounds;
   const f_t* primal_step_size;
@@ -608,6 +624,7 @@ struct primal_reflected_major_projection_bulk_op {
   f_t* dual_slack;
   f_t* reflected_primal;
   cuda::fast_mod_div<size_t> batch_size;
+  bool per_climber_objectives;
 
   HDI void operator()(size_t idx)
   {
@@ -616,7 +633,8 @@ struct primal_reflected_major_projection_bulk_op {
 
     const f_t step_size  = primal_step_size[batch_idx];
     const f_t primal_val = primal_solution[idx];
-    const f_t obj_coef   = objective_coefficients[var_idx];
+    const f_t obj_coef   = per_climber_objectives ? objective_coefficients[idx]
+                                                  : objective_coefficients[var_idx];
     const f_t aty_val    = current_AtY[idx];
 
     cuopt_assert(!isnan(step_size), "primal_step_size is NaN in primal_reflected_major_projection");
@@ -644,12 +662,13 @@ template <typename f_t>
 struct dual_reflected_major_projection_bulk_op {
   const f_t* dual_solution;
   const f_t* dual_gradient;
-  const f_t* constraint_lower_bounds;
+  const f_t* constraint_lower_bounds;  // ROW-major when per_climber, else single-problem
   const f_t* constraint_upper_bounds;
   const f_t* dual_step_size;
   f_t* potential_next_dual;
   f_t* reflected_dual;
   cuda::fast_mod_div<size_t> batch_size;
+  bool per_climber_constraints;
 
   HDI void operator()(size_t idx)
   {
@@ -666,10 +685,11 @@ struct dual_reflected_major_projection_bulk_op {
     cuopt_assert(!isnan(current_dual), "dual_solution is NaN in dual_reflected_major_projection");
     cuopt_assert(!isnan(Ax), "dual_gradient is NaN in dual_reflected_major_projection");
 
-    const f_t tmp = current_dual / step_size - Ax;
+    const int bound_idx = per_climber_constraints ? idx : constraint_idx;
+    const f_t tmp       = current_dual / step_size - Ax;
     const f_t tmp_proj =
-      cuda::std::max<f_t>(-constraint_upper_bounds[constraint_idx],
-                          cuda::std::min<f_t>(tmp, -constraint_lower_bounds[constraint_idx]));
+      cuda::std::max<f_t>(-constraint_upper_bounds[bound_idx],
+                          cuda::std::min<f_t>(tmp, -constraint_lower_bounds[bound_idx]));
     const f_t next_dual = (tmp - tmp_proj) * step_size;
 
     potential_next_dual[idx] = next_dual;
@@ -684,12 +704,13 @@ template <typename f_t>
 struct primal_reflected_projection_bulk_op {
   using f_t2 = typename type_2<f_t>::type;
   const f_t* primal_solution;
-  const f_t* objective_coefficients;
+  const f_t* objective_coefficients;  // ROW-major when per_climber, else single-problem
   const f_t* current_AtY;
   const f_t2* variable_bounds;
   const f_t* primal_step_size;
   f_t* reflected_primal;
   int batch_size;
+  bool per_climber_objectives;
 
   HDI void operator()(size_t idx)
   {
@@ -698,7 +719,8 @@ struct primal_reflected_projection_bulk_op {
 
     const f_t step_size  = primal_step_size[batch_idx];
     const f_t primal_val = primal_solution[idx];
-    const f_t obj_coef   = objective_coefficients[var_idx];
+    const f_t obj_coef   = per_climber_objectives ? objective_coefficients[idx]
+                                                  : objective_coefficients[var_idx];
     const f_t aty_val    = current_AtY[idx];
 
     cuopt_assert(!isnan(step_size), "primal_step_size is NaN in primal_reflected_projection");
@@ -725,11 +747,12 @@ struct dual_reflected_projection_bulk_op {
 
   const f_t* dual_solution;
   const f_t* dual_gradient;
-  const f_t* constraint_lower_bounds;
+  const f_t* constraint_lower_bounds;  // ROW-major when per_climber, else single-problem
   const f_t* constraint_upper_bounds;
   const f_t* dual_step_size;
   f_t* reflected_dual;
   int batch_size;
+  bool per_climber_constraints;
 
   HDI void operator()(size_t idx)
   {
@@ -745,10 +768,11 @@ struct dual_reflected_projection_bulk_op {
     cuopt_assert(!isinf(step_size), "dual_step_size is Inf in dual_reflected_projection");
     cuopt_assert(step_size > f_t(0.0), "dual_step_size must be > 0");
 
-    const f_t tmp = current_dual / step_size - dual_gradient[idx];
+    const int bound_idx = per_climber_constraints ? idx : constraint_idx;
+    const f_t tmp       = current_dual / step_size - dual_gradient[idx];
     const f_t tmp_proj =
-      cuda::std::max<f_t>(-constraint_upper_bounds[constraint_idx],
-                          cuda::std::min<f_t>(tmp, -constraint_lower_bounds[constraint_idx]));
+      cuda::std::max<f_t>(-constraint_upper_bounds[bound_idx],
+                          cuda::std::min<f_t>(tmp, -constraint_lower_bounds[bound_idx]));
     const f_t next_dual = (tmp - tmp_proj) * step_size;
 
     reflected_dual[idx] = f_t(2.0) * next_dual - current_dual;
@@ -771,6 +795,7 @@ struct refine_primal_projection_major_bulk_op {
   raft::device_span<f_t> dual_slack;
   raft::device_span<f_t> reflected_primal;
   int batch_size;
+  bool per_climber_objectives;
 
   HDI void operator()(size_t climber_id)
   {
@@ -781,7 +806,7 @@ struct refine_primal_projection_major_bulk_op {
     size_t global_idx = (size_t)var_idx * batch_size + climber_id;
 
     f_t x     = current_primal[global_idx];
-    f_t c     = objective[var_idx];
+    f_t c     = per_climber_objectives ? objective[global_idx] : objective[var_idx];
     f_t y_aty = Aty[global_idx];
     f_t tau   = primal_step_size[climber_id];
 
@@ -805,6 +830,7 @@ struct refine_primal_projection_bulk_op {
   raft::device_span<const f_t> primal_step_size;
   raft::device_span<f_t> reflected_primal;
   int batch_size;
+  bool per_climber_objectives;
 
   HDI void operator()(size_t climber_id)
   {
@@ -815,7 +841,7 @@ struct refine_primal_projection_bulk_op {
     size_t global_idx = (size_t)var_idx * batch_size + climber_id;
 
     f_t x     = current_primal[global_idx];
-    f_t c     = objective[var_idx];
+    f_t c     = per_climber_objectives ? objective[global_idx] : objective[var_idx];
     f_t y_aty = Aty[global_idx];
     f_t tau   = primal_step_size[climber_id];
 
@@ -909,7 +935,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                potential_next_primal_solution_.data(),
                                dual_slack_.data(),
                                reflected_primal_.data(),
-                               batch_size_divisor_},
+                               batch_size_divisor_,
+                               problem_ptr->objective_coefficients.size() >
+                                 static_cast<size_t>(primal_size_h_)},
                              stream_view_.value());
       }
       if (new_bounds_idx_.size() != 0) {
@@ -936,7 +964,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                make_span(potential_next_primal_solution_),
                                make_span(dual_slack_),
                                make_span(reflected_primal_),
-                               (int)climber_strategies_.size()},
+                               (int)climber_strategies_.size(),
+                               problem_ptr->objective_coefficients.size() >
+                                 static_cast<size_t>(primal_size_h_)},
                              stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE
@@ -968,7 +998,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                dual_step_size.data(),
                                potential_next_dual_solution_.data(),
                                reflected_dual_.data(),
-                               batch_size_divisor_},
+                               batch_size_divisor_,
+                               problem_ptr->constraint_lower_bounds.size() >
+                                 static_cast<size_t>(dual_size_h_)},
                              stream_view_.value());
       }
 
@@ -1014,7 +1046,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                problem_ptr->variable_bounds.data(),
                                primal_step_size.data(),
                                reflected_primal_.data(),
-                               (int)climber_strategies_.size()},
+                               (int)climber_strategies_.size(),
+                               problem_ptr->objective_coefficients.size() >
+                                 static_cast<size_t>(primal_size_h_)},
                              stream_view_.value());
       }
       if (new_bounds_idx_.size() != 0) {
@@ -1039,7 +1073,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                make_span(current_saddle_point_state_.get_current_AtY()),
                                make_span(primal_step_size),
                                make_span(reflected_primal_),
-                               (int)climber_strategies_.size()},
+                               (int)climber_strategies_.size(),
+                               problem_ptr->objective_coefficients.size() >
+                                 static_cast<size_t>(primal_size_h_)},
                              stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE
@@ -1075,7 +1111,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                                problem_ptr->constraint_upper_bounds.data(),
                                dual_step_size.data(),
                                reflected_dual_.data(),
-                               (int)climber_strategies_.size()},
+                               (int)climber_strategies_.size(),
+                               problem_ptr->constraint_lower_bounds.size() >
+                                 static_cast<size_t>(dual_size_h_)},
                              stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE

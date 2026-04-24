@@ -25,6 +25,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
@@ -220,6 +221,27 @@ struct power_two_func_t {
   HDI f_t operator()(f_t val) { return val * val; }
 };
 
+template <typename f_t>
+struct sqrt_func_t {
+  HDI f_t operator()(f_t val) { return raft::sqrt(val); }
+};
+
+// Per-element contribution to the sum-of-squares used to form the L2 norm of the RHS.
+// Mirrors compute_sum_bounds' main_op: add lower^2 only when finite and lower != upper,
+// and add upper^2 when finite.
+template <typename f_t>
+struct rhs_sum_of_squares_t {
+  HDI f_t operator()(const thrust::tuple<f_t, f_t>& t) const
+  {
+    const f_t lower = thrust::get<0>(t);
+    const f_t upper = thrust::get<1>(t);
+    f_t sum         = f_t(0);
+    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
+    if (isfinite(upper)) sum += upper * upper;
+    return sum;
+  }
+};
+
 template <typename i_t, typename f_t>
 void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t>& combined_bounds,
@@ -254,27 +276,19 @@ void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
 template <typename f_t>
 void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                const rmm::device_uvector<f_t>& constraint_upper_bounds,
-                               rmm::device_scalar<f_t>& out,
+                               f_t* out,
                                rmm::cuda_stream_view stream_view)
 {
   rmm::device_buffer d_temp_storage;
   size_t bytes = 0;
-  auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
-    const f_t lower = thrust::get<0>(t);
-    const f_t upper = thrust::get<1>(t);
-    f_t sum         = f_t(0);
-    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
-    if (isfinite(upper)) sum += upper * upper;
-    return sum;
-  };
   cub::DeviceReduce::TransformReduce(
     nullptr,
     bytes,
     thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
-    out.data(),
+    thrust::make_transform_output_iterator(out, sqrt_func_t<f_t>{}),
     constraint_lower_bounds.size(),
     cuda::std::plus<>{},
-    main_op,
+    rhs_sum_of_squares_t<f_t>{},
     f_t(0),
     stream_view);
 
@@ -284,18 +298,21 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
     d_temp_storage.data(),
     bytes,
     thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
-    out.data(),
+    thrust::make_transform_output_iterator(out, sqrt_func_t<f_t>{}),
     constraint_lower_bounds.size(),
     cuda::std::plus<>{},
-    main_op,
+    rhs_sum_of_squares_t<f_t>{},
     f_t(0),
     stream_view);
+}
 
-  const f_t res = std::sqrt(out.value(stream_view));
-  out.set_value_async(res, stream_view);
-
-  // Sync since we are using local variable
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+template <typename f_t>
+void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
+                               const rmm::device_uvector<f_t>& constraint_upper_bounds,
+                               rmm::device_scalar<f_t>& out,
+                               rmm::cuda_stream_view stream_view)
+{
+  compute_sum_bounds(constraint_lower_bounds, constraint_upper_bounds, out.data(), stream_view);
 }
 
 template <typename f_t>

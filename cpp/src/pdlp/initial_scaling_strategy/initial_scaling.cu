@@ -14,6 +14,7 @@
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/utils.cuh>
+#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
 
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
@@ -22,6 +23,7 @@
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
@@ -108,13 +110,19 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
     if (isfinite(upper)) sum += upper * upper;
     return sum;
   };
+
+  // ------- Constraints bounds scaling -------
+
+  // Reduce over a single problem's worth of bounds (n_constraints), not the full (possibly
+  // batch-expanded) buffer. This allows to better handle non-overlapping infinities.
+  const i_t n_constrs = op_problem_scaled_.n_constraints;
   cub::DeviceReduce::TransformReduce(
     nullptr,
     bytes,
     thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
                               op_problem_scaled_.constraint_upper_bounds.data()),
     bound_rescaling_.data(),
-    op_problem_scaled_.constraint_lower_bounds.size(),
+    n_constrs,
     cuda::std::plus<>{},
     main_op,
     f_t(0),
@@ -128,7 +136,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
     thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
                               op_problem_scaled_.constraint_upper_bounds.data()),
     bound_rescaling_.data(),
-    op_problem_scaled_.constraint_lower_bounds.size(),
+    n_constrs,
     cuda::std::plus<>{},
     main_op,
     f_t(0),
@@ -137,10 +145,38 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
   h_bound_rescaling = f_t(1.0) / (std::sqrt(bound_rescaling_.value(stream_view_)) + f_t(1.0));
   bound_rescaling_.set_value_async(h_bound_rescaling, stream_view_);
 
-  detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
-                                        hyper_params_.initial_primal_weight_c_scaling,
-                                        objective_rescaling_,
-                                        stream_view_);
+  // ------- Objective coefficients scaling -------
+
+  // If climbers have different objective coefficients, we first compute the average objective coefficients for each variable
+  // Then compute the weighted L2 norm of the average objective coefficients.
+  if (op_problem_scaled_.objective_coefficients.size() > static_cast<size_t>(primal_size_h_))
+  {
+    cuopt_assert(op_problem_scaled_.objective_coefficients.size() > 0, "Objective coefficients size must be greater than 0");
+    cuopt_assert(op_problem_scaled_.objective_coefficients.size() % primal_size_h_ == 0, "Objective coefficients size must be divisible by primal size");
+    // Compute the average objective coefficients for each variable
+    rmm::device_uvector<f_t> average_objective_coefficients(primal_size_h_, stream_view_);
+    segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
+    segmented_sum_handler.segmented_sum_helper(op_problem_scaled_.objective_coefficients.data(),
+                                               average_objective_coefficients.data(),
+                                               (i_t)op_problem_scaled_.objective_coefficients.size() / primal_size_h_,
+                                               primal_size_h_);
+                                               const f_t inv_bs = f_t(1.0) / static_cast<f_t>(op_problem_scaled_.objective_coefficients.size() / primal_size_h_);                                     
+                                               cub::DeviceTransform::Transform(                                                                                                                       
+                                                   average_objective_coefficients.data(),
+                                                   average_objective_coefficients.data(),                                                                                                             
+                                                   primal_size_h_,                                       
+                                                   [inv_bs] __device__(f_t x) { return x * inv_bs; },                                                                                                 
+                                                   stream_view_);                                                                                                                                                                                  
+    detail::my_l2_weighted_norm<i_t, f_t>(average_objective_coefficients,
+      hyper_params_.initial_primal_weight_c_scaling,
+      objective_rescaling_,
+      stream_view_);                                        
+  } else {
+      detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
+                                            hyper_params_.initial_primal_weight_c_scaling,
+                                            objective_rescaling_,
+                                            stream_view_);
+   }
 
   // sqrt already applied
   h_objective_rescaling = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));
@@ -473,18 +509,19 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       stream_view_);
   }
 
-  // TODO later batch mode: handle different constraints bounds
-  raft::linalg::eltwiseMultiply(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_lower_bounds).data(),
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
+                          problem_wrap_container(cummulative_constraint_matrix_scaling_)),
     op_problem_scaled_.constraint_lower_bounds.data(),
-    cummulative_constraint_matrix_scaling_.data(),
-    dual_size_h_,
+    op_problem_scaled_.constraint_lower_bounds.size(),
+    cuda::std::multiplies<f_t>{},
     stream_view_);
-  raft::linalg::eltwiseMultiply(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_upper_bounds).data(),
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_upper_bounds.data(),
+                          problem_wrap_container(cummulative_constraint_matrix_scaling_)),
     op_problem_scaled_.constraint_upper_bounds.data(),
-    cummulative_constraint_matrix_scaling_.data(),
-    dual_size_h_,
+    op_problem_scaled_.constraint_upper_bounds.size(),
+    cuda::std::multiplies<f_t>{},
     stream_view_);
 
   if (hyper_params_.bound_objective_rescaling && !running_mip_) {

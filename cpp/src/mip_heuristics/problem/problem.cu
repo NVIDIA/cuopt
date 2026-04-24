@@ -568,8 +568,8 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                    "A_indices must be set before calling the solver.");
     }
   }
-  cuopt_assert(objective_coefficients.size() == n_variables,
-               "objective_coefficients size mismatch");
+  cuopt_assert(objective_coefficients.size() % n_variables == 0,
+    "objective_coefficients size must be a multiple of n_variables");
 
   // Check CSR validity
   check_csr_representation(
@@ -594,8 +594,8 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 
   // Check variable bounds are set and with the correct size
   if (!empty) { cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set."); }
-  cuopt_assert(variable_bounds.size() == objective_coefficients.size(),
-               "Sizes for vectors related to the variables are not the same.");
+  cuopt_assert(objective_coefficients.size() % variable_bounds.size() == 0,
+  "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
@@ -608,9 +608,11 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   }
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert(constraint_lower_bounds.size() == (size_t)n_constraints,
-               "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert((offsets.size() - 1) == constraint_lower_bounds.size(),
+  cuopt_assert(
+    n_constraints == 0 ? constraint_lower_bounds.size() == 0
+                       : constraint_lower_bounds.size() % (size_t)n_constraints == 0,
+    "Sizes for vectors related to the constraints are not the same.");
+  cuopt_assert((offsets.size() - 1) == (size_t)n_constraints,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds

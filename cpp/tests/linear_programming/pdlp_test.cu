@@ -1342,6 +1342,379 @@ TEST(pdlp_class, more_complex_batch_different_bounds)
   }
 }
 
+TEST(pdlp_class, simple_batch_different_objectives)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_vars          = op_problem.get_n_variables();
+  const auto& original_obj  = op_problem.get_objective_coefficients();
+
+  // Create a modified objective: scale by 2.0
+  std::vector<double> modified_obj(original_obj.begin(), original_obj.end());
+  for (auto& c : modified_obj) c *= 2.0;
+
+  // Solve reference LPs individually
+  // Ref 1: original objective
+  auto ref_sol1      = solve_lp(&handle_, op_problem, solver_settings);
+  const double ref_obj1 = ref_sol1.get_additional_termination_information(0).primal_objective;
+  EXPECT_EQ((int)ref_sol1.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  // Ref 2: modified objective
+  auto op_problem_mod                          = op_problem;
+  op_problem_mod.get_objective_coefficients()  = modified_obj;
+  auto ref_sol2      = solve_lp(&handle_, op_problem_mod, solver_settings);
+  const double ref_obj2 = ref_sol2.get_additional_termination_information(0).primal_objective;
+  EXPECT_EQ((int)ref_sol2.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  // Batch solve: fixed path with per-climber objective coefficients in COL-major layout
+  // [climber0_all_vars, climber1_all_vars].
+  std::vector<double> per_climber_objectives;
+  per_climber_objectives.insert(
+    per_climber_objectives.end(), original_obj.begin(), original_obj.end());
+  per_climber_objectives.insert(
+    per_climber_objectives.end(), modified_obj.begin(), modified_obj.end());
+
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        /*batch_size=*/2,
+                                        per_climber_objectives);
+
+  EXPECT_EQ((int)batch_sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)batch_sol.get_termination_status(1), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    ref_obj1, batch_sol.get_additional_termination_information(0).primal_objective));
+  EXPECT_FALSE(is_incorrect_objective(
+    ref_obj2, batch_sol.get_additional_termination_information(1).primal_objective));
+
+  // Extract per-climber solutions and validate
+  const auto primal0 =
+    extract_subvector(batch_sol.get_primal_solution(), 0, n_vars);
+  test_objective_sanity(
+    op_problem, primal0, batch_sol.get_additional_termination_information(0).primal_objective);
+  test_constraint_sanity(
+    op_problem,
+    batch_sol.get_additional_termination_information(0),
+    primal0,
+    tolerance,
+    false);
+
+  const auto primal1 =
+    extract_subvector(batch_sol.get_primal_solution(), n_vars, n_vars);
+  test_objective_sanity(
+    op_problem_mod, primal1, batch_sol.get_additional_termination_information(1).primal_objective);
+  test_constraint_sanity(
+    op_problem_mod,
+    batch_sol.get_additional_termination_information(1),
+    primal1,
+    tolerance,
+    false);
+}
+
+TEST(pdlp_class, simple_batch_different_offsets)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  // Solve sequentially with different offsets
+  const std::vector<double> offsets = {0.0, 10.0, -5.5};
+  std::vector<double> ref_objectives;
+  for (auto off : offsets) {
+    auto op = op_problem;
+    op.set_objective_offset(off);
+    auto sol = solve_lp(&handle_, op, solver_settings);
+    ASSERT_EQ((int)sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    ref_objectives.push_back(
+      sol.get_additional_termination_information(0).primal_objective);
+  }
+
+  // Solve as batch via fixed path with per-climber objective offsets.
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        /*batch_size=*/static_cast<int>(offsets.size()),
+                                        /*per_climber_objective_coefficients=*/{},
+                                        /*per_climber_constraint_lower_bounds=*/{},
+                                        /*per_climber_constraint_upper_bounds=*/{},
+                                        /*per_climber_objective_offsets=*/offsets);
+
+  for (size_t i = 0; i < offsets.size(); ++i) {
+    EXPECT_EQ((int)batch_sol.get_termination_status(i), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_FALSE(is_incorrect_objective(
+      ref_objectives[i],
+      batch_sol.get_additional_termination_information(i).primal_objective));
+  }
+}
+
+TEST(pdlp_class, simple_batch_different_objectives_and_offsets)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_vars         = op_problem.get_n_variables();
+  const auto& original_obj = op_problem.get_objective_coefficients();
+
+  // Two climbers: (original_obj, offset=3.5) and (2x objective, offset=-7.0)
+  std::vector<double> obj_c1(original_obj.begin(), original_obj.end());
+  std::vector<double> obj_c2(original_obj.begin(), original_obj.end());
+  for (auto& c : obj_c2) c *= 2.0;
+  const std::vector<double> offsets = {3.5, -7.0};
+
+  // Solve sequentially as references
+  auto ref_op1 = op_problem;
+  ref_op1.set_objective_offset(offsets[0]);
+  auto ref_sol1 = solve_lp(&handle_, ref_op1, solver_settings);
+  ASSERT_EQ((int)ref_sol1.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  const double ref_obj1 = ref_sol1.get_additional_termination_information(0).primal_objective;
+
+  auto ref_op2                             = op_problem;
+  ref_op2.get_objective_coefficients()     = obj_c2;
+  ref_op2.set_objective_offset(offsets[1]);
+  auto ref_sol2 = solve_lp(&handle_, ref_op2, solver_settings);
+  ASSERT_EQ((int)ref_sol2.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  const double ref_obj2 = ref_sol2.get_additional_termination_information(0).primal_objective;
+
+  // Batch solve via fixed path with both per-climber objectives and offsets.
+  std::vector<double> per_climber_objectives;
+  per_climber_objectives.insert(per_climber_objectives.end(), obj_c1.begin(), obj_c1.end());
+  per_climber_objectives.insert(per_climber_objectives.end(), obj_c2.begin(), obj_c2.end());
+
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        /*batch_size=*/2,
+                                        per_climber_objectives,
+                                        /*per_climber_constraint_lower_bounds=*/{},
+                                        /*per_climber_constraint_upper_bounds=*/{},
+                                        offsets);
+
+  EXPECT_EQ((int)batch_sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)batch_sol.get_termination_status(1), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_FALSE(is_incorrect_objective(
+    ref_obj1, batch_sol.get_additional_termination_information(0).primal_objective));
+  EXPECT_FALSE(is_incorrect_objective(
+    ref_obj2, batch_sol.get_additional_termination_information(1).primal_objective));
+}
+
+TEST(pdlp_class, simple_batch_different_constraint_bounds)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_constrs              = op_problem.get_n_constraints();
+  const auto& original_lower_bounds = op_problem.get_constraint_lower_bounds();
+  const auto& original_upper_bounds = op_problem.get_constraint_upper_bounds();
+
+  // Build 3 climbers with perturbed bounds:
+  //  - climber 0: unchanged (scale factor 1.0)
+  //  - climber 1: tighten upper bounds by 5% where finite (scale 0.95 on finite upper)
+  //  - climber 2: loosen upper bounds by 5% where finite (scale 1.05 on finite upper)
+  const std::vector<double> upper_scales = {1.0, 0.95, 1.05};
+  const size_t batch_size                = upper_scales.size();
+
+  std::vector<double> all_new_lower;
+  std::vector<double> all_new_upper;
+  std::vector<std::vector<double>> per_climber_lower(batch_size);
+  std::vector<std::vector<double>> per_climber_upper(batch_size);
+  for (size_t c = 0; c < batch_size; ++c) {
+    per_climber_lower[c] = std::vector<double>(original_lower_bounds.begin(),
+                                                original_lower_bounds.end());
+    per_climber_upper[c] = std::vector<double>(original_upper_bounds.begin(),
+                                                original_upper_bounds.end());
+    for (auto& v : per_climber_upper[c]) {
+      if (std::isfinite(v)) v *= upper_scales[c];
+    }
+    all_new_lower.insert(all_new_lower.end(),
+                         per_climber_lower[c].begin(),
+                         per_climber_lower[c].end());
+    all_new_upper.insert(all_new_upper.end(),
+                         per_climber_upper[c].begin(),
+                         per_climber_upper[c].end());
+  }
+
+  // Solve sequentially to get reference objectives
+  std::vector<double> ref_objectives;
+  for (size_t c = 0; c < batch_size; ++c) {
+    auto op                                       = op_problem;
+    op.get_constraint_lower_bounds()              = per_climber_lower[c];
+    op.get_constraint_upper_bounds()              = per_climber_upper[c];
+    auto sol = solve_lp(&handle_, op, solver_settings);
+    ASSERT_EQ((int)sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    ref_objectives.push_back(
+      sol.get_additional_termination_information(0).primal_objective);
+  }
+
+  // Solve as a batch via fixed path with per-climber constraint bounds.
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        /*batch_size=*/static_cast<int>(batch_size),
+                                        /*per_climber_objective_coefficients=*/{},
+                                        all_new_lower,
+                                        all_new_upper);
+
+  for (size_t i = 0; i < batch_size; ++i) {
+    EXPECT_EQ((int)batch_sol.get_termination_status(i), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_FALSE(is_incorrect_objective(
+      ref_objectives[i],
+      batch_sol.get_additional_termination_information(i).primal_objective));
+  }
+}
+
+TEST(pdlp_class, simple_batch_everything_different)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_vars    = op_problem.get_n_variables();
+  const int n_constrs = op_problem.get_n_constraints();
+
+  const auto& original_obj          = op_problem.get_objective_coefficients();
+  const auto& original_lower_bounds = op_problem.get_constraint_lower_bounds();
+  const auto& original_upper_bounds = op_problem.get_constraint_upper_bounds();
+
+  // Describe 2 climbers where EVERY per-climber field differs
+  struct climber_spec {
+    std::tuple<int, double, double> new_bound;  // (variable_idx, lower, upper)
+    double obj_scale;                            // multiply objective coefficients
+    double offset;                               // objective offset
+    double constr_upper_scale;                   // multiply finite constraint upper bounds
+  };
+  const std::vector<climber_spec> specs = {
+    // Climber 0: var 5 bounds [4.0,5.0], 1.5x obj, offset +7.5, constraint upper *1.02
+    {{5, 4.0, 5.0}, 1.5, 7.5, 1.02},
+    // Climber 1: var 1 bounds [-7.0,13.0], 2x obj, offset -3.25, constraint upper *0.95
+    {{1, -7.0, 13.0}, 2.0, -3.25, 0.95},
+  };
+  const size_t batch_size = specs.size();
+
+  // Build the per-climber objective/offset/constraint-bound vectors.
+  std::vector<double> all_new_objectives;
+  std::vector<double> all_new_objective_offsets;
+  std::vector<double> all_new_constraint_lower;
+  std::vector<double> all_new_constraint_upper;
+
+  std::vector<std::vector<double>> per_climber_obj(batch_size);
+  std::vector<std::vector<double>> per_climber_upper(batch_size);
+  std::vector<std::vector<double>> per_climber_lower(batch_size);
+
+  for (size_t c = 0; c < batch_size; ++c) {
+    per_climber_obj[c] = std::vector<double>(original_obj.begin(), original_obj.end());
+    for (auto& v : per_climber_obj[c]) v *= specs[c].obj_scale;
+    per_climber_lower[c] =
+      std::vector<double>(original_lower_bounds.begin(), original_lower_bounds.end());
+    per_climber_upper[c] =
+      std::vector<double>(original_upper_bounds.begin(), original_upper_bounds.end());
+    for (auto& v : per_climber_upper[c]) {
+      if (std::isfinite(v)) v *= specs[c].constr_upper_scale;
+    }
+    all_new_objectives.insert(all_new_objectives.end(),
+                              per_climber_obj[c].begin(),
+                              per_climber_obj[c].end());
+    all_new_objective_offsets.push_back(specs[c].offset);
+    all_new_constraint_lower.insert(all_new_constraint_lower.end(),
+                                     per_climber_lower[c].begin(),
+                                     per_climber_lower[c].end());
+    all_new_constraint_upper.insert(all_new_constraint_upper.end(),
+                                     per_climber_upper[c].begin(),
+                                     per_climber_upper[c].end());
+  }
+
+  // Sequential reference: solve each climber independently and capture its objective.
+  std::vector<double> ref_objectives(batch_size);
+  std::vector<cuopt::mps_parser::mps_data_model_t<int, double>> ref_problems;
+  ref_problems.reserve(batch_size);
+  for (size_t c = 0; c < batch_size; ++c) {
+    auto ref_op = op_problem;
+    ref_op.get_objective_coefficients()     = per_climber_obj[c];
+    ref_op.get_constraint_lower_bounds()    = per_climber_lower[c];
+    ref_op.get_constraint_upper_bounds()    = per_climber_upper[c];
+    ref_op.get_variable_lower_bounds()[std::get<0>(specs[c].new_bound)] =
+      std::get<1>(specs[c].new_bound);
+    ref_op.get_variable_upper_bounds()[std::get<0>(specs[c].new_bound)] =
+      std::get<2>(specs[c].new_bound);
+    ref_op.set_objective_offset(specs[c].offset);
+    ref_problems.push_back(ref_op);
+
+    auto sol = solve_lp(&handle_, ref_problems.back(), solver_settings);
+    ASSERT_EQ((int)sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    ref_objectives[c] = sol.get_additional_termination_information(0).primal_objective;
+  }
+
+  // Now solve as a single batch via fixed path, combining new_bounds (per-climber variable-bound
+  // overrides) with all the other per-climber problem fields expanded directly on the
+  // optimization_problem_t.
+  for (size_t c = 0; c < batch_size; ++c) {
+    solver_settings.new_bounds.push_back(specs[c].new_bound);
+  }
+
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        /*batch_size=*/static_cast<int>(batch_size),
+                                        all_new_objectives,
+                                        all_new_constraint_lower,
+                                        all_new_constraint_upper,
+                                        all_new_objective_offsets);
+
+  for (size_t c = 0; c < batch_size; ++c) {
+    EXPECT_EQ((int)batch_sol.get_termination_status(c), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_FALSE(is_incorrect_objective(
+      ref_objectives[c],
+      batch_sol.get_additional_termination_information(c).primal_objective));
+
+    // Validate the per-climber primal solution matches the corresponding reference problem.
+    // The solver's reported objective includes the offset; test_objective_sanity only computes
+    // c^T * x, so subtract the offset to make the values comparable.
+    const auto primal =
+      extract_subvector(batch_sol.get_primal_solution(), c * n_vars, n_vars);
+    const double reported_obj =
+      batch_sol.get_additional_termination_information(c).primal_objective;
+    test_objective_sanity(ref_problems[c], primal, reported_obj - specs[c].offset);
+    test_constraint_sanity(ref_problems[c],
+                           batch_sol.get_additional_termination_information(c),
+                           primal,
+                           tolerance,
+                           false);
+  }
+}
+
 TEST(pdlp_class, DISABLED_cupdlpx_infeasible_detection_afiro_new_bounds)
 {
   const raft::handle_t handle_{};
@@ -2155,56 +2528,6 @@ TEST(pdlp_class, shared_sb_view_batch_pre_solved)
   }
 }
 
-TEST(pdlp_class, shared_sb_view_subbatch)
-{
-  using namespace cuopt::linear_programming::dual_simplex;
-
-  const raft::handle_t handle_{};
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
-
-  const std::vector<int> fractional     = {1, 2, 4};
-  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
-  const int n_fractional                = fractional.size();
-  const int batch_size                  = n_fractional * 2;
-
-  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
-  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
-  solver_settings.sub_batch_size   = 2;
-
-  shared_strong_branching_context_t<int, double> shared_ctx(batch_size);
-  shared_strong_branching_context_view_t<int, double> sb_view(shared_ctx.solved);
-
-  // Pre-mark one entry in each sub-batch of size 2: indices 1, 4
-  sb_view.mark_solved(1);
-  sb_view.mark_solved(4);
-
-  solver_settings.shared_sb_solved = sb_view.solved;
-
-  auto solution = batch_pdlp_solve(&handle_, op_problem, fractional, root_soln_x, solver_settings);
-
-  ASSERT_EQ(solution.get_terminations_status().size(), batch_size);
-
-  // Pre-solved entries should have ConcurrentLimit
-  EXPECT_EQ(solution.get_termination_status(1), pdlp_termination_status_t::ConcurrentLimit);
-  EXPECT_EQ(solution.get_termination_status(4), pdlp_termination_status_t::ConcurrentLimit);
-
-  // Others should be Optimal
-  for (int i = 0; i < batch_size; ++i) {
-    if (i == 1 || i == 4) continue;
-    EXPECT_EQ(solution.get_termination_status(i), pdlp_termination_status_t::Optimal)
-      << "Entry " << i << " should be Optimal";
-  }
-
-  // All should be marked solved
-  for (int i = 0; i < batch_size; ++i) {
-    EXPECT_TRUE(sb_view.is_solved(i)) << "Entry " << i << " should be solved";
-  }
-}
-
 TEST(pdlp_class, shared_sb_view_concurrent_mark)
 {
   using namespace cuopt::linear_programming::dual_simplex;
@@ -2339,6 +2662,255 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   }
 
   delete result_ptr;
+}
+
+// Stress test: fixed path with all per-climber fields expanded at maximum safe scale.
+// All climbers are identical — the point is to verify the fixed path doesn't crash at scale
+// and produces bitwise-identical results.
+TEST(pdlp_class, big_batch_fixed_path)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_vars    = op_problem.get_n_variables();
+  const int n_constrs = op_problem.get_n_constraints();
+
+  const auto& original_obj    = op_problem.get_objective_coefficients();
+  const auto& original_lb     = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub     = op_problem.get_constraint_upper_bounds();
+  const auto& variable_lb     = op_problem.get_variable_lower_bounds();
+  const auto& variable_ub     = op_problem.get_variable_upper_bounds();
+  const double original_offset = op_problem.get_objective_offset();
+
+  // Query optimal batch size on the unexpanded problem, then expand to that size.
+  auto gpu_op =
+    cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_,
+                                                                                    op_problem);
+  const size_t batch_size =
+    cuopt::linear_programming::compute_optimal_batch_size(gpu_op, true, true, true);
+  ASSERT_GT(batch_size, 0u);
+
+  // Build expanded arrays: replicate identical per-climber fields × batch_size
+  std::vector<double> all_objectives;
+  std::vector<double> all_constraint_lower;
+  std::vector<double> all_constraint_upper;
+  std::vector<double> all_offsets;
+  all_objectives.reserve(batch_size * n_vars);
+  all_constraint_lower.reserve(batch_size * n_constrs);
+  all_constraint_upper.reserve(batch_size * n_constrs);
+  all_offsets.reserve(batch_size);
+
+  for (size_t i = 0; i < batch_size; ++i) {
+    all_objectives.insert(all_objectives.end(), original_obj.begin(), original_obj.end());
+    all_constraint_lower.insert(
+      all_constraint_lower.end(), original_lb.begin(), original_lb.end());
+    all_constraint_upper.insert(
+      all_constraint_upper.end(), original_ub.begin(), original_ub.end());
+    all_offsets.push_back(original_offset);
+    solver_settings.new_bounds.push_back({0, variable_lb[0], variable_ub[0]});
+  }
+
+  auto stream = handle_.get_stream();
+  assign_device_uvector_from_host(gpu_op.get_objective_coefficients(), all_objectives, stream);
+  assign_device_uvector_from_host(gpu_op.get_constraint_lower_bounds(), all_constraint_lower, stream);
+  assign_device_uvector_from_host(gpu_op.get_constraint_upper_bounds(), all_constraint_upper, stream);
+  gpu_op.set_batch_objective_offsets(all_offsets);
+
+  solver_settings.generate_batch_primal_dual_solution = true;
+  solver_settings.fixed_batch_size                      = static_cast<int>(batch_size);
+
+  auto solution = cuopt::linear_programming::run_batch_pdlp(gpu_op, solver_settings);
+
+  // All should be optimal
+  for (size_t i = 0; i < batch_size; ++i) {
+    EXPECT_EQ((int)solution.get_termination_status(i), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_FALSE(is_incorrect_objective(
+      afiro_primal_objective, solution.get_additional_termination_information(i).primal_objective));
+  }
+
+  // All should be bitwise identical
+  const auto ref_stats  = (int)solution.get_termination_status(0);
+  const auto ref_primal = solution.get_additional_termination_information(0).primal_objective;
+  const auto ref_dual   = solution.get_additional_termination_information(0).dual_objective;
+  const auto ref_it     = solution.get_additional_termination_information(0).number_of_steps_taken;
+  const auto ref_it_total =
+    solution.get_additional_termination_information(0).total_number_of_attempted_steps;
+  const auto ref_primal_residual =
+    solution.get_additional_termination_information(0).l2_primal_residual;
+  const auto ref_dual_residual =
+    solution.get_additional_termination_information(0).l2_dual_residual;
+
+  const auto ref_primal_solution =
+    host_copy(solution.get_primal_solution(), solution.get_primal_solution().stream());
+  const auto ref_dual_solution =
+    host_copy(solution.get_dual_solution(), solution.get_dual_solution().stream());
+
+  const size_t primal_size = ref_primal_solution.size() / batch_size;
+  const size_t dual_size   = ref_dual_solution.size() / batch_size;
+
+  for (size_t i = 1; i < batch_size; ++i) {
+    EXPECT_EQ(ref_stats, (int)solution.get_termination_status(i));
+    EXPECT_EQ(ref_primal, solution.get_additional_termination_information(i).primal_objective);
+    EXPECT_EQ(ref_dual, solution.get_additional_termination_information(i).dual_objective);
+    EXPECT_EQ(ref_it, solution.get_additional_termination_information(i).number_of_steps_taken);
+    EXPECT_EQ(ref_it_total,
+              solution.get_additional_termination_information(i).total_number_of_attempted_steps);
+    EXPECT_EQ(ref_primal_residual,
+              solution.get_additional_termination_information(i).l2_primal_residual);
+    EXPECT_EQ(ref_dual_residual,
+              solution.get_additional_termination_information(i).l2_dual_residual);
+    for (size_t p = 0; p < primal_size; ++p)
+      EXPECT_EQ(ref_primal_solution[p], ref_primal_solution[p + i * primal_size]);
+    for (size_t d = 0; d < dual_size; ++d)
+      EXPECT_EQ(ref_dual_solution[d], ref_dual_solution[d + i * dual_size]);
+  }
+
+  const auto primal_solution =
+    extract_subvector(solution.get_primal_solution(), primal_size * (batch_size - 1), primal_size);
+
+  test_objective_sanity(
+    op_problem,
+    primal_solution,
+    solution.get_additional_termination_information(batch_size - 1).primal_objective);
+  test_constraint_sanity(op_problem,
+                         solution.get_additional_termination_information(batch_size - 1),
+                         primal_solution,
+                         tolerance,
+                         false);
+}
+
+// Tests the compute_optimal_batch_size → run_batch_pdlp two-step API.
+// First queries the optimal batch size, then builds that many climbers with different
+// objectives, constraint bounds, and offsets then solves.
+TEST(pdlp_class, batch_with_optimal_size_query)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  const int n_vars    = op_problem.get_n_variables();
+  const int n_constrs = op_problem.get_n_constraints();
+
+  const auto& original_obj = op_problem.get_objective_coefficients();
+  const auto& original_lb  = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub  = op_problem.get_constraint_upper_bounds();
+  const auto& variable_lb  = op_problem.get_variable_lower_bounds();
+  const auto& variable_ub  = op_problem.get_variable_upper_bounds();
+
+  // Step 1: query optimal batch size on the unexpanded problem.
+  auto gpu_op =
+    cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_,
+                                                                                    op_problem);
+  const size_t batch_size =
+    cuopt::linear_programming::compute_optimal_batch_size(gpu_op, true, true, true);
+  ASSERT_GT(batch_size, 0u);
+
+  // Step 2: build per-climber expanded arrays sized to batch_size.
+  // Each climber gets a different objective scale, offset, and constraint upper scale.
+  // Cycle through a small set of variations.
+  struct climber_spec {
+    double obj_scale;
+    double offset;
+    double constr_upper_val;
+  };
+  const std::vector<climber_spec> variations = {
+    {1.0, 0.0, 10},
+    {1.5, 7.5, 1000},
+    {2.0, -3.25, 10000},
+  };
+
+  std::vector<double> all_objectives;
+  std::vector<double> all_offsets;
+  std::vector<double> all_constraint_lower;
+  std::vector<double> all_constraint_upper;
+
+  std::vector<std::vector<double>> per_climber_obj(batch_size);
+  std::vector<std::vector<double>> per_climber_lower(batch_size);
+  std::vector<std::vector<double>> per_climber_upper(batch_size);
+  std::vector<climber_spec> specs(batch_size);
+
+  for (size_t c = 0; c < batch_size; ++c) {
+    specs[c] = variations[c % variations.size()];
+    per_climber_obj[c] = std::vector<double>(original_obj.begin(), original_obj.end());
+    for (auto& v : per_climber_obj[c]) v *= specs[c].obj_scale;
+    per_climber_lower[c] = std::vector<double>(original_lb.begin(), original_lb.end());
+    per_climber_upper[c] = std::vector<double>(original_ub.begin(), original_ub.end());
+    for (auto& v : per_climber_upper[c]) {
+      if (std::isfinite(v)) v = specs[c].constr_upper_val;
+    }
+    all_objectives.insert(
+      all_objectives.end(), per_climber_obj[c].begin(), per_climber_obj[c].end());
+    all_offsets.push_back(specs[c].offset);
+    all_constraint_lower.insert(
+      all_constraint_lower.end(), per_climber_lower[c].begin(), per_climber_lower[c].end());
+    all_constraint_upper.insert(
+      all_constraint_upper.end(), per_climber_upper[c].begin(), per_climber_upper[c].end());
+  }
+
+  // Sequential reference: solve one instance of each unique variation independently.
+  const size_t n_variations = variations.size();
+  std::vector<double> ref_objectives(n_variations);
+  std::vector<cuopt::mps_parser::mps_data_model_t<int, double>> ref_problems;
+  ref_problems.reserve(n_variations);
+  for (size_t v = 0; v < n_variations; ++v) {
+    auto ref_op                         = op_problem;
+    ref_op.get_objective_coefficients()  = per_climber_obj[v];
+    ref_op.get_constraint_lower_bounds() = per_climber_lower[v];
+    ref_op.get_constraint_upper_bounds() = per_climber_upper[v];
+    ref_op.get_variable_lower_bounds()[0] = variable_lb[0];
+    ref_op.get_variable_upper_bounds()[0] = variable_ub[0];
+    ref_op.set_objective_offset(variations[v].offset);
+    ref_problems.push_back(ref_op);
+
+    auto sol = solve_lp(&handle_, ref_problems.back(), solver_settings);
+    ASSERT_EQ((int)sol.get_termination_status(0), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    ref_objectives[v] = sol.get_additional_termination_information(0).primal_objective;
+  }
+
+  // Step 3: expand the problem fields on gpu_op and call run_batch_pdlp.
+  auto stream = handle_.get_stream();
+  assign_device_uvector_from_host(gpu_op.get_objective_coefficients(), all_objectives, stream);
+  assign_device_uvector_from_host(gpu_op.get_constraint_lower_bounds(), all_constraint_lower, stream);
+  assign_device_uvector_from_host(gpu_op.get_constraint_upper_bounds(), all_constraint_upper, stream);
+  gpu_op.set_batch_objective_offsets(all_offsets);
+
+  solver_settings.generate_batch_primal_dual_solution = true;
+  solver_settings.fixed_batch_size                      = static_cast<int>(batch_size);
+
+  auto batch_sol = cuopt::linear_programming::run_batch_pdlp(gpu_op, solver_settings);
+
+  // Compare each climber to the reference for its variation.
+  for (size_t c = 0; c < batch_size; ++c) {
+    const size_t v = c % n_variations;
+    EXPECT_EQ((int)batch_sol.get_termination_status(c), CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_FALSE(is_incorrect_objective(
+      ref_objectives[v],
+      batch_sol.get_additional_termination_information(c).primal_objective));
+
+    const auto primal =
+      extract_subvector(batch_sol.get_primal_solution(), c * n_vars, n_vars);
+    const double reported_obj =
+      batch_sol.get_additional_termination_information(c).primal_objective;
+    test_objective_sanity(ref_problems[v], primal, reported_obj - specs[c].offset);
+    test_constraint_sanity(ref_problems[v],
+                           batch_sol.get_additional_termination_information(c),
+                           primal,
+                           tolerance,
+                           false);
+  }
 }
 
 }  // namespace cuopt::linear_programming::test

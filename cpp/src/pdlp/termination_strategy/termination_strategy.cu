@@ -42,7 +42,7 @@ pdlp_termination_strategy_t<i_t, f_t>::pdlp_termination_strategy_t(
                              primal_size,
                              dual_size,
                              climber_strategies,
-                             settings.hyper_params},
+                             settings},
     infeasibility_information_{handle_ptr_,
                                op_problem,
                                scaled_op_problem,
@@ -265,7 +265,6 @@ __global__ void check_termination_criteria_kernel(
         *convergence_information.relative_l_inf_dual_residual,
         tolerance.absolute_dual_tolerance);
     } else {
-      // TODO later batch mode: per problem rhs
       printf(
         "Primal residual  %lf <= %lf [%d] (tolerance.absolute_primal_tolerance %lf + "
         "tolerance.relative_primal_tolerance %lf * "
@@ -273,14 +272,14 @@ __global__ void check_termination_criteria_kernel(
         convergence_information.l2_primal_residual[idx],
         tolerance.absolute_primal_tolerance +
           tolerance.relative_primal_tolerance *
-            *convergence_information.l2_norm_primal_right_hand_side,
+            convergence_information.l2_norm_primal_right_hand_side[idx],
         convergence_information.l2_primal_residual[idx] <=
           tolerance.absolute_primal_tolerance +
             tolerance.relative_primal_tolerance *
-              *convergence_information.l2_norm_primal_right_hand_side,
+              convergence_information.l2_norm_primal_right_hand_side[idx],
         tolerance.absolute_primal_tolerance,
         tolerance.relative_primal_tolerance,
-        *convergence_information.l2_norm_primal_right_hand_side);
+        convergence_information.l2_norm_primal_right_hand_side[idx]);
       printf(
         "Dual residual  %lf <= %lf [%d] (tolerance.absolute_dual_tolerance %lf + "
         "tolerance.relative_dual_tolerance %lf * "
@@ -288,14 +287,14 @@ __global__ void check_termination_criteria_kernel(
         convergence_information.l2_dual_residual[idx],
         tolerance.absolute_dual_tolerance +
           tolerance.relative_dual_tolerance *
-            *convergence_information.l2_norm_primal_linear_objective,
+            convergence_information.l2_norm_primal_linear_objective[idx],
         convergence_information.l2_dual_residual[idx] <=
           tolerance.absolute_dual_tolerance +
             tolerance.relative_dual_tolerance *
-              *convergence_information.l2_norm_primal_linear_objective,
+              convergence_information.l2_norm_primal_linear_objective[idx],
         tolerance.absolute_dual_tolerance,
         tolerance.relative_dual_tolerance,
-        *convergence_information.l2_norm_primal_linear_objective);
+        convergence_information.l2_norm_primal_linear_objective[idx]);
     }
     if (infeasibility_detection) {
       printf(
@@ -342,11 +341,11 @@ __global__ void check_termination_criteria_kernel(
     const bool primal_feasible = convergence_information.l2_primal_residual[idx] <=
                                  tolerance.absolute_primal_tolerance +
                                    tolerance.relative_primal_tolerance *
-                                     *convergence_information.l2_norm_primal_right_hand_side;
+                                     convergence_information.l2_norm_primal_right_hand_side[idx];
     if (convergence_information.l2_dual_residual[idx] <=
           tolerance.absolute_dual_tolerance +
             tolerance.relative_dual_tolerance *
-              *convergence_information.l2_norm_primal_linear_objective &&
+              convergence_information.l2_norm_primal_linear_objective[idx] &&
         primal_feasible && optimal_gap) {
       termination_status[idx] = (i_t)pdlp_termination_status_t::Optimal;
       return;
@@ -442,7 +441,6 @@ __global__ void fill_gpu_terms_stats_kernel(
   if (idx >= termination_status.size()) { return; }
 
   // TODO later batch mode: add infeasibility information here
-  // TODO later batch mode: handle per climber rhs and objective
 
   // Will be removed store its data in the struct
   if (pdlp_termination_strategy_t<i_t, f_t>::is_done(
@@ -456,12 +454,12 @@ __global__ void fill_gpu_terms_stats_kernel(
       convergence_information_view.l2_primal_residual[idx];
     additional_termination_information.l2_relative_primal_residual[original_index] =
       convergence_information_view.l2_primal_residual[idx] /
-      (f_t(1.0) + *convergence_information_view.l2_norm_primal_right_hand_side);
+      (f_t(1.0) + convergence_information_view.l2_norm_primal_right_hand_side[idx]);
     additional_termination_information.l2_dual_residual[original_index] =
       convergence_information_view.l2_dual_residual[idx];
     additional_termination_information.l2_relative_dual_residual[original_index] =
       convergence_information_view.l2_dual_residual[idx] /
-      (f_t(1.0) + *convergence_information_view.l2_norm_primal_linear_objective);
+      (f_t(1.0) + convergence_information_view.l2_norm_primal_linear_objective[idx]);
     additional_termination_information.primal_objective[original_index] =
       convergence_information_view.primal_objective[idx];
     additional_termination_information.dual_objective[original_index] =

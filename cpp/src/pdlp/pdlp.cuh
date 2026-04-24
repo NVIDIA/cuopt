@@ -132,6 +132,11 @@ class pdlp_solver_t {
   void update_primal_dual_solutions(std::optional<const rmm::device_uvector<f_t>*> primal,
                                     std::optional<const rmm::device_uvector<f_t>*> dual);
 
+  // Initial number of climbers (derived from settings.fixed_batch_size / settings.new_bounds at
+  // ctor time).
+  // Stable throughout solving — use this whenever you need the ORIGINAL batch size, since
+  // `climber_strategies_` shrinks as climbers finish via resize_and_swap_all_context_loop.
+  const size_t original_batch_size_;
   std::vector<pdlp_climber_strategy_t> climber_strategies_;
   bool batch_mode_{false};
 
@@ -185,6 +190,7 @@ class pdlp_solver_t {
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
 
+  void transpose_problem_fields(bool to_row);
   void transpose_primal_dual_to_row(rmm::device_uvector<f_t>& primal_to_transpose,
                                     rmm::device_uvector<f_t>& dual_to_transpose,
                                     rmm::device_uvector<f_t>& dual_slack_to_transpose);

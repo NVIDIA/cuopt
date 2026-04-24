@@ -35,6 +35,7 @@
 
 #include <thrust/count.h>
 #include <thrust/extrema.h>
+#include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/logical.h>
 
@@ -98,21 +99,36 @@ inline cublasStatus_t cublasGeam<double>(cublasHandle_t handle,
 }
 
 template <typename i_t, typename f_t>
-static size_t batch_size_handler(const problem_t<i_t, f_t>& op_problem,
-                                 const pdlp_solver_settings_t<i_t, f_t>& settings)
+static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
-  if (settings.new_bounds.empty()) { return 1; }
+  // Two inputs only:
+  //   - fixed_batch_size > 0 : caller pre-sized the batch (fixed path). Per-climber problem data
+  //     (objectives/offsets/constraint bounds) lives directly on the optimization_problem_t.
+  //     new_bounds may still be provided as per-climber variable-bound overrides within the batch.
+  //   - fixed_batch_size == 0 : splitting path. Batch size is derived from new_bounds.
+  size_t batch_size;
+  if (settings.fixed_batch_size > 0) {
+    cuopt_assert(settings.new_bounds.empty() ||
+                   settings.new_bounds.size() == static_cast<size_t>(settings.fixed_batch_size),
+                 "when both fixed_batch_size and new_bounds are set their sizes must match");
+    batch_size = static_cast<size_t>(settings.fixed_batch_size);
+  } else {
+    batch_size = settings.new_bounds.empty() ? 1 : settings.new_bounds.size();
+  }
 #ifdef BATCH_VERBOSE_MODE
-  std::cout << "Running batch PDLP with " << settings.new_bounds.size() << " problems" << std::endl;
+  if (batch_size > 1) {
+    std::cout << "Running batch PDLP with " << batch_size << " problems" << std::endl;
+  }
 #endif
-  return settings.new_bounds.size();
+  return batch_size;
 }
 
 template <typename i_t, typename f_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
                                        bool is_legacy_batch_mode)
-  : climber_strategies_(batch_size_handler(op_problem, settings)),
+  : original_batch_size_(batch_size_handler(settings)),
+    climber_strategies_(original_batch_size_),
     batch_mode_(climber_strategies_.size() > 1),
     handle_ptr_(op_problem.handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -294,16 +310,15 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   op_problem.check_problem_representation(true, false);
   op_problem_scaled_.check_problem_representation(true, false);
 
-  if (settings_.new_bounds.size() > 0) {
-    batch_solution_to_return_.get_additional_termination_informations().resize(
-      settings_.new_bounds.size());
-    batch_solution_to_return_.get_terminations_status().resize(settings_.new_bounds.size());
+  if (batch_mode_) {
+    batch_solution_to_return_.get_additional_termination_informations().resize(original_batch_size_);
+    batch_solution_to_return_.get_terminations_status().resize(original_batch_size_);
     batch_solution_to_return_.get_primal_solution().resize(
-      op_problem.n_variables * settings_.new_bounds.size(), stream_view_);
+      op_problem.n_variables * original_batch_size_, stream_view_);
     batch_solution_to_return_.get_dual_solution().resize(
-      op_problem.n_constraints * settings_.new_bounds.size(), stream_view_);
+      op_problem.n_constraints * original_batch_size_, stream_view_);
     batch_solution_to_return_.get_reduced_cost().resize(
-      op_problem.n_variables * settings_.new_bounds.size(), stream_view_);
+      op_problem.n_variables * original_batch_size_, stream_view_);
   }
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
     climber_strategies_[i].original_index = static_cast<int>(i);
@@ -800,11 +815,10 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
 
   // All are optimal, infeasible, or externally solved
   if (current_termination_strategy_.all_done()) {
-    const auto original_batch_size = settings_.new_bounds.size();
     // Some climber got removed from the batch while the optimization was running
-    if (original_batch_size != climber_strategies_.size()) {
+    if (original_batch_size_ != climber_strategies_.size()) {
 #ifdef BATCH_VERBOSE_MODE
-      std::cout << "Original batch size was " << original_batch_size << " but is now "
+      std::cout << "Original batch size was " << original_batch_size_ << " but is now "
                 << climber_strategies_.size() << std::endl;
 #endif
       cuopt_assert(current_termination_strategy_.get_terminations_status().size() ==
@@ -1622,6 +1636,14 @@ void pdlp_solver_t<i_t, f_t>::swap_context(
                                                  make_span(primal_step_size_),
                                                  make_span(dual_step_size_));
   RAFT_CUDA_TRY(cudaPeekAtLastError());
+  // Swap unscaled problem's per-climber fields (COL-major blocks)
+  if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
+    matrix_swap(problem_ptr->objective_coefficients, primal_size_h_, swap_pairs);
+  }
+  if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
+    matrix_swap(problem_ptr->constraint_lower_bounds, dual_size_h_, swap_pairs);
+    matrix_swap(problem_ptr->constraint_upper_bounds, dual_size_h_, swap_pairs);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1637,6 +1659,14 @@ void pdlp_solver_t<i_t, f_t>::resize_context(i_t new_size)
   step_size_.resize(new_size, stream_view_);
   primal_step_size_.resize(new_size, stream_view_);
   dual_step_size_.resize(new_size, stream_view_);
+  // Resize unscaled problem's per-climber fields (COL-major)
+  if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
+    problem_ptr->objective_coefficients.resize(new_size * primal_size_h_, stream_view_);
+  }
+  if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
+    problem_ptr->constraint_lower_bounds.resize(new_size * dual_size_h_, stream_view_);
+    problem_ptr->constraint_upper_bounds.resize(new_size * dual_size_h_, stream_view_);
+  }
 
   climber_strategies_.resize(new_size);
 }
@@ -2079,6 +2109,57 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   }
 }
 
+// Need to tranposed the scaled problem fields between COL-major and ROW-major.
+// In PDHG everything is ROW-major for faster SpMM.
+// The scaled fields need to be tranposed back to COL-major as we might need to swap and resize them.
+// No op if the fields were not expanded
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::transpose_problem_fields(bool to_row)
+{
+  auto transpose_field = [&](rmm::device_uvector<f_t>& field, i_t rows) {
+    if (field.size() <= static_cast<size_t>(rows)) return;
+    rmm::device_uvector<f_t> transposed(field.size(), stream_view_);
+    if (to_row) {
+      // COL-major (ld=rows) -> ROW-major (ld=batch_size)
+      CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                                   CUBLAS_OP_T,
+                                   CUBLAS_OP_N,
+                                   climber_strategies_.size(),
+                                   rows,
+                                   reusable_device_scalar_value_1_.data(),
+                                   field.data(),
+                                   rows,
+                                   reusable_device_scalar_value_0_.data(),
+                                   nullptr,
+                                   climber_strategies_.size(),
+                                   transposed.data(),
+                                   climber_strategies_.size()));
+    } else {
+      // ROW-major (ld=batch_size) -> COL-major (ld=rows)
+      CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                                   CUBLAS_OP_T,
+                                   CUBLAS_OP_N,
+                                   rows,
+                                   climber_strategies_.size(),
+                                   reusable_device_scalar_value_1_.data(),
+                                   field.data(),
+                                   climber_strategies_.size(),
+                                   reusable_device_scalar_value_0_.data(),
+                                   nullptr,
+                                   rows,
+                                   transposed.data(),
+                                   rows));
+    }
+    raft::copy(field.data(), transposed.data(), field.size(), stream_view_);
+  };
+
+  RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
+  // We need to swap the scaled version because they can be dynamically resized and swapped.
+  transpose_field(op_problem_scaled_.objective_coefficients, primal_size_h_);
+  transpose_field(op_problem_scaled_.constraint_lower_bounds, dual_size_h_);
+  transpose_field(op_problem_scaled_.constraint_upper_bounds, dual_size_h_);
+}
+
 // Tranpose all the data we use in termination condition and restart:
 // potential_next_primal_solution, potential_next_dual_solution, dual_slack
 template <typename i_t, typename f_t>
@@ -2427,6 +2508,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                    restart_strategy_.last_restart_duality_gap_.dual_solution_,
                                    dummy);
     }
+    transpose_problem_fields(/*to_row=*/true);
   }
 
   if (verbose) {
@@ -2514,8 +2596,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
       }
 
-      // In case of batch mode, primal and dual matrices are in row format
-      // We need to transpose them to column format before doing any checks
+      // In case of batch mode, primal/dual iterates and scaled problem fields are ROW-major
+      // for PDHG. We transpose them back to COL for convergence/termination checks, and
+      // swap_context / resize_context (which assume COL layout for block-based swaps).
+      // The unscaled problem fields (problem_ptr->) stay COL permanently
       if (batch_mode_) {
         rmm::device_uvector<f_t> dummy(0, stream_view_);
         transpose_primal_dual_back_to_col(pdhg_solver_.get_potential_next_primal_solution(),
@@ -2527,6 +2611,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           dummy);
         transpose_primal_dual_back_to_col(
           pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+        transpose_problem_fields(/*to_row=*/false);
       }
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -2640,6 +2725,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                      dummy);
         transpose_primal_dual_to_row(
           pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+        transpose_problem_fields(/*to_row=*/true);
       }
     }
 
@@ -2672,6 +2758,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
             pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_back_to_col(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          transpose_problem_fields(/*to_row=*/false);
         }
         compute_fixed_error(has_restarted);  // May set has_restarted to false
         if (batch_mode_) {
@@ -2681,6 +2768,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                        pdhg_solver_.get_saddle_point_state().get_current_AtY());
           transpose_primal_dual_to_row(
             pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+          transpose_problem_fields(/*to_row=*/true);
         }
       }
       halpern_update();
@@ -3016,7 +3104,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 
   // Here we use the combined bounds of the op_problem_scaled which may or may not be scaled yet
   // based on pdlp config
-  // TODO later batch mode: handle per problem objective coefficients and rhs
   detail::combine_constraint_bounds<i_t, f_t>(op_problem_scaled_,
                                               op_problem_scaled_.combined_bounds);
   rmm::device_scalar<f_t> c_vec_norm{0.0, stream_view_};
@@ -3033,25 +3120,25 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
                                           b_vec_norm,
                                           stream_view_);
 
-  } else {
-    if (settings_.hyper_params.bound_objective_rescaling) {
-      constexpr f_t one = f_t(1.0);
-      thrust::uninitialized_fill(
-        handle_ptr_->get_thrust_policy(), primal_weight_.begin(), primal_weight_.end(), one);
-      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                 best_primal_weight_.begin(),
-                                 best_primal_weight_.end(),
-                                 one);
-      return;
-    } else {
-      cuopt_expects(settings_.hyper_params.initial_primal_weight_b_scaling == 1,
-                    error_type_t::ValidationError,
-                    "Passing a scaling is not supported for now");
+                                        } else {
+                                          if (settings_.hyper_params.bound_objective_rescaling) {
+                                            constexpr f_t one = f_t(1.0);
+                                            thrust::uninitialized_fill(
+                                              handle_ptr_->get_thrust_policy(), primal_weight_.begin(), primal_weight_.end(), one);
+                                            thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                                                       best_primal_weight_.begin(),
+                                                                       best_primal_weight_.end(),
+                                                                       one);
+                                            return;
+                                          } else {
+    cuopt_expects(settings_.hyper_params.initial_primal_weight_b_scaling == 1,
+                  error_type_t::ValidationError,
+                  "Passing a scaling is not supported for now");
 
-      compute_sum_bounds(op_problem_scaled_.constraint_lower_bounds,
-                         op_problem_scaled_.constraint_upper_bounds,
-                         b_vec_norm,
-                         stream_view_);
+    compute_sum_bounds(op_problem_scaled_.constraint_lower_bounds,
+                       op_problem_scaled_.constraint_upper_bounds,
+                       b_vec_norm,
+                       stream_view_);
     }
   }
 

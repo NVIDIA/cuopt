@@ -88,8 +88,8 @@ class pdlp_restart_strategy_t {
     raft::device_span<const f_t> dual_distance;
     raft::device_span<const f_t> l2_dual_residual;
     raft::device_span<const f_t> l2_primal_residual;
-    f_t l2_norm_primal_linear_objective;
-    f_t l2_norm_primal_right_hand_side;
+    raft::device_span<const f_t> l2_norm_primal_linear_objective;
+    raft::device_span<const f_t> l2_norm_primal_right_hand_side;
     raft::device_span<const f_t> step_size;
     raft::device_span<f_t> primal_weight;
     raft::device_span<f_t> primal_weight_error_sum;
