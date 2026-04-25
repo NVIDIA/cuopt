@@ -1139,7 +1139,18 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
   problem.Q.check_matrix("Before free variable expansion");
 
-  if (settings.barrier_presolve && free_variables > 0) {
+  // For QPs using the augmented system, keep free variables as-is rather than
+  // splitting x = v - w. The barrier solver handles them natively with a
+  // static regularizer on the diagonal instead of z/x complementarity terms.
+  if (settings.barrier_presolve && free_variables > 0 && problem.Q.n > 0) {
+    presolve_info.free_variable_indices.clear();
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) {
+        presolve_info.free_variable_indices.push_back(j);
+      }
+    }
+    settings.log.printf("Keeping %d free variables for QP augmented system\n", free_variables);
+  } else if (settings.barrier_presolve && free_variables > 0) {
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
