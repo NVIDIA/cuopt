@@ -26,10 +26,12 @@
 #include <omp.h>
 
 #include <mip_heuristics/logger.hpp>
+#include <thread>
 
 namespace cuopt {
 
-work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval) : sync_interval_(sync_interval)
+work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval, int num_tasks)
+  : sync_interval_(sync_interval), num_tasks_(num_tasks), pending_events_(num_tasks)
 {
 }
 
@@ -102,24 +104,40 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
   }
 
   // All threads wait at this barrier
-#pragma omp barrier
+  omp_event_handle_t event;
+  int task_id = tasks_at_sync_point_++;
 
-  // One thread executes the sync callback
-#pragma omp single
+#pragma omp task detach(event) default(shared)
   {
-    current_sync_target_ = sync_target;
-    barrier_generation_++;
+    pending_events_[task_id] = event;
 
-    if (verbose) {
-      CUOPT_LOG_DEBUG("All contexts arrived at sync point %.2f, new generation %zu",
-                      sync_target,
-                      barrier_generation_);
+    int old;
+#pragma omp atomic capture acq_rel
+    old = event_registered_++;
+
+    if (old == num_tasks_ - 1) {
+      current_sync_target_ = sync_target;
+      barrier_generation_++;
+
+      if (verbose) {
+        CUOPT_LOG_DEBUG("All contexts arrived at sync point %.2f, new generation %zu",
+                        sync_target,
+                        barrier_generation_);
+      }
+
+      if (sync_callback_) { sync_callback_(sync_target); }
+
+      std::vector<omp_event_handle_t> events = pending_events_;
+      event_registered_                      = 0;
+      tasks_at_sync_point_                   = 0;
+
+      for (auto ev : events) {
+        omp_fulfill_event(ev);
+      }
     }
-
-    if (sync_callback_) { sync_callback_(sync_target); }
   }
-  // Implicit barrier at end of single block ensures callback is complete
-  // before any thread proceeds
+
+#pragma omp taskwait
 
   auto wait_end    = std::chrono::high_resolution_clock::now();
   double wait_secs = std::chrono::duration<double>(wait_end - wait_start).count();

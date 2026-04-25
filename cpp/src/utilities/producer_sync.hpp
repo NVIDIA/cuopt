@@ -81,7 +81,8 @@ class producer_sync_t {
   void wait_for_producers(double target_work_units)
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this, target_work_units] {
+    std::condition_variable cv;
+    cv.wait(lock, [this, target_work_units] {
       if (!registration_complete_) { return false; }
       return all_producers_at_or_ahead(target_work_units);
     });

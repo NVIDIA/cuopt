@@ -16,9 +16,13 @@
  */
 #pragma once
 
+#include <omp.h>
+
 #include <atomic>
 #include <functional>
 #include <vector>
+
+#include "omp_helpers.hpp"
 
 namespace cuopt {
 
@@ -26,7 +30,7 @@ struct work_limit_context_t;
 
 class work_unit_scheduler_t {
  public:
-  explicit work_unit_scheduler_t(double sync_interval = 5.0);
+  explicit work_unit_scheduler_t(double sync_interval = 5.0, int num_tasks = 0);
 
   void set_sync_interval(double interval);
   double get_sync_interval() const { return sync_interval_; }
@@ -44,11 +48,11 @@ class work_unit_scheduler_t {
 
   double current_sync_target() const;
 
-  void signal_shutdown() { shutdown_.store(true, std::memory_order_release); }
-  bool is_shutdown() const { return shutdown_.load(std::memory_order_acquire); }
+  void signal_shutdown() { shutdown_ = true; }
+  bool is_shutdown() const { return shutdown_; }
 
  public:
-  bool verbose{false};
+  bool verbose{true};
 
  private:
   void wait_at_sync_point(work_limit_context_t& ctx, double sync_target);
@@ -63,7 +67,12 @@ class work_unit_scheduler_t {
   sync_callback_t sync_callback_;
 
   // Shutdown flag - prevents threads from entering barriers after termination is signaled
-  std::atomic<bool> shutdown_{false};
+  omp_atomic_t<bool> shutdown_{false};
+
+  std::vector<omp_event_handle_t> pending_events_;
+  omp_atomic_t<int> tasks_at_sync_point_{0};
+  int event_registered_{0};
+  int num_tasks_{0};
 };
 
 // RAII helper for registering multiple contexts with automatic cleanup

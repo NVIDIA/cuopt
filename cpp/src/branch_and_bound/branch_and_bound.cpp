@@ -2791,8 +2791,9 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
 
   deterministic_horizon_step_ = 0.50;
 
-  // Compute worker counts using the same formula as reliability-branching scheduler
-  const i_t num_workers = 2 * settings_.num_threads;
+  // *IMPORTANT:* The number of workers MUST be equal or less to the number of
+  // available threads, otherwise this WILL deadlock.
+  const i_t num_workers = settings_.num_threads - 1;
   std::vector<search_strategy_t> search_strategies =
     get_search_strategies(settings_.diving_settings);
   std::array<i_t, num_search_strategies> max_num_workers =
@@ -2833,7 +2834,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     }
   }
 
-  deterministic_scheduler_ = std::make_unique<work_unit_scheduler_t>(deterministic_horizon_step_);
+  deterministic_scheduler_ =
+    std::make_unique<work_unit_scheduler_t>(deterministic_horizon_step_, num_workers);
 
   scoped_context_registrations_t context_registrations(*deterministic_scheduler_);
   for (auto& worker : *deterministic_workers_) {
@@ -2862,7 +2864,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   (*deterministic_workers_)[0].enqueue_node(search_tree_.root.get_down_child());
   (*deterministic_workers_)[1 % num_bfs_workers].enqueue_node(search_tree_.root.get_up_child());
 
-  deterministic_scheduler_->set_sync_callback([this](double) { deterministic_sync_callback(); });
+  deterministic_scheduler_->set_sync_callback(
+    [this](double) { this->deterministic_sync_callback(); });
 
   std::vector<f_t> incumbent_snapshot;
   if (incumbent_.has_incumbent) { incumbent_snapshot = incumbent_.x; }
@@ -2872,22 +2875,28 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     deterministic_broadcast_snapshots(*deterministic_diving_workers_, incumbent_snapshot);
   }
 
-  const int total_thread_count = num_bfs_workers + num_diving_workers;
-
-#pragma omp parallel num_threads(total_thread_count)
+#pragma omp taskgroup
   {
-    int thread_id = omp_get_thread_num();
-    if (thread_id < num_bfs_workers) {
-      auto& worker          = (*deterministic_workers_)[thread_id];
-      f_t worker_start_time = tic();
-      run_deterministic_bfs_loop(worker, search_tree_);
-      worker.total_runtime += toc(worker_start_time);
-    } else {
-      int diving_id         = thread_id - num_bfs_workers;
-      auto& worker          = (*deterministic_diving_workers_)[diving_id];
-      f_t worker_start_time = tic();
-      run_deterministic_diving_loop(worker);
-      worker.total_runtime += toc(worker_start_time);
+    for (i_t i = 0; i < num_bfs_workers; ++i) {
+#pragma omp task default(none) firstprivate(i) untied
+      {
+        printf("Executing bfs worker %d\n", i);
+        auto& worker          = (*deterministic_workers_)[i];
+        f_t worker_start_time = tic();
+        run_deterministic_bfs_loop(worker, search_tree_);
+        worker.total_runtime += toc(worker_start_time);
+      }
+    }
+
+    for (i_t i = 0; i < num_diving_workers; ++i) {
+#pragma omp task default(none) firstprivate(i) untied
+      {
+        printf("Executing diving worker %d\n", i);
+        auto& worker          = (*deterministic_diving_workers_)[i];
+        f_t worker_start_time = tic();
+        run_deterministic_diving_loop(worker);
+        worker.total_runtime += toc(worker_start_time);
+      }
     }
   }
 
@@ -3002,9 +3011,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
 
   ++deterministic_horizon_number_;
   double horizon_end = deterministic_current_horizon_;
-
-  double wait_start = tic();
-  producer_sync_.wait_for_producers(horizon_end);
+  double wait_start  = tic();
+  // producer_sync_.wait_for_producers(horizon_end);
   double wait_time = toc(wait_start);
   total_producer_wait_time_ += wait_time;
   max_producer_wait_time_ = std::max(max_producer_wait_time_, wait_time);
@@ -3013,7 +3021,6 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
   work_unit_context_.global_work_units_elapsed = horizon_end;
 
   bb_event_batch_t<i_t, f_t> all_events = deterministic_workers_->collect_and_sort_events();
-
   deterministic_sort_replay_events(all_events);
 
   // deterministic_prune_worker_nodes_vs_incumbent();

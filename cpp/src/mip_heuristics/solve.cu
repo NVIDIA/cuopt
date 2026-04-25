@@ -588,10 +588,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       op_problem.get_handle_ptr()->get_stream()};
   }
 
-  // TODO: Remove this after converting deterministic B&B to use tasks. This allows
-  // creating a nested parallel region.
-  omp_set_max_active_levels(2);
-
   mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
                                solver_stats_t<i_t, f_t>{},
                                op_problem.get_handle_ptr()->get_stream());
