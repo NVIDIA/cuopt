@@ -1754,7 +1754,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
 
-  auto start_time = std::chrono::high_resolution_clock::now();
+  auto initial_factorization_start_time = tic();
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
@@ -1771,11 +1771,11 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     settings.log.printf("Initial factorization failed\n");
     return -1;
   }
-  settings.log.printf("Initial factorization took %.2fs\n", toc(start_time));
+  settings.log.printf("Initial factorization took %.2fs\n", toc(initial_factorization_start_time));
   data.num_factorizations++;
   data.has_solve_info = false;
 
-  start_time = std::chrono::high_resolution_clock::now();
+  auto initial_solve_start_time = tic();
   // rhs_x <- b
   dense_vector_t<i_t, f_t> rhs_x(lp.rhs);
 
@@ -1818,7 +1818,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       q[k] = -soln[lp.num_cols + k];
     }
-    settings.log.printf("Initial solve took %.2fs\n", toc(start_time));
+    settings.log.printf("Initial solve took %.2fs\n", toc(initial_solve_start_time));
   } else {
     // rhs_x <-  A * Dinv * F * u  - b
     data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
