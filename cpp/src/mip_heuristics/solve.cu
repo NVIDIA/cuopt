@@ -41,6 +41,13 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <pdlp/translate.hpp>
 
+// Choose when to detect symmetry:
+// DETECT_SYMMETRY_BEFORE_PRESOLVE: detect on original problem, disable presolve if symmetry found.
+//   Finds maximum symmetry but loses presolve benefits.
+// DETECT_SYMMETRY_AFTER_PRESOLVE: detect after PaPILO + trivial presolve on the reduced problem.
+//   Presolve runs at full power; symmetry detection on whatever structure remains.
+#define DETECT_SYMMETRY_AFTER_PRESOLVE
+
 #include <mps_parser/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -161,10 +168,12 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
     const i_t n_vars_before = scaled_problem.n_variables;
     detail::trivial_presolve(scaled_problem);
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     // Trivial presolve may remove unused variables and renumber the remaining ones.
     // When that happens the symmetry generators and binary_variables reference the
     // original (pre-trivial-presolve) column indices which are now invalid.
-    // Discard symmetry to avoid out-of-bounds accesses in orbital fixing.
+    // Re-detect symmetry on the reduced problem.
     if (symmetry != nullptr && scaled_problem.n_variables != n_vars_before) {
       CUOPT_LOG_INFO("Trivial presolve changed variable count (%d -> %d); "
                      "re-detecting symmetry on reduced problem",
@@ -180,6 +189,21 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
         symmetry = dual_simplex::detect_symmetry(reduced_user_problem, simplex_settings, has_symmetry_reduced);
       }
     }
+#endif
+
+#ifdef DETECT_SYMMETRY_AFTER_PRESOLVE
+    // Detect symmetry on the final problem after both PaPILO and trivial presolve.
+    // Generators will have correct indices for the reduced problem.
+    if (settings.symmetry != 0) {
+      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex_settings.set_log(true);
+      simplex_settings.time_limit = settings.time_limit;
+      dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
+        cuopt_problem_to_simplex_problem<i_t, f_t>(scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+      bool has_symmetry_post = false;
+      symmetry = dual_simplex::detect_symmetry(post_presolve_problem, simplex_settings, has_symmetry_post);
+    }
+#endif
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
@@ -333,6 +357,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // Start symmetry detection
     bool has_symmetry = false;
     std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     if (settings.symmetry != 0)
     {
       detail::problem_t<i_t, f_t> problem(op_problem);
@@ -344,6 +370,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       symmetry = dual_simplex::detect_symmetry(user_problem, simplex_settings, has_symmetry);
       if (has_symmetry) { settings.presolver = presolver_t::None; }
     }
+#endif
 
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);

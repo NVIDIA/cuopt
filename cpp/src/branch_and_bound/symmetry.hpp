@@ -1100,7 +1100,11 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   settings.log.printf("Total symmetry detection time %f\n", toc(start_time));
 
-  if (!has_symmetry) { return nullptr; }
+  if (!has_symmetry) {
+    settings.log.printf("No exploitable symmetry found (%d generators, %d non-trivial orbits, max orbit size %d)\n",
+                        projected_count, num_nontrivial_orbits, max_orbit_size);
+    return nullptr;
+  }
 
   // Precompute orbit representatives from the projected group's orbits.
   result->orbit_rep.resize(num_original_vars);
