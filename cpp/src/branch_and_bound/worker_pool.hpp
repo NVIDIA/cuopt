@@ -15,8 +15,8 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename WorkerType>
 class worker_pool_t {
  public:
-  using i_t = WorkerType::int_type;
-  using f_t = WorkerType::float_type;
+  using i_t = typename WorkerType::int_type;
+  using f_t = typename WorkerType::float_type;
 
   void init(i_t num_workers,
             const lp_problem_t<i_t, f_t>& original_lp,

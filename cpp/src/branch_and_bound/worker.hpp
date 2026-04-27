@@ -144,14 +144,17 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     total_active_diving_workers = 0;
   }
 
-  void init(mip_node_t<i_t, f_t>* node)
+  void init(const std::vector<mip_node_t<i_t, f_t>*>& nodes)
   {
     assert(!this->is_active.load());
     assert(node_queue.best_first_queue_size() == 0);
     assert(node != nullptr);
 
-    node_queue.push(node);
-    this->lower_bound = node->lower_bound;
+    for (auto* node : nodes) {
+      node_queue.push(node);
+    }
+
+    this->lower_bound = node_queue.get_lower_bound();
   }
 
   void set_inactive() { this->is_active = false; }
@@ -159,11 +162,12 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Steal nodes from another worker
   bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
   {
+    bool steal = false;
     assert(num_nodes > 0);
 
     if (!other->is_active || this == other ||
         other->node_queue.best_first_queue_size() < 2 * num_nodes) {
-      return false;
+      return steal;
     }
 
     while (num_nodes > 0) {
@@ -178,9 +182,10 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
       this->node_queue.push(node);
       this->node_queue.unlock();
       --num_nodes;
+      steal = true;
     }
 
-    return true;
+    return steal;
   }
 
   // Calculate the number of diving workers that this worker can launch. Having a fixed number
@@ -240,7 +245,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   using Base::Base;
 
-  // Set `is_active = true` when the worker is ready.
+  // After calling this routine, you need to set `is_active = true` when the worker is ready.
+  // Note that the starting node may be dropped if become infeasible via bound propagation.
   void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
   {
     // Creates a copy of the node that is disconnected from the main tree, such that the

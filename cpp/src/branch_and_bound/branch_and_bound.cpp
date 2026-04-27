@@ -1482,7 +1482,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       worker->node_queue.unlock();
 
       if (node != nullptr) {
-        if (!launch_bfs_worker(node)) {
+        if (!launch_bfs_worker({node})) {
           worker->node_queue.lock();
           worker->node_queue.push(node);
           worker->node_queue.unlock();
@@ -1625,7 +1625,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
 template <typename i_t, typename f_t>
 bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
-  mip_node_t<i_t, f_t>* start_node)
+  const std::vector<mip_node_t<i_t, f_t>*>& start_nodes)
 {
   // Take an idle node from the pool
   bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
@@ -1638,7 +1638,7 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   }
 
   assert(start_node != nullptr);
-  idle_worker->init(start_node);
+  idle_worker->init(start_nodes);
   idle_worker->set_active();
 
 #pragma omp task affinity(*idle_worker) priority(99)
@@ -2635,7 +2635,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.deterministic) {
     run_deterministic_coordinator(Arow_);
   } else if (settings_.num_threads > 1) {
-    const i_t num_workers        = 2 * settings_.num_threads;
+    const i_t num_workers        = settings_.num_threads;
     const i_t num_bfs_workers    = std::max(settings_.num_threads / 2, 1);
     const i_t num_diving_workers = num_workers - num_bfs_workers;
     bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, settings_);
@@ -2646,8 +2646,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
 #pragma omp master
       {
-        launch_bfs_worker(search_tree_.root.get_up_child());
-        launch_bfs_worker(search_tree_.root.get_down_child());
+        if (num_bfs_workers > 1) {
+          launch_bfs_worker({search_tree_.root.get_up_child()});
+          launch_bfs_worker({search_tree_.root.get_down_child()});
+        } else {
+          launch_bfs_worker({search_tree_.root.get_up_child(), search_tree_.root.get_down_child()});
+        }
       }
     }
   } else {
@@ -2816,8 +2820,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
   deterministic_horizon_step_ = 0.50;
 
   // Compute worker counts using the same formula as reliability-branching scheduler
-  const i_t num_workers        = 2 * settings_.num_threads;
-  const i_t num_bfs_workers    = std::max(num_workers / 4, 1);
+  const i_t num_workers        = settings_.num_threads;
+  const i_t num_bfs_workers    = std::max(num_workers / 2, 1);
   const i_t num_diving_workers = num_workers - num_bfs_workers;
 
   deterministic_mode_enabled_              = true;
