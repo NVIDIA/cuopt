@@ -111,9 +111,7 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
   {
     pending_events_[task_id] = event;
 
-    int old;
-#pragma omp atomic capture acq_rel
-    old = event_registered_++;
+    int old = event_registered_++;
 
     if (old == num_tasks_ - 1) {
       current_sync_target_ = sync_target;
@@ -128,10 +126,8 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
       if (sync_callback_) { sync_callback_(sync_target); }
 
       std::vector<omp_event_handle_t> events = pending_events_;
-
-#pragma omp atomic write
-      event_registered_    = 0;
-      tasks_at_sync_point_ = 0;
+      event_registered_                      = 0;
+      tasks_at_sync_point_                   = 0;
 
       for (auto ev : events) {
         omp_fulfill_event(ev);

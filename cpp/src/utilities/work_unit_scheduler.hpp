@@ -76,7 +76,7 @@ class work_unit_scheduler_t {
 
   std::vector<omp_event_handle_t> pending_events_;
   omp_atomic_t<int> tasks_at_sync_point_{0};
-  int event_registered_{0};
+  omp_atomic_t<int> event_registered_{0};
   int num_tasks_{0};
 };
 
