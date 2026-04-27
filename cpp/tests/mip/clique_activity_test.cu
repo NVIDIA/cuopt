@@ -91,16 +91,15 @@ std::shared_ptr<detail::clique_table_t<int, double>> make_clique_table(
     /*max_clique_size_for_extension=*/1);
   ct->first         = first;
   ct->addtl_cliques = addtl;
-  for (auto const& kv : small_adj) {
-    ct->adj_list_small_cliques[kv.first] = kv.second;
-  }
-  // var_clique_map_first is not read by build_from_host any more, but keep it
-  // populated so it stays consistent with `first` for any other consumer.
-  for (int ci = 0; ci < static_cast<int>(first.size()); ++ci) {
-    for (int v : first[ci]) {
-      if (v >= 0 && v < n_vars) { ct->var_clique_map_first[v].insert(ci); }
-    }
-  }
+  // Convert legacy hash-of-set small adjacency into the CSR. Production code
+  // never goes through this path — remove_small_cliques populates the CSR
+  // directly. The helper is sufficient here because tests only need a stable
+  // read-only view of edges.
+  ct->set_small_clique_adj_for_test(small_adj);
+  // Materialize var_clique_first / var_clique_addtl / first_var_positions
+  // from `first` and `addtl_cliques`. This mirrors what
+  // build_clique_table()/find_initial_cliques() do at the end of build.
+  detail::fill_var_clique_maps(*ct);
   return ct;
 }
 

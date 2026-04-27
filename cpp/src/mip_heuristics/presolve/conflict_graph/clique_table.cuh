@@ -23,9 +23,11 @@
 #include <memory>
 #include <utilities/timer.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
@@ -66,17 +68,109 @@ struct addtl_clique_t {
   i_t start_pos_on_clique;
 };
 
+// CSR-shaped per-vertex map: for each vertex v in [0, n_vertices), stores a
+// sorted slice of i_t indices in `indices[offsets[v] .. offsets[v+1])`.
+//
+// Replaces three pre-existing `std::vector<std::unordered_set<i_t>>` /
+// `std::unordered_map<i_t, std::unordered_set<i_t>>` containers used to map
+// vertex ids (which are dense in [0, 2*n_vars)) to sets of clique/vertex
+// indices. CSR is ~5× cheaper in memory (no per-node allocator overhead) and
+// gives sequential scans + `std::lower_bound` point queries, both of which
+// are far more cache-friendly than per-vertex hash sets.
+//
+// Build protocol: callers populate `indices` via repeated `push_back`s
+// keyed by source-vertex, then call `finalize_from_unsorted_pairs`. The
+// helper sorts entries by (src, value) and computes `offsets`.
+template <typename i_t>
+struct csr_var_map_t {
+  std::vector<i_t> offsets;  // size: n_vertices + 1; offsets[v] is the start in `indices`
+  std::vector<i_t> indices;  // sorted within each [offsets[v], offsets[v+1]) slice
+
+  void clear_and_resize(i_t n_vertices)
+  {
+    offsets.assign(n_vertices + 1, 0);
+    indices.clear();
+  }
+  i_t n_keys() const { return offsets.empty() ? 0 : static_cast<i_t>(offsets.size() - 1); }
+  i_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
+  const i_t* slice_begin(i_t v) const { return indices.data() + offsets[v]; }
+  const i_t* slice_end(i_t v) const { return indices.data() + offsets[v + 1]; }
+  // Average slice size — used by cost-budget heuristics in cut/extension
+  // passes that previously used `addtl_cliques.size()` as a per-call cost
+  // proxy. Cheap O(1) summary; precision is not load-bearing.
+  double avg_slice_size() const
+  {
+    const i_t k = n_keys();
+    return k > 0 ? static_cast<double>(indices.size()) / static_cast<double>(k) : 0.0;
+  }
+  // O(log slice_size) point lookup. Returns true iff `value` is present.
+  bool slice_contains(i_t v, i_t value) const
+  {
+    const i_t* b = slice_begin(v);
+    const i_t* e = slice_end(v);
+    return std::binary_search(b, e, value);
+  }
+
+  // Build CSR from an unsorted `(src, value)` edge list. Duplicates within a
+  // slice are collapsed. After this call each slice is sorted ascending and
+  // contains no duplicates.
+  void finalize_from_unsorted_pairs(i_t n_vertices, std::vector<std::pair<i_t, i_t>>& pairs)
+  {
+    offsets.assign(n_vertices + 1, 0);
+    // Caller is responsible for keeping `p.first ∈ [0, n_vertices)` — we don't
+    // assert here to keep this header free of internal logging includes.
+    for (const auto& p : pairs) {
+      offsets[p.first + 1]++;
+    }
+    for (i_t v = 1; v <= n_vertices; ++v) {
+      offsets[v] += offsets[v - 1];
+    }
+    indices.assign(static_cast<size_t>(offsets.back()), i_t{0});
+    std::vector<i_t> head(n_vertices, 0);
+    for (const auto& p : pairs) {
+      indices[offsets[p.first] + head[p.first]++] = p.second;
+    }
+    // Sort each slice and dedupe in-place. Average slice sizes are small
+    // (typically << n_vertices), so per-slice sort+unique is cheap.
+    for (i_t v = 0; v < n_vertices; ++v) {
+      auto* b = indices.data() + offsets[v];
+      auto* e = indices.data() + offsets[v] + head[v];
+      std::sort(b, e);
+      auto* new_end = std::unique(b, e);
+      // If we deduped, compact later via a second pass below.
+      head[v] = static_cast<i_t>(new_end - b);
+    }
+    // Compact (rebuild offsets/indices to skip dedupe holes).
+    std::vector<i_t> new_offsets(n_vertices + 1, 0);
+    for (i_t v = 0; v < n_vertices; ++v) {
+      new_offsets[v + 1] = new_offsets[v] + head[v];
+    }
+    if (new_offsets.back() != offsets.back()) {
+      std::vector<i_t> new_indices(static_cast<size_t>(new_offsets.back()));
+      for (i_t v = 0; v < n_vertices; ++v) {
+        std::copy(indices.data() + offsets[v],
+                  indices.data() + offsets[v] + head[v],
+                  new_indices.data() + new_offsets[v]);
+      }
+      offsets = std::move(new_offsets);
+      indices = std::move(new_indices);
+    } else {
+      offsets = std::move(new_offsets);
+    }
+  }
+};
+
 template <typename i_t, typename f_t>
 struct clique_table_t {
   clique_table_t(i_t n_vertices, i_t min_clique_size_, i_t max_clique_size_for_extension_)
     : min_clique_size(min_clique_size_),
       max_clique_size_for_extension(max_clique_size_for_extension_),
-      var_clique_map_first(n_vertices),
-      var_clique_map_addtl(n_vertices),
-      adj_list_small_cliques(n_vertices),
       var_degrees(n_vertices, -1),
       n_variables(n_vertices / 2)
   {
+    var_clique_first.clear_and_resize(n_vertices);
+    var_clique_addtl.clear_and_resize(n_vertices);
+    small_clique_adj.clear_and_resize(n_vertices);
   }
 
   // std::atomic is neither copyable nor movable, so adding ready_for_heuristics
@@ -90,10 +184,10 @@ struct clique_table_t {
   clique_table_t(clique_table_t&& other) noexcept
     : first(std::move(other.first)),
       addtl_cliques(std::move(other.addtl_cliques)),
-      var_clique_map_first(std::move(other.var_clique_map_first)),
-      var_clique_map_addtl(std::move(other.var_clique_map_addtl)),
+      var_clique_first(std::move(other.var_clique_first)),
+      var_clique_addtl(std::move(other.var_clique_addtl)),
       first_var_positions(std::move(other.first_var_positions)),
-      adj_list_small_cliques(std::move(other.adj_list_small_cliques)),
+      small_clique_adj(std::move(other.small_clique_adj)),
       var_degrees(std::move(other.var_degrees)),
       n_variables(other.n_variables),
       min_clique_size(other.min_clique_size),
@@ -109,24 +203,30 @@ struct clique_table_t {
   // pointer / unique_ptr / shared_ptr.
   clique_table_t& operator=(clique_table_t&&) = delete;
 
-  std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx);
+  std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx) const;
   i_t get_degree_of_var(i_t var_idx);
-  bool check_adjacency(i_t var_idx1, i_t var_idx2);
+  bool check_adjacency(i_t var_idx1, i_t var_idx2) const;
+
+  void set_small_clique_adj_for_test(const std::unordered_map<i_t, std::unordered_set<i_t>>& edges);
 
   // keeps the large cliques in each constraint
   std::vector<std::vector<i_t>> first;
   // keeps the additional cliques
   std::vector<addtl_clique_t<i_t, f_t>> addtl_cliques;
-  // TODO figure out the performance of lookup for the following: unordered_set vs vector
-  // keeps the indices of original(first) cliques that contain variable x
-  std::vector<std::unordered_set<i_t>> var_clique_map_first;
-  // keeps the indices of additional cliques that contain variable x
-  std::vector<std::unordered_set<i_t>> var_clique_map_addtl;
+  // var_idx → indices of `first` cliques that contain var_idx (CSR).
+  csr_var_map_t<i_t> var_clique_first;
+  // var_idx → indices of `addtl_cliques` that share an edge with var_idx
+  // (CSR). Includes BOTH the case where var_idx is the extension vertex
+  // (`addtl.vertex_idx == var_idx`) AND the case where var_idx is a base
+  // member in the extended suffix
+  // (`var_idx ∈ first[addtl.clique_idx][addtl.start_pos_on_clique:]`).
+  csr_var_map_t<i_t> var_clique_addtl;
   // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
   std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
-  // adjacency list to keep small cliques, this basically keeps the vars share a small clique
-  // constraint
-  std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_small_cliques;
+  // var_idx → neighboring vars from cliques that were demoted by
+  // remove_small_cliques into pairwise edges (CSR). Symmetric: every edge
+  // (u, v) appears in both small_clique_adj.slice(u) and slice(v).
+  csr_var_map_t<i_t> small_clique_adj;
   // degrees of each vertex
   std::vector<i_t> var_degrees;
   // number of variables in the original problem
@@ -146,11 +246,11 @@ struct clique_table_t {
   //   During cut generation B&B only ever writes to `var_degrees` (via the
   //   lazy `get_degree_of_var` cache — each slot in a fixed-size vector,
   //   never resized). Heuristics' `clique_group_table_t::build_from_host`
-  //   reads `first`, `addtl_cliques`, `var_clique_map_first`, and
-  //   `adj_list_small_cliques`; it does NOT read `var_degrees`. All of the
+  //   reads `first`, `addtl_cliques`, `var_clique_first`, and
+  //   `small_clique_adj`; it does NOT read `var_degrees`. All of the
   //   containers build_from_host touches are populated once by
   //   `find_initial_cliques` (which includes `remove_small_cliques` that
-  //   seeds `adj_list_small_cliques`) and then remain structurally stable
+  //   seeds `small_clique_adj`) and then remain structurally stable
   //   for the rest of the solve. So B&B's write set and heuristics' read
   //   set are disjoint.
   //
@@ -183,6 +283,9 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
                         bool remove_small_cliques,
                         bool fill_var_clique_maps,
                         cuopt::timer_t& timer);
+
+template <typename i_t, typename f_t>
+void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table);
 
 }  // namespace cuopt::linear_programming::detail
 

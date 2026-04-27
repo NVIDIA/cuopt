@@ -227,7 +227,10 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   i_t num_removed_first = 0;
   i_t num_removed_addtl = 0;
   std::vector<bool> to_delete(clique_table.first.size(), false);
-  // if a clique is small, we remove it from the cliques and add it to adjlist
+  std::vector<std::pair<i_t, i_t>> small_edges;
+
+  // First-clique demotion: cliques at-or-below the size threshold are
+  // dissolved into pairwise edges in `small_clique_adj`.
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
@@ -235,7 +238,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
       for (size_t i = 0; i < clique.size(); i++) {
         for (size_t j = 0; j < clique.size(); j++) {
           if (i == j) { continue; }
-          clique_table.adj_list_small_cliques[clique[i]].insert(clique[j]);
+          small_edges.emplace_back(clique[i], clique[j]);
         }
       }
       num_removed_first++;
@@ -257,10 +260,9 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
     for (size_t i = addtl_clique.start_pos_on_clique;
          i < clique_table.first[base_clique_idx].size();
          i++) {
-      clique_table.adj_list_small_cliques[clique_table.first[base_clique_idx][i]].insert(
-        addtl_clique.vertex_idx);
-      clique_table.adj_list_small_cliques[addtl_clique.vertex_idx].insert(
-        clique_table.first[base_clique_idx][i]);
+      const i_t base_member = clique_table.first[base_clique_idx][i];
+      small_edges.emplace_back(base_member, addtl_clique.vertex_idx);
+      small_edges.emplace_back(addtl_clique.vertex_idx, base_member);
     }
     addtl_to_delete[addtl_c] = true;
     num_removed_addtl++;
@@ -299,43 +301,54 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
                    (size_t)clique_table.min_clique_size,
                  "A small clique remained after removing small cliques");
   }
+  // Finalize the small-clique CSR. `finalize_from_unsorted_pairs` sorts each
+  // slice and removes duplicates, so callers that re-trigger demotion (e.g.
+  // a future incremental rebuild) compose cleanly.
+  clique_table.small_clique_adj.finalize_from_unsorted_pairs(2 * clique_table.n_variables,
+                                                             small_edges);
   // Clique removals/edge materialization can change degrees; force recompute on next query.
   std::fill(clique_table.var_degrees.begin(), clique_table.var_degrees.end(), -1);
 }
 
 template <typename i_t, typename f_t>
-std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx)
+std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx) const
 {
   std::unordered_set<i_t> adj_set;
-  for (const auto& clique_idx : var_clique_map_first[var_idx]) {
-    adj_set.insert(first[clique_idx].begin(), first[clique_idx].end());
+
+  // First-clique edges. For every first-clique that contains var_idx, every
+  // member of that clique is adjacent to var_idx.
+  for (const i_t* it = var_clique_first.slice_begin(var_idx);
+       it != var_clique_first.slice_end(var_idx);
+       ++it) {
+    const auto& c = first[*it];
+    adj_set.insert(c.begin(), c.end());
   }
 
-  for (const auto& addtl_clique_idx : var_clique_map_addtl[var_idx]) {
-    adj_set.insert(addtl_cliques[addtl_clique_idx].vertex_idx);
-    adj_set.insert(first[addtl_cliques[addtl_clique_idx].clique_idx].begin() +
-                     addtl_cliques[addtl_clique_idx].start_pos_on_clique,
-                   first[addtl_cliques[addtl_clique_idx].clique_idx].end());
-  }
-  // Reverse lookup for additional cliques using position map:
-  // if var_idx is in first[clique_idx][start_pos_on_clique:], it is adjacent to vertex_idx.
-  for (const auto& addtl : addtl_cliques) {
-    if (addtl.vertex_idx == var_idx) { continue; }
-    if (static_cast<size_t>(addtl.clique_idx) < first_var_positions.size()) {
-      const auto& pos_map = first_var_positions[addtl.clique_idx];
-      auto it             = pos_map.find(var_idx);
-      if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) {
-        adj_set.insert(addtl.vertex_idx);
-      }
+  // loop above.
+  for (const i_t* it = var_clique_addtl.slice_begin(var_idx);
+       it != var_clique_addtl.slice_end(var_idx);
+       ++it) {
+    const auto& a = addtl_cliques[*it];
+    if (a.vertex_idx == var_idx) {
+      // var_idx is the extension vertex; its new neighbors are the base
+      // suffix members.
+      const auto& base = first[a.clique_idx];
+      adj_set.insert(base.begin() + a.start_pos_on_clique, base.end());
+    } else {
+      // var_idx is a base member; the only edge this addtl contributes
+      // beyond what the first-clique loop already added is to the extension
+      // vertex itself.
+      adj_set.insert(a.vertex_idx);
     }
   }
 
-  {
-    auto it = adj_list_small_cliques.find(var_idx);
-    if (it != adj_list_small_cliques.end()) {
-      adj_set.insert(it->second.begin(), it->second.end());
-    }
+  // Small-clique adjacency (CSR).
+  for (const i_t* it = small_clique_adj.slice_begin(var_idx);
+       it != small_clique_adj.slice_end(var_idx);
+       ++it) {
+    adj_set.insert(*it);
   }
+
   // Add the complement of var_idx to the adjacency set
   i_t complement_idx = (var_idx >= n_variables) ? (var_idx - n_variables) : (var_idx + n_variables);
   adj_set.insert(complement_idx);
@@ -352,41 +365,47 @@ i_t clique_table_t<i_t, f_t>::get_degree_of_var(i_t var_idx)
 }
 
 template <typename i_t, typename f_t>
-bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2)
+bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2) const
 {
   if (var_idx1 == var_idx2) { return false; }
   if (var_idx1 % n_variables == var_idx2 % n_variables) { return true; }
 
-  {
-    auto it = adj_list_small_cliques.find(var_idx1);
-    if (it != adj_list_small_cliques.end() && it->second.count(var_idx2) > 0) { return true; }
-  }
+  // Small-clique adjacency: O(log slice) binary search on the sorted CSR
+  // slice. We only probe one direction since `remove_small_cliques` populates
+  // the CSR symmetrically.
+  if (small_clique_adj.slice_contains(var_idx1, var_idx2)) { return true; }
 
-  // Iterate whichever variable belongs to fewer first-cliques
+  // First-clique adjacency: probe through whichever variable belongs to
+  // fewer first-cliques (smaller slice ⇒ less work).
   {
     i_t probe_var  = var_idx1;
     i_t target_var = var_idx2;
-    if (var_clique_map_first[var_idx1].size() > var_clique_map_first[var_idx2].size()) {
+    if (var_clique_first.slice_size(var_idx1) > var_clique_first.slice_size(var_idx2)) {
       probe_var  = var_idx2;
       target_var = var_idx1;
     }
-    for (const auto& clique_idx : var_clique_map_first[probe_var]) {
-      if (first_var_positions[clique_idx].count(target_var) > 0) { return true; }
+    for (const i_t* it = var_clique_first.slice_begin(probe_var);
+         it != var_clique_first.slice_end(probe_var);
+         ++it) {
+      if (first_var_positions[*it].count(target_var) > 0) { return true; }
     }
   }
 
-  for (const auto& addtl_idx : var_clique_map_addtl[var_idx1]) {
-    const auto& addtl   = addtl_cliques[addtl_idx];
+  for (const i_t* it = var_clique_addtl.slice_begin(var_idx1);
+       it != var_clique_addtl.slice_end(var_idx1);
+       ++it) {
+    const auto& addtl   = addtl_cliques[*it];
     const auto& pos_map = first_var_positions[addtl.clique_idx];
-    auto it             = pos_map.find(var_idx2);
-    if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) { return true; }
+    auto pos_it         = pos_map.find(var_idx2);
+    if (pos_it != pos_map.end() && pos_it->second >= addtl.start_pos_on_clique) { return true; }
   }
-
-  for (const auto& addtl_idx : var_clique_map_addtl[var_idx2]) {
-    const auto& addtl   = addtl_cliques[addtl_idx];
+  for (const i_t* it = var_clique_addtl.slice_begin(var_idx2);
+       it != var_clique_addtl.slice_end(var_idx2);
+       ++it) {
+    const auto& addtl   = addtl_cliques[*it];
     const auto& pos_map = first_var_positions[addtl.clique_idx];
-    auto it             = pos_map.find(var_idx1);
-    if (it != pos_map.end() && it->second >= addtl.start_pos_on_clique) { return true; }
+    auto pos_it         = pos_map.find(var_idx1);
+    if (pos_it != pos_map.end() && pos_it->second >= addtl.start_pos_on_clique) { return true; }
   }
 
   return false;
@@ -557,21 +576,62 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
 template <typename i_t, typename f_t>
 void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table)
 {
-  clique_table.first_var_positions.resize(clique_table.first.size());
+  const i_t n_vertices = 2 * clique_table.n_variables;
+
+  // first_var_positions stays as a per-clique hash map: typical clique sizes
+  // are small enough that hash lookup beats binary search, and the
+  // construction is naturally write-keyed-by-clique.
+  clique_table.first_var_positions.assign(clique_table.first.size(), {});
+
+  // var_clique_first: (var, clique_idx) edges. One edge per (clique, member)
+  // pair.
+  std::vector<std::pair<i_t, i_t>> first_pairs;
+  size_t total_first_members = 0;
+  for (const auto& c : clique_table.first) {
+    total_first_members += c.size();
+  }
+  first_pairs.reserve(total_first_members);
+
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     const auto& clique = clique_table.first[clique_idx];
     auto& pos_map      = clique_table.first_var_positions[clique_idx];
     pos_map.reserve(clique.size());
     for (size_t idx = 0; idx < clique.size(); idx++) {
-      i_t var_idx = clique[idx];
-      clique_table.var_clique_map_first[var_idx].insert(clique_idx);
+      const i_t var_idx = clique[idx];
+      first_pairs.emplace_back(var_idx, static_cast<i_t>(clique_idx));
       pos_map[var_idx] = static_cast<i_t>(idx);
     }
   }
-  for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); addtl_c++) {
-    const auto& addtl_clique = clique_table.addtl_cliques[addtl_c];
-    clique_table.var_clique_map_addtl[addtl_clique.vertex_idx].insert(addtl_c);
+  clique_table.var_clique_first.finalize_from_unsorted_pairs(n_vertices, first_pairs);
+
+  std::vector<std::pair<i_t, i_t>> addtl_pairs;
+  for (size_t addtl_c = 0; addtl_c < clique_table.addtl_cliques.size(); ++addtl_c) {
+    const auto& a = clique_table.addtl_cliques[addtl_c];
+    addtl_pairs.emplace_back(a.vertex_idx, static_cast<i_t>(addtl_c));
+    const auto& base = clique_table.first[a.clique_idx];
+    for (i_t pos = a.start_pos_on_clique; pos < static_cast<i_t>(base.size()); ++pos) {
+      addtl_pairs.emplace_back(base[pos], static_cast<i_t>(addtl_c));
+    }
   }
+  clique_table.var_clique_addtl.finalize_from_unsorted_pairs(n_vertices, addtl_pairs);
+}
+
+template <typename i_t, typename f_t>
+void clique_table_t<i_t, f_t>::set_small_clique_adj_for_test(
+  const std::unordered_map<i_t, std::unordered_set<i_t>>& edges)
+{
+  std::vector<std::pair<i_t, i_t>> pairs;
+  size_t total = 0;
+  for (const auto& kv : edges) {
+    total += kv.second.size();
+  }
+  pairs.reserve(total);
+  for (const auto& kv : edges) {
+    for (const auto& v : kv.second) {
+      pairs.emplace_back(kv.first, v);
+    }
+  }
+  small_clique_adj.finalize_from_unsorted_pairs(2 * n_variables, pairs);
 }
 
 template <typename i_t, typename f_t>
@@ -742,20 +802,21 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
 #endif
 }
 
-#define INSTANTIATE(F_TYPE)                                               \
-  template void find_initial_cliques<int, F_TYPE>(                        \
-    dual_simplex::user_problem_t<int, F_TYPE> & problem,                  \
-    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
-    std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,      \
-    cuopt::timer_t & timer,                                               \
-    std::atomic<bool> * signal_extend);                                   \
-  template void build_clique_table<int, F_TYPE>(                          \
-    const dual_simplex::user_problem_t<int, F_TYPE>& problem,             \
-    clique_table_t<int, F_TYPE>& clique_table,                            \
-    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances, \
-    bool remove_small_cliques_flag,                                       \
-    bool fill_var_clique_maps_flag,                                       \
-    cuopt::timer_t& timer);                                               \
+#define INSTANTIATE(F_TYPE)                                                                    \
+  template void find_initial_cliques<int, F_TYPE>(                                             \
+    dual_simplex::user_problem_t<int, F_TYPE> & problem,                                       \
+    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
+    std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,                           \
+    cuopt::timer_t & timer,                                                                    \
+    std::atomic<bool> * signal_extend);                                                        \
+  template void build_clique_table<int, F_TYPE>(                                               \
+    const dual_simplex::user_problem_t<int, F_TYPE>& problem,                                  \
+    clique_table_t<int, F_TYPE>& clique_table,                                                 \
+    typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
+    bool remove_small_cliques_flag,                                                            \
+    bool fill_var_clique_maps_flag,                                                            \
+    cuopt::timer_t& timer);                                                                    \
+  template void fill_var_clique_maps<int, F_TYPE>(clique_table_t<int, F_TYPE> & clique_table); \
   template class clique_table_t<int, F_TYPE>;
 
 #if MIP_INSTANTIATE_FLOAT

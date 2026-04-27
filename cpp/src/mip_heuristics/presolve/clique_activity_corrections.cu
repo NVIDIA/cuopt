@@ -46,7 +46,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
 
   const bool has_large_or_addtl =
     !clique_table.first.empty() || !clique_table.addtl_cliques.empty();
-  const bool has_small_adj = !clique_table.adj_list_small_cliques.empty();
+  const bool has_small_adj = !clique_table.small_clique_adj.indices.empty();
   if (!has_large_or_addtl && !has_small_adj) {
     CUOPT_LOG_TRACE("clique_group_table_t::build_from_host: no cliques, skipping");
     return;
@@ -58,9 +58,9 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   cuopt_assert(n_vars > 0, "problem has no variables");
   cuopt_assert(n_constraints >= 0, "n_constraints must be non-negative");
   cuopt_assert(nnz >= 0, "nnz must be non-negative");
-  cuopt_assert((i_t)clique_table.var_clique_map_first.size() >= n_vars ||
-                 clique_table.var_clique_map_first.empty(),
-               "var_clique_map_first sized inconsistently with problem");
+  cuopt_assert(clique_table.var_clique_first.n_keys() >= n_vars ||
+                 clique_table.var_clique_first.indices.empty(),
+               "var_clique_first sized inconsistently with problem");
 
   // Clique-build space (M) vs. pb space. For root / +objective-cut, M == n_vars
   // (identity). For fixed sub-problems, remap via
@@ -128,7 +128,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   // `v >= n_vars` is the complement literal of var `v - n_vars`. Cliques may
   // freely mix positive and complement literals.
   //
-  // Small cliques from adj_list_small_cliques are handled separately per
+  // Small cliques from small_clique_adj are handled separately per
   // constraint, because they are stored only as pairwise edges and we need to
   // re-extract maximal cliques from the induced subgraph.
   //
@@ -191,31 +191,56 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
 
   // --- Small-clique adjacency (remapped if needed) --------------------------
   //
-  // When the id spaces match, we query clique_table.adj_list_small_cliques
-  // directly to avoid copying. Otherwise we build a pb-space shadow so the
-  // rest of the loop below needs no further translation.
+  // When the id spaces match, query clique_table.small_clique_adj (CSR)
+  // directly via binary search. Otherwise build a pb-space shadow as a
+  // hash-of-hash-set, since the sub-problem path is cold and a CSR rebuild
+  // here is unnecessary overhead.
   std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_shadow;
   if (!ids_match && has_small_adj) {
-    for (auto const& [u_build, neighbors_build] : clique_table.adj_list_small_cliques) {
+    const auto& sc    = clique_table.small_clique_adj;
+    const i_t sc_keys = sc.n_keys();
+    for (i_t u_build = 0; u_build < sc_keys; ++u_build) {
+      const i_t u_slice = sc.slice_size(u_build);
+      if (u_slice == 0) continue;
       i_t u_pb = remap_vertex_to_pb(u_build);
       if (u_pb < 0) continue;
       auto& set = adj_list_shadow[u_pb];
-      for (i_t v_build : neighbors_build) {
-        i_t v_pb = remap_vertex_to_pb(v_build);
+      for (const i_t* it = sc.slice_begin(u_build); it != sc.slice_end(u_build); ++it) {
+        i_t v_pb = remap_vertex_to_pb(*it);
         if (v_pb >= 0) set.insert(v_pb);
       }
       if (set.empty()) adj_list_shadow.erase(u_pb);
     }
   }
-  const auto& adj_for_build = ids_match ? clique_table.adj_list_small_cliques : adj_list_shadow;
   const bool has_small_adj_for_build = ids_match ? has_small_adj : !adj_list_shadow.empty();
 
-  // Returns true iff there's an adjacency edge (u, v) in adj_for_build.
-  // Adjacency is symmetric, so either direction works.
+  // Returns true iff there's an adjacency edge (u, v) in the active adj
+  // structure. Adjacency is symmetric, so either direction works.
   auto has_small_edge = [&](i_t u, i_t v) -> bool {
-    auto it = adj_for_build.find(u);
-    if (it == adj_for_build.end()) return false;
+    if (ids_match) { return clique_table.small_clique_adj.slice_contains(u, v); }
+    auto it = adj_list_shadow.find(u);
+    if (it == adj_list_shadow.end()) return false;
     return it->second.count(v) > 0;
+  };
+
+  // Materializes neighbors of `seed_lit` into `out` (cleared first). Returns
+  // false if `seed_lit` has no neighbors in the active structure (caller
+  // should `continue`). For the hot ids_match path, this just copies the
+  // sorted CSR slice; for the cold shadow path, it copies from the
+  // unordered_set.
+  auto collect_neighbors = [&](i_t seed_lit, std::vector<i_t>& out) -> bool {
+    out.clear();
+    if (ids_match) {
+      const auto& sc = clique_table.small_clique_adj;
+      const i_t k    = sc.slice_size(seed_lit);
+      if (k == 0) return false;
+      out.assign(sc.slice_begin(seed_lit), sc.slice_end(seed_lit));
+      return true;
+    }
+    auto it = adj_list_shadow.find(seed_lit);
+    if (it == adj_list_shadow.end() || it->second.empty()) return false;
+    out.assign(it->second.begin(), it->second.end());
+    return true;
   };
 
   // --- Group building (host) -------------------------------------------------
@@ -332,7 +357,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     }
 
     // (2) Small cliques: greedy maximal-clique extraction over remaining
-    //     unassigned binary variables using adj_list_small_cliques. Nodes in
+    //     unassigned binary variables using small_clique_adj. Nodes in
     //     the adjacency graph are literals (positive or complement), and an
     //     edge between two literals means "at most one of them is true" — so
     //     the greedy walk works on literals directly, with the extra
@@ -353,13 +378,13 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
         for (i_t seed_sign : {i_t{+1}, i_t{-1}}) {
           if (assigned_vars.count(seed_var)) break;
           i_t seed_lit = (seed_sign == +1) ? seed_var : (n_vars + seed_var);
-          auto adj_it  = adj_for_build.find(seed_lit);
-          if (adj_it == adj_for_build.end()) continue;
+          std::vector<i_t> seed_neighbors;
+          if (!collect_neighbors(seed_lit, seed_neighbors)) continue;
 
           // Candidate literals adjacent to the seed whose underlying var is in
           // this constraint, binary, and still unassigned.
           std::vector<i_t> cand_lits;
-          for (i_t w_lit : adj_it->second) {
+          for (i_t w_lit : seed_neighbors) {
             if (w_lit == seed_lit) continue;
             i_t w_var = underlying_var(w_lit);
             if (!var_to_coeff.count(w_var)) continue;
@@ -584,11 +609,11 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
       phase2_groups);
     CUOPT_LOG_INFO(
       "clique_group_table_t::build_from_host: sources: large=%zu, addtl=%zu, "
-      "materialized=%zu, small_adj_vars=%zu",
+      "materialized=%zu, small_adj_edges=%zu",
       clique_table.first.size(),
       clique_table.addtl_cliques.size(),
       all_cliques.size(),
-      clique_table.adj_list_small_cliques.size());
+      clique_table.small_clique_adj.indices.size());
   }
 }
 

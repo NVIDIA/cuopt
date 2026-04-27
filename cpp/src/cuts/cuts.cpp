@@ -399,7 +399,7 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                     static_cast<long long>(clique_vertices.size()));
   const f_t initial_clique_size = static_cast<f_t>(clique_vertices.size());
 
-  const f_t addtl_cliques_scan_cost = static_cast<f_t>(graph.addtl_cliques.size());
+  const f_t addtl_cliques_scan_cost = static_cast<f_t>(graph.var_clique_addtl.avg_slice_size());
   if (add_work_estimate(
         addtl_cliques_scan_cost * initial_clique_size, work_estimate, max_work_estimate)) {
     return;
@@ -1946,13 +1946,13 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     return true;
   }
   CLIQUE_CUTS_DEBUG(
-    "generate_clique_cuts using clique table first=%lld addtl=%lld small_adj_vars=%lld",
+    "generate_clique_cuts using clique table first=%lld addtl=%lld small_adj_edges=%lld",
     static_cast<long long>(clique_table_->first.size()),
     static_cast<long long>(clique_table_->addtl_cliques.size()),
-    static_cast<long long>(clique_table_->adj_list_small_cliques.size()));
+    static_cast<long long>(clique_table_->small_clique_adj.indices.size()));
 
   // Do NOT early-exit on empty first/addtl: remove_small_cliques pushes
-  // sub-threshold conflict edges into adj_list_small_cliques, which BK
+  // sub-threshold conflict edges into small_clique_adj, which BK
   // still sees through get_adj_set_of_var.
 
   cuopt_assert(clique_table_->n_variables == num_vars, "Clique table variable count mismatch");
@@ -2015,7 +2015,8 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   work_estimate += 3.0 * static_cast<f_t>(vertices.size());
   if (work_estimate > max_work_estimate) { return true; }
 
-  const f_t addtl_cliques_scan_cost = static_cast<f_t>(clique_table_->addtl_cliques.size());
+  const f_t addtl_cliques_scan_cost =
+    static_cast<f_t>(clique_table_->var_clique_addtl.avg_slice_size());
   std::vector<std::vector<i_t>> adj_local(vertices.size());
   size_t total_adj_entries = 0;
   size_t kept_adj_entries  = 0;

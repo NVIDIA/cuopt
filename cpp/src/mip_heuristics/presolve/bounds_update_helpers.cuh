@@ -507,7 +507,7 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
     f_t c_lb      = thrust::get<0>(bnd);
     f_t c_ub      = thrust::get<1>(bnd);
     const f_t eps = (f_t)1e-9;
-    if (c_lb > s_lb + eps || c_ub < s_ub - eps) {
+    if ((c_lb > s_lb + eps || c_ub < s_ub - eps) && pb.variable_types[var_idx] == var_t::INTEGER) {
       printf(
         "[clique-tighten] var=%d cnst=%d group=%d coeff=%.6f | "
         "stock per-cnst: lb=%.6f ub=%.6f | cliq per-cnst: lb=%.6f ub=%.6f\n",

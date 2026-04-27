@@ -84,13 +84,13 @@ struct clique_group_table_t {
   // Construct the group table by analyzing which constraints share ≥2 members
   // of any clique. Greedy non-overlapping partition per constraint: explicit
   // large/addtl cliques are tried first (largest first), then remaining
-  // unassigned binaries are checked against adj_list_small_cliques for
+  // unassigned binaries are checked against small_clique_adj for
   // maximal small-clique extraction.
   //
   // Sources of cliques consumed:
   //   - clique_table.first          (large explicit cliques, size ≥ min_clique_size)
   //   - clique_table.addtl_cliques  (= {vertex_idx} ∪ first[clique_idx][start_pos:])
-  //   - clique_table.adj_list_small_cliques  (pairwise conflict edges; small
+  //   - clique_table.small_clique_adj  (pairwise conflict edges as CSR; small
   //     cliques are rebuilt per constraint via greedy maximal-clique search)
   //
   // Requires a populated problem_t<i_t, f_t> (with reverse CSR) and a non-null
