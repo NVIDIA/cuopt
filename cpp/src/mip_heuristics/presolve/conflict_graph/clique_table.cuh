@@ -151,8 +151,8 @@ struct clique_table_t {
     small_clique_adj.clear_and_resize(n_vertices);
   }
 
-  // Copy disabled (atomic ready_for_heuristics); move provided so tests can
-  // return by value. Move-assign omitted because of const members.
+  // Copy disabled; move provided so tests can return by value.
+  // Move-assign omitted because of const members.
   clique_table_t(const clique_table_t&)            = delete;
   clique_table_t& operator=(const clique_table_t&) = delete;
 
@@ -167,8 +167,7 @@ struct clique_table_t {
       n_variables(other.n_variables),
       min_clique_size(other.min_clique_size),
       max_clique_size_for_extension(other.max_clique_size_for_extension),
-      tolerances(other.tolerances),
-      ready_for_heuristics(other.ready_for_heuristics.load(std::memory_order_relaxed))
+      tolerances(other.tolerances)
   {
   }
 
@@ -201,12 +200,6 @@ struct clique_table_t {
   const i_t min_clique_size;
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
-
-  // Documentation-only handshake flag. NOT gated on from ensure_clique_data:
-  // B&B cut-gen only mutates `var_degrees` (which heuristics don't read), so
-  // the read/write sets are disjoint today. Kept as a hook for future code
-  // that does mutate the heuristics-visible containers on the fly.
-  std::atomic<bool> ready_for_heuristics{false};
 };
 
 template <typename i_t, typename f_t>

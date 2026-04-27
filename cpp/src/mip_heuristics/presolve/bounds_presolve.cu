@@ -115,8 +115,6 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
     clique_data_built    = false;
     return;
   }
-  // Don't gate on ready_for_heuristics — B&B cut-pass writes are disjoint
-  // from our reads (see clique_table_t::ready_for_heuristics).
   clique_data.build_from_host(pb, context.problem_ptr->reverse_original_ids, *current_ct);
   upd.resize_clique_buffers(clique_data.n_groups, pb.handle_ptr->get_stream());
   last_built_problem       = &pb;

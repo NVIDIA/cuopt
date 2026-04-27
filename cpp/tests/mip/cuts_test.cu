@@ -1091,8 +1091,11 @@ TEST(cuts, clique_phase1_remove_small_cliques_preserves_addtl_conflicts)
 {
   const raft::handle_t handle{};
   auto problem = create_weighted_addtl_conflict_problem();
-  // Force base clique {x2,x3} to be considered "small" and removed.
-  auto clique_table = build_clique_table_for_model_with_min_size(handle, problem, 2);
+  // Force base clique {x2,x3} (size 2) to be considered "small" and removed.
+  // `remove_small_cliques` drops cliques whose size is strictly less than
+  // `min_clique_size`, so 3 is the smallest threshold that demotes a size-2
+  // base clique into pairwise edges.
+  auto clique_table = build_clique_table_for_model_with_min_size(handle, problem, 3);
 
   EXPECT_TRUE(clique_table.first.empty());
   EXPECT_TRUE(clique_table.addtl_cliques.empty());

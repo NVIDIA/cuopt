@@ -2128,9 +2128,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       signal_extend_cliques_.store(true, std::memory_order_release);
       clique_table_ = clique_table_future_.get();
     }
-    if (clique_table_) {
-      clique_table_->ready_for_heuristics.store(true, std::memory_order_release);
-    }
   };
 
   if (root_status == lp_status_t::INFEASIBLE) {
@@ -2498,11 +2495,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       last_objective = root_objective_;
     }
   }
-
-  // All cut passes are done; B&B won't touch clique_table_ from here on.
-  // Signal heuristics they can now use the clique table for their own
-  // clique-aware propagation. See clique_table_t::ready_for_heuristics.
-  if (clique_table_) { clique_table_->ready_for_heuristics.store(true, std::memory_order_release); }
 
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
