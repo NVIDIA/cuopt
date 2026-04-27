@@ -71,7 +71,7 @@ class producer_sync_t {
     return registration_complete_;
   }
 
-  /**
+  /** WARNING: Do not use this within OpenMP. This will cause a deadlock!
    * Wait until:
    * 1. registration_complete() has been called, AND
    * 2. All registered producers have work units >= target_work_units
@@ -81,8 +81,7 @@ class producer_sync_t {
   void wait_for_producers(double target_work_units)
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    std::condition_variable cv;
-    cv.wait(lock, [this, target_work_units] {
+    cv_.wait(lock, [this, target_work_units] {
       if (!registration_complete_) { return false; }
       return all_producers_at_or_ahead(target_work_units);
     });
