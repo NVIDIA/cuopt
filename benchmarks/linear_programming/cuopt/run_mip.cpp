@@ -311,6 +311,8 @@ int bind_process_to_cpu_partition(int gpu_id, int n_gpus)
   int start        = gpu_id * cpus_per_gpu;
   int end          = std::min(start + cpus_per_gpu, static_cast<int>(visible_cpus.size()));
 
+  if (start >= end) { return -1; }
+
   cpu_set_t child_mask;
   CPU_ZERO(&child_mask);
 
@@ -319,8 +321,11 @@ int bind_process_to_cpu_partition(int gpu_id, int n_gpus)
     std::cout << "Binding process to CPU " << visible_cpus[i] << std::endl;
   }
 
-  if (sched_setaffinity(0, sizeof(child_mask), &child_mask) != 0) { perror("sched_setaffinity"); }
-  return cpus_per_gpu;
+  if (sched_setaffinity(0, sizeof(child_mask), &child_mask) != 0) {
+    perror("sched_setaffinity");
+    return -1;
+  }
+  return end - start;
 }
 
 void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,

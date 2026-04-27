@@ -231,7 +231,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
-    if (clique.size() <= (size_t)clique_table.min_clique_size) {
+    if (clique.size() < (size_t)clique_table.min_clique_size) {
       for (size_t i = 0; i < clique.size(); i++) {
         for (size_t j = 0; j < clique.size(); j++) {
           if (i == j) { continue; }
@@ -753,6 +753,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                                           clique_config.min_extend_work,
                                           clique_config.max_extend_work,
                                           signal_extend);
+  if (n_extended_cliques > 0) { fill_var_clique_maps(*clique_table_ptr); }
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(
