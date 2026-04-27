@@ -55,7 +55,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libcuopt' then 'cuopt' then 'docs' targets
+ default action (no args) is to build and install 'libmps_parser', 'libcuopt', 'cuopt', 'cuopt_mps_parser', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
@@ -450,8 +450,8 @@ if buildAll || hasArg cuopt_sh_client; then
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build the docs
-if buildAll || hasArg docs; then
+# Build the docs (opt-in; pass 'docs' explicitly to build)
+if hasArg docs; then
     cd "${REPODIR}"/cpp/doxygen
     doxygen Doxyfile
 
