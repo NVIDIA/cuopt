@@ -120,13 +120,6 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
-  // Install a callback invoked from the async clique-build task immediately
-  // after find_initial_cliques returns and before the task's future becomes
-  // ready. The callback receives ownership share of the built table and is
-  // responsible for publishing it to external observers (e.g. via
-  // problem_t::publish_clique_table). Invoked exactly once per B&B instance
-  // that launches an async build; may receive a null shared_ptr if the build
-  // was aborted (e.g. via signal).
   using clique_publish_callback_t =
     std::function<void(std::shared_ptr<detail::clique_table_t<i_t, f_t>>)>;
   void set_clique_publish_callback(clique_publish_callback_t cb)
