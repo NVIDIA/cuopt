@@ -141,11 +141,58 @@ struct clique_group_table_t {
 // TPB is a template argument to match the file's existing style; it is
 // statically required to equal raft::WarpSize so every block is exactly one
 // warp.
+//
+// Skip-on-clean-constraint optimization (P4):
+//   `changed_constraints[c] == 0` means no var in constraint c had its bound
+//   changed in the previous iteration (set/swap maintained by
+//   bounds_update_data_t::prepare_for_next_iteration). Since group g lives in
+//   exactly one constraint c (= group_constraint_ids[gid]) and the group's
+//   members are a subset of c's vars, an unchanged c implies all of g's
+//   members are unchanged → the previously written correction / top-2 values
+//   are still exactly correct.
+//
+//   The skip is consistent with the rest of the pipeline. The two
+//   downstream consumers of this kernel's outputs both gate on the SAME
+//   changed_constraints[c]:
+//     - apply_clique_corrections_to_activity_kernel — gated at its top
+//       (early-returns when changed_constraints[c] == 0); leaves
+//       min/max_activity[c] at its previously-corrected value and does not
+//       read this group's max/min_correction.
+//     - update_bounds_per_cnst_cliq — only entered (inside both
+//       update_bounds_kernel and update_bounds_kernel_cliq) under the per-c
+//       guard `changed_constraints[cnst_idx] == 1`, so this group's
+//       max/min_pos / max/min_neg are not read for clean c either.
+//   Therefore "skip the write" is observationally equivalent to "write the
+//   same value as last time" for clean c.
+//
+//   Transitions are also safe. When c flips clean → dirty, the swap in
+//   prepare_for_next_iteration runs *before* the next iteration's
+//   compute_clique_corrections_kernel call, so the kernel sees
+//   changed_constraints[c] == 1 and writes fresh corrections BEFORE any
+//   reader (apply / update) runs in that iteration.
+//
+//   Initialization paths (all checked):
+//     - bound_presolve_t::bound_update_loop calls init_changed_constraints
+//       (sets every entry to 1) before the first iteration → every group
+//       computed at least once.
+//     - multi_probe_t::bound_update_loop calls init_changed_constraints
+//       unless the per-call flag was lowered by set_interval_bounds. The
+//       flag is restored to true at the end of every loop, so the skip is
+//       confined to exactly the call that set it.
+//     - multi_probe_t::set_interval_bounds (probing_cache → solve_for_interval)
+//       zeros changed_constraints and explicitly marks only constraints
+//       incident to the probed var as dirty; clean-c group correction slots
+//       may then carry values from the previous probing call (against
+//       different bounds), but those slots are never read in this call's
+//       iter 0 (apply/update gate as above), and any later iteration in
+//       which c becomes dirty refreshes the slot before any reader runs.
 // -----------------------------------------------------------------------------
 template <typename i_t, typename f_t, i_t TPB>
 __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> group_member_offsets,
                                                   raft::device_span<const i_t> group_member_vars,
                                                   raft::device_span<const f_t> group_member_coeffs,
+                                                  raft::device_span<const i_t> group_constraint_ids,
+                                                  raft::device_span<const i_t> changed_constraints,
                                                   raft::device_span<const f_t> lb,
                                                   raft::device_span<const f_t> ub,
                                                   raft::device_span<f_t> group_max_correction,
@@ -161,6 +208,17 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
 
   const i_t gid = blockIdx.x;
   cuopt_assert(gid + 1 < (i_t)group_member_offsets.size(), "group id out of range");
+
+  // Constraint-clean skip. All threads in the warp read the same scalar from
+  // `changed_constraints`, so the branch resolves uniformly and there is no
+  // warp divergence; no __syncwarp needed because the early-exit is taken (or
+  // not taken) by every lane simultaneously.
+  cuopt_assert(gid < (i_t)group_constraint_ids.size(), "group_constraint_ids index out of range");
+  const i_t cnst = group_constraint_ids[gid];
+  cuopt_assert(cnst >= 0 && cnst < (i_t)changed_constraints.size(),
+               "group constraint id out of range");
+  if (changed_constraints[cnst] == 0) return;
+
   const i_t mem_begin = group_member_offsets[gid];
   const i_t mem_end   = group_member_offsets[gid + 1];
   cuopt_assert(mem_begin <= mem_end, "group member offsets not monotonic");

@@ -278,12 +278,16 @@ TEST(clique_activity, compute_corrections_kernel_values)
   std::vector<int> h_offsets   = {0, 3};
   std::vector<int> h_vars      = {0, 1, 2};
   std::vector<double> h_coeffs = {3.0, 5.0, 2.0};
+  std::vector<int> h_gcnst     = {0};
+  std::vector<int> h_chgcnst   = {1};
   std::vector<double> h_lb     = {0.0, 0.0, 0.0};
   std::vector<double> h_ub     = {1.0, 1.0, 1.0};
 
   auto d_offsets = device_copy(h_offsets, stream);
   auto d_vars    = device_copy(h_vars, stream);
   auto d_coeffs  = device_copy(h_coeffs, stream);
+  auto d_gcnst   = device_copy(h_gcnst, stream);
+  auto d_chgcnst = device_copy(h_chgcnst, stream);
   auto d_lb      = device_copy(h_lb, stream);
   auto d_ub      = device_copy(h_ub, stream);
 
@@ -299,6 +303,8 @@ TEST(clique_activity, compute_corrections_kernel_values)
     <<<1, warp, 0, stream>>>(make_span(d_offsets),
                              make_span(d_vars),
                              make_span(d_coeffs),
+                             make_span(d_gcnst),
+                             make_span(d_chgcnst),
                              make_span(d_lb),
                              make_span(d_ub),
                              make_span(d_max_corr),
@@ -336,12 +342,16 @@ TEST(clique_activity, compute_corrections_kernel_skips_fixed_members)
   std::vector<int> h_offsets   = {0, 3};
   std::vector<int> h_vars      = {0, 1, 2};
   std::vector<double> h_coeffs = {3.0, 5.0, 2.0};
+  std::vector<int> h_gcnst     = {0};
+  std::vector<int> h_chgcnst   = {1};
   std::vector<double> h_lb     = {0.0, 1.0, 0.0};
   std::vector<double> h_ub     = {1.0, 1.0, 1.0};
 
   auto d_offsets = device_copy(h_offsets, stream);
   auto d_vars    = device_copy(h_vars, stream);
   auto d_coeffs  = device_copy(h_coeffs, stream);
+  auto d_gcnst   = device_copy(h_gcnst, stream);
+  auto d_chgcnst = device_copy(h_chgcnst, stream);
   auto d_lb      = device_copy(h_lb, stream);
   auto d_ub      = device_copy(h_ub, stream);
 
@@ -357,6 +367,8 @@ TEST(clique_activity, compute_corrections_kernel_skips_fixed_members)
     <<<1, warp, 0, stream>>>(make_span(d_offsets),
                              make_span(d_vars),
                              make_span(d_coeffs),
+                             make_span(d_gcnst),
+                             make_span(d_chgcnst),
                              make_span(d_lb),
                              make_span(d_ub),
                              make_span(d_max_corr),

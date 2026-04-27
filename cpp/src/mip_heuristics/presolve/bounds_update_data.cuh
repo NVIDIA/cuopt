@@ -28,8 +28,12 @@ struct bounds_update_data_t {
   // Per-(constraint, clique-group) dynamic state for clique-aware activity
   // tightening. These arrays are sized to the number of groups in the static
   // clique group table (see clique_group_table_t). They are empty when
-  // clique-aware tightening is not enabled for this problem. Recomputed every
-  // bound-propagation iteration from (lb, ub) by compute_clique_corrections_kernel.
+  // clique-aware tightening is not enabled for this problem. Recomputed by
+  // compute_clique_corrections_kernel for groups whose owning constraint is
+  // marked dirty in `changed_constraints`; clean-constraint groups retain
+  // their previous-iteration values (which are still exact, since none of
+  // their members' bounds changed — see the kernel's header comment for the
+  // full argument and pipeline-consistency contract).
   rmm::device_uvector<f_t> group_max_correction;
   rmm::device_uvector<f_t> group_min_correction;
   rmm::device_uvector<f_t> group_max_pos;

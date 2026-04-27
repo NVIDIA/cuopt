@@ -186,6 +186,8 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
       <<<clique_data.n_groups, warp, 0, stream>>>(make_span(clique_data.group_member_offsets),
                                                   make_span(clique_data.group_member_vars),
                                                   make_span(clique_data.group_member_coeffs),
+                                                  make_span(clique_data.group_constraint_ids),
+                                                  make_span(upd.changed_constraints),
                                                   make_span(upd.lb),
                                                   make_span(upd.ub),
                                                   make_span(upd.group_max_correction),
