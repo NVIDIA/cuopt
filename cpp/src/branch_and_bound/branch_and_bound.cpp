@@ -1637,7 +1637,6 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
     return nullptr;
   }
 
-  assert(start_node != nullptr);
   idle_worker->init(start_nodes);
   idle_worker->set_active();
 

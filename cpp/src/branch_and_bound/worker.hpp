@@ -148,9 +148,10 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   {
     assert(!this->is_active.load());
     assert(node_queue.best_first_queue_size() == 0);
-    assert(node != nullptr);
+    assert(nodes.size() > 0);
 
     for (auto* node : nodes) {
+      assert(node != nullptr);
       node_queue.push(node);
     }
 
