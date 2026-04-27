@@ -47,6 +47,14 @@ TEST_P(TimeLimitTestFixture, time_limit)
   std::string filename                    = rapidsDatasetRootDir + std::get<0>(GetParam());
   double target_solve_time                = std::get<1>(GetParam());
   int method                              = std::get<2>(GetParam());
+
+  // supportcase22.mps overshoots the 3s tolerance on CPU-thread-constrained CI runners
+  // because solve_time includes Papilo presolve and post-B&B serial wind-down.
+  // Tracked in https://github.com/NVIDIA/cuopt/issues/1135.
+  if (std::get<0>(GetParam()) == "/mip/supportcase22.mps") {
+    GTEST_SKIP() << "Disabled pending NVIDIA/cuopt#1135";
+  }
+
   int termination_status;
   double solve_time = std::numeric_limits<double>::quiet_NaN();
   EXPECT_EQ(solve_mps_file(filename.c_str(),

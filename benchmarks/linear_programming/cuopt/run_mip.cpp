@@ -576,16 +576,14 @@ int main(int argc, char* argv[])
       auto limiting_adaptor =
         rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
       rmm::mr::set_current_device_resource(limiting_adaptor);
-      run_single();
     } else if (track_allocations) {
       rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
       rmm::mr::set_current_device_resource(tracking_adaptor);
-      run_single();
     } else {
       rmm::mr::set_current_device_resource(memory_resource);
-      run_single();
     }
+    run_single();
   }
 
   return 0;

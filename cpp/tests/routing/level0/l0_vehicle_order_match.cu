@@ -86,7 +86,7 @@ class vehicle_order_test_t : public base_test_t<i_t, f_t>, public ::testing::Tes
     while (cnt < num_constraints) {
       int id      = dist(rng);
       int order   = id % this->n_locations;
-      int vehicle = id / this->n_vehicles;
+      int vehicle = id / this->n_locations;
       if (order > 0) {
         auto& order_set = vehicle_order_match[vehicle];
         if (order_set.count(order)) {
