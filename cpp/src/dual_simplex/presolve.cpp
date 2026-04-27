@@ -13,6 +13,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -827,8 +828,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve && free_variables > 0) {
-    // Try to remove free variables
+  if (settings.barrier_presolve && false) {
+    double const free_var_presolve_start = tic();
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
     std::vector<i_t> row_marked(problem.num_rows, 0);
@@ -850,8 +851,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
 
     i_t removed_free_variables = 0;
-
-    if (constraints_to_check.size() > 0) {
+    if (!constraints_to_check.empty()) {
       // Check if the constraints are feasible
       csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
       problem.A.to_compressed_row(Arow);
@@ -973,15 +973,18 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       }
     }
 
-    i_t new_free_variables = 0;
+    free_variables = 0;
     for (i_t j = 0; j < problem.num_cols; j++) {
-      if (problem.lower[j] == -inf && problem.upper[j] == inf) { new_free_variables++; }
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
     }
     if (removed_free_variables != 0) {
-      settings.log.printf("Bounded %d free variables\n", removed_free_variables);
+      settings.log.printf("Bounded %d free variable row(s) in presolve\n",
+                          static_cast<int>(removed_free_variables));
     }
-    assert(new_free_variables == free_variables - removed_free_variables);
-    free_variables = new_free_variables;
+    settings.log.printf(
+      "Free variable presolve took %.2fs (fully free variable(s) remaining: %d)\n",
+      toc(free_var_presolve_start),
+      static_cast<int>(free_variables));
   }
 
   // The original problem may have a variable without a lower bound
