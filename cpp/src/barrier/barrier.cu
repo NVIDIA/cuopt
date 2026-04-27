@@ -294,43 +294,43 @@ class iteration_data_t {
       use_augmented   = true;
       n_dense_columns = 0;
     } else {
-    f_t start_column_density = tic();
+      f_t start_column_density = tic();
 
-    // Do not look for dense columns if Q is not diagonal
-    if (!has_Q || Q_diagonal) {
-      find_dense_columns(
-        lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-    }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+      // Do not look for dense columns if Q is not diagonal
+      if (!has_Q || Q_diagonal) {
+        find_dense_columns(
+          lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+      }
+      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
-    for (i_t j : dense_columns_unordered) {
-      settings.log.printf("Dense column %6d\n", j);
-    }
+      for (i_t j : dense_columns_unordered) {
+        settings.log.printf("Dense column %6d\n", j);
+      }
 #endif
-    float64_t column_density_time = toc(start_column_density);
-    if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
-    n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
-    if (n_dense_columns > 0) {
-      settings.log.printf("Dense columns               : %d\n", n_dense_columns);
-    }
-    if (n_dense_rows > 0) {
-      settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
-    }
-    settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
-    if ((settings.augmented != 0) &&
-        (n_dense_columns > 50 || n_dense_rows > 10 ||
-         lp.A.m == 0 /* handle case with no constraints */ ||
-         (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
-      use_augmented   = true;
-      n_dense_columns = 0;
-    }
+      float64_t column_density_time = toc(start_column_density);
+      if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
+      n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
+      if (n_dense_columns > 0) {
+        settings.log.printf("Dense columns               : %d\n", n_dense_columns);
+      }
+      if (n_dense_rows > 0) {
+        settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
+      }
+      settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
+      if ((settings.augmented != 0) &&
+          (n_dense_columns > 50 || n_dense_rows > 10 ||
+           lp.A.m == 0 /* handle case with no constraints */ ||
+           (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
+        use_augmented   = true;
+        n_dense_columns = 0;
+      }
 
-    if (has_Q && !use_augmented) {
-      // For now let's not deal with dense columns
-      n_dense_columns = 0;
-      use_augmented   = !Q_diagonal;
-    }
-    } // end !has_Q
+      if (has_Q && !use_augmented) {
+        // For now let's not deal with dense columns
+        n_dense_columns = 0;
+        use_augmented   = !Q_diagonal;
+      }
+    }  // end !has_Q
 
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
@@ -1754,6 +1754,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
 
+  auto start_time = std::chrono::high_resolution_clock::now();
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
@@ -1770,9 +1771,11 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     settings.log.printf("Initial factorization failed\n");
     return -1;
   }
+  settings.log.printf("Initial factorization took %.2fs\n", toc(start_time));
   data.num_factorizations++;
   data.has_solve_info = false;
 
+  start_time = std::chrono::high_resolution_clock::now();
   // rhs_x <- b
   dense_vector_t<i_t, f_t> rhs_x(lp.rhs);
 
@@ -1815,6 +1818,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       q[k] = -soln[lp.num_cols + k];
     }
+    settings.log.printf("Initial solve took %.2fs\n", toc(start_time));
   } else {
     // rhs_x <-  A * Dinv * F * u  - b
     data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
@@ -2003,7 +2007,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // For native free variables (QP): restore x values and set z = 0
   if (data.n_free_vars > 0) {
     for (i_t k = 0; k < data.n_free_vars; ++k) {
-      i_t j = presolve_info.free_variable_indices[k];
+      i_t j     = presolve_info.free_variable_indices[k];
       data.x[j] = free_x_save[k];
       data.z[j] = 0.0;
     }
@@ -2206,11 +2210,11 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
   const bool has_free = data.n_free_vars > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
 
   if (has_free) {
-    auto is_free_ptr = data.d_is_free_.data();
+    auto is_free_ptr     = data.d_is_free_.data();
     auto ratio_test_free = [is_free_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
-      const f_t dx_val   = thrust::get<0>(t);
-      const f_t x_val    = thrust::get<1>(t);
-      const i_t is_free  = thrust::get<2>(t);
+      const f_t dx_val  = thrust::get<0>(t);
+      const f_t x_val   = thrust::get<1>(t);
+      const i_t is_free = thrust::get<2>(t);
       if (is_free) return f_t(1.0);
       if (dx_val < f_t(0.0)) return -x_val / dx_val;
       return f_t(1.0);
@@ -2312,8 +2316,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       constexpr f_t free_var_reg = 1e-7;
       if (data.Q.n > 0 && data.Q_diagonal) {
         cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(),
-                                data.d_is_free_.data(), data.d_Q_diag_.data()),
+          cuda::std::make_tuple(
+            data.d_z_.data(), data.d_x_.data(), data.d_is_free_.data(), data.d_Q_diag_.data()),
           data.d_diag_.data(),
           data.d_diag_.size(),
           [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_free, f_t q_jj) {
@@ -2457,7 +2461,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         [] HD(f_t inv_diag, f_t tmp3, f_t complementarity_xz_rhs, f_t x, f_t dual_rhs, i_t is_free)
           -> thrust::tuple<f_t, f_t> {
           const f_t xz_term = is_free ? f_t(0) : (complementarity_xz_rhs / x);
-          const f_t tmp = tmp3 - xz_term + dual_rhs;
+          const f_t tmp     = tmp3 - xz_term + dual_rhs;
           return {tmp, inv_diag * tmp};
         },
         stream_view_.value());
@@ -3109,9 +3113,7 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
         cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
         out.data(),
         out.size(),
-        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
-          return -(dx_aff_val * dz_aff_val) + new_mu;
-        },
+        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) { return -(dx_aff_val * dz_aff_val) + new_mu; },
         stream_view_.value());
     }
   };
