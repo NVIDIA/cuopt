@@ -25,9 +25,6 @@
 
 #include <omp.h>
 
-#include <mip_heuristics/logger.hpp>
-#include <thread>
-
 namespace cuopt {
 
 work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval, int num_tasks)
@@ -107,6 +104,10 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
   omp_event_handle_t event;
   int task_id = tasks_at_sync_point_++;
 
+  // This is hack for enabling synchronizing the sibling tasks without returning to the main
+  // B&B task. However, this does not let the thread switch to another task despite the
+  // taskwait and can easily lead to a deadlock if not all workers are alive at the same time.
+  // This is a temporary solution and will be replaced in the future.
 #pragma omp task detach(event) default(shared)
   {
     pending_events_[task_id] = event;
