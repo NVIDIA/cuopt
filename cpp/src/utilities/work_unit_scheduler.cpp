@@ -26,7 +26,7 @@
 namespace cuopt {
 
 work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval, int num_tasks)
-  : sync_interval_(sync_interval), num_tasks_(num_tasks), pending_events_(num_tasks)
+  : sync_interval_(sync_interval), num_tasks_(num_tasks)
 {
 }
 
