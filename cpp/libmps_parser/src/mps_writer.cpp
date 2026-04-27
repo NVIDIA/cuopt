@@ -324,8 +324,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                                : "C" + std::to_string(var_id);
       for (auto& nnz : nnzs) {
         std::string row_name;
-        if (static_cast<size_t>(nnz.first) < problem_.get_row_names().size()) {
-          row_name = problem_.get_row_names()[nnz.first];
+        if (static_cast<size_t>(nnz.first) < static_cast<size_t>(n_constraints)) {
+          // Linear rows: do not use row-name count here—names are optional; row id is 0..m-1.
+          row_name = static_cast<size_t>(nnz.first) < problem_.get_row_names().size()
+                       ? problem_.get_row_names()[nnz.first]
+                       : "R" + std::to_string(nnz.first);
         } else if (static_cast<size_t>(nnz.first) <
                    static_cast<size_t>(n_constraints) + quadratic_constraints.size()) {
           const size_t q = static_cast<size_t>(nnz.first) - static_cast<size_t>(n_constraints);
