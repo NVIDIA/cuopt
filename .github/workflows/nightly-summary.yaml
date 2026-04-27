@@ -54,7 +54,7 @@ jobs:
   nightly-summary:
     runs-on: linux-amd64-cpu4
     container:
-      image: python:3.12-slim
+      image: python:3.14-slim
     steps:
       - uses: actions/checkout@v6
         with:
