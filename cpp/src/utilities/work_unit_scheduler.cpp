@@ -98,44 +98,35 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
                     barrier_generation_);
   }
 
-  // All threads wait at this barrier
-  omp_event_handle_t event;
-  int task_id = tasks_at_sync_point_++;
-  assert(task_id >= 0 && task_id < num_tasks_);
-
   // This is hack for enabling synchronizing the sibling tasks without returning to the main
   // B&B task. However, this does not let the thread switch to another task despite the
   // taskwait and can easily lead to a deadlock if not all workers are alive at the same time.
   // This is a temporary solution and will be replaced in the future.
-#pragma omp task detach(event) default(shared)
-  {
-    pending_events_[task_id] = event;
+  int gen     = barrier_generation_;
+  int task_id = tasks_at_sync_point_++;
+  assert(task_id >= 0 && task_id < num_tasks_);
 
-    int old = event_registered_++;
+  if (task_id == num_tasks_ - 1) {
+    current_sync_target_ = sync_target;
 
-    if (old == num_tasks_ - 1) {
-      current_sync_target_ = sync_target;
-      barrier_generation_++;
-
-      if (verbose) {
-        CUOPT_LOG_DEBUG("All contexts arrived at sync point %.2f, new generation %zu",
-                        sync_target,
-                        barrier_generation_);
-      }
-
-      if (sync_callback_) { sync_callback_(sync_target); }
-
-      std::vector<omp_event_handle_t> events = pending_events_;
-      event_registered_                      = 0;
-      tasks_at_sync_point_                   = 0;
-
-      for (auto ev : events) {
-        omp_fulfill_event(ev);
-      }
+    if (verbose) {
+      CUOPT_LOG_DEBUG("All contexts arrived at sync point %.2f, new generation %zu",
+                      sync_target,
+                      barrier_generation_);
     }
-  }
 
-#pragma omp taskwait
+    if (sync_callback_) { sync_callback_(sync_target); }
+
+    barrier_generation_++;
+    tasks_at_sync_point_ = 0;
+
+  } else {
+    int g;
+    do {
+      g = barrier_generation_;
+#pragma omp taskyield
+    } while (g == gen && !is_shutdown());
+  }
 
   auto wait_end    = std::chrono::high_resolution_clock::now();
   double wait_secs = std::chrono::duration<double>(wait_end - wait_start).count();

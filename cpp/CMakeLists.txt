@@ -200,6 +200,12 @@ endif ()
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
+# Replace libgomp with libomp in the imported target.
+# GOMP does not support taskyield, but LLVM OMP does.
+set_target_properties(OpenMP::OpenMP_CXX PROPERTIES
+        INTERFACE_LINK_LIBRARIES "omp"
+)
+
 # Debug options
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     message(STATUS "Building with debugging flags")

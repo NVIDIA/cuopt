@@ -45,15 +45,7 @@ class work_unit_scheduler_t {
 
   double current_sync_target() const;
 
-  void signal_shutdown()
-  {
-    for (auto ev : pending_events_) {
-      omp_fulfill_event(ev);
-    }
-    pending_events_.clear();
-
-    shutdown_ = true;
-  }
+  void signal_shutdown() { shutdown_ = true; }
   bool is_shutdown() const { return shutdown_; }
 
  public:
@@ -65,7 +57,7 @@ class work_unit_scheduler_t {
   double sync_interval_;
   std::vector<std::reference_wrapper<work_limit_context_t>> contexts_;
 
-  size_t barrier_generation_{0};
+  omp_atomic_t<int> barrier_generation_{0};
   double current_sync_target_{0};
 
   // Sync callback - executed when all contexts reach sync point
@@ -73,10 +65,7 @@ class work_unit_scheduler_t {
 
   // Shutdown flag - prevents threads from entering barriers after termination is signaled
   omp_atomic_t<bool> shutdown_{false};
-
-  std::vector<omp_event_handle_t> pending_events_;
   omp_atomic_t<int> tasks_at_sync_point_{0};
-  omp_atomic_t<int> event_registered_{0};
   int num_tasks_{0};
 };
 
