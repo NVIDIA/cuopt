@@ -50,6 +50,8 @@ class work_unit_scheduler_t {
     for (auto ev : pending_events_) {
       omp_fulfill_event(ev);
     }
+    pending_events_.clear();
+
     shutdown_ = true;
   }
   bool is_shutdown() const { return shutdown_; }
