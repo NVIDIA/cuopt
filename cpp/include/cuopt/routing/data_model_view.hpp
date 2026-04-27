@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -265,8 +265,12 @@ class data_model_view_t {
    * list of orders
    * @param norders     number of customer orders that are served by this
    * vehicle
+   * @param[in] validate_input runs expensive input checks. Defaults to true.
    */
-  void add_vehicle_order_match(const i_t vehicle_id, i_t const* orders, const i_t norders);
+  void add_vehicle_order_match(const i_t vehicle_id,
+                               i_t const* orders,
+                               const i_t norders,
+                               bool validate_input = true);
 
   /**
    * @brief Control if a specified order should only serve a subset of vehicles
@@ -275,8 +279,12 @@ class data_model_view_t {
    * @param vehicles    device memory pointer to integer values corresponding to
    * list of vehicles
    * @param nvehicles   number of vehicles that can serve this order
+   * @param[in] validate_input runs expensive input checks. Defaults to true.
    */
-  void add_order_vehicle_match(const i_t order_id, i_t const* vehicles, const i_t nvehicles);
+  void add_order_vehicle_match(const i_t order_id,
+                               i_t const* vehicles,
+                               const i_t nvehicles,
+                               bool validate_input = true);
 
   /**
    * @brief In fully heterogenous fleet mode, vehicle can take different amount

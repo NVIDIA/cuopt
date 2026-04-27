@@ -41,7 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 
 ENV DEBIAN_FRONTEND=""
 
-RUN ln -sf /usr/bin/python${PYTHON_SHORT_VER} /usr/bin/python
+RUN update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_SHORT_VER} 100 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_SHORT_VER} 100
 
 FROM python-env AS install-env
 

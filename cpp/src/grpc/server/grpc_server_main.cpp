@@ -189,16 +189,16 @@ int main(int argc, char** argv)
 
     ensure_log_dir_exists();
 
-    shm_unlink(SHM_JOB_QUEUE);
-    shm_unlink(SHM_RESULT_QUEUE);
-    shm_unlink(SHM_CONTROL);
+    shm_unlink(SHM_JOB_QUEUE.c_str());
+    shm_unlink(SHM_RESULT_QUEUE.c_str());
+    shm_unlink(SHM_CONTROL.c_str());
 
     job_queue = static_cast<JobQueueEntry*>(
-      create_shared_memory(SHM_JOB_QUEUE, sizeof(JobQueueEntry) * MAX_JOBS));
+      create_shared_memory(SHM_JOB_QUEUE.c_str(), sizeof(JobQueueEntry) * MAX_JOBS));
     result_queue = static_cast<ResultQueueEntry*>(
-      create_shared_memory(SHM_RESULT_QUEUE, sizeof(ResultQueueEntry) * MAX_RESULTS));
+      create_shared_memory(SHM_RESULT_QUEUE.c_str(), sizeof(ResultQueueEntry) * MAX_RESULTS));
     shm_ctrl = static_cast<SharedMemoryControl*>(
-      create_shared_memory(SHM_CONTROL, sizeof(SharedMemoryControl)));
+      create_shared_memory(SHM_CONTROL.c_str(), sizeof(SharedMemoryControl)));
     new (shm_ctrl) SharedMemoryControl{};
 
     for (size_t i = 0; i < MAX_JOBS; ++i) {

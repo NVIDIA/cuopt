@@ -2488,7 +2488,6 @@ dual::status_t dual_phase2(i_t phase,
   const i_t n = lp.num_cols;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
-  std::vector<i_t> superbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   const bool initialize_basis = true;
   return dual_phase2_with_advanced_basis(phase,
@@ -2688,6 +2687,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                         vector_norm2<i_t, f_t>(delta_y_steepest_edge));
   }
 
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
+
   if (phase == 2) {
     settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time\n");
   }
@@ -2735,9 +2738,17 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
 #endif
 
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
+
   csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
   lp.A.transpose(A_transpose);
   phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
+
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
 
   f_t obj = compute_objective(lp, x);
   phase2_work_estimate += 2 * n;
@@ -2908,6 +2919,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
     }
     timers.btran_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
     const f_t steepest_edge_norm_check = delta_y_sparse.norm2_squared();
     phase2_work_estimate += 2 * delta_y_sparse.i.size();
@@ -2966,6 +2980,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       }
     }
     timers.delta_z_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_residual;
@@ -3301,6 +3318,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     }
 
     timers.ftran_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
 #ifdef CHECK_PRIMAL_STEP
     std::vector<f_t> residual(m);
@@ -3331,6 +3351,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
     assert(steepest_edge_status == 0);
     timers.se_norms_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
     timers.start_timer();
     // x <- x + delta_x

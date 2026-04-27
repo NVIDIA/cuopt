@@ -2431,7 +2431,22 @@ int basis_update_mpf_t<i_t, f_t>::refactor_basis(
   assert(q.size() == A.m);
   reorder_basic_list(q, basic_list);  // We no longer need q after reordering the basic list
   work_estimate_ += 3 * q.size();
-  reset();
+
+  // Check halt before the transpose operations: these can take hundreds of ms
+  // on large problems (L0 and U0 each have O(fill-in) nonzeros) and have no
+  // internal halt checks.  Catching the flag here avoids the dead zone.
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return CONCURRENT_HALT_RETURN;
+  }
+  // Inline reset() so we can check halt between the two transposes.
+  clear();
+  L0_.transpose(L0_transpose_);
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return CONCURRENT_HALT_RETURN;
+  }
+  U0_.transpose(U0_transpose_);
+  work_estimate_ += 6 * L0_.col_start[L0_.n] + 6 * U0_.col_start[U0_.n];
+  reset_stats();
   return 0;
 }
 
