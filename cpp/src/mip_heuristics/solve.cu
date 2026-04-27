@@ -191,19 +191,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     }
 #endif
 
-#ifdef DETECT_SYMMETRY_AFTER_PRESOLVE
-    // Detect symmetry on the final problem after both PaPILO and trivial presolve.
-    // Generators will have correct indices for the reduced problem.
-    if (settings.symmetry != 0) {
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
-      simplex_settings.set_log(true);
-      simplex_settings.time_limit = settings.time_limit;
-      dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
-        cuopt_problem_to_simplex_problem<i_t, f_t>(scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
-      bool has_symmetry_post = false;
-      symmetry = dual_simplex::detect_symmetry(post_presolve_problem, simplex_settings, has_symmetry_post);
-    }
-#endif
+    // Note: DETECT_SYMMETRY_AFTER_PRESOLVE detection is done in solver.cu::run_solver()
+    // after cuOpt's presolve (probing cache, bounds propagation, trivial presolve) completes.
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
