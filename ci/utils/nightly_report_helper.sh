@@ -22,7 +22,10 @@
 #   RAPIDS_CUDA_VERSION   - CUDA version (e.g., "12.9")
 #   RAPIDS_PY_VERSION     - Python version (e.g., "3.12"), used with --with-python-version
 #   RAPIDS_BRANCH         - branch name (e.g., "main")
-#   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/)
+#   RAPIDS_BUILD_TYPE     - build type; S3 history/summary/HTML uploads are
+#                           only enabled when this equals "nightly"
+#   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/);
+#                           only consulted when RAPIDS_BUILD_TYPE=nightly
 #   GITHUB_SHA            - commit SHA
 #   GITHUB_RUN_ID         - GitHub Actions run ID (scopes summaries to this run)
 #   GITHUB_STEP_SUMMARY   - path for GitHub Actions step summary
@@ -76,7 +79,10 @@ generate_nightly_report() {
     local s3_summary_branch_uri=""
     local s3_html_uri=""
 
-    if [ -n "${CUOPT_S3_URI:-}" ]; then
+    # Only upload to S3 for nightly runs. For PRs and other build types we
+    # still generate the local report and GitHub Step Summary, but skip S3
+    # so PR runs don't pollute the nightly history/summary/report buckets.
+    if [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ] && [ -n "${CUOPT_S3_URI:-}" ]; then
         local s3_base="${CUOPT_S3_URI}ci_test_reports/nightly"
         s3_history_uri="${s3_base}/history/${branch_slug}/${test_type}-${matrix_label}.json"
         # For non-main branches, seed history from main on first run so known
