@@ -62,20 +62,16 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
                  clique_table.var_clique_first.indices.empty(),
                "var_clique_first sized inconsistently with problem");
 
-  // Clique-build space (M) vs. pb space. For root / +objective-cut, M == n_vars
-  // (identity). For fixed sub-problems, remap via
-  //   M ← primary_reverse_original_ids[N] ← problem.original_ids[sub].
-  // `build_var_to_pb[m] = p` (or -1 if m was fixed/removed) lets the rest of
-  // this function stay in pb-space.
+  // Build clique-build-space → pb-space map. Identity for root /
+  // +objective-cut; remap via primary_reverse_original_ids[problem.original_ids]
+  // for fixed sub-problems. -1 means the build-var was fixed/removed.
   const i_t n_build_vars = clique_table.n_variables;
   const bool ids_match   = (n_build_vars == n_vars);
   std::vector<i_t> build_var_to_pb;
   if (ids_match) {
-    // Fast path: same id space (root / +objective-cut problem). Identity.
     build_var_to_pb.resize(n_build_vars);
     std::iota(build_var_to_pb.begin(), build_var_to_pb.end(), i_t{0});
   } else {
-    // Sub-problem path. Requires the primary's N→M map.
     cuopt_assert(
       !primary_reverse_original_ids.empty(),
       "clique_table.n_variables differs from problem.n_variables but the caller provided no "
@@ -90,16 +86,13 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
       if (input_idx < 0 || input_idx >= n_input) continue;
       i_t build_idx = primary_reverse_original_ids[input_idx];
       if (build_idx < 0 || build_idx >= n_build_vars) continue;
-      // fix_variables is injective after restriction, so each clique-build
-      // var maps to at most one pb var.
       cuopt_assert(build_var_to_pb[build_idx] == -1,
                    "Duplicate forward remap entry for a clique-build var");
       build_var_to_pb[build_idx] = p;
     }
   }
 
-  // Translate a literal vertex id from clique-build space to pb literal
-  // space. Returns -1 if the underlying var is not in pb.
+  // Remap literal vertex from clique-build to pb literal space; -1 if removed.
   auto remap_vertex_to_pb = [&](i_t vertex) -> i_t {
     cuopt_assert(vertex >= 0 && vertex < 2 * n_build_vars,
                  "vertex out of clique-build literal range");
@@ -121,29 +114,10 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   std::vector<i_t> h_reverse_constr  = host_copy(problem.reverse_constraints, stream);
   std::vector<i_t> h_is_binary       = host_copy(problem.is_binary_variable, stream);
 
-  // --- Materialize ALL explicit cliques (large + addtl) into a flat list ----
-  //
-  // Each entry is a full clique as a list of literal vertex indices in the
-  // conflict graph: `v < n_vars` is the positive literal of var `v`, and
-  // `v >= n_vars` is the complement literal of var `v - n_vars`. Cliques may
-  // freely mix positive and complement literals.
-  //
-  // Small cliques from small_clique_adj are handled separately per
-  // constraint, because they are stored only as pairwise edges and we need to
-  // re-extract maximal cliques from the induced subgraph.
-  //
-  // Clique-aware activity correction with mixed literals:
-  //   For a clique {L_j} (at most one literal true), substitute x_j = z_j for
-  //   positive literals and x_j = 1 - z_j for complement literals where z_j is
-  //   the literal indicator. The constraint's row then contributes
-  //     (const) + sum_j b_j z_j,   with   b_j := sign_j * a_j
-  //   where sign_j = +1 for positive literal, -1 for complement.
-  //   The constant offset `sum_{j ∈ Q-} a_j` absorbs into min/max_activity
-  //   uniformly, and — critically — cancels out of the stock-minus-true
-  //   correction. So storing the effective literal coefficient `b_j` as the
-  //   member coeff lets the existing kernel compute the right correction with
-  //   no changes.
-
+  // Materialize explicit (large + addtl) cliques as flat literal-vertex lists.
+  // Small cliques are handled separately per constraint via the pairwise CSR.
+  // Storing the effective literal coeff b_j = sign_j * a_j lets the kernel
+  // treat positive and complement literals uniformly.
   std::vector<std::vector<i_t>> all_cliques;
   all_cliques.reserve(clique_table.first.size() + clique_table.addtl_cliques.size());
 
@@ -152,9 +126,8 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   };
   auto literal_sign = [&](i_t vertex) -> i_t { return vertex < n_vars ? i_t{+1} : i_t{-1}; };
 
-  // Remap source cliques into pb literal space. Members whose underlying var
-  // was removed between clique-build time and now are dropped; cliques that
-  // shrink below 2 members are discarded wholesale (trivially non-tightening).
+  // Remap clique to pb literal space; drop members removed since clique-build.
+  // Cliques with <2 surviving members are dropped (trivially non-tightening).
   auto push_remapped_clique = [&](const std::vector<i_t>& src) {
     std::vector<i_t> dst;
     dst.reserve(src.size());
@@ -168,7 +141,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   for (auto const& clique : clique_table.first) {
     push_remapped_clique(clique);
   }
-  // Additional cliques = {vertex_idx} ∪ first[clique_idx][start_pos_on_clique:]
+  // Each addtl = {vertex_idx} ∪ first[clique_idx][start_pos_on_clique:]
   for (auto const& addtl : clique_table.addtl_cliques) {
     auto const& base = clique_table.first[addtl.clique_idx];
     std::vector<i_t> mat;
@@ -180,8 +153,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     push_remapped_clique(mat);
   }
 
-  // Reverse index: underlying var → indices into all_cliques. All vertex ids
-  // in all_cliques are already in pb literal space after the remap above.
+  // Reverse index: underlying var → indices into all_cliques (pb space).
   std::vector<std::vector<i_t>> var_to_cliques(n_vars);
   for (i_t ci = 0; ci < (i_t)all_cliques.size(); ++ci) {
     for (i_t vertex : all_cliques[ci]) {
@@ -189,12 +161,8 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     }
   }
 
-  // --- Small-clique adjacency (remapped if needed) --------------------------
-  //
-  // When the id spaces match, query clique_table.small_clique_adj (CSR)
-  // directly via binary search. Otherwise build a pb-space shadow as a
-  // hash-of-hash-set, since the sub-problem path is cold and a CSR rebuild
-  // here is unnecessary overhead.
+  // Small-clique adjacency: query the CSR directly when id spaces match,
+  // otherwise build a pb-space hash shadow (sub-problem path is cold).
   std::unordered_map<i_t, std::unordered_set<i_t>> adj_list_shadow;
   if (!ids_match && has_small_adj) {
     const auto& sc    = clique_table.small_clique_adj;
@@ -214,8 +182,6 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   }
   const bool has_small_adj_for_build = ids_match ? has_small_adj : !adj_list_shadow.empty();
 
-  // Returns true iff there's an adjacency edge (u, v) in the active adj
-  // structure. Adjacency is symmetric, so either direction works.
   auto has_small_edge = [&](i_t u, i_t v) -> bool {
     if (ids_match) { return clique_table.small_clique_adj.slice_contains(u, v); }
     auto it = adj_list_shadow.find(u);
@@ -223,11 +189,8 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     return it->second.count(v) > 0;
   };
 
-  // Materializes neighbors of `seed_lit` into `out` (cleared first). Returns
-  // false if `seed_lit` has no neighbors in the active structure (caller
-  // should `continue`). For the hot ids_match path, this just copies the
-  // sorted CSR slice; for the cold shadow path, it copies from the
-  // unordered_set.
+  // Copy neighbors of seed_lit into `out`; returns false if seed has no
+  // neighbors (CSR slice for ids_match, unordered_set otherwise).
   auto collect_neighbors = [&](i_t seed_lit, std::vector<i_t>& out) -> bool {
     out.clear();
     if (ids_match) {
@@ -243,29 +206,20 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     return true;
   };
 
-  // --- Group building (host) -------------------------------------------------
-  //
-  // For each constraint c, greedily partition its binary variables into
-  // non-overlapping clique groups:
-  //   1) First, try the explicit large/addtl cliques sorted by size descending.
-  //   2) Then, extract small cliques from the pairwise adjacency list via a
-  //      greedy maximal-clique heuristic over unassigned members.
-  //
-  // Groups are emitted in constraint-id order, giving deterministic downstream
-  // summation without needing a sort.
+  // For each constraint, greedily partition its binary vars into groups:
+  // (1) explicit large/addtl cliques first, sorted largest-first;
+  // (2) then small-adj greedy maximal-clique extraction over unassigned binaries.
+  // Emit in constraint-id order for deterministic downstream summation.
 
   struct group_t {
     i_t cnst_idx;
     std::vector<i_t> vars;
     std::vector<f_t> coeffs;
-    // Parallel to vars/coeffs: +1 for positive literal member, -1 for
-    // complement. Consumed only when building reverse_member_sign below.
-    std::vector<i_t> signs;
+    std::vector<i_t> signs;  // +/-1, parallel to vars/coeffs
   };
   std::vector<group_t> groups;
   groups.reserve(all_cliques.size() * 2);
 
-  // Stats: number of groups emitted by phase
   i_t phase1_groups = 0;
   i_t phase2_groups = 0;
 
@@ -275,10 +229,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   std::unordered_set<i_t> assigned_vars;
   std::vector<i_t> unassigned_binaries;
 
-  // Emit a group given the underlying-var list and the parallel literal-sign
-  // list (+1 for positive, -1 for complement). We store the effective literal
-  // coefficient `sign * a_var` rather than the raw constraint coefficient — see
-  // the derivation at the top of this function.
+  // Emit a group, storing the effective literal coeff sign * a_var.
   auto emit_group_from_members =
     [&](i_t c, const std::vector<i_t>& members, const std::vector<i_t>& signs) -> bool {
     if (members.size() < 2) return false;
@@ -306,7 +257,6 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     sorted_cliques.clear();
     assigned_vars.clear();
 
-    // (var → coeff) for this constraint
     i_t row_begin = h_offsets[c];
     i_t row_end   = h_offsets[c + 1];
     for (i_t i = row_begin; i < row_end; ++i) {
@@ -314,7 +264,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
       var_to_coeff.emplace(var, h_coefficients[i]);
     }
 
-    // (1) Large/addtl cliques: gather those that have any member in this cnst
+    // (1) Large/addtl cliques touching this constraint, largest-first.
     for (auto& [var, coeff] : var_to_coeff) {
       if (!h_is_binary[var]) continue;
       for (i_t ci : var_to_cliques[var])
@@ -338,9 +288,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
           if (it == var_to_coeff.end()) continue;
           if (!h_is_binary[var]) continue;
           if (assigned_vars.count(var)) continue;
-          // Guard against a clique that accidentally contains both literals of
-          // the same var (trivial tautology, non-tightening): keep only the
-          // first occurrence.
+          // Reject a clique containing both x and ~x (tautology).
           bool already_in = false;
           for (i_t uv : members) {
             if (uv == var) {
@@ -356,33 +304,23 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
       }
     }
 
-    // (2) Small cliques: greedy maximal-clique extraction over remaining
-    //     unassigned binary variables using small_clique_adj. Nodes in
-    //     the adjacency graph are literals (positive or complement), and an
-    //     edge between two literals means "at most one of them is true" — so
-    //     the greedy walk works on literals directly, with the extra
-    //     bookkeeping that each underlying var may appear at most once per
-    //     group.
+    // (2) Small-adj greedy maximal-clique extraction over remaining
+    // unassigned binaries. Nodes are literals; each underlying var appears
+    // at most once per group.
     if (has_small_adj_for_build) {
       unassigned_binaries.clear();
       for (auto& [var, _coeff] : var_to_coeff) {
         if (h_is_binary[var] && !assigned_vars.count(var)) { unassigned_binaries.push_back(var); }
       }
-      // Iterate a snapshot; emit_group_from_members mutates assigned_vars.
       for (i_t seed_var : unassigned_binaries) {
         if (assigned_vars.count(seed_var)) continue;
-        // Try both literal polarities as the seed. If the positive-literal
-        // seed produces a group, `seed_var` becomes assigned and the second
-        // attempt short-circuits. This is the cheapest way to let the greedy
-        // search find cliques anchored at either ~x or x.
+        // Try both polarities; the second short-circuits if the first emitted.
         for (i_t seed_sign : {i_t{+1}, i_t{-1}}) {
           if (assigned_vars.count(seed_var)) break;
           i_t seed_lit = (seed_sign == +1) ? seed_var : (n_vars + seed_var);
           std::vector<i_t> seed_neighbors;
           if (!collect_neighbors(seed_lit, seed_neighbors)) continue;
 
-          // Candidate literals adjacent to the seed whose underlying var is in
-          // this constraint, binary, and still unassigned.
           std::vector<i_t> cand_lits;
           for (i_t w_lit : seed_neighbors) {
             if (w_lit == seed_lit) continue;
@@ -390,13 +328,11 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
             if (!var_to_coeff.count(w_var)) continue;
             if (!h_is_binary[w_var]) continue;
             if (assigned_vars.count(w_var)) continue;
-            if (w_var == seed_var) continue;  // reject x / ~x pair (tautology)
+            if (w_var == seed_var) continue;  // reject x / ~x tautology
             cand_lits.push_back(w_lit);
           }
           if (cand_lits.empty()) continue;
 
-          // Greedy extension on literals, tracking underlying vars to enforce
-          // the "≤1 appearance per group" invariant.
           std::vector<i_t> clique_lits{seed_lit};
           std::vector<i_t> clique_vars{seed_var};
           std::vector<i_t> clique_signs{seed_sign};
@@ -437,7 +373,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     return;
   }
 
-  // --- Flatten into CSR arrays (still host) ---------------------------------
+  // Flatten into host CSR arrays.
   i_t total_members = 0;
   for (auto const& g : groups)
     total_members += static_cast<i_t>(g.vars.size());
@@ -459,8 +395,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
   }
   h_group_member_offsets[n_groups] = total_members;
 
-  // constraint_group_offsets: groups are sorted by constraint_id (we iterated
-  // c in order). Compute counts then prefix-sum.
+  // constraint_group_offsets: count + prefix-sum (groups already sorted by c).
   std::vector<i_t> h_constraint_group_offsets(n_constraints + 1, 0);
   for (i_t g = 0; g < n_groups; ++g) {
     h_constraint_group_offsets[h_group_constraint_ids[g] + 1]++;
@@ -469,21 +404,14 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     h_constraint_group_offsets[c] += h_constraint_group_offsets[c - 1];
   }
 
-  // reverse_group_id: one entry per nnz reverse-CSR slot, initialized to -1.
-  // reverse_member_sign: parallel array initialized to 0 (not a member); for
-  // each member, we record its literal sign so the per-var adjustment in
-  // update_bounds_per_cnst_cliq can work on b_v = sign_v * a_v instead of the
-  // raw a_v. See derivation in bounds_update_helpers.cuh.
-  // For each group g, for each member var, find the position in the reverse
-  // CSR where reverse_constraints[pos] == g.cnst_idx, and write g / sign there.
+  // reverse_group_id / reverse_member_sign: one entry per nnz reverse-CSR slot.
+  // group_id == -1 for non-members (sign 0); otherwise sign is +/-1.
   std::vector<i_t> h_reverse_group_id(nnz, -1);
   std::vector<i_t> h_reverse_member_sign(nnz, 0);
   for (i_t g = 0; g < n_groups; ++g) {
     i_t c = h_group_constraint_ids[g];
     for (i_t k = h_group_member_offsets[g]; k < h_group_member_offsets[g + 1]; ++k) {
-      i_t var = h_group_member_vars[k];
-      // Recover the literal sign from the group's dense arrays. groups[g] is
-      // still in host memory; we iterate (k - member_offsets[g]) within it.
+      i_t var    = h_group_member_vars[k];
       i_t local  = k - h_group_member_offsets[g];
       i_t sign   = groups[g].signs[local];
       i_t rv_beg = h_reverse_offsets[var];
@@ -498,7 +426,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
     }
   }
 
-  // --- Host-side invariant checks -------------------------------------------
+  // Host-side invariant checks.
   cuopt_assert((i_t)h_group_constraint_ids.size() == n_groups, "group_constraint_ids bad size");
   cuopt_assert((i_t)h_group_member_offsets.size() == n_groups + 1, "group_member_offsets bad size");
   cuopt_assert((i_t)h_group_member_vars.size() == total_members, "group_member_vars bad size");
@@ -513,8 +441,6 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
                "constraint_group_offsets[n_constraints] != n_groups");
   cuopt_assert((i_t)h_reverse_group_id.size() == nnz, "reverse_group_id bad size");
   cuopt_assert((i_t)h_reverse_member_sign.size() == nnz, "reverse_member_sign bad size");
-  // reverse_member_sign must match reverse_group_id: 0 iff group_id == -1;
-  // otherwise ±1.
   for (i_t r = 0; r < nnz; ++r) {
     if (h_reverse_group_id[r] == -1) {
       cuopt_assert(h_reverse_member_sign[r] == 0,
@@ -524,7 +450,6 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
                    "reverse_member_sign must be +/-1 when a member");
     }
   }
-  // Check monotonicity of member offsets and membership of group ids
   for (i_t g = 0; g < n_groups; ++g) {
     cuopt_assert(h_group_member_offsets[g] <= h_group_member_offsets[g + 1],
                  "group_member_offsets not monotonic");
@@ -537,13 +462,11 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
                    "group member var out of range");
     }
   }
-  // Groups are emitted in ascending constraint order
   for (i_t g = 1; g < n_groups; ++g) {
     cuopt_assert(h_group_constraint_ids[g - 1] <= h_group_constraint_ids[g],
                  "groups not sorted by constraint id");
   }
 
-  // --- Copy to device --------------------------------------------------------
   group_constraint_ids     = device_copy(h_group_constraint_ids, stream);
   group_member_offsets     = device_copy(h_group_member_offsets, stream);
   group_member_vars        = device_copy(h_group_member_vars, stream);
@@ -554,13 +477,7 @@ void clique_group_table_t<i_t, f_t>::build_from_host(
 
   handle_ptr->sync_stream();
 
-  // --- Stats ---------------------------------------------------------------
-  //
-  // Print a summary of the built group table so the user can see, at a glance:
-  //   - how many (cnst, clique) groups survived and how members are distributed
-  //   - how much coverage we got per constraint
-  //   - how many source cliques came from each kind of clique table entry
-  //   - whether explicit cliques or the small-adj heuristic drove the result
+  // Summary stats.
   {
     i_t min_size = std::numeric_limits<i_t>::max();
     i_t max_size = 0;

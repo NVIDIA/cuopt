@@ -21,36 +21,18 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
-// Debug: when set to 1, kernels will printf every time clique-aware activity
-// tightening fires. Off by default; flip to 1 locally (or add -D on the
-// compile line) to see trace output. Produces one line per group with a
-// non-trivial correction and one line per (var, cnst) where the clique-aware
-// bound is strictly tighter than what the stock formula would produce.
+// Set to 1 to printf when clique-aware activity tightening fires.
 #ifndef CUOPT_DEBUG_CLIQUE_TIGHTENING
 #define CUOPT_DEBUG_CLIQUE_TIGHTENING 0
 #endif
 
 namespace cuopt::linear_programming::detail {
 
-// -----------------------------------------------------------------------------
-// clique_group_table_t
-//
-// Static (per-(problem, clique_table)) CSR describing the non-overlapping
-// groups of binary variables that enable clique-aware activity tightening.
-// For each constraint, one or more groups are stored; within each group, at
-// most one variable can be 1 (clique constraint), so their joint contribution
-// to activity is the single best member rather than the sum of all members.
-//
-// This struct is built once on the host from clique_table_t and copied to the
-// device. It holds NO per-(probe, iteration) state — the dynamic correction
-// values (per-group min/max pos/neg and the resulting activity corrections)
-// live on bounds_update_data_t since they share the same lifetime as
-// min_activity/max_activity and are naturally per-probe.
-//
-// Groups are sorted by constraint_id so all groups for a constraint are
-// contiguous. This enables deterministic per-constraint summation (no FP
-// atomicAdd, which would be non-associative).
-// -----------------------------------------------------------------------------
+// Static CSR of non-overlapping clique groups per constraint. Built once on the
+// host from clique_table_t and copied to device. Groups are sorted by
+// constraint_id for deterministic per-constraint summation. Dynamic correction
+// values live on bounds_update_data_t (per-probe lifetime, see
+// resize_clique_buffers).
 template <typename i_t, typename f_t>
 struct clique_group_table_t {
   struct view_t {
@@ -60,12 +42,10 @@ struct clique_group_table_t {
     raft::device_span<const f_t> group_member_coeffs;
     raft::device_span<const i_t> constraint_group_offsets;
     raft::device_span<const i_t> reverse_group_id;
-    // Parallel to reverse_group_id (indexed on reverse-CSR slot). Holds the
-    // literal sign of the member for this (var, cnst) entry: +1 for positive
-    // literal, -1 for complement literal, 0 when reverse_group_id[pos] == -1
-    // (not a clique-group member for this cnst). Needed by the per-var
-    // adjustment because the group's top-2 stats live on the EFFECTIVE literal
-    // coefficient b_j = sign_j * a_j, while the per-nnz raw coeff is a_j.
+    // Parallel to reverse_group_id: literal sign per (var, cnst) slot.
+    // +1 / -1 when group member, 0 otherwise. Top-2 stats live on the
+    // effective literal coeff b_j = sign_j * a_j, so the per-var adjustment
+    // needs the sign separately from the raw coeff.
     raft::device_span<const i_t> reverse_member_sign;
     i_t n_groups;
   };
@@ -81,33 +61,12 @@ struct clique_group_table_t {
   {
   }
 
-  // Construct the group table by analyzing which constraints share ≥2 members
-  // of any clique. Greedy non-overlapping partition per constraint: explicit
-  // large/addtl cliques are tried first (largest first), then remaining
-  // unassigned binaries are checked against small_clique_adj for
-  // maximal small-clique extraction.
-  //
-  // Sources of cliques consumed:
-  //   - clique_table.first          (large explicit cliques, size ≥ min_clique_size)
-  //   - clique_table.addtl_cliques  (= {vertex_idx} ∪ first[clique_idx][start_pos:])
-  //   - clique_table.small_clique_adj  (pairwise conflict edges as CSR; small
-  //     cliques are rebuilt per constraint via greedy maximal-clique search)
-  //
-  // Requires a populated problem_t<i_t, f_t> (with reverse CSR) and a non-null
-  // host clique table. Returns silently with n_groups=0 if no (constraint,
-  // clique) pair has ≥2 members.
-  //
-  // Literal handling: conflict-graph vertices are literals (v < n_vars is the
-  // positive literal of var v, v >= n_vars is the complement). Cliques may
-  // freely mix both polarities. Each group member stores its underlying var
-  // in group_member_vars and the *effective literal coefficient*
-  // `sign_j * a_j` (where sign_j is +1 for positive, -1 for complement) in
-  // group_member_coeffs. This choice is what lets the downstream correction
-  // kernel use the same formula for positive and complement literals — the
-  // constant `sum_{j in Q-} a_j` offset cancels in stock-minus-true.
-  // `primary_reverse_original_ids` is the primary problem's
-  // reverse_original_ids (N→M map). Only read on the sub-problem path; may be
-  // empty when `problem` itself is in clique-build space.
+  // Greedy non-overlapping partition of each constraint's binary members into
+  // clique groups: explicit large/addtl cliques first (largest first), then
+  // remaining unassigned binaries against small_clique_adj. Members store the
+  // effective literal coeff b_j = sign_j * a_j so the kernel handles positive
+  // and complement literals uniformly. `primary_reverse_original_ids` is the
+  // primary problem's N→M map for the sub-problem path; empty otherwise.
   void build_from_host(problem_t<i_t, f_t>& problem,
                        const std::vector<i_t>& primary_reverse_original_ids,
                        clique_table_t<i_t, f_t>& clique_table);
@@ -128,65 +87,14 @@ struct clique_group_table_t {
   i_t n_groups{0};
 };
 
-// -----------------------------------------------------------------------------
-// Kernel: compute per-group correction values and top-2 stats.
+// One warp per group. Each thread strides over members maintaining (best,
+// second), then a butterfly warp reduction merges sums and top-2 pairs.
+// Lane 0 writes the results. No atomics, deterministic.
 //
-// Launch <<<n_groups, raft::WarpSize>>>. One warp per group. Threads stride
-// over the group's members, each maintaining a thread-local (best, second)
-// pair, then a butterfly warp reduction merges sums and top-2 pairs into a
-// single (best, second) on every lane. Lane 0 writes the results.
-//
-// No atomics — each thread writes only to its own group's slot. Deterministic.
-//
-// TPB is a template argument to match the file's existing style; it is
-// statically required to equal raft::WarpSize so every block is exactly one
-// warp.
-//
-// Skip-on-clean-constraint optimization (P4):
-//   `changed_constraints[c] == 0` means no var in constraint c had its bound
-//   changed in the previous iteration (set/swap maintained by
-//   bounds_update_data_t::prepare_for_next_iteration). Since group g lives in
-//   exactly one constraint c (= group_constraint_ids[gid]) and the group's
-//   members are a subset of c's vars, an unchanged c implies all of g's
-//   members are unchanged → the previously written correction / top-2 values
-//   are still exactly correct.
-//
-//   The skip is consistent with the rest of the pipeline. The two
-//   downstream consumers of this kernel's outputs both gate on the SAME
-//   changed_constraints[c]:
-//     - apply_clique_corrections_to_activity_kernel — gated at its top
-//       (early-returns when changed_constraints[c] == 0); leaves
-//       min/max_activity[c] at its previously-corrected value and does not
-//       read this group's max/min_correction.
-//     - update_bounds_per_cnst_cliq — only entered (inside both
-//       update_bounds_kernel and update_bounds_kernel_cliq) under the per-c
-//       guard `changed_constraints[cnst_idx] == 1`, so this group's
-//       max/min_pos / max/min_neg are not read for clean c either.
-//   Therefore "skip the write" is observationally equivalent to "write the
-//   same value as last time" for clean c.
-//
-//   Transitions are also safe. When c flips clean → dirty, the swap in
-//   prepare_for_next_iteration runs *before* the next iteration's
-//   compute_clique_corrections_kernel call, so the kernel sees
-//   changed_constraints[c] == 1 and writes fresh corrections BEFORE any
-//   reader (apply / update) runs in that iteration.
-//
-//   Initialization paths (all checked):
-//     - bound_presolve_t::bound_update_loop calls init_changed_constraints
-//       (sets every entry to 1) before the first iteration → every group
-//       computed at least once.
-//     - multi_probe_t::bound_update_loop calls init_changed_constraints
-//       unless the per-call flag was lowered by set_interval_bounds. The
-//       flag is restored to true at the end of every loop, so the skip is
-//       confined to exactly the call that set it.
-//     - multi_probe_t::set_interval_bounds (probing_cache → solve_for_interval)
-//       zeros changed_constraints and explicitly marks only constraints
-//       incident to the probed var as dirty; clean-c group correction slots
-//       may then carry values from the previous probing call (against
-//       different bounds), but those slots are never read in this call's
-//       iter 0 (apply/update gate as above), and any later iteration in
-//       which c becomes dirty refreshes the slot before any reader runs.
-// -----------------------------------------------------------------------------
+// Skip when changed_constraints[c] == 0: the previously written corrections
+// are still exact (no member bound changed). Both downstream consumers
+// (apply_clique_corrections_to_activity_kernel, update_bounds_per_cnst_cliq)
+// gate on the same flag, so unread slots are never observed stale.
 template <typename i_t, typename f_t, i_t TPB>
 __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> group_member_offsets,
                                                   raft::device_span<const i_t> group_member_vars,
@@ -209,10 +117,7 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
   const i_t gid = blockIdx.x;
   cuopt_assert(gid + 1 < (i_t)group_member_offsets.size(), "group id out of range");
 
-  // Constraint-clean skip. All threads in the warp read the same scalar from
-  // `changed_constraints`, so the branch resolves uniformly and there is no
-  // warp divergence; no __syncwarp needed because the early-exit is taken (or
-  // not taken) by every lane simultaneously.
+  // Skip clean constraint (uniform branch across the warp).
   cuopt_assert(gid < (i_t)group_constraint_ids.size(), "group_constraint_ids index out of range");
   const i_t cnst = group_constraint_ids[gid];
   cuopt_assert(cnst >= 0 && cnst < (i_t)changed_constraints.size(),
@@ -226,13 +131,11 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
   cuopt_assert(group_member_vars.size() == group_member_coeffs.size(),
                "group member vars/coeffs size mismatch");
 
-  // Thread-local accumulators. For each lane, maintain (best, second-best).
   f_t sum_pos = 0, sum_neg = 0;
-  f_t max1 = 0, max2 = 0;  // top-2 of max(0, coeff)  (max1 ≥ max2)
-  f_t min1 = 0, min2 = 0;  // top-2 of min(0, coeff)  (min1 ≤ min2, most negative first)
+  f_t max1 = 0, max2 = 0;  // top-2 of max(0, coeff)  (max1 >= max2)
+  f_t min1 = 0, min2 = 0;  // top-2 of min(0, coeff)  (min1 <= min2)
   i_t n_unfixed = 0;
 
-  // Strided scan over members
   for (i_t m = mem_begin + threadIdx.x; m < mem_end; m += TPB) {
     i_t var = group_member_vars[m];
     f_t a   = group_member_coeffs[m];
@@ -245,14 +148,12 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
     sum_pos += pos;
     sum_neg += neg;
 
-    // Insert `pos` into (max1, max2)
     if (pos > max1) {
       max2 = max1;
       max1 = pos;
     } else if (pos > max2) {
       max2 = pos;
     }
-    // Insert `neg` into (min1, min2)
     if (neg < min1) {
       min2 = min1;
       min1 = neg;
@@ -261,18 +162,14 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
     }
   }
 
-  // Butterfly warp reduction. After the loop every lane holds the group's
-  // fully-reduced values. Top-2 merge formula for sorted pairs (a1≥a2),
-  // (b1≥b2):
-  //   new1 = max(a1, b1)
-  //   new2 = max(min(a1, b1), max(a2, b2))
+  // Butterfly warp reduction; top-2 merge formula for sorted pairs (a1>=a2),
+  // (b1>=b2): new1 = max(a1,b1), new2 = max(min(a1,b1), max(a2,b2)).
 #pragma unroll
   for (int off = TPB / 2; off > 0; off >>= 1) {
     sum_pos += __shfl_xor_sync(0xffffffff, sum_pos, off);
     sum_neg += __shfl_xor_sync(0xffffffff, sum_neg, off);
     n_unfixed += __shfl_xor_sync(0xffffffff, n_unfixed, off);
 
-    // Merge top-2 (max side)
     f_t b1       = __shfl_xor_sync(0xffffffff, max1, off);
     f_t b2       = __shfl_xor_sync(0xffffffff, max2, off);
     f_t new_max1 = fmax(max1, b1);
@@ -280,7 +177,6 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
     max1         = new_max1;
     max2         = new_max2;
 
-    // Merge top-2 (min side) — symmetric
     f_t d1       = __shfl_xor_sync(0xffffffff, min1, off);
     f_t d2       = __shfl_xor_sync(0xffffffff, min2, off);
     f_t new_min1 = fmin(min1, d1);
@@ -307,8 +203,8 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
     group_second_max_pos[gid] = max2;
     group_min_neg[gid]        = min1;
     group_second_min_neg[gid] = min2;
-    f_t max_corr              = sum_pos - max1;  // ≥ 0
-    f_t min_corr              = sum_neg - min1;  // ≤ 0
+    f_t max_corr              = sum_pos - max1;  // >= 0
+    f_t min_corr              = sum_neg - min1;  // <= 0
     group_max_correction[gid] = max_corr;
     group_min_correction[gid] = min_corr;
 #if CUOPT_DEBUG_CLIQUE_TIGHTENING
@@ -329,25 +225,11 @@ __global__ void compute_clique_corrections_kernel(raft::device_span<const i_t> g
   }
 }
 
-// -----------------------------------------------------------------------------
-// Kernel: fold per-group corrections into per-constraint activities.
-//
-// One thread per constraint. Each thread loops over its constraint's groups
-// (contiguous range in the sorted group array) and subtracts their corrections
-// from the activity. Summation order is fixed (ascending group index), so the
-// FP arithmetic is bit-exact deterministic.
-//
-// MUST be gated on the SAME `changed_constraints[c]` flag that
-// calc_activity_kernel uses. Rationale: calc_activity_kernel early-returns
-// when the constraint is "not changed", leaving min/max_activity[c] at their
-// previous-iteration values, which were ALREADY clique-corrected. If we
-// unconditionally subtract the fresh correction here, constraints that stay
-// untouched across iterations get their activity double-corrected, which
-// compounds and drives max_activity below cnst_lb → spurious "infeasible in
-// presolve". When changed_constraints[c] == 0, no member bound changed, so
-// the correction is identical anyway and the already-corrected stored value
-// is still valid — skipping is exact, not approximate.
-// -----------------------------------------------------------------------------
+// One thread per constraint, sums its groups' corrections in fixed order.
+// MUST gate on the same changed_constraints flag as calc_activity_kernel:
+// calc_activity_kernel skips clean constraints, leaving min/max_activity at
+// their previous (already clique-corrected) values. Re-subtracting here would
+// double-correct and compound across iterations.
 template <typename i_t, typename f_t>
 __global__ void apply_clique_corrections_to_activity_kernel(
   raft::device_span<const i_t> constraint_group_offsets,
@@ -362,7 +244,7 @@ __global__ void apply_clique_corrections_to_activity_kernel(
   if (c >= n_constraints) return;
   cuopt_assert(c + 1 < (i_t)constraint_group_offsets.size(),
                "constraint id out of range for group offsets");
-  // Must match calc_activity_kernel's gate exactly. See comment above.
+  // Must match calc_activity_kernel's gate exactly.
   if (changed_constraints[c] == 0) return;
 
   i_t g_begin = constraint_group_offsets[c];

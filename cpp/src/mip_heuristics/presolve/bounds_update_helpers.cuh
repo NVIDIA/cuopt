@@ -382,33 +382,12 @@ __global__ void update_bounds_kernel(typename problem_t<i_t, f_t>::view_t pb,
   }
 }
 
-// -----------------------------------------------------------------------------
-// Clique-aware single-update variants
-//
-// These mirror the single-update update_bounds_per_cnst / update_bounds /
-// update_bounds_kernel above but apply a per-variable correction adjustment so
-// that when we peel variable v off the (already clique-corrected) activity, we
-// restore the correct group contribution "without v".
-//
-// Derivation of the adjustment (max side; min is symmetric):
-//   Group g's top-2 stats (max1, max2, min1, min2) live on the EFFECTIVE
-//   literal coefficient b_j = sign_j * a_j (so positive and complement
-//   literals share the same formula — see clique_activity_corrections.cu).
-//   When v is a member of group g with literal sign s_v, its effective coeff
-//   is b_v = s_v * coeff_v, and:
-//     pos_v_b = max(b_v, 0).  Group g's corrected max contribution is max1_g
-//     (the largest pos_b among unfixed u ∈ g). Removing v from the group:
-//       if pos_v_b == max1_g  →  group contribution becomes max2_g (second-best)
-//       else                  →  group contribution stays max1_g
-//     The stock formula subtracts pos_v_b from max_a_corrected. The adjustment
-//     to reach activity_without_v is:
-//       max_a += (pos_v_b >= max1_g) ? max2_g : pos_v_b
-//     (The degenerate case n_unfixed<2 is handled by max1=max2=0 →
-//     adjustment=0.)
-//   NOTE: the subsequent "peel raw coeff" step still uses the raw a_v because
-//   the activity itself was built from raw coefficients; only the top-2 math
-//   is in literal space.
-// -----------------------------------------------------------------------------
+// Clique-aware variants. When peeling var v off a clique-corrected activity,
+// add back the group's contribution "without v":
+//   max_a += (pos_v_b >= max1_g) ? max2_g : pos_v_b
+// where b_v = sign_v * coeff_v is the effective literal coeff and (max1, max2)
+// are the group's top-2 in literal space. The subsequent raw-coeff peel is
+// unchanged because the activity was built from raw coefficients.
 template <typename i_t, typename f_t>
 inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   typename problem_t<i_t, f_t>::view_t pb,
@@ -436,12 +415,8 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   }
 
 #if CUOPT_DEBUG_CLIQUE_TIGHTENING
-  // For the "stock" (no clique correction at all) comparison baseline we need
-  // the RAW min/max activity as it would have been without
-  // apply_clique_corrections_to_activity_kernel having subtracted the group
-  // corrections. Undo those here by adding back the per-group corrections for
-  // this constraint. Snapshotting now, before the per-var adjustment below,
-  // keeps the arithmetic straightforward.
+  // Snapshot raw activity (undo apply_clique_corrections) for the stock
+  // baseline diff print below.
   f_t raw_min_a = min_a;
   f_t raw_max_a = max_a;
   {
@@ -454,13 +429,8 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   }
 #endif
 
-  // Apply per-variable clique adjustment before peeling off v's contribution.
-  // The top-2 stats live on upd (bounds_update_data_t), matching the per-probe
-  // lifetime of min_activity/max_activity. They are computed in LITERAL space
-  // (b_j = sign_j * a_j), so the adjustment must compare against
-  // b_v = member_sign * coeff — NOT the raw coeff. Getting this wrong is a
-  // silent source of over-tightening for cliques that contain complement
-  // literals (member_sign == -1 with positive a_j, or vice versa).
+  // Per-variable clique adjustment in literal space (b_v = member_sign * coeff)
+  // before peeling off v's contribution. Top-2 stats are also in literal space.
   if (group_id >= 0) {
     cuopt_assert(group_id < cliq.n_groups, "clique group id out of range");
     cuopt_assert(member_sign == 1 || member_sign == -1,
@@ -490,11 +460,8 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst_cliq(
   thrust::get<1>(bnd) = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
 
 #if CUOPT_DEBUG_CLIQUE_TIGHTENING
-  // Genuine comparison: clique-aware per-cnst (lb, ub) vs the non-clique path
-  // run on the RAW activity. Fires for EVERY (var, cnst) — clique-aware
-  // tightening most often shows up on variables that are NOT themselves
-  // members of any clique (the bound on y in the canonical "x0+x1+x2+y ≥ 2"
-  // example), so we can't limit this to group_id >= 0.
+  // Stock vs clique-aware per-cnst (lb, ub) diff print. Tightening typically
+  // fires on non-member vars, so don't restrict to group_id >= 0.
   {
     f_t s_min_a = raw_min_a;
     f_t s_max_a = raw_max_a;
@@ -550,11 +517,7 @@ __device__ void update_bounds_cliq(typename problem_t<i_t, f_t>::view_t pb,
     auto a       = pb.reverse_coefficients[var_offset + i];
     auto cnst_ub = pb.constraint_upper_bounds[cnst_idx];
     auto cnst_lb = pb.constraint_lower_bounds[cnst_idx];
-    // reverse_group_id is indexed on the reverse CSR position (same order as
-    // reverse_constraints / reverse_coefficients). -1 means v is not in any
-    // clique group for this constraint → behaves like the stock formula.
-    // reverse_member_sign is parallel; 0 when group_id == -1, ±1 otherwise
-    // (carries the literal polarity of this member).
+    // group_id == -1 ⇒ v not in any clique group for this cnst (stock path).
     cuopt_assert((i_t)(var_offset + i) < (i_t)cliq.reverse_group_id.size(),
                  "reverse_group_id index out of range");
     cuopt_assert((i_t)(var_offset + i) < (i_t)cliq.reverse_member_sign.size(),

@@ -74,22 +74,15 @@ class bound_presolve_t {
   void copy_input_bounds(problem_t<i_t, f_t>& pb);
   void calc_and_set_updated_constraint_bounds(problem_t<i_t, f_t>& pb);
 
-  // Build (or reuse) the per-(constraint, clique) group table for clique-aware
-  // activity tightening. Safe to call every iteration — returns immediately if
-  // already built or if the problem has no clique_table.
+  // Lazily build (or reuse) the clique group table; idempotent.
   void ensure_clique_data(problem_t<i_t, f_t>& pb);
 
   mip_solver_context_t<i_t, f_t>& context;
   bounds_update_data_t<i_t, f_t> upd;
   clique_group_table_t<i_t, f_t> clique_data;
   bool clique_data_built{false};
-  // Fingerprint of the (problem, clique_table) pair the current `clique_data`
-  // was built against. Used by ensure_clique_data() to detect the caller
-  // switching problems under us (e.g. local_search alternating between
-  // *problem_ptr and problem_with_objective_cut — two instances that can
-  // even share dims while having different matrices). A pure dim check is
-  // not sufficient; we also compare the raw pointers. See the design doc
-  // `design_summaries/CLIQUE_AWARE_BOUND_PROP.md` §6 for rationale.
+  // Fingerprint detecting problem swaps (local_search alternates between
+  // *problem_ptr and problem_with_objective_cut, which can share dims).
   const problem_t<i_t, f_t>* last_built_problem           = nullptr;
   const clique_table_t<i_t, f_t>* last_built_clique_table = nullptr;
   i_t last_built_n_variables                              = -1;

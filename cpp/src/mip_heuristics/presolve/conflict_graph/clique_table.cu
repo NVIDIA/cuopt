@@ -184,9 +184,8 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     }
     // equality part
     else {
-      // For equality rows, partitioning status should not depend on raw rhs scale here.
-      // The exact set-packing/partitioning check is finalized later in
-      // make_coeff_positive_knapsack_constraint after coefficient normalization.
+      // Final partitioning check is done after coefficient normalization in
+      // make_coeff_positive_knapsack_constraint.
       bool is_set_partitioning = true;
       bool ranged_constraint   = ranged_constraint_counter < problem.num_range_rows &&
                                problem.range_rows[ranged_constraint_counter] == i;
@@ -202,8 +201,7 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
       }
       // greater than part: convert it to less than
       knapsack_constraint_t<i_t, f_t> knapsack_constraint2;
-      // Mark synthetic rows from equality splitting with negative ids so they never alias real row
-      // indices (including rows appended later by clique extension).
+      // Negative ids prevent aliasing with real row indices.
       knapsack_constraint2.cstr_idx = -(added_constraints + 1);
       added_constraints++;
       knapsack_constraint2.rhs = -problem.rhs[i];
@@ -229,8 +227,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   std::vector<bool> to_delete(clique_table.first.size(), false);
   std::vector<std::pair<i_t, i_t>> small_edges;
 
-  // First-clique demotion: cliques at-or-below the size threshold are
-  // dissolved into pairwise edges in `small_clique_adj`.
+  // Demote sub-threshold first-cliques into pairwise edges.
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
@@ -301,12 +298,9 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
                    (size_t)clique_table.min_clique_size,
                  "A small clique remained after removing small cliques");
   }
-  // Finalize the small-clique CSR. `finalize_from_unsorted_pairs` sorts each
-  // slice and removes duplicates, so callers that re-trigger demotion (e.g.
-  // a future incremental rebuild) compose cleanly.
   clique_table.small_clique_adj.finalize_from_unsorted_pairs(2 * clique_table.n_variables,
                                                              small_edges);
-  // Clique removals/edge materialization can change degrees; force recompute on next query.
+  // Force degree recompute after structural changes.
   std::fill(clique_table.var_degrees.begin(), clique_table.var_degrees.end(), -1);
 }
 
@@ -315,8 +309,7 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
 {
   std::unordered_set<i_t> adj_set;
 
-  // First-clique edges. For every first-clique that contains var_idx, every
-  // member of that clique is adjacent to var_idx.
+  // First-clique edges: every member of each first-clique containing var_idx.
   for (const i_t* it = var_clique_first.slice_begin(var_idx);
        it != var_clique_first.slice_end(var_idx);
        ++it) {
@@ -324,25 +317,21 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
     adj_set.insert(c.begin(), c.end());
   }
 
-  // loop above.
+  // Addtl-clique edges.
   for (const i_t* it = var_clique_addtl.slice_begin(var_idx);
        it != var_clique_addtl.slice_end(var_idx);
        ++it) {
     const auto& a = addtl_cliques[*it];
     if (a.vertex_idx == var_idx) {
-      // var_idx is the extension vertex; its new neighbors are the base
-      // suffix members.
+      // var_idx is the extension vertex; new neighbors are the base suffix.
       const auto& base = first[a.clique_idx];
       adj_set.insert(base.begin() + a.start_pos_on_clique, base.end());
     } else {
-      // var_idx is a base member; the only edge this addtl contributes
-      // beyond what the first-clique loop already added is to the extension
-      // vertex itself.
+      // var_idx is a base member; only new edge is to the extension vertex.
       adj_set.insert(a.vertex_idx);
     }
   }
 
-  // Small-clique adjacency (CSR).
   for (const i_t* it = small_clique_adj.slice_begin(var_idx);
        it != small_clique_adj.slice_end(var_idx);
        ++it) {
@@ -370,13 +359,10 @@ bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2) const
   if (var_idx1 == var_idx2) { return false; }
   if (var_idx1 % n_variables == var_idx2 % n_variables) { return true; }
 
-  // Small-clique adjacency: O(log slice) binary search on the sorted CSR
-  // slice. We only probe one direction since `remove_small_cliques` populates
-  // the CSR symmetrically.
+  // small_clique_adj is symmetric, so probe either direction.
   if (small_clique_adj.slice_contains(var_idx1, var_idx2)) { return true; }
 
-  // First-clique adjacency: probe through whichever variable belongs to
-  // fewer first-cliques (smaller slice ⇒ less work).
+  // Probe through the var with the smaller var_clique_first slice.
   {
     i_t probe_var  = var_idx1;
     i_t target_var = var_idx2;
@@ -411,9 +397,8 @@ bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2) const
   return false;
 }
 
-// Returns true if the clique was extended; `work_out` is incremented by the
-// number of scan/hash ops performed (each op is roughly constant-cost, so
-// `work_out` is a near-uniform wall-time proxy).
+// Returns true on success; `work_out` accumulates scan/hash ops as a
+// near-uniform wall-time proxy.
 template <typename i_t, typename f_t>
 bool extend_clique(const std::vector<i_t>& clique,
                    clique_table_t<i_t, f_t>& clique_table,
@@ -433,8 +418,6 @@ bool extend_clique(const std::vector<i_t>& clique,
 
   auto smallest_degree_adj_set = clique_table.get_adj_set_of_var(smallest_degree_var);
   const double D               = static_cast<double>(smallest_degree_adj_set.size());
-  // get_adj_set_of_var cost is O(D) hash inserts (modulo a small constant for
-  // union over the clique maps).
   work_out += D;
 
   std::unordered_set<i_t> clique_members(clique.begin(), clique.end());
@@ -447,7 +430,7 @@ bool extend_clique(const std::vector<i_t>& clique,
       extension_candidates.push_back(candidate);
     }
   }
-  work_out += D;  // one hash lookup per candidate
+  work_out += D;
 
   std::sort(extension_candidates.begin(), extension_candidates.end(), [&](i_t a, i_t b) {
     return clique_table.get_degree_of_var(a) > clique_table.get_degree_of_var(b);
@@ -460,7 +443,6 @@ bool extend_clique(const std::vector<i_t>& clique,
     i_t var_idx = extension_candidates[idx];
     bool add    = true;
     for (size_t i = 0; i < new_clique.size(); i++) {
-      // each check_adjacency is O(1) expected — one work unit per call.
       work_out += 1.0;
       if (!clique_table.check_adjacency(var_idx, new_clique[i])) {
         add = false;
@@ -500,14 +482,8 @@ bool compare_extension_candidate(const extension_candidate_t<i_t>& a,
   return a.knapsack_idx < b.knapsack_idx;
 }
 
-// Clique merging. Extends original set-packing cliques by scanning adjacency
-// sets; does not modify the problem formulation.
-//
-// Budget contract:
-//   - Soft floor: runs until work >= min_work before honoring signal_extend
-//     or max_work.
-//   - Hard ceiling: never exceeds max_work, or the external `timer`
-//     (master / user solve time limit).
+// Extends set-packing cliques. Soft floor: min_work; hard ceiling: max_work
+// or `timer`. signal_extend only honored after min_work.
 template <typename i_t, typename f_t>
 i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
                    clique_table_t<i_t, f_t>& clique_table,
@@ -539,7 +515,6 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
     i_t estimated_gain = std::max<i_t>(0, smallest_degree - (clique_size - 1));
     if (estimated_gain < min_extension_gain) { continue; }
     extension_worklist.push_back({knapsack_idx, estimated_gain, clique_size});
-    // One degree lookup per entry.
     work += static_cast<double>(knapsack_constraint.entries.size());
   }
   std::stable_sort(
@@ -553,7 +528,6 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
   i_t n_extended_cliques = 0;
   for (const auto& candidate : extension_worklist) {
     if (timer.check_time_limit()) { break; }
-    // Cap and cut-gen signal only apply past the soft work floor.
     if (work >= min_work) {
       if (work >= max_work) { break; }
       if (signal_extend && signal_extend->load(std::memory_order_acquire)) {
@@ -578,13 +552,9 @@ void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table)
 {
   const i_t n_vertices = 2 * clique_table.n_variables;
 
-  // first_var_positions stays as a per-clique hash map: typical clique sizes
-  // are small enough that hash lookup beats binary search, and the
-  // construction is naturally write-keyed-by-clique.
+  // first_var_positions: per-clique hash map (cliques small ⇒ hash beats binary search).
   clique_table.first_var_positions.assign(clique_table.first.size(), {});
 
-  // var_clique_first: (var, clique_idx) edges. One edge per (clique, member)
-  // pair.
   std::vector<std::pair<i_t, i_t>> first_pairs;
   size_t total_first_members = 0;
   for (const auto& c : clique_table.first) {
@@ -753,8 +723,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double time_limit_for_additional_cliques = timer.remaining_time() / 2;
   cuopt::timer_t additional_cliques_timer(time_limit_for_additional_cliques);
   double find_work_estimate = 0.0;
-  // Base cliques (first + additional) are foundational — always build them in
-  // full; cut-gen's signal only gates the optional extension phase below.
+  // Always build base cliques in full; signal_extend only gates the extension phase.
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
     find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, additional_cliques_timer);

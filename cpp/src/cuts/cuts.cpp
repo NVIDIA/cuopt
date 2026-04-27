@@ -26,7 +26,7 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-#define DEBUG_CLIQUE_CUTS 1
+#define DEBUG_CLIQUE_CUTS 0
 #define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
@@ -127,11 +127,8 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     return clique_cut_build_status_t::INFEASIBLE;
   }
 
-  // Build the cut. With one complement pair the paired var's terms cancel
-  // (x + (1-x) = 1) and the clique inequality collapses to "sum of remaining
-  // literals ≤ 0", which forces every other clique member to 0. Emitted as a
-  // single clique cut through the normal pool — no separate bound-fix path.
-  // store the cut in the >=-form for easy violation check via dot product
+  // With one complement pair (x + (1-x) = 1), the inequality forces every
+  // other clique member to 0. Stored in >=-form for easy dot-product check.
   const bool has_pair = complement_pairs.size() == 1;
   i_t num_complements = 0;
   for (const auto vertex_idx : clique_vertices) {
@@ -148,8 +145,6 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     return clique_cut_build_status_t::NO_CUT;
   }
 
-  // Normal clique: "at most 1 literal true" ⇒ rhs = num_complements - 1.
-  // Paired clique: pair consumes the full slack ⇒ rhs = num_complements (in rest).
   cut_rhs = has_pair ? static_cast<f_t>(num_complements) : static_cast<f_t>(num_complements - 1);
   cut.sort();
 
@@ -1838,7 +1833,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
       lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1848,7 +1843,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Knapsack cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1858,7 +1853,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
@@ -1868,22 +1863,21 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
 
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
-    settings.log.printf("Generating clique cuts\n");
-    bool feasible = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
     if (!feasible) {
       settings.log.printf("Clique cuts proved infeasible\n");
       return false;
     }
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
-      settings.log.printf("Clique cut generation time %.2f seconds\n", cut_generation_time);
+      settings.log.debug("Clique cut generation time %.2f seconds\n", cut_generation_time);
     }
   }
   return true;
@@ -1951,9 +1945,8 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     static_cast<long long>(clique_table_->addtl_cliques.size()),
     static_cast<long long>(clique_table_->small_clique_adj.indices.size()));
 
-  // Do NOT early-exit on empty first/addtl: remove_small_cliques pushes
-  // sub-threshold conflict edges into small_clique_adj, which BK
-  // still sees through get_adj_set_of_var.
+  // No early-exit on empty first/addtl: remove_small_cliques moves
+  // sub-threshold edges into small_clique_adj, which BK still sees.
 
   cuopt_assert(clique_table_->n_variables == num_vars, "Clique table variable count mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
@@ -1961,12 +1954,8 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   const f_t bound_tol     = settings.primal_tol;
   const f_t min_weight    = 1.0 + min_violation;
-  // TODO these can be problem dependent.
-  // max_work_estimate: one BK call's pivot scan on an |V|-vertex subgraph
-  // costs ~|V|*words work units; `max_calls=1e5` implies an expected total
-  // well above 1e5. The old 1e5 bound tripped on setup + first pivot scan
-  // alone (seen on bnatt400). 1e8 aligns with max_calls; time is still
-  // ultimately bounded by `settings.time_limit`.
+  // TODO: make problem-dependent. max_work_estimate=1e8 aligns with max_calls;
+  // time is ultimately bounded by settings.time_limit.
   const i_t max_calls         = 100000;
   f_t work_estimate           = 0.0;
   const f_t max_work_estimate = 1e8;
@@ -2044,10 +2033,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     work_estimate += 2.0 * static_cast<f_t>(adj.size());
 #ifdef ASSERT_MODE
     {
-      // Having both `k` and `¬k` as neighbors of the same literal is legal:
-      // it means that literal is implicitly fixed to 0 by the conflict
-      // graph. BK handles it; build_clique_cut collapses the resulting
-      // complement pair. So we only guard against true duplicates here.
+      // {k, ¬k} as neighbors is legal (literal is implicitly fixed); only guard duplicates.
       std::unordered_set<i_t> adj_global;
       adj_global.reserve(adj.size());
       for (const auto neighbor : adj) {

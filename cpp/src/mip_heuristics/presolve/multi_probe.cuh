@@ -69,9 +69,8 @@ class multi_probe_t {
                           const raft::device_span<typename type_2<f_t>::type> variable_bounds);
   void update_device_bounds(const raft::handle_t* handle_ptr);
 
-  // Build (or reuse) the per-(constraint, clique) group table for clique-aware
-  // activity tightening. The static group table is shared by both probes;
-  // each probe's dynamic correction buffers live on its own bounds_update_data_t.
+  // Lazily build (or reuse) the clique group table; idempotent. The static
+  // table is shared by both probes; dynamic buffers live on each upd_*.
   void ensure_clique_data(problem_t<i_t, f_t>& pb);
 
   mip_solver_context_t<i_t, f_t>& context;
@@ -80,8 +79,7 @@ class multi_probe_t {
 
   clique_group_table_t<i_t, f_t> clique_data;
   bool clique_data_built{false};
-  // Fingerprint of the (problem, clique_table) pair the current `clique_data`
-  // was built against. See bound_presolve_t for rationale.
+  // See bound_presolve_t for fingerprint rationale.
   const problem_t<i_t, f_t>* last_built_problem           = nullptr;
   const clique_table_t<i_t, f_t>* last_built_clique_table = nullptr;
   i_t last_built_n_variables                              = -1;

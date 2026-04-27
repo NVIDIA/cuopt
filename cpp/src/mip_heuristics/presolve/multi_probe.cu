@@ -86,16 +86,13 @@ void multi_probe_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd_1.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Clique-group cache validity is owned by ensure_clique_data via a full
-  // (problem, clique_table, dims) fingerprint; see bound_presolve_t::resize.
+  // Clique-group cache invalidation handled by ensure_clique_data fingerprint.
 }
 
 template <typename i_t, typename f_t>
 void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
-  // Snapshot through the atomic accessor — B&B's async clique-build task may
-  // publish while we are running. See bound_presolve_t::ensure_clique_data
-  // for the full rationale.
+  // See bound_presolve_t::ensure_clique_data for rationale.
   auto ct_snapshot     = pb.get_clique_table_snapshot();
   auto* current_ct     = ct_snapshot.get();
   const bool cache_hit = clique_data_built                                //
@@ -111,8 +108,6 @@ void multi_probe_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
     clique_data_built    = false;
     return;
   }
-  // Note: see bound_presolve_t::ensure_clique_data for why we do not gate on
-  // current_ct->ready_for_heuristics.
   clique_data.build_from_host(pb, context.problem_ptr->reverse_original_ids, *current_ct);
   auto stream = pb.handle_ptr->get_stream();
   upd_0.resize_clique_buffers(clique_data.n_groups, stream);
@@ -183,9 +178,7 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
 
   auto stream = handle_ptr->get_stream();
 
-  // Helper: run clique-aware update for one probe. Each probe sources its
-  // dynamic correction buffers from its own bounds_update_data_t; the static
-  // group table is shared via `clique_data`.
+  // Per-probe clique-aware update; static group table is shared via `clique_data`.
   auto run_clique_update_for_probe = [&](bounds_update_data_t<i_t, f_t>& upd) {
     constexpr i_t warp = raft::WarpSize;
     compute_clique_corrections_kernel<i_t, f_t, warp>
@@ -225,7 +218,7 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   const bool use_cliques = !clique_data.empty();
 
   if (use_cliques) {
-    // Clique-aware path: single-probe kernel per probe (no dual variant yet).
+    // No dual-probe variant of the clique-aware kernel; run per probe.
     if (!skip_0) {
       upd_0.bounds_changed.set_value_async(zero, stream);
       run_clique_update_for_probe(upd_0);

@@ -35,11 +35,8 @@ namespace cuopt::linear_programming::detail {
 struct clique_config_t {
   int min_clique_size               = 512;
   int max_clique_size_for_extension = 128;
-  // Work budget for extend_cliques. Extension runs at least `min_extend_work`
-  // units before honoring the cut-gen signal, and never exceeds
-  // `max_extend_work`. One unit ≈ one hash/scan op inside the extension
-  // kernels (see `extend_clique`), so wall time per unit is roughly constant
-  // across instances. The external (master) timer is honored separately.
+  // extend_cliques work budget; one unit ≈ one hash/scan op in extend_clique.
+  // Soft floor before honoring cut-gen signal; hard ceiling.
   double min_extend_work = 1e7;
   double max_extend_work = 2e9;
 };
@@ -68,19 +65,9 @@ struct addtl_clique_t {
   i_t start_pos_on_clique;
 };
 
-// CSR-shaped per-vertex map: for each vertex v in [0, n_vertices), stores a
-// sorted slice of i_t indices in `indices[offsets[v] .. offsets[v+1])`.
-//
-// Replaces three pre-existing `std::vector<std::unordered_set<i_t>>` /
-// `std::unordered_map<i_t, std::unordered_set<i_t>>` containers used to map
-// vertex ids (which are dense in [0, 2*n_vars)) to sets of clique/vertex
-// indices. CSR is ~5× cheaper in memory (no per-node allocator overhead) and
-// gives sequential scans + `std::lower_bound` point queries, both of which
-// are far more cache-friendly than per-vertex hash sets.
-//
-// Build protocol: callers populate `indices` via repeated `push_back`s
-// keyed by source-vertex, then call `finalize_from_unsorted_pairs`. The
-// helper sorts entries by (src, value) and computes `offsets`.
+// CSR per-vertex map: for v in [0, n_vertices), `indices[offsets[v] ..
+// offsets[v+1])` is a sorted slice. Build protocol: callers push (src, value)
+// pairs and call `finalize_from_unsorted_pairs`.
 template <typename i_t>
 struct csr_var_map_t {
   std::vector<i_t> offsets;  // size: n_vertices + 1; offsets[v] is the start in `indices`
@@ -95,15 +82,12 @@ struct csr_var_map_t {
   i_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
   const i_t* slice_begin(i_t v) const { return indices.data() + offsets[v]; }
   const i_t* slice_end(i_t v) const { return indices.data() + offsets[v + 1]; }
-  // Average slice size — used by cost-budget heuristics in cut/extension
-  // passes that previously used `addtl_cliques.size()` as a per-call cost
-  // proxy. Cheap O(1) summary; precision is not load-bearing.
+  // O(1) summary used by cut/extension cost-budget heuristics.
   double avg_slice_size() const
   {
     const i_t k = n_keys();
     return k > 0 ? static_cast<double>(indices.size()) / static_cast<double>(k) : 0.0;
   }
-  // O(log slice_size) point lookup. Returns true iff `value` is present.
   bool slice_contains(i_t v, i_t value) const
   {
     const i_t* b = slice_begin(v);
@@ -111,14 +95,11 @@ struct csr_var_map_t {
     return std::binary_search(b, e, value);
   }
 
-  // Build CSR from an unsorted `(src, value)` edge list. Duplicates within a
-  // slice are collapsed. After this call each slice is sorted ascending and
-  // contains no duplicates.
+  // Build CSR from unsorted (src, value) pairs. Each output slice is sorted
+  // and deduplicated. Caller must keep p.first in [0, n_vertices).
   void finalize_from_unsorted_pairs(i_t n_vertices, std::vector<std::pair<i_t, i_t>>& pairs)
   {
     offsets.assign(n_vertices + 1, 0);
-    // Caller is responsible for keeping `p.first ∈ [0, n_vertices)` — we don't
-    // assert here to keep this header free of internal logging includes.
     for (const auto& p : pairs) {
       offsets[p.first + 1]++;
     }
@@ -130,17 +111,14 @@ struct csr_var_map_t {
     for (const auto& p : pairs) {
       indices[offsets[p.first] + head[p.first]++] = p.second;
     }
-    // Sort each slice and dedupe in-place. Average slice sizes are small
-    // (typically << n_vertices), so per-slice sort+unique is cheap.
     for (i_t v = 0; v < n_vertices; ++v) {
       auto* b = indices.data() + offsets[v];
       auto* e = indices.data() + offsets[v] + head[v];
       std::sort(b, e);
       auto* new_end = std::unique(b, e);
-      // If we deduped, compact later via a second pass below.
-      head[v] = static_cast<i_t>(new_end - b);
+      head[v]       = static_cast<i_t>(new_end - b);
     }
-    // Compact (rebuild offsets/indices to skip dedupe holes).
+    // Compact away dedupe holes.
     std::vector<i_t> new_offsets(n_vertices + 1, 0);
     for (i_t v = 0; v < n_vertices; ++v) {
       new_offsets[v + 1] = new_offsets[v] + head[v];
@@ -173,11 +151,8 @@ struct clique_table_t {
     small_clique_adj.clear_and_resize(n_vertices);
   }
 
-  // std::atomic is neither copyable nor movable, so adding ready_for_heuristics
-  // below would implicitly delete the struct's copy and move operations. We
-  // keep the copy forbidden (atomic state should not be duplicated) but
-  // provide an explicit move that transfers the flag via load/store, which is
-  // required by tests that return clique_table_t by value through NRVO.
+  // Copy disabled (atomic ready_for_heuristics); move provided so tests can
+  // return by value. Move-assign omitted because of const members.
   clique_table_t(const clique_table_t&)            = delete;
   clique_table_t& operator=(const clique_table_t&) = delete;
 
@@ -197,10 +172,6 @@ struct clique_table_t {
   {
   }
 
-  // Move-assign is intentionally not provided: the const members
-  // (n_variables, min_clique_size, max_clique_size_for_extension) make it
-  // ill-formed, and no caller needs it. Callers that need re-seating use a
-  // pointer / unique_ptr / shared_ptr.
   clique_table_t& operator=(clique_table_t&&) = delete;
 
   std::unordered_set<i_t> get_adj_set_of_var(i_t var_idx) const;
@@ -215,17 +186,13 @@ struct clique_table_t {
   std::vector<addtl_clique_t<i_t, f_t>> addtl_cliques;
   // var_idx → indices of `first` cliques that contain var_idx (CSR).
   csr_var_map_t<i_t> var_clique_first;
-  // var_idx → indices of `addtl_cliques` that share an edge with var_idx
-  // (CSR). Includes BOTH the case where var_idx is the extension vertex
-  // (`addtl.vertex_idx == var_idx`) AND the case where var_idx is a base
-  // member in the extended suffix
-  // (`var_idx ∈ first[addtl.clique_idx][addtl.start_pos_on_clique:]`).
+  // var_idx → indices of `addtl_cliques` containing var_idx (as the extension
+  // vertex or as a base-suffix member).
   csr_var_map_t<i_t> var_clique_addtl;
   // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
   std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
-  // var_idx → neighboring vars from cliques that were demoted by
-  // remove_small_cliques into pairwise edges (CSR). Symmetric: every edge
-  // (u, v) appears in both small_clique_adj.slice(u) and slice(v).
+  // var_idx → pairwise edges from cliques demoted by remove_small_cliques.
+  // Symmetric: edge (u, v) appears in both u's and v's slices.
   csr_var_map_t<i_t> small_clique_adj;
   // degrees of each vertex
   std::vector<i_t> var_degrees;
@@ -235,37 +202,10 @@ struct clique_table_t {
   const i_t max_clique_size_for_extension;
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
 
-  // Handshake flag originally introduced to gate heuristics reads while B&B's
-  // cut passes might still be mutating this table. In the current code paths
-  // this is NOT actually required for safety, and we deliberately no longer
-  // gate on it from ensure_clique_data() — doing so made heuristics fall back
-  // to the stock (non-clique) path for the entire duration of B&B's cut-pass
-  // loop, which erased most of the clique-awareness benefit in practice.
-  //
-  // Why the gate is not needed today:
-  //   During cut generation B&B only ever writes to `var_degrees` (via the
-  //   lazy `get_degree_of_var` cache — each slot in a fixed-size vector,
-  //   never resized). Heuristics' `clique_group_table_t::build_from_host`
-  //   reads `first`, `addtl_cliques`, `var_clique_first`, and
-  //   `small_clique_adj`; it does NOT read `var_degrees`. All of the
-  //   containers build_from_host touches are populated once by
-  //   `find_initial_cliques` (which includes `remove_small_cliques` that
-  //   seeds `small_clique_adj`) and then remain structurally stable
-  //   for the rest of the solve. So B&B's write set and heuristics' read
-  //   set are disjoint.
-  //
-  // Why we keep the flag at all:
-  //   It's a documented hook so future code that does mutate the
-  //   heuristics-visible containers during cut generation (e.g. extending
-  //   cliques into `first` / `addtl_cliques` on the fly) can re-enable
-  //   gating without reintroducing the plumbing.
-  //
-  // Current contract:
-  //   - Initially false (constructor default).
-  //   - Set to true after the initial clique table has been built and
-  //     attached to problem_t.
-  //   - Solver toggles it around the B&B async launch for documentation
-  //     / future-proofing, but ensure_clique_data() does not block on it.
+  // Documentation-only handshake flag. NOT gated on from ensure_clique_data:
+  // B&B cut-gen only mutates `var_degrees` (which heuristics don't read), so
+  // the read/write sets are disjoint today. Kept as a hook for future code
+  // that does mutate the heuristics-visible containers on the fly.
   std::atomic<bool> ready_for_heuristics{false};
 };
 

@@ -91,27 +91,14 @@ void bound_presolve_t<i_t, f_t>::resize(problem_t<i_t, f_t>& problem)
   upd.resize(problem);
   host_lb.resize(problem.n_variables);
   host_ub.resize(problem.n_variables);
-  // Intentionally no clique-group invalidation here. `ensure_clique_data`
-  // below owns cache validity via a full (problem, clique_table, dims)
-  // fingerprint; a dim-only check at this layer is both insufficient
-  // (different problems can share dims — see §6 of the design doc) and
-  // redundant with the fingerprint check.
+  // Clique-group cache invalidation is handled by ensure_clique_data's fingerprint.
 }
 
 template <typename i_t, typename f_t>
 void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
 {
-  // Cache-hit fingerprint: same problem instance, same clique_table instance,
-  // and matching dims. Any mismatch — including the problem_t* changing
-  // underneath us while dims happen to coincide (local_search alternates
-  // between *problem_ptr and problem_with_objective_cut) — forces a rebuild.
-  //
-  // We snapshot the clique_table through get_clique_table_snapshot() because
-  // B&B's async clique-build task publishes the table via
-  // problem_t::publish_clique_table from a worker thread; a direct .get() on
-  // the shared_ptr would race with that publication. Holding the snapshot
-  // shared_ptr in `ct_snapshot` also guarantees the table stays alive for
-  // the duration of this call even if an unrelated publication replaces it.
+  // Snapshot avoids racing with B&B's async clique-table publication and
+  // keeps the table alive for the duration of this call.
   auto ct_snapshot     = pb.get_clique_table_snapshot();
   auto* current_ct     = ct_snapshot.get();
   const bool cache_hit = clique_data_built                                //
@@ -123,17 +110,13 @@ void bound_presolve_t<i_t, f_t>::ensure_clique_data(problem_t<i_t, f_t>& pb)
   if (cache_hit) return;
 
   if (!current_ct) {
-    // No clique_table attached (yet). May be set later in the pipeline when
-    // B&B's async build publishes — leave the fingerprint unchanged (still
-    // mismatching) so the next call re-checks and builds as soon as the
-    // table is attached.
+    // Not attached yet; keep fingerprint mismatched so the next call rechecks.
     clique_data.n_groups = 0;
     clique_data_built    = false;
     return;
   }
-  // Note: we intentionally do NOT gate on current_ct->ready_for_heuristics.
-  // B&B's cut-pass writes touch only var_degrees (disjoint from our reads).
-  // See clique_table_t::ready_for_heuristics for the full rationale.
+  // Don't gate on ready_for_heuristics — B&B cut-pass writes are disjoint
+  // from our reads (see clique_table_t::ready_for_heuristics).
   clique_data.build_from_host(pb, context.problem_ptr->reverse_original_ids, *current_ct);
   upd.resize_clique_buffers(clique_data.n_groups, pb.handle_ptr->get_stream());
   last_built_problem       = &pb;
@@ -177,10 +160,7 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
   auto stream = pb.handle_ptr->get_stream();
 
   if (!clique_data.empty()) {
-    // Clique-aware path:
-    //   1) compute per-group corrections from current (lb, ub)
-    //   2) fold them into (min_activity, max_activity) deterministically
-    //   3) run the clique-aware bounds-update kernel
+    // Clique-aware path: compute per-group corrections, fold into activity, then update bounds.
     constexpr i_t warp = raft::WarpSize;
     compute_clique_corrections_kernel<i_t, f_t, warp>
       <<<clique_data.n_groups, warp, 0, stream>>>(make_span(clique_data.group_member_offsets),

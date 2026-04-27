@@ -38,13 +38,10 @@ namespace cuopt::linear_programming::test {
 
 namespace {
 
-// -----------------------------------------------------------------------------
 // Helpers
-// -----------------------------------------------------------------------------
 
-// Build a minimal problem_t with the given CSR, binary-flag and variable types.
-// After this call reverse CSR and is_binary_variable are populated, which is
-// what clique_group_table_t::build_from_host reads.
+// Build a minimal problem_t. preprocess_problem() populates reverse CSR and
+// is_binary_variable, which clique_group_table_t::build_from_host reads.
 std::shared_ptr<detail::problem_t<int, double>> make_problem(const raft::handle_t& handle,
                                                              const std::vector<int>& offsets,
                                                              const std::vector<int>& indices,
@@ -77,10 +74,8 @@ std::shared_ptr<detail::problem_t<int, double>> make_problem(const raft::handle_
   return pb;
 }
 
-// Attach a manually-built clique_table with the given "large" clique list and
-// the given adjacency-list small cliques. `n_vars` is the number of original
-// problem variables. Using min_clique_size=1 disables any internal filtering
-// (the clique_table_t members we care about are plain vectors/maps).
+// Build a clique_table with the given large cliques and small adjacency.
+// min_clique_size=1 disables internal filtering for tests.
 std::shared_ptr<detail::clique_table_t<int, double>> make_clique_table(
   int n_vars,
   const std::vector<std::vector<int>>& first,
@@ -93,10 +88,7 @@ std::shared_ptr<detail::clique_table_t<int, double>> make_clique_table(
     /*max_clique_size_for_extension=*/1);
   ct->first         = first;
   ct->addtl_cliques = addtl;
-  // Convert legacy hash-of-set small adjacency into the CSR. Production code
-  // never goes through this path — remove_small_cliques populates the CSR
-  // directly. The helper is sufficient here because tests only need a stable
-  // read-only view of edges.
+  // Test-only helper: production uses remove_small_cliques to populate the CSR.
   ct->set_small_clique_adj_for_test(small_adj);
   // Materialize var_clique_first / var_clique_addtl / first_var_positions
   // from `first` and `addtl_cliques`. This mirrors what
@@ -105,14 +97,11 @@ std::shared_ptr<detail::clique_table_t<int, double>> make_clique_table(
   return ct;
 }
 
-// -----------------------------------------------------------------------------
 // Tests for clique_group_table_t::build_from_host
-// -----------------------------------------------------------------------------
 
 TEST(clique_activity, build_from_host_no_cliques)
 {
-  // One constraint: x0 + x1 + x2 + y >= 2, all binary, no clique table → no
-  // groups should be emitted.
+  // x0 + x1 + x2 + y >= 2, no clique table → no groups.
   const raft::handle_t handle{};
   auto pb = make_problem(handle,
                          {0, 4},
@@ -133,8 +122,7 @@ TEST(clique_activity, build_from_host_no_cliques)
 
 TEST(clique_activity, build_from_host_basic_large_clique)
 {
-  // One constraint: x0 + x1 + x2 + y >= 2, all binary. Clique {0,1,2} — we
-  // expect exactly one group on constraint 0 with those three members.
+  // Clique {0,1,2} on x0 + x1 + x2 + y >= 2 → one group on constraint 0.
   const raft::handle_t handle{};
   auto pb = make_problem(handle,
                          {0, 4},
@@ -178,9 +166,7 @@ TEST(clique_activity, build_from_host_basic_large_clique)
   EXPECT_EQ(h_cg_off[0], 0);
   EXPECT_EQ(h_cg_off[1], 1);
 
-  // reverse_group_id: length = nnz = 4. For vars 0,1,2 (each in one
-  // constraint), reverse_group_id entry should be 0. For y (var 3), it
-  // should be -1.
+  // reverse_group_id: vars 0,1,2 in group 0; y (var 3) is -1.
   ASSERT_EQ(h_rev_gid.size(), 4u);
   int count_in_group = 0;
   int count_out      = 0;
@@ -196,10 +182,7 @@ TEST(clique_activity, build_from_host_basic_large_clique)
 
 TEST(clique_activity, build_from_host_accepts_complement_literal_clique)
 {
-  // Clique {x0, x1, ~x2} on constraint x0 + x1 + x2 + y >= 2. The third
-  // member is a complement literal, so its effective literal coefficient is
-  // -1 * 1 = -1 while the first two stay at +1. The group should be emitted
-  // with those three underlying vars and coeffs {+1, +1, -1}.
+  // Clique {x0, x1, ~x2}: effective coeffs {+1, +1, -1}.
   const raft::handle_t handle{};
   const int n_vars = 4;
   auto pb          = make_problem(handle,
@@ -222,7 +205,6 @@ TEST(clique_activity, build_from_host_accepts_complement_literal_clique)
   auto h_mem_vars   = host_copy(data.group_member_vars, stream);
   auto h_mem_coeffs = host_copy(data.group_member_coeffs, stream);
   ASSERT_EQ(h_mem_vars.size(), 3u);
-  // Build (var → effective coeff) map so we can check by identity.
   std::unordered_map<int, double> got;
   for (std::size_t i = 0; i < h_mem_vars.size(); ++i) {
     got[h_mem_vars[i]] = h_mem_coeffs[i];
@@ -235,9 +217,7 @@ TEST(clique_activity, build_from_host_accepts_complement_literal_clique)
 
 TEST(clique_activity, build_from_host_small_adj_list_fallback)
 {
-  // No large cliques, but pairwise edges {(0,1), (1,2), (0,2)} on an adj list.
-  // Since all three vars appear in the same constraint, build_from_host should
-  // extract the triangle as a single group via its greedy maximal-clique path.
+  // No large cliques; triangle of small edges should be extracted as one group.
   const raft::handle_t handle{};
   auto pb = make_problem(handle,
                          {0, 3},
@@ -264,16 +244,11 @@ TEST(clique_activity, build_from_host_small_adj_list_fallback)
   EXPECT_EQ(h_mem, (std::vector<int>{0, 1, 2}));
 }
 
-// -----------------------------------------------------------------------------
 // Tests for compute_clique_corrections_kernel
-// -----------------------------------------------------------------------------
 
 TEST(clique_activity, compute_corrections_kernel_values)
 {
-  // One group, three members with coeffs {3, 5, 2}. lb=0, ub=1 for all.
-  // Expected:
-  //   sum_pos = 10, max1 = 5, max2 = 3 → max_correction = 10 - 5 = 5
-  //   sum_neg = 0,  min1 = 0, min2 = 0 → min_correction = 0
+  // Coeffs {3,5,2}, lb=0, ub=1 → max_correction = 10-5 = 5, min_correction = 0.
   const raft::handle_t handle{};
   auto stream = handle.get_stream();
 
@@ -335,9 +310,7 @@ TEST(clique_activity, compute_corrections_kernel_values)
 
 TEST(clique_activity, compute_corrections_kernel_skips_fixed_members)
 {
-  // Same coeffs as above, but x1 (coeff=5) is fixed (lb==ub). With only x0 and
-  // x2 unfixed (coeffs 3 and 2), we expect:
-  //   sum_pos = 5, max1 = 3, max2 = 2 → max_correction = 5 - 3 = 2
+  // x1 (coeff=5) fixed; only x0, x2 active → max_correction = 5-3 = 2.
   const raft::handle_t handle{};
   auto stream = handle.get_stream();
 
@@ -391,23 +364,12 @@ TEST(clique_activity, compute_corrections_kernel_skips_fixed_members)
   EXPECT_DOUBLE_EQ(h_max2_h[0], 2.0);
 }
 
-// -----------------------------------------------------------------------------
-// End-to-end bound propagation: clique should tighten bounds that the stock
-// algorithm can't reach.
-// -----------------------------------------------------------------------------
+// End-to-end bound propagation: clique tightens what stock can't.
 
 TEST(clique_activity, bound_propagation_tightens_with_clique)
 {
-  // One constraint: x0 + x1 + x2 + y >= 2, all binary [0, 1].
-  //
-  // Stock activity tightening (no clique):
-  //   max_a = 4. For y: max_a_without_y = 3. new_lb_y = ceil((2 - 3)/1) = -1
-  //   → no tightening (y stays at [0, 1]).
-  //
-  // Clique-aware (clique {0, 1, 2}):
-  //   sum_pos = 3, max1 = 1 → max_correction = 2. Corrected max_a = 4 - 2 = 2.
-  //   For y (not in clique): max_a_without_y = 2 - 1 = 1. new_lb_y =
-  //   ceil((2 - 1)/1) = 1 → y's lb tightens to 1.
+  // x0+x1+x2+y >= 2 with clique {x0,x1,x2}:
+  // stock leaves y in [0,1]; clique-aware corrects max_a to 2 → y.lb = 1.
   const raft::handle_t handle{};
   auto pb = make_problem(handle,
                          {0, 4},
@@ -422,14 +384,12 @@ TEST(clique_activity, bound_propagation_tightens_with_clique)
   mip_solver_settings_t<int, double> settings{};
   detail::mip_solver_context_t<int, double> context(pb->handle_ptr, pb.get(), settings);
 
-  // --- Baseline: no clique table ------------------------------------------
   detail::bound_presolve_t<int, double> bp_no_clique(context);
   bp_no_clique.solve(*pb);
   auto stream    = handle.get_stream();
   auto h_lb_base = host_copy(bp_no_clique.upd.lb, stream);
   auto h_ub_base = host_copy(bp_no_clique.upd.ub, stream);
 
-  // --- With clique: attach {x0, x1, x2} and re-run ------------------------
   pb->clique_table = make_clique_table(/*n_vars=*/4, /*first=*/{{0, 1, 2}});
 
   detail::bound_presolve_t<int, double> bp_with_clique(context);
@@ -437,13 +397,10 @@ TEST(clique_activity, bound_propagation_tightens_with_clique)
   auto h_lb_cliq = host_copy(bp_with_clique.upd.lb, stream);
   auto h_ub_cliq = host_copy(bp_with_clique.upd.ub, stream);
 
-  // Baseline should leave y's lb at 0; clique-aware should lift it to 1.
   EXPECT_DOUBLE_EQ(h_lb_base[3], 0.0);
   EXPECT_DOUBLE_EQ(h_lb_cliq[3], 1.0);
 
-  // The three clique members stay in [0, 1] (no direct tightening — the
-  // constraint lb of 2 is still achievable by picking any two of them to 1,
-  // but that remains feasible per-variable).
+  // Clique members stay in [0, 1]: any two=1 remains feasible per-variable.
   for (int i = 0; i < 3; ++i) {
     EXPECT_DOUBLE_EQ(h_lb_cliq[i], 0.0);
     EXPECT_DOUBLE_EQ(h_ub_cliq[i], 1.0);
@@ -452,13 +409,7 @@ TEST(clique_activity, bound_propagation_tightens_with_clique)
 
 TEST(clique_activity, bound_propagation_tightens_with_complement_literal_clique)
 {
-  // Constraint: x0 + x1 - x2 + y >= 1, all binary.
-  //   Stock max_a = 1 + 1 + 0 + 1 = 3.
-  // Clique: { x0, x1, ~x2 } — at most one of {x0=1, x1=1, x2=0} is true.
-  // Effective literal coeffs b = {+1, +1, -1*(-1)} = {+1, +1, +1}.
-  //   sum_pos = 3, max1 = 1 → max_correction = 2. Corrected max_a = 1.
-  //   For y (not in the clique): max_a_without_y = 1 - 1 = 0.
-  //   new_lb_y = ceil((1 - 0)/1) = 1.
+  // x0+x1-x2+y >= 1 with clique {x0,x1,~x2}: clique-aware lifts y.lb 0→1.
   const raft::handle_t handle{};
   const int n_vars = 4;
   auto pb          = make_problem(handle,
@@ -489,11 +440,7 @@ TEST(clique_activity, bound_propagation_tightens_with_complement_literal_clique)
 
 TEST(clique_activity, bound_propagation_matches_when_clique_is_noop)
 {
-  // A problem where the clique has no extra tightening power: constraint
-  // x0 + x1 <= 1 is already a set-packing constraint and its max_activity is
-  // 2, clique-corrected max_activity is 1. But there are no other variables
-  // to propagate onto, and x0, x1 already have ub = 1, so bounds can't
-  // tighten further. Both runs should produce identical bounds.
+  // x0+x1 <= 1: clique correction has no var to propagate onto → identical bounds.
   const raft::handle_t handle{};
   auto pb = make_problem(handle,
                          {0, 2},
@@ -527,24 +474,11 @@ TEST(clique_activity, bound_propagation_matches_when_clique_is_noop)
   }
 }
 
-// -----------------------------------------------------------------------------
-// Clique-aware vs stock bound propagation: monotonicity invariant.
-//
-// Theoretical claim (proved in CLIQUE_PIPELINE_AUDIT.md / kernel comment):
-// for any feasible problem and any valid clique table on it, the clique-aware
-// bound presolve must produce a feasible region that is a (possibly improper)
-// subset of the stock presolve's region. Concretely, on every variable:
-//     lb_stock  <=  lb_clique
-//     ub_stock  >=  ub_clique
-// and on every constraint, the converged stored activity (which in the
-// clique case is already clique-corrected by apply_clique_corrections):
-//     min_activity_stock  <=  min_activity_clique
-//     max_activity_stock  >=  max_activity_clique
-// Tighter bounds → tighter raw activity (smaller ub_v shrinks max_a; larger
-// lb_v lifts min_a), and the per-iter clique correction can only push
-// further in the same direction (max_correction >= 0 subtracted from max_a;
-// min_correction <= 0 subtracted from min_a → adds a non-negative amount).
-// -----------------------------------------------------------------------------
+// Clique-aware vs stock monotonicity invariant
+// (see CLIQUE_PIPELINE_AUDIT.md for the proof):
+//   lb_stock <= lb_clique;  ub_stock >= ub_clique
+//   min_activity_stock <= min_activity_clique
+//   max_activity_stock >= max_activity_clique
 
 namespace {
 
@@ -555,11 +489,8 @@ struct presolve_result_t {
   std::vector<double> max_a;
 };
 
-// Run bound_presolve_t::solve once and snapshot the converged buffers.
-// `ct` may be null to exercise the stock (no-clique) path; otherwise it is
-// attached to `pb` before solve. This helper is intentionally side-effecting
-// on `pb->clique_table` so callers can pair it across two runs by simply
-// passing nullptr the first time and a real table the second.
+// Run bound_presolve_t::solve and snapshot converged buffers. `ct` may be null
+// for the stock path; otherwise it's attached to pb before solving.
 presolve_result_t run_presolve(detail::problem_t<int, double>& pb,
                                std::shared_ptr<detail::clique_table_t<int, double>> ct)
 {
@@ -575,10 +506,7 @@ presolve_result_t run_presolve(detail::problem_t<int, double>& pb,
           host_copy(bp.upd.max_activity, stream)};
 }
 
-// Assert: clique tightens or matches on every var and every constraint.
-// `tol` accounts for the FP roundoff that piggy-backs on the apply / undo of
-// the per-group correction along long iteration chains; on these tiny test
-// problems it should always be safe at 1e-9.
+// Assert: clique tightens or matches on every var and constraint.
 void expect_clique_tighter_or_equal(const presolve_result_t& stock,
                                     const presolve_result_t& clique,
                                     double tol = 1e-9)
@@ -597,9 +525,7 @@ void expect_clique_tighter_or_equal(const presolve_result_t& stock,
       << ", clique=" << clique.ub[v] << ")";
   }
   for (std::size_t c = 0; c < stock.min_a.size(); ++c) {
-    // Skip constraints whose stock activity is +/-inf (never happens in the
-    // test problems below, but the guard keeps the helper robust if a future
-    // test adds a free constraint).
+    // Skip free constraints (inf stored activity).
     const double inf = std::numeric_limits<double>::infinity();
     if (std::abs(stock.min_a[c]) == inf || std::abs(stock.max_a[c]) == inf) continue;
     EXPECT_LE(stock.min_a[c], clique.min_a[c] + tol)
@@ -611,10 +537,8 @@ void expect_clique_tighter_or_equal(const presolve_result_t& stock,
   }
 }
 
-// Ground-truth check: at least ONE var or constraint must tighten strictly,
-// otherwise the test problem is uninformative (a clique that does not move
-// any number is a degenerate test for our invariant). Used in tests where we
-// intentionally crafted the problem so the clique path is strictly stronger.
+// Assert: at least one var or constraint tightens strictly. Guards against
+// degenerate tests where the clique fails to consume.
 void expect_some_strict_tightening(const presolve_result_t& stock,
                                    const presolve_result_t& clique,
                                    double tol = 1e-9)
@@ -642,34 +566,16 @@ void expect_some_strict_tightening(const presolve_result_t& stock,
       }
     }
   }
-  EXPECT_TRUE(found) << "Test problem was supposed to demonstrate clique-aware tightening but "
-                        "every var/constraint matched stock exactly. Either the problem is "
-                        "degenerate or the clique is not being consumed.";
+  EXPECT_TRUE(found) << "Expected at least one strict tightening; clique not being consumed.";
 }
 
 }  // namespace
 
 TEST(clique_activity, monotonicity_cascading_tightening)
 {
-  // Two-stage cascade:
-  //   c0:  x0 + x1 + x2 + y0 >= 2          (clique {x0,x1,x2})
-  //   c1:  y0 + z <= 5                     (no clique, z continuous in [0,10])
-  //
-  // Stock:
-  //   c0: max_a = 4. max_a_without_y0 = 3. new_lb_y0 = ceil((2-3)/1) = -1
-  //       → y0 stays at [0, 1].
-  //   c1: min_a = 0. min_a_without_z = 0. new_ub_z = (5-0)/1 = 5.
-  //       → z tightens to [0, 5] (just clamps the trivial ub).
-  //   At fixed point: y0 ∈ [0, 1], z ∈ [0, 5].
-  //
-  // Clique:
-  //   c0 corrected max_a = 4 - (sum_pos - max1) = 4 - (3 - 1) = 2.
-  //       max_a_without_y0 = 1. new_lb_y0 = ceil((2-1)/1) = 1 → y0 ∈ [1, 1].
-  //   c1: y0 now has lb=1. raw min_a = 1 + 0 = 1. min_a_without_z = 1.
-  //       new_ub_z = (5 - 1) / 1 = 4 → z ∈ [0, 4].
-  //   Fixed point: y0 = 1, z ∈ [0, 4]. Strictly tighter on y0.lb and z.ub.
-  //
-  // Invariant must hold on every var and every constraint.
+  // c0: x0+x1+x2+y0 >= 2 (clique {x0,x1,x2})
+  // c1: y0+z <= 5
+  // Clique lifts y0.lb 0→1, which cascades to tighten z.ub 5→4.
   const raft::handle_t handle{};
   const int n_vars = 5;  // x0, x1, x2, y0, z
   const double inf = std::numeric_limits<double>::infinity();
@@ -688,28 +594,18 @@ TEST(clique_activity, monotonicity_cascading_tightening)
 
   expect_clique_tighter_or_equal(stock_pb, clique_pb);
 
-  // Sanity-pin the cascade outcomes so a regression in either propagation
-  // direction is caught locally, not just via the generic invariant.
-  EXPECT_DOUBLE_EQ(stock_pb.lb[3], 0.0);   // y0 unchanged in stock
-  EXPECT_DOUBLE_EQ(stock_pb.ub[4], 5.0);   // z capped at constraint ub in stock
-  EXPECT_DOUBLE_EQ(clique_pb.lb[3], 1.0);  // y0 lifted by clique correction
-  EXPECT_DOUBLE_EQ(clique_pb.ub[4], 4.0);  // z further tightened via raised y0
+  EXPECT_DOUBLE_EQ(stock_pb.lb[3], 0.0);
+  EXPECT_DOUBLE_EQ(stock_pb.ub[4], 5.0);
+  EXPECT_DOUBLE_EQ(clique_pb.lb[3], 1.0);
+  EXPECT_DOUBLE_EQ(clique_pb.ub[4], 4.0);
 
   expect_some_strict_tightening(stock_pb, clique_pb);
 }
 
 TEST(clique_activity, monotonicity_independent_cliques_multi_constraint)
 {
-  // Two independent cliques on two parallel constraints, plus a third
-  // coupling constraint that aggregates the "extras":
-  //   c0:  x0 + x1 + x2 + y0 >= 2          (clique {x0,x1,x2})
-  //   c1:  x3 + x4 + x5 + y1 >= 2          (clique {x3,x4,x5})
-  //   c2:  y0 + y1 + z <= 3                (no clique, z ∈ [0, 10] continuous)
-  //
-  // Stock:  y0 and y1 stay at [0,1]; min_a(c2) = 0 → z ub stays at 3 (from
-  //         the cnst ub minus min_a_without_z).
-  // Clique: y0 ≥ 1 and y1 ≥ 1 from c0/c1 cliques; then min_a(c2) = 2 →
-  //         new_ub_z = 3 - 2 = 1.
+  // Two independent cliques + a coupling constraint.
+  // Clique lifts y0,y1 to 1; min_a(c2) becomes 2 → z.ub 3→1.
   const raft::handle_t handle{};
   const int n_vars = 9;  // x0..x5, y0, y1, z
   const double inf = std::numeric_limits<double>::infinity();
@@ -728,25 +624,19 @@ TEST(clique_activity, monotonicity_independent_cliques_multi_constraint)
 
   expect_clique_tighter_or_equal(stock_pb, clique_pb);
 
-  // Spot-check the cascade: both y's lifted, z reduced by 2.
   EXPECT_DOUBLE_EQ(stock_pb.lb[6], 0.0);
   EXPECT_DOUBLE_EQ(stock_pb.lb[7], 0.0);
   EXPECT_DOUBLE_EQ(clique_pb.lb[6], 1.0);
   EXPECT_DOUBLE_EQ(clique_pb.lb[7], 1.0);
   EXPECT_GE(stock_pb.ub[8] + 1e-9, clique_pb.ub[8]);
-  EXPECT_LE(clique_pb.ub[8], 1.0 + 1e-9);  // z ub at most 1 in clique
+  EXPECT_LE(clique_pb.ub[8], 1.0 + 1e-9);
 
   expect_some_strict_tightening(stock_pb, clique_pb);
 }
 
 TEST(clique_activity, monotonicity_complement_literal_clique)
 {
-  // Same shape as the "tightens with complement literal clique" test, but we
-  // now also pin the activity-side invariant explicitly, since complement
-  // members feed the symmetric (min-side) correction path through the
-  // signed b_v = sign_v * a_v rewrite. Constraint:
-  //   c0:  x0 + x1 - x2 + y >= 1           (clique {x0, x1, ~x2})
-  // Stock: y stays at [0,1]; clique lifts y to 1.
+  // c0: x0+x1-x2+y >= 1 with clique {x0,x1,~x2}: clique lifts y to 1.
   const raft::handle_t handle{};
   const int n_vars = 4;
   const double inf = std::numeric_limits<double>::infinity();
@@ -787,10 +677,7 @@ TEST(clique_activity, monotonicity_holds_when_clique_is_noop)
 
   expect_clique_tighter_or_equal(stock_pb, clique_pb);
 
-  // Strict equality on the no-op problem: clique correction must not
-  // actively MOVE any number, only "fail to" tighten further. This is the
-  // double-correction guard of apply_clique_corrections_to_activity_kernel
-  // in action — any drift here would mean the kernel is over-applying.
+  // No-op problem: drift would mean the kernel is over-applying corrections.
   ASSERT_EQ(stock_pb.lb.size(), clique_pb.lb.size());
   for (std::size_t i = 0; i < stock_pb.lb.size(); ++i) {
     EXPECT_DOUBLE_EQ(stock_pb.lb[i], clique_pb.lb[i]) << "lb drift at var " << i;
@@ -800,44 +687,8 @@ TEST(clique_activity, monotonicity_holds_when_clique_is_noop)
 
 }  // namespace
 
-// -----------------------------------------------------------------------------
-// Clique-aware vs stock bound propagation: real MIPLIB-style instances.
-//
-// The synthetic monotonicity tests above pin specific propagation chains by
-// hand. To guard against regressions that would only fire on production-shape
-// problems (dense conflict graphs, many small cliques, mixed sign coeffs,
-// non-trivial preprocess output), we additionally run the same monotonicity
-// invariant on a handful of small but binary-heavy instances that ship in
-// `datasets/mip/` (i.e., are checked in to git so CI will always have them).
-//
-// Selection criteria for the instances:
-//   - git-tracked under `datasets/mip/` (no MIPLIB download required);
-//   - mostly or entirely binary (so the conflict-graph build has material
-//     to work with — `clique_table_t::extend` and the small-clique CSR are
-//     only populated for binary literals);
-//   - small enough that the two back-to-back bound presolves stay within a
-//     normal unit-test budget on a single GPU.
-//
-// Each instance test:
-//   1) Parses the MPS, builds `problem_t`, runs `preprocess_problem()`.
-//   2) Builds a real `clique_table_t` via the production
-//      `detail::build_clique_table` entry point, with the same
-//      remove_small_cliques/extend toggles the solver uses.
-//   3) Runs `bound_presolve_t::solve` once with `pb.clique_table = nullptr`
-//      (stock) and once with the real clique table (clique-aware), reusing
-//      the same `problem_t` so the two runs see identical preprocessed
-//      input.
-//   4) Asserts the monotonicity invariant on every var and every constraint.
-//      We do NOT require strict tightening on real instances — for some
-//      problems the clique structure is redundant with the LP tightening
-//      already done by stock prop, and matching is a perfectly valid
-//      outcome. We only assert "tighter or equal".
-//
-// Tolerance: 1e-6. Real instances cycle through many bound updates, and the
-// per-iteration apply / undo of clique corrections accumulates O(n_iter * eps)
-// FP roundoff that is invisible on the synthetic problems but can cross 1e-9.
-// The looser tolerance is still tight enough to catch any actual loosening.
-// -----------------------------------------------------------------------------
+// Real-instance monotonicity tests on small binary-heavy MPS files in
+// datasets/mip/. Tolerance 1e-6 absorbs FP drift over many iterations.
 
 namespace {
 
@@ -846,11 +697,7 @@ struct mps_problem_with_cliques_t {
   std::shared_ptr<detail::clique_table_t<int, double>> ct;
 };
 
-// Parse a checked-in MPS file under datasets/mip/, build the preprocessed
-// `problem_t`, and produce a real `clique_table_t` for it via the same code
-// path the production solver uses (find_initial_cliques + remove_small +
-// extend). Both outputs are returned so the caller can pair them across two
-// `bound_presolve_t::solve` invocations.
+// Parse MPS, build preprocessed problem, build production clique table.
 mps_problem_with_cliques_t load_mps_with_cliques(const raft::handle_t& handle,
                                                  const std::string& rel_mps_path)
 {
@@ -862,17 +709,12 @@ mps_problem_with_cliques_t load_mps_with_cliques(const raft::handle_t& handle,
   auto pb = std::make_shared<detail::problem_t<int, double>>(op);
   pb->preprocess_problem();
 
-  // build_clique_table is the production entry point: it lives over a
-  // dual_simplex::user_problem_t (host CSR + host bounds), not problem_t.
-  // Pull a host_user_problem snapshot off the preprocessed problem so the
-  // clique table sees exactly what bound_presolve_t will see.
+  // build_clique_table operates on dual_simplex::user_problem_t.
   dual_simplex::user_problem_t<int, double> host_problem(pb->handle_ptr);
   pb->get_host_user_problem(host_problem);
 
-  // Force min_clique_size = 1 so even the small test instances yield groups
-  // through both the "first" path and the small-clique CSR. The production
-  // default (512) would short-circuit every clique on these inputs and leave
-  // the test exercising no clique logic at all.
+  // min_clique_size=1 (vs. production default 512) so small test instances
+  // actually emit cliques.
   detail::clique_config_t clique_config{};
   clique_config.min_clique_size = 1;
   auto ct                       = std::make_shared<detail::clique_table_t<int, double>>(
@@ -891,9 +733,7 @@ mps_problem_with_cliques_t load_mps_with_cliques(const raft::handle_t& handle,
   return {std::move(pb), std::move(ct)};
 }
 
-// Run stock then clique-aware bound presolve on the given MPS instance and
-// assert the monotonicity invariant. Real-instance tolerance is 1e-6 — see
-// header comment.
+// Run stock then clique-aware presolve and assert monotonicity (tol=1e-6).
 void run_real_mps_monotonicity(const std::string& rel_mps_path)
 {
   const raft::handle_t handle{};
@@ -907,38 +747,24 @@ void run_real_mps_monotonicity(const std::string& rel_mps_path)
 
 }  // namespace
 
+// Tiny pure-binary set-covering smoke test.
 TEST(clique_activity, monotonicity_real_dominating_set)
 {
-  // Tiny pure-binary set-covering style instance (10 cnsts, 9 binary vars).
-  // Useful as a smoke test that the entire MPS → preprocess → clique build →
-  // double presolve pipeline runs cleanly under the monotonicity contract.
   run_real_mps_monotonicity("mip/dominating_set.mps");
 }
 
-TEST(clique_activity, monotonicity_real_sudoku)
-{
-  // 729 binary vars, 354 constraints. Sudoku encodings are clique-rich by
-  // construction (each row / column / box / cell yields a set-packing
-  // constraint), so this exercises the dense-clique path through both
-  // remove_small_cliques and the small-clique CSR.
-  run_real_mps_monotonicity("mip/sudoku.mps");
-}
+// Sudoku: clique-rich set-packing structure exercises dense-clique path.
+TEST(clique_activity, monotonicity_real_sudoku) { run_real_mps_monotonicity("mip/sudoku.mps"); }
 
+// Coding-theory instance with many short pairwise conflicts.
 TEST(clique_activity, monotonicity_real_cod105_max)
 {
-  // 1024 binary vars, ~1025 constraints. MIPLIB-style coding-theory
-  // instance with many short pairwise conflicts. Larger of the four
-  // instances; still well within unit-test runtime.
   run_real_mps_monotonicity("mip/cod105_max.mps");
 }
 
+// Mixed binary cliques + a continuous column.
 TEST(clique_activity, monotonicity_real_50v_10_free_bound)
 {
-  // 234 constraints × 2014 vars; mostly binary via `MARKER INTORG` plus
-  // UP=1 bounds, with a single non-binary continuous variable. Mixes
-  // binary cliques with continuous columns, so the clique-aware path has
-  // to leave the continuous column's contribution to activity alone while
-  // applying corrections to the binary block.
   run_real_mps_monotonicity("mip/50v-10-free-bound.mps");
 }
 
