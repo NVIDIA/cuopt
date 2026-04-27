@@ -441,10 +441,28 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         if isinstance(vehicle_ids, int):
             vehicle_ids = [vehicle_ids]
 
-        cycles = n_cycles if n_cycles is not None else 1
+        if n_cycles is not None:
+            if not isinstance(n_cycles, (int, np.integer)) or n_cycles <= 0:
+                raise ValueError("n_cycles must be a positive integer")
+        else:
+            n_cycles = 1
+
+        validate_positive(max_range, "max range")
+        validate_non_negative(min_range, "min range")
+        validate_non_negative(charge_duration, "charge duration")
+        if min_range >= max_range:
+            raise ValueError("min_range must be smaller than max_range")
+        if len(charging_stations) > 0:
+            validate_range(
+                charging_stations,
+                "charging stations",
+                0,
+                self.get_num_locations(),
+            )
+
         for vid in vehicle_ids:
             validate_range(vid, "vehicle id", 0, self.get_fleet_size())
-            for k in range(cycles):
+            for k in range(n_cycles):
                 d_min = k * max_range + min_range
                 d_max = (k + 1) * max_range
                 super().add_vehicle_ev_break(

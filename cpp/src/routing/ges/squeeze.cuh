@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -462,10 +462,10 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
       curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
 
       if (!break_nodes.distance_min.empty()) {
-        double dist = break_node.distance_dim.distance_forward;
-        float d_min = break_nodes.distance_min[break_node_id];
-        float d_max = break_nodes.distance_max[break_node_id];
-        if (dist < (double)d_min || dist > (double)d_max) { continue; }
+        double dist   = break_node.distance_dim.distance_forward;
+        double d_min  = break_nodes.distance_min[break_node_id];
+        double d_max  = break_nodes.distance_max[break_node_id];
+        if (dist < d_min || d_max < dist) { continue; }
       }
 
       double cost_difference = break_node.calculate_forward_all_and_delta(next_node,
@@ -486,7 +486,8 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
     __shared__ double reduction_buf[2 * raft::WarpSize];
     block_reduce_ranked(thread_best_cost, t_id, reduction_buf, &reduction_idx);
 
-    if (threadIdx.x == reduction_idx) {
+    if (threadIdx.x == reduction_idx && thread_best_break_node_id >= 0 &&
+        reduction_buf[0] != std::numeric_limits<double>::max()) {
       auto break_node = create_break_node<i_t, f_t, REQUEST>(
         break_nodes, thread_best_break_node_id, solution.problem.dimensions_info);
       // do not update the intra indices yet

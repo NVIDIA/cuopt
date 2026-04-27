@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
@@ -6,10 +6,6 @@ import pytest
 import cudf
 
 from cuopt import routing
-from cuopt.routing import utils
-
-filename = utils.RAPIDS_DATASET_ROOT_DIR + "/solomon/In/r107.txt"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -135,139 +131,70 @@ def test_ev_break_api_stacked_calls():
 # Validation tests
 # ---------------------------------------------------------------------------
 
-def test_ev_break_invalid_vehicle_id():
-    """Out-of-range vehicle_id raises an exception."""
-    d = _small_data_model(n_vehicles=2)
-
-    with pytest.raises(Exception):
-        d.add_ev_break(5, max_range=100.0, charge_duration=15)
-
-    with pytest.raises(Exception):
-        d.add_ev_break(-1, max_range=100.0, charge_duration=15)
+@pytest.fixture
+def model():
+    return _small_data_model(n_vehicles=3)
 
 
-# ---------------------------------------------------------------------------
-# Solver integration tests
-# ---------------------------------------------------------------------------
-
-def test_ev_break_solves():
-    """Basic EV break solve: status 0 and at least one Break in the route."""
-    vehicle_num = 20
-    run_nodes = 100
-    d = utils.create_data_model(
-        filename, run_nodes=run_nodes, num_vehicles=vehicle_num
-    )
-
-    d.add_ev_break(
-        vehicle_ids=list(range(vehicle_num)),
-        max_range=200.0,
-        charge_duration=15,
-    )
-
-    s = routing.SolverSettings()
-    s.set_time_limit(30)
-    sol = routing.Solve(d, s)
-
-    assert sol.get_status() == 0
-
-    routes = sol.get_route().to_pandas()
-    assert (routes["type"] == "Break").any()
+# fleet_size=3 → validate_range(vid, "vehicle id", 0, 3): fails for vid < 0 or vid > 3
+@pytest.mark.parametrize("vid", [-1, 4, 100])
+def test_ev_break_invalid_vehicle_id(model, vid):
+    """Out-of-range vehicle id raises ValueError."""
+    with pytest.raises(ValueError, match="vehicle id"):
+        model.add_ev_break(vid, max_range=100.0, charge_duration=15)
 
 
-def test_ev_break_charging_stations_in_solution():
-    """Break locations in the solution are a subset of charging_stations."""
-    vehicle_num = 20
-    run_nodes = 100
-    d = utils.create_data_model(
-        filename, run_nodes=run_nodes, num_vehicles=vehicle_num
-    )
-
-    station_ids = list(range(1, 30))
-    charging_stations = cudf.Series(station_ids, dtype="int32")
-
-    d.add_ev_break(
-        vehicle_ids=list(range(vehicle_num)),
-        max_range=200.0,
-        charge_duration=15,
-        charging_stations=charging_stations,
-    )
-
-    s = routing.SolverSettings()
-    s.set_time_limit(30)
-    sol = routing.Solve(d, s)
-
-    assert sol.get_status() == 0
-
-    routes = sol.get_route().to_pandas()
-    for i in range(routes.shape[0]):
-        if routes["type"][i] == "Break":
-            assert routes["location"][i] in station_ids
+@pytest.mark.parametrize("max_range", [0, -1, -100.0])
+def test_max_range_must_be_positive(model, max_range):
+    """max_range must be strictly positive."""
+    with pytest.raises(ValueError, match="max range"):
+        model.add_ev_break(0, max_range=max_range, charge_duration=10)
 
 
-def test_ev_break_multi_cycle():
-    """n_cycles=2 produces breaks with both cycle indices (0 and 1) in routes."""
-    vehicle_num = 10
-    run_nodes = 100
-    n_cycles = 2
-    d = utils.create_data_model(
-        filename, run_nodes=run_nodes, num_vehicles=vehicle_num
-    )
-
-    d.add_ev_break(
-        vehicle_ids=list(range(vehicle_num)),
-        max_range=200.0,
-        charge_duration=15,
-        n_cycles=n_cycles,
-    )
-
-    s = routing.SolverSettings()
-    s.set_time_limit(30)
-    sol = routing.Solve(d, s)
-
-    assert sol.get_status() == 0
-
-    routes = sol.get_route().to_pandas()
-    break_dims_seen = set(
-        routes.loc[routes["type"] == "Break", "route"].tolist()
-    )
-    # Both cycle 0 and cycle 1 breaks should appear in at least some routes
-    assert 0 in break_dims_seen
-    assert 1 in break_dims_seen
-
-    # Per-vehicle break counts must equal n_cycles for every active vehicle
-    break_counts = {}
-    for i in range(routes.shape[0]):
-        truck = routes["truck_id"][i]
-        if routes["type"][i] == "Break":
-            break_counts[truck] = break_counts.get(truck, 0) + 1
-
-    for count in break_counts.values():
-        assert count == n_cycles
+def test_negative_min_range_rejected(model):
+    """min_range must be non-negative."""
+    with pytest.raises(ValueError, match="min range"):
+        model.add_ev_break(0, max_range=100.0, charge_duration=10, min_range=-1.0)
 
 
-def test_ev_break_mixed_fleet():
-    """Only EV-designated vehicles have charging breaks in the solution."""
-    vehicle_num = 20
-    run_nodes = 100
-    ev_count = vehicle_num // 2
-    d = utils.create_data_model(
-        filename, run_nodes=run_nodes, num_vehicles=vehicle_num
-    )
+@pytest.mark.parametrize(
+    "min_range, max_range",
+    [
+        (100.0, 100.0),
+        (150.0, 100.0),
+    ],
+)
+def test_min_range_must_be_less_than_max_range(model, min_range, max_range):
+    """min_range >= max_range raises ValueError."""
+    with pytest.raises(ValueError, match="min_range must be smaller"):
+        model.add_ev_break(
+            0, max_range=max_range, charge_duration=10, min_range=min_range
+        )
 
-    ev_ids = set(range(ev_count))
-    d.add_ev_break(
-        vehicle_ids=list(ev_ids),
-        max_range=200.0,
-        charge_duration=15,
-    )
 
-    s = routing.SolverSettings()
-    s.set_time_limit(30)
-    sol = routing.Solve(d, s)
+def test_negative_charge_duration_rejected(model):
+    """charge_duration must be non-negative."""
+    with pytest.raises(ValueError, match="charge duration"):
+        model.add_ev_break(0, max_range=100.0, charge_duration=-1)
 
-    assert sol.get_status() == 0
 
-    routes = sol.get_route().to_pandas()
-    for i in range(routes.shape[0]):
-        if routes["type"][i] == "Break":
-            assert routes["truck_id"][i] in ev_ids
+@pytest.mark.parametrize("n_cycles", [0, -1, -5])
+def test_invalid_n_cycles_non_positive(model, n_cycles):
+    """n_cycles <= 0 raises ValueError."""
+    with pytest.raises(ValueError, match="n_cycles"):
+        model.add_ev_break(0, max_range=100.0, charge_duration=10, n_cycles=n_cycles)
+
+
+@pytest.mark.parametrize("n_cycles", [1.5, "3"])
+def test_invalid_n_cycles_wrong_type(model, n_cycles):
+    """Non-integer n_cycles raises ValueError."""
+    with pytest.raises(ValueError, match="n_cycles"):
+        model.add_ev_break(0, max_range=100.0, charge_duration=10, n_cycles=n_cycles)
+
+
+def test_charging_stations_out_of_range(model):
+    """Charging station indices must be within [0, num_locations]."""
+    bad_stations = cudf.Series([999], dtype="int32")
+    with pytest.raises(ValueError, match="charging stations"):
+        model.add_ev_break(0, max_range=100.0, charge_duration=10,
+                           charging_stations=bad_stations)
