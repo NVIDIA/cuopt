@@ -21,7 +21,6 @@
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/mr/cuda_async_memory_resource.hpp>
-#include <rmm/mr/owning_wrapper.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
 #include <cstdlib>
@@ -34,7 +33,7 @@
 #include <stdexcept>
 #include <string>
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 inline auto make_pool()
 {
   size_t free_mem, total_mem;
@@ -43,8 +42,7 @@ inline auto make_pool()
   double alloc_ratio    = 0.4;
   // allocate 40%
   size_t initial_pool_size = (size_t(free_mem * alloc_ratio) / rmm_alloc_gran) * rmm_alloc_gran;
-  return rmm::mr::make_owning_wrapper<rmm::mr::pool_memory_resource>(make_async(),
-                                                                     initial_pool_size);
+  return rmm::mr::pool_memory_resource(make_async(), initial_pool_size);
 }
 
 template <typename T>
