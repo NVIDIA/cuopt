@@ -583,7 +583,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
   if (num_threads < 2) {
     CUOPT_LOG_ERROR("The MIP solver requires at least 2 CPU threads!");
     return mip_solution_t<i_t, f_t>{
-      cuopt::logic_error("The number of CPU threads is below than expected.",
+      cuopt::logic_error("The number of CPU threads is less than the expected minimum (2).",
                          cuopt::error_type_t::RuntimeError),
       op_problem.get_handle_ptr()->get_stream()};
   }
@@ -596,7 +596,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 #pragma omp parallel num_threads(num_threads) default(none) \
   shared(sol, op_problem, settings_const, exception)
   {
-#pragma omp master
+#pragma omp masked
     {
       try {
         sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);

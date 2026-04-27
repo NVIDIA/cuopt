@@ -15,15 +15,13 @@
  * limitations under the License.
  */
 
-#include "work_unit_scheduler.hpp"
-
-#include "work_limit_context.hpp"
+#include <utilities/work_limit_context.hpp>
+#include <utilities/work_unit_scheduler.hpp>
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <limits>
-
-#include <omp.h>
 
 namespace cuopt {
 
@@ -103,6 +101,7 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
   // All threads wait at this barrier
   omp_event_handle_t event;
   int task_id = tasks_at_sync_point_++;
+  assert(task_id >= 0 && task_id < num_tasks_);
 
   // This is hack for enabling synchronizing the sibling tasks without returning to the main
   // B&B task. However, this does not let the thread switch to another task despite the
@@ -129,8 +128,10 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
       if (sync_callback_) { sync_callback_(sync_target); }
 
       std::vector<omp_event_handle_t> events = pending_events_;
-      event_registered_                      = 0;
-      tasks_at_sync_point_                   = 0;
+
+#pragma omp atomic write
+      event_registered_    = 0;
+      tasks_at_sync_point_ = 0;
 
       for (auto ev : events) {
         omp_fulfill_event(ev);

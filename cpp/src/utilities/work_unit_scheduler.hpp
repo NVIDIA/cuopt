@@ -16,13 +16,10 @@
  */
 #pragma once
 
-#include <omp.h>
+#include <utilities/omp_helpers.hpp>
 
-#include <atomic>
 #include <functional>
 #include <vector>
-
-#include "omp_helpers.hpp"
 
 namespace cuopt {
 
@@ -30,7 +27,7 @@ struct work_limit_context_t;
 
 class work_unit_scheduler_t {
  public:
-  explicit work_unit_scheduler_t(double sync_interval = 5.0, int num_tasks = 0);
+  explicit work_unit_scheduler_t(double sync_interval, int num_tasks);
 
   void set_sync_interval(double interval);
   double get_sync_interval() const { return sync_interval_; }
@@ -48,11 +45,17 @@ class work_unit_scheduler_t {
 
   double current_sync_target() const;
 
-  void signal_shutdown() { shutdown_ = true; }
+  void signal_shutdown()
+  {
+    for (auto ev : pending_events_) {
+      omp_fulfill_event(ev);
+    }
+    shutdown_ = true;
+  }
   bool is_shutdown() const { return shutdown_; }
 
  public:
-  bool verbose{true};
+  bool verbose{false};
 
  private:
   void wait_at_sync_point(work_limit_context_t& ctx, double sync_target);

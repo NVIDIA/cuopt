@@ -2793,7 +2793,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
 
   // *IMPORTANT:* The number of workers MUST be equal or less to the number of
   // available threads, otherwise this WILL deadlock.
-  const i_t num_workers = settings_.num_threads - 1;
+  const i_t num_workers = std::max(settings_.num_threads - 1, 1);
   std::vector<search_strategy_t> search_strategies =
     get_search_strategies(settings_.diving_settings);
   std::array<i_t, num_search_strategies> max_num_workers =
@@ -2880,7 +2880,6 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     for (i_t i = 0; i < num_bfs_workers; ++i) {
 #pragma omp task default(none) firstprivate(i) untied
       {
-        printf("Executing bfs worker %d\n", i);
         auto& worker          = (*deterministic_workers_)[i];
         f_t worker_start_time = tic();
         run_deterministic_bfs_loop(worker, search_tree_);
@@ -2891,7 +2890,6 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     for (i_t i = 0; i < num_diving_workers; ++i) {
 #pragma omp task default(none) firstprivate(i) untied
       {
-        printf("Executing diving worker %d\n", i);
         auto& worker          = (*deterministic_diving_workers_)[i];
         f_t worker_start_time = tic();
         run_deterministic_diving_loop(worker);
