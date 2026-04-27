@@ -37,23 +37,21 @@ def validate_constraint_bounds(constraint_bounds):
                 False,
                 "Either Row types or upper and lower bounds must be provided",
             )
-        else:
-            if any(
-                [
-                    row_type not in ["E", "G", "L"]
-                    for row_type in constraint_bounds.types
-                ]
-            ):
-                return (
-                    False,
-                    "Row types must be E, L or G",
-                )
-    elif not is_empty(constraint_bounds.types):
-        return (
-            False,
-            "Both row types and upper and lower bounds can not be provided",
-        )
-    elif not len(constraint_bounds.upper_bounds) == len(
+        if any(
+            [
+                row_type not in ["E", "G", "L"]
+                for row_type in constraint_bounds.types
+            ]
+        ):
+            return (
+                False,
+                "Row types must be E, L or G",
+            )
+        return (True, "Valid constraint bounds")
+
+    # Both upper and lower are present; they take priority over row types. Redundant
+    # "types" may still be present (e.g. MPS toDict). See ConstraintBounds docstring.
+    if not len(constraint_bounds.upper_bounds) == len(
         constraint_bounds.lower_bounds
     ):
         return (
