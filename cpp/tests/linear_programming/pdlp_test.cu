@@ -8,6 +8,7 @@
 #include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <mps_parser.hpp>
 #include <pdlp/cusparse_view.hpp>
+#include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
@@ -3592,6 +3593,147 @@ TEST(pdlp_class, big_batch_fixed_path)
                          primal_solution,
                          1e-4,
                          false);
+}
+
+TEST(pdlp_class, batch_bound_objective_rescaling_factors_match_input_expansion)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  constexpr int batch_size = 3;
+  const int n_vars         = op_problem.get_n_variables();
+  const int n_constrs      = op_problem.get_n_constraints();
+  const auto& original_obj = op_problem.get_objective_coefficients();
+  const auto& original_lb  = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub  = op_problem.get_constraint_upper_bounds();
+
+  auto compute_rescaling = [&](std::vector<double> const& objectives,
+                               std::vector<double> const& constraint_lower,
+                               std::vector<double> const& constraint_upper) {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    auto stream = handle_.get_stream();
+    assign_device_uvector_from_host(gpu_op.get_objective_coefficients(), objectives, stream);
+    assign_device_uvector_from_host(gpu_op.get_constraint_lower_bounds(), constraint_lower, stream);
+    assign_device_uvector_from_host(gpu_op.get_constraint_upper_bounds(), constraint_upper, stream);
+
+    pdlp_hyper_params::pdlp_hyper_params_t hyper_params{};
+    hyper_params.do_ruiz_scaling           = false;
+    hyper_params.do_pock_chambolle_scaling = false;
+    hyper_params.bound_objective_rescaling = true;
+
+    cuopt::linear_programming::detail::problem_t<int, double> problem(gpu_op);
+    cuopt::linear_programming::detail::pdlp_initial_scaling_strategy_t<int, double> scaling(
+      &handle_,
+      problem,
+      hyper_params.default_l_inf_ruiz_iterations,
+      hyper_params.default_alpha_pock_chambolle_rescaling,
+      problem.reverse_coefficients,
+      problem.reverse_offsets,
+      problem.reverse_constraints,
+      nullptr,
+      hyper_params,
+      batch_size,
+      true);
+
+    scaling.bound_objective_rescaling();
+    return std::make_pair(host_copy(scaling.get_bound_rescaling_vector(), stream),
+                          host_copy(scaling.get_objective_rescaling_vector(), stream));
+  };
+
+  enum class field_layout_t { UNEXPANDED, EXPANDED_SAME, EXPANDED_DIFFERENT };
+
+  auto build_case = [&](field_layout_t objective_layout, field_layout_t rhs_layout) {
+    std::vector<double> objectives;
+    std::vector<double> constraint_lower;
+    std::vector<double> constraint_upper;
+
+    const int objective_segments = objective_layout == field_layout_t::UNEXPANDED ? 1 : batch_size;
+    objectives.reserve(static_cast<size_t>(objective_segments) * n_vars);
+    for (int climber = 0; climber < objective_segments; ++climber) {
+      const double objective_scale =
+        objective_layout == field_layout_t::EXPANDED_DIFFERENT ? std::pow(2.0, climber) : 1.0;
+
+      for (double v : original_obj) {
+        objectives.push_back(v * objective_scale);
+      }
+    }
+
+    const int rhs_segments = rhs_layout == field_layout_t::UNEXPANDED ? 1 : batch_size;
+    constraint_lower.reserve(static_cast<size_t>(rhs_segments) * n_constrs);
+    constraint_upper.reserve(static_cast<size_t>(rhs_segments) * n_constrs);
+    for (int climber = 0; climber < rhs_segments; ++climber) {
+      const double rhs_scale =
+        rhs_layout == field_layout_t::EXPANDED_DIFFERENT ? std::pow(2.0, climber) : 1.0;
+
+      for (double v : original_lb) {
+        constraint_lower.push_back(std::isfinite(v) ? v * rhs_scale : v);
+      }
+      for (double v : original_ub) {
+        constraint_upper.push_back(std::isfinite(v) ? v * rhs_scale : v);
+      }
+    }
+    return compute_rescaling(objectives, constraint_lower, constraint_upper);
+  };
+
+  auto expect_rescaling_equal = [=](const std::vector<double>& scaling) {
+    ASSERT_EQ(scaling.size(), static_cast<size_t>(batch_size));
+    for (int climber = 1; climber < batch_size; ++climber) {
+      EXPECT_EQ(scaling[0], scaling[climber]);
+    }
+  };
+  auto expect_rescaling_different = [=](const std::vector<double>& scaling) {
+    ASSERT_EQ(scaling.size(), static_cast<size_t>(batch_size));
+    for (int climber = 1; climber < batch_size; ++climber) {
+      EXPECT_NE(scaling[0], scaling[climber]);
+    }
+  };
+
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::EXPANDED_SAME, field_layout_t::EXPANDED_SAME);
+    expect_rescaling_equal(bound_rescaling);
+    expect_rescaling_equal(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::EXPANDED_DIFFERENT, field_layout_t::EXPANDED_SAME);
+    expect_rescaling_equal(bound_rescaling);
+    expect_rescaling_different(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::EXPANDED_SAME, field_layout_t::EXPANDED_DIFFERENT);
+    expect_rescaling_different(bound_rescaling);
+    expect_rescaling_equal(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::EXPANDED_DIFFERENT, field_layout_t::EXPANDED_DIFFERENT);
+    expect_rescaling_different(bound_rescaling);
+    expect_rescaling_different(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::UNEXPANDED, field_layout_t::UNEXPANDED);
+    expect_rescaling_equal(bound_rescaling);
+    expect_rescaling_equal(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::UNEXPANDED, field_layout_t::EXPANDED_DIFFERENT);
+    expect_rescaling_different(bound_rescaling);
+    expect_rescaling_equal(objective_rescaling);
+  }
+  {
+    auto [bound_rescaling, objective_rescaling] =
+      build_case(field_layout_t::EXPANDED_DIFFERENT, field_layout_t::UNEXPANDED);
+    expect_rescaling_equal(bound_rescaling);
+    expect_rescaling_different(objective_rescaling);
+  }
 }
 
 // Tests the compute_optimal_batch_size → run_batch_pdlp two-step API.

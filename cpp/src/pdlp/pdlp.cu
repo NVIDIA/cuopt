@@ -168,7 +168,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                               op_problem_scaled_.reverse_offsets,
                               op_problem_scaled_.reverse_constraints,
                               &pdhg_solver_,
-                              settings_.hyper_params},
+                              settings_.hyper_params,
+                              static_cast<i_t>(original_batch_size_)},
     average_op_problem_evaluation_cusparse_view_{handle_ptr_,
                                                  op_problem,
                                                  unscaled_primal_avg_solution_,
@@ -241,7 +242,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                 error_type_t::ValidationError,
                 "save_best_primal_so_far is not supported in batch mode. Disable batch mode "
                 "(no fixed_batch_size and no new_bounds) or unset save_best_primal_so_far.");
-
 
   // Set step_size initial scaling
   thrust::fill(handle_ptr_->get_thrust_policy(),
@@ -1626,6 +1626,7 @@ void pdlp_solver_t<i_t, f_t>::resize_context(i_t new_size)
   step_size_.resize(new_size, stream_view_);
   primal_step_size_.resize(new_size, stream_view_);
   dual_step_size_.resize(new_size, stream_view_);
+  initial_scaling_strategy_.resize_context(new_size);
   // Resize unscaled problem's per-climber fields (COL-major)
   if (problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)) {
     problem_ptr->objective_coefficients.resize(new_size * primal_size_h_, stream_view_);
@@ -1652,6 +1653,7 @@ void pdlp_solver_t<i_t, f_t>::swap_all_context(
   swap_context(swap_pairs);
   step_size_strategy_.swap_context(swap_pairs);
   current_termination_strategy_.swap_context(swap_pairs);
+  initial_scaling_strategy_.swap_context(swap_pairs);
 
   for (const auto& pair : swap_pairs) {
     host_vector_swap(climber_strategies_, pair.left, pair.right);

@@ -216,6 +216,28 @@ static inline auto problem_wrap_container(const rmm::device_uvector<f_t>& in)
                                          problem_wrapped_iterator<f_t>(in.data(), in.size()));
 }
 
+// Used when one scalar applies to each contiguous problem block in a batched vector:
+// [problem_0 block][problem_1 block]...
+template <typename f_t>
+struct batch_wrapped_iterator {
+  batch_wrapped_iterator(const f_t* problem_input, int problem_size)
+    : problem_input_(problem_input), problem_size_(problem_size)
+  {
+  }
+  HDI f_t operator()(int id) { return problem_input_[id / problem_size_]; }
+
+  const f_t* problem_input_;
+  // TODO use i_t
+  int problem_size_;
+};
+
+template <typename f_t>
+static inline auto batch_wrapped_container(const rmm::device_uvector<f_t>& in, int problem_size)
+{
+  return thrust::make_transform_iterator(thrust::make_counting_iterator(0),
+                                         batch_wrapped_iterator<f_t>(in.data(), problem_size));
+}
+
 template <typename f_t>
 struct power_two_func_t {
   HDI f_t operator()(f_t val) { return val * val; }
