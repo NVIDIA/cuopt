@@ -3840,6 +3840,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     f_t lp_start_time                = tic();
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 
+    worker.leaf_vstatus =
+      decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols);
     dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
                                                                0,
                                                                worker.recompute_bounds_and_basis,
