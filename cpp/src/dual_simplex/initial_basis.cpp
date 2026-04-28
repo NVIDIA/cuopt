@@ -28,7 +28,7 @@ uint8_t encode(variable_status_t vstatus)
     case variable_status_t::BASIC: val = 0b00; break;
     case variable_status_t::NONBASIC_LOWER: val = 0b01; break;
     case variable_status_t::NONBASIC_UPPER: val = 0b10; break;
-    case variable_status_t::NONBASIC_FIXED: val = 0b11; break;
+    case variable_status_t::NONBASIC_FIXED: val = 0b01; break;
     default: val = 0b11;
   }
 
