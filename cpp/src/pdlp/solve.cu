@@ -632,6 +632,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.per_constraint_residual = settings.per_constraint_residual;
   fs.save_best_primal_so_far = settings.save_best_primal_so_far;
   fs.first_primal_feasible   = settings.first_primal_feasible;
+  fs.all_primal_feasible   = settings.all_primal_feasible;
   fs.eliminate_dense_columns = settings.eliminate_dense_columns;
   fs.pdlp_precision          = pdlp_precision_t::DefaultPrecision;
   fs.method                  = method_t::PDLP;

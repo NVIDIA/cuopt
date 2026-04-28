@@ -78,7 +78,8 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
   const std::vector<f_t>& per_climber_objective_coefficients = {},
   const std::vector<f_t>& per_climber_constraint_lower_bounds = {},
   const std::vector<f_t>& per_climber_constraint_upper_bounds = {},
-  const std::vector<f_t>& per_climber_objective_offsets       = {})
+  const std::vector<f_t>& per_climber_objective_offsets       = {},
+  bool use_direct_api = false)
 {
   auto gpu_op =
     cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(handle_ptr,
@@ -106,6 +107,9 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
 
   settings.generate_batch_primal_dual_solution = true;
   settings.fixed_batch_size                      = batch_size;
+  if (use_direct_api) {
+    return cuopt::linear_programming::solve_lp(gpu_op, settings, false);
+  }
   return cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
 }
 
@@ -208,6 +212,7 @@ static void test_constraint_sanity(
 
     // Check if primal residual is indeed respecting the default tolerance
     pdlp_solver_settings_t solver_settings = pdlp_solver_settings_t<int, double>{};
+    solver_settings.set_optimality_tolerance(epsilon);
 
     std::vector<double> combined_bounds(constraint_lower_bounds.size());
 

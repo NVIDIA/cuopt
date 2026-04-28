@@ -282,7 +282,25 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool save_best_primal_so_far{false};
+  /**
+   * @brief Stop the solver as soon as a primal feasible iterate is encountered.
+   *
+   * In non-batch mode the solver returns the first primal feasible iterate (without waiting for
+   * optimality / dual feasibility). In batch mode the whole batch stops the moment any climber
+   * reaches primal feasibility; every climber returns its current iterate with its current
+   * termination status. Can be composed with `per_constraint_residual`.
+   * Mutually exclusive with `all_primal_feasible`.
+   */
   bool first_primal_feasible{false};
+  /**
+   * @brief Batch-only: stop only once every climber has reached (at least) primal feasibility.
+   *
+   * Each climber is individually ejected from the batch the first time it becomes primal
+   * feasible and its per-climber solution is captured. The solver returns when all climbers
+   * have been captured. Setting this in non-batch mode is a validation error. Setting it
+   * together with `first_primal_feasible` is a validation error.
+   */
+  bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};

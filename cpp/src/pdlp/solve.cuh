@@ -32,18 +32,51 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
   const timer_t& timer,
   bool is_batch_mode = false);
 
-// Entry point for batch PDLP. Two call contexts:
-//
-//   1. Strong branching: caller passes an un-expanded
-//      optimization_problem_t plus per-climber variable-bound in settings.new_bounds.
-//      run_batch_pdlp auto-picks the optimal batch size and potentially loops over sub-batches, managing
-//      memory pressure internally.
-//
-//   2. Fixed path (fixed path, settings.fixed_batch_size > 0): caller has already sized
-//      the batch (using compute_optimal_batch_size below), pre-expanded the per-climber
-//      problem fields directly on the optimization_problem_t (objective_coefficients,
-//      constraint_lower_bounds, constraint_upper_bounds, batch_objective_offsets_) and set settings.fixed_batch_size.
-//      run_batch_pdlp runs a single solve_lp with no memory-aware sub-batching.
+/**
+ * @brief Entry point for batch PDLP. Solves multiple LPs sharing the same constraint
+ *        matrix structure in a single batched GPU run.
+ *
+ * Two call contexts are supported:
+ *
+ *   1. Strong-branching path:
+ *      The caller passes an un-expanded optimization_problem_t plus per-climber
+ *      variable bounds in settings.new_bounds. run_batch_pdlp auto-picks the
+ *      optimal batch size and may loop over sub-batches, managing memory pressure
+ *      internally.
+ *      See pdlp_test.cu:strong_branching_user_api for a full example.
+ *
+ *   2. Fixed-batch path (settings.fixed_batch_size > 0):
+ *      The caller has already sized the batch (typically via
+ *      compute_optimal_batch_size below) and pre-expanded the per-climber problem
+ *      fields directly on the optimization_problem_t (objective_coefficients,
+ *      constraint_lower_bounds, constraint_upper_bounds, batch_objective_offsets_).
+ *      run_batch_pdlp performs a single solve_lp with no memory-aware sub-batching.
+ *      See pdlp_test.cu:big_batch_fixed_path for a full example.
+ *
+ * @param problem  The optimization problem (un-expanded for case 1, pre-expanded for case 2).
+ * @param settings Solver settings
+ * @return The batched solution.
+ *
+ * @code
+ * // Case 1: Strong branching (auto batch sizing)
+ * pdlp_solver_settings_t<i_t, f_t> settings;
+ * settings.new_bounds        = per_climber_bounds;  // per-climber variable bounds
+ * auto solution = run_batch_pdlp(problem, settings);
+ * @endcode
+ *
+ * @code
+ * // Case 2: Fixed batch (caller-managed expansion)
+ * size_t batch_size = compute_optimal_batch_size(problem,
+ *                                                per_climber_objectives,
+ *                                                per_climber_constraint_bounds);
+ * expand_problem_in_place(problem, batch_size);     // caller fills the per-climber fields
+ * // Shouldn't use the set_X API as it will change the problem n_variables and n_constraints
+ * // Instead, directly use get_X() = X to set the values
+ * pdlp_solver_settings_t<i_t, f_t> settings;
+ * settings.fixed_batch_size = batch_size;
+ * auto solution = run_batch_pdlp(problem, settings);
+ * @endcode
+ */
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   cuopt::linear_programming::optimization_problem_t<i_t, f_t>& problem,

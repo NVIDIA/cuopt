@@ -122,6 +122,7 @@ message PDLPSolverSettings {
   bool save_best_primal_so_far = 28;
   bool first_primal_feasible = 29;
   int32 pdlp_precision = 30;
+  bool all_primal_feasible = 31;
 
   // Warm start data (if provided)
   PDLPWarmStartData warm_start_data = 50;

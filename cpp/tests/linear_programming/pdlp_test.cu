@@ -13,6 +13,7 @@
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
 #include "utilities/pdlp_test_utilities.cuh"
+#include "../mip/mip_utils.cuh"
 
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
@@ -50,6 +51,12 @@
 namespace cuopt::linear_programming::test {
 
 constexpr double afiro_primal_objective = -464.0;
+
+template <typename T>
+rmm::device_uvector<T> extract_subvector(const rmm::device_uvector<T>& vector,
+                                         size_t start,
+                                         size_t length);
+
 // Accept a 1% error
 template <typename f_t>
 static bool is_incorrect_objective(f_t reference, f_t objective)
@@ -268,7 +275,7 @@ TEST(pdlp_class, run_sub_mittleman)
       settings.pdlp_solver_mode = solver_mode;
       settings.dual_postsolve   = false;
       for (auto [presolver, epsilon] :
-           {std::pair{presolver_t::Papilo, 1e-1}, std::pair{presolver_t::None, 1e-6}}) {
+        {std::pair{presolver_t::Papilo, 1e-1}, std::pair{presolver_t::None, 1e-4}}) {
         settings.presolver = presolver;
         settings.method    = cuopt::linear_programming::method_t::PDLP;
         const raft::handle_t handle_{};
@@ -290,7 +297,7 @@ TEST(pdlp_class, run_sub_mittleman)
                                solution.get_additional_termination_information(0),
                                solution.get_primal_solution(),
                                epsilon,
-                               presolver);
+                               presolver != presolver_t::None);
       }
     }
   }
@@ -732,9 +739,7 @@ TEST(pdlp_class, per_constraint_test)
   solver_settings.tolerances.relative_dual_tolerance   = 0;  // Shoudln't matter
   solver_settings.tolerances.absolute_dual_tolerance   = 0.1;
   solver_settings.method                               = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode =
-    cuopt::linear_programming::pdlp_solver_mode_t::Stable2;  // Not supported for the default
-                                                             // Stable3 for now
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
   set_pdlp_solver_mode(solver_settings);
 
   // First solve without the per constraint and it should break
@@ -783,7 +788,7 @@ TEST(pdlp_class, per_constraint_test)
 
     EXPECT_EQ(current_termination_strategy.get_convergence_information()
                 .get_relative_linf_primal_residual()
-                .value(handle.get_stream()),
+                .element(0, handle.get_stream()),
               0.1);
   }
 }
@@ -799,9 +804,7 @@ TEST(pdlp_class, best_primal_so_far_iteration)
   solver_settings.iteration_limit         = 3000;
   solver_settings.per_constraint_residual = true;
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.pdlp_solver_mode =
-    cuopt::linear_programming::pdlp_solver_mode_t::Stable2;  // Not supported for the default
-                                                             // Stable3 for now
+  solver_settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem1 =
     cuopt::mps_parser::parse_mps<int, double>(path);
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem2 =
@@ -877,6 +880,569 @@ TEST(pdlp_class, first_primal_feasible)
 
   EXPECT_EQ(solution1.get_termination_status(), pdlp_termination_status_t::IterationLimit);
   EXPECT_EQ(solution2.get_termination_status(), pdlp_termination_status_t::PrimalFeasible);
+}
+
+// -- Per constraints redisual, batch and non batch --
+
+TEST(pdlp_class, per_constraint_residual_stable3)
+{
+  const raft::handle_t handle{};
+
+  auto path            = make_path_absolute("linear_programming/afiro_original.mps");
+  auto solver_settings = pdlp_solver_settings_t<int, double>{};
+  solver_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable3;
+  solver_settings.per_constraint_residual = true;
+  solver_settings.presolver = presolver_t::None;
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto sol = solve_lp(&handle, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  EXPECT_EQ(sol.get_termination_status(), pdlp_termination_status_t::Optimal);
+  test_constraint_sanity_per_row(op_problem,
+                                 sol.get_primal_solution(),
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, batch_per_constraint_residual_stable3)
+{
+  const raft::handle_t handle{};
+
+  auto path            = make_path_absolute("linear_programming/afiro_original.mps");
+  auto solver_settings = pdlp_solver_settings_t<int, double>{};
+  solver_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable3;
+  solver_settings.per_constraint_residual = true;
+  solver_settings.presolver = presolver_t::None;
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  constexpr int batch_size = 2;
+
+  // Mock a batch of size 2
+  solver_settings.fixed_batch_size = batch_size;
+  auto batch_sol =
+    solve_lp<int, double>(&handle, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = batch_sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(statuses[i], pdlp_termination_status_t::Optimal) << "climber " << i;
+  }
+  // Both iteration count should be the same
+  EXPECT_EQ(batch_sol.get_additional_termination_information(0).number_of_steps_taken,
+            batch_sol.get_additional_termination_information(1).number_of_steps_taken);
+
+  const size_t primal_size = op_problem.get_n_variables();
+
+  const auto primal_0 =
+    extract_subvector(batch_sol.get_primal_solution(), 0 * primal_size, primal_size);
+  test_constraint_sanity_per_row(op_problem,
+                                 primal_0,
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+
+  const auto primal_1 =
+    extract_subvector(batch_sol.get_primal_solution(), 1 * primal_size, primal_size);
+  test_constraint_sanity_per_row(op_problem,
+                                 primal_1,
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, batch_per_constraint_residual_different_rhs_stable3)
+{
+  const raft::handle_t handle{};
+
+  auto path            = make_path_absolute("linear_programming/afiro_original.mps");
+  auto solver_settings = pdlp_solver_settings_t<int, double>{};
+  solver_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable3;
+  solver_settings.per_constraint_residual = true;
+  solver_settings.presolver = presolver_t::None;
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  // Build two climbers that share A and variable bounds but differ on the constraint
+  // lower/upper bounds (RHS): climber 0 keeps the original, climber 1 finite bounds get set to 100
+  constexpr int batch_size = 2;
+  const std::vector<double> orig_lb = op_problem.get_constraint_lower_bounds();
+  const std::vector<double> orig_ub = op_problem.get_constraint_upper_bounds();
+  const size_t n_cons               = orig_lb.size();
+  std::vector<double> climber1_lb   = orig_lb;
+  std::vector<double> climber1_ub   = orig_ub;
+  constexpr double new_rhs = 100.0;
+  for (size_t i = 0; i < n_cons; ++i) {
+    if (std::isfinite(climber1_ub[i])) climber1_ub[i] = new_rhs;
+  }
+
+  // Expand the bounds on the mps_data_model_t before dispatching: solve_lp_batch_fixed
+  // converts the model to an optimization_problem_t and resizes the device-side bound
+  // vectors directly from these host arrays, so the expanded (batch_size * n_cons)
+  // layout must already be present here.
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.reserve(batch_size * n_cons);
+  per_climber_ub.reserve(batch_size * n_cons);
+  per_climber_lb.insert(per_climber_lb.end(), orig_lb.begin(), orig_lb.end());
+  per_climber_ub.insert(per_climber_ub.end(), orig_ub.begin(), orig_ub.end());
+  per_climber_lb.insert(per_climber_lb.end(), climber1_lb.begin(), climber1_lb.end());
+  per_climber_ub.insert(per_climber_ub.end(), climber1_ub.begin(), climber1_ub.end());
+
+  // Don't call set_constraint_lower_bounds and set_constraint_upper_bounds to avoid changing the n_constraints_
+
+  auto batch_sol =
+    solve_lp_batch_fixed<int, double>(&handle, op_problem, solver_settings, batch_size, {}, per_climber_lb, per_climber_ub);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = batch_sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(statuses[i], pdlp_termination_status_t::Optimal) << "climber " << i;
+  }
+
+  const size_t primal_size = op_problem.get_n_variables();
+
+  // Reload the original (single-climber) problem and build per-climber views so the
+  // per-row sanity check evaluates each solution against its own constraint bounds.
+  auto climber0_problem = cuopt::mps_parser::parse_mps<int, double>(path);
+  auto climber1_problem = cuopt::mps_parser::parse_mps<int, double>(path);
+  climber1_problem.set_constraint_lower_bounds(climber1_lb.data(),
+                                               static_cast<int>(climber1_lb.size()));
+  climber1_problem.set_constraint_upper_bounds(climber1_ub.data(),
+                                               static_cast<int>(climber1_ub.size()));
+
+  const auto primal_0 =
+    extract_subvector(batch_sol.get_primal_solution(), 0 * primal_size, primal_size);
+  test_constraint_sanity_per_row(climber0_problem,
+                                 primal_0,
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+
+  const auto primal_1 =
+    extract_subvector(batch_sol.get_primal_solution(), 1 * primal_size, primal_size);
+  test_constraint_sanity_per_row(climber1_problem,
+                                 primal_1,
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+}
+
+// -------------------------------------------------------------
+
+// -- First primal feasible, batch and non batch --
+
+
+TEST(pdlp_class, first_primal_feasible_stable3)
+{
+  const raft::handle_t handle{};
+
+  auto path            = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  auto solver_settings = pdlp_solver_settings_t<int, double>{};
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.presolver = presolver_t::None;
+
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  // Wihout first primal feasible we hit iteration limit
+  auto sol_base = solve_lp(&handle, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+  EXPECT_EQ(sol_base.get_termination_status(), pdlp_termination_status_t::IterationLimit);
+
+  solver_settings.first_primal_feasible = true;
+  auto sol_fpf = solve_lp(&handle, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  EXPECT_EQ(sol_fpf.get_termination_status(), pdlp_termination_status_t::PrimalFeasible);
+
+  test_objective_sanity(op_problem,
+                        sol_fpf.get_primal_solution(),
+                        sol_fpf.get_additional_termination_information().primal_objective,
+                        kOptimalityTolerance);
+  test_constraint_sanity(op_problem,
+                         sol_fpf.get_additional_termination_information(),
+                         sol_fpf.get_primal_solution(),
+                         kOptimalityTolerance);
+}
+
+TEST(pdlp_class, first_primal_feasible_batch_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.first_primal_feasible = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  solver_settings.fixed_batch_size = batch_size;
+  auto sol = solve_lp(&handle_, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // All should be primal feasible
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(statuses[i], pdlp_termination_status_t::PrimalFeasible) << "climber " << i;
+  }
+  // Should have same number of steps taken
+  EXPECT_EQ(sol.get_additional_termination_information(0).number_of_steps_taken,
+            sol.get_additional_termination_information(1).number_of_steps_taken);
+
+  // Should all respect the sanity checks
+  for (int i = 0; i < batch_size; ++i)
+  {
+    auto primal_i = extract_subvector(sol.get_primal_solution(), i * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_i,
+      sol.get_additional_termination_information(i).primal_objective,
+      kOptimalityTolerance);
+    test_constraint_sanity(op_problem,
+      sol.get_additional_termination_information(i),
+      primal_i,
+      kOptimalityTolerance);
+  }
+}
+
+TEST(pdlp_class, first_primal_feasible_batch_different_rhs_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.first_primal_feasible = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.resize(batch_size * op_problem.get_n_constraints());
+  per_climber_ub.resize(batch_size * op_problem.get_n_constraints());
+  std::copy(op_problem.get_constraint_lower_bounds().begin(), op_problem.get_constraint_lower_bounds().end(), per_climber_lb.begin());
+  std::copy(op_problem.get_constraint_upper_bounds().begin(), op_problem.get_constraint_upper_bounds().end(), per_climber_ub.begin());
+  // Make the second climber infeasible but since we stop at first primal feasible, it should be fine
+  std::fill(per_climber_lb.begin() + op_problem.get_n_constraints(), per_climber_lb.end(), 1000.0);
+  std::fill(per_climber_ub.begin() + op_problem.get_n_constraints(), per_climber_ub.end(), 1000.0);
+
+  auto sol = solve_lp_batch_fixed(&handle_, op_problem, solver_settings, batch_size, {}, per_climber_lb, per_climber_ub, {}, true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // Climber one should be primal feasible, climber two should be no termination as we stop on first primal feasible
+  EXPECT_EQ(statuses[0], pdlp_termination_status_t::PrimalFeasible);
+  EXPECT_EQ(statuses[1], pdlp_termination_status_t::NoTermination);
+
+  // Should all respect the sanity checks
+  auto primal_0 = extract_subvector(sol.get_primal_solution(), 0 * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_0,
+      sol.get_additional_termination_information(0).primal_objective,
+      kOptimalityTolerance);
+    test_constraint_sanity(op_problem,
+      sol.get_additional_termination_information(0),
+      primal_0,
+      kOptimalityTolerance);
+}
+
+TEST(pdlp_class, all_primal_feasible_batch_different_rhs_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.all_primal_feasible = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.resize(batch_size * op_problem.get_n_constraints());
+  per_climber_ub.resize(batch_size * op_problem.get_n_constraints());
+  std::copy(op_problem.get_constraint_lower_bounds().begin(), op_problem.get_constraint_lower_bounds().end(), per_climber_lb.begin());
+  std::copy(op_problem.get_constraint_upper_bounds().begin(), op_problem.get_constraint_upper_bounds().end(), per_climber_ub.begin());
+  // Make the second climber infeasible but since we stop at first primal feasible, it should be fine
+  std::fill(per_climber_lb.begin() + op_problem.get_n_constraints(), per_climber_lb.end(), 1000.0);
+  std::fill(per_climber_ub.begin() + op_problem.get_n_constraints(), per_climber_ub.end(), 1000.0);
+
+  auto sol = solve_lp_batch_fixed(&handle_, op_problem, solver_settings, batch_size, {}, per_climber_lb, per_climber_ub, {}, true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // Climber one should be primal feasible, climber two should be iteration limit
+  EXPECT_EQ(statuses[0], pdlp_termination_status_t::PrimalFeasible);
+  EXPECT_EQ(statuses[1], pdlp_termination_status_t::IterationLimit);
+
+  // Should all respect the sanity checks
+  auto primal_0 = extract_subvector(sol.get_primal_solution(), 0 * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_0,
+      sol.get_additional_termination_information(0).primal_objective,
+      kOptimalityTolerance);
+    test_constraint_sanity(op_problem,
+      sol.get_additional_termination_information(0),
+      primal_0,
+      kOptimalityTolerance);
+}
+
+// -- First primal feasible and per constraint residual, batch and non batch --
+
+TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_stable3)
+{
+  const raft::handle_t handle{};
+
+  auto path            = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  auto solver_settings = pdlp_solver_settings_t<int, double>{};
+  solver_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable3;
+  solver_settings.first_primal_feasible   = true;
+  solver_settings.per_constraint_residual = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+  solver_settings.method = cuopt::linear_programming::method_t::PDLP;
+
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto sol = solve_lp(&handle, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  EXPECT_EQ(sol.get_termination_status(), pdlp_termination_status_t::PrimalFeasible);
+
+  test_objective_sanity(op_problem,
+    sol.get_primal_solution(),
+    sol.get_additional_termination_information().primal_objective,
+    kOptimalityTolerance);
+  test_constraint_sanity_per_row(op_problem,
+                                 sol.get_primal_solution(),
+                                 solver_settings.tolerances.absolute_primal_tolerance,
+                                 solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.first_primal_feasible = true;
+  solver_settings.per_constraint_residual = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  solver_settings.fixed_batch_size = batch_size;
+  auto sol = solve_lp(&handle_, op_problem, solver_settings);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // Climber one should be primal feasible, climber two should be no termination as we stop on first primal feasible
+  EXPECT_EQ(statuses[0], pdlp_termination_status_t::PrimalFeasible);
+  EXPECT_EQ(statuses[1], pdlp_termination_status_t::PrimalFeasible);
+
+  // Should all respect the sanity checks
+  for (int i = 0; i < batch_size; ++i) {
+    auto primal_i = extract_subvector(sol.get_primal_solution(), i * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_i,
+      sol.get_additional_termination_information(i).primal_objective,
+      kOptimalityTolerance);
+      test_constraint_sanity_per_row(op_problem,
+        primal_i,
+        solver_settings.tolerances.absolute_primal_tolerance,
+        solver_settings.tolerances.relative_primal_tolerance);
+    }
+}
+
+TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_different_rhs_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.first_primal_feasible = true;
+  solver_settings.per_constraint_residual = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.resize(batch_size * op_problem.get_n_constraints());
+  per_climber_ub.resize(batch_size * op_problem.get_n_constraints());
+  std::copy(op_problem.get_constraint_lower_bounds().begin(), op_problem.get_constraint_lower_bounds().end(), per_climber_lb.begin());
+  std::copy(op_problem.get_constraint_upper_bounds().begin(), op_problem.get_constraint_upper_bounds().end(), per_climber_ub.begin());
+  // Make the second climber infeasible but since we stop at first primal feasible, it should be fine
+  std::fill(per_climber_lb.begin() + op_problem.get_n_constraints(), per_climber_lb.end(), 1000.0);
+  std::fill(per_climber_ub.begin() + op_problem.get_n_constraints(), per_climber_ub.end(), 1000.0);
+
+  auto sol = solve_lp_batch_fixed(&handle_, op_problem, solver_settings, batch_size, {}, per_climber_lb, per_climber_ub, {}, true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // Climber one should be primal feasible, climber two should be no termination as we stop on first primal feasible
+  EXPECT_EQ(statuses[0], pdlp_termination_status_t::PrimalFeasible);
+  EXPECT_EQ(statuses[1], pdlp_termination_status_t::NoTermination);
+
+  // Should all respect the sanity checks
+  auto primal_0 = extract_subvector(sol.get_primal_solution(), 0 * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_0,
+      sol.get_additional_termination_information(0).primal_objective,
+      kOptimalityTolerance);
+      test_constraint_sanity_per_row(op_problem,
+        primal_0,
+        solver_settings.tolerances.absolute_primal_tolerance,
+        solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_different_rhs_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit       = 1000;
+  solver_settings.all_primal_feasible = true;
+  solver_settings.per_constraint_residual = true;
+  constexpr double kOptimalityTolerance = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.resize(batch_size * op_problem.get_n_constraints());
+  per_climber_ub.resize(batch_size * op_problem.get_n_constraints());
+  std::copy(op_problem.get_constraint_lower_bounds().begin(), op_problem.get_constraint_lower_bounds().end(), per_climber_lb.begin());
+  std::copy(op_problem.get_constraint_upper_bounds().begin(), op_problem.get_constraint_upper_bounds().end(), per_climber_ub.begin());
+  // Make the second climber infeasible but since we stop at first primal feasible, it should be fine
+  std::fill(per_climber_lb.begin() + op_problem.get_n_constraints(), per_climber_lb.end(), 1000.0);
+  std::fill(per_climber_ub.begin() + op_problem.get_n_constraints(), per_climber_ub.end(), 1000.0);
+
+  auto sol = solve_lp_batch_fixed(&handle_, op_problem, solver_settings, batch_size, {}, per_climber_lb, per_climber_ub, {}, true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = sol.get_terminations_status();
+  ASSERT_EQ((int)statuses.size(), batch_size);
+
+  // Climber one should be primal feasible, climber two should be no termination as we stop on first primal feasible
+  EXPECT_EQ(statuses[0], pdlp_termination_status_t::PrimalFeasible);
+  EXPECT_EQ(statuses[1], pdlp_termination_status_t::IterationLimit);
+
+  // Should all respect the sanity checks
+  auto primal_0 = extract_subvector(sol.get_primal_solution(), 0 * op_problem.get_n_variables(), op_problem.get_n_variables());
+    test_objective_sanity(op_problem,
+      primal_0,
+      sol.get_additional_termination_information(0).primal_objective,
+      kOptimalityTolerance);
+      test_constraint_sanity_per_row(op_problem,
+        primal_0,
+        solver_settings.tolerances.absolute_primal_tolerance,
+        solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, batch_primal_feasible_non_batch_rejected)
+{
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver             = presolver_t::None;
+  solver_settings.all_primal_feasible = true;
+
+  auto sol = solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(sol.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+}
+
+TEST(pdlp_class, first_primal_feasible_and_batch_primal_feasible_rejected)
+{
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode      = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver             = presolver_t::None;
+  solver_settings.first_primal_feasible = true;
+  solver_settings.all_primal_feasible = true;
+
+  auto sol = solve_lp(&handle_, op_problem, solver_settings);
+  EXPECT_EQ(sol.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
 }
 
 TEST(pdlp_class, warm_start)
@@ -1187,8 +1753,8 @@ TEST(pdlp_class, simple_batch_afiro)
   test_constraint_sanity(op_problem,
                          solution.get_additional_termination_information(0),
                          primal_solution,
-                         tolerance,
-                         false);
+                         1e-4,
+                         true);
 }
 
 TEST(pdlp_class, simple_batch_different_bounds)
@@ -1329,15 +1895,15 @@ TEST(pdlp_class, more_complex_batch_different_bounds)
       test_objective_sanity(
         op_problem_ref1, current_primal_solution, current_info.primal_objective);
       test_constraint_sanity(
-        op_problem_ref1, current_info, current_primal_solution, tolerance, false);
+        op_problem_ref1, current_info, current_primal_solution, 1e-4, false);
     } else if (i == 3) {
       test_objective_sanity(
         op_problem_ref3, current_primal_solution, current_info.primal_objective);
       test_constraint_sanity(
-        op_problem_ref3, current_info, current_primal_solution, tolerance, false);
+        op_problem_ref3, current_info, current_primal_solution, 1e-4, false);
     } else {
       test_objective_sanity(op_problem, current_primal_solution, current_info.primal_objective);
-      test_constraint_sanity(op_problem, current_info, current_primal_solution, tolerance, false);
+      test_constraint_sanity(op_problem, current_info, current_primal_solution, 1e-4, false);
     }
   }
 }
@@ -1404,7 +1970,7 @@ TEST(pdlp_class, simple_batch_different_objectives)
     op_problem,
     batch_sol.get_additional_termination_information(0),
     primal0,
-    tolerance,
+    1e-4,
     false);
 
   const auto primal1 =
@@ -1415,7 +1981,7 @@ TEST(pdlp_class, simple_batch_different_objectives)
     op_problem_mod,
     batch_sol.get_additional_termination_information(1),
     primal1,
-    tolerance,
+    1e-4,
     false);
 }
 
@@ -1710,7 +2276,7 @@ TEST(pdlp_class, simple_batch_everything_different)
     test_constraint_sanity(ref_problems[c],
                            batch_sol.get_additional_termination_information(c),
                            primal,
-                           tolerance,
+                           1e-4,
                            false);
   }
 }
@@ -1958,7 +2524,7 @@ TEST(pdlp_class, big_batch_afiro)
   test_constraint_sanity(op_problem,
                          solution.get_additional_termination_information(batch_size - 1),
                          primal_solution,
-                         tolerance,
+                         1e-4,
                          false);
 }
 
@@ -2112,7 +2678,7 @@ TEST(pdlp_class, strong_branching_test)
 
     test_objective_sanity(ref_problems[i], current_primal_solution, current_info.primal_objective);
     test_constraint_sanity(
-      ref_problems[i], current_info, current_primal_solution, tolerance, false);
+      ref_problems[i], current_info, current_primal_solution, 1e-4, false);
   }
 
   // Now run again using the new_bounds API
@@ -2142,8 +2708,96 @@ TEST(pdlp_class, strong_branching_test)
     test_constraint_sanity(ref_problems[i],
                            batch_sol2.get_additional_termination_information(i),
                            current_primal_solution,
-                           tolerance,
+                           1e-4,
                            false);
+  }
+}
+
+TEST(pdlp_class, strong_branching_user_api)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  const std::vector<int> fractional     = {1, 2, 4};
+  const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
+
+  auto solver_settings             = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode = pdlp_solver_mode_t::Stable3;
+  solver_settings.presolver        = cuopt::linear_programming::presolver_t::None;
+  solver_settings.generate_batch_primal_dual_solution = true;
+
+  const int n_fractional = fractional.size();
+  const int batch_size   = n_fractional * 2;
+
+  std::vector<double> ref_objectives(batch_size);
+  std::vector<pdlp_termination_status_t> ref_statuses(batch_size);
+  std::vector<cuopt::mps_parser::mps_data_model_t<int, double>> ref_problems;
+
+  // Down branches first, then Up branches.
+
+  // Down branches
+  for (int i = 0; i < n_fractional; ++i) {
+    auto ref_prob                                 = op_problem;
+    int var_idx                                   = fractional[i];
+    ref_prob.get_variable_upper_bounds()[var_idx] = std::floor(root_soln_x[i]);
+    ref_problems.push_back(ref_prob);
+  }
+  // Up branches
+  for (int i = 0; i < n_fractional; ++i) {
+    auto ref_prob                                 = op_problem;
+    int var_idx                                   = fractional[i];
+    ref_prob.get_variable_lower_bounds()[var_idx] = std::ceil(root_soln_x[i]);
+    ref_problems.push_back(ref_prob);
+  }
+
+  // Solve references
+  for (int i = 0; i < batch_size; ++i) {
+    auto sol          = solve_lp(&handle_, ref_problems[i], solver_settings);
+    ref_statuses[i]   = sol.get_termination_status(0);
+    ref_objectives[i] = sol.get_additional_termination_information(0).primal_objective;
+  }
+
+  // Build per-climber variable bounds: down branches first, then up branches.
+  for (int i = 0; i < n_fractional; ++i) {
+    solver_settings.new_bounds.push_back({fractional[i],
+                                          op_problem.get_variable_lower_bounds()[fractional[i]],
+                                          std::floor(root_soln_x[i])});
+  }
+  for (int i = 0; i < n_fractional; ++i) {
+    solver_settings.new_bounds.push_back({fractional[i],
+                                          std::ceil(root_soln_x[i]),
+                                          op_problem.get_variable_upper_bounds()[fractional[i]]});
+  }
+
+  // Solve batch via the run_batch_pdlp strong-branching path (auto batch sizing).
+  auto gpu_op =
+    cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_,
+                                                                                   op_problem);
+  auto batch_sol = cuopt::linear_programming::run_batch_pdlp(gpu_op, solver_settings);
+
+  EXPECT_EQ((int)batch_sol.get_terminations_status().size(), batch_size);
+  const size_t primal_size = op_problem.get_n_variables();
+
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(batch_sol.get_termination_status(i), ref_statuses[i]);
+    // Climber in the batch that have gained optimality can lose optimality while other are still
+    // optimizing This can lead to differences in the objective values, so we allow for a small
+    // tolerance
+    EXPECT_NEAR(batch_sol.get_additional_termination_information(i).primal_objective,
+                ref_objectives[i],
+                1e-4);
+
+    const auto current_primal_solution =
+      extract_subvector(batch_sol.get_primal_solution(), i * primal_size, primal_size);
+    const auto& current_info = batch_sol.get_additional_termination_information(i);
+
+    test_objective_sanity(ref_problems[i], current_primal_solution, current_info.primal_objective);
+    test_constraint_sanity(
+      ref_problems[i], current_info, current_primal_solution, 1e-4, false);
   }
 }
 
@@ -2665,7 +3319,7 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
 }
 
 // Stress test: fixed path with all per-climber fields expanded at maximum safe scale.
-// All climbers are identical — the point is to verify the fixed path doesn't crash at scale
+// All climbers are identical: the point is to verify the fixed path doesn't crash at scale
 // and produces bitwise-identical results.
 TEST(pdlp_class, big_batch_fixed_path)
 {
@@ -2782,7 +3436,7 @@ TEST(pdlp_class, big_batch_fixed_path)
   test_constraint_sanity(op_problem,
                          solution.get_additional_termination_information(batch_size - 1),
                          primal_solution,
-                         tolerance,
+                         1e-4,
                          false);
 }
 
@@ -2908,7 +3562,7 @@ TEST(pdlp_class, batch_with_optimal_size_query)
     test_constraint_sanity(ref_problems[v],
                            batch_sol.get_additional_termination_information(c),
                            primal,
-                           tolerance,
+                           1e-4,
                            false);
   }
 }

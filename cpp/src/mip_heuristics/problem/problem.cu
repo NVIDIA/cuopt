@@ -616,9 +616,11 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds
-  cuopt_assert(combined_bounds.size() == (size_t)n_constraints,
-               "Sizes for vectors related to the constraints are not the same.");
-
+  // To handle batch case (% 0 is not allowed)
+  cuopt_assert(n_constraints == 0
+    ? combined_bounds.size() == 0
+    : combined_bounds.size() % static_cast<size_t>(n_constraints) == 0,
+  "Sizes for vectors related to the constraints are not the same.");
   // Check the validity of bounds
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),

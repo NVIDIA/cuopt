@@ -244,33 +244,17 @@ struct rhs_sum_of_squares_t {
 
 template <typename i_t, typename f_t>
 void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
-                                      rmm::device_uvector<f_t>& combined_bounds,
-                                      bool batch_mode = false)
+                                      rmm::device_uvector<f_t>& combined_bounds)
 {
-  if (!batch_mode) {
-    combined_bounds.resize(op_problem.n_constraints, op_problem.handle_ptr->get_stream());
-    if (combined_bounds.size() > 0) {
-      raft::linalg::binaryOp(combined_bounds.data(),
-                             op_problem.constraint_lower_bounds.data(),
-                             op_problem.constraint_upper_bounds.data(),
-                             op_problem.n_constraints,
-                             combine_finite_abs_bounds<f_t>(),
-                             op_problem.handle_ptr->get_stream());
-    }
-  } else {
-    // In batch mode we use combined_constraint_bounds in convergeance_information to fill the
-    // primal residual which will be bigger
-    cuopt_assert(combined_bounds.size() % op_problem.n_constraints == 0,
-                 "combined_bounds size must be a multiple of op_problem.n_constraints");
-    // TODO later batch mode: different constraint bounds
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(problem_wrap_container(op_problem.constraint_lower_bounds),
-                            problem_wrap_container(op_problem.constraint_upper_bounds)),
-      combined_bounds.data(),
-      combined_bounds.size(),
-      combine_finite_abs_bounds<f_t>(),
-      op_problem.handle_ptr->get_stream());
-  }
+  cuopt_assert(op_problem.constraint_lower_bounds.size() == op_problem.constraint_upper_bounds.size(), "constraint_lower_bounds and constraint_upper_bounds must have the same size");
+  combined_bounds.resize(op_problem.constraint_lower_bounds.size(), op_problem.handle_ptr->get_stream());
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem.constraint_lower_bounds.data(),
+                          op_problem.constraint_upper_bounds.data()),
+    combined_bounds.data(),
+    combined_bounds.size(),
+    combine_finite_abs_bounds<f_t>(),
+    op_problem.handle_ptr->get_stream());
 }
 
 template <typename f_t>
@@ -608,9 +592,9 @@ template <typename i_t, typename f_t>
 struct relative_residual_t {
   __device__ f_t operator()(const thrust::tuple<f_t, f_t>& t) const
   {
-    const f_t residual = thrust::get<0>(t);
+    const f_t residual = raft::abs(thrust::get<0>(t));
     // Rhs for either primal (b) and dual (c)
-    const f_t rhs = thrust::get<1>(t);
+    const f_t rhs = raft::abs(thrust::get<1>(t));
 
     // Used for best primal so far, count how many constraints are violated
     if (abs_.has_value() && nb_violated_constraints_.has_value()) {

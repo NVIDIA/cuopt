@@ -58,8 +58,8 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     reduced_cost_dual_objective_{f_t(0.0), stream_view_},
     l2_primal_residual_{climber_strategies.size(), stream_view_},
     l2_dual_residual_{climber_strategies.size(), stream_view_},
-    linf_primal_residual_{0.0, stream_view_},
-    linf_dual_residual_{0.0, stream_view_},
+    linf_primal_residual_{climber_strategies.size(), stream_view_},
+    linf_dual_residual_{climber_strategies.size(), stream_view_},
     nb_violated_constraints_{0, stream_view_},
     gap_{climber_strategies.size(), stream_view_},
     abs_objective_{climber_strategies.size(), stream_view_},
@@ -92,9 +92,12 @@ convergence_information_t<i_t, f_t>::convergence_information_t(
     l2_dual_residual_.data(), 0, sizeof(f_t) * l2_dual_residual_.size(), stream_view_));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     l2_primal_residual_.data(), 0, sizeof(f_t) * l2_primal_residual_.size(), stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    linf_primal_residual_.data(), 0, sizeof(f_t) * linf_primal_residual_.size(), stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    linf_dual_residual_.data(), 0, sizeof(f_t) * linf_dual_residual_.size(), stream_view_));
 
   init_objective_offsets();
-  combine_constraint_bounds(*problem_ptr, primal_residual_, batch_mode_);
   init_reduction_storage();
   init_l2_norms();
 
@@ -174,6 +177,7 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
     cuopt_expects(!batch_mode_,
                   error_type_t::ValidationError,
                   "Batch mode not supported with initial_primal_weight_combined_bounds");
+    combine_constraint_bounds(*problem_ptr, primal_residual_);
     my_l2_norm<i_t, f_t>(primal_residual_.data(),
                          l2_norm_primal_right_hand_side_.data(),
                          primal_residual_.size(),
@@ -243,6 +247,8 @@ __global__ void convergence_information_swap_device_vectors_kernel(
   raft::device_span<f_t> dual_objective,
   raft::device_span<f_t> l2_primal_residual,
   raft::device_span<f_t> l2_dual_residual,
+  raft::device_span<f_t> linf_primal_residual,
+  raft::device_span<f_t> linf_dual_residual,
   raft::device_span<f_t> gap,
   raft::device_span<f_t> abs_objective,
   raft::device_span<f_t> dual_dot,
@@ -260,6 +266,8 @@ __global__ void convergence_information_swap_device_vectors_kernel(
   cuda::std::swap(dual_objective[left], dual_objective[right]);
   cuda::std::swap(l2_primal_residual[left], l2_primal_residual[right]);
   cuda::std::swap(l2_dual_residual[left], l2_dual_residual[right]);
+  cuda::std::swap(linf_primal_residual[left], linf_primal_residual[right]);
+  cuda::std::swap(linf_dual_residual[left], linf_dual_residual[right]);
   cuda::std::swap(gap[left], gap[right]);
   cuda::std::swap(abs_objective[left], abs_objective[right]);
   cuda::std::swap(dual_dot[left], dual_dot[right]);
@@ -299,6 +307,8 @@ void convergence_information_t<i_t, f_t>::swap_context(
                                                  make_span(dual_objective_),
                                                  make_span(l2_primal_residual_),
                                                  make_span(l2_dual_residual_),
+                                                 make_span(linf_primal_residual_),
+                                                 make_span(linf_dual_residual_),
                                                  make_span(gap_),
                                                  make_span(abs_objective_),
                                                  make_span(dual_dot_),
@@ -326,6 +336,8 @@ void convergence_information_t<i_t, f_t>::resize_context(i_t new_size)
   dual_objective_.resize(new_size, stream_view_);
   l2_primal_residual_.resize(new_size, stream_view_);
   l2_dual_residual_.resize(new_size, stream_view_);
+  linf_primal_residual_.resize(new_size, stream_view_);
+  linf_dual_residual_.resize(new_size, stream_view_);
   l2_norm_primal_linear_objective_.resize(new_size, stream_view_);
   l2_norm_primal_right_hand_side_.resize(new_size, stream_view_);
   if (objective_offsets_.size() > 1) { objective_offsets_.resize(new_size, stream_view_); }
@@ -463,34 +475,23 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
-    // TODO later batch mode: handle per_constraint_residual here
-    cuopt_expects(!batch_mode_,
-                  error_type_t::ValidationError,
-                  "Batch mode not supported for per_constraint_residual");
-
     // Compute the linf of (residual_i - rel * b_i)
     if (settings.save_best_primal_so_far) {
       const i_t zero_int = 0;
       nb_violated_constraints_.set_value_async(zero_int, handle_ptr_->get_stream());
     }
+    // We may be solving a batch of problems so have a bigger primal_residual_ vector but not have per climber combined bounds (if it's the same accross climbers)
+    // So we need to use a wrapped iterator to iterate over the combined bounds
+    cuopt_assert(primal_residual_.size() % combined_bounds.size() == 0, "primal_residual_.size() must be divisible by combined_bounds.size()");
     auto transform_iter = thrust::make_transform_iterator(
-      thrust::make_zip_iterator(primal_residual_.cbegin(), combined_bounds.cbegin()),
+      thrust::make_zip_iterator(primal_residual_.cbegin(), problem_wrap_container(combined_bounds)),
       relative_residual_t<i_t, f_t>{settings.tolerances.relative_primal_tolerance});
-    void* d_temp_storage      = nullptr;
-    size_t temp_storage_bytes = 0;
-    RAFT_CUDA_TRY(cub::DeviceReduce::Max(d_temp_storage,
-                                         temp_storage_bytes,
-                                         transform_iter,
-                                         linf_primal_residual_.data(),
-                                         primal_residual_.size(),
-                                         stream_view_));
-    rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
-    RAFT_CUDA_TRY(cub::DeviceReduce::Max(temp_buf.data(),
-                                         temp_storage_bytes,
-                                         transform_iter,
-                                         linf_primal_residual_.data(),
-                                         primal_residual_.size(),
-                                         stream_view_));
+    segmented_sum_handler_.segmented_reduce_helper(transform_iter,
+      linf_primal_residual_.data(),
+      climber_strategies_.size(),
+      dual_size_h_,
+      cuda::maximum<>{},
+      std::numeric_limits<f_t>::lowest());
   }
 
   compute_dual_residual(op_problem_cusparse_view_,
@@ -523,32 +524,16 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
   // If per_constraint_residual is false we still need to perform the l2 since it's used in kkt
   if (settings.per_constraint_residual) {
-    // TODO later batch mode: handle per_constraint_residual here
-    cuopt_expects(!batch_mode_,
-                  error_type_t::ValidationError,
-                  "Batch mode not supported for per_constraint_residual");
-
     // Compute the linf of (residual_i - rel * c_i)
-    {
-      auto transform_iter = thrust::make_transform_iterator(
-        thrust::make_zip_iterator(dual_residual_.cbegin(), objective_coefficients.cbegin()),
-        relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance});
-      void* d_temp_storage      = nullptr;
-      size_t temp_storage_bytes = 0;
-      cub::DeviceReduce::Max(d_temp_storage,
-                             temp_storage_bytes,
-                             transform_iter,
-                             linf_dual_residual_.data(),
-                             dual_residual_.size(),
-                             stream_view_);
-      rmm::device_buffer temp_buf(temp_storage_bytes, stream_view_);
-      cub::DeviceReduce::Max(temp_buf.data(),
-                             temp_storage_bytes,
-                             transform_iter,
-                             linf_dual_residual_.data(),
-                             dual_residual_.size(),
-                             stream_view_);
-    }
+    auto transform_iter = thrust::make_transform_iterator(
+      thrust::make_zip_iterator(dual_residual_.cbegin(), problem_wrap_container(objective_coefficients)),
+      relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance});
+    segmented_sum_handler_.segmented_reduce_helper(transform_iter,
+                                                   linf_dual_residual_.data(),
+                                                   climber_strategies_.size(),
+                                                   primal_size_h_,
+                                                   cuda::maximum<>{},
+                                                   std::numeric_limits<f_t>::lowest());
   }
 
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
@@ -975,14 +960,14 @@ const rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_l2_dual
 }
 
 template <typename i_t, typename f_t>
-const rmm::device_scalar<f_t>&
+const rmm::device_uvector<f_t>&
 convergence_information_t<i_t, f_t>::get_relative_linf_primal_residual() const
 {
   return linf_primal_residual_;
 }
 
 template <typename i_t, typename f_t>
-const rmm::device_scalar<f_t>&
+const rmm::device_uvector<f_t>&
 convergence_information_t<i_t, f_t>::get_relative_linf_dual_residual() const
 {
   return linf_dual_residual_;
@@ -1031,8 +1016,8 @@ typename convergence_information_t<i_t, f_t>::view_t convergence_information_t<i
   v.dual_objective                 = make_span(dual_objective_);
   v.l2_primal_residual             = make_span(l2_primal_residual_);
   v.l2_dual_residual               = make_span(l2_dual_residual_);
-  v.relative_l_inf_primal_residual = linf_primal_residual_.data();
-  v.relative_l_inf_dual_residual   = linf_dual_residual_.data();
+  v.relative_l_inf_primal_residual = make_span(linf_primal_residual_);
+  v.relative_l_inf_dual_residual   = make_span(linf_dual_residual_);
 
   v.gap           = make_span(gap_);
   v.abs_objective = make_span(abs_objective_);

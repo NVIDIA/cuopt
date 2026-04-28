@@ -55,8 +55,8 @@ class convergence_information_t {
   const rmm::device_uvector<f_t>& get_dual_objective() const;
   const rmm::device_uvector<f_t>& get_l2_primal_residual() const;
   const rmm::device_uvector<f_t>& get_l2_dual_residual() const;
-  const rmm::device_scalar<f_t>& get_relative_linf_primal_residual() const;
-  const rmm::device_scalar<f_t>& get_relative_linf_dual_residual() const;
+  const rmm::device_uvector<f_t>& get_relative_linf_primal_residual() const;
+  const rmm::device_uvector<f_t>& get_relative_linf_dual_residual() const;
   const rmm::device_uvector<f_t>& get_gap() const;
   f_t get_relative_gap_value(i_t climber_strategy_id = 0) const;
   f_t get_relative_l2_primal_residual_value(i_t climber_strategy_id = 0) const;
@@ -85,8 +85,8 @@ class convergence_information_t {
     raft::device_span<f_t> l2_primal_residual;
     raft::device_span<f_t> l2_dual_residual;
 
-    f_t* relative_l_inf_primal_residual;
-    f_t* relative_l_inf_dual_residual;
+    raft::device_span<f_t> relative_l_inf_primal_residual;
+    raft::device_span<f_t> relative_l_inf_dual_residual;
 
     raft::device_span<f_t> gap;
     raft::device_span<f_t> abs_objective;
@@ -179,9 +179,10 @@ class convergence_information_t {
   // Useful in per constraint mode
   // To compute residual we check: residual[i] < absolute_tolerance + relative_tolerance * rhs[i]
   // Which can be rewritten as: residual[i] - relative_tolerance * rhs[i] < absolute_tolerance
-  // We thus store l_inf(residual_i - rel * b/c_i) ran over all the constraints
-  rmm::device_scalar<f_t> linf_primal_residual_;
-  rmm::device_scalar<f_t> linf_dual_residual_;
+  // We thus store l_inf(residual_i - rel * b/c_i) ran over all the constraints.
+  // Per-climber in batch mode (size = climber_strategies_.size()); size 1 in non-batch mode.
+  rmm::device_uvector<f_t> linf_primal_residual_;
+  rmm::device_uvector<f_t> linf_dual_residual_;
   // Useful for best_primal_so_far
   rmm::device_scalar<i_t> nb_violated_constraints_;
 

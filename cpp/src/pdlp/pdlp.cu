@@ -231,6 +231,13 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit, stream_view_},
     inside_mip_{false}
 {
+  cuopt_expects(!(settings_.first_primal_feasible && settings_.all_primal_feasible),
+                error_type_t::ValidationError,
+                "first_primal_feasible and all_primal_feasible are mutually exclusive");
+  cuopt_expects(batch_mode_ || !settings_.all_primal_feasible,
+                error_type_t::ValidationError,
+                "all_primal_feasible only applies in batch mode");
+
   // Set step_size initial scaling
   thrust::fill(handle_ptr_->get_thrust_policy(),
                step_size_.data(),
@@ -408,6 +415,9 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_limits(
   const timer_t& timer)
 {
+  const bool accept_pf =
+  settings_.first_primal_feasible || settings_.all_primal_feasible;
+
   // Check for time limit
   if (time_limit_reached(timer)) {
     if (settings_.save_best_primal_so_far) {
@@ -423,7 +433,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       // already done ones
       for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
         if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i))) {
+              current_termination_strategy_.get_termination_status(i), accept_pf)) {
           batch_solution_to_return_
             .get_terminations_status()[climber_strategies_[i].original_index] =
             pdlp_termination_status_t::TimeLimit;
@@ -481,7 +491,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       // already done ones
       for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
         if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i))) {
+              current_termination_strategy_.get_termination_status(i), accept_pf)) {
           batch_solution_to_return_
             .get_terminations_status()[climber_strategies_[i].original_index] =
             pdlp_termination_status_t::IterationLimit;
@@ -527,7 +537,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
       // already done ones
       for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
         if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i))) {
+              current_termination_strategy_.get_termination_status(i), accept_pf)) {
           batch_solution_to_return_
             .get_terminations_status()[climber_strategies_[i].original_index] =
             pdlp_termination_status_t::ConcurrentLimit;
@@ -771,6 +781,53 @@ void pdlp_solver_t<i_t, f_t>::print_final_termination_criteria(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::snapshot_climber_into_return(size_t i)
+{
+  const auto term     = current_termination_strategy_.get_termination_status(i);
+  const i_t local_idx = climber_strategies_[i].original_index;
+
+  batch_solution_to_return_.get_terminations_status()[local_idx] = term;
+  raft::copy(batch_solution_to_return_.get_primal_solution().data() + local_idx * primal_size_h_,
+             pdhg_solver_.get_potential_next_primal_solution().data() + i * primal_size_h_,
+             primal_size_h_,
+             stream_view_);
+  raft::copy(batch_solution_to_return_.get_dual_solution().data() + local_idx * dual_size_h_,
+             pdhg_solver_.get_potential_next_dual_solution().data() + i * dual_size_h_,
+             dual_size_h_,
+             stream_view_);
+  raft::copy(
+    batch_solution_to_return_.get_reduced_cost().data() + local_idx * primal_size_h_,
+    current_termination_strategy_.get_convergence_information().get_reduced_cost().data() +
+      i * primal_size_h_,
+    primal_size_h_,
+    stream_view_);
+  auto& info = batch_solution_to_return_.get_additional_termination_informations()[local_idx];
+  info.number_of_steps_taken          = total_pdlp_iterations_;
+  info.total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
+  if (term != pdlp_termination_status_t::ConcurrentLimit) { info.solved_by = method_t::PDLP; }
+  if (sb_view_.is_valid()) { sb_view_.mark_solved(local_idx); }
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::finalize_batch_return()
+{
+  current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  current_termination_strategy_.convert_gpu_terms_stats_to_host(
+    batch_solution_to_return_.get_additional_termination_informations());
+  return optimization_problem_solution_t<i_t, f_t>{
+    batch_solution_to_return_.get_primal_solution(),
+    batch_solution_to_return_.get_dual_solution(),
+    batch_solution_to_return_.get_reduced_cost(),
+    get_filled_warmed_start_data(),
+    problem_ptr->objective_name,
+    problem_ptr->var_names,
+    problem_ptr->row_names,
+    std::move(batch_solution_to_return_.get_additional_termination_informations()),
+    std::move(batch_solution_to_return_.get_terminations_status())};
+}
+
+template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>>
 pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
 {
@@ -780,10 +837,13 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
   [[maybe_unused]] const bool is_cupdlpx = is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params);
   cuopt_assert(is_cupdlpx, "Batch termination handling only supported with cuPDLPx restart");
 
+  const bool accept_primal_feasible =
+    settings_.first_primal_feasible || settings_.all_primal_feasible;
+
 #ifdef BATCH_VERBOSE_MODE
   for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
     const auto& term = current_termination_strategy_.get_termination_status(i);
-    if (current_termination_strategy_.is_done(term)) {
+    if (current_termination_strategy_.is_done(term, accept_primal_feasible)) {
       std::cout << "[BATCH MODE]: Climber " << i << " is done with "
                 << optimization_problem_solution_t<i_t, f_t>::get_termination_status_string(term)
                 << " at step " << internal_solver_iterations_ << ". It's original index is "
@@ -798,7 +858,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
       // If PDLP has solved it to optimality we want to keep it and resolved both solvers having
       // solved the problem later
       if (current_termination_strategy_.is_done(
-            current_termination_strategy_.get_termination_status(i)))
+            current_termination_strategy_.get_termination_status(i), accept_primal_feasible))
         continue;
       const i_t local_idx = climber_strategies_[i].original_index;
       if (sb_view_.is_solved(local_idx)) {
@@ -813,8 +873,20 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
     }
   }
 
-  // All are optimal, infeasible, or externally solved
-  if (current_termination_strategy_.all_done()) {
+  // first_primal_feasible: stop the whole batch as soon as any climber has reached a terminal
+  // status (Optimal, PrimalFeasible, Infeasible, ConcurrentLimit). Snapshot every climber's
+  // current iterate so that even non-PF climbers return their latest state.
+  if (settings_.first_primal_feasible &&
+      current_termination_strategy_.any_done(/*accept_primal_feasible=*/true)) {
+    raft::common::nvtx::range fpf_scope("first_primal_feasible_batch_snapshot");
+    for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
+      snapshot_climber_into_return(i);
+    }
+    return finalize_batch_return();
+  }
+
+  // All are optimal, infeasible, primal feasible (when accepted), or externally solved
+  if (current_termination_strategy_.all_done(accept_primal_feasible)) {
     // Some climber got removed from the batch while the optimization was running
     if (original_batch_size_ != climber_strategies_.size()) {
 #ifdef BATCH_VERBOSE_MODE
@@ -825,58 +897,13 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
                      climber_strategies_.size(),
                    "Terminations status size mismatch");
       for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
-        // Found one that is done
         cuopt_assert(current_termination_strategy_.is_done(
-                       current_termination_strategy_.get_termination_status(i)),
+                       current_termination_strategy_.get_termination_status(i),
+                       accept_primal_feasible),
                      "Climber should be done");
-        // Copy current climber solution information
-        batch_solution_to_return_.get_terminations_status()[climber_strategies_[i].original_index] =
-          current_termination_strategy_.get_termination_status(i);
-        raft::copy(batch_solution_to_return_.get_primal_solution().data() +
-                     climber_strategies_[i].original_index * primal_size_h_,
-                   pdhg_solver_.get_potential_next_primal_solution().data() + i * primal_size_h_,
-                   primal_size_h_,
-                   stream_view_);
-        raft::copy(batch_solution_to_return_.get_dual_solution().data() +
-                     climber_strategies_[i].original_index * dual_size_h_,
-                   pdhg_solver_.get_potential_next_dual_solution().data() + i * dual_size_h_,
-                   dual_size_h_,
-                   stream_view_);
-        raft::copy(
-          batch_solution_to_return_.get_reduced_cost().data() +
-            climber_strategies_[i].original_index * primal_size_h_,
-          current_termination_strategy_.get_convergence_information().get_reduced_cost().data() +
-            i * primal_size_h_,
-          primal_size_h_,
-          stream_view_);
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .number_of_steps_taken = total_pdlp_iterations_;
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        if (current_termination_strategy_.get_termination_status(i) !=
-            pdlp_termination_status_t::ConcurrentLimit) {
-          batch_solution_to_return_
-            .get_additional_termination_informations()[climber_strategies_[i].original_index]
-            .solved_by = method_t::PDLP;
-        }
-        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
+        snapshot_climber_into_return(i);
       }
-      current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
-      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-      current_termination_strategy_.convert_gpu_terms_stats_to_host(
-        batch_solution_to_return_.get_additional_termination_informations());
-      return optimization_problem_solution_t<i_t, f_t>{
-        batch_solution_to_return_.get_primal_solution(),
-        batch_solution_to_return_.get_dual_solution(),
-        batch_solution_to_return_.get_reduced_cost(),
-        get_filled_warmed_start_data(),
-        problem_ptr->objective_name,
-        problem_ptr->var_names,
-        problem_ptr->row_names,
-        std::move(batch_solution_to_return_.get_additional_termination_informations()),
-        std::move(batch_solution_to_return_.get_terminations_status())};
+      return finalize_batch_return();
     }
     if (sb_view_.is_valid()) {
       for (size_t i = 0; i < climber_strategies_.size(); ++i) {
@@ -898,7 +925,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
     for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
       // Found one that is done
       if (current_termination_strategy_.is_done(
-            current_termination_strategy_.get_termination_status(i))) {
+            current_termination_strategy_.get_termination_status(i), accept_primal_feasible)) {
         raft::common::nvtx::range fun_scope("remove_done_climber");
 #ifdef BATCH_VERBOSE_MODE
         const bool externally_solved = (current_termination_strategy_.get_termination_status(i) ==
@@ -908,39 +935,7 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
                   << (externally_solved ? " [solved by DS]" : " [solved by PDLP]") << std::endl;
 #endif
         to_remove.emplace(i);
-        // Copy current climber solution information
-        batch_solution_to_return_.get_terminations_status()[climber_strategies_[i].original_index] =
-          current_termination_strategy_.get_termination_status(i);
-        raft::copy(batch_solution_to_return_.get_primal_solution().data() +
-                     climber_strategies_[i].original_index * primal_size_h_,
-                   pdhg_solver_.get_potential_next_primal_solution().data() + i * primal_size_h_,
-                   primal_size_h_,
-                   stream_view_);
-        raft::copy(batch_solution_to_return_.get_dual_solution().data() +
-                     climber_strategies_[i].original_index * dual_size_h_,
-                   pdhg_solver_.get_potential_next_dual_solution().data() + i * dual_size_h_,
-                   dual_size_h_,
-                   stream_view_);
-        raft::copy(
-          batch_solution_to_return_.get_reduced_cost().data() +
-            climber_strategies_[i].original_index * primal_size_h_,
-          current_termination_strategy_.get_convergence_information().get_reduced_cost().data() +
-            i * primal_size_h_,
-          primal_size_h_,
-          stream_view_);
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .number_of_steps_taken = total_pdlp_iterations_;
-        batch_solution_to_return_
-          .get_additional_termination_informations()[climber_strategies_[i].original_index]
-          .total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
-        if (current_termination_strategy_.get_termination_status(i) !=
-            pdlp_termination_status_t::ConcurrentLimit) {
-          batch_solution_to_return_
-            .get_additional_termination_informations()[climber_strategies_[i].original_index]
-            .solved_by = method_t::PDLP;
-        }
-        if (sb_view_.is_valid()) { sb_view_.mark_solved(climber_strategies_[i].original_index); }
+        snapshot_climber_into_return(i);
       }
     }
     if (to_remove.size() > 0) {
@@ -1031,13 +1026,10 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
   // First check for pdlp_termination_reason_t::Optimality and handle the first primal feasible case
 
   if (settings_.first_primal_feasible) {
-    // Both primal feasible, return best objective
-    // TODO later batch mode: handle primal feasible here
-    cuopt_expects(!batch_mode_,
-                  error_type_t::ValidationError,
-                  "First primal feasible is not supported in batch mode");
-    if (termination_average == pdlp_termination_status_t::PrimalFeasible &&
+    if (!settings_.hyper_params.never_restart_to_average &&
+        termination_average == pdlp_termination_status_t::PrimalFeasible &&
         termination_current == pdlp_termination_status_t::PrimalFeasible) {
+      // Both primal feasible, return the one with the best overall residual
       const f_t current_overall_primal_residual =
         current_termination_strategy_.get_convergence_information()
           .get_l2_primal_residual()
@@ -1080,7 +1072,8 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
           : pdhg_solver_.get_potential_next_dual_solution(),
         get_filled_warmed_start_data(),
         {termination_current});
-    } else if (termination_average == pdlp_termination_status_t::PrimalFeasible) {
+    } else if (!settings_.hyper_params.never_restart_to_average &&
+               termination_average == pdlp_termination_status_t::PrimalFeasible) {
       return average_termination_strategy_.fill_return_problem_solution(
         internal_solver_iterations_,
         pdhg_solver_,
@@ -1643,6 +1636,7 @@ void pdlp_solver_t<i_t, f_t>::swap_context(
   if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
     matrix_swap(problem_ptr->constraint_lower_bounds, dual_size_h_, swap_pairs);
     matrix_swap(problem_ptr->constraint_upper_bounds, dual_size_h_, swap_pairs);
+    matrix_swap(problem_ptr->combined_bounds, dual_size_h_, swap_pairs);
   }
 }
 
@@ -1666,6 +1660,7 @@ void pdlp_solver_t<i_t, f_t>::resize_context(i_t new_size)
   if (problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)) {
     problem_ptr->constraint_lower_bounds.resize(new_size * dual_size_h_, stream_view_);
     problem_ptr->constraint_upper_bounds.resize(new_size * dual_size_h_, stream_view_);
+    problem_ptr->combined_bounds.resize(new_size * dual_size_h_, stream_view_);
   }
 
   climber_strategies_.resize(new_size);

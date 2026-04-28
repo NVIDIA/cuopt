@@ -111,6 +111,11 @@ class pdlp_solver_t {
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_termination(const timer_t& timer);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_batch_termination(
     const timer_t& timer);
+  // Snapshot the current iterate of climber `i` (batch-local index) into
+  // `batch_solution_to_return_` at its `original_index` slot
+  void snapshot_climber_into_return(size_t i);
+  // flush GPU termination stats into `batch_solution_to_return_` and construct the final solution.
+  optimization_problem_solution_t<i_t, f_t> finalize_batch_return();
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_limits(const timer_t& timer);
   void record_best_primal_so_far(const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
                                  const detail::pdlp_termination_strategy_t<i_t, f_t>& average,
