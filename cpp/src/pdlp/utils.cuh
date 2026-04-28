@@ -290,6 +290,7 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
     rhs_sum_of_squares_t<f_t>{},
     f_t(0),
     stream_view);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
 }
 
 template <typename f_t>
@@ -629,6 +630,7 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
   cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream);
   rmm::device_buffer temp_buf(temp_bytes, stream);
   cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 }
 
 template <typename f_t>

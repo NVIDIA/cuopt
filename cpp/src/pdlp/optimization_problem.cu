@@ -1508,36 +1508,43 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
                                     static_cast<i_t>(A_indices_.size()),
                                     A_offsets_.data(),
                                     static_cast<i_t>(A_offsets_.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (c_.size() > 0) {
     auto other_c = gpu_cast<f_t, other_f_t>(c_, stream);
     other.set_objective_coefficients(other_c.data(), static_cast<i_t>(other_c.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (b_.size() > 0) {
     auto other_b = gpu_cast<f_t, other_f_t>(b_, stream);
     other.set_constraint_bounds(other_b.data(), static_cast<i_t>(other_b.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_lower_bounds_.size() > 0) {
     auto other_clb = gpu_cast<f_t, other_f_t>(constraint_lower_bounds_, stream);
     other.set_constraint_lower_bounds(other_clb.data(), static_cast<i_t>(other_clb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_upper_bounds_.size() > 0) {
     auto other_cub = gpu_cast<f_t, other_f_t>(constraint_upper_bounds_, stream);
     other.set_constraint_upper_bounds(other_cub.data(), static_cast<i_t>(other_cub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_lower_bounds_.size() > 0) {
     auto other_vlb = gpu_cast<f_t, other_f_t>(variable_lower_bounds_, stream);
     other.set_variable_lower_bounds(other_vlb.data(), static_cast<i_t>(other_vlb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_upper_bounds_.size() > 0) {
     auto other_vub = gpu_cast<f_t, other_f_t>(variable_upper_bounds_, stream);
     other.set_variable_upper_bounds(other_vub.data(), static_cast<i_t>(other_vub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_types_.size() > 0) {

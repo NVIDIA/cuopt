@@ -2087,38 +2087,24 @@ void pdlp_solver_t<i_t, f_t>::transpose_problem_fields(bool to_row)
   auto transpose_field = [&](rmm::device_uvector<f_t>& field, i_t rows) {
     if (field.size() <= static_cast<size_t>(rows)) return;
     rmm::device_uvector<f_t> transposed(field.size(), stream_view_);
-    if (to_row) {
-      // COL-major (ld=rows) -> ROW-major (ld=batch_size)
-      CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                                   CUBLAS_OP_T,
-                                   CUBLAS_OP_N,
-                                   climber_strategies_.size(),
-                                   rows,
-                                   reusable_device_scalar_value_1_.data(),
-                                   field.data(),
-                                   rows,
-                                   reusable_device_scalar_value_0_.data(),
-                                   nullptr,
-                                   climber_strategies_.size(),
-                                   transposed.data(),
-                                   climber_strategies_.size()));
-    } else {
-      // ROW-major (ld=batch_size) -> COL-major (ld=rows)
-      CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
-                                   CUBLAS_OP_T,
-                                   CUBLAS_OP_N,
-                                   rows,
-                                   climber_strategies_.size(),
-                                   reusable_device_scalar_value_1_.data(),
-                                   field.data(),
-                                   climber_strategies_.size(),
-                                   reusable_device_scalar_value_0_.data(),
-                                   nullptr,
-                                   rows,
-                                   transposed.data(),
-                                   rows));
-    }
+    auto batch_size = static_cast<i_t>(climber_strategies_.size());
+    auto input_ld   = to_row ? &rows : &batch_size;
+    auto output_ld  = to_row ? &batch_size : &rows;
+    CUBLAS_CHECK(cublasGeam<f_t>(handle_ptr_->get_cublas_handle(),
+                                 CUBLAS_OP_T,
+                                 CUBLAS_OP_N,
+                                 *output_ld,
+                                 *input_ld,
+                                 reusable_device_scalar_value_1_.data(),
+                                 field.data(),
+                                 *input_ld,
+                                 reusable_device_scalar_value_0_.data(),
+                                 nullptr,
+                                 *output_ld,
+                                 transposed.data(),
+                                 *output_ld));
     raft::copy(field.data(), transposed.data(), field.size(), stream_view_);
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   };
 
   RAFT_CUBLAS_TRY(cublasSetStream(handle_ptr_->get_cublas_handle(), stream_view_));
@@ -2205,6 +2191,8 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
              dual_transposed.data(),
              dual_size_h_ * climber_strategies_.size(),
              stream_view_);
+
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -2283,6 +2271,8 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
              dual_transposed.data(),
              dual_size_h_ * climber_strategies_.size(),
              stream_view_);
+
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
 template <typename i_t, typename f_t>

@@ -476,6 +476,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
   // Copy sorted results back
   raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
   raft::copy(csc_values, val_sorted.data(), nnz, stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 }
 
 template <typename i_t, typename f_t>
