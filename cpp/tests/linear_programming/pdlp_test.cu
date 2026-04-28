@@ -12,8 +12,10 @@
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
-#include "../mip/mip_utils.cuh"
+
 #include "utilities/pdlp_test_utilities.cuh"
+
+#include "../mip/mip_utils.cuh"
 
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>

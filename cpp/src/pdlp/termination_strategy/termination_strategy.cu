@@ -456,7 +456,7 @@ __global__ void fill_gpu_terms_stats_kernel(
 
   // TODO later batch mode: add infeasibility information here
 
-  // Will be removed store its data in the struct
+  // Snapshot stats for climbers that just terminated
   if (pdlp_termination_strategy_t<i_t, f_t>::is_done(
         (pdlp_termination_status_t)termination_status[idx], accept_primal_feasible)) {
     const i_t original_index = original_indices[idx];
@@ -497,7 +497,8 @@ void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_i
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();
 
-  // Update original index pinned view so that we can read it safely from the kernel
+  // Refresh the local->original index map so the kernel can write to original-index space.
+  // `climber_strategies_` is reordered by `swap_context`, so this must be rebuilt each call.
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
     original_index_[i] = climber_strategies_[i].original_index;
   }
@@ -523,6 +524,9 @@ void pdlp_termination_strategy_t<i_t, f_t>::convert_gpu_terms_stats_to_host(
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>&
     additional_termination_informations)
 {
+  cuopt_assert(additional_termination_informations.size() ==
+                 gpu_batch_additional_termination_information_.number_of_steps_taken.size(),
+               "Additional termination informations size mismatch");
   for (size_t i = 0; i < additional_termination_informations.size(); ++i) {
     additional_termination_informations[i].number_of_steps_taken =
       gpu_batch_additional_termination_information_.number_of_steps_taken[i];
