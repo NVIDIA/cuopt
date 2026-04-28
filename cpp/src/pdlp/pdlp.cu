@@ -421,8 +421,6 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_limits(
   const timer_t& timer)
 {
-  const bool accept_pf = settings_.first_primal_feasible || settings_.all_primal_feasible;
-
   // Check for time limit
   if (time_limit_reached(timer)) {
     if (settings_.save_best_primal_so_far) {
@@ -434,28 +432,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     }
 
     if (batch_mode_) {
-      // Set the termination status to TimeLimit for all climbers appart from the potentially
-      // already done ones
-      for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
-        if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i), accept_pf)) {
-          batch_solution_to_return_
-            .get_terminations_status()[climber_strategies_[i].original_index] =
-            pdlp_termination_status_t::TimeLimit;
-        }
-      }
-      current_termination_strategy_.convert_gpu_terms_stats_to_host(
-        batch_solution_to_return_.get_additional_termination_informations());
-      return optimization_problem_solution_t<i_t, f_t>{
-        batch_solution_to_return_.get_primal_solution(),
-        batch_solution_to_return_.get_dual_solution(),
-        batch_solution_to_return_.get_reduced_cost(),
-        get_filled_warmed_start_data(),
-        problem_ptr->objective_name,
-        problem_ptr->var_names,
-        problem_ptr->row_names,
-        std::move(batch_solution_to_return_.get_additional_termination_informations()),
-        std::move(batch_solution_to_return_.get_terminations_status())};
+      return finalize_batch_return_with_limit_reached(pdlp_termination_status_t::TimeLimit);
     }
 
 #ifdef PDLP_VERBOSE_MODE
@@ -492,28 +469,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 #endif
 
     if (batch_mode_) {
-      // Set the termination status to IterationLimit for all climbers appart from the potentially
-      // already done ones
-      for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
-        if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i), accept_pf)) {
-          batch_solution_to_return_
-            .get_terminations_status()[climber_strategies_[i].original_index] =
-            pdlp_termination_status_t::IterationLimit;
-        }
-      }
-      current_termination_strategy_.convert_gpu_terms_stats_to_host(
-        batch_solution_to_return_.get_additional_termination_informations());
-      return optimization_problem_solution_t<i_t, f_t>{
-        batch_solution_to_return_.get_primal_solution(),
-        batch_solution_to_return_.get_dual_solution(),
-        batch_solution_to_return_.get_reduced_cost(),
-        get_filled_warmed_start_data(),
-        problem_ptr->objective_name,
-        problem_ptr->var_names,
-        problem_ptr->row_names,
-        std::move(batch_solution_to_return_.get_additional_termination_informations()),
-        std::move(batch_solution_to_return_.get_terminations_status())};
+      return finalize_batch_return_with_limit_reached(pdlp_termination_status_t::IterationLimit);
     }
 
     return current_termination_strategy_.fill_return_problem_solution(
@@ -538,28 +494,7 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
 #endif
 
     if (batch_mode_) {
-      // Set the termination status to ConcurrentLimit for all climbers appart from the potentially
-      // already done ones
-      for (size_t i = 0; i < batch_solution_to_return_.get_terminations_status().size(); ++i) {
-        if (!current_termination_strategy_.is_done(
-              current_termination_strategy_.get_termination_status(i), accept_pf)) {
-          batch_solution_to_return_
-            .get_terminations_status()[climber_strategies_[i].original_index] =
-            pdlp_termination_status_t::ConcurrentLimit;
-        }
-      }
-      current_termination_strategy_.convert_gpu_terms_stats_to_host(
-        batch_solution_to_return_.get_additional_termination_informations());
-      return optimization_problem_solution_t<i_t, f_t>{
-        batch_solution_to_return_.get_primal_solution(),
-        batch_solution_to_return_.get_dual_solution(),
-        batch_solution_to_return_.get_reduced_cost(),
-        get_filled_warmed_start_data(),
-        problem_ptr->objective_name,
-        problem_ptr->var_names,
-        problem_ptr->row_names,
-        std::move(batch_solution_to_return_.get_additional_termination_informations()),
-        std::move(batch_solution_to_return_.get_terminations_status())};
+      return finalize_batch_return_with_limit_reached(pdlp_termination_status_t::ConcurrentLimit);
     }
 
     return current_termination_strategy_.fill_return_problem_solution(
@@ -817,6 +752,40 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::finalize_batc
 {
   current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_);
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  current_termination_strategy_.convert_gpu_terms_stats_to_host(
+    batch_solution_to_return_.get_additional_termination_informations());
+  return optimization_problem_solution_t<i_t, f_t>{
+    batch_solution_to_return_.get_primal_solution(),
+    batch_solution_to_return_.get_dual_solution(),
+    batch_solution_to_return_.get_reduced_cost(),
+    get_filled_warmed_start_data(),
+    problem_ptr->objective_name,
+    problem_ptr->var_names,
+    problem_ptr->row_names,
+    std::move(batch_solution_to_return_.get_additional_termination_informations()),
+    std::move(batch_solution_to_return_.get_terminations_status())};
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t>
+pdlp_solver_t<i_t, f_t>::finalize_batch_return_with_limit_reached(
+  pdlp_termination_status_t fallback_status)
+{
+  const bool accept_pf = settings_.first_primal_feasible || settings_.all_primal_feasible;
+  // Iterate over ACTIVE climbers (climber_strategies_.size()), not the original batch size.
+  // After climber removal/swapping the active arrays (current_termination_strategy_ and
+  // climber_strategies_) shrink, while batch_solution_to_return_.get_terminations_status()
+  // keeps its original size and is indexed by original_index. Looping up to the original size
+  // and reading current_termination_strategy_.get_termination_status(i) / climber_strategies_[i]
+  // would index past the end of the active arrays. Read with the active index `i`, write with
+  // the original index.
+  for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+    if (!current_termination_strategy_.is_done(
+          current_termination_strategy_.get_termination_status(i), accept_pf)) {
+      const auto original_index = climber_strategies_[i].original_index;
+      batch_solution_to_return_.get_terminations_status()[original_index] = fallback_status;
+    }
+  }
   current_termination_strategy_.convert_gpu_terms_stats_to_host(
     batch_solution_to_return_.get_additional_termination_informations());
   return optimization_problem_solution_t<i_t, f_t>{
