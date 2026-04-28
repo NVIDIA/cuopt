@@ -600,14 +600,18 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       }
     }
     problem.set_row_names(std::move(linear_row_names));
-    problem.set_row_types(row_types_linear.data(), static_cast<i_t>(row_types_linear.size()));
+    if (!row_types_linear.empty()) {
+      problem.set_row_types(row_types_linear.data(), static_cast<i_t>(row_types_linear.size()));
+    }
   } else {
     std::vector<char> row_types_host(row_types.size());
     for (size_t i = 0; i < row_types.size(); ++i) {
       row_types_host[i] = static_cast<char>(row_types[i]);
     }
     problem.set_row_names(std::move(row_names));
-    problem.set_row_types(row_types_host.data(), static_cast<i_t>(row_types_host.size()));
+    if (!row_types_host.empty()) {
+      problem.set_row_types(row_types_host.data(), static_cast<i_t>(row_types_host.size()));
+    }
   }
 }
 
