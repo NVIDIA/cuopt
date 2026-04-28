@@ -330,6 +330,9 @@ class cut_pool_t {
 };
 
 template <typename i_t, typename f_t>
+class variable_bounds_t;
+
+template <typename i_t, typename f_t>
 class knapsack_generation_t {
  public:
   knapsack_generation_t(const lp_problem_t<i_t, f_t>& lp,
@@ -351,6 +354,7 @@ class knapsack_generation_t {
                               const simplex_solver_settings_t<i_t, f_t>& settings,
                               csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<i_t>& new_slacks,
+                              const variable_bounds_t<i_t, f_t>& variable_bounds,
                               const std::vector<variable_type_t>& var_types,
                               const std::vector<f_t>& xstar,
                               i_t flow_cover_row,
@@ -414,9 +418,6 @@ class knapsack_generation_t {
 // Forward declarations
 template <typename i_t, typename f_t>
 class mixed_integer_rounding_cut_t;
-
-template <typename i_t, typename f_t>
-class variable_bounds_t;
 
 template <typename i_t, typename f_t>
 class cut_generation_t {
@@ -495,6 +496,7 @@ class cut_generation_t {
                                 const std::vector<i_t>& new_slacks,
                                 const std::vector<variable_type_t>& var_types,
                                 const std::vector<f_t>& xstar,
+                                variable_bounds_t<i_t, f_t>& variable_bounds,
                                 f_t start_time);
 
   // Generate clique cuts from conflict graph cliques

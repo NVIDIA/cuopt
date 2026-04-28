@@ -12,9 +12,12 @@
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <utilities/macros.cuh>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <barrier/dense_matrix.hpp>
@@ -899,47 +902,27 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   settings.log.printf("Number of knapsack constraints %d\n", num_knapsack_constraints);
 #endif
 
-  // Identify flow cover constraints: rows with binary variables having both
-  // positive and negative coefficients (mixed 0-1 structure).
-  // The constraint has the form: sum_{j in N1} a_j x_j <= b + sum_{j in N2} a_j x_j
-  // which is stored as: sum_{j in N1} a_j x_j - sum_{j in N2} a_j x_j <= b
+  // Wolter's separator is applied to every row after attempting to construct a 0-1
+  // single-node-flow relaxation. Rows that do not admit the relaxation are rejected
+  // inside generate_flow_cover_cut.
   flow_cover_constraints_.reserve(lp.num_rows);
   for (i_t i = 0; i < lp.num_rows; i++) {
-    inequality_t<i_t, f_t> inequality(Arow, i, lp.rhs[i]);
-    inequality_t<i_t, f_t> rational_inequality = inequality;
-    if (!rational_coefficients(var_types, inequality, rational_inequality)) { continue; }
-    inequality = rational_inequality;
-
-    const i_t row_len = rational_inequality.size();
-    if (row_len < 3) { continue; }
-
-    bool valid       = true;
-    bool has_pos     = false;
-    bool has_neg     = false;
-    i_t num_binaries = 0;
-    for (i_t p = 0; p < row_len; p++) {
-      const i_t j = inequality.index(p);
-      if (is_slack_[j]) {
-        if (inequality.coeff(p) < 0.0) {
-          valid = false;
-          break;
-        }
-        continue;
-      }
-      if (var_types[j] != variable_type_t::INTEGER || lp.lower[j] != 0.0 || lp.upper[j] != 1.0) {
-        valid = false;
+    if (Arow.row_start[i + 1] <= Arow.row_start[i]) { continue; }
+    flow_cover_constraints_.push_back(i);
+    bool has_slack = false;
+    i_t slack_col  = -1;
+    for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; p++) {
+      if (is_slack_[Arow.j[p]]) {
+        has_slack = true;
+        slack_col  = Arow.j[p];
         break;
       }
-      const f_t aj = inequality.coeff(p);
-      if (aj > 0.0) {
-        has_pos = true;
-      } else if (aj < 0.0) {
-        has_neg = true;
-      }
-      num_binaries++;
     }
-
-    if (valid && has_pos && has_neg && num_binaries >= 3) { flow_cover_constraints_.push_back(i); }
+    const bool equality_row =
+      !has_slack ||
+      (slack_col >= 0 && std::abs(lp.lower[slack_col]) <= 1e-9 &&
+       std::abs(lp.upper[slack_col]) <= 1e-9);
+    if (equality_row) { flow_cover_constraints_.push_back(-(i + 1)); }
   }
 }
 
@@ -949,6 +932,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<i_t>& new_slacks,
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t flow_cover_row,
@@ -956,227 +940,632 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
 {
   const bool verbose = false;
   static_cast<void>(new_slacks);
-  inequality_t<i_t, f_t> inequality(Arow, flow_cover_row, lp.rhs[flow_cover_row]);
-  inequality_t<i_t, f_t> rational_inequality = inequality;
-  if (!rational_coefficients(var_types, inequality, rational_inequality)) { return -1; }
-  inequality = rational_inequality;
+  const f_t tol       = 1e-6;
+  const f_t bound_tol = 1e-8;
 
-  struct flow_var_t {
-    i_t j;
-    f_t a_j;
+  struct snf_arc_t {
+    f_t u;
     bool in_n2;
+    i_t x_col;
+    f_t x_value;
+    f_t y_const;
+    i_t y_col;
+    f_t y_coeff;
+    f_t y_x_coeff;
+    f_t y_value;
   };
-  std::vector<flow_var_t> flow_vars;
-  flow_vars.reserve(inequality.size());
 
-  std::vector<i_t> complemented_variables;
-  complemented_variables.reserve(inequality.size());
+  struct snf_candidate_t {
+    snf_arc_t arc;
+    f_t b_shift;
+    f_t distance;
+    bool absorbs_binary_coeff;
+  };
 
-  f_t b         = inequality.rhs;
-  f_t sum_all_a = 0.0;
-  f_t sum_n2_a  = 0.0;
+  auto is_binary_variable = [&](i_t j) {
+    return var_types[j] == variable_type_t::INTEGER && std::abs(lp.lower[j]) <= bound_tol &&
+           std::abs(lp.upper[j] - 1.0) <= bound_tol;
+  };
 
-  for (i_t k = 0; k < inequality.size(); k++) {
-    const i_t j  = inequality.index(k);
-    const f_t aj = inequality.coeff(k);
+  auto clamp01 = [&](f_t x) { return std::min<f_t>(1.0, std::max<f_t>(0.0, x)); };
+
+  auto arc_x_value = [&](i_t x_col, f_t fixed_value) {
+    return x_col >= 0 ? clamp01(xstar[x_col]) : fixed_value;
+  };
+
+  auto build_arc = [&](f_t u,
+                       bool in_n2,
+                       i_t x_col,
+                       f_t fixed_x,
+                       f_t y_const,
+                       i_t y_col,
+                       f_t y_coeff,
+                       f_t y_x_coeff) {
+    const f_t x_value = arc_x_value(x_col, fixed_x);
+    f_t y_value       = y_const;
+    if (y_col >= 0) { y_value += y_coeff * xstar[y_col]; }
+    if (x_col >= 0) {
+      y_value += y_x_coeff * xstar[x_col];
+    } else {
+      y_value += y_x_coeff * fixed_x;
+    }
+    return snf_arc_t{u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
+  };
+
+  auto solve_strict_kpsnf = [&](const std::vector<f_t>& values,
+                                const std::vector<f_t>& weights,
+                                f_t strict_capacity,
+                                std::vector<f_t>& solution) {
+    const i_t n = static_cast<i_t>(weights.size());
+    solution.assign(n, 0.0);
+    if (n == 0) { return static_cast<f_t>(0.0); }
+
+    const f_t relaxed_capacity = std::max<f_t>(0.0, strict_capacity - 1e-9);
+    return greedy_knapsack_problem(values, weights, relaxed_capacity, solution);
+  };
+
+  const bool reverse_row_requested = flow_cover_row < 0;
+  const i_t actual_flow_cover_row = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
+  inequality_t<i_t, f_t> row(Arow, actual_flow_cover_row, lp.rhs[actual_flow_cover_row]);
+  i_t slack_count   = 0;
+  f_t slack_coeff   = 0.0;
+  bool negate_row   = reverse_row_requested;
+  const i_t row_len = row.size();
+  for (i_t k = 0; k < row_len; k++) {
+    const i_t j = row.index(k);
+    if (!is_slack_[j]) { continue; }
+    slack_count++;
+    slack_coeff = row.coeff(k);
+  }
+  if (slack_count > 1) { return -1; }
+  if (slack_count == 1) {
+    if (std::abs(slack_coeff) <= tol) { return -1; }
+    negate_row = reverse_row_requested ? slack_coeff > 0.0 : slack_coeff < 0.0;
+  }
+
+  std::vector<std::pair<i_t, f_t>> continuous_terms;
+  continuous_terms.reserve(row_len);
+  std::vector<i_t> binary_columns;
+  std::unordered_map<i_t, f_t> binary_coefficients;
+  f_t b = negate_row ? -row.rhs : row.rhs;
+  if (!std::isfinite(b)) { return -1; }
+
+  for (i_t k = 0; k < row_len; k++) {
+    const i_t j = row.index(k);
     if (is_slack_[j]) { continue; }
-    if (aj > 0.0) {
-      flow_vars.push_back({j, aj, false});
-      sum_all_a += aj;
-    } else if (aj < 0.0) {
-      const f_t weight = -aj;
-      flow_vars.push_back({j, weight, true});
-      complemented_variables.push_back(j);
-      is_complemented_[j] = 1;
-      sum_all_a += weight;
-      sum_n2_a += weight;
+    const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
+    if (std::abs(coeff) <= tol) { continue; }
+    if (is_binary_variable(j)) {
+      if (binary_coefficients.emplace(j, coeff).second) {
+        binary_columns.push_back(j);
+      } else {
+        binary_coefficients[j] += coeff;
+      }
+    } else {
+      continuous_terms.push_back({j, coeff});
     }
   }
 
-  if (flow_vars.empty() || sum_n2_a <= 0.0 || sum_n2_a >= sum_all_a) {
-    restore_complemented(complemented_variables);
-    return -1;
+  std::vector<snf_arc_t> arcs;
+  arcs.reserve(row_len);
+  f_t b_shift = 0.0;
+
+  auto push_candidate = [&](std::vector<snf_candidate_t>& candidates,
+                            f_t u,
+                            bool in_n2,
+                            i_t x_col,
+                            f_t fixed_x,
+                            f_t y_const,
+                            i_t y_col,
+                            f_t y_coeff,
+                            f_t y_x_coeff,
+                            f_t shift,
+                            f_t bound_value,
+                            f_t y_star,
+                            bool absorbs_binary_coeff) {
+    if (u < -bound_tol) { return; }
+    const f_t capacity = std::max<f_t>(0.0, u);
+    if (capacity <= tol) { return; }
+    const f_t distance = std::abs(bound_value - y_star);
+    candidates.push_back(
+      {build_arc(capacity, in_n2, x_col, fixed_x, y_const, y_col, y_coeff, y_x_coeff),
+       shift,
+       distance,
+       absorbs_binary_coeff});
+  };
+
+  for (const auto& [j, c] : continuous_terms) {
+    const f_t lower_j = lp.lower[j];
+    const f_t upper_j = lp.upper[j];
+    const f_t y_star  = xstar[j];
+    std::vector<snf_candidate_t> candidates;
+
+    auto add_variable_upper_candidates = [&]() {
+      const i_t start = variable_bounds.upper_offsets[j];
+      const i_t end   = variable_bounds.upper_offsets[j + 1];
+      for (i_t p = start; p < end; p++) {
+        const i_t x_col = variable_bounds.upper_variables[p];
+        if (!is_binary_variable(x_col)) { continue; }
+        const f_t gamma = variable_bounds.upper_weights[p];
+        const f_t alpha = variable_bounds.upper_biases[p];
+        if (!std::isfinite(gamma) || !std::isfinite(alpha) || lower_j <= -inf) { continue; }
+        const f_t direct_coeff =
+          binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+        const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
+        const i_t num_a_values            = std::abs(direct_coeff) > tol ? 2 : 1;
+        for (i_t h = 0; h < num_a_values; h++) {
+          const f_t a = a_values[h];
+          if (c > 0.0) {
+            if (c * (lower_j - alpha) >= -bound_tol &&
+                c * (lower_j - alpha) + a >= -bound_tol && c * gamma + a >= -bound_tol) {
+              push_candidate(candidates,
+                             c * gamma + a,
+                             false,
+                             x_col,
+                             0.0,
+                             -c * alpha,
+                             j,
+                             c,
+                             a,
+                             c * alpha,
+                             gamma * xstar[x_col] + alpha,
+                             y_star,
+                             std::abs(a) > tol);
+            }
+          } else {
+            if (c * (lower_j - alpha) <= bound_tol &&
+                c * (lower_j - alpha) + a <= bound_tol && c * gamma + a <= bound_tol) {
+              push_candidate(candidates,
+                             -(c * gamma + a),
+                             true,
+                             x_col,
+                             0.0,
+                             c * alpha,
+                             j,
+                             -c,
+                             -a,
+                             c * alpha,
+                             gamma * xstar[x_col] + alpha,
+                             y_star,
+                             std::abs(a) > tol);
+            }
+          }
+        }
+      }
+    };
+
+    auto add_variable_lower_candidates = [&]() {
+      const i_t start = variable_bounds.lower_offsets[j];
+      const i_t end   = variable_bounds.lower_offsets[j + 1];
+      for (i_t p = start; p < end; p++) {
+        const i_t x_col = variable_bounds.lower_variables[p];
+        if (!is_binary_variable(x_col)) { continue; }
+        const f_t gamma = variable_bounds.lower_weights[p];
+        const f_t alpha = variable_bounds.lower_biases[p];
+        if (!std::isfinite(gamma) || !std::isfinite(alpha) || upper_j >= inf) { continue; }
+        const f_t direct_coeff =
+          binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+        const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
+        const i_t num_a_values            = std::abs(direct_coeff) > tol ? 2 : 1;
+        for (i_t h = 0; h < num_a_values; h++) {
+          const f_t a = a_values[h];
+          if (c > 0.0) {
+            if (c * (upper_j - alpha) <= bound_tol &&
+                c * (upper_j - alpha) + a <= bound_tol && c * gamma + a <= bound_tol) {
+              push_candidate(candidates,
+                             -(c * gamma + a),
+                             true,
+                             x_col,
+                             0.0,
+                             c * alpha,
+                             j,
+                             -c,
+                             -a,
+                             c * alpha,
+                             gamma * xstar[x_col] + alpha,
+                             y_star,
+                             std::abs(a) > tol);
+            }
+          } else {
+            if (c * (upper_j - alpha) >= -bound_tol &&
+                c * (upper_j - alpha) + a >= -bound_tol && c * gamma + a >= -bound_tol) {
+              push_candidate(candidates,
+                             c * gamma + a,
+                             false,
+                             x_col,
+                             0.0,
+                             -c * alpha,
+                             j,
+                             c,
+                             a,
+                             c * alpha,
+                             gamma * xstar[x_col] + alpha,
+                             y_star,
+                             std::abs(a) > tol);
+            }
+          }
+        }
+      }
+    };
+
+    auto add_simple_bound_candidates = [&]() {
+      if (lower_j <= -inf || upper_j >= inf) { return; }
+      const f_t capacity = std::abs(c) * (upper_j - lower_j);
+      if (capacity <= tol) { return; }
+      if (c > 0.0) {
+        push_candidate(candidates,
+                       capacity,
+                       false,
+                       -1,
+                       1.0,
+                       -c * lower_j,
+                       j,
+                       c,
+                       0.0,
+                       c * lower_j,
+                       upper_j,
+                       y_star,
+                       false);
+        push_candidate(candidates,
+                       capacity,
+                       true,
+                       -1,
+                       1.0,
+                       c * upper_j,
+                       j,
+                       -c,
+                       0.0,
+                       c * upper_j,
+                       lower_j,
+                       y_star,
+                       false);
+      } else {
+        push_candidate(candidates,
+                       capacity,
+                       true,
+                       -1,
+                       1.0,
+                       c * lower_j,
+                       j,
+                       -c,
+                       0.0,
+                       c * lower_j,
+                       upper_j,
+                       y_star,
+                       false);
+        push_candidate(candidates,
+                       capacity,
+                       false,
+                       -1,
+                       1.0,
+                       -c * upper_j,
+                       j,
+                       c,
+                       0.0,
+                       c * upper_j,
+                       lower_j,
+                       y_star,
+                       false);
+      }
+    };
+
+    add_variable_upper_candidates();
+    add_variable_lower_candidates();
+    add_simple_bound_candidates();
+
+    if (candidates.empty()) { return -1; }
+    auto best = std::min_element(
+      candidates.begin(), candidates.end(), [](const snf_candidate_t& a, const snf_candidate_t& b) {
+        return a.distance < b.distance;
+      });
+    if (best->arc.y_value < -1e-5 ||
+        best->arc.y_value - best->arc.u * best->arc.x_value > 1e-4 * std::max<f_t>(1.0, best->arc.u)) {
+      return -1;
+    }
+    if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
+    arcs.push_back(best->arc);
+    b_shift += best->b_shift;
+    if (best->absorbs_binary_coeff) { binary_coefficients[best->arc.x_col] = 0.0; }
   }
 
-  const f_t transformed_beta = b + sum_n2_a;
-  f_t separation_rhs         = sum_all_a - (transformed_beta + 1.0);
-  if (separation_rhs <= 0.0) {
-    restore_complemented(complemented_variables);
-    return -1;
+  for (i_t j : binary_columns) {
+    const f_t coeff = binary_coefficients[j];
+    if (std::abs(coeff) <= tol) { continue; }
+    const f_t u = std::abs(coeff);
+    arcs.push_back(build_arc(
+      u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
   }
+
+  if (arcs.empty()) { return -1; }
+  f_t snf_b = b - b_shift;
+
+  auto compute_structure = [&]() {
+    bool has_binary_controlled_arc = false;
+    bool has_n1                   = false;
+    f_t sum_n1_u                  = 0.0;
+    for (const auto& arc : arcs) {
+      if (arc.x_col >= 0) { has_binary_controlled_arc = true; }
+      if (!arc.in_n2) {
+        has_n1 = true;
+        sum_n1_u += arc.u;
+      }
+    }
+    const f_t cover_capacity = -snf_b + sum_n1_u;
+    return std::make_tuple(has_binary_controlled_arc, has_n1, cover_capacity);
+  };
+
+  auto [has_binary_controlled_arc, has_n1, cover_capacity] = compute_structure();
+  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) { return -1; }
 
   std::vector<f_t> values;
   std::vector<f_t> weights;
-  std::vector<i_t> indices;
-  std::vector<f_t> fixed_values;
-  std::vector<i_t> fixed_variables;
-  values.reserve(flow_vars.size());
-  weights.reserve(flow_vars.size());
-  indices.reserve(flow_vars.size());
-  fixed_values.reserve(flow_vars.size());
-  fixed_variables.reserve(flow_vars.size());
+  std::vector<i_t> item_to_arc;
+  values.reserve(arcs.size());
+  weights.reserve(arcs.size());
+  item_to_arc.reserve(arcs.size());
+  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+    const auto& arc = arcs[k];
+    if (arc.u <= tol) { continue; }
+    const f_t value = arc.in_n2 ? arc.x_value : 1.0 - arc.x_value;
+    values.push_back(std::max<f_t>(0.0, value));
+    weights.push_back(arc.u);
+    item_to_arc.push_back(k);
+  }
+  if (values.empty()) { return -1; }
 
-  f_t objective_constant = 0.0;
-  const f_t x_tol        = 1e-5;
-  for (const auto& flow_var : flow_vars) {
-    const i_t j                 = flow_var.j;
-    const f_t transformed_xstar = flow_var.in_n2 ? 1.0 - xstar[j] : xstar[j];
-    complemented_xstar_[j]      = transformed_xstar;
-    const f_t value             = std::min(1.0, std::max(0.0, 1.0 - transformed_xstar));
-    if (transformed_xstar < x_tol) {
-      fixed_variables.push_back(j);
-      fixed_values.push_back(0.0);
-      separation_rhs -= flow_var.a_j;
-      continue;
+  std::vector<f_t> solution;
+  const f_t objective = solve_strict_kpsnf(values, weights, cover_capacity, solution);
+  if (std::isnan(objective)) { return -1; }
+  static_cast<void>(objective);
+
+  std::vector<uint8_t> in_c1(arcs.size(), 0);
+  std::vector<uint8_t> in_c2(arcs.size(), 0);
+  for (i_t item = 0; item < static_cast<i_t>(solution.size()); item++) {
+    const i_t arc_index = item_to_arc[item];
+    if (arcs[arc_index].in_n2) {
+      if (solution[item] > 0.5) { in_c2[arc_index] = 1; }
+    } else {
+      if (solution[item] <= 0.5) { in_c1[arc_index] = 1; }
     }
-    if (transformed_xstar > 1.0 - x_tol) {
-      fixed_variables.push_back(j);
-      fixed_values.push_back(1.0);
-      objective_constant += value;
-      continue;
+  }
+
+  f_t sum_c1_u = 0.0;
+  f_t sum_c2_u = 0.0;
+  bool c1_nonempty = false;
+  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+    if (in_c1[k]) {
+      sum_c1_u += arcs[k].u;
+      c1_nonempty = true;
     }
-    objective_constant += value;
-    values.push_back(value);
-    weights.push_back(flow_var.a_j);
-    indices.push_back(j);
+    if (in_c2[k]) { sum_c2_u += arcs[k].u; }
   }
+  const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
+  if (!c1_nonempty || lambda <= tol) { return -1; }
 
-  if (separation_rhs <= 0.0) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
+  auto fractional_part_local = [](f_t value) {
+    const f_t floor_value = std::floor(value);
+    return value - floor_value;
+  };
 
-  std::vector<f_t> solution(values.size(), 0.0);
-  f_t objective = 0.0;
-  if (!values.empty()) {
-    objective = solve_knapsack_problem(values, weights, separation_rhs, solution);
-  }
-  if (std::isnan(objective)) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
+  auto mir_F = [&](f_t alpha, f_t value) {
+    const f_t floor_value = std::floor(value);
+    const f_t frac_value  = value - floor_value;
+    return floor_value + std::max<f_t>(0.0, frac_value - alpha) / (1.0 - alpha);
+  };
 
-  const f_t separation_value = -objective + objective_constant;
-  const f_t tol              = 1e-6;
-  if (separation_value >= 1.0 - tol) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
-
-  std::vector<i_t> C1_indices, C2_indices;
-  std::vector<f_t> C1_coeffs, C2_coeffs;
-  std::vector<i_t> transformed_cover_n2_indices;
-  std::vector<f_t> transformed_cover_n2_coeffs;
-  std::fill(is_marked_.begin(), is_marked_.end(), 0);
-
-  for (i_t k = 0; k < static_cast<i_t>(solution.size()); k++) {
-    const i_t j = indices[k];
-    if (solution[k] != 0.0) { continue; }
-    is_marked_[j] = 1;
-  }
-  for (i_t k = 0; k < static_cast<i_t>(fixed_variables.size()); k++) {
-    if (fixed_values[k] != 1.0) { continue; }
-    const i_t j   = fixed_variables[k];
-    is_marked_[j] = 1;
-  }
-
-  for (const auto& flow_var : flow_vars) {
-    const i_t j = flow_var.j;
-    if (!flow_var.in_n2) {
-      if (is_marked_[j]) {
-        C1_indices.push_back(j);
-        C1_coeffs.push_back(flow_var.a_j);
+  std::vector<f_t> ubar_candidates;
+  auto add_ubar_candidate = [&](f_t candidate) {
+    if (candidate <= lambda + tol || !std::isfinite(candidate)) { return; }
+    for (f_t existing : ubar_candidates) {
+      if (std::abs(existing - candidate) <= 1e-8 * std::max<f_t>(1.0, std::abs(candidate))) {
+        return;
       }
-    } else if (is_marked_[j]) {
-      transformed_cover_n2_indices.push_back(j);
-      transformed_cover_n2_coeffs.push_back(flow_var.a_j);
-    } else {
-      C2_indices.push_back(j);
-      C2_coeffs.push_back(flow_var.a_j);
+    }
+    ubar_candidates.push_back(candidate);
+  };
+
+  f_t max_c1_ltilde2 = -inf;
+  f_t max_c1         = -inf;
+  f_t max_u_ge_lambda = -inf;
+  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+    const auto& arc = arcs[k];
+    if (arc.u > lambda + tol) { add_ubar_candidate(arc.u); }
+    if (arc.u >= lambda - tol) { max_u_ge_lambda = std::max(max_u_ge_lambda, arc.u); }
+    if (!arc.in_n2 && in_c1[k] && arc.u > lambda + tol) {
+      max_c1         = std::max(max_c1, arc.u);
+      max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
+    }
+    if (arc.in_n2 && !in_c2[k] && arc.u > lambda + tol &&
+        std::min(arc.u, lambda) * arc.x_value <= arc.y_value + tol) {
+      max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
+    }
+  }
+  add_ubar_candidate(max_c1_ltilde2);
+  add_ubar_candidate(max_c1);
+  add_ubar_candidate(max_u_ge_lambda + 1.0);
+  add_ubar_candidate(lambda + 1.0);
+  if (ubar_candidates.empty()) { return -1; }
+
+  f_t best_violation = 0.0;
+  f_t best_ubar      = 0.0;
+  std::vector<uint8_t> best_in_l1(arcs.size(), 0);
+  std::vector<uint8_t> best_in_l2(arcs.size(), 0);
+
+  auto contribution = [&](const snf_arc_t& arc,
+                          bool arc_in_c1,
+                          bool arc_in_c2,
+                          bool arc_in_l1,
+                          bool arc_in_l2,
+                          f_t ubar) {
+    const f_t f_pos = mir_F(fractional_part_local(-lambda / ubar), arc.u / ubar);
+    const f_t f_neg = mir_F(fractional_part_local(-lambda / ubar), -arc.u / ubar);
+    if (arc_in_c1) {
+      return arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value);
+    }
+    if (!arc.in_n2) {
+      return arc_in_l1 ? arc.y_value - (arc.u - lambda * f_pos) * arc.x_value
+                       : static_cast<f_t>(0.0);
+    }
+    if (arc_in_c2) {
+      return -arc.u + lambda * f_pos * (1.0 - arc.x_value);
+    }
+    return arc_in_l2 ? lambda * f_neg * arc.x_value : -arc.y_value;
+  };
+
+  for (f_t ubar : ubar_candidates) {
+    const f_t beta   = -lambda / ubar;
+    const f_t f_beta = fractional_part_local(beta);
+    if (f_beta < 0.01 || f_beta > 0.95) { continue; }
+
+    std::vector<uint8_t> in_l1(arcs.size(), 0);
+    std::vector<uint8_t> in_l2(arcs.size(), 0);
+    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+      const auto& arc = arcs[k];
+      const f_t f_pos = mir_F(f_beta, arc.u / ubar);
+      const f_t f_neg = mir_F(f_beta, -arc.u / ubar);
+      if (!arc.in_n2 && !in_c1[k] &&
+          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -tol) {
+        in_l1[k] = 1;
+      }
+      if (arc.in_n2 && !in_c2[k] && lambda * f_neg * arc.x_value >= -arc.y_value - tol) {
+        in_l2[k] = 1;
+      }
+    }
+
+    f_t lhs_value = 0.0;
+    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+      lhs_value += contribution(arcs[k], in_c1[k], in_c2[k], in_l1[k], in_l2[k], ubar);
+    }
+    const f_t violation = lhs_value - snf_b;
+    if (violation > best_violation + tol) {
+      best_violation = violation;
+      best_ubar      = ubar;
+      best_in_l1     = std::move(in_l1);
+      best_in_l2     = std::move(in_l2);
     }
   }
 
-  if (C1_indices.empty()) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
-
-  f_t sum_C1 = std::accumulate(C1_coeffs.begin(), C1_coeffs.end(), 0.0);
-  f_t sum_C2 = std::accumulate(C2_coeffs.begin(), C2_coeffs.end(), 0.0);
-  f_t lambda = sum_C1 - sum_C2 - b;
-  if (lambda <= tol) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
-
-  std::vector<i_t> L2_indices;
-  std::vector<i_t> rest_N2_indices;
-  std::vector<f_t> rest_N2_coeffs;
-  for (i_t k = 0; k < static_cast<i_t>(transformed_cover_n2_indices.size()); k++) {
-    const i_t j  = transformed_cover_n2_indices[k];
-    const f_t aj = transformed_cover_n2_coeffs[k];
-    if (lambda * xstar[j] < aj * xstar[j] - tol) {
-      L2_indices.push_back(j);
+  std::vector<uint8_t> sgfci_in_l2(arcs.size(), 0);
+  f_t sgfci_lhs_value = 0.0;
+  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+    const auto& arc = arcs[k];
+    if (in_c1[k]) {
+      sgfci_lhs_value += arc.y_value + std::max<f_t>(0.0, arc.u - lambda) * (1.0 - arc.x_value);
+    } else if (!arc.in_n2) {
+      continue;
+    } else if (in_c2[k]) {
+      sgfci_lhs_value -= arc.u;
+    } else if (std::min(arc.u, lambda) * arc.x_value <= arc.y_value + tol) {
+      sgfci_in_l2[k] = 1;
+      sgfci_lhs_value -= std::min(arc.u, lambda) * arc.x_value;
     } else {
-      rest_N2_indices.push_back(j);
-      rest_N2_coeffs.push_back(aj);
+      sgfci_lhs_value -= arc.y_value;
     }
   }
+  const f_t sgfci_violation = sgfci_lhs_value - snf_b;
+  if (best_violation <= tol && sgfci_violation <= tol) { return -1; }
+  const bool use_cmirfci = best_violation >= sgfci_violation;
 
-  f_t lhs = 0.0;
-  for (i_t k = 0; k < static_cast<i_t>(C1_indices.size()); k++) {
-    const i_t j  = C1_indices[k];
-    const f_t aj = C1_coeffs[k];
-    lhs += aj * xstar[j];
-    lhs += std::max(0.0, aj - lambda) * (1.0 - xstar[j]);
-  }
+  f_t lhs_constant = 0.0;
+  std::vector<i_t> lhs_indices;
+  std::unordered_map<i_t, f_t> lhs_coefficients;
+  lhs_indices.reserve(arcs.size() * 2);
 
-  f_t rhs = b + sum_C2;
-  for (i_t k = 0; k < static_cast<i_t>(L2_indices.size()); k++) {
-    rhs += lambda * xstar[L2_indices[k]];
-  }
-  for (i_t k = 0; k < static_cast<i_t>(rest_N2_indices.size()); k++) {
-    rhs += rest_N2_coeffs[k] * xstar[rest_N2_indices[k]];
-  }
+  auto add_lhs_coeff = [&](i_t j, f_t value) {
+    if (j < 0 || std::abs(value) <= 1e-12) { return; }
+    if (lhs_coefficients.emplace(j, value).second) {
+      lhs_indices.push_back(j);
+    } else {
+      lhs_coefficients[j] += value;
+    }
+  };
 
-  const f_t violation = lhs - rhs;
-  if (violation <= tol) {
-    restore_complemented(complemented_variables);
-    return -1;
-  }
+  auto add_y = [&](const snf_arc_t& arc, f_t multiplier) {
+    lhs_constant += multiplier * arc.y_const;
+    if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
+    if (arc.x_col >= 0) {
+      add_lhs_coeff(arc.x_col, multiplier * arc.y_x_coeff);
+    } else {
+      lhs_constant += multiplier * arc.y_x_coeff * arc.x_value;
+    }
+  };
 
-  if (verbose) {
-    settings.log.printf(
-      "Flow cover cut row %d violation %e lambda %e\n", flow_cover_row, violation, lambda);
+  auto add_x = [&](const snf_arc_t& arc, f_t multiplier) {
+    if (arc.x_col >= 0) {
+      add_lhs_coeff(arc.x_col, multiplier);
+    } else {
+      lhs_constant += multiplier * arc.x_value;
+    }
+  };
+
+  auto add_one_minus_x = [&](const snf_arc_t& arc, f_t multiplier) {
+    lhs_constant += multiplier;
+    add_x(arc, -multiplier);
+  };
+
+  if (use_cmirfci) {
+    const f_t f_beta_best = fractional_part_local(-lambda / best_ubar);
+    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+      const auto& arc = arcs[k];
+      const f_t f_pos = mir_F(f_beta_best, arc.u / best_ubar);
+      const f_t f_neg = mir_F(f_beta_best, -arc.u / best_ubar);
+      if (in_c1[k]) {
+        add_y(arc, 1.0);
+        add_one_minus_x(arc, arc.u + lambda * f_neg);
+      } else if (!arc.in_n2) {
+        if (best_in_l1[k]) {
+          add_y(arc, 1.0);
+          add_x(arc, -(arc.u - lambda * f_pos));
+        }
+      } else if (in_c2[k]) {
+        lhs_constant -= arc.u;
+        add_one_minus_x(arc, lambda * f_pos);
+      } else if (best_in_l2[k]) {
+        add_x(arc, lambda * f_neg);
+      } else {
+        add_y(arc, -1.0);
+      }
+    }
+  } else {
+    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+      const auto& arc = arcs[k];
+      if (in_c1[k]) {
+        add_y(arc, 1.0);
+        add_one_minus_x(arc, std::max<f_t>(0.0, arc.u - lambda));
+      } else if (!arc.in_n2) {
+        continue;
+      } else if (in_c2[k]) {
+        lhs_constant -= arc.u;
+      } else if (sgfci_in_l2[k]) {
+        add_x(arc, -std::min(arc.u, lambda));
+      } else {
+        add_y(arc, -1.0);
+      }
+    }
   }
 
   cut.clear();
-  cut.reserve(C1_indices.size() + L2_indices.size() + rest_N2_indices.size());
-
-  f_t lift_sum = 0.0;
-  for (i_t k = 0; k < static_cast<i_t>(C1_indices.size()); k++) {
-    const i_t j    = C1_indices[k];
-    const f_t aj   = C1_coeffs[k];
-    const f_t lift = std::max(0.0, aj - lambda);
-    cut.push_back(j, -aj + lift);
-    lift_sum += lift;
+  cut.reserve(lhs_indices.size());
+  for (i_t j : lhs_indices) {
+    const f_t coeff = lhs_coefficients[j];
+    if (std::abs(coeff) > 1e-9) { cut.push_back(j, -coeff); }
   }
-  for (i_t k = 0; k < static_cast<i_t>(L2_indices.size()); k++) {
-    cut.push_back(L2_indices[k], lambda);
-  }
-  for (i_t k = 0; k < static_cast<i_t>(rest_N2_indices.size()); k++) {
-    cut.push_back(rest_N2_indices[k], rest_N2_coeffs[k]);
-  }
-  cut.rhs = -(b + sum_C2) + lift_sum;
-
+  if (cut.size() == 0) { return -1; }
+  cut.rhs = lhs_constant - snf_b;
   cut.sort();
+
   const f_t dot = cut.vector.dot(xstar);
-  if (dot >= cut.rhs - tol) {
-    restore_complemented(complemented_variables);
-    return -1;
+  if (dot >= cut.rhs - tol) { return -1; }
+
+  if (verbose) {
+    settings.log.printf("Flow cover row %d violation %e lambda %e ubar %e type %s\n",
+                        flow_cover_row,
+                        use_cmirfci ? best_violation : sgfci_violation,
+                        lambda,
+                        best_ubar,
+                        use_cmirfci ? "c-MIRFCI" : "SGFCI");
   }
 
-  restore_complemented(complemented_variables);
   return 0;
 }
 
@@ -2086,7 +2475,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Flow Cover cuts
   if (settings.flow_cover_cuts != 0) {
     f_t cut_start_time = tic();
-    generate_flow_cover_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
+    generate_flow_cover_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Flow cover cut generation time %.2f seconds\n", cut_generation_time);
@@ -2158,6 +2548,7 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
   if (knapsack_generation_.num_flow_cover_constraints() > 0) {
@@ -2165,7 +2556,7 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = knapsack_generation_.generate_flow_cover_cut(
-        lp, settings, Arow, new_slacks, var_types, xstar, flow_cover_row, cut);
+        lp, settings, Arow, new_slacks, variable_bounds, var_types, xstar, flow_cover_row, cut);
       if (status == 0) { cut_pool_.add_cut(cut_type_t::FLOW_COVER, cut); }
     }
   }
