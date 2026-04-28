@@ -407,8 +407,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                            _tmp_primal.data(),
                            CUSPARSE_ORDER_COL);
 
-  primal_gradient.create(current_saddle_point_state.get_primal_gradient().size(), // It is 0 in cupdlpx
-                         current_saddle_point_state.get_primal_gradient().data());
+  primal_gradient.create(
+    current_saddle_point_state.get_primal_gradient().size(),  // It is 0 in cupdlpx
+    current_saddle_point_state.get_primal_gradient().data());
   dual_gradient.create(op_problem_scaled.n_constraints,
                        current_saddle_point_state.get_dual_gradient().data());
 
