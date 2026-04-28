@@ -71,18 +71,6 @@ class heap_t {
   // Read-only access to underlying buffer for iteration without modification
   const std::vector<T>& data() const { return buffer; }
 
-  // Remove entries matching `should_remove` and rebuild the heap.
-  // Caller must hold any external lock before calling this.
-  template <typename Pred>
-  void compact(Pred&& should_remove)
-  {
-    auto it = std::remove_if(buffer.begin(), buffer.end(), std::forward<Pred>(should_remove));
-    size_t removed = std::distance(it, buffer.end());
-    buffer.erase(it, buffer.end());
-    num_entries_ = buffer.size();
-    if (removed > 0) { std::make_heap(buffer.begin(), buffer.end(), comp); }
-  }
-
  private:
   std::vector<T> buffer;
   omp_atomic_t<size_t> num_entries_{0};

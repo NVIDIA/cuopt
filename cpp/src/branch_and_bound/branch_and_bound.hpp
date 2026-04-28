@@ -438,8 +438,6 @@ class branch_and_bound_t {
     }
   };
   heap_t<diving_entry_t, diving_score_comp> diving_heap_;
-
-  friend class branch_and_bound_worker_t<i_t, f_t>;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

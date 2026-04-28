@@ -245,20 +245,20 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
   pseudo_cost_snapshot_t& operator=(
     const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
   {
-    Base::AT              = other.AT;
-    Base::pdlp_warm_cache = other.pdlp_warm_cache;
+    this->AT              = other.AT;
+    this->pdlp_warm_cache = other.pdlp_warm_cache;
 
     i_t n = other.pseudo_cost_num_down.size();
-    Base::pseudo_cost_num_down.resize(n);
-    Base::pseudo_cost_num_up.resize(n);
-    Base::pseudo_cost_sum_down.resize(n);
-    Base::pseudo_cost_sum_up.resize(n);
+    this->pseudo_cost_num_down.resize(n);
+    this->pseudo_cost_num_up.resize(n);
+    this->pseudo_cost_sum_down.resize(n);
+    this->pseudo_cost_sum_up.resize(n);
 
     for (i_t i = 0; i < n; ++i) {
-      Base::pseudo_cost_num_down[i] = other.pseudo_cost_num_down[i].get_no_atomic();
-      Base::pseudo_cost_num_up[i]   = other.pseudo_cost_num_up[i].get_no_atomic();
-      Base::pseudo_cost_sum_down[i] = other.pseudo_cost_sum_down[i].get_no_atomic();
-      Base::pseudo_cost_sum_up[i]   = other.pseudo_cost_sum_up[i].get_no_atomic();
+      this->pseudo_cost_num_down[i] = other.pseudo_cost_num_down[i].underlying();
+      this->pseudo_cost_num_up[i]   = other.pseudo_cost_num_up[i].underlying();
+      this->pseudo_cost_sum_down[i] = other.pseudo_cost_sum_down[i].underlying();
+      this->pseudo_cost_sum_up[i]   = other.pseudo_cost_sum_up[i].underlying();
     }
 
     return *this;
@@ -267,12 +267,12 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
   pseudo_cost_snapshot_t& operator=(const Base& other)
   {
     if (this != &other) {
-      Base::AT                   = other.AT;
-      Base::pdlp_warm_cache      = other.pdlp_warm_cache;
-      Base::pseudo_cost_num_down = other.pseudo_cost_num_down;
-      Base::pseudo_cost_num_up   = other.pseudo_cost_num_up;
-      Base::pseudo_cost_sum_down = other.pseudo_cost_sum_down;
-      Base::pseudo_cost_sum_up   = other.pseudo_cost_sum_up;
+      this->AT                   = other.AT;
+      this->pdlp_warm_cache      = other.pdlp_warm_cache;
+      this->pseudo_cost_num_down = other.pseudo_cost_num_down;
+      this->pseudo_cost_num_up   = other.pseudo_cost_num_up;
+      this->pseudo_cost_sum_down = other.pseudo_cost_sum_down;
+      this->pseudo_cost_sum_up   = other.pseudo_cost_sum_up;
     }
     return *this;
   };
@@ -282,11 +282,11 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
   {
     updates_.push_back({variable, direction, delta, clock, worker_id});
     if (direction == rounding_direction_t::DOWN) {
-      Base::pseudo_cost_sum_down[variable] += delta;
-      ++Base::pseudo_cost_num_down[variable];
+      this->pseudo_cost_sum_down[variable] += delta;
+      ++this->pseudo_cost_num_down[variable];
     } else {
-      Base::pseudo_cost_sum_up[variable] += delta;
-      ++Base::pseudo_cost_num_up[variable];
+      this->pseudo_cost_sum_up[variable] += delta;
+      ++this->pseudo_cost_num_up[variable];
     }
   }
 
@@ -297,7 +297,7 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
     return result;
   }
 
-  i_t n_vars() const { return Base::pseudo_cost_sum_down.size(); }
+  i_t n_vars() const { return this->pseudo_cost_sum_down.size(); }
 
  private:
   std::vector<pseudo_cost_update_t<i_t, f_t>> updates_;

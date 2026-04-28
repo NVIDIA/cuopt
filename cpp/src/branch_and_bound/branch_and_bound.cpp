@@ -2753,8 +2753,8 @@ Work Units:   0                              0.5                              1.
 ──────────────────────────────────────────────────────────────────────────────────────────►
                                                                         Work Unit Time
 
-Legend:  ▓▓▓ = actively working    ░░░ = waiting at barrier    [hash] = state hash for
-verification wut = work unit timestamp    PC = pseudo-costs    snap = snapshot (local copy)
+Legend:  ▓▓▓ = actively working    ░░░ = waiting at barrier    [hash] = state hash for verification
+         wut = work unit timestamp    PC = pseudo-costs    snap = snapshot (local copy)
 
 */
 
@@ -2792,22 +2792,23 @@ Producer Sync:
   Producing solutions in the past would break determinism, therefore this unidirectional sync
 ensures no such thing can occur. Instrumentation Aggregator: Collects multiple instrument vectors
 into a single aggregation point for estimating work from memory operations. Worker Context: Object
-representing the "context" (e.g.: the worker) that should register the amount of work recorded
-There is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure
-they remained synchronized together. Queued Integer Solutions: New integer solutions found within
-horizons are queued with a work unit timestamp, in order to be sorted and played in order during
-the sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is
-used to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
+representing the "context" (e.g.: the worker) that should register the amount of work recorded There
+is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure they
+remained synchronized together. Queued Integer Solutions: New integer solutions found within
+horizons are queued with a work unit timestamp, in order to be sorted and played in order during the
+sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is used
+to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
 nondeterministic. To fix this, in deterministic mode, nodes are addressed by a tuple <worker_id,
 seq_id>
-  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential
-ID local to the worker.\ This sequential ID is similar in principle to the global atomic ID
-sequence of the nondeterminsitic mode but since it is local to each worker, it is updated serially
-and thus is deterministic. worker IDs are unique, and sequence IDs are unique to their workers,
-therefor <worker_id, seq_id> is a globally unique node identifier. Pseudocost Update: Each worker
-updates its local pseudocosts when branching. These updates are queued within horizons. During the
-horizon sync, these updates are all played in order, and the newly updated global pseudocosts are
-broadcast to the worker's pseudocost snapshots for the coming horizon.
+  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential ID
+local to the worker.\ This sequential ID is similar in principle to the global atomic ID sequence of
+the nondeterminsitic mode but since it is local to each worker, it is updated serially and thus is
+deterministic. worker IDs are unique, and sequence IDs are unique to their workers, therefor
+  <worker_id, seq_id> is a globally unique node identifier.
+Pseudocost Update:
+  Each worker updates its local pseudocosts when branching. These updates are queued within
+horizons. During the horizon sync, these updates are all played in order, and the newly updated
+global pseudocosts are broadcast to the worker's pseudocost snapshots for the coming horizon.
 
 */
 
@@ -2917,8 +2918,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     "Sync%% | NoWork\n");
   settings_.log.printf(
     "  "
-    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-----"
-    "--"
+    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-------"
     "\n");
   for (const auto& worker : *deterministic_workers_) {
     double sync_time    = worker.work_context.total_sync_time;

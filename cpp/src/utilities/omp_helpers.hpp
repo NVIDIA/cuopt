@@ -125,16 +125,15 @@ class omp_atomic_t {
   T fetch_sub(T inc) { return fetch_add(-inc); }
 
   // Get the underlying value without atomics
-  T& get_no_atomic() { return val; }
+  T& underlying() { return val; }
 
-  T get_no_atomic() const { return val; }
+  T underlying() const { return val; }
 
  private:
   T val;
 
   friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
   friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
-  friend bool compare_exchange(omp_atomic_t<int>& atomic_var, int& expected, int desired);
 };
 
 // Free non-template functions are necessary because of a clang 20 bug
@@ -162,21 +161,6 @@ inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
   return old;
 }
 
-// CAS: atomically sets `atomic_var` to `desired` if it equals `expected`.
-// On failure, loads the current value into `expected`.
-// Returns true if the exchange happened.
-inline bool compare_exchange(omp_atomic_t<int>& atomic_var, int& expected, int desired)
-{
-  int old;
-#pragma omp atomic compare capture seq_cst
-  {
-    old = atomic_var.val;
-    if (atomic_var.val == expected) { atomic_var.val = desired; }
-  }
-  bool success = (old == expected);
-  if (!success) { expected = old; }
-  return success;
-}
 #endif
 
 }  // namespace cuopt
