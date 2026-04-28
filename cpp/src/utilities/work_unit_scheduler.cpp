@@ -19,14 +19,12 @@
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <algorithm>
-#include <cassert>
 #include <chrono>
 #include <limits>
 
 namespace cuopt {
 
-work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval, int num_tasks)
-  : sync_interval_(sync_interval), num_tasks_(num_tasks)
+work_unit_scheduler_t::work_unit_scheduler_t(double sync_interval) : sync_interval_(sync_interval)
 {
 }
 
@@ -98,16 +96,14 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
                     barrier_generation_);
   }
 
-  // This is hack for enabling synchronizing the sibling tasks without returning to the main
-  // B&B task. However, this does not let the thread switch to another task despite the
-  // taskwait and can easily lead to a deadlock if not all workers are alive at the same time.
-  // This is a temporary solution and will be replaced in the future.
-  int gen     = barrier_generation_;
-  int task_id = tasks_at_sync_point_++;
-  assert(task_id >= 0 && task_id < num_tasks_);
+  // All threads wait at this barrier
+#pragma omp barrier
 
-  if (task_id == num_tasks_ - 1) {
+  // One thread executes the sync callback
+#pragma omp single
+  {
     current_sync_target_ = sync_target;
+    barrier_generation_++;
 
     if (verbose) {
       CUOPT_LOG_DEBUG("All contexts arrived at sync point %.2f, new generation %zu",
@@ -116,17 +112,9 @@ void work_unit_scheduler_t::wait_at_sync_point(work_limit_context_t& ctx, double
     }
 
     if (sync_callback_) { sync_callback_(sync_target); }
-
-    barrier_generation_++;
-    tasks_at_sync_point_ = 0;
-
-  } else {
-    int g;
-    do {
-      g = barrier_generation_;
-#pragma omp taskyield
-    } while (g == gen && !is_shutdown());
   }
+  // Implicit barrier at end of single block ensures callback is complete
+  // before any thread proceeds
 
   auto wait_end    = std::chrono::high_resolution_clock::now();
   double wait_secs = std::chrono::duration<double>(wait_end - wait_start).count();

@@ -60,7 +60,7 @@ struct mip_solver_context_t {
   work_limit_context_t gpu_heur_loop{"GPUHeur"};
 
   // synchronization every 5 seconds for deterministic mode
-  work_unit_scheduler_t work_unit_scheduler_{5.0, 1};
+  work_unit_scheduler_t work_unit_scheduler_{5.0};
 
   early_cpufj_t<i_t, f_t>* early_cpufj_ptr{nullptr};
   // Best upper bound from early heuristics, in user-space.

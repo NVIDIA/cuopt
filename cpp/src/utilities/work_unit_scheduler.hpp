@@ -27,7 +27,7 @@ struct work_limit_context_t;
 
 class work_unit_scheduler_t {
  public:
-  explicit work_unit_scheduler_t(double sync_interval, int num_tasks);
+  explicit work_unit_scheduler_t(double sync_interval = 5.0);
 
   void set_sync_interval(double interval);
   double get_sync_interval() const { return sync_interval_; }
@@ -65,8 +65,6 @@ class work_unit_scheduler_t {
 
   // Shutdown flag - prevents threads from entering barriers after termination is signaled
   omp_atomic_t<bool> shutdown_{false};
-  omp_atomic_t<int> tasks_at_sync_point_{0};
-  int num_tasks_{0};
 };
 
 // RAII helper for registering multiple contexts with automatic cleanup
