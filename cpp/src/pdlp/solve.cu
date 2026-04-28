@@ -315,9 +315,8 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
     set_Methodical1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Fast1)
     set_Fast1(settings.hyper_params);
-  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3) {
+  else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3)
     set_Stable3(settings.hyper_params);
-  }
 }
 
 std::atomic<int> global_concurrent_halt{0};
