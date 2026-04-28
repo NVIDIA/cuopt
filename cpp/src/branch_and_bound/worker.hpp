@@ -59,6 +59,7 @@ class branch_and_bound_worker_t {
 
   lp_problem_t<i_t, f_t> leaf_problem;
   lp_solution_t<i_t, f_t> leaf_solution;
+  std::vector<variable_status_t> leaf_vstatus;
   std::vector<f_t> leaf_edge_norms;
 
   basis_update_mpf_t<i_t, f_t> basis_factors;
@@ -88,6 +89,7 @@ class branch_and_bound_worker_t {
       lower_bound(-std::numeric_limits<f_t>::infinity()),
       leaf_problem(original_lp),
       leaf_solution(original_lp.num_rows, original_lp.num_cols),
+      leaf_vstatus(original_lp.num_cols),
       basis_factors(original_lp.num_rows, settings.refactor_frequency),
       basic_list(original_lp.num_rows),
       nonbasic_list(),

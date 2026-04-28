@@ -1248,7 +1248,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
         policy.select_branch_variable(node_ptr, leaf_fractional, leaf_solution.x);
       round_dir = dir;
 
-      assert(node_ptr->vstatus.size() == leaf_problem.num_cols);
+      assert(worker->leaf_vstatus.size() == leaf_problem.num_cols);
       assert(branch_var >= 0);
       assert(dir != rounding_direction_t::NONE);
 
@@ -1262,7 +1262,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
                          branch_var,
                          leaf_solution.x[branch_var],
                          num_frac,
-                         node_ptr->vstatus,
+                         worker->leaf_vstatus,
                          leaf_problem,
                          log);
       search_tree.update(node_ptr, node_status_t::HAS_CHILDREN);
@@ -1345,8 +1345,9 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   }
 #endif
 
-  std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
-  assert(leaf_vstatus.size() == worker->leaf_problem.num_cols);
+  worker->leaf_vstatus =
+    decompress_vstatus(node_ptr->packed_vstatus, worker->leaf_problem.num_cols);
+  assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
   simplex_solver_settings_t lp_settings = settings_;
   lp_settings.concurrent_halt           = &node_concurrent_halt_;
@@ -1405,7 +1406,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                 lp_start_time,
                                                 worker->leaf_problem,
                                                 lp_settings,
-                                                leaf_vstatus,
+                                                worker->leaf_vstatus,
                                                 worker->basis_factors,
                                                 worker->basic_list,
                                                 worker->nonbasic_list,
@@ -1422,7 +1423,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                                            worker->basis_factors,
                                                                            worker->basic_list,
                                                                            worker->nonbasic_list,
-                                                                           leaf_vstatus,
+                                                                           worker->leaf_vstatus,
                                                                            worker->leaf_edge_norms);
 
       lp_status = convert_lp_status_to_dual_status(second_status);
@@ -3221,10 +3222,10 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   // Solve LP relaxation
   worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
-  std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
-  i_t node_iter                                = 0;
-  f_t lp_start_time                            = tic();
-  std::vector<f_t> leaf_edge_norms             = edge_norms_;
+  worker.leaf_vstatus = decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols);
+  i_t node_iter       = 0;
+  f_t lp_start_time   = tic();
+  std::vector<f_t> leaf_edge_norms = edge_norms_;
 
   dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
                                                              0,
@@ -3232,7 +3233,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                              lp_start_time,
                                                              worker.leaf_problem,
                                                              lp_settings,
-                                                             leaf_vstatus,
+                                                             worker.leaf_vstatus,
                                                              worker.basis_factors,
                                                              worker.basic_list,
                                                              worker.nonbasic_list,
@@ -3250,7 +3251,7 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                                          worker.basis_factors,
                                                                          worker.basic_list,
                                                                          worker.nonbasic_list,
-                                                                         leaf_vstatus,
+                                                                         worker.leaf_vstatus,
                                                                          leaf_edge_norms,
                                                                          &worker.work_context);
     lp_status                 = convert_lp_status_to_dual_status(second_status);
@@ -3835,10 +3836,9 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     // Solve LP relaxation
     worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
-    std::vector<variable_status_t>& leaf_vstatus = node_ptr->vstatus;
-    i_t node_iter                                = 0;
-    f_t lp_start_time                            = tic();
-    std::vector<f_t> leaf_edge_norms             = edge_norms_;
+    i_t node_iter                    = 0;
+    f_t lp_start_time                = tic();
+    std::vector<f_t> leaf_edge_norms = edge_norms_;
 
     dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
                                                                0,
@@ -3846,7 +3846,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
                                                                lp_start_time,
                                                                worker.leaf_problem,
                                                                lp_settings,
-                                                               leaf_vstatus,
+                                                               worker.leaf_vstatus,
                                                                worker.basis_factors,
                                                                worker.basic_list,
                                                                worker.nonbasic_list,
@@ -3863,7 +3863,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
                                                                            worker.basis_factors,
                                                                            worker.basic_list,
                                                                            worker.nonbasic_list,
-                                                                           leaf_vstatus,
+                                                                           worker.leaf_vstatus,
                                                                            leaf_edge_norms,
                                                                            &worker.work_context);
       lp_status                 = convert_lp_status_to_dual_status(second_status);
