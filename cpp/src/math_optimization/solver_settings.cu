@@ -146,7 +146,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PDLP_PRECISION, reinterpret_cast<int*>(&pdlp_settings.pdlp_precision), CUOPT_PDLP_DEFAULT_PRECISION, CUOPT_PDLP_MIXED_PRECISION, CUOPT_PDLP_DEFAULT_PRECISION},
-    {CUOPT_MIP_SCALING, &mip_settings.mip_scaling, CUOPT_MIP_SCALING_OFF, CUOPT_MIP_SCALING_NO_OBJECTIVE, CUOPT_MIP_SCALING_ON},
+    {CUOPT_MIP_SCALING, &mip_settings.mip_scaling, CUOPT_MIP_SCALING_OFF, CUOPT_MIP_SCALING_NO_OBJECTIVE, CUOPT_MIP_SCALING_NO_OBJECTIVE},
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE, &mip_settings.heuristic_params.population_size, 1, std::numeric_limits<i_t>::max(), 32, "max solutions in pool"},
     {CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS, &mip_settings.heuristic_params.num_cpufj_threads, 0, std::numeric_limits<i_t>::max(), 8, "parallel CPU FJ climbers"},

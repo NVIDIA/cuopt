@@ -706,7 +706,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
 
-    if (use_graph) { cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal); }
+    if (use_graph) {
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal));
+    }
     for (i_t i = 0; i < (use_graph ? iterations_per_graph : 1); ++i) {
       {
         // related varialbe array has to be dynamically computed each iteration
@@ -719,52 +721,52 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
           load_balancing_score_update(climber_stream, climber_idx);
         } else {
           if (is_binary_pb) {
-            cudaLaunchCooperativeKernel(
+            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
               (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
               grid_resetmoves_bin,
               blocks_resetmoves_bin,
               reset_moves_args,
               0,
-              climber_stream);
+              climber_stream));
           } else {
-            cudaLaunchCooperativeKernel(
+            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
               (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
               grid_resetmoves,
               blocks_resetmoves,
               reset_moves_args,
               0,
-              climber_stream);
+              climber_stream));
           }
         }
 #if FJ_DEBUG_LOAD_BALANCING
         if (use_load_balancing) {
-          cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
-                                      grid_resetmoves_bin,
-                                      blocks_resetmoves_bin,
-                                      reset_moves_args,
-                                      0,
-                                      climber_stream);
-          cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
-                                      512,
-                                      128,
-                                      kernel_args,
-                                      0,
-                                      climber_stream);
+          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
+                                                    grid_resetmoves_bin,
+                                                    blocks_resetmoves_bin,
+                                                    reset_moves_args,
+                                                    0,
+                                                    climber_stream));
+          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
+                                                    512,
+                                                    128,
+                                                    kernel_args,
+                                                    0,
+                                                    climber_stream));
         }
 #endif
 
-        cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
-                         grid_lift_move,
-                         blocks_lift_move,
-                         kernel_args,
-                         0,
-                         climber_stream);
-        cudaLaunchKernel((void*)update_breakthrough_moves_kernel<i_t, f_t>,
-                         grid_lift_move,
-                         blocks_lift_move,
-                         kernel_args,
-                         0,
-                         climber_stream);
+        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
+                                       grid_lift_move,
+                                       blocks_lift_move,
+                                       kernel_args,
+                                       0,
+                                       climber_stream));
+        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_breakthrough_moves_kernel<i_t, f_t>,
+                                       grid_lift_move,
+                                       blocks_lift_move,
+                                       kernel_args,
+                                       0,
+                                       climber_stream));
       }
 
       // compaction kernel
@@ -777,44 +779,49 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  pb_ptr->n_variables,
                                  climber_stream);
 
-      cudaLaunchKernel((void*)select_variable_kernel<i_t, f_t>,
-                       dim3(1),
-                       dim3(256),
-                       kernel_args,
-                       0,
-                       climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)select_variable_kernel<i_t, f_t>,
+                                     dim3(1),
+                                     dim3(256),
+                                     kernel_args,
+                                     0,
+                                     climber_stream));
 
-      cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
-                                  grid_update_weights,
-                                  blocks_update_weights,
-                                  kernel_args,
-                                  0,
-                                  climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
+                                                grid_update_weights,
+                                                blocks_update_weights,
+                                                kernel_args,
+                                                0,
+                                                climber_stream));
       raft::copy(data.break_condition.data(), data.temp_break_condition.data(), 1, climber_stream);
-      cudaLaunchKernel((void*)update_assignment_kernel<i_t, f_t>,
-                       grid_setval,
-                       blocks_setval,
-                       update_assignment_args,
-                       0,
-                       climber_stream);
-      cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
-                       1,
-                       blocks_update_changed_constraints,
-                       kernel_args,
-                       0,
-                       climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_assignment_kernel<i_t, f_t>,
+                                     grid_setval,
+                                     blocks_setval,
+                                     update_assignment_args,
+                                     0,
+                                     climber_stream));
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                     1,
+                                     blocks_update_changed_constraints,
+                                     kernel_args,
+                                     0,
+                                     climber_stream));
     }
 
     if (use_graph) {
-      cudaStreamEndCapture(climber_stream, &graph);
-      cudaGraphInstantiate(&graph_instance, graph);
+      RAFT_CUDA_TRY(cudaStreamEndCapture(climber_stream, &graph));
+      try {
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&graph_instance, graph));
+      } catch (...) {
+        RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+        throw;
+      }
       RAFT_CHECK_CUDA(climber_stream);
-      cudaGraphDestroy(graph);
+      RAFT_CUDA_TRY(cudaGraphDestroy(graph));
       graph_created = true;
     }
   }
 
-  if (use_graph) cudaGraphLaunch(graph_instance, climber_stream);
+  if (use_graph) RAFT_CUDA_TRY(cudaGraphLaunch(graph_instance, climber_stream));
 }
 
 template <typename i_t, typename f_t>

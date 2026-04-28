@@ -1192,7 +1192,7 @@ class Constraint:
     ConstraintName : str
         Name of the constraint.
     Sense : LE, GE or EQ
-        Row sense. LE for >=, GE for <= or EQ for == .
+        Row sense. LE for <=, GE for >= or EQ for == .
     RHS : float
         Constraint right-hand side value.
     Slack : float

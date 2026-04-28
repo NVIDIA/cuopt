@@ -53,11 +53,32 @@ For current release timelines and dates, refer to the [RAPIDS Maintainers Docs](
    or [help wanted](https://github.com/NVIDIA/cuopt/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
    labels.
 3. Comment on the issue stating that you are going to work on it.
-4. Create a fork of the cuopt repository and check out a branch with a name that
-   describes your planned work. For example, `fix-documentation`.
+4. Fork and set up your local repository:
+   ```bash
+   # Clone the main repo
+   git clone https://github.com/NVIDIA/cuopt.git
+   cd cuopt
+
+   # Add your fork as a remote
+   git remote add fork https://github.com/<your-username>/cuopt.git
+
+   # Create a branch from main
+   git checkout -b fix-documentation main
+   ```
 5. Write code to address the issue or implement the feature.
 6. Add unit tests. Please refer to `cpp/src/tests` for examples of unit tests on C and C++ using gtest and `python/cuopt/cuopt/tests` for examples of unit tests on Python using pytest.
-7. [Create your pull request](https://github.com/NVIDIA/cuopt/compare). To run continuous integration (CI) tests without requesting review, open a draft pull request.
+7. Install pre-commit hooks, commit, push to your fork, and create a pull request:
+   ```bash
+   # Install pre-commit hooks (once per clone)
+   pre-commit install
+
+   # Commit with DCO sign-off (hooks run automatically)
+   git commit -s -m "Your commit message"
+
+   # Push to your fork (never push directly to the main repo)
+   git push fork fix-documentation
+   ```
+   Then [create your pull request](https://github.com/NVIDIA/cuopt/compare) from your fork to the upstream `main` branch. To run continuous integration (CI) tests without requesting review, open a draft pull request.
 8. Check if CI is running, if not please request one of the NVIDIA cuOpt developers to trigger it. This might happen in case you have non-verified (non-sign-off) commits or don't have enough permissions to trigger CI.
 9. Verify that CI passes all [status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks).
    Fix if needed.
@@ -197,9 +218,8 @@ cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
-ctest --test-dir ${CUOPT_HOME}/cpp/build -E L1TEST  # libcuopt
+ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
-`L1TEST`s are excluded because they are expensive and not run as part of the typical development process.
 
 To run python tests, run
 
@@ -279,6 +299,16 @@ Please refer to the [dependencies.yaml](dependencies.yaml) file for details on h
 Add any new dependencies in the `dependencies.yaml` file. It takes care of conda, requirements (pip based dependencies) and pyproject.
 Please don't try to add dependencies directly to environment.yaml files under `conda/environments` directory and pyproject.toml files under `python` directories.
 
+## Third-Party Code
+
+When copying or adapting files from external projects into the repository:
+
+1. **Keep the original license/copyright header** in the copied file
+2. **Add an entry to the `THIRDPARTY` file** at the repo root with: the source project, its license type, the URL where the original code was found, and which files were copied or derived from it
+3. **Verify license compatibility** — the included code must be compatible with Apache-2.0
+
+Do not copy third-party code without proper attribution. **Always ask before including external code** — flag it in your PR description so reviewers can verify the license and attribution.
+
 ## Code Formatting
 
 ### Using pre-commit hooks
@@ -311,7 +341,7 @@ To run pre-commit checks on all files, execute:
 pre-commit run --all-files
 ```
 
-Optionally, you may set up the pre-commit hooks to run automatically when you make a git commit. This can be done by running:
+We recommend setting up the pre-commit hooks to run automatically when you make a git commit. This catches formatting and style issues before they reach CI:
 
 ```bash
 pre-commit install

@@ -7,4 +7,4 @@ ConfigureTest(QP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/no_constraints.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/two_variable_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/mps_writer_test.cpp
-)
+    LABELS numopt)

@@ -247,8 +247,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssSetStream(handle, stream), status, "cudaStreamCreate");
 
     mem_handler.ctx          = reinterpret_cast<void*>(handle_ptr_->get_workspace_resource());
-    mem_handler.device_alloc = cudss_device_alloc<rmm::mr::device_memory_resource>;
-    mem_handler.device_free  = cudss_device_dealloc<rmm::mr::device_memory_resource>;
+    mem_handler.device_alloc = cudss_device_alloc<void>;
+    mem_handler.device_free  = cudss_device_dealloc<void>;
 
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssSetDeviceMemHandler(handle, &mem_handler), status, "cudssSetDeviceMemHandler");
