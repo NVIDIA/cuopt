@@ -82,7 +82,7 @@ TEST(mip_solve, semi_continuous_regressions)
   };
 
   for (const auto& test_instance : valid_test_instances) {
-    auto problem = cuopt::test::inline_mps::parse_inline_mps(test_instance.name, test_instance.mps);
+    auto problem  = cuopt::test::inline_mps::parse_inline_mps(test_instance.mps);
     auto solution = solve_mip(&handle_, problem, settings);
 
     EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal)

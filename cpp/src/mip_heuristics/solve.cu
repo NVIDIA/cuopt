@@ -322,7 +322,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
     // Reformulate semi-continuous variables (x = 0 OR L <= x <= U) before Papilo presolve.
-    // Uses GPU bounds propagation to derive tight upper bounds for SC vars with infinite UB.
+    // Uses deterministic CPU bounds strengthening to derive tight upper bounds for SC vars with
+    // infinite UB.
     // Track n_orig so that auxiliary binary variables added by reformulation can be stripped
     // from the solution before returning it to the caller.
     const i_t n_orig_before_sc = op_problem.get_n_variables();

@@ -44,6 +44,13 @@ struct FcloseDeleter {
       fclose(fp) == 0, error_type_t::ValidationError, "Error closing MPS file!");
   }
 };
+
+std::vector<char> string_to_buffer(std::string_view input)
+{
+  std::vector<char> buf(input.begin(), input.end());
+  buf.push_back('\0');
+  return buf;
+}
 }  // end namespace
 
 #ifdef MPS_PARSER_WITH_BZIP2
@@ -819,6 +826,19 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
   // raft::common::nvtx::range fun_scope("mps parser");
 
   std::vector<char> buf = file_to_string(file);
+
+  parse_string(buf.data());
+
+  fill_problem(problem);
+}
+
+template <typename i_t, typename f_t>
+mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+                                     std::string_view input,
+                                     bool _fixed_mps_format)
+  : mps_file{"<mps string>"}, fixed_mps_format(_fixed_mps_format)
+{
+  std::vector<char> buf = string_to_buffer(input);
 
   parse_string(buf.data());
 

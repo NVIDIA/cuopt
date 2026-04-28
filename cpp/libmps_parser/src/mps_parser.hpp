@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -74,6 +75,18 @@ class mps_parser_t {
    */
   mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
                const std::string& file,
+               bool fixed_mps_format = true);
+
+  /**
+   * @brief Ctor. Parses the MPS text and generates the internal representation.
+   *
+   * @param[out] problem Problem representation that will be filled after parsing the MPS text
+   * @param[in] input MPS text to be parsed
+   * @param[in] fixed_mps_format Bool which describes whether the MPS file is in fixed format or
+   * not. Default is true.
+   */
+  mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+               std::string_view input,
                bool fixed_mps_format = true);
 
   /** path to the mps file being parsed */

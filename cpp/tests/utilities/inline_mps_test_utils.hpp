@@ -7,15 +7,9 @@
 
 #pragma once
 
-#include <utilities/common_utils.hpp>
-
 #include <mps_parser/parser.hpp>
 
-#include <cstdio>
-#include <filesystem>
-#include <fstream>
-#include <stdexcept>
-#include <string>
+#include <string_view>
 
 namespace cuopt::test::inline_mps {
 
@@ -107,26 +101,9 @@ BOUNDS
 ENDATA
 )";
 
-inline cuopt::mps_parser::mps_data_model_t<int, double> parse_inline_mps(
-  const std::string& name, const std::string& mps_text)
+inline cuopt::mps_parser::mps_data_model_t<int, double> parse_inline_mps(std::string_view mps_text)
 {
-  const std::filesystem::path path =
-    std::filesystem::path(cuopt::test::get_rapids_dataset_root_dir()) / "mip" /
-    ("inline_" + name + ".mps");
-  {
-    std::ofstream out(path);
-    if (!out.good()) { throw std::runtime_error("failed to open temporary MPS file for writing"); }
-    out << mps_text;
-  }
-
-  try {
-    auto problem = cuopt::mps_parser::parse_mps<int, double>(path.string(), false);
-    std::filesystem::remove(path);
-    return problem;
-  } catch (...) {
-    std::filesystem::remove(path);
-    throw;
-  }
+  return cuopt::mps_parser::parse_mps_from_string<int, double>(mps_text, false);
 }
 
 }  // namespace cuopt::test::inline_mps

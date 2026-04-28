@@ -440,7 +440,7 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
 
   for (const auto& c : cases) {
     SCOPED_TRACE(c.name);
-    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.name, c.mps);
+    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.mps);
     const auto& var_types = mps.get_variable_types();
     const auto& lower     = mps.get_variable_lower_bounds();
     const auto& upper     = mps.get_variable_upper_bounds();
@@ -456,8 +456,7 @@ TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
 
 TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
 {
-  auto mps              = cuopt::test::inline_mps::parse_inline_mps("sc_missing_lower",
-                                                       cuopt::test::inline_mps::sc_lb_zero_mps);
+  auto mps = cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_lb_zero_mps);
   const auto& var_types = mps.get_variable_types();
   const auto& lower     = mps.get_variable_lower_bounds();
   const auto& upper     = mps.get_variable_upper_bounds();
@@ -472,9 +471,9 @@ TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
 
 TEST(mps_bounds, semi_continuous_missing_upper_rejected)
 {
-  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(
-                 "sc_missing_upper", cuopt::test::inline_mps::sc_missing_upper_mps),
-               std::logic_error);
+  EXPECT_THROW(
+    cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_missing_upper_mps),
+    std::logic_error);
 }
 
 TEST(mps_ranges, fixed_ranges)
