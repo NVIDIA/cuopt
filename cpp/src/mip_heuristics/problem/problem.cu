@@ -1349,26 +1349,30 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::recompute_objective_integrality()
 {
-  // FIXME: we do not consider implied integers here
-  // because it incorrectly considers neos-827175 as having an integer optimal.
-  // need to figure out if Papilo is producing an incorrect flag.
-  objective_is_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
-                                         thrust::make_counting_iterator(0),
-                                         thrust::make_counting_iterator(n_variables),
-                                         [v = view()] __device__(i_t var_idx) -> bool {
-                                           if (v.objective_coefficients[var_idx] == 0) return true;
-                                           return v.is_integer(v.objective_coefficients[var_idx]) &&
-                                                  (v.variable_types[var_idx] == var_t::INTEGER);
-                                         });
+  using cuopt::linear_programming::detail::is_integer;
 
-  bool objvars_all_integral = thrust::all_of(handle_ptr->get_thrust_policy(),
-                                             thrust::make_counting_iterator(0),
-                                             thrust::make_counting_iterator(n_variables),
-                                             [v = view()] __device__(i_t var_idx) -> bool {
-                                               if (v.objective_coefficients[var_idx] == 0)
-                                                 return true;
-                                               return (v.variable_types[var_idx] == var_t::INTEGER);
-                                             });
+  objective_is_integral =
+    thrust::all_of(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(n_variables),
+                   [v = view()] __device__(i_t var_idx) -> bool {
+                     if (v.objective_coefficients[var_idx] == 0) return true;
+                     // Need a tight tolerance for integrality to weed out instances like
+                     // neos-827175 with very small objective coefficients
+                     return is_integer<f_t>(v.objective_coefficients[var_idx], 1e-9) &&
+                            ((v.variable_types[var_idx] == var_t::INTEGER) ||
+                             (v.var_flags[var_idx] & (i_t)VAR_IMPLIED_INTEGER));
+                   });
+
+  bool objvars_all_integral =
+    thrust::all_of(handle_ptr->get_thrust_policy(),
+                   thrust::make_counting_iterator(0),
+                   thrust::make_counting_iterator(n_variables),
+                   [v = view()] __device__(i_t var_idx) -> bool {
+                     if (v.objective_coefficients[var_idx] == 0) return true;
+                     return (v.variable_types[var_idx] == var_t::INTEGER) ||
+                            (v.var_flags[var_idx] & (i_t)VAR_IMPLIED_INTEGER);
+                   });
   if (objvars_all_integral && !objective_is_integral) {
     auto h_objective_coefficients =
       cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());

@@ -4,6 +4,32 @@ Routing Examples
 
 This section contains examples for the cuOpt routing Python API.
 
+Intra-factory Transport
+-----------------------
+
+A capacitated pickup-and-delivery problem with time windows (PDPTW) for a fleet
+of autonomous mobile robots (AMRs) moving parts between processing stations on a
+factory floor. The example uses :class:`cuopt.distance_engine.WaypointMatrix` to
+derive a cost matrix from a weighted waypoint graph, sets up pickup/delivery
+orders with demand and time windows, solves with :func:`cuopt.routing.Solve`,
+and expands the target-location route back to a waypoint-level route per robot.
+
+.. image:: images/waypoint_graph.png
+   :alt: Waypoint graph
+
+**Problem details:**
+
+- 4 target locations: 1 start location for AMRs and 3 processing stations
+- 6 transport orders (pickup/delivery pairs) with individual time windows
+- 2 AMRs, each with a carrying capacity of 2 parts
+- Factory hours: 0 to 100 time units
+
+:download:`intra_factory_example.py <examples/intra_factory_example.py>`
+
+.. literalinclude:: examples/intra_factory_example.py
+   :language: python
+   :linenos:
+
 TSP Batch Mode
 --------------
 

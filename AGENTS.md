@@ -58,5 +58,6 @@ Finish solving the problem first, then evaluate. Not every correction warrants a
 - [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/)
 
 ### Support
-- [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
-- [Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
+- [File a Bug](https://github.com/NVIDIA/cuopt/issues/new?template=bug_report.md)
+- [Ask a Question](https://github.com/NVIDIA/cuopt/issues/new?template=submit-question.md)
+- [All Issues](https://github.com/NVIDIA/cuopt/issues)

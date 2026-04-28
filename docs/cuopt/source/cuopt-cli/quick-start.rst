@@ -20,7 +20,7 @@ To see all available options and their descriptions:
 This will display the complete list of command-line arguments and their usage:
 
 .. literalinclude:: cuopt-cli-help.txt
-    :language: shell
+    :language: text
     :linenos:
 
 Please refer to :doc:`../lp-qp-milp-settings` for more details on default values and other options.
