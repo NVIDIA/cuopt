@@ -57,24 +57,15 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
   dual_simplex::convert_user_problem(
     user_problem, simplex_settings, lp_problem, new_slacks, dualize_info);
 
-  std::vector<char> row_sense(lp_problem.num_rows, 'E');
-  for (i_t i = 0; i < user_problem.num_rows; ++i) {
-    if (user_problem.row_sense[i] == 'G') {
-      row_sense[i] = 'L';
-    } else {
-      row_sense[i] = user_problem.row_sense[i];
-    }
-  }
-  for (i_t row : user_problem.range_rows) {
-    row_sense[row] = 'E';
-  }
-
   auto var_types = user_problem.var_types;
   var_types.resize(lp_problem.num_cols, dual_simplex::variable_type_t::CONTINUOUS);
 
   dual_simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
+  // convert_user_problem returns an equality-form LP. Empty row_sense makes
+  // bounds_strengthening_t use rhs as both lower and upper row bounds.
+  std::vector<char> row_sense;
   dual_simplex::bounds_strengthening_t<i_t, f_t> strengthening(
     lp_problem, Arow, row_sense, var_types);
   std::vector<bool> bounds_changed(lp_problem.num_cols, false);

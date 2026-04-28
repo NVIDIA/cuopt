@@ -51,6 +51,7 @@
 #include <cuda_profiler_api.h>
 
 #include <cmath>
+#include <sstream>
 
 namespace cuopt::linear_programming {
 
@@ -326,7 +327,8 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // infinite UB.
     // Track n_orig so that auxiliary binary variables added by reformulation can be stripped
     // from the solution before returning it to the caller.
-    const i_t n_orig_before_sc = op_problem.get_n_variables();
+    const i_t n_orig_before_sc         = op_problem.get_n_variables();
+    const auto original_variable_names = op_problem.get_variable_names();
     std::vector<uint8_t> sc_used_fallback_big_m;
     std::vector<i_t> semi_continuous_binary_to_original_indices;
     const bool has_semi_continuous = detail::reformulate_semi_continuous(
@@ -633,15 +635,32 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         cuopt::host_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
       const f_t active_tol          = settings.tolerances.integrality_tolerance;
       i_t num_active_fallback_big_m = 0;
+      std::string active_fallback_big_m_var_name;
       for (i_t i = 0; i < static_cast<i_t>(sc_used_fallback_big_m.size()); ++i) {
         if (!sc_used_fallback_big_m[i]) { continue; }
-        if (host_solution[i] >= settings.sc_big_m - active_tol) { ++num_active_fallback_big_m; }
+        if (host_solution[i] >= settings.sc_big_m - active_tol) {
+          ++num_active_fallback_big_m;
+          if (active_fallback_big_m_var_name.empty()) {
+            if (i < static_cast<i_t>(original_variable_names.size()) &&
+                !original_variable_names[i].empty()) {
+              active_fallback_big_m_var_name = original_variable_names[i];
+            } else {
+              active_fallback_big_m_var_name = "X" + std::to_string(i);
+            }
+          }
+        }
       }
       if (num_active_fallback_big_m > 0) {
+        std::ostringstream error_msg;
+        error_msg << "Semi-continuous variable " << active_fallback_big_m_var_name
+                  << " is at upper bound coming from big-M " << settings.sc_big_m
+                  << "; results may depend on artificial upper bound.";
+        if (num_active_fallback_big_m > 1) {
+          error_msg << " " << (num_active_fallback_big_m - 1)
+                    << " additional semi-continuous variable(s) are also at fallback big-M.";
+        }
         return mip_solution_t<i_t, f_t>{
-          cuopt::logic_error("Semi-continuous solution is active at fallback sc_big_m; result may "
-                             "depend on an artificial upper bound",
-                             cuopt::error_type_t::RuntimeError),
+          cuopt::logic_error(error_msg.str(), cuopt::error_type_t::RuntimeError),
           op_problem.get_handle_ptr()->get_stream()};
       }
     }

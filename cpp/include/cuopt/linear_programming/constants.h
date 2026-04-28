@@ -82,7 +82,6 @@
 #define CUOPT_RANDOM_SEED              "random_seed"
 #define CUOPT_PDLP_PRECISION           "pdlp_precision"
 #define CUOPT_MIP_SEMICONTINUOUS_BIG_M "sc_big_m"
-#define CUOPT_SC_BIG_M                 CUOPT_MIP_SEMICONTINUOUS_BIG_M
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
