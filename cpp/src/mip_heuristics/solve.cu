@@ -322,6 +322,13 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
     problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
 
+    CUOPT_LOG_INFO(
+      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
+      op_problem.get_n_constraints(),
+      op_problem.get_n_variables(),
+      op_problem.get_n_integers(),
+      op_problem.get_nnz());
+
     // Reformulate semi-continuous variables (x = 0 OR L <= x <= U) before Papilo presolve.
     // Uses deterministic CPU bounds strengthening to derive tight upper bounds for SC vars with
     // infinite UB.
@@ -344,12 +351,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         settings, n_orig_before_sc, semi_continuous_binary_to_original_indices);
     }
 
-    CUOPT_LOG_INFO(
-      "Solving a problem with %d constraints, %d variables (%d integers), and %d nonzeros",
-      op_problem.get_n_constraints(),
-      op_problem.get_n_variables(),
-      op_problem.get_n_integers(),
-      op_problem.get_nnz());
     op_problem.print_scaling_information();
 
     // Check for crossing bounds. Return infeasible if there are any
@@ -654,10 +655,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
         std::ostringstream error_msg;
         error_msg << "Semi-continuous variable " << active_fallback_big_m_var_name
                   << " is at upper bound coming from big-M " << settings.sc_big_m
-                  << "; results may depend on artificial upper bound.";
+                  << "; results may depend on artificial upper bound";
         if (num_active_fallback_big_m > 1) {
           error_msg << " " << (num_active_fallback_big_m - 1)
-                    << " additional semi-continuous variable(s) are also at fallback big-M.";
+                    << " additional semi-continuous variables are also at fallback big-M";
         }
         return mip_solution_t<i_t, f_t>{
           cuopt::logic_error(error_msg.str(), cuopt::error_type_t::RuntimeError),

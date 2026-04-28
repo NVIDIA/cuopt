@@ -99,7 +99,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
     if (var_types[i] != var_t::SEMI_CONTINUOUS) { continue; }
     if (var_lb[i] == f_t(0)) {
-      CUOPT_LOG_DEBUG("SC var %d has zero lower bound; treating it as continuous", i);
+      CUOPT_LOG_DEBUG("Semi-continuous variable %d has zero lower bound; treating it as continuous",
+                      i);
       var_types[i]          = var_t::CONTINUOUS;
       normalized_zero_lb_sc = true;
       continue;
@@ -107,7 +108,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     sc_indices.push_back(i);
     if (is_effectively_infinite_sc_upper_bound(var_ub[i])) {
       CUOPT_LOG_DEBUG(
-        "Semi-continuous var %d upper bound %.6g exceeds semi-continuous infinity "
+        "Semi-continuous variable %d upper bound %.6g exceeds semi-continuous infinity "
         "threshold %.6g; treating it as +inf",
         i,
         static_cast<double>(var_ub[i]),
@@ -128,7 +129,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   const f_t big_m        = settings.sc_big_m;
   if (used_fallback_big_m != nullptr) { used_fallback_big_m->assign(n_orig, uint8_t{0}); }
 
-  CUOPT_LOG_INFO("Reformulating %d semi-continuous variable(s) before presolve", n_sc);
+  CUOPT_LOG_INFO("Reformulating %d semi-continuous variables before presolve", n_sc);
 
   // 2. Build a relaxed copy where SC vars become continuous [0, original_ub].
   //    This lets deterministic CPU bounds strengthening derive tight upper bounds from the
@@ -207,7 +208,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     if (!needs_binary[s]) {
       // 0 already lies in [L, U], so the SC disjunction is just the interval itself.
       CUOPT_LOG_DEBUG(
-        "SC var %d interval [%.6g, %.6g] already contains 0; treating it as continuous",
+        "Semi-continuous variable %d interval [%.6g, %.6g] already contains 0; treating it as "
+        "continuous",
         idx,
         L,
         orig_u);
@@ -222,7 +224,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     if (orig_u >= f_t(0) || !std::isfinite(orig_u)) { U = tight_ub[idx]; }
     if (!std::isfinite(orig_u) && std::isfinite(U)) {
       CUOPT_LOG_DEBUG(
-        "Semi-continuous var %d upper bound was tightened from %.6g to %.6g by "
+        "Semi-continuous variable %d upper bound was tightened from %.6g to %.6g by "
         "CPU bounds strengthening",
         idx,
         static_cast<double>(orig_u),
@@ -234,14 +236,14 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
                    "Semi-continuous fallback sc_big_m must be finite and >= lower bound");
       U = big_m;
       CUOPT_LOG_DEBUG(
-        "Semi-continuous var %d has no finite upper bound after bounds "
+        "Semi-continuous variable %d has no finite upper bound after bounds "
         "strengthening; using fallback sc_big_m %.6g",
         idx,
         static_cast<double>(big_m));
       if (used_fallback_big_m != nullptr) { (*used_fallback_big_m)[idx] = uint8_t{1}; }
     }
 
-    CUOPT_LOG_DEBUG("SC var %d: L=%.6g, U=%.6g (after propagation)", idx, L, U);
+    CUOPT_LOG_DEBUG("Semi-continuous variable %d: L=%.6g, U=%.6g (after propagation)", idx, L, U);
 
     const i_t b_idx = n_orig + binary_count;
     ++binary_count;
@@ -283,7 +285,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   const i_t new_nnz           = static_cast<i_t>(A_vals.size());
   const i_t added_constraints = 2 * n_binary_needed;
 
-  CUOPT_LOG_INFO("SC reformulation added %d variable(s) and %d constraint(s)",
+  CUOPT_LOG_INFO("Semi-continuous reformulation added %d variables and %d constraints",
                  n_binary_needed,
                  added_constraints);
 
