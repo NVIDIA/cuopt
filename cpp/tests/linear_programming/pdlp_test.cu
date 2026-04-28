@@ -227,7 +227,8 @@ TEST(pdlp_class, batch_iteration_limit_updates_additional_termination_stats)
   settings.presolver = presolver_t::None;
 
   constexpr int batch_size = 2;
-  auto solution = solve_lp_batch_fixed<int, double>(&handle_, op_problem, settings, batch_size, {}, {}, {}, {}, true);
+  auto solution            = solve_lp_batch_fixed<int, double>(
+    &handle_, op_problem, settings, batch_size, {}, {}, {}, {}, true);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
 
   const auto& statuses = solution.get_terminations_status();
@@ -1497,6 +1498,113 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_different
                                  primal_0,
                                  solver_settings.tolerances.absolute_primal_tolerance,
                                  solver_settings.tolerances.relative_primal_tolerance);
+}
+
+TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_different_rhs_stable3)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path);
+
+  auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.pdlp_solver_mode        = pdlp_solver_mode_t::Stable3;
+  solver_settings.iteration_limit         = 1000;
+  solver_settings.all_primal_feasible     = true;
+  solver_settings.per_constraint_residual = true;
+  constexpr double kOptimalityTolerance   = 1e-2;
+  solver_settings.set_optimality_tolerance(kOptimalityTolerance);
+  solver_settings.presolver = presolver_t::None;
+
+  const auto& original_lb = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub = op_problem.get_constraint_upper_bounds();
+  const int n_constraints = op_problem.get_n_constraints();
+  const int n_variables   = op_problem.get_n_variables();
+
+  const std::vector<double> rhs_relaxations = {
+    1000.0, 0.0, 2500.0, 1.0, 500.0, 250.0, 100.0, 10.0, 10000.0, 5000.0, 50.0};
+  const int batch_size = static_cast<int>(rhs_relaxations.size());
+
+  std::vector<double> per_climber_lb;
+  std::vector<double> per_climber_ub;
+  per_climber_lb.reserve(static_cast<size_t>(batch_size) * n_constraints);
+  per_climber_ub.reserve(static_cast<size_t>(batch_size) * n_constraints);
+
+  std::vector<double> ref_objectives(batch_size);
+  std::vector<pdlp_termination_status_t> ref_statuses(batch_size);
+  std::vector<std::vector<double>> ref_primal_solutions(batch_size);
+  std::vector<int> ref_iteration_counts(batch_size);
+  std::vector<cuopt::mps_parser::mps_data_model_t<int, double>> ref_problems;
+  ref_problems.reserve(batch_size);
+
+  auto ref_solver_settings                  = solver_settings;
+  ref_solver_settings.all_primal_feasible   = false;
+  ref_solver_settings.first_primal_feasible = true;
+
+  for (int i = 0; i < batch_size; ++i) {
+    std::vector<double> climber_lb = original_lb;
+    std::vector<double> climber_ub = original_ub;
+    const double relaxation        = rhs_relaxations[i];
+    for (int c = 0; c < n_constraints; ++c) {
+      if (std::isfinite(climber_lb[c])) { climber_lb[c] -= relaxation; }
+      if (std::isfinite(climber_ub[c])) { climber_ub[c] += relaxation; }
+    }
+
+    auto ref_problem = op_problem;
+    ref_problem.set_constraint_lower_bounds(climber_lb.data(), n_constraints);
+    ref_problem.set_constraint_upper_bounds(climber_ub.data(), n_constraints);
+    ref_problems.push_back(ref_problem);
+
+    per_climber_lb.insert(per_climber_lb.end(), climber_lb.begin(), climber_lb.end());
+    per_climber_ub.insert(per_climber_ub.end(), climber_ub.begin(), climber_ub.end());
+
+    auto ref_solution = solve_lp(&handle_, ref_problems.back(), ref_solver_settings);
+    ref_statuses[i]   = ref_solution.get_termination_status(0);
+    ref_objectives[i] = ref_solution.get_additional_termination_information(0).primal_objective;
+    ref_primal_solutions[i] =
+      host_copy(ref_solution.get_primal_solution(), ref_solution.get_primal_solution().stream());
+    ref_iteration_counts[i] =
+      ref_solution.get_additional_termination_information(0).number_of_steps_taken;
+    EXPECT_EQ(ref_statuses[i], pdlp_termination_status_t::PrimalFeasible) << "climber " << i;
+  }
+
+  auto batch_sol = solve_lp_batch_fixed(&handle_,
+                                        op_problem,
+                                        solver_settings,
+                                        batch_size,
+                                        {},
+                                        per_climber_lb,
+                                        per_climber_ub,
+                                        {},
+                                        true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  ASSERT_EQ(static_cast<int>(batch_sol.get_terminations_status().size()), batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(batch_sol.get_termination_status(i), ref_statuses[i]) << "climber " << i;
+    EXPECT_NEAR(
+      batch_sol.get_additional_termination_information(i).primal_objective, ref_objectives[i], 1e-4)
+      << "climber " << i;
+    // Same iteration count
+    EXPECT_EQ(batch_sol.get_additional_termination_information(i).number_of_steps_taken,
+              ref_iteration_counts[i]);
+
+    auto primal_i =
+      extract_subvector(batch_sol.get_primal_solution(), i * n_variables, n_variables);
+    auto host_primal_i = host_copy(primal_i, primal_i.stream());
+    ASSERT_EQ(host_primal_i.size(), ref_primal_solutions[i].size()) << "climber " << i;
+
+    test_objective_sanity(ref_problems[i],
+                          primal_i,
+                          batch_sol.get_additional_termination_information(i).primal_objective,
+                          kOptimalityTolerance);
+    test_constraint_sanity_per_row(ref_problems[i],
+                                   primal_i,
+                                   solver_settings.tolerances.absolute_primal_tolerance,
+                                   solver_settings.tolerances.relative_primal_tolerance);
+  }
 }
 
 TEST(pdlp_class, batch_primal_feasible_non_batch_rejected)

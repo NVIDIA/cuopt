@@ -459,7 +459,7 @@ __global__ void fill_gpu_terms_stats_kernel(
 
   // Snapshot stats for climbers that just terminated
   if (force_all || pdlp_termination_strategy_t<i_t, f_t>::is_done(
-        (pdlp_termination_status_t)termination_status[idx], accept_primal_feasible)) {
+                     (pdlp_termination_status_t)termination_status[idx], accept_primal_feasible)) {
     const i_t original_index = original_indices[idx];
     additional_termination_information.number_of_steps_taken[original_index] =
       number_of_steps_taken;
