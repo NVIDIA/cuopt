@@ -99,14 +99,14 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   for (i_t i = 0; i < static_cast<i_t>(var_types.size()); ++i) {
     if (var_types[i] != var_t::SEMI_CONTINUOUS) { continue; }
     if (var_lb[i] == f_t(0)) {
-      CUOPT_LOG_WARN("SC var %d has zero lower bound; treating it as continuous", i);
+      CUOPT_LOG_DEBUG("SC var %d has zero lower bound; treating it as continuous", i);
       var_types[i]          = var_t::CONTINUOUS;
       normalized_zero_lb_sc = true;
       continue;
     }
     sc_indices.push_back(i);
     if (is_effectively_infinite_sc_upper_bound(var_ub[i])) {
-      CUOPT_LOG_WARN(
+      CUOPT_LOG_DEBUG(
         "Semi-continuous var %d upper bound %.6g exceeds semi-continuous infinity "
         "threshold %.6g; treating it as +inf",
         i,
