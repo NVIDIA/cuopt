@@ -23,20 +23,10 @@ from cuopt.linear_programming.problem import (
     QuadraticExpression,
 )
 from cuopt.linear_programming.solver.solver_parameters import (
-    CUOPT_AUGMENTED,
-    CUOPT_BARRIER_DUAL_INITIAL_POINT,
-    CUOPT_CUDSS_DETERMINISTIC,
-    CUOPT_DUALIZE,
-    CUOPT_ELIMINATE_DENSE_COLUMNS,
-    CUOPT_FOLDING,
     CUOPT_INFEASIBILITY_DETECTION,
-    CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING,
-    CUOPT_MIP_CUT_PASSES,
     CUOPT_METHOD,
-    CUOPT_ORDERING,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRESOLVE,
-    CUOPT_TIME_LIMIT,
 )
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,

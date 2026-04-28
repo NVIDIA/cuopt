@@ -20,12 +20,10 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
-    CUOPT_DUAL_POSTSOLVE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
-    CUOPT_PDLP_PRECISION,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
@@ -206,13 +204,16 @@ def _cuopt_commented_dump_to_loadable(src_path, dst_path, param_names):
     intentionally commented, so tests strip the leading ``#`` for assignment lines.
     """
     names_by_len = sorted(param_names, key=len, reverse=True)
-    with open(src_path, encoding="utf-8") as src, open(dst_path, "w", encoding="utf-8") as dst:
+    with (
+        open(src_path, encoding="utf-8") as src,
+        open(dst_path, "w", encoding="utf-8") as dst,
+    ):
         for line in src:
             stripped = line.strip()
             for name in names_by_len:
                 prefix = f"# {name} = "
                 if stripped.startswith(prefix):
-                    dst.write(f"{name} = {stripped[len(prefix):]}\n")
+                    dst.write(f"{name} = {stripped[len(prefix) :]}\n")
                     break
 
 
@@ -341,7 +342,9 @@ def test_solver_settings(tmp_path):
         new_val = _non_default_solver_param_value(name, current)
         settings.set_parameter(name, new_val)
 
-    expected_by_name = {name: settings.get_parameter(name) for name in solver_params}
+    expected_by_name = {
+        name: settings.get_parameter(name) for name in solver_params
+    }
 
     dump_path = tmp_path / "solver_settings_dump.config"
     load_path = tmp_path / "solver_settings_load.config"
@@ -360,7 +363,7 @@ def test_solver_settings(tmp_path):
             reloaded.get_parameter(name),
         )
 
-    settings.set_c_solver_settings()
+    reloaded.set_c_solver_settings()
     data_model_obj = data_model.DataModel()
     A_values = np.array([1.0, 1.0])
     A_indices = np.array([0, 0])
@@ -370,8 +373,10 @@ def test_solver_settings(tmp_path):
     data_model_obj.set_objective_coefficients(np.array([1.0]))
     data_model_obj.set_row_types(np.array(["L", "L"]))
 
-    solution = solver.Solve(data_model_obj, settings)
+    solution = solver.Solve(data_model_obj, reloaded)
     assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_primal_objective() == pytest.approx(0.0)
+    assert solution.get_primal_solution()[0] == pytest.approx(0.0)
 
 
 def test_check_data_model_validity():
@@ -607,7 +612,9 @@ def test_warm_start():
     # Should raise an exception for batch solve
     # Should raise an exception
     data_model_list = [data_model_obj, data_model_obj]
-    with pytest.raises(Exception, match="Cannot use warmstart data with Batch Solve"):
+    with pytest.raises(
+        Exception, match="Cannot use warmstart data with Batch Solve"
+    ):
         solver.BatchSolve(data_model_list, settings)
 
 

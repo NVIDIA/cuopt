@@ -1,11 +1,14 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
-
 
 # cython: profile=False
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+
+"""Cython extension: LP/MIP ``SolverSettings`` backed by ``solver_settings_t``."""
+
+from enum import IntEnum, auto
 
 from libcpp.memory cimport unique_ptr
 from libc.stdint cimport uintptr_t
@@ -14,6 +17,7 @@ from libcpp.vector cimport vector
 
 
 def get_solver_setting(name):
+    """Return the default string form of solver parameter *name* from a fresh C++ settings object."""
     cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
 
     unique_solver_settings.reset(new solver_settings_t[int, double]())
@@ -27,6 +31,7 @@ def get_solver_setting(name):
 
 
 cpdef get_solver_parameter_names():
+    """Return all registered solver parameter names (same order as the C++ layer)."""
     cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
     unique_solver_settings.reset(new solver_settings_t[int, double]())
     cdef solver_settings_t[int, double]* c_solver_settings = (
@@ -44,8 +49,6 @@ cpdef get_solver_parameter_names():
 
 solver_params = get_solver_parameter_names()
 for param in solver_params: globals()["CUOPT_"+param.upper()] = param
-
-from enum import IntEnum, auto
 
 
 class SolverMethod(IntEnum):
@@ -342,6 +345,15 @@ cdef class SolverSettings:
         return self.pdlp_warm_start_data
 
     def set_c_solver_settings(self):
+        """Push Python-side state into the C++ ``solver_settings_t`` object.
+
+        ``Solve`` / ``BatchSolve`` reset ``c_solver_settings`` to a new C++ instance
+        and call this method immediately after, so ``settings_dict``,
+        ``pdlp_warm_start_data``, and ``mip_callbacks`` are the source of truth for
+        each solve. Any direct mutation of the C++ object alone would be discarded
+        on the next solve. :meth:`load_parameters_from_file` mirrors loaded values
+        back into ``settings_dict`` so this contract stays consistent.
+        """
         # All cdef declarations must precede other statements in this function.
         cdef solver_settings_t[int, double]* c_solver_settings
         cdef uintptr_t c_current_primal_solution
