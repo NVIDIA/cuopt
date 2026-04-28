@@ -2391,20 +2391,13 @@ void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_ind
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
 
-template <typename f_t>
-void poison_and_free(rmm::device_uvector<f_t>& uvec, rmm::cuda_stream_view stream) {
-  if (uvec.size() > 0) {
-    thrust::fill(thrust::cuda::par_nosync.on(stream), uvec.begin(), uvec.end(), 5);
-  }
-  uvec.resize(0, stream);
-}
-
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::pdlp_lighten(){
+void problem_t<i_t, f_t>::pdlp_lighten()
+{
   variable_types.resize(0, handle_ptr->get_stream());
-  poison_and_free<i_t>(related_variables_offsets, handle_ptr->get_stream());
-  poison_and_free<i_t>(integer_fixed_variable_map, handle_ptr->get_stream());
-  poison_and_free<f_t>(combined_bounds, handle_ptr->get_stream());
+  related_variables_offsets.resize(0, handle_ptr->get_stream());
+  integer_fixed_variable_map.resize(0, handle_ptr->get_stream());
+  combined_bounds.resize(0, handle_ptr->get_stream());
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

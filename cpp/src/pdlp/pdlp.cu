@@ -121,8 +121,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     is_cupdlpx_(is_cupdlpx_restart<i_t, f_t>(settings.hyper_params)),
     op_problem_scaled_(
       op_problem, false),  // False to call the PDLP custom version of the problem copy constructor
-    unscaled_primal_avg_solution_{is_cupdlpx_ ? 0 : static_cast<size_t>(op_problem.n_variables), stream_view_},
-    unscaled_dual_avg_solution_{is_cupdlpx_ ? 0 : static_cast<size_t>(op_problem.n_constraints), stream_view_},
+    unscaled_primal_avg_solution_{is_cupdlpx_ ? 0 : static_cast<size_t>(op_problem.n_variables),
+                                  stream_view_},
+    unscaled_dual_avg_solution_{is_cupdlpx_ ? 0 : static_cast<size_t>(op_problem.n_constraints),
+                                stream_view_},
     primal_size_h_(op_problem.n_variables),
     dual_size_h_(op_problem.n_constraints),
     primal_step_size_{climber_strategies_.size(), stream_view_},
@@ -2158,14 +2160,6 @@ void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_to_row(
              stream_view_);
 }
 
-template <typename f_t>
-void poison_and_free(rmm::device_uvector<f_t>& uvec, rmm::cuda_stream_view stream) {
-  if (uvec.size() > 0) {
-    thrust::fill(thrust::cuda::par_nosync.on(stream), uvec.begin(), uvec.end(), 5);
-  }
-  uvec.resize(0, stream);
-}
-
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::transpose_primal_dual_back_to_col(
   rmm::device_uvector<f_t>& primal_to_transpose,
@@ -2274,12 +2268,12 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets, indices),
   // then free the duplicated structural vectors from the scaled copy to save device memory.
   pdhg_solver_.get_cusparse_view().redirect_rows_and_cols(*problem_ptr);
-  poison_and_free<i_t>(op_problem_scaled_.variables, stream_view_);
-  poison_and_free<i_t>(op_problem_scaled_.offsets, stream_view_);
-  poison_and_free<i_t>(op_problem_scaled_.reverse_constraints, stream_view_);
-  poison_and_free<i_t>(op_problem_scaled_.reverse_offsets, stream_view_);
-  
-  // Remove unused device vectors
+  op_problem_scaled_.variables.resize(0, stream_view_);
+  op_problem_scaled_.offsets.resize(0, stream_view_);
+  op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
+  op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
+
+  // Remove unused device vectors in PDLP
   op_problem_scaled_.pdlp_lighten();
   problem_ptr->pdlp_lighten();
 

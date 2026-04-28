@@ -317,7 +317,6 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
     set_Fast1(settings.hyper_params);
   else if (settings.pdlp_solver_mode == pdlp_solver_mode_t::Stable3) {
     set_Stable3(settings.hyper_params);
-    settings.detect_infeasibility = false;
   }
 }
 
@@ -1680,7 +1679,6 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   return op_problem;
 }
 
-//HERE
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   raft::handle_t const* handle_ptr,

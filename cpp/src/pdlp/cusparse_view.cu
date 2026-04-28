@@ -1083,13 +1083,12 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
 }
 
 template <typename i_t, typename f_t>
-void cusparse_view_t<i_t, f_t>::redirect_rows_and_cols(
-  const problem_t<i_t, f_t>& original_problem)
+void cusparse_view_t<i_t, f_t>::redirect_rows_and_cols(const problem_t<i_t, f_t>& original_problem)
 {
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
-                                            const_cast<i_t*>(original_problem.offsets.data()),
-                                            const_cast<i_t*>(original_problem.variables.data()),
-                                            const_cast<f_t*>(A_.data())));
+                                           const_cast<i_t*>(original_problem.offsets.data()),
+                                           const_cast<i_t*>(original_problem.variables.data()),
+                                           const_cast<f_t*>(A_.data())));
 
   RAFT_CUSPARSE_TRY(
     cusparseCsrSetPointers(A_T,
@@ -1099,11 +1098,10 @@ void cusparse_view_t<i_t, f_t>::redirect_rows_and_cols(
 
   if constexpr (std::is_same_v<f_t, double>) {
     if (mixed_precision_enabled_) {
-      RAFT_CUSPARSE_TRY(
-        cusparseCsrSetPointers(A_mixed_,
-                               const_cast<i_t*>(original_problem.offsets.data()),
-                               const_cast<i_t*>(original_problem.variables.data()),
-                               A_float_.data()));
+      RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A_mixed_,
+                                               const_cast<i_t*>(original_problem.offsets.data()),
+                                               const_cast<i_t*>(original_problem.variables.data()),
+                                               A_float_.data()));
 
       RAFT_CUSPARSE_TRY(
         cusparseCsrSetPointers(A_T_mixed_,

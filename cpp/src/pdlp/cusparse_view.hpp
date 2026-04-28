@@ -209,7 +209,8 @@ class cusparse_view_t {
   // Update FP32 matrix copies after scaling (must be called after scale_problem())
   void update_mixed_precision_matrices();
 
-  // Redirects the vectors of rows and columns from op_problem_scaled_ to the original problem so that they can be freed
+  // Redirects the vectors of rows and columns from op_problem_scaled_ to the original problem so
+  // that they can be freed
   void redirect_rows_and_cols(const problem_t<i_t, f_t>& original_problem);
 };
 
