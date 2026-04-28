@@ -449,7 +449,8 @@ __global__ void fill_gpu_terms_stats_kernel(
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view,
   i_t number_of_steps_taken,
   bool accept_primal_feasible,
-  bool per_constraint_residual)
+  bool per_constraint_residual,
+  bool force_all)
 {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= termination_status.size()) { return; }
@@ -457,7 +458,7 @@ __global__ void fill_gpu_terms_stats_kernel(
   // TODO later batch mode: add infeasibility information here
 
   // Snapshot stats for climbers that just terminated
-  if (pdlp_termination_strategy_t<i_t, f_t>::is_done(
+  if (force_all || pdlp_termination_strategy_t<i_t, f_t>::is_done(
         (pdlp_termination_status_t)termination_status[idx], accept_primal_feasible)) {
     const i_t original_index = original_indices[idx];
     additional_termination_information.number_of_steps_taken[original_index] =
@@ -492,7 +493,8 @@ __global__ void fill_gpu_terms_stats_kernel(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_iterations)
+void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_iterations,
+                                                                 bool force_all)
 {
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();
@@ -513,7 +515,8 @@ void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_i
     convergence_information_view,
     number_of_iterations,
     accept_primal_feasible,
-    settings_.per_constraint_residual);
+    settings_.per_constraint_residual,
+    force_all);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }

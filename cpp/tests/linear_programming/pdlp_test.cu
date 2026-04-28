@@ -212,6 +212,38 @@ TEST(pdlp_class, run_iteration_limit)
                               thrust::placeholders::_1 == 0.0));
 }
 
+TEST(pdlp_class, batch_iteration_limit_updates_additional_termination_stats)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto settings            = pdlp_solver_settings_t<int, double>{};
+  settings.iteration_limit = 10;
+  settings.set_optimality_tolerance(0);
+  settings.method    = method_t::PDLP;
+  settings.presolver = presolver_t::None;
+
+  constexpr int batch_size = 2;
+  auto solution = solve_lp_batch_fixed<int, double>(&handle_, op_problem, settings, batch_size, {}, {}, {}, {}, true);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+
+  const auto& statuses = solution.get_terminations_status();
+  ASSERT_EQ(static_cast<int>(statuses.size()), batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(statuses[i], pdlp_termination_status_t::IterationLimit) << "climber " << i;
+
+    const auto info = solution.get_additional_termination_information(i);
+    EXPECT_EQ(info.number_of_steps_taken, settings.iteration_limit) << "climber " << i;
+    EXPECT_TRUE(std::isfinite(info.primal_objective)) << "climber " << i;
+    EXPECT_TRUE(std::isfinite(info.l2_primal_residual)) << "climber " << i;
+    EXPECT_TRUE(std::isfinite(info.l2_dual_residual)) << "climber " << i;
+    EXPECT_EQ(info.solved_by, method_t::PDLP) << "climber " << i;
+  }
+}
+
 TEST(pdlp_class, run_time_limit)
 {
   const raft::handle_t handle_{};
