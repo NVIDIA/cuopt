@@ -411,14 +411,14 @@ bool pdlp_termination_strategy_t<i_t, f_t>::all_done(bool accept_primal_feasible
 }
 
 template <typename i_t, typename f_t>
-bool pdlp_termination_strategy_t<i_t, f_t>::any_done(bool accept_primal_feasible) const
+bool pdlp_termination_strategy_t<i_t, f_t>::any_primal_feasible_or_optimal() const
 {
-  return std::any_of(termination_status_.cbegin(),
-                     termination_status_.cend(),
-                     [accept_primal_feasible](i_t termination_status) {
-                       return is_done((pdlp_termination_status_t)termination_status,
-                                      accept_primal_feasible);
-                     });
+  return std::any_of(
+    termination_status_.cbegin(), termination_status_.cend(), [](i_t termination_status) {
+      const auto status = static_cast<pdlp_termination_status_t>(termination_status);
+      return status == pdlp_termination_status_t::Optimal ||
+             status == pdlp_termination_status_t::PrimalFeasible;
+    });
 }
 
 template <typename i_t, typename f_t>

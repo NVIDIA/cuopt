@@ -182,7 +182,7 @@ class pdlp_termination_strategy_t {
   std::vector<pdlp_termination_status_t> get_terminations_status();
   bool all_optimal_status() const;
   bool all_done(bool accept_primal_feasible = false) const;
-  bool any_done(bool accept_primal_feasible = false) const;
+  bool any_primal_feasible_or_optimal() const;
   static __host__ __device__ bool is_done(pdlp_termination_status_t term,
                                           bool accept_primal_feasible = false);
   bool has_optimal_status() const;

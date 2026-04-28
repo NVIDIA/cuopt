@@ -2311,6 +2311,134 @@ TEST(pdlp_class, simple_batch_everything_different)
   }
 }
 
+TEST(pdlp_class, run_batch_pdlp_fixed_rejects_partial_per_climber_expansion)
+{
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  constexpr int batch_size = 3;
+  const auto n_vars        = static_cast<size_t>(op_problem.get_n_variables());
+  const auto n_cons        = static_cast<size_t>(op_problem.get_n_constraints());
+  const auto stream        = handle_.get_stream();
+
+  auto make_settings = []() {
+    pdlp_solver_settings_t<int, double> s{};
+    s.method                              = cuopt::linear_programming::method_t::PDLP;
+    s.presolver                           = presolver_t::None;
+    s.fixed_batch_size                    = batch_size;
+    s.generate_batch_primal_dual_solution = true;
+    return s;
+  };
+
+  auto expect_validation_error = [](auto&& fn) {
+    try {
+      fn();
+      FAIL() << "expected cuopt::logic_error with ValidationError";
+    } catch (const cuopt::logic_error& e) {
+      EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    }
+  };
+
+  // Case 1: objective_coefficients has an in-between size (batch_size * n_vars - 1).
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    std::vector<double> bad_obj(batch_size * n_vars - 1, 0.0);
+    assign_device_uvector_from_host(gpu_op.get_objective_coefficients(), bad_obj, stream);
+    auto settings = make_settings();
+    expect_validation_error([&]() { cuopt::linear_programming::run_batch_pdlp(gpu_op, settings); });
+  }
+
+  // Case 2: constraint_lower_bounds has an in-between size (batch_size * n_cons - 1).
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    std::vector<double> bad_clb(batch_size * n_cons - 1, 0.0);
+    assign_device_uvector_from_host(gpu_op.get_constraint_lower_bounds(), bad_clb, stream);
+    auto settings = make_settings();
+    expect_validation_error([&]() { cuopt::linear_programming::run_batch_pdlp(gpu_op, settings); });
+  }
+
+  // Case 3: constraint_upper_bounds has an in-between size (batch_size * n_cons - 1).
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    std::vector<double> bad_cub(batch_size * n_cons - 1, 0.0);
+    assign_device_uvector_from_host(gpu_op.get_constraint_upper_bounds(), bad_cub, stream);
+    auto settings = make_settings();
+    expect_validation_error([&]() { cuopt::linear_programming::run_batch_pdlp(gpu_op, settings); });
+  }
+
+  // Case 4: lower bounds expanded per-climber but upper bounds left shared (or vice versa).
+  // pdhg.cu's swap path keys off the lower-bound size and assumes the upper follows.
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    std::vector<double> per_climber_clb(batch_size * n_cons, 0.0);
+    assign_device_uvector_from_host(gpu_op.get_constraint_lower_bounds(), per_climber_clb, stream);
+    auto settings = make_settings();
+    expect_validation_error([&]() { cuopt::linear_programming::run_batch_pdlp(gpu_op, settings); });
+  }
+
+  // Case 5: batch_objective_offsets has an unexpected size (not 0 and not fixed_batch_size).
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+    std::vector<double> bad_offsets(batch_size + 1, 0.0);
+    gpu_op.set_batch_objective_offsets(bad_offsets);
+    auto settings = make_settings();
+    expect_validation_error([&]() { cuopt::linear_programming::run_batch_pdlp(gpu_op, settings); });
+  }
+}
+
+TEST(pdlp_class, run_batch_pdlp_rejects_save_best_primal_so_far)
+{
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  // Splitting path: trigger batch mode via a non-empty new_bounds list (size > 1).
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+
+    pdlp_solver_settings_t<int, double> settings{};
+    settings.method                              = cuopt::linear_programming::method_t::PDLP;
+    settings.presolver                           = presolver_t::None;
+    settings.generate_batch_primal_dual_solution = true;
+    settings.save_best_primal_so_far             = true;
+    const int var_id                             = 0;
+    settings.new_bounds.push_back({var_id,
+                                   op_problem.get_variable_lower_bounds()[var_id] + 1.0,
+                                   op_problem.get_variable_upper_bounds()[var_id]});
+    settings.new_bounds.push_back({var_id,
+                                   op_problem.get_variable_lower_bounds()[var_id] + 2.0,
+                                   op_problem.get_variable_upper_bounds()[var_id]});
+
+    auto sol = cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
+    EXPECT_EQ(sol.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+  }
+
+  // Fixed-batch path: trigger batch mode via fixed_batch_size with shared (size == n) buffers.
+  {
+    auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
+      &handle_, op_problem);
+
+    pdlp_solver_settings_t<int, double> settings{};
+    settings.method                              = cuopt::linear_programming::method_t::PDLP;
+    settings.presolver                           = presolver_t::None;
+    settings.fixed_batch_size                    = 2;
+    settings.generate_batch_primal_dual_solution = true;
+    settings.save_best_primal_so_far             = true;
+
+    auto sol = cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
+    EXPECT_EQ(sol.get_error_status().get_error_type(), cuopt::error_type_t::ValidationError);
+  }
+}
+
 TEST(pdlp_class, DISABLED_cupdlpx_infeasible_detection_afiro_new_bounds)
 {
   const raft::handle_t handle_{};

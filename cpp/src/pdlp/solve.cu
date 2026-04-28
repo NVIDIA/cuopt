@@ -998,6 +998,60 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_fixed(
                 error_type_t::ValidationError,
                 "run_batch_pdlp_fixed requires fixed_batch_size > 0");
 
+  const size_t n_vars        = static_cast<size_t>(problem.get_n_variables());
+  const size_t n_constraints = static_cast<size_t>(problem.get_n_constraints());
+  const size_t bs            = static_cast<size_t>(settings.fixed_batch_size);
+
+  const size_t obj_size = problem.get_objective_coefficients().size();
+  const size_t clb_size = problem.get_constraint_lower_bounds().size();
+  const size_t cub_size = problem.get_constraint_upper_bounds().size();
+  const size_t off_size = problem.get_batch_objective_offsets().size();
+
+  cuopt_expects(
+    obj_size == n_vars || obj_size == bs * n_vars,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: objective_coefficients size (%zu) must equal n_variables "
+    "(%zu, shared across climbers) or fixed_batch_size * n_variables (%zu, per-climber).",
+    obj_size,
+    n_vars,
+    bs * n_vars);
+
+  cuopt_expects(
+    clb_size == n_constraints || clb_size == bs * n_constraints,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: constraint_lower_bounds size (%zu) must equal n_constraints "
+    "(%zu, shared across climbers) or fixed_batch_size * n_constraints (%zu, per-climber).",
+    clb_size,
+    n_constraints,
+    bs * n_constraints);
+
+  cuopt_expects(
+    cub_size == n_constraints || cub_size == bs * n_constraints,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: constraint_upper_bounds size (%zu) must equal n_constraints "
+    "(%zu, shared across climbers) or fixed_batch_size * n_constraints (%zu, per-climber).",
+    cub_size,
+    n_constraints,
+    bs * n_constraints);
+
+  // The lower/upper sweep in pdhg.cu (`if (constraint_lower_bounds.size() > dual_size_h_)`) keys
+  // off the lower-bound array only and assumes the upper-bound array follows. Reject any layout
+  // where one is shared and the other is per-climber.
+  cuopt_expects(clb_size == cub_size,
+                error_type_t::ValidationError,
+                "run_batch_pdlp fixed path: constraint_lower_bounds (%zu) and "
+                "constraint_upper_bounds (%zu) must have the same size (both shared or both "
+                "per-climber).",
+                clb_size,
+                cub_size);
+
+  cuopt_expects(off_size == 0 || off_size == bs,
+                error_type_t::ValidationError,
+                "run_batch_pdlp fixed path: batch_objective_offsets size (%zu) must be 0 (no "
+                "per-climber offsets) or fixed_batch_size (%zu).",
+                off_size,
+                bs);
+
   pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
   apply_batch_settings_overrides(settings, batch_settings);
 
@@ -1150,7 +1204,12 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
                         batch_settings,
                         /*problem_checking=*/false,
                         /*use_pdlp_solver_mode=*/true,
-                        /*is_batch_mode=*/false);
+                        /*is_batch_mode=*/true);
+
+    // solve_lp swallows cuopt::logic_error and surfaces it via error_status on the returned
+    // solution. If we kept aggregating, the final batched solution we build below would be
+    // constructed without forwarding that error_status, silently dropping the error
+    if (sol.get_error_status().get_error_type() != error_type_t::Success) { return sol; }
 
     if (collect_solutions) {
       raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),

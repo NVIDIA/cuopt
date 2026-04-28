@@ -237,6 +237,11 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   cuopt_expects(batch_mode_ || !settings_.all_primal_feasible,
                 error_type_t::ValidationError,
                 "all_primal_feasible only applies in batch mode");
+  cuopt_expects(!(settings_.save_best_primal_so_far && batch_mode_),
+                error_type_t::ValidationError,
+                "save_best_primal_so_far is not supported in batch mode. Disable batch mode "
+                "(no fixed_batch_size and no new_bounds) or unset save_best_primal_so_far.");
+
 
   // Set step_size initial scaling
   thrust::fill(handle_ptr_->get_thrust_policy(),
@@ -872,11 +877,11 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
     }
   }
 
-  // first_primal_feasible: stop the whole batch as soon as any climber has reached a terminal
-  // status (Optimal, PrimalFeasible, Infeasible, ConcurrentLimit). Snapshot every climber's
-  // current iterate so that even non-PF climbers return their latest state.
+  // first_primal_feasible: stop the whole batch as soon as any climber becomes primal feasible
+  // (Optimal or PrimalFeasible). Snapshot every climber's current iterate so that even non-PF
+  // climbers return their latest state
   if (settings_.first_primal_feasible &&
-      current_termination_strategy_.any_done(/*accept_primal_feasible=*/true)) {
+      current_termination_strategy_.any_primal_feasible_or_optimal()) {
     raft::common::nvtx::range fpf_scope("first_primal_feasible_batch_snapshot");
     for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
       snapshot_climber_into_return(i);
