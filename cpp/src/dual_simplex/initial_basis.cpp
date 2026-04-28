@@ -81,7 +81,7 @@ std::vector<variable_status_t> decompress_vstatus(const std::vector<uint8_t>& pa
 
   std::vector<variable_status_t> vstatus;
   vstatus.resize(vstatus_size);
-  assert(vstatus_size == n + has_tail);
+  assert(packed_vstatus.size() == n + has_tail);
 
   for (size_t i = 0; i < n; ++i) {
     size_t j       = i * 4;
