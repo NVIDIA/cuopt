@@ -186,7 +186,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
   // Register with producer_sync for B&B synchronization
   producer_sync_t& producer_sync      = bb.get_producer_sync();
   deterministic_cpu_fj->producer_sync = &producer_sync;
-  producer_sync.register_producer(&deterministic_cpu_fj->work_units_elapsed);
+  // producer_sync.register_producer(&deterministic_cpu_fj->work_units_elapsed);
 
   // Set up callback to send solutions to B&B with work unit timestamps
   deterministic_cpu_fj->improvement_callback =
@@ -206,10 +206,10 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_deterministic()
 {
   if (deterministic_cpu_fj) {
-    if (deterministic_cpu_fj->producer_sync) {
-      deterministic_cpu_fj->producer_sync->deregister_producer(
-        &deterministic_cpu_fj->work_units_elapsed);
-    }
+    // if (deterministic_cpu_fj->producer_sync) {
+    //   deterministic_cpu_fj->producer_sync->deregister_producer(
+    //     &deterministic_cpu_fj->work_units_elapsed);
+    // }
 
     deterministic_cpu_fj->halted = true;
 #pragma omp taskwait depend( \
