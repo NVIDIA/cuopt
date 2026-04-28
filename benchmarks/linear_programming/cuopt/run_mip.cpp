@@ -23,8 +23,6 @@
 #include <rmm/mr/pool_memory_resource.hpp>
 #include <rmm/mr/tracking_resource_adaptor.hpp>
 
-#include <rmm/mr/owning_wrapper.hpp>
-
 #include <fcntl.h>
 #include <omp.h>
 #include <sys/file.h>
@@ -85,7 +83,7 @@ void write_to_output_file(const std::string& out_dir,
   }
 }
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
 void read_single_solution_from_path(const std::string& path,
                                     const std::vector<std::string>& var_names,
@@ -274,7 +272,7 @@ void run_single_file_mp(std::string file_path,
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
@@ -537,14 +535,14 @@ int main(int argc, char* argv[])
     auto memory_resource = make_async();
     if (memory_limit > 0) {
       auto limiting_adaptor =
-        rmm::mr::limiting_resource_adaptor(memory_resource.get(), memory_limit * 1024ULL * 1024ULL);
-      rmm::mr::set_current_device_resource(&limiting_adaptor);
+        rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
+      rmm::mr::set_current_device_resource(limiting_adaptor);
     } else if (track_allocations) {
-      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource.get(),
+      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
-      rmm::mr::set_current_device_resource(&tracking_adaptor);
+      rmm::mr::set_current_device_resource(tracking_adaptor);
     } else {
-      rmm::mr::set_current_device_resource(memory_resource.get());
+      rmm::mr::set_current_device_resource(memory_resource);
     }
     run_single_file(path,
                     0,
