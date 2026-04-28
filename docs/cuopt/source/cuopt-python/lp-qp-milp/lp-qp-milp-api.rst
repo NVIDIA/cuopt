@@ -1,5 +1,3 @@
-.. _problem_modeling :
-
 =============================
 LP, QP and MILP API Reference
 =============================

@@ -27,33 +27,219 @@ reviews:
   request_changes_workflow: false
   review_status: false
 
-  # Path-specific review instructions
+  # Exclude paths CodeRabbit should not review.
+  # Formatting/lint/style for these is already handled (or not applicable).
+  # datasets/ is NOT fully excluded — shell scripts there download test data
+  # and are worth reviewing; only the bulk data files are filtered out.
+  path_filters:
+    - "!thirdparty/**"
+    - "!notebooks/**"
+    - "!docs/**/_build/**"
+    - "!**/*.mps"
+    - "!**/*.qps"
+    - "!**/*.lp"
+    - "!datasets/**/*.json"
+    - "!datasets/**/*.yaml"
+    - "!datasets/**/*.yml"
+    - "!datasets/**/*.txt"
+    - "!regression/**/*.json"
+    - "!regression/**/*.csv"
+    - "!regression/**/*.html"
+
+  # Path-specific review instructions.
+  # Keep each block narrow — the main review guide is in
+  # .github/.coderabbit_review_guide.md (see knowledge_base below).
   path_instructions:
     - path: "docs/**/*"
       instructions: |
         For documentation changes, focus on:
-        - Accuracy: Verify code examples compile and run correctly
-        - Completeness: Check if API changes (parameters, return values, errors) are documented
-        - Clarity: Flag confusing explanations, missing prerequisites, or unclear examples
-        - Consistency: Version numbers, parameter types, and terminology match code
-        - Examples: Suggest adding examples for complex features or new APIs
-        - Missing docs: If PR changes public APIs without updating docs, flag as HIGH priority
+        - Accuracy: verify code examples compile and run correctly
+        - Completeness: check if API changes (parameters, return values, errors) are documented
+        - Clarity: flag confusing explanations, missing prerequisites, unclear examples
+        - Consistency: version numbers, parameter types, and terminology match code
+        - Missing docs: if the PR changes public APIs without updating docs, flag as HIGH
 
-        When code changes affect docs:
-        - Suggest specific doc files that need updates (e.g., docs/cuopt/api.rst)
-        - Identify outdated information contradicting the code changes
-        - Recommend documenting performance characteristics, GPU requirements, or numerical tolerances
+        When code changes affect docs, suggest specific files (e.g. docs/cuopt/source/*.rst)
+        and recommend documenting performance characteristics, GPU requirements, or tolerances.
 
     - path: "cpp/include/cuopt/**/*"
       instructions: |
-        For public header files (C++ API):
-        - Check if new public functions/classes have documentation comments (Doxygen format)
+        Public C++ headers:
+        - New public functions/classes need Doxygen-style documentation
         - Flag API changes that may need corresponding docs/ updates
         - Verify parameter descriptions match actual types/behavior
-        - Suggest documenting thread-safety, GPU requirements, and numerical behavior
-        - For breaking changes, recommend updating docs and migration guides
+        - Suggest documenting thread-safety, GPU requirements, numerical behavior
+        - For breaking changes, recommend migration notes
+
+    - path: "cpp/include/cuopt/linear_programming/cuopt_c.h"
+      instructions: |
+        This is the C ABI surface. Flag ANY change to struct layout, function
+        signatures, enum values, or typedef shape as potentially ABI-breaking.
+        Ask the author to confirm the change is intentional and documented,
+        since there is no formal ABI-versioning macro today. Do not suggest
+        adding one unless the PR is specifically about API stability.
+
+    - path: "cpp/src/**/*.{cu,cuh}"
+      instructions: |
+        CUDA source files. Apply "CUDA / GPU — cuOpt idioms" from
+        .github/.coderabbit_review_guide.md. Do NOT comment on formatting
+        (clang-format handles it) or exception use (cuOpt uses exceptions
+        as its canonical error mechanism).
+
+    - path: "cpp/src/**/*.{cpp,hpp,h}"
+      instructions: |
+        C++ host code. Follow "C++ — cuOpt conventions" and "C++ —
+        language-level practices we follow from Google C++" in
+        .github/.coderabbit_review_guide.md. Match nearby code; cuOpt's
+        naming, exception use, and column limit override Google where they
+        disagree. Do not flag formatting.
+
+    - path: "cpp/src/grpc/**"
+      instructions: |
+        gRPC server C++ code. In addition to cpp/src rules:
+        - Input validation on all request fields reaching the solver
+        - Size limits on problem data to prevent resource exhaustion
+        - No credential/internal-path leakage in error messages or logs
+        - Safe deserialization of problem payloads
+        - Thread-safety on shared state across RPCs
+
+    - path: "cpp/tests/**"
+      instructions: |
+        C++ tests (gtest). Focus on:
+        - Numerical correctness validation (not just "runs without error")
+        - Edge cases: empty, infeasible, unbounded, degenerate, singleton problems
+        - Test isolation — no leaked GPU state or global mutation across tests
+        - Flakiness: GPU timing races, uninitialized memory, non-deterministic order
+        - When a bug fix lands, a regression test should cover the specific case
+
+        Do not require benchmarks here — benchmarks live in benchmarks/ and regression/.
+
+        IMPORTANT — dataset references: tests resolve problem data via
+        RAPIDS_DATASET_ROOT_DIR (see cpp/tests/utilities/common_utils.hpp,
+        `get_rdrd_or_default()`). Most datasets are downloaded at test time
+        by datasets/get_test_data.sh, datasets/linear_programming/download_pdlp_test_dataset.sh,
+        or datasets/mip/download_miplib_test_dataset.sh — they are NOT committed.
+        Do NOT flag a test for referencing a dataset path that isn't in the tree
+        UNLESS the filename does not appear in any download script (in which
+        case the download script likely needs updating too). See Common Bug
+        Patterns §7 "When NOT to flag" in the review guide.
+
+    - path: "python/**/*.py"
+      instructions: |
+        Python code. ruff (E,F,W ignoring E501), ruff-format, and pydocstyle
+        handle formatting, imports, and docstring format. Focus on what they
+        do NOT cover:
+        - Type hints on NEW public functions/classes (do not require them on existing code;
+          there is no mypy config and the codebase is mixed)
+        - Signature changes on public APIs must emit DeprecationWarning with a
+          removal version before breaking (see the pattern in
+          python/cuopt/cuopt/linear_programming/problem.py around the deprecated helpers)
+        - Docstring CONTENT on new public APIs — params, returns, raises — even
+          when pydocstyle format rules pass
+        - Error messages that expose internals vs. user-actionable messages
+
+        Do not re-raise ruff/pydocstyle-covered issues.
+
+    - path: "python/**/*.pyx"
+      instructions: |
+        Cython implementation files:
+        - C++ calls that may throw must use `except +` on the cdef declaration
+        - Use `nogil` on blocking C calls unless the GIL is needed
+        - Memoryview lifetimes: the Python object owning the buffer must outlive the view
+        - Prefer cpdef only when the function should be callable from Python
+
+    - path: "python/**/*.pxd"
+      instructions: |
+        Cython declaration files. Check that C++ signatures match their .hpp
+        counterparts (argument types, const-qualification, throw-specification).
+
+    - path: "python/cuopt_server/**"
+      instructions: |
+        Python server code. In addition to python/**/*.py rules:
+        - Input validation on all fields from the REST payload
+        - Size/shape limits on problem data
+        - No credential or internal-path leakage in error responses or logs
+        - Safe deserialization (no pickle on untrusted input)
+        - Rate limiting considerations on expensive endpoints
+
+    - path: "python/**/tests/**"
+      instructions: |
+        Python tests (pytest). Focus on:
+        - Numerical correctness validation
+        - Edge cases: empty, infeasible, unbounded, degenerate problems
+        - No leaked GPU state across tests
+        - Regression coverage for fixed bugs
+
+        IMPORTANT — dataset references: tests resolve problem data via
+        os.getenv("RAPIDS_DATASET_ROOT_DIR"). Most datasets are downloaded at
+        test time by scripts under datasets/ (get_test_data.sh,
+        linear_programming/download_pdlp_test_dataset.sh,
+        mip/download_miplib_test_dataset.sh) — they are NOT committed.
+        Do NOT flag a test for referencing a dataset path that isn't in the tree
+        UNLESS the filename does not appear in any download script. See Common
+        Bug Patterns §7 "When NOT to flag" in the review guide.
+
+    - path: "**/CMakeLists.txt"
+      instructions: |
+        Flag any new entry in add_library / add_executable / target_sources /
+        add_subdirectory / install(FILES ...) that references a source, header,
+        or directory not present in this PR or in the base branch — this is the
+        most common place a forgotten `git add` surfaces. See Common Bug
+        Patterns §7 in the review guide. The right ask is "did you mean to
+        include `<path>` in this PR?" rather than a generic style comment.
+
+    - path: "**/*.cmake"
+      instructions: |
+        Same as CMakeLists.txt: cross-check any added file-list entries against
+        the PR contents (Common Bug Patterns §7).
+
+    - path: ".github/workflows/**"
+      instructions: |
+        GitHub Actions workflows. Primary concern is Common Bug Patterns §7:
+        any `run:` step invoking `ci/*.sh`, `python ci/*.py`, or a repo-local
+        binary must reference a file present in the PR or the base branch.
+        Also check for:
+        - Referenced composite actions (`uses: ./.github/actions/<name>`) that don't exist
+        - `needs:` dependencies on jobs that were renamed or removed
+        - Secrets / environment variables newly referenced without being documented
+        Do not flag style of YAML formatting.
+
+    - path: "ci/**/*.sh"
+      instructions: |
+        CI shell scripts. Primary concern is Common Bug Patterns §7:
+        - `source` / `.` lines pointing at helper scripts not in the PR or tree
+        - `bash path/to/foo.sh` / direct script invocations referencing missing files
+        - `RAPIDS_DATASET_ROOT_DIR`-relative paths not produced by an in-tree script
+        Also: `set -euo pipefail` hygiene for new scripts, proper quoting on
+        interpolated paths. Do not re-raise shellcheck warnings (pre-commit
+        runs shellcheck at --severity=warning).
+
+    - path: "datasets/**/*.sh"
+      instructions: |
+        Dataset download/setup scripts. Same as ci/**/*.sh, with emphasis on:
+        - URLs reachable and versioned (not pinned to `latest`)
+        - Referenced helper scripts exist in the PR or tree (Common Bug Patterns §7)
+        - Exit on failure; no silent download errors
+
+    - path: "**/Dockerfile*"
+      instructions: |
+        Dockerfiles. Primary concern is Common Bug Patterns §7: `COPY` / `ADD`
+        paths must exist in the build context at the referenced location.
+        Also check for:
+        - Pinned base image tags (not `:latest`)
+        - Multi-stage builds don't leak secrets
+        - No credentials baked into layers
+
+    - path: "helmchart/**"
+      instructions: |
+        Helm charts. Same as CMakeLists.txt philosophy: new references to
+        ConfigMaps, Secrets, values keys, or template files must exist in
+        this PR (Common Bug Patterns §7). Do not flag chart style nits.
+
 knowledge_base:
   opt_out: false
   code_guidelines:
     filePatterns:
       - ".github/.coderabbit_review_guide.md"
+      - "CONTRIBUTING.md"
+      - "CONVENTIONS.md"

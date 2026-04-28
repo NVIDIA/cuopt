@@ -180,7 +180,7 @@ int main(int argc, char* argv[])
 
   // Setup up RMM memory pool
   auto memory_resource = make_pool();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
 
   // Initialize raft handle and running stream
   const raft::handle_t handle_{};
