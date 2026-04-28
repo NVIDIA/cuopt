@@ -150,7 +150,11 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   if (model.row_names.size() > 0) {
     user_problem.row_names.resize(m);
     for (int i = 0; i < m; ++i) {
-      user_problem.row_names[i] = model.row_names[i];
+      if (i < (int)model.row_names.size()) {
+        user_problem.row_names[i] = model.row_names[i];
+      } else {
+        user_problem.row_names[i] = "c" + std::to_string(i);
+      }
     }
   }
   if (model.var_names.size() > 0) {
