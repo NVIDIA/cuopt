@@ -162,7 +162,12 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_deterministic(
   dual_simplex::branch_and_bound_t<i_t, f_t>& bb)
 {
-  if (omp_get_num_threads() < 8) return;
+  producer_sync_t& producer_sync = bb.get_producer_sync();
+
+  if (omp_get_num_threads() < 8) {
+    producer_sync.registration_complete();
+    return;
+  }
 
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
 
@@ -184,7 +189,6 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
   deterministic_cpu_fj->log_prefix = "******* deterministic CPUFJ: ";
 
   // Register with producer_sync for B&B synchronization
-  producer_sync_t& producer_sync      = bb.get_producer_sync();
   deterministic_cpu_fj->producer_sync = &producer_sync;
   producer_sync.register_producer(&deterministic_cpu_fj->work_units_elapsed);
 
