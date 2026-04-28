@@ -166,7 +166,7 @@ class mip_node_t {
     children[0] = std::move(down_child);
     children[1] = std::move(up_child);
     // When we add children we no longer need to store our basis
-    vstatus.clear();
+    vstatus = {};
   }
 
   bool is_inactive() const
