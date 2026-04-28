@@ -36,13 +36,8 @@ pdlp_termination_strategy_t<i_t, f_t>::pdlp_termination_strategy_t(
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     problem_ptr(&op_problem),
-    convergence_information_{handle_ptr_,
-                             op_problem,
-                             cusparse_view,
-                             primal_size,
-                             dual_size,
-                             climber_strategies,
-                             settings},
+    convergence_information_{
+      handle_ptr_, op_problem, cusparse_view, primal_size, dual_size, climber_strategies, settings},
     infeasibility_information_{handle_ptr_,
                                op_problem,
                                scaled_op_problem,
@@ -474,16 +469,14 @@ __global__ void fill_gpu_terms_stats_kernel(
     // checks against the tolerances), mirroring the non-batch `fill_return_problem_solution`
     // path. Otherwise the classic L2 residual is reported.
     additional_termination_information.l2_primal_residual[original_index] =
-      per_constraint_residual
-        ? convergence_information_view.relative_l_inf_primal_residual[idx]
-        : convergence_information_view.l2_primal_residual[idx];
+      per_constraint_residual ? convergence_information_view.relative_l_inf_primal_residual[idx]
+                              : convergence_information_view.l2_primal_residual[idx];
     additional_termination_information.l2_relative_primal_residual[original_index] =
       convergence_information_view.l2_primal_residual[idx] /
       (f_t(1.0) + convergence_information_view.l2_norm_primal_right_hand_side[idx]);
     additional_termination_information.l2_dual_residual[original_index] =
-      per_constraint_residual
-        ? convergence_information_view.relative_l_inf_dual_residual[idx]
-        : convergence_information_view.l2_dual_residual[idx];
+      per_constraint_residual ? convergence_information_view.relative_l_inf_dual_residual[idx]
+                              : convergence_information_view.l2_dual_residual[idx];
     additional_termination_information.l2_relative_dual_residual[original_index] =
       convergence_information_view.l2_dual_residual[idx] /
       (f_t(1.0) + convergence_information_view.l2_norm_primal_linear_objective[idx]);

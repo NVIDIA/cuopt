@@ -318,7 +318,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   op_problem_scaled_.check_problem_representation(true, false);
 
   if (batch_mode_) {
-    batch_solution_to_return_.get_additional_termination_informations().resize(original_batch_size_);
+    batch_solution_to_return_.get_additional_termination_informations().resize(
+      original_batch_size_);
     batch_solution_to_return_.get_terminations_status().resize(original_batch_size_);
     batch_solution_to_return_.get_primal_solution().resize(
       op_problem.n_variables * original_batch_size_, stream_view_);
@@ -415,8 +416,7 @@ template <typename i_t, typename f_t>
 std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>::check_limits(
   const timer_t& timer)
 {
-  const bool accept_pf =
-  settings_.first_primal_feasible || settings_.all_primal_feasible;
+  const bool accept_pf = settings_.first_primal_feasible || settings_.all_primal_feasible;
 
   // Check for time limit
   if (time_limit_reached(timer)) {
@@ -795,14 +795,13 @@ void pdlp_solver_t<i_t, f_t>::snapshot_climber_into_return(size_t i)
              pdhg_solver_.get_potential_next_dual_solution().data() + i * dual_size_h_,
              dual_size_h_,
              stream_view_);
-  raft::copy(
-    batch_solution_to_return_.get_reduced_cost().data() + local_idx * primal_size_h_,
-    current_termination_strategy_.get_convergence_information().get_reduced_cost().data() +
-      i * primal_size_h_,
-    primal_size_h_,
-    stream_view_);
+  raft::copy(batch_solution_to_return_.get_reduced_cost().data() + local_idx * primal_size_h_,
+             current_termination_strategy_.get_convergence_information().get_reduced_cost().data() +
+               i * primal_size_h_,
+             primal_size_h_,
+             stream_view_);
   auto& info = batch_solution_to_return_.get_additional_termination_informations()[local_idx];
-  info.number_of_steps_taken          = total_pdlp_iterations_;
+  info.number_of_steps_taken           = total_pdlp_iterations_;
   info.total_number_of_attempted_steps = pdhg_solver_.get_total_pdhg_iterations();
   if (term != pdlp_termination_status_t::ConcurrentLimit) { info.solved_by = method_t::PDLP; }
   if (sb_view_.is_valid()) { sb_view_.mark_solved(local_idx); }
@@ -897,10 +896,10 @@ pdlp_solver_t<i_t, f_t>::check_batch_termination(const timer_t& timer)
                      climber_strategies_.size(),
                    "Terminations status size mismatch");
       for (size_t i = 0; i < current_termination_strategy_.get_terminations_status().size(); ++i) {
-        cuopt_assert(current_termination_strategy_.is_done(
-                       current_termination_strategy_.get_termination_status(i),
-                       accept_primal_feasible),
-                     "Climber should be done");
+        cuopt_assert(
+          current_termination_strategy_.is_done(
+            current_termination_strategy_.get_termination_status(i), accept_primal_feasible),
+          "Climber should be done");
         snapshot_climber_into_return(i);
       }
       return finalize_batch_return();
@@ -2106,8 +2105,8 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
 // Need to tranposed the scaled problem fields between COL-major and ROW-major.
 // In PDHG everything is ROW-major for faster SpMM.
-// The scaled fields need to be tranposed back to COL-major as we might need to swap and resize them.
-// No op if the fields were not expanded
+// The scaled fields need to be tranposed back to COL-major as we might need to swap and resize
+// them. No op if the fields were not expanded
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::transpose_problem_fields(bool to_row)
 {
@@ -3115,25 +3114,25 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
                                           b_vec_norm,
                                           stream_view_);
 
-                                        } else {
-                                          if (settings_.hyper_params.bound_objective_rescaling) {
-                                            constexpr f_t one = f_t(1.0);
-                                            thrust::uninitialized_fill(
-                                              handle_ptr_->get_thrust_policy(), primal_weight_.begin(), primal_weight_.end(), one);
-                                            thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                                                       best_primal_weight_.begin(),
-                                                                       best_primal_weight_.end(),
-                                                                       one);
-                                            return;
-                                          } else {
-    cuopt_expects(settings_.hyper_params.initial_primal_weight_b_scaling == 1,
-                  error_type_t::ValidationError,
-                  "Passing a scaling is not supported for now");
+  } else {
+    if (settings_.hyper_params.bound_objective_rescaling) {
+      constexpr f_t one = f_t(1.0);
+      thrust::uninitialized_fill(
+        handle_ptr_->get_thrust_policy(), primal_weight_.begin(), primal_weight_.end(), one);
+      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                 best_primal_weight_.begin(),
+                                 best_primal_weight_.end(),
+                                 one);
+      return;
+    } else {
+      cuopt_expects(settings_.hyper_params.initial_primal_weight_b_scaling == 1,
+                    error_type_t::ValidationError,
+                    "Passing a scaling is not supported for now");
 
-    compute_sum_bounds(op_problem_scaled_.constraint_lower_bounds,
-                       op_problem_scaled_.constraint_upper_bounds,
-                       b_vec_norm,
-                       stream_view_);
+      compute_sum_bounds(op_problem_scaled_.constraint_lower_bounds,
+                         op_problem_scaled_.constraint_upper_bounds,
+                         b_vec_norm,
+                         stream_view_);
     }
   }
 

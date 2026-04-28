@@ -34,16 +34,16 @@ static std::string make_path_absolute(const std::string& file)
   return rel_file;
 }
 
-// Wrapper for the batch PDLP flow: convert and potentially expand the problem and call run_batch_pdlp.
+// Wrapper for the batch PDLP flow: convert and potentially expand the problem and call
+// run_batch_pdlp.
 template <typename i_t, typename f_t>
 static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch(
   raft::handle_t const* handle_ptr,
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   const cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t>& settings)
 {
-  auto gpu_op =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(handle_ptr,
-                                                                                 mps_data_model);
+  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+    handle_ptr, mps_data_model);
   auto batch_settings                                = settings;
   batch_settings.generate_batch_primal_dual_solution = true;
   return cuopt::linear_programming::run_batch_pdlp(gpu_op, batch_settings);
@@ -75,22 +75,21 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
   const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
   cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t> settings,
   i_t batch_size,
-  const std::vector<f_t>& per_climber_objective_coefficients = {},
+  const std::vector<f_t>& per_climber_objective_coefficients  = {},
   const std::vector<f_t>& per_climber_constraint_lower_bounds = {},
   const std::vector<f_t>& per_climber_constraint_upper_bounds = {},
   const std::vector<f_t>& per_climber_objective_offsets       = {},
-  bool use_direct_api = false)
+  bool use_direct_api                                         = false)
 {
-  auto gpu_op =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(handle_ptr,
-                                                                                 mps_data_model);
+  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+    handle_ptr, mps_data_model);
   auto stream = handle_ptr->get_stream();
 
   if (!per_climber_objective_coefficients.empty()) {
     assign_device_uvector_from_host(
       gpu_op.get_objective_coefficients(), per_climber_objective_coefficients, stream);
   }
-  
+
   if (!per_climber_constraint_lower_bounds.empty()) {
     assign_device_uvector_from_host(
       gpu_op.get_constraint_lower_bounds(), per_climber_constraint_lower_bounds, stream);
@@ -100,16 +99,14 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
     assign_device_uvector_from_host(
       gpu_op.get_constraint_upper_bounds(), per_climber_constraint_upper_bounds, stream);
   }
-  
+
   if (!per_climber_objective_offsets.empty()) {
     gpu_op.set_batch_objective_offsets(per_climber_objective_offsets);
   }
 
   settings.generate_batch_primal_dual_solution = true;
-  settings.fixed_batch_size                      = batch_size;
-  if (use_direct_api) {
-    return cuopt::linear_programming::solve_lp(gpu_op, settings, false);
-  }
+  settings.fixed_batch_size                    = batch_size;
+  if (use_direct_api) { return cuopt::linear_programming::solve_lp(gpu_op, settings, false); }
   return cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
 }
 

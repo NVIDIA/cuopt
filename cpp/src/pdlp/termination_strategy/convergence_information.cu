@@ -27,8 +27,8 @@
 #include <thrust/device_ptr.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>
-#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 
 #include <cub/cub.cuh>
@@ -144,12 +144,10 @@ void convergence_information_t<i_t, f_t>::init_objective_offsets()
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::init_l2_norms()
 {
-  const size_t obj_size = problem_ptr->objective_coefficients.size();
-  const bool per_climber_objectives =
-    obj_size > static_cast<size_t>(primal_size_h_);
-  const size_t cstr_size = problem_ptr->constraint_lower_bounds.size();
-  const bool per_climber_constraints =
-    cstr_size > static_cast<size_t>(dual_size_h_);
+  const size_t obj_size              = problem_ptr->objective_coefficients.size();
+  const bool per_climber_objectives  = obj_size > static_cast<size_t>(primal_size_h_);
+  const size_t cstr_size             = problem_ptr->constraint_lower_bounds.size();
+  const bool per_climber_constraints = cstr_size > static_cast<size_t>(dual_size_h_);
 
   // --- Objective L2 norm ---
   if (!per_climber_objectives) {
@@ -182,21 +180,20 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
                          l2_norm_primal_right_hand_side_.data(),
                          primal_residual_.size(),
                          handle_ptr_);
-  } else
-  {
-    if (!per_climber_constraints){
-      // Shared constraint bounds: compute_sum_bounds gives sum-of-squares (matching the original formula).
+  } else {
+    if (!per_climber_constraints) {
+      // Shared constraint bounds: compute_sum_bounds gives sum-of-squares (matching the original
+      // formula).
       compute_sum_bounds(problem_ptr->constraint_lower_bounds,
-                        problem_ptr->constraint_upper_bounds,
-                        l2_norm_primal_right_hand_side_.data(),
-                        handle_ptr_->get_stream());
+                         problem_ptr->constraint_upper_bounds,
+                         l2_norm_primal_right_hand_side_.data(),
+                         handle_ptr_->get_stream());
       // Broadcast in case we are in batch mode, else is a no op anyways
       thrust::fill(handle_ptr_->get_thrust_policy(),
-                 l2_norm_primal_right_hand_side_.begin(),
-                 l2_norm_primal_right_hand_side_.end(),
-                 l2_norm_primal_right_hand_side_.element(0, stream_view_));
-    } else
-    {
+                   l2_norm_primal_right_hand_side_.begin(),
+                   l2_norm_primal_right_hand_side_.end(),
+                   l2_norm_primal_right_hand_side_.element(0, stream_view_));
+    } else {
       // Per-climber constraint bounds: Segmented reduce.
       segmented_sum_handler_.segmented_sum_helper(
         thrust::make_transform_iterator(
@@ -204,7 +201,7 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
                                     problem_ptr->constraint_upper_bounds.data()),
           rhs_sum_of_squares_t<f_t>{}),
         thrust::make_transform_output_iterator(l2_norm_primal_right_hand_side_.data(),
-          sqrt_func_t<f_t>{}),
+                                               sqrt_func_t<f_t>{}),
         climber_strategies_.size(),
         dual_size_h_);
     }
@@ -273,10 +270,8 @@ __global__ void convergence_information_swap_device_vectors_kernel(
   cuda::std::swap(dual_dot[left], dual_dot[right]);
   cuda::std::swap(sum_primal_slack[left], sum_primal_slack[right]);
   cuda::std::swap(objective_offsets[left], objective_offsets[right]);
-  cuda::std::swap(l2_norm_primal_linear_objective[left],
-                  l2_norm_primal_linear_objective[right]);
-  cuda::std::swap(l2_norm_primal_right_hand_side[left],
-                  l2_norm_primal_right_hand_side[right]);
+  cuda::std::swap(l2_norm_primal_linear_objective[left], l2_norm_primal_linear_objective[right]);
+  cuda::std::swap(l2_norm_primal_right_hand_side[left], l2_norm_primal_right_hand_side[right]);
 }
 
 template <typename i_t, typename f_t>
@@ -351,24 +346,22 @@ template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::set_relative_dual_tolerance_factor(
   f_t dual_tolerance_factor)
 {
-  cub::DeviceTransform::Transform(
-    thrust::make_constant_iterator(dual_tolerance_factor),
-    l2_norm_primal_linear_objective_.data(),
-    l2_norm_primal_linear_objective_.size(),
-    cuda::std::identity{},
-    stream_view_);
+  cub::DeviceTransform::Transform(thrust::make_constant_iterator(dual_tolerance_factor),
+                                  l2_norm_primal_linear_objective_.data(),
+                                  l2_norm_primal_linear_objective_.size(),
+                                  cuda::std::identity{},
+                                  stream_view_);
 }
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::set_relative_primal_tolerance_factor(
   f_t primal_tolerance_factor)
 {
-  cub::DeviceTransform::Transform(
-    thrust::make_constant_iterator(primal_tolerance_factor),
-    l2_norm_primal_right_hand_side_.data(),
-    l2_norm_primal_right_hand_side_.size(),
-    cuda::std::identity{},
-    stream_view_);
+  cub::DeviceTransform::Transform(thrust::make_constant_iterator(primal_tolerance_factor),
+                                  l2_norm_primal_right_hand_side_.data(),
+                                  l2_norm_primal_right_hand_side_.size(),
+                                  cuda::std::identity{},
+                                  stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -480,18 +473,20 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       const i_t zero_int = 0;
       nb_violated_constraints_.set_value_async(zero_int, handle_ptr_->get_stream());
     }
-    // We may be solving a batch of problems so have a bigger primal_residual_ vector but not have per climber combined bounds (if it's the same accross climbers)
-    // So we need to use a wrapped iterator to iterate over the combined bounds
-    cuopt_assert(primal_residual_.size() % combined_bounds.size() == 0, "primal_residual_.size() must be divisible by combined_bounds.size()");
+    // We may be solving a batch of problems so have a bigger primal_residual_ vector but not have
+    // per climber combined bounds (if it's the same accross climbers) So we need to use a wrapped
+    // iterator to iterate over the combined bounds
+    cuopt_assert(primal_residual_.size() % combined_bounds.size() == 0,
+                 "primal_residual_.size() must be divisible by combined_bounds.size()");
     auto transform_iter = thrust::make_transform_iterator(
       thrust::make_zip_iterator(primal_residual_.cbegin(), problem_wrap_container(combined_bounds)),
       relative_residual_t<i_t, f_t>{settings.tolerances.relative_primal_tolerance});
     segmented_sum_handler_.segmented_reduce_helper(transform_iter,
-      linf_primal_residual_.data(),
-      climber_strategies_.size(),
-      dual_size_h_,
-      cuda::maximum<>{},
-      std::numeric_limits<f_t>::lowest());
+                                                   linf_primal_residual_.data(),
+                                                   climber_strategies_.size(),
+                                                   dual_size_h_,
+                                                   cuda::maximum<>{},
+                                                   std::numeric_limits<f_t>::lowest());
   }
 
   compute_dual_residual(op_problem_cusparse_view_,
@@ -526,7 +521,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   if (settings.per_constraint_residual) {
     // Compute the linf of (residual_i - rel * c_i)
     auto transform_iter = thrust::make_transform_iterator(
-      thrust::make_zip_iterator(dual_residual_.cbegin(), problem_wrap_container(objective_coefficients)),
+      thrust::make_zip_iterator(dual_residual_.cbegin(),
+                                problem_wrap_container(objective_coefficients)),
       relative_residual_t<i_t, f_t>{settings.tolerances.relative_dual_tolerance});
     segmented_sum_handler_.segmented_reduce_helper(transform_iter,
                                                    linf_dual_residual_.data(),
@@ -631,11 +627,10 @@ void convergence_information_t<i_t, f_t>::compute_primal_residual(
 }
 
 template <typename i_t, typename f_t>
-__global__ void apply_objective_scaling_and_offset(
-  raft::device_span<f_t> objective,
-  f_t objective_scaling_factor,
-  raft::device_span<const f_t> objective_offsets,
-  int batch_size)
+__global__ void apply_objective_scaling_and_offset(raft::device_span<f_t> objective,
+                                                   f_t objective_scaling_factor,
+                                                   raft::device_span<const f_t> objective_offsets,
+                                                   int batch_size)
 {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= batch_size) { return; }
@@ -837,10 +832,7 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
         primal_size_h_);
 
       segmented_sum_handler_.segmented_sum_helper(
-        primal_slack_.data(),
-        sum_primal_slack_.data(),
-        climber_strategies_.size(),
-        dual_size_h_);
+        primal_slack_.data(), sum_primal_slack_.data(), climber_strategies_.size(), dual_size_h_);
     }
 
     cub::DeviceTransform::Transform(

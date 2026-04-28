@@ -10,11 +10,11 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/utils.cuh>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
 
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/binary_op.cuh>
@@ -147,13 +147,14 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 
   // ------- Objective coefficients scaling -------
 
-  // If climbers have different objective coefficients, we just compute the norm with the first climber
+  // If climbers have different objective coefficients, we just compute the norm with the first
+  // climber
   const i_t n_variables = op_problem_scaled_.n_variables;
   detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients.data(),
-  n_variables,
-                                            hyper_params_.initial_primal_weight_c_scaling,
-                                            objective_rescaling_,
-                                            stream_view_);
+                                        n_variables,
+                                        hyper_params_.initial_primal_weight_c_scaling,
+                                        objective_rescaling_,
+                                        stream_view_);
 
   // sqrt already applied
   h_objective_rescaling = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));

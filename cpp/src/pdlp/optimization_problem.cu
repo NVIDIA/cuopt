@@ -169,8 +169,7 @@ void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset
 }
 
 template <typename i_t, typename f_t>
-void optimization_problem_t<i_t, f_t>::set_batch_objective_offsets(
-  const std::vector<f_t>& offsets)
+void optimization_problem_t<i_t, f_t>::set_batch_objective_offsets(const std::vector<f_t>& offsets)
 {
   batch_objective_offsets_ = offsets;
 }
@@ -429,8 +428,8 @@ f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 }
 
 template <typename i_t, typename f_t>
-const std::vector<f_t>&
-optimization_problem_t<i_t, f_t>::get_batch_objective_offsets() const noexcept
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_batch_objective_offsets()
+  const noexcept
 {
   return batch_objective_offsets_;
 }

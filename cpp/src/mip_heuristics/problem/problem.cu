@@ -569,7 +569,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
     }
   }
   cuopt_assert(objective_coefficients.size() % n_variables == 0,
-    "objective_coefficients size must be a multiple of n_variables");
+               "objective_coefficients size must be a multiple of n_variables");
 
   // Check CSR validity
   check_csr_representation(
@@ -595,7 +595,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   // Check variable bounds are set and with the correct size
   if (!empty) { cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set."); }
   cuopt_assert(objective_coefficients.size() % variable_bounds.size() == 0,
-  "Sizes for vectors related to the variables are not the same.");
+               "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
@@ -608,19 +608,18 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   }
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert(
-    n_constraints == 0 ? constraint_lower_bounds.size() == 0
-                       : constraint_lower_bounds.size() % (size_t)n_constraints == 0,
-    "Sizes for vectors related to the constraints are not the same.");
+  cuopt_assert(n_constraints == 0 ? constraint_lower_bounds.size() == 0
+                                  : constraint_lower_bounds.size() % (size_t)n_constraints == 0,
+               "Sizes for vectors related to the constraints are not the same.");
   cuopt_assert((offsets.size() - 1) == (size_t)n_constraints,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds
   // To handle batch case (% 0 is not allowed)
   cuopt_assert(n_constraints == 0
-    ? combined_bounds.size() == 0
-    : combined_bounds.size() % static_cast<size_t>(n_constraints) == 0,
-  "Sizes for vectors related to the constraints are not the same.");
+                 ? combined_bounds.size() == 0
+                 : combined_bounds.size() % static_cast<size_t>(n_constraints) == 0,
+               "Sizes for vectors related to the constraints are not the same.");
   // Check the validity of bounds
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),

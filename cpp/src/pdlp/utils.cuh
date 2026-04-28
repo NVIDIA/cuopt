@@ -246,15 +246,17 @@ template <typename i_t, typename f_t>
 void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t>& combined_bounds)
 {
-  cuopt_assert(op_problem.constraint_lower_bounds.size() == op_problem.constraint_upper_bounds.size(), "constraint_lower_bounds and constraint_upper_bounds must have the same size");
-  combined_bounds.resize(op_problem.constraint_lower_bounds.size(), op_problem.handle_ptr->get_stream());
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(op_problem.constraint_lower_bounds.data(),
-                          op_problem.constraint_upper_bounds.data()),
-    combined_bounds.data(),
-    combined_bounds.size(),
-    combine_finite_abs_bounds<f_t>(),
-    op_problem.handle_ptr->get_stream());
+  cuopt_assert(
+    op_problem.constraint_lower_bounds.size() == op_problem.constraint_upper_bounds.size(),
+    "constraint_lower_bounds and constraint_upper_bounds must have the same size");
+  combined_bounds.resize(op_problem.constraint_lower_bounds.size(),
+                         op_problem.handle_ptr->get_stream());
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(op_problem.constraint_lower_bounds.data(),
+                                                        op_problem.constraint_upper_bounds.data()),
+                                  combined_bounds.data(),
+                                  combined_bounds.size(),
+                                  combine_finite_abs_bounds<f_t>(),
+                                  op_problem.handle_ptr->get_stream());
 }
 
 template <typename f_t>

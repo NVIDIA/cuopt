@@ -85,18 +85,22 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> run_batch_p
 /**
   @brief Compute the optimal batch size for the problem.
   @param problem The problem to compute the optimal batch size for.
-  @param per_climber_objectives Whether the problem will per-climber objectives (resulting in a larger memory footprint).
-  @param per_climber_constraint_bounds Whether the problem will have per-climber constraint bounds (resulting in a larger memory footprint).
-  @param collect_solutions Whether the problem has per-climber solutions (only for testing, by default we don't need to collect solution vectors).
+  @param per_climber_objectives Whether the problem will per-climber objectives (resulting in a
+  larger memory footprint).
+  @param per_climber_constraint_bounds Whether the problem will have per-climber constraint bounds
+  (resulting in a larger memory footprint).
+  @param collect_solutions Whether the problem has per-climber solutions (only for testing, by
+  default we don't need to collect solution vectors).
   @return The optimal batch size for the problem.
-  @note At this stage, the problem shouldn't already be expanded. The results of this function should be used as the fixed_batch_size to expand the problem and call run_batch_pdlp.
+  @note At this stage, the problem shouldn't already be expanded. The results of this function
+  should be used as the fixed_batch_size to expand the problem and call run_batch_pdlp.
 */
 template <typename i_t, typename f_t>
 size_t compute_optimal_batch_size(
   const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& problem,
   bool per_climber_objectives,
   bool per_climber_constraint_bounds,
-  bool collect_solutions = false); // Only for testing
+  bool collect_solutions = false);  // Only for testing
 
 template <typename i_t, typename f_t>
 void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings);

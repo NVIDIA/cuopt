@@ -633,9 +633,9 @@ struct primal_reflected_major_projection_bulk_op {
 
     const f_t step_size  = primal_step_size[batch_idx];
     const f_t primal_val = primal_solution[idx];
-    const f_t obj_coef   = per_climber_objectives ? objective_coefficients[idx]
-                                                  : objective_coefficients[var_idx];
-    const f_t aty_val    = current_AtY[idx];
+    const f_t obj_coef =
+      per_climber_objectives ? objective_coefficients[idx] : objective_coefficients[var_idx];
+    const f_t aty_val = current_AtY[idx];
 
     cuopt_assert(!isnan(step_size), "primal_step_size is NaN in primal_reflected_major_projection");
     cuopt_assert(!isinf(step_size), "primal_step_size is Inf in primal_reflected_major_projection");
@@ -719,9 +719,9 @@ struct primal_reflected_projection_bulk_op {
 
     const f_t step_size  = primal_step_size[batch_idx];
     const f_t primal_val = primal_solution[idx];
-    const f_t obj_coef   = per_climber_objectives ? objective_coefficients[idx]
-                                                  : objective_coefficients[var_idx];
-    const f_t aty_val    = current_AtY[idx];
+    const f_t obj_coef =
+      per_climber_objectives ? objective_coefficients[idx] : objective_coefficients[var_idx];
+    const f_t aty_val = current_AtY[idx];
 
     cuopt_assert(!isnan(step_size), "primal_step_size is NaN in primal_reflected_projection");
     cuopt_assert(!isnan(primal_val), "primal_solution is NaN in primal_reflected_projection");
@@ -925,20 +925,20 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
           primal_reflected_major_projection<f_t>(primal_step_size.data()),
           stream_view_.value());
       } else {
-        cub::DeviceFor::Bulk(potential_next_primal_solution_.size(),
-                             primal_reflected_major_projection_bulk_op<f_t>{
-                               current_saddle_point_state_.get_primal_solution().data(),
-                               problem_ptr->objective_coefficients.data(),
-                               current_saddle_point_state_.get_current_AtY().data(),
-                               problem_ptr->variable_bounds.data(),
-                               primal_step_size.data(),
-                               potential_next_primal_solution_.data(),
-                               dual_slack_.data(),
-                               reflected_primal_.data(),
-                               batch_size_divisor_,
-                               problem_ptr->objective_coefficients.size() >
-                                 static_cast<size_t>(primal_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          potential_next_primal_solution_.size(),
+          primal_reflected_major_projection_bulk_op<f_t>{
+            current_saddle_point_state_.get_primal_solution().data(),
+            problem_ptr->objective_coefficients.data(),
+            current_saddle_point_state_.get_current_AtY().data(),
+            problem_ptr->variable_bounds.data(),
+            primal_step_size.data(),
+            potential_next_primal_solution_.data(),
+            dual_slack_.data(),
+            reflected_primal_.data(),
+            batch_size_divisor_,
+            problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
+          stream_view_.value());
       }
       if (new_bounds_idx_.size() != 0) {
 #ifdef CUPDLP_DEBUG_MODE
@@ -952,22 +952,22 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                      "New bounds lower size must be equal to climber strategies size");
         cuopt_assert(new_bounds_upper_.size() == climber_strategies_.size(),
                      "New bounds upper size must be equal to climber strategies size");
-        cub::DeviceFor::Bulk(climber_strategies_.size(),
-                             refine_primal_projection_major_bulk_op<i_t, f_t>{
-                               make_span(new_bounds_idx_),
-                               make_span(new_bounds_lower_),
-                               make_span(new_bounds_upper_),
-                               make_span(current_saddle_point_state_.get_primal_solution()),
-                               make_span(problem_ptr->objective_coefficients),
-                               make_span(current_saddle_point_state_.get_current_AtY()),
-                               make_span(primal_step_size),
-                               make_span(potential_next_primal_solution_),
-                               make_span(dual_slack_),
-                               make_span(reflected_primal_),
-                               (int)climber_strategies_.size(),
-                               problem_ptr->objective_coefficients.size() >
-                                 static_cast<size_t>(primal_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          climber_strategies_.size(),
+          refine_primal_projection_major_bulk_op<i_t, f_t>{
+            make_span(new_bounds_idx_),
+            make_span(new_bounds_lower_),
+            make_span(new_bounds_upper_),
+            make_span(current_saddle_point_state_.get_primal_solution()),
+            make_span(problem_ptr->objective_coefficients),
+            make_span(current_saddle_point_state_.get_current_AtY()),
+            make_span(primal_step_size),
+            make_span(potential_next_primal_solution_),
+            make_span(dual_slack_),
+            make_span(reflected_primal_),
+            (int)climber_strategies_.size(),
+            problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
+          stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE
       print("potential_next_primal_solution_", potential_next_primal_solution_);
@@ -989,19 +989,19 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
           dual_reflected_major_projection<f_t>(dual_step_size.data()),
           stream_view_.value());
       } else {
-        cub::DeviceFor::Bulk(potential_next_dual_solution_.size(),
-                             dual_reflected_major_projection_bulk_op<f_t>{
-                               current_saddle_point_state_.get_dual_solution().data(),
-                               current_saddle_point_state_.get_dual_gradient().data(),
-                               problem_ptr->constraint_lower_bounds.data(),
-                               problem_ptr->constraint_upper_bounds.data(),
-                               dual_step_size.data(),
-                               potential_next_dual_solution_.data(),
-                               reflected_dual_.data(),
-                               batch_size_divisor_,
-                               problem_ptr->constraint_lower_bounds.size() >
-                                 static_cast<size_t>(dual_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          potential_next_dual_solution_.size(),
+          dual_reflected_major_projection_bulk_op<f_t>{
+            current_saddle_point_state_.get_dual_solution().data(),
+            current_saddle_point_state_.get_dual_gradient().data(),
+            problem_ptr->constraint_lower_bounds.data(),
+            problem_ptr->constraint_upper_bounds.data(),
+            dual_step_size.data(),
+            potential_next_dual_solution_.data(),
+            reflected_dual_.data(),
+            batch_size_divisor_,
+            problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)},
+          stream_view_.value());
       }
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -1038,18 +1038,18 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
           primal_reflected_projection<f_t>(primal_step_size.data()),
           stream_view_.value());
       } else {
-        cub::DeviceFor::Bulk(reflected_primal_.size(),
-                             primal_reflected_projection_bulk_op<f_t>{
-                               current_saddle_point_state_.get_primal_solution().data(),
-                               problem_ptr->objective_coefficients.data(),
-                               current_saddle_point_state_.get_current_AtY().data(),
-                               problem_ptr->variable_bounds.data(),
-                               primal_step_size.data(),
-                               reflected_primal_.data(),
-                               (int)climber_strategies_.size(),
-                               problem_ptr->objective_coefficients.size() >
-                                 static_cast<size_t>(primal_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          reflected_primal_.size(),
+          primal_reflected_projection_bulk_op<f_t>{
+            current_saddle_point_state_.get_primal_solution().data(),
+            problem_ptr->objective_coefficients.data(),
+            current_saddle_point_state_.get_current_AtY().data(),
+            problem_ptr->variable_bounds.data(),
+            primal_step_size.data(),
+            reflected_primal_.data(),
+            (int)climber_strategies_.size(),
+            problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
+          stream_view_.value());
       }
       if (new_bounds_idx_.size() != 0) {
 #ifdef CUPDLP_DEBUG_MODE
@@ -1063,20 +1063,20 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
                      "New bounds lower size must be equal to climber strategies size");
         cuopt_assert(new_bounds_upper_.size() == climber_strategies_.size(),
                      "New bounds upper size must be equal to climber strategies size");
-        cub::DeviceFor::Bulk(climber_strategies_.size(),
-                             refine_primal_projection_bulk_op<i_t, f_t>{
-                               make_span(new_bounds_idx_),
-                               make_span(new_bounds_lower_),
-                               make_span(new_bounds_upper_),
-                               make_span(current_saddle_point_state_.get_primal_solution()),
-                               make_span(problem_ptr->objective_coefficients),
-                               make_span(current_saddle_point_state_.get_current_AtY()),
-                               make_span(primal_step_size),
-                               make_span(reflected_primal_),
-                               (int)climber_strategies_.size(),
-                               problem_ptr->objective_coefficients.size() >
-                                 static_cast<size_t>(primal_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          climber_strategies_.size(),
+          refine_primal_projection_bulk_op<i_t, f_t>{
+            make_span(new_bounds_idx_),
+            make_span(new_bounds_lower_),
+            make_span(new_bounds_upper_),
+            make_span(current_saddle_point_state_.get_primal_solution()),
+            make_span(problem_ptr->objective_coefficients),
+            make_span(current_saddle_point_state_.get_current_AtY()),
+            make_span(primal_step_size),
+            make_span(reflected_primal_),
+            (int)climber_strategies_.size(),
+            problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
+          stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_primal_", reflected_primal_);
@@ -1103,18 +1103,18 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
           dual_reflected_projection<f_t>(dual_step_size.data()),
           stream_view_.value());
       } else {
-        cub::DeviceFor::Bulk(reflected_dual_.size(),
-                             dual_reflected_projection_bulk_op<f_t>{
-                               current_saddle_point_state_.get_dual_solution().data(),
-                               current_saddle_point_state_.get_dual_gradient().data(),
-                               problem_ptr->constraint_lower_bounds.data(),
-                               problem_ptr->constraint_upper_bounds.data(),
-                               dual_step_size.data(),
-                               reflected_dual_.data(),
-                               (int)climber_strategies_.size(),
-                               problem_ptr->constraint_lower_bounds.size() >
-                                 static_cast<size_t>(dual_size_h_)},
-                             stream_view_.value());
+        cub::DeviceFor::Bulk(
+          reflected_dual_.size(),
+          dual_reflected_projection_bulk_op<f_t>{
+            current_saddle_point_state_.get_dual_solution().data(),
+            current_saddle_point_state_.get_dual_gradient().data(),
+            problem_ptr->constraint_lower_bounds.data(),
+            problem_ptr->constraint_upper_bounds.data(),
+            dual_step_size.data(),
+            reflected_dual_.data(),
+            (int)climber_strategies_.size(),
+            problem_ptr->constraint_lower_bounds.size() > static_cast<size_t>(dual_size_h_)},
+          stream_view_.value());
       }
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_dual_", reflected_dual_);
