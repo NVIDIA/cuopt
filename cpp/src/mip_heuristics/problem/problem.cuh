@@ -151,7 +151,6 @@ class problem_t {
                             const std::vector<f_t>& offset_values,
                             const std::vector<f_t>& coefficient_values);
   void sort_rows_by_variables(const raft::handle_t* handle_ptr);
-  void pdlp_lighten();
   enum var_flags_t : i_t {
     VAR_IMPLIED_INTEGER = 1 << 0,
   };
