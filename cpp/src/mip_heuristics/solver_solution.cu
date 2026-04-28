@@ -235,6 +235,26 @@ void mip_solution_t<i_t, f_t>::log_summary() const
   CUOPT_LOG_INFO("Total Solve Time: %f", get_total_solve_time());
 }
 
+template <typename i_t, typename f_t>
+void mip_solution_t<i_t, f_t>::log_detailed_summary() const
+{
+  CUOPT_LOG_INFO(
+    "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
+    "total_solve_time %f "
+    "max constraint violation %f max int violation %f max var bounds violation %f "
+    "nodes %d simplex_iterations %d",
+    objective_,
+    mip_gap_,
+    stats_.get_solution_bound(),
+    stats_.presolve_time,
+    stats_.total_solve_time,
+    max_constraint_violation_,
+    max_int_violation_,
+    max_variable_bound_violation_,
+    stats_.num_nodes,
+    stats_.num_simplex_iterations);
+}
+
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class mip_solution_t<int, float>;
 #endif

@@ -8,7 +8,7 @@ General FAQ
 .. dropdown:: Where can I find cuOpt container images?
 
     There are two options:
-    - NVIDIA docker hub (https://hub.docker.com/r/nvidia/)
+    - NVIDIA Docker Hub (https://hub.docker.com/r/nvidia/cuopt)
     - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
 
 .. dropdown:: How to get a NVAIE license?
@@ -298,7 +298,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuopt-examples/blob/branch-23.10/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt and the resulting cost matrix passed in.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 
