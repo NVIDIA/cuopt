@@ -2458,6 +2458,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
     raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
   }
+  if (!per_constraint_residual){
+    op_problem_scaled_.combined_bounds.resize(0, handle_ptr->get_stream());
+    problem_ptr->combined_bounds.resize(0, handle_ptr->get_stream());
+  }
 #ifdef CUPDLP_DEBUG_MODE
   raft::print_device_vector("Initial step_size", step_size_.data(), step_size_.size(), std::cout);
   raft::print_device_vector(

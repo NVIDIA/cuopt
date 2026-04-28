@@ -2397,7 +2397,6 @@ void problem_t<i_t, f_t>::pdlp_lighten()
   variable_types.resize(0, handle_ptr->get_stream());
   related_variables_offsets.resize(0, handle_ptr->get_stream());
   integer_fixed_variable_map.resize(0, handle_ptr->get_stream());
-  combined_bounds.resize(0, handle_ptr->get_stream());
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
