@@ -126,7 +126,7 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
   const i_t n_orig       = op_problem.get_n_variables();
   const i_t n_sc         = static_cast<i_t>(sc_indices.size());
   const auto* handle_ptr = op_problem.get_handle_ptr();
-  const f_t big_m        = settings.sc_big_m;
+  const f_t big_m        = settings.semi_continuous_big_m;
   if (used_fallback_big_m != nullptr) { used_fallback_big_m->assign(n_orig, uint8_t{0}); }
 
   CUOPT_LOG_INFO("Reformulating %d semi-continuous variables before presolve", n_sc);
@@ -232,12 +232,13 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     }
     if (!std::isfinite(U)) { U = orig_u; }
     if (!std::isfinite(U)) {
-      cuopt_assert(std::isfinite(big_m) && big_m >= L,
-                   "Semi-continuous fallback sc_big_m must be finite and >= lower bound");
+      cuopt_assert(
+        std::isfinite(big_m) && big_m >= L,
+        "Semi-continuous fallback mip_semi_continuous_big_m must be finite and >= lower bound");
       U = big_m;
       CUOPT_LOG_DEBUG(
         "Semi-continuous variable %d has no finite upper bound after bounds "
-        "strengthening; using fallback sc_big_m %.6g",
+        "strengthening; using fallback mip_semi_continuous_big_m %.6g",
         idx,
         static_cast<double>(big_m));
       if (used_fallback_big_m != nullptr) { (*used_fallback_big_m)[idx] = uint8_t{1}; }

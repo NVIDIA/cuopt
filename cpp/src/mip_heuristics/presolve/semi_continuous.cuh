@@ -25,18 +25,18 @@ namespace cuopt::linear_programming::detail {
  *
  * Deterministic CPU bounds strengthening is seeded only from SC variables to derive tight upper
  * bounds for SC variables that have infinite original upper bounds. If strengthening cannot
- * derive a finite bound, settings.sc_big_m is used as a fallback.
+ * derive a finite bound, settings.semi_continuous_big_m is used as a fallback.
  *
  * This must be called before problem_t construction and Papilo presolve.
  *
  * @tparam i_t  Integer index type
  * @tparam f_t  Floating-point value type
  * @param[in,out] op_problem  The optimization problem (modified in-place)
- * @param[in]     settings    MIP solver settings (provides sc_big_m and tolerances)
+ * @param[in]     settings    MIP solver settings (provides semi_continuous_big_m and tolerances)
  * @param[out]    used_fallback_big_m Per-original-variable flags. Entry i is set to 1
- *                                    when variable i uses settings.sc_big_m as a fallback upper
- *                                    bound during reformulation. Used to reject the final solution
- * if its upper bound lands on big-m within integrality tolerance.
+ *                                    when variable i uses settings.semi_continuous_big_m as a
+ * fallback upper bound during reformulation. Used to reject the final solution if its upper bound
+ * lands on big-m within integrality tolerance.
  * @param[out]    semi_continuous_binary_to_original_indices Optional mapping for appended
  *                                    auxiliary
  *                                    binaries. Entry k stores the original semi-continuous

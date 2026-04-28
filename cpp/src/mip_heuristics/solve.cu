@@ -639,7 +639,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       std::string active_fallback_big_m_var_name;
       for (i_t i = 0; i < static_cast<i_t>(sc_used_fallback_big_m.size()); ++i) {
         if (!sc_used_fallback_big_m[i]) { continue; }
-        if (host_solution[i] >= settings.sc_big_m - active_tol) {
+        if (host_solution[i] >= settings.semi_continuous_big_m - active_tol) {
           ++num_active_fallback_big_m;
           if (active_fallback_big_m_var_name.empty()) {
             if (i < static_cast<i_t>(original_variable_names.size()) &&
@@ -654,7 +654,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       if (num_active_fallback_big_m > 0) {
         std::ostringstream error_msg;
         error_msg << "Semi-continuous variable " << active_fallback_big_m_var_name
-                  << " is at upper bound coming from big-M " << settings.sc_big_m
+                  << " is at upper bound coming from big-M " << settings.semi_continuous_big_m
                   << "; results may depend on artificial upper bound";
         if (num_active_fallback_big_m > 1) {
           error_msg << " " << (num_active_fallback_big_m - 1)
