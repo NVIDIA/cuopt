@@ -143,11 +143,13 @@ class pdlp_solver_t {
     settings_.shared_sb_solved};
 
   problem_t<i_t, f_t>* problem_ptr;
-  bool is_cupdlpx_;
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
   problem_t<i_t, f_t> op_problem_scaled_;
 
+  // Flag indicating whether the restart strategy is CUPDLPx (hyper_params.restart_strategy == static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::CUPDLPX_RESTART))
+  bool is_cupdlpx_;
+  
   rmm::device_uvector<f_t> unscaled_primal_avg_solution_;
   rmm::device_uvector<f_t> unscaled_dual_avg_solution_;
 
