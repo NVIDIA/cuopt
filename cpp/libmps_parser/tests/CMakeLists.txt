@@ -26,6 +26,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../src"
         "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}

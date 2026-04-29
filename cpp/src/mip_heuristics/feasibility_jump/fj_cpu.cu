@@ -356,7 +356,7 @@ static void log_regression_features(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
   double violated_ratio = (double)fj_cpu.violated_constraints.size() / n_cstrs;
 
   // Compute per-iteration metrics
-  double nnz_per_move = 0.0;
+  [[maybe_unused]] double nnz_per_move = 0.0;
   i_t total_moves =
     fj_cpu.n_lift_moves_window + fj_cpu.n_mtm_viol_moves_window + fj_cpu.n_mtm_sat_moves_window;
   if (total_moves > 0) { nnz_per_move = (double)fj_cpu.nnz_processed_window / total_moves; }

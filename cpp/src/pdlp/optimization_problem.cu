@@ -242,14 +242,17 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types
-  i_t n_integer = thrust::count_if(handle_ptr_->get_thrust_policy(),
-                                   variable_types_.begin(),
-                                   variable_types_.end(),
-                                   [] __device__(auto val) { return val == var_t::INTEGER; });
-  if (n_integer == size) {
+  // Auto-detect problem category based on variable types.
+  // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
+  // so a problem with only SC vars is treated as MIP.
+  i_t n_discrete = thrust::count_if(
+    handle_ptr_->get_thrust_policy(),
+    variable_types_.begin(),
+    variable_types_.end(),
+    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
+  } else if (n_discrete > 0) {
     problem_category_ = problem_category_t::MIP;
   } else {
     problem_category_ = problem_category_t::LP;
