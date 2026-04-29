@@ -104,12 +104,6 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
   INCLUDE_PATH="${CONDA_PREFIX}/include"
   LIB_PATH="${CONDA_PREFIX}/lib"
   export LD_LIBRARY_PATH="${LIB_PATH}:${LD_LIBRARY_PATH:-}"
-  # MIP solver requires >= 2 OMP threads; set a floor so CI environments that
-  # default to 1 thread don't hit the RuntimeError check in solve_mip.
-  if [[ -z "${OMP_NUM_THREADS:-}" ]]; then
-    _nproc=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
-    export OMP_NUM_THREADS=$(( _nproc > 1 ? _nproc : 4 ))
-  fi
 
   log "Testing C assets in skills (using ${CC})"
   while IFS= read -r -d '' cfile; do
