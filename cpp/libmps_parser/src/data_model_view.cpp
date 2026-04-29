@@ -355,6 +355,26 @@ bool data_model_view_t<i_t, f_t>::is_Q_symmetrized() const noexcept
   return is_Q_symmetrized_;
 }
 
+template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
+}
+
+template <typename i_t, typename f_t>
+bool data_model_view_t<i_t, f_t>::has_quadratic_constraints() const noexcept
+{
+  return !quadratic_constraints_.empty();
+}
+
+template <typename i_t, typename f_t>
+const std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>&
+data_model_view_t<i_t, f_t>::get_quadratic_constraints() const noexcept
+{
+  return quadratic_constraints_;
+}
+
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class data_model_view_t<int, float>;
 

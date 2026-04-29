@@ -109,6 +109,10 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
                                             q_offsets.data(),
                                             n_vars + 1);
   }
+  // Handle quadratic constraints if present
+  if (data_model.has_quadratic_constraints()) {
+    problem->set_quadratic_constraints(data_model.get_quadratic_constraints());
+  }
 }
 
 /**
@@ -265,6 +269,10 @@ void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* p
 
   if (data_model->get_row_names().size() != 0) {
     problem->set_row_names(data_model->get_row_names());
+  }
+
+  if (data_model->has_quadratic_constraints()) {
+    problem->set_quadratic_constraints(data_model->get_quadratic_constraints());
   }
 }
 
