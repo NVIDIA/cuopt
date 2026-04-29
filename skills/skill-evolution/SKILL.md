@@ -17,6 +17,7 @@ You MUST evaluate whether to enter the skill evolution workflow when ANY of thes
 3. **Undocumented behavior** — You discovered an API behavior, default value, or constraint not mentioned in the relevant skill.
 4. **Workaround** — You had to work around a limitation or gotcha not documented in any skill.
 5. **Variable type or modeling error** — You chose the wrong variable type (e.g., CONTINUOUS vs INTEGER), constraint form, or objective structure, and the correction changed the result.
+6. **Thrash before landing** — You arrived at the right answer, but only after visibly thrashing: writing dead code that you then deleted, rewriting the same construct multiple times, or exploring 2+ approaches before settling. The final code looks fine, but the path to it shows the skill failed to point you at the right pattern from the start. The fix is usually a worked example or a "prefer X over Y" note that would have saved the detour.
 
 **When a trigger fires:** Finish solving the user's problem first, then evaluate whether the learning is generalizable (not user-specific) before entering Phase 1 or Phase 2.
 
