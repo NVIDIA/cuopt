@@ -784,10 +784,20 @@ pdlp_solver_t<i_t, f_t>::finalize_batch_return_with_limit_reached(
           current_termination_strategy_.get_termination_status(i), accept_pf)) {
       const auto original_index = climber_strategies_[i].original_index;
       batch_solution_to_return_.get_terminations_status()[original_index] = fallback_status;
+      current_termination_strategy_.set_termination_status(i, fallback_status);
     }
   }
+  current_termination_strategy_.fill_gpu_terms_stats(total_pdlp_iterations_, true);
   current_termination_strategy_.convert_gpu_terms_stats_to_host(
     batch_solution_to_return_.get_additional_termination_informations());
+  if (fallback_status != pdlp_termination_status_t::ConcurrentLimit) {
+    for (size_t i = 0; i < climber_strategies_.size(); ++i) {
+      const auto original_index =
+        static_cast<size_t>(climber_strategies_[i].original_index);
+      batch_solution_to_return_.get_additional_termination_informations()[original_index]
+        .solved_by = method_t::PDLP;
+    }
+  }
   return optimization_problem_solution_t<i_t, f_t>{
     batch_solution_to_return_.get_primal_solution(),
     batch_solution_to_return_.get_dual_solution(),
