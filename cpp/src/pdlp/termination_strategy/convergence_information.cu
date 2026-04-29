@@ -343,17 +343,6 @@ void convergence_information_t<i_t, f_t>::resize_context(i_t new_size)
 }
 
 template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::set_relative_dual_tolerance_factor(
-  f_t dual_tolerance_factor)
-{
-  cub::DeviceTransform::Transform(thrust::make_constant_iterator(dual_tolerance_factor),
-                                  l2_norm_primal_linear_objective_.data(),
-                                  l2_norm_primal_linear_objective_.size(),
-                                  cuda::std::identity{},
-                                  stream_view_);
-}
-
-template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::set_relative_primal_tolerance_factor(
   f_t primal_tolerance_factor)
 {
@@ -362,18 +351,6 @@ void convergence_information_t<i_t, f_t>::set_relative_primal_tolerance_factor(
                                   l2_norm_primal_right_hand_side_.size(),
                                   cuda::std::identity{},
                                   stream_view_);
-}
-
-template <typename i_t, typename f_t>
-f_t convergence_information_t<i_t, f_t>::get_relative_dual_tolerance_factor() const
-{
-  return l2_norm_primal_linear_objective_.element(0, stream_view_);
-}
-
-template <typename i_t, typename f_t>
-f_t convergence_information_t<i_t, f_t>::get_relative_primal_tolerance_factor() const
-{
-  return l2_norm_primal_right_hand_side_.element(0, stream_view_);
 }
 
 template <typename i_t, typename f_t>

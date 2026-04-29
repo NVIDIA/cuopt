@@ -172,10 +172,7 @@ class pdlp_termination_strategy_t {
       typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>&
       additional_termination_informations);
 
-  void set_relative_dual_tolerance_factor(f_t dual_tolerance_factor);
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
-  f_t get_relative_dual_tolerance_factor() const;
-  f_t get_relative_primal_tolerance_factor() const;
 
   pdlp_termination_status_t get_termination_status(i_t id) const;
   void set_termination_status(i_t id, pdlp_termination_status_t status);

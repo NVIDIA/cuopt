@@ -796,29 +796,6 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
   }
 }
 
-TEST(pdlp_class, initial_rhs_and_c)
-{
-  const raft::handle_t handle_{};
-
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model =
-    cuopt::mps_parser::parse_mps<int, double>(path);
-
-  auto op_problem = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
-    &handle_, mps_data_model);
-  cuopt::linear_programming::detail::problem_t<int, double> problem(op_problem);
-
-  auto solver_settings = pdlp_solver_settings_t<int, double>{};
-  cuopt::linear_programming::detail::pdlp_solver_t<int, double> solver(problem, solver_settings);
-  constexpr double test_initial_primal_factor = 1.0;
-  constexpr double test_initial_dual_factor   = 2.0;
-  solver.set_relative_dual_tolerance_factor(test_initial_dual_factor);
-  solver.set_relative_primal_tolerance_factor(test_initial_primal_factor);
-
-  EXPECT_EQ(solver.get_relative_dual_tolerance_factor(), test_initial_dual_factor);
-  EXPECT_EQ(solver.get_relative_primal_tolerance_factor(), test_initial_primal_factor);
-}
-
 TEST(pdlp_class, per_constraint_test)
 {
   /*

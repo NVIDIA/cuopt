@@ -62,10 +62,7 @@ class convergence_information_t {
   f_t get_relative_l2_primal_residual_value(i_t climber_strategy_id = 0) const;
   f_t get_relative_l2_dual_residual_value(i_t climber_strategy_id = 0) const;
 
-  void set_relative_dual_tolerance_factor(f_t dual_tolerance_factor);
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
-  f_t get_relative_dual_tolerance_factor() const;
-  f_t get_relative_primal_tolerance_factor() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_linear_objective() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_right_hand_side() const;
 

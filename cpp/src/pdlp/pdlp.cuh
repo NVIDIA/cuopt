@@ -67,8 +67,6 @@ class pdlp_solver_t {
   f_t get_primal_weight_h(i_t id) const;
   f_t get_step_size_h(i_t id) const;
   i_t get_total_pdhg_iterations() const;
-  f_t get_relative_dual_tolerance_factor() const;
-  f_t get_relative_primal_tolerance_factor() const;
   detail::pdlp_termination_strategy_t<i_t, f_t>& get_current_termination_strategy();
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
@@ -87,7 +85,6 @@ class pdlp_solver_t {
   void set_initial_primal_weight(f_t initial_primal_weight);
   void set_initial_step_size(f_t initial_primal_weight);
   void set_initial_k(i_t initial_k);
-  void set_relative_dual_tolerance_factor(f_t dual_tolerance_factor);
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
 
   using primal_quality_adapter_t =

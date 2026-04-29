@@ -373,32 +373,6 @@ void pdlp_solver_t<i_t, f_t>::set_initial_k(i_t initial_k)
 }
 
 template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::set_relative_dual_tolerance_factor(f_t dual_tolerance_factor)
-{
-  average_termination_strategy_.set_relative_dual_tolerance_factor(dual_tolerance_factor);
-  current_termination_strategy_.set_relative_dual_tolerance_factor(dual_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
-void pdlp_solver_t<i_t, f_t>::set_relative_primal_tolerance_factor(f_t primal_tolerance_factor)
-{
-  average_termination_strategy_.set_relative_primal_tolerance_factor(primal_tolerance_factor);
-  current_termination_strategy_.set_relative_primal_tolerance_factor(primal_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_solver_t<i_t, f_t>::get_relative_dual_tolerance_factor() const
-{
-  return current_termination_strategy_.get_relative_dual_tolerance_factor();
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_solver_t<i_t, f_t>::get_relative_primal_tolerance_factor() const
-{
-  return current_termination_strategy_.get_relative_primal_tolerance_factor();
-}
-
-template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::set_initial_primal_solution(
   const rmm::device_uvector<f_t>& initial_primal_solution)
 {

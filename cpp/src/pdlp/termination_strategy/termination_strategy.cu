@@ -87,29 +87,10 @@ void pdlp_termination_strategy_t<i_t, f_t>::resize_context(i_t new_size)
 }
 
 template <typename i_t, typename f_t>
-void pdlp_termination_strategy_t<i_t, f_t>::set_relative_dual_tolerance_factor(
-  f_t dual_tolerance_factor)
-{
-  convergence_information_.set_relative_dual_tolerance_factor(dual_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
 void pdlp_termination_strategy_t<i_t, f_t>::set_relative_primal_tolerance_factor(
   f_t primal_tolerance_factor)
 {
   convergence_information_.set_relative_primal_tolerance_factor(primal_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_termination_strategy_t<i_t, f_t>::get_relative_dual_tolerance_factor() const
-{
-  return convergence_information_.get_relative_dual_tolerance_factor();
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_termination_strategy_t<i_t, f_t>::get_relative_primal_tolerance_factor() const
-{
-  return convergence_information_.get_relative_primal_tolerance_factor();
 }
 
 template <typename i_t, typename f_t>
