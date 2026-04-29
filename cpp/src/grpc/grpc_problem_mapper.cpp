@@ -18,6 +18,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <string>
 
 namespace cuopt::linear_programming {
 

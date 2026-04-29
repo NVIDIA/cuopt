@@ -7,8 +7,8 @@ cuopt::remote::VariableType to_proto_variable_type(var_t v)
   switch (v) {
     case var_t::CONTINUOUS: return cuopt::remote::CONTINUOUS;
     case var_t::INTEGER: return cuopt::remote::INTEGER;
-    default: return cuopt::remote::CONTINUOUS;
   }
+  throw std::invalid_argument("Unknown var_t: " + std::to_string(static_cast<int>(v)));
 }
 
 var_t from_proto_variable_type(cuopt::remote::VariableType v)
@@ -16,8 +16,8 @@ var_t from_proto_variable_type(cuopt::remote::VariableType v)
   switch (v) {
     case cuopt::remote::CONTINUOUS: return var_t::CONTINUOUS;
     case cuopt::remote::INTEGER: return var_t::INTEGER;
-    default: return var_t::CONTINUOUS;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::VariableType: " + std::to_string(static_cast<int>(v)));
 }
 
 cuopt::remote::ProblemCategory to_proto_problem_category(problem_category_t v)
@@ -25,8 +25,8 @@ cuopt::remote::ProblemCategory to_proto_problem_category(problem_category_t v)
   switch (v) {
     case problem_category_t::LP: return cuopt::remote::LP;
     case problem_category_t::MIP: return cuopt::remote::MIP;
-    default: return cuopt::remote::LP;
   }
+  throw std::invalid_argument("Unknown problem_category_t: " + std::to_string(static_cast<int>(v)));
 }
 
 problem_category_t from_proto_problem_category(cuopt::remote::ProblemCategory v)
@@ -34,6 +34,6 @@ problem_category_t from_proto_problem_category(cuopt::remote::ProblemCategory v)
   switch (v) {
     case cuopt::remote::LP: return problem_category_t::LP;
     case cuopt::remote::MIP: return problem_category_t::MIP;
-    default: return problem_category_t::LP;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::ProblemCategory: " + std::to_string(static_cast<int>(v)));
 }

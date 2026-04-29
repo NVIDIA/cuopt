@@ -145,6 +145,13 @@ enums:
 # ─────────────────────────────────────────────────────────────────────────────
 lp_solution:
   cpp_type: "cpu_lp_solution_t<i_t, f_t>"
+  # Submessages embedded as fields in LPSolution. Tags are pinned here (rather
+  # than auto-numbered) so they stay stable across proto schema churn; the
+  # auto-numberer reserves them out of the arrays/scalars pool.
+  embeds:
+    - name: warm_start_data
+      type: PDLPWarmStartData
+      field_num: 4
 
   scalars:
   - lp_termination_status:
@@ -341,6 +348,20 @@ mip_solution:
     - simplex_iterations
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Chunked Result Header
+# ─────────────────────────────────────────────────────────────────────────────
+# Synthetic message assembled from lp_solution + mip_solution scalars and
+# warm-start scalars at codegen time. The only thing the registry needs to
+# carry for it is the list of embedded submessages.
+#
+chunked_result_header:
+  embeds:
+    - name: arrays
+      type: ResultArrayDescriptor
+      field_num: 50
+      repeated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PDLP Solver Settings
 # ─────────────────────────────────────────────────────────────────────────────
 #
@@ -350,6 +371,11 @@ mip_solution:
 pdlp_settings:
   cpp_type: "pdlp_solver_settings_t<i_t, f_t>"
   proto_type: "cuopt::remote::PDLPSolverSettings"
+  # Submessages embedded as fields in PDLPSolverSettings. See lp_solution.embeds.
+  embeds:
+    - name: warm_start_data
+      type: PDLPWarmStartData
+      field_num: 50
 
   fields:
     # Termination tolerances (nested: settings.tolerances.<field>)

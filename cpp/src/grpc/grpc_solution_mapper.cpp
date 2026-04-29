@@ -14,6 +14,8 @@
 
 #include <cstring>
 #include <map>
+#include <stdexcept>
+#include <string>
 
 namespace cuopt::linear_programming {
 
@@ -45,24 +47,36 @@ template <typename T>
 std::vector<T> bytes_to_typed(const std::map<int32_t, std::vector<uint8_t>>& arrays,
                               int32_t field_id)
 {
+  // An absent entry or empty payload means "field not transmitted" — callers
+  // use the empty return to distinguish absence. A present-but-misaligned
+  // payload is corrupt data and must fail loudly instead of silently masking.
   auto it = arrays.find(field_id);
   if (it == arrays.end() || it->second.empty()) return {};
 
-  const auto& raw = it->second;
+  const auto& raw    = it->second;
+  auto check_aligned = [&](size_t elem_size) {
+    if (raw.size() % elem_size != 0) {
+      throw std::invalid_argument("bytes_to_typed: payload size " + std::to_string(raw.size()) +
+                                  " for field_id " + std::to_string(field_id) +
+                                  " is not a multiple of element size " +
+                                  std::to_string(elem_size));
+    }
+  };
+
   if constexpr (std::is_same_v<T, float>) {
-    if (raw.size() % sizeof(double) != 0) return {};
+    check_aligned(sizeof(double));
     size_t n = raw.size() / sizeof(double);
     std::vector<double> tmp(n);
     std::memcpy(tmp.data(), raw.data(), n * sizeof(double));
     return std::vector<T>(tmp.begin(), tmp.end());
   } else if constexpr (std::is_same_v<T, double>) {
-    if (raw.size() % sizeof(double) != 0) return {};
+    check_aligned(sizeof(double));
     size_t n = raw.size() / sizeof(double);
     std::vector<double> v(n);
     std::memcpy(v.data(), raw.data(), n * sizeof(double));
     return v;
   } else {
-    if (raw.size() % sizeof(T) != 0) return {};
+    check_aligned(sizeof(T));
     size_t n = raw.size() / sizeof(T);
     std::vector<T> v(n);
     std::memcpy(v.data(), raw.data(), n * sizeof(T));

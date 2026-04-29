@@ -14,8 +14,8 @@ cuopt::remote::PDLPTerminationStatus to_proto_pdlp_termination_status(pdlp_termi
     case pdlp_termination_status_t::TimeLimit: return cuopt::remote::PDLP_TIME_LIMIT;
     case pdlp_termination_status_t::ConcurrentLimit: return cuopt::remote::PDLP_CONCURRENT_LIMIT;
     case pdlp_termination_status_t::PrimalFeasible: return cuopt::remote::PDLP_PRIMAL_FEASIBLE;
-    default: return cuopt::remote::PDLP_NO_TERMINATION;
   }
+  throw std::invalid_argument("Unknown pdlp_termination_status_t: " + std::to_string(static_cast<int>(v)));
 }
 
 pdlp_termination_status_t from_proto_pdlp_termination_status(cuopt::remote::PDLPTerminationStatus v)
@@ -30,8 +30,8 @@ pdlp_termination_status_t from_proto_pdlp_termination_status(cuopt::remote::PDLP
     case cuopt::remote::PDLP_TIME_LIMIT: return pdlp_termination_status_t::TimeLimit;
     case cuopt::remote::PDLP_CONCURRENT_LIMIT: return pdlp_termination_status_t::ConcurrentLimit;
     case cuopt::remote::PDLP_PRIMAL_FEASIBLE: return pdlp_termination_status_t::PrimalFeasible;
-    default: return pdlp_termination_status_t::NoTermination;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::PDLPTerminationStatus: " + std::to_string(static_cast<int>(v)));
 }
 
 cuopt::remote::MIPTerminationStatus to_proto_mip_termination_status(mip_termination_status_t v)
@@ -44,8 +44,8 @@ cuopt::remote::MIPTerminationStatus to_proto_mip_termination_status(mip_terminat
     case mip_termination_status_t::Unbounded: return cuopt::remote::MIP_UNBOUNDED;
     case mip_termination_status_t::TimeLimit: return cuopt::remote::MIP_TIME_LIMIT;
     case mip_termination_status_t::WorkLimit: return cuopt::remote::MIP_WORK_LIMIT;
-    default: return cuopt::remote::MIP_NO_TERMINATION;
   }
+  throw std::invalid_argument("Unknown mip_termination_status_t: " + std::to_string(static_cast<int>(v)));
 }
 
 mip_termination_status_t from_proto_mip_termination_status(cuopt::remote::MIPTerminationStatus v)
@@ -58,6 +58,6 @@ mip_termination_status_t from_proto_mip_termination_status(cuopt::remote::MIPTer
     case cuopt::remote::MIP_UNBOUNDED: return mip_termination_status_t::Unbounded;
     case cuopt::remote::MIP_TIME_LIMIT: return mip_termination_status_t::TimeLimit;
     case cuopt::remote::MIP_WORK_LIMIT: return mip_termination_status_t::WorkLimit;
-    default: return mip_termination_status_t::NoTermination;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::MIPTerminationStatus: " + std::to_string(static_cast<int>(v)));
 }

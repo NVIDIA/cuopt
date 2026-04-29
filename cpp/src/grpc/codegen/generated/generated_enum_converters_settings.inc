@@ -10,8 +10,8 @@ cuopt::remote::PDLPSolverMode to_proto_pdlp_solver_mode(pdlp_solver_mode_t v)
     case pdlp_solver_mode_t::Methodical1: return cuopt::remote::Methodical1;
     case pdlp_solver_mode_t::Fast1: return cuopt::remote::Fast1;
     case pdlp_solver_mode_t::Stable3: return cuopt::remote::Stable3;
-    default: return cuopt::remote::Stable3;
   }
+  throw std::invalid_argument("Unknown pdlp_solver_mode_t: " + std::to_string(static_cast<int>(v)));
 }
 
 pdlp_solver_mode_t from_proto_pdlp_solver_mode(cuopt::remote::PDLPSolverMode v)
@@ -22,8 +22,8 @@ pdlp_solver_mode_t from_proto_pdlp_solver_mode(cuopt::remote::PDLPSolverMode v)
     case cuopt::remote::Methodical1: return pdlp_solver_mode_t::Methodical1;
     case cuopt::remote::Fast1: return pdlp_solver_mode_t::Fast1;
     case cuopt::remote::Stable3: return pdlp_solver_mode_t::Stable3;
-    default: return pdlp_solver_mode_t::Stable3;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::PDLPSolverMode: " + std::to_string(static_cast<int>(v)));
 }
 
 cuopt::remote::LPMethod to_proto_lp_method(method_t v)
@@ -33,8 +33,8 @@ cuopt::remote::LPMethod to_proto_lp_method(method_t v)
     case method_t::PDLP: return cuopt::remote::PDLP;
     case method_t::DualSimplex: return cuopt::remote::DualSimplex;
     case method_t::Barrier: return cuopt::remote::Barrier;
-    default: return cuopt::remote::Concurrent;
   }
+  throw std::invalid_argument("Unknown method_t: " + std::to_string(static_cast<int>(v)));
 }
 
 method_t from_proto_lp_method(cuopt::remote::LPMethod v)
@@ -44,6 +44,6 @@ method_t from_proto_lp_method(cuopt::remote::LPMethod v)
     case cuopt::remote::PDLP: return method_t::PDLP;
     case cuopt::remote::DualSimplex: return method_t::DualSimplex;
     case cuopt::remote::Barrier: return method_t::Barrier;
-    default: return method_t::Concurrent;
   }
+  throw std::invalid_argument("Unknown cuopt::remote::LPMethod: " + std::to_string(static_cast<int>(v)));
 }

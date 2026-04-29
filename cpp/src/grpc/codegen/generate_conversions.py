@@ -397,10 +397,10 @@ def generate_enum_converters_inc(registry, domain=None):
         to_fn = _enum_to_proto_fn(key, edef)
         from_fn = _enum_from_proto_fn(key, edef)
         prefix = edef.get("proto_prefix", "")
-        default_cpp = _enum_default(key, edef)
-        default_proto = _proto_enum_value_name(default_cpp, prefix)
 
-        # to_proto
+        # Omit `default:` so -Wswitch-enum flags any newly-added enumerator that
+        # was not handled. Throw after the switch to reject unknown wire/int
+        # values at runtime.
         lines = [
             f"cuopt::remote::{proto_type_name} {to_fn}({cpp_type} v)",
             "{",
@@ -411,11 +411,15 @@ def generate_enum_converters_inc(registry, domain=None):
             lines.append(
                 f"    case {cpp_type}::{cpp_name}: return cuopt::remote::{pname};"
             )
-        lines.append(f"    default: return cuopt::remote::{default_proto};")
-        lines.extend(["  }", "}"])
+        lines.extend(
+            [
+                "  }",
+                f'  throw std::invalid_argument("Unknown {cpp_type}: " + std::to_string(static_cast<int>(v)));',
+                "}",
+            ]
+        )
         funcs.append("\n".join(lines))
 
-        # from_proto
         lines = [
             f"{cpp_type} {from_fn}(cuopt::remote::{proto_type_name} v)",
             "{",
@@ -426,8 +430,13 @@ def generate_enum_converters_inc(registry, domain=None):
             lines.append(
                 f"    case cuopt::remote::{pname}: return {cpp_type}::{cpp_name};"
             )
-        lines.append(f"    default: return {cpp_type}::{default_cpp};")
-        lines.extend(["  }", "}"])
+        lines.extend(
+            [
+                "  }",
+                f'  throw std::invalid_argument("Unknown cuopt::remote::{proto_type_name}: " + std::to_string(static_cast<int>(v)));',
+                "}",
+            ]
+        )
         funcs.append("\n".join(lines))
 
     return "\n\n".join(funcs)
@@ -522,6 +531,25 @@ def generate_array_field_element_size_inc(registry):
 # ============================================================================
 
 
+def _iter_embeds(obj):
+    """Yield (field_num, proto_line) tuples for every submessage embed declared
+    on a registry section. Each entry in `obj['embeds']` must carry at least
+    `name`, `type`, and `field_num`; `repeated: true` emits a `repeated` field.
+    """
+    for embed in obj.get("embeds", []) or []:
+        try:
+            num = embed["field_num"]
+            name = embed["name"]
+            msg_type = embed["type"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError(
+                f"Malformed embed entry {embed!r}: requires "
+                "'name', 'type', and 'field_num'"
+            ) from exc
+        prefix = "repeated " if embed.get("repeated", False) else ""
+        yield num, f"  {prefix}{msg_type} {name} = {num};"
+
+
 def generate_settings_message_proto(registry, message_name, obj):
     lines = []
     for f in parse_settings_fields(obj.get("fields", [])):
@@ -530,8 +558,7 @@ def generate_settings_message_proto(registry, message_name, obj):
             continue
         ptype = _settings_field_proto_type(registry, f)
         lines.append((num, f"  {ptype} {f['name']} = {num};"))
-    if message_name == "PDLPSolverSettings":
-        lines.append((50, "  PDLPWarmStartData warm_start_data = 50;"))
+    lines.extend(_iter_embeds(obj))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -649,7 +676,7 @@ def generate_lp_solution_message_proto(registry):
         num = f.get("field_num")
         if num is not None:
             lines.append((num, f"  repeated double {f['name']} = {num};"))
-    lines.append((4, "  PDLPWarmStartData warm_start_data = 4;"))
+    lines.extend(_iter_embeds(obj))
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
         num = f.get("field_num")
@@ -729,7 +756,7 @@ def generate_chunked_result_header_proto(registry):
                         f"  {proto_type(f.get('type', 'double'))} {ch_name} = {num};",
                     )
                 )
-    lines.append((50, "  repeated ResultArrayDescriptor arrays = 50;"))
+    lines.extend(_iter_embeds(registry.get("chunked_result_header", {})))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -1157,17 +1184,15 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
     args = [f"std::move({n})" for n in array_names]
     args += [scalar_vars.get(s, f"_{s}") for s in arg_scalars]
 
-    # Warm start
-    if ws:
-        ws_arrays = ws.get("arrays", [])
+    # Warm start — emitted only when the section actually declares arrays.
+    # Presence is detected by probing the first array's ResultFieldId, so an
+    # empty arrays list has no sentinel and cannot be decoded here.
+    if ws and ws.get("arrays"):
+        ws_arrays = ws["arrays"]
         ws_rid_prefix = ws.get("result_id_prefix", "")
         ws_ch_prefix = ws.get("chunked_header_prefix", "")
-        first_array = parse_field(ws_arrays[0]) if ws_arrays else None
-        detect_eid = (
-            _field_result_id_name(first_array, prefix=ws_rid_prefix)
-            if first_array
-            else None
-        )
+        first_array = parse_field(ws_arrays[0])
+        detect_eid = _field_result_id_name(first_array, prefix=ws_rid_prefix)
         lines.append("")
         lines.append(
             f"{ind}auto _ws_detect = bytes_to_typed<f_t>(arrays, cuopt::remote::{detect_eid});"
@@ -1766,7 +1791,7 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             )
             lines.append(f"{ind}if (!{name}_str.empty()) {{")
             lines.append(
-                f"{ind}  cpu_problem.set_{name}({name}_str.data(), static_cast<i_t>({name}_str.size()));"
+                f"{ind}  cpu_problem.{setter}({name}_str.data(), static_cast<i_t>({name}_str.size()));"
             )
             lines.append(f"{ind}}}")
         elif ftype.startswith("repeated"):
@@ -1940,6 +1965,129 @@ def _collect_settings_field_nums(entries):
             elif isinstance(val, dict) and "field_num" in val:
                 nums.add(val["field_num"])
     return nums
+
+
+def _embed_field_nums(section):
+    """Return the set of tags pinned by submessage embeds on a section."""
+    nums = set()
+    for embed in section.get("embeds") or []:
+        if isinstance(embed, dict) and "field_num" in embed:
+            nums.add(embed["field_num"])
+    return nums
+
+
+def _iter_named_field_nums(entries, key_name="field_num"):
+    """Yield (num, source_label) for field-list entries carrying key_name."""
+    for entry in entries or []:
+        if isinstance(entry, dict) and len(entry) == 1:
+            name = next(iter(entry))
+            val = entry[name]
+            if isinstance(val, dict) and key_name in val:
+                yield val[key_name], name
+
+
+def _iter_named_settings_field_nums(entries, parent=""):
+    """Yield (num, source_label) for nested settings entries."""
+    for entry in entries or []:
+        if isinstance(entry, dict) and len(entry) == 1:
+            name = next(iter(entry))
+            val = entry[name]
+            label = f"{parent}.{name}" if parent else name
+            if isinstance(val, list):
+                yield from _iter_named_settings_field_nums(val, label)
+            elif isinstance(val, dict) and "field_num" in val:
+                yield val["field_num"], label
+
+
+def _iter_named_embed_field_nums(section):
+    for embed in section.get("embeds") or []:
+        if (
+            isinstance(embed, dict)
+            and "field_num" in embed
+            and "name" in embed
+        ):
+            yield embed["field_num"], f"embed:{embed['name']}"
+
+
+def _check_unique(label, pairs, errors):
+    """Record duplicate values found in (num, source) pairs under `label`."""
+    seen = {}
+    for num, src in pairs:
+        if num in seen:
+            errors.append(
+                f"{label}: duplicate tag {num} "
+                f"(conflict: {seen[num]!r} vs {src!r})"
+            )
+        else:
+            seen[num] = src
+
+
+def _validate_registry_uniqueness(registry):
+    """Raise ValueError if the registry assigns the same tag twice within any
+    proto message's field namespace, or the same array_id twice in the shared
+    ResultFieldId pool. Aliases declared under `enums.result_field_id.aliases`
+    are excluded (they are intentional allow_alias entries)."""
+    errors = []
+
+    # Per-message field_num pools. Each tuple: (proto message label, section).
+    per_message = [
+        ("OptimizationProblem", "optimization_problem", ["scalars", "arrays"]),
+        ("LPSolution", "lp_solution", ["scalars", "arrays"]),
+        ("MIPSolution", "mip_solution", ["scalars", "arrays"]),
+    ]
+    for msg, key, field_keys in per_message:
+        section = registry.get(key) or {}
+        pairs = []
+        for fk in field_keys:
+            pairs.extend(_iter_named_field_nums(section.get(fk, [])))
+        pairs.extend(_iter_named_embed_field_nums(section))
+        _check_unique(msg, pairs, errors)
+
+    # Settings messages use the nested `fields:` layout.
+    for msg, key in [
+        ("PDLPSolverSettings", "pdlp_settings"),
+        ("MIPSolverSettings", "mip_settings"),
+    ]:
+        section = registry.get(key) or {}
+        pairs = list(
+            _iter_named_settings_field_nums(section.get("fields", []))
+        )
+        pairs.extend(_iter_named_embed_field_nums(section))
+        _check_unique(msg, pairs, errors)
+
+    # PDLPWarmStartData is currently sourced from lp_solution.warm_start; if
+    # mip_solution ever grows a warm_start block it will be the same message
+    # and tags must not collide with the LP side.
+    ws_pairs = []
+    for key in ["lp_solution", "mip_solution"]:
+        ws = (registry.get(key) or {}).get("warm_start") or {}
+        for fk in ["scalars", "arrays"]:
+            for num, name in _iter_named_field_nums(ws.get(fk, [])):
+                ws_pairs.append((num, f"{key}.warm_start.{fk}.{name}"))
+    _check_unique("PDLPWarmStartData", ws_pairs, errors)
+
+    # Global ResultFieldId pool — shared across all solution/warm_start arrays.
+    # Aliases live under enums.result_field_id.aliases and piggyback on these
+    # primary numbers via proto's `allow_alias`; they are not part of this pool.
+    rid_pairs = []
+    for key in ["lp_solution", "mip_solution"]:
+        section = registry.get(key) or {}
+        for num, name in _iter_named_field_nums(
+            section.get("arrays", []), "array_id"
+        ):
+            rid_pairs.append((num, f"{key}.arrays.{name}"))
+        ws = section.get("warm_start") or {}
+        for num, name in _iter_named_field_nums(
+            ws.get("arrays", []), "array_id"
+        ):
+            rid_pairs.append((num, f"{key}.warm_start.arrays.{name}"))
+    _check_unique("ResultFieldId", rid_pairs, errors)
+
+    if errors:
+        raise ValueError(
+            "field_registry.yaml validation failed:\n  - "
+            + "\n  - ".join(errors)
+        )
 
 
 def _ruamel_insert(mapping, key, value):
@@ -2229,12 +2377,15 @@ def auto_assign_field_numbers(data):
             scalars, "field_num", lo, hi, existing, f"{section_key}.scalars"
         )
 
-        # Arrays — field_num (per-message, no cap)
+        # Arrays — field_num (per-message, no cap). Reserve tags used by
+        # embedded submessages so the auto-numberer can't hand them out to a
+        # new array.
         arrays = section.get("arrays", [])
         arr_fn_range = FIELD_NUM_RANGES.get(
             f"{section_key}.arrays.field_num", (1, None)
         )
         existing_fn = _collect_field_nums(arrays, "field_num")
+        existing_fn |= _embed_field_nums(section)
         total += _assign_to_field_list(
             arrays,
             "field_num",
@@ -2302,6 +2453,9 @@ def auto_assign_field_numbers(data):
         fields = section.get("fields", [])
         lo, hi = FIELD_NUM_RANGES[section_key]
         existing = _collect_settings_field_nums(fields)
+        # Reserve tags used by embedded submessages so auto-numbering won't
+        # collide with them.
+        existing |= _embed_field_nums(section)
         total += _assign_to_settings_fields(
             fields, lo, hi, existing, section_key
         )
@@ -2379,6 +2533,12 @@ def main():
             "Run with --auto-number to assign them before generating.",
             file=sys.stderr,
         )
+        sys.exit(1)
+
+    try:
+        _validate_registry_uniqueness(registry)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
     outdir = args.output_dir
