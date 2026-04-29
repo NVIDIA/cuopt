@@ -77,6 +77,16 @@ Choose the target using this priority:
 
 If a gotcha affects both Python and C users but is about the solver behavior (not the API), it belongs in the common formulation skill, not in both `api-python` and `api-c`.
 
+#### Size escape hatch — push to `references/` when the target is bloated
+
+A SKILL.md that grows past ~500 lines starts paying for itself in tokens on every invocation, and readers begin skimming. Before adding new prose to a target SKILL.md, check its current size:
+
+- **Under ~400 lines** — add the content inline as usual.
+- **Approaching ~500 lines** — propose a `skills/<name>/references/<topic>.md` file with the full content, and add a one-line pointer in SKILL.md (e.g. "For warmstart edge cases, see `references/warmstart.md`"). The reference file loads only when the model needs it.
+- **A dense table or long example** — even in a small SKILL.md, prefer a `references/` file when the content is reference material (lookup tables, full code listings) rather than guidance the reader needs every time.
+
+The goal is to keep SKILL.md focused on what the model needs *every* invocation, and put detail behind pointers.
+
 ### Proposal format
 
 Present to the user as:
@@ -220,15 +230,16 @@ Before proposing, verify the learning originated from **genuine problem-solving*
 
 ### Scope limits
 
-A proposal may only:
+A proposal may:
 - **Add** new content (gotchas, examples, table rows, subsections, code assets)
 - **Clarify** existing content (more precise wording, better examples)
 - **Correct** factual errors (wrong API name, wrong status value)
+- **Remove** existing content — only when it is stale (refers to API or behavior that no longer exists), contradicted by current code, or demonstrably wrong. The proposal must cite the evidence (e.g. "function `X` removed in commit `abc123`", "current code returns `Y`, not `Z` as documented"). Removals require an extra approval step: present the proposal with `Removal: yes` highlighted, and proceed only if the user explicitly confirms — silence does not count.
 
 A proposal must NOT:
-- **Remove** existing content
 - **Rewrite** existing sections wholesale
-- **Change** the meaning of existing rules or constraints
+- **Change** the meaning of existing rules or constraints (especially safety rules)
+- **Remove** content as a way to "tidy up" or because it seems unused — only stale or wrong content qualifies
 
 ## Distillation checklist
 
