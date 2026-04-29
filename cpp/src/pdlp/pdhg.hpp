@@ -20,6 +20,9 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <tuple>
+#include <vector>
+
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
@@ -29,7 +32,7 @@ class pdhg_solver_t {
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
                 const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
-                const std::vector<std::tuple<i_t, f_t, f_t>>& new_bounds,
+                const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
                 bool enable_mixed_precision_spmv = false);
 
   saddle_point_state_t<i_t, f_t>& get_saddle_point_state();
@@ -53,9 +56,12 @@ class pdhg_solver_t {
   i_t get_dual_size() const;
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_and_swap_new_bounds_context(
+    const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs, i_t new_size);
   void resize_context(i_t new_size);
   ping_pong_graph_t<i_t>& get_graph_all();
 
+  rmm::device_uvector<i_t>& get_new_bounds_climber_id() { return new_bounds_climber_id_; }
   rmm::device_uvector<i_t>& get_new_bounds_idx() { return new_bounds_idx_; }
   rmm::device_uvector<f_t>& get_new_bounds_lower() { return new_bounds_lower_; }
   rmm::device_uvector<f_t>& get_new_bounds_upper() { return new_bounds_upper_; }
@@ -130,6 +136,7 @@ class pdhg_solver_t {
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  rmm::device_uvector<i_t> new_bounds_climber_id_;
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;

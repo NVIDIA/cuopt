@@ -40,9 +40,11 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  *
  *   1. Strong-branching path:
  *      The caller passes an un-expanded optimization_problem_t plus per-climber
- *      variable bounds in settings.new_bounds. run_batch_pdlp auto-picks the
- *      optimal batch size and may loop over sub-batches, managing memory pressure
- *      internally.
+ *      variable bounds in settings.new_bounds. Each bound entry has shape
+ *      (climber_id, variable_index, lower, upper); several entries may target
+ *      the same climber. The batch size is max(climber_id) + 1. run_batch_pdlp
+ *      auto-picks the optimal sub-batch size and may loop over sub-batches,
+ *      managing memory pressure internally.
  *      See pdlp_test.cu:strong_branching_user_api for a full example.
  *
  *   2. Fixed-batch path (settings.fixed_batch_size > 0):
@@ -60,7 +62,9 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * @code
  * // Case 1: Strong branching (auto batch sizing)
  * pdlp_solver_settings_t<i_t, f_t> settings;
- * settings.new_bounds        = per_climber_bounds;  // per-climber variable bounds
+ * // Per-climber variable bounds: (climber_id, variable_index, lower, upper).
+ * settings.new_bounds.push_back({0, branch_var, lower_bound, down_bound});
+ * settings.new_bounds.push_back({1, branch_var, up_bound, upper_bound});
  * auto solution = run_batch_pdlp(problem, settings);
  * @endcode
  *

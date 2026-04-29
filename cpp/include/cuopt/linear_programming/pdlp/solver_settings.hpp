@@ -17,6 +17,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <tuple>
 
 #include <cuda/std/span>
 
@@ -312,14 +313,11 @@ class pdlp_solver_settings_t {
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
-  // Holds the information of new variable lower and upper bounds for each climber in the format:
-  // (variable index, new lower bound, new upper bound)
-  // For each entry in the vector, a new version of the problem (climber) will be solved
-  // concurrently i.e. if new_bounds.size() == 2, then 2 versions of the problem with updated
-  // bounds will be solved concurrently. This is the strong-branching input; per-climber objective
-  // coefficients / offsets / constraint bounds must be pre-expanded directly on the
-  // optimization_problem_t instead.
-  std::vector<std::tuple<i_t, f_t, f_t>> new_bounds;
+  // Holds per-climber variable-bound overrides in the format:
+  // (climber id, variable index, new lower bound, new upper bound).
+  // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly
+  // on the optimization_problem_t instead.
+  std::vector<std::tuple<i_t, i_t, f_t, f_t>> new_bounds;
   // By default to save memory and speed we don't store and copy each climber's primal and dual
   // solutions We only retrieve termination statistics and the objective values
   bool generate_batch_primal_dual_solution{false};

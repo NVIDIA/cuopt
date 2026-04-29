@@ -55,8 +55,12 @@
 
 #include <thrust/iterator/counting_iterator.h>
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
+#include <set>
 #include <thread>
+#include <tuple>
 
 #define CUOPT_LOG_CONDITIONAL_INFO(condition, ...) \
   if ((condition)) { CUOPT_LOG_INFO(__VA_ARGS__); }
@@ -1070,8 +1074,76 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_fixed(
                   /*is_batch_mode=*/true);
 }
 
-// Returns the maximum batch size that can be used without exceeding the free memory
-// memory_max_batch_size is the maximum batch size that the user is willing to use
+template <typename i_t, typename f_t>
+static void validate_new_bounds(const optimization_problem_t<i_t, f_t>& problem,
+                                pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  std::set<std::pair<i_t, i_t>> seen_bounds;
+  i_t last_climber_id = -1;
+  for (const auto& new_bound : settings.new_bounds) {
+    const auto climber_id = std::get<0>(new_bound);
+    const auto var_idx    = std::get<1>(new_bound);
+    const auto lower      = std::get<2>(new_bound);
+    const auto upper      = std::get<3>(new_bound);
+
+    cuopt_expects(climber_id >= 0,
+                  error_type_t::ValidationError,
+                  "new_bounds climber_id must be non-negative");
+    if (settings.fixed_batch_size > 0) {
+      cuopt_expects(climber_id < settings.fixed_batch_size,
+                    error_type_t::ValidationError,
+                    "new_bounds climber_id must be less than fixed_batch_size");
+    }
+    if (climber_id != last_climber_id) {
+      cuopt_expects(climber_id > last_climber_id,
+                    error_type_t::ValidationError,
+                    "new_bounds climber_id entries must be sorted ascending and grouped");
+      last_climber_id = climber_id;
+    }
+    cuopt_expects(var_idx >= 0 && var_idx < problem.get_n_variables(),
+                  error_type_t::ValidationError,
+                  "new_bounds variable_index must be in [0, n_variables)");
+    cuopt_expects(!std::isnan(lower) && !std::isnan(upper),
+                  error_type_t::ValidationError,
+                  "new_bounds lower and upper bounds must not be NaN");
+    cuopt_expects(lower <= upper,
+                  error_type_t::ValidationError,
+                  "new_bounds lower bound must be less than or equal to upper bound");
+    cuopt_expects(seen_bounds.insert({climber_id, var_idx}).second,
+                  error_type_t::ValidationError,
+                  "new_bounds cannot contain duplicate (climber_id, variable_index) entries");
+  }
+}
+
+// Returns the batch size implied by per-climber variable-bound overrides.
+template <typename i_t, typename f_t>
+static size_t new_bounds_batch_size(const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds)
+{
+  cuopt_assert(!new_bounds.empty(), "Batch size should be greater than 0");
+  i_t max_climber_id = 0;
+  for (const auto& new_bound : new_bounds) {
+    const auto climber_id = std::get<0>(new_bound);
+    cuopt_assert(climber_id >= 0, "new_bounds climber_id must be non-negative");
+    max_climber_id = std::max(max_climber_id, climber_id);
+  }
+  return static_cast<size_t>(max_climber_id) + 1;
+}
+
+template <typename i_t, typename f_t>
+static void validate_splitting_new_bounds(
+  const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds, size_t batch_size)
+{
+  cuopt_expects(new_bounds.size() == batch_size,
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path requires exactly one new_bounds entry per climber");
+  for (size_t i = 0; i < batch_size; ++i) {
+    cuopt_expects(std::get<0>(new_bounds[i]) == static_cast<i_t>(i),
+                  error_type_t::ValidationError,
+                  "run_batch_pdlp splitting path requires new_bounds sorted by climber_id with no "
+                  "missing climbers");
+  }
+}
+
 template <typename i_t, typename f_t>
 static size_t max_memory_batch_size(const optimization_problem_t<i_t, f_t>& problem,
                                     bool per_climber_objectives,
@@ -1135,8 +1207,9 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
                 "Use the fixed path (set fixed_batch_size) instead.");
 
   cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
-  const size_t max_batch_size  = settings.new_bounds.size();
+  const size_t max_batch_size  = new_bounds_batch_size(settings.new_bounds);
   size_t memory_max_batch_size = max_batch_size;
+  validate_splitting_new_bounds(settings.new_bounds, max_batch_size);
 
   const bool collect_solutions = settings.generate_batch_primal_dual_solution;
   // Strong branching never expands per-climber objectives or constraint bounds.
@@ -1198,10 +1271,13 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
 
   for (size_t i = 0; i < max_batch_size; i += optimal_batch_size) {
     const size_t current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
-    // Slice new_bounds for this sub-batch
-    if (!original_new_bounds.empty()) {
-      batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
-        original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
+    batch_settings.new_bounds.clear();
+    for (size_t c = 0; c < current_batch_size; ++c) {
+      const auto& new_bound = original_new_bounds[i + c];
+      batch_settings.new_bounds.emplace_back(static_cast<i_t>(c),
+                                             std::get<1>(new_bound),
+                                             std::get<2>(new_bound),
+                                             std::get<3>(new_bound));
     }
 
     if (!settings.shared_sb_solved.empty()) {
@@ -1254,6 +1330,8 @@ template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
 {
+  validate_new_bounds(problem, settings);
+
   // Fixed path: caller has pre-sized the batch (via fixed_batch_size) and pre-expanded any
   // per-climber problem fields directly on the optimization_problem_t. One solve_lp, no memory
   // heuristics.
@@ -1316,15 +1394,16 @@ optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
 
   // Lower bounds can sometimes generate infeasible instances that we struggle to detect
   constexpr bool only_upper = false;
-  int batch_size            = only_upper ? fractional.size() : fractional.size() * 2;
 
   for (size_t i = 0; i < fractional.size(); ++i)
-    settings.new_bounds.push_back({fractional[i],
+    settings.new_bounds.push_back({static_cast<i_t>(i),
+                                   fractional[i],
                                    mps_model.get_variable_lower_bounds()[fractional[i]],
                                    std::floor(root_soln_x[i])});
   if (!only_upper) {
     for (size_t i = 0; i < fractional.size(); i++)
-      settings.new_bounds.push_back({fractional[i],
+      settings.new_bounds.push_back({static_cast<i_t>(i + fractional.size()),
+                                     fractional[i],
                                      std::ceil(root_soln_x[i]),
                                      mps_model.get_variable_upper_bounds()[fractional[i]]});
   }
@@ -1622,6 +1701,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
                                                        op_problem.get_handle_ptr()->get_stream());
     }
+    validate_new_bounds(op_problem, settings);
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);

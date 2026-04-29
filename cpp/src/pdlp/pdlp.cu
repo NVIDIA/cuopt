@@ -39,8 +39,10 @@
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/logical.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
+#include <tuple>
 #include <unordered_set>
 
 namespace cuopt::linear_programming::detail {
@@ -111,6 +113,18 @@ struct scale_bounds_by_scalar_op {
 };
 
 template <typename i_t, typename f_t>
+static i_t max_new_bounds_climber_id(const pdlp_solver_settings_t<i_t, f_t>& settings)
+{
+  i_t max_climber_id = 0;
+  for (const auto& new_bound : settings.new_bounds) {
+    const auto climber_id = std::get<0>(new_bound);
+    cuopt_assert(climber_id >= 0, "new_bounds climber_id must be non-negative");
+    max_climber_id = std::max(max_climber_id, climber_id);
+  }
+  return max_climber_id;
+}
+
+template <typename i_t, typename f_t>
 static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   // Two inputs only:
@@ -120,12 +134,15 @@ static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& setting
   //   - fixed_batch_size == 0 : splitting path. Batch size is derived from new_bounds.
   size_t batch_size;
   if (settings.fixed_batch_size > 0) {
-    cuopt_assert(settings.new_bounds.empty() ||
-                   settings.new_bounds.size() == static_cast<size_t>(settings.fixed_batch_size),
-                 "when both fixed_batch_size and new_bounds are set their sizes must match");
+    if (!settings.new_bounds.empty()) {
+      cuopt_assert(max_new_bounds_climber_id(settings) + 1 == settings.fixed_batch_size,
+                   "new_bounds climber_id must be equal to fixed_batch_size");
+    }
     batch_size = static_cast<size_t>(settings.fixed_batch_size);
   } else {
-    batch_size = settings.new_bounds.empty() ? 1 : settings.new_bounds.size();
+    batch_size = settings.new_bounds.empty()
+                   ? 1
+                   : static_cast<size_t>(max_new_bounds_climber_id(settings)) + 1;
   }
 #ifdef BATCH_VERBOSE_MODE
   if (batch_size > 1) {
@@ -1663,7 +1680,7 @@ void pdlp_solver_t<i_t, f_t>::resize_all_context(i_t new_size)
 {
   raft::common::nvtx::range fun_scope("resize_all_context");
 
-  // Resize PDHG, its saddle point and its new bounds
+  // Resize PDHG and its saddle point
   pdhg_solver_.resize_context(new_size);
   // Resize restart strategy and its duality gap container
   restart_strategy_.resize_context(new_size);
@@ -1714,10 +1731,14 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   // No swap can happen if all climbers to remove are at the end
   if (!swap_pairs.empty()) { swap_all_context(swap_pairs); }
 
+  const i_t new_size = last + 1;
   cuopt_assert(
-    last + 1 == climber_strategies_.size() - climber_strategies_to_remove.size(),
+    new_size == climber_strategies_.size() - climber_strategies_to_remove.size(),
     "Last + 1 must be equal to climber_strategies_.size() - climber_strategies_to_remove.size()");
-  resize_all_context(last + 1);
+  // New bounds are grouped per climber: one climber can own multiple entries
+  // We need both the swap pairs and the new size to perform the operation
+  pdhg_solver_.resize_and_swap_new_bounds_context(swap_pairs, new_size);
+  resize_all_context(new_size);
 
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Batch size is now " << climber_strategies_.size() << ". Climbers left: ";
