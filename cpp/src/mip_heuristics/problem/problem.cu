@@ -569,8 +569,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                    "A_indices must be set before calling the solver.");
     }
   }
-  cuopt_assert(objective_coefficients.size() % n_variables == 0,
-               "objective_coefficients size must be a multiple of n_variables");
+  if (n_variables == 0) {
+    cuopt_assert(objective_coefficients.is_empty(),
+                 "objective_coefficients must be empty when n_variables is 0.");
+  } else {
+    cuopt_assert(!objective_coefficients.is_empty(),
+                 "objective_coefficients must be set when n_variables > 0.");
+    cuopt_assert(objective_coefficients.size() % static_cast<size_t>(n_variables) == 0,
+                 "objective_coefficients size must be a multiple of n_variables");
+  }
 
   // Check CSR validity
   check_csr_representation(
@@ -595,8 +602,6 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 
   // Check variable bounds are set and with the correct size
   if (!empty) { cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set."); }
-  cuopt_assert(objective_coefficients.size() % variable_bounds.size() == 0,
-               "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
