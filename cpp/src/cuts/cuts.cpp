@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <tuple>
 #include <unordered_map>
@@ -33,6 +34,44 @@ namespace {
 #define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
+
+enum flow_cover_cut_status_t : int {
+  FLOW_COVER_CUT_FOUND              = 0,
+  FLOW_COVER_REJECT_SLACK           = -1,
+  FLOW_COVER_REJECT_RHS             = -2,
+  FLOW_COVER_REJECT_CONTINUOUS_TERM = -3,
+  FLOW_COVER_REJECT_RELAXATION      = -4,
+  FLOW_COVER_REJECT_NO_ARCS         = -5,
+  FLOW_COVER_REJECT_NO_COVER        = -6,
+  FLOW_COVER_REJECT_NO_ITEMS        = -7,
+  FLOW_COVER_REJECT_KPSNF           = -8,
+  FLOW_COVER_REJECT_LAMBDA          = -9,
+  FLOW_COVER_REJECT_UBAR            = -10,
+  FLOW_COVER_REJECT_NO_VIOLATION    = -11,
+  FLOW_COVER_REJECT_EMPTY_CUT       = -12,
+  FLOW_COVER_REJECT_MAPPED_CUT      = -13,
+};
+
+const char* flow_cover_status_name(int status)
+{
+  switch (status) {
+    case FLOW_COVER_CUT_FOUND: return "cut_found";
+    case FLOW_COVER_REJECT_SLACK: return "bad_slack";
+    case FLOW_COVER_REJECT_RHS: return "bad_rhs";
+    case FLOW_COVER_REJECT_CONTINUOUS_TERM: return "continuous_term_no_candidate";
+    case FLOW_COVER_REJECT_RELAXATION: return "invalid_snf_relaxation";
+    case FLOW_COVER_REJECT_NO_ARCS: return "no_arcs";
+    case FLOW_COVER_REJECT_NO_COVER: return "no_cover_capacity";
+    case FLOW_COVER_REJECT_NO_ITEMS: return "no_kpsnf_items";
+    case FLOW_COVER_REJECT_KPSNF: return "kpsnf_failed";
+    case FLOW_COVER_REJECT_LAMBDA: return "no_positive_lambda";
+    case FLOW_COVER_REJECT_UBAR: return "no_ubar_candidate";
+    case FLOW_COVER_REJECT_NO_VIOLATION: return "no_cmir_or_sgfci_violation";
+    case FLOW_COVER_REJECT_EMPTY_CUT: return "empty_mapped_cut";
+    case FLOW_COVER_REJECT_MAPPED_CUT: return "mapped_cut_not_violated";
+    default: return "unknown";
+  }
+}
 
 #if DEBUG_CLIQUE_CUTS
 #define CLIQUE_CUTS_DEBUG(...)                    \
@@ -914,14 +953,13 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
     for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; p++) {
       if (is_slack_[Arow.j[p]]) {
         has_slack = true;
-        slack_col  = Arow.j[p];
+        slack_col = Arow.j[p];
         break;
       }
     }
     const bool equality_row =
-      !has_slack ||
-      (slack_col >= 0 && std::abs(lp.lower[slack_col]) <= 1e-9 &&
-       std::abs(lp.upper[slack_col]) <= 1e-9);
+      !has_slack || (slack_col >= 0 && std::abs(lp.lower[slack_col]) <= 1e-9 &&
+                     std::abs(lp.upper[slack_col]) <= 1e-9);
     if (equality_row) { flow_cover_constraints_.push_back(-(i + 1)); }
   }
 }
@@ -938,7 +976,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   i_t flow_cover_row,
   inequality_t<i_t, f_t>& cut)
 {
-  const bool verbose = false;
+  const bool verbose                  = false;
+  const bool flow_cover_diag_verbose  = std::getenv("CUOPT_FLOW_COVER_DIAG_VERBOSE") != nullptr;
+  const char* flow_cover_diag_row_env = std::getenv("CUOPT_FLOW_COVER_DIAG_ROW");
+  const i_t flow_cover_diag_row =
+    flow_cover_diag_row_env != nullptr ? static_cast<i_t>(std::atoi(flow_cover_diag_row_env)) : -1;
   static_cast<void>(new_slacks);
   const f_t tol       = 1e-6;
   const f_t bound_tol = 1e-8;
@@ -1005,7 +1047,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   };
 
   const bool reverse_row_requested = flow_cover_row < 0;
-  const i_t actual_flow_cover_row = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
+  const i_t actual_flow_cover_row  = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
   inequality_t<i_t, f_t> row(Arow, actual_flow_cover_row, lp.rhs[actual_flow_cover_row]);
   i_t slack_count   = 0;
   f_t slack_coeff   = 0.0;
@@ -1017,9 +1059,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     slack_count++;
     slack_coeff = row.coeff(k);
   }
-  if (slack_count > 1) { return -1; }
+  if (slack_count > 1) { return FLOW_COVER_REJECT_SLACK; }
   if (slack_count == 1) {
-    if (std::abs(slack_coeff) <= tol) { return -1; }
+    if (std::abs(slack_coeff) <= tol) { return FLOW_COVER_REJECT_SLACK; }
     negate_row = reverse_row_requested ? slack_coeff > 0.0 : slack_coeff < 0.0;
   }
 
@@ -1028,7 +1070,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   std::vector<i_t> binary_columns;
   std::unordered_map<i_t, f_t> binary_coefficients;
   f_t b = negate_row ? -row.rhs : row.rhs;
-  if (!std::isfinite(b)) { return -1; }
+  if (!std::isfinite(b)) { return FLOW_COVER_REJECT_RHS; }
 
   for (i_t k = 0; k < row_len; k++) {
     const i_t j = row.index(k);
@@ -1096,8 +1138,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
         for (i_t h = 0; h < num_a_values; h++) {
           const f_t a = a_values[h];
           if (c > 0.0) {
-            if (c * (lower_j - alpha) >= -bound_tol &&
-                c * (lower_j - alpha) + a >= -bound_tol && c * gamma + a >= -bound_tol) {
+            if (c * (lower_j - alpha) >= -bound_tol && c * (lower_j - alpha) + a >= -bound_tol &&
+                c * gamma + a >= -bound_tol) {
               push_candidate(candidates,
                              c * gamma + a,
                              false,
@@ -1113,8 +1155,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
                              std::abs(a) > tol);
             }
           } else {
-            if (c * (lower_j - alpha) <= bound_tol &&
-                c * (lower_j - alpha) + a <= bound_tol && c * gamma + a <= bound_tol) {
+            if (c * (lower_j - alpha) <= bound_tol && c * (lower_j - alpha) + a <= bound_tol &&
+                c * gamma + a <= bound_tol) {
               push_candidate(candidates,
                              -(c * gamma + a),
                              true,
@@ -1150,8 +1192,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
         for (i_t h = 0; h < num_a_values; h++) {
           const f_t a = a_values[h];
           if (c > 0.0) {
-            if (c * (upper_j - alpha) <= bound_tol &&
-                c * (upper_j - alpha) + a <= bound_tol && c * gamma + a <= bound_tol) {
+            if (c * (upper_j - alpha) <= bound_tol && c * (upper_j - alpha) + a <= bound_tol &&
+                c * gamma + a <= bound_tol) {
               push_candidate(candidates,
                              -(c * gamma + a),
                              true,
@@ -1167,8 +1209,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
                              std::abs(a) > tol);
             }
           } else {
-            if (c * (upper_j - alpha) >= -bound_tol &&
-                c * (upper_j - alpha) + a >= -bound_tol && c * gamma + a >= -bound_tol) {
+            if (c * (upper_j - alpha) >= -bound_tol && c * (upper_j - alpha) + a >= -bound_tol &&
+                c * gamma + a >= -bound_tol) {
               push_candidate(candidates,
                              c * gamma + a,
                              false,
@@ -1253,14 +1295,63 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     add_variable_lower_candidates();
     add_simple_bound_candidates();
 
-    if (candidates.empty()) { return -1; }
+    if (candidates.empty()) {
+      if (flow_cover_diag_verbose) {
+        const i_t upper_start = variable_bounds.upper_offsets[j];
+        const i_t upper_end   = variable_bounds.upper_offsets[j + 1];
+        const i_t lower_start = variable_bounds.lower_offsets[j];
+        const i_t lower_end   = variable_bounds.lower_offsets[j + 1];
+        settings.log.printf(
+          "Flow cover row %d rejected: continuous col=%d coeff=%e lower=%e upper=%e "
+          "type=%d upper_vb=%d lower_vb=%d\n",
+          flow_cover_row,
+          j,
+          c,
+          lower_j,
+          upper_j,
+          static_cast<i_t>(var_types[j]),
+          upper_end - upper_start,
+          lower_end - lower_start);
+        if (flow_cover_diag_row == flow_cover_row) {
+          for (i_t p = upper_start; p < upper_end; p++) {
+            const i_t x_col = variable_bounds.upper_variables[p];
+            const f_t direct_coeff =
+              binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+            settings.log.printf(
+              "  upper candidate bound_var=%d gamma=%e alpha=%e direct_coeff=%e "
+              "binary=%d xstar=%e\n",
+              x_col,
+              variable_bounds.upper_weights[p],
+              variable_bounds.upper_biases[p],
+              direct_coeff,
+              static_cast<i_t>(is_binary_variable(x_col)),
+              x_col >= 0 ? xstar[x_col] : 0.0);
+          }
+          for (i_t p = lower_start; p < lower_end; p++) {
+            const i_t x_col = variable_bounds.lower_variables[p];
+            const f_t direct_coeff =
+              binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+            settings.log.printf(
+              "  lower candidate bound_var=%d gamma=%e alpha=%e direct_coeff=%e "
+              "binary=%d xstar=%e\n",
+              x_col,
+              variable_bounds.lower_weights[p],
+              variable_bounds.lower_biases[p],
+              direct_coeff,
+              static_cast<i_t>(is_binary_variable(x_col)),
+              x_col >= 0 ? xstar[x_col] : 0.0);
+          }
+        }
+      }
+      return FLOW_COVER_REJECT_CONTINUOUS_TERM;
+    }
     auto best = std::min_element(
       candidates.begin(), candidates.end(), [](const snf_candidate_t& a, const snf_candidate_t& b) {
         return a.distance < b.distance;
       });
-    if (best->arc.y_value < -1e-5 ||
-        best->arc.y_value - best->arc.u * best->arc.x_value > 1e-4 * std::max<f_t>(1.0, best->arc.u)) {
-      return -1;
+    if (best->arc.y_value < -1e-5 || best->arc.y_value - best->arc.u * best->arc.x_value >
+                                       1e-4 * std::max<f_t>(1.0, best->arc.u)) {
+      return FLOW_COVER_REJECT_RELAXATION;
     }
     if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
     arcs.push_back(best->arc);
@@ -1272,17 +1363,16 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     const f_t coeff = binary_coefficients[j];
     if (std::abs(coeff) <= tol) { continue; }
     const f_t u = std::abs(coeff);
-    arcs.push_back(build_arc(
-      u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
+    arcs.push_back(build_arc(u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
   }
 
-  if (arcs.empty()) { return -1; }
+  if (arcs.empty()) { return FLOW_COVER_REJECT_NO_ARCS; }
   f_t snf_b = b - b_shift;
 
   auto compute_structure = [&]() {
     bool has_binary_controlled_arc = false;
-    bool has_n1                   = false;
-    f_t sum_n1_u                  = 0.0;
+    bool has_n1                    = false;
+    f_t sum_n1_u                   = 0.0;
     for (const auto& arc : arcs) {
       if (arc.x_col >= 0) { has_binary_controlled_arc = true; }
       if (!arc.in_n2) {
@@ -1295,7 +1385,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   };
 
   auto [has_binary_controlled_arc, has_n1, cover_capacity] = compute_structure();
-  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) { return -1; }
+  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) {
+    return FLOW_COVER_REJECT_NO_COVER;
+  }
 
   std::vector<f_t> values;
   std::vector<f_t> weights;
@@ -1311,11 +1403,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     weights.push_back(arc.u);
     item_to_arc.push_back(k);
   }
-  if (values.empty()) { return -1; }
+  if (values.empty()) { return FLOW_COVER_REJECT_NO_ITEMS; }
 
   std::vector<f_t> solution;
   const f_t objective = solve_strict_kpsnf(values, weights, cover_capacity, solution);
-  if (std::isnan(objective)) { return -1; }
+  if (std::isnan(objective)) { return FLOW_COVER_REJECT_KPSNF; }
   static_cast<void>(objective);
 
   std::vector<uint8_t> in_c1(arcs.size(), 0);
@@ -1329,8 +1421,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
 
-  f_t sum_c1_u = 0.0;
-  f_t sum_c2_u = 0.0;
+  f_t sum_c1_u     = 0.0;
+  f_t sum_c2_u     = 0.0;
   bool c1_nonempty = false;
   for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
     if (in_c1[k]) {
@@ -1340,7 +1432,18 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     if (in_c2[k]) { sum_c2_u += arcs[k].u; }
   }
   const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
-  if (!c1_nonempty || lambda <= tol) { return -1; }
+  if (!c1_nonempty || lambda <= tol) {
+    if (flow_cover_diag_verbose) {
+      settings.log.printf(
+        "Flow cover row %d rejected: lambda=%e snf_b=%e cover_capacity=%e arcs=%d\n",
+        flow_cover_row,
+        lambda,
+        snf_b,
+        cover_capacity,
+        static_cast<i_t>(arcs.size()));
+    }
+    return FLOW_COVER_REJECT_LAMBDA;
+  }
 
   auto fractional_part_local = [](f_t value) {
     const f_t floor_value = std::floor(value);
@@ -1364,8 +1467,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     ubar_candidates.push_back(candidate);
   };
 
-  f_t max_c1_ltilde2 = -inf;
-  f_t max_c1         = -inf;
+  f_t max_c1_ltilde2  = -inf;
+  f_t max_c1          = -inf;
   f_t max_u_ge_lambda = -inf;
   for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
     const auto& arc = arcs[k];
@@ -1384,7 +1487,16 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   add_ubar_candidate(max_c1);
   add_ubar_candidate(max_u_ge_lambda + 1.0);
   add_ubar_candidate(lambda + 1.0);
-  if (ubar_candidates.empty()) { return -1; }
+  if (ubar_candidates.empty()) {
+    if (flow_cover_diag_verbose) {
+      settings.log.printf("Flow cover row %d rejected: no ubar lambda=%e snf_b=%e arcs=%d\n",
+                          flow_cover_row,
+                          lambda,
+                          snf_b,
+                          static_cast<i_t>(arcs.size()));
+    }
+    return FLOW_COVER_REJECT_UBAR;
+  }
 
   f_t best_violation = 0.0;
   f_t best_ubar      = 0.0;
@@ -1399,16 +1511,12 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
                           f_t ubar) {
     const f_t f_pos = mir_F(fractional_part_local(-lambda / ubar), arc.u / ubar);
     const f_t f_neg = mir_F(fractional_part_local(-lambda / ubar), -arc.u / ubar);
-    if (arc_in_c1) {
-      return arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value);
-    }
+    if (arc_in_c1) { return arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value); }
     if (!arc.in_n2) {
       return arc_in_l1 ? arc.y_value - (arc.u - lambda * f_pos) * arc.x_value
                        : static_cast<f_t>(0.0);
     }
-    if (arc_in_c2) {
-      return -arc.u + lambda * f_pos * (1.0 - arc.x_value);
-    }
+    if (arc_in_c2) { return -arc.u + lambda * f_pos * (1.0 - arc.x_value); }
     return arc_in_l2 ? lambda * f_neg * arc.x_value : -arc.y_value;
   };
 
@@ -1423,8 +1531,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
       const auto& arc = arcs[k];
       const f_t f_pos = mir_F(f_beta, arc.u / ubar);
       const f_t f_neg = mir_F(f_beta, -arc.u / ubar);
-      if (!arc.in_n2 && !in_c1[k] &&
-          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -tol) {
+      if (!arc.in_n2 && !in_c1[k] && arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -tol) {
         in_l1[k] = 1;
       }
       if (arc.in_n2 && !in_c2[k] && lambda * f_neg * arc.x_value >= -arc.y_value - tol) {
@@ -1463,7 +1570,36 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
   const f_t sgfci_violation = sgfci_lhs_value - snf_b;
-  if (best_violation <= tol && sgfci_violation <= tol) { return -1; }
+  if (best_violation <= tol && sgfci_violation <= tol) {
+    if (flow_cover_diag_verbose) {
+      i_t n1_count = 0;
+      i_t n2_count = 0;
+      i_t c1_count = 0;
+      i_t c2_count = 0;
+      for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
+        n1_count += arcs[k].in_n2 ? 0 : 1;
+        n2_count += arcs[k].in_n2 ? 1 : 0;
+        c1_count += in_c1[k] ? 1 : 0;
+        c2_count += in_c2[k] ? 1 : 0;
+      }
+      settings.log.printf(
+        "Flow cover row %d rejected: no violation cmir=%e sgfci=%e lambda=%e ubar_count=%d "
+        "snf_b=%e cover_capacity=%e arcs=%d n1=%d n2=%d c1=%d c2=%d\n",
+        flow_cover_row,
+        best_violation,
+        sgfci_violation,
+        lambda,
+        static_cast<i_t>(ubar_candidates.size()),
+        snf_b,
+        cover_capacity,
+        static_cast<i_t>(arcs.size()),
+        n1_count,
+        n2_count,
+        c1_count,
+        c2_count);
+    }
+    return FLOW_COVER_REJECT_NO_VIOLATION;
+  }
   const bool use_cmirfci = best_violation >= sgfci_violation;
 
   f_t lhs_constant = 0.0;
@@ -1550,12 +1686,12 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     const f_t coeff = lhs_coefficients[j];
     if (std::abs(coeff) > 1e-9) { cut.push_back(j, -coeff); }
   }
-  if (cut.size() == 0) { return -1; }
+  if (cut.size() == 0) { return FLOW_COVER_REJECT_EMPTY_CUT; }
   cut.rhs = lhs_constant - snf_b;
   cut.sort();
 
   const f_t dot = cut.vector.dot(xstar);
-  if (dot >= cut.rhs - tol) { return -1; }
+  if (dot >= cut.rhs - tol) { return FLOW_COVER_REJECT_MAPPED_CUT; }
 
   if (verbose) {
     settings.log.printf("Flow cover row %d violation %e lambda %e ubar %e type %s\n",
@@ -1566,7 +1702,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
                         use_cmirfci ? "c-MIRFCI" : "SGFCI");
   }
 
-  return 0;
+  return FLOW_COVER_CUT_FOUND;
 }
 
 template <typename i_t, typename f_t>
@@ -2552,12 +2688,39 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   f_t start_time)
 {
   if (knapsack_generation_.num_flow_cover_constraints() > 0) {
+    const bool flow_cover_diag = std::getenv("CUOPT_FLOW_COVER_DIAG") != nullptr;
+    std::unordered_map<int, i_t> status_counts;
     for (i_t flow_cover_row : knapsack_generation_.get_flow_cover_constraints()) {
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = knapsack_generation_.generate_flow_cover_cut(
         lp, settings, Arow, new_slacks, variable_bounds, var_types, xstar, flow_cover_row, cut);
+      if (flow_cover_diag) { status_counts[status]++; }
       if (status == 0) { cut_pool_.add_cut(cut_type_t::FLOW_COVER, cut); }
+    }
+    if (flow_cover_diag) {
+      settings.log.printf("Flow cover diagnostics: rows=%d\n",
+                          knapsack_generation_.num_flow_cover_constraints());
+      const std::array<int, 14> statuses = {FLOW_COVER_CUT_FOUND,
+                                            FLOW_COVER_REJECT_SLACK,
+                                            FLOW_COVER_REJECT_RHS,
+                                            FLOW_COVER_REJECT_CONTINUOUS_TERM,
+                                            FLOW_COVER_REJECT_RELAXATION,
+                                            FLOW_COVER_REJECT_NO_ARCS,
+                                            FLOW_COVER_REJECT_NO_COVER,
+                                            FLOW_COVER_REJECT_NO_ITEMS,
+                                            FLOW_COVER_REJECT_KPSNF,
+                                            FLOW_COVER_REJECT_LAMBDA,
+                                            FLOW_COVER_REJECT_UBAR,
+                                            FLOW_COVER_REJECT_NO_VIOLATION,
+                                            FLOW_COVER_REJECT_EMPTY_CUT,
+                                            FLOW_COVER_REJECT_MAPPED_CUT};
+      for (int status : statuses) {
+        auto count_it = status_counts.find(status);
+        if (count_it != status_counts.end()) {
+          settings.log.printf("  %s: %d\n", flow_cover_status_name(status), count_it->second);
+        }
+      }
     }
   }
 }
@@ -3509,7 +3672,47 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   if (settings.sub_mip) {
     return;  // Don't compute the variable upper/lower bounds inside sub-MIP
   }
-  f_t start_time = tic();
+  f_t start_time                                   = tic();
+  const f_t bound_tol                              = 1e-9;
+  constexpr i_t max_propagation_rounds             = 3;
+  constexpr i_t max_propagated_bounds_per_variable = 128;
+
+  struct variable_bound_edge_t {
+    i_t variable;
+    f_t weight;
+    f_t bias;
+  };
+
+  auto is_binary_variable = [&](i_t j) {
+    return var_types[j] == variable_type_t::INTEGER && std::abs(lp.lower[j]) <= bound_tol &&
+           std::abs(lp.upper[j] - 1.0) <= bound_tol;
+  };
+
+  auto valid_bound_edge = [&](const variable_bound_edge_t& edge) {
+    return edge.variable >= 0 && edge.variable < lp.num_cols && std::isfinite(edge.weight) &&
+           std::isfinite(edge.bias);
+  };
+
+  auto already_has_bound = [](const std::vector<variable_bound_edge_t>& bounds,
+                              const variable_bound_edge_t& candidate) {
+    constexpr f_t duplicate_tol = 1e-9;
+    for (const auto& bound : bounds) {
+      if (bound.variable != candidate.variable) { continue; }
+      const f_t scale = std::max<f_t>(1.0,
+                                      std::max<f_t>({std::abs(bound.weight),
+                                                     std::abs(bound.bias),
+                                                     std::abs(candidate.weight),
+                                                     std::abs(candidate.bias)}));
+      if (std::abs(bound.weight - candidate.weight) <= duplicate_tol * scale &&
+          std::abs(bound.bias - candidate.bias) <= duplicate_tol * scale) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::vector<std::vector<variable_bound_edge_t>> continuous_upper_bounds(lp.num_cols);
+  std::vector<std::vector<variable_bound_edge_t>> continuous_lower_bounds(lp.num_cols);
 
   // Construct the slack map
   slack_map_.resize(lp.num_rows, -1);
@@ -3598,12 +3801,13 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i = lp.A.i[p];
-      if (num_integer_in_row[i] < 1) { continue; }
       if (num_neg_inf_[i] > 2 && num_pos_inf_[i] > 2) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
       if (row_len < 2) { continue; }
+      const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
+      if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
       const f_t a_ij              = lp.A.x[p];
       const f_t slack_lower       = lp.lower[slack_map_[i]];
       const f_t slack_upper       = lp.upper[slack_map_[i]];
@@ -3627,7 +3831,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
           // we can't derive a bound
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            if (l == j || l == slack_map_[i]) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3638,10 +3842,15 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable upper bound
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              upper_variables.push_back(l);
-              upper_weights.push_back(-a_il / a_ij);
-              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
-              upper_edges++;
+              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
+              if (var_types[l] == variable_type_t::CONTINUOUS) {
+                continuous_upper_bounds[j].push_back(edge);
+              } else {
+                upper_variables.push_back(edge.variable);
+                upper_weights.push_back(edge.weight);
+                upper_biases.push_back(edge.bias);
+                upper_edges++;
+              }
             }
           }
         }
@@ -3658,7 +3867,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            if (l == j || l == slack_map_[i]) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3669,10 +3878,15 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable upper bound
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              upper_variables.push_back(l);
-              upper_weights.push_back(-a_il / a_ij);
-              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
-              upper_edges++;
+              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
+              if (var_types[l] == variable_type_t::CONTINUOUS) {
+                continuous_upper_bounds[j].push_back(edge);
+              } else {
+                upper_variables.push_back(edge.variable);
+                upper_weights.push_back(edge.weight);
+                upper_biases.push_back(edge.bias);
+                upper_edges++;
+              }
             }
           }
         }
@@ -3690,12 +3904,13 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_start = lp.A.col_start[j];
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
-      const i_t i = lp.A.i[p];
-      if (num_integer_in_row[i] < 1) { continue; }
+      const i_t i         = lp.A.i[p];
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
       if (row_len < 2) { continue; }
+      const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
+      if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
       const f_t a_ij              = lp.A.x[p];
       const f_t slack_lower       = lp.lower[slack_map_[i]];
       const f_t slack_upper       = lp.upper[slack_map_[i]];
@@ -3714,7 +3929,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            if (l == j || l == slack_map_[i]) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik * bound(x_k)
@@ -3726,10 +3941,15 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable lower bound
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              lower_variables.push_back(l);
-              lower_weights.push_back(-a_il / a_ij);
-              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
-              lower_edges++;
+              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
+              if (var_types[l] == variable_type_t::CONTINUOUS) {
+                continuous_lower_bounds[j].push_back(edge);
+              } else {
+                lower_variables.push_back(edge.variable);
+                lower_weights.push_back(edge.weight);
+                lower_biases.push_back(edge.bias);
+                lower_edges++;
+              }
             }
           }
         }
@@ -3746,7 +3966,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
+            if (l == j || l == slack_map_[i]) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3757,10 +3977,15 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable lower bound
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              lower_variables.push_back(l);
-              lower_weights.push_back(-a_il / a_ij);
-              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
-              lower_edges++;
+              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
+              if (var_types[l] == variable_type_t::CONTINUOUS) {
+                continuous_lower_bounds[j].push_back(edge);
+              } else {
+                lower_variables.push_back(edge.variable);
+                lower_weights.push_back(edge.weight);
+                lower_biases.push_back(edge.bias);
+                lower_edges++;
+              }
             }
           }
         }
@@ -3769,6 +3994,120 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   }
   lower_offsets[lp.num_cols] = lower_edges;
   settings.log.printf("%d variable lower bounds in %.2f seconds\n", lower_edges, toc(start_time));
+
+  std::vector<std::vector<variable_bound_edge_t>> upper_bounds(lp.num_cols);
+  std::vector<std::vector<variable_bound_edge_t>> lower_bounds(lp.num_cols);
+  std::vector<std::vector<variable_bound_edge_t>> binary_upper_bounds(lp.num_cols);
+  std::vector<std::vector<variable_bound_edge_t>> binary_lower_bounds(lp.num_cols);
+
+  for (i_t j = 0; j < lp.num_cols; j++) {
+    upper_bounds[j].reserve(upper_offsets[j + 1] - upper_offsets[j]);
+    for (i_t p = upper_offsets[j]; p < upper_offsets[j + 1]; p++) {
+      variable_bound_edge_t edge{upper_variables[p], upper_weights[p], upper_biases[p]};
+      upper_bounds[j].push_back(edge);
+      if (is_binary_variable(edge.variable)) { binary_upper_bounds[j].push_back(edge); }
+    }
+    lower_bounds[j].reserve(lower_offsets[j + 1] - lower_offsets[j]);
+    for (i_t p = lower_offsets[j]; p < lower_offsets[j + 1]; p++) {
+      variable_bound_edge_t edge{lower_variables[p], lower_weights[p], lower_biases[p]};
+      lower_bounds[j].push_back(edge);
+      if (is_binary_variable(edge.variable)) { binary_lower_bounds[j].push_back(edge); }
+    }
+  }
+
+  std::vector<i_t> propagated_upper_count(lp.num_cols, 0);
+  std::vector<i_t> propagated_lower_count(lp.num_cols, 0);
+  i_t propagated_upper_edges = 0;
+  i_t propagated_lower_edges = 0;
+
+  auto add_propagated_bound = [&](i_t j,
+                                  variable_bound_edge_t edge,
+                                  std::vector<std::vector<variable_bound_edge_t>>& all_bounds,
+                                  std::vector<std::vector<variable_bound_edge_t>>& binary_bounds,
+                                  std::vector<i_t>& propagated_count,
+                                  i_t& propagated_edges) {
+    if (!valid_bound_edge(edge) || !is_binary_variable(edge.variable) || edge.variable == j) {
+      return false;
+    }
+    if (std::abs(edge.weight) <= bound_tol) { return false; }
+    if (propagated_count[j] >= max_propagated_bounds_per_variable) { return false; }
+    if (already_has_bound(binary_bounds[j], edge)) { return false; }
+    binary_bounds[j].push_back(edge);
+    all_bounds[j].push_back(edge);
+    propagated_count[j]++;
+    propagated_edges++;
+    return true;
+  };
+
+  auto compose_bound = [](const variable_bound_edge_t& outer, const variable_bound_edge_t& inner) {
+    return variable_bound_edge_t{
+      inner.variable, outer.weight * inner.weight, outer.bias + outer.weight * inner.bias};
+  };
+
+  for (i_t round = 0; round < max_propagation_rounds; round++) {
+    bool changed = false;
+    for (i_t j = 0; j < lp.num_cols; j++) {
+      if (var_types[j] != variable_type_t::CONTINUOUS) { continue; }
+
+      for (const auto& edge : continuous_upper_bounds[j]) {
+        if (!valid_bound_edge(edge) || std::abs(edge.weight) <= bound_tol) { continue; }
+        const auto& source_bounds = edge.weight > 0.0 ? binary_upper_bounds[edge.variable]
+                                                      : binary_lower_bounds[edge.variable];
+        for (const auto& source_bound : source_bounds) {
+          changed |= add_propagated_bound(j,
+                                          compose_bound(edge, source_bound),
+                                          upper_bounds,
+                                          binary_upper_bounds,
+                                          propagated_upper_count,
+                                          propagated_upper_edges);
+        }
+      }
+
+      for (const auto& edge : continuous_lower_bounds[j]) {
+        if (!valid_bound_edge(edge) || std::abs(edge.weight) <= bound_tol) { continue; }
+        const auto& source_bounds = edge.weight > 0.0 ? binary_lower_bounds[edge.variable]
+                                                      : binary_upper_bounds[edge.variable];
+        for (const auto& source_bound : source_bounds) {
+          changed |= add_propagated_bound(j,
+                                          compose_bound(edge, source_bound),
+                                          lower_bounds,
+                                          binary_lower_bounds,
+                                          propagated_lower_count,
+                                          propagated_lower_edges);
+        }
+      }
+    }
+    if (!changed) { break; }
+  }
+
+  auto flatten_bounds = [&](const std::vector<std::vector<variable_bound_edge_t>>& bounds,
+                            std::vector<i_t>& offsets,
+                            std::vector<i_t>& variables,
+                            std::vector<f_t>& weights,
+                            std::vector<f_t>& biases) {
+    offsets.assign(lp.num_cols + 1, 0);
+    variables.clear();
+    weights.clear();
+    biases.clear();
+    for (i_t j = 0; j < lp.num_cols; j++) {
+      offsets[j] = static_cast<i_t>(variables.size());
+      for (const auto& edge : bounds[j]) {
+        variables.push_back(edge.variable);
+        weights.push_back(edge.weight);
+        biases.push_back(edge.bias);
+      }
+    }
+    offsets[lp.num_cols] = static_cast<i_t>(variables.size());
+  };
+
+  if (propagated_upper_edges > 0 || propagated_lower_edges > 0) {
+    flatten_bounds(upper_bounds, upper_offsets, upper_variables, upper_weights, upper_biases);
+    flatten_bounds(lower_bounds, lower_offsets, lower_variables, lower_weights, lower_biases);
+    settings.log.printf(
+      "%d propagated variable upper bounds and %d propagated variable lower bounds\n",
+      propagated_upper_edges,
+      propagated_lower_edges);
+  }
 }
 
 template <typename i_t, typename f_t>

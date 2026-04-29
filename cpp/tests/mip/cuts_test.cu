@@ -1552,6 +1552,43 @@ mps_parser::mps_data_model_t<int, double> create_mixed_flow_cover_problem_exampl
   return problem;
 }
 
+mps_parser::mps_data_model_t<int, double> create_variable_bound_chain_problem()
+{
+  mps_parser::mps_data_model_t<int, double> problem;
+
+  // x0 is binary, x1 and x2 are continuous, and the rows imply
+  // x2 <= 2 * x1 <= 2 * x0.
+  std::vector<int> offsets         = {0, 2, 4};
+  std::vector<int> indices         = {2, 1, 1, 0};
+  std::vector<double> coefficients = {1.0, -2.0, 1.0, -1.0};
+  problem.set_csr_constraint_matrix(coefficients.data(),
+                                    coefficients.size(),
+                                    indices.data(),
+                                    indices.size(),
+                                    offsets.data(),
+                                    offsets.size());
+
+  std::vector<double> lower_bounds(2, -std::numeric_limits<double>::infinity());
+  std::vector<double> upper_bounds = {0.0, 0.0};
+  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
+  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+
+  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
+  std::vector<double> var_upper_bounds = {
+    1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
+  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+
+  std::vector<double> objective_coefficients(3, 0.0);
+  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+
+  std::vector<char> variable_types = {'I', 'C', 'C'};
+  problem.set_variable_types(variable_types);
+
+  problem.set_maximize(false);
+  return problem;
+}
+
 struct flow_cover_test_problem_t {
   raft::handle_t handle;
   dual_simplex::simplex_solver_settings_t<int, double> settings;
@@ -1816,7 +1853,7 @@ TEST(cuts, flow_cover_example_9_8_skips_nonviolated_point)
                                                        xstar,
                                                        generator.get_flow_cover_constraints()[0],
                                                        cut);
-  EXPECT_EQ(status, -1);
+  EXPECT_LT(status, 0);
 }
 
 TEST(cuts, flow_cover_mixed_single_node_flow_generates_valid_cut)
@@ -1856,6 +1893,30 @@ TEST(cuts, flow_cover_mixed_single_node_flow_generates_valid_cut)
   }
 
   EXPECT_GT(generated_cuts, 0);
+}
+
+TEST(cuts, variable_bounds_propagates_continuous_link_to_binary_bound)
+{
+  auto test_problem = build_flow_cover_test_problem(create_variable_bound_chain_problem());
+
+  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                               test_problem.settings,
+                                                               test_problem.var_types,
+                                                               test_problem.Arow,
+                                                               test_problem.new_slacks);
+
+  bool found_propagated_bound = false;
+  const int binary_col        = 0;
+  const int continuous_col    = 2;
+  for (int p = variable_bounds.upper_offsets[continuous_col];
+       p < variable_bounds.upper_offsets[continuous_col + 1];
+       p++) {
+    if (variable_bounds.upper_variables[p] != binary_col) { continue; }
+    found_propagated_bound |= std::abs(variable_bounds.upper_weights[p] - 2.0) <= 1e-9 &&
+                              std::abs(variable_bounds.upper_biases[p]) <= 1e-9;
+  }
+
+  EXPECT_TRUE(found_propagated_bound);
 }
 
 }  // namespace cuopt::linear_programming::test

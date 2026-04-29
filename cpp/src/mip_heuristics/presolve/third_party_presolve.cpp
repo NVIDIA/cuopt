@@ -577,7 +577,6 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
     presolver.addPresolveMethod(uptr(new papilo::DualInfer<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::SimpleSubstitution<f_t>()));
     presolver.addPresolveMethod(uptr(new papilo::Sparsify<f_t>()));
-    presolver.addPresolveMethod(uptr(new papilo::Substitution<f_t>()));
   } else {
     CUOPT_LOG_INFO("Disabling the presolver methods that do not support dual postsolve");
   }
