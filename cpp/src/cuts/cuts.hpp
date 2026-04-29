@@ -394,6 +394,12 @@ class knapsack_generation_t {
                               f_t rhs,
                               std::vector<f_t>& solution);
 
+  // Generate a ratio-sorted prefix solution to a strict 0-1 knapsack problem.
+  f_t prefix_ratio_knapsack_problem(const std::vector<f_t>& values,
+                                    const std::vector<f_t>& weights,
+                                    f_t strict_rhs,
+                                    std::vector<f_t>& solution);
+
   // Solve a 0-1 knapsack problem using dynamic programming
   f_t solve_knapsack_problem(const std::vector<f_t>& values,
                              const std::vector<f_t>& weights,

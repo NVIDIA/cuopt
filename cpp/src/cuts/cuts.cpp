@@ -1034,18 +1034,6 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     return snf_arc_t{u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
   };
 
-  auto solve_strict_kpsnf = [&](const std::vector<f_t>& values,
-                                const std::vector<f_t>& weights,
-                                f_t strict_capacity,
-                                std::vector<f_t>& solution) {
-    const i_t n = static_cast<i_t>(weights.size());
-    solution.assign(n, 0.0);
-    if (n == 0) { return static_cast<f_t>(0.0); }
-
-    const f_t relaxed_capacity = std::max<f_t>(0.0, strict_capacity - 1e-9);
-    return greedy_knapsack_problem(values, weights, relaxed_capacity, solution);
-  };
-
   const bool reverse_row_requested = flow_cover_row < 0;
   const i_t actual_flow_cover_row  = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
   inequality_t<i_t, f_t> row(Arow, actual_flow_cover_row, lp.rhs[actual_flow_cover_row]);
@@ -1406,7 +1394,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   if (values.empty()) { return FLOW_COVER_REJECT_NO_ITEMS; }
 
   std::vector<f_t> solution;
-  const f_t objective = solve_strict_kpsnf(values, weights, cover_capacity, solution);
+  const f_t objective = prefix_ratio_knapsack_problem(values, weights, cover_capacity, solution);
   if (std::isnan(objective)) { return FLOW_COVER_REJECT_KPSNF; }
   static_cast<void>(objective);
 
@@ -2272,6 +2260,44 @@ f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f
     return best_single_value;
   }
 
+  return total_value;
+}
+
+template <typename i_t, typename f_t>
+f_t knapsack_generation_t<i_t, f_t>::prefix_ratio_knapsack_problem(
+  const std::vector<f_t>& values,
+  const std::vector<f_t>& weights,
+  f_t strict_rhs,
+  std::vector<f_t>& solution)
+{
+  const i_t n = static_cast<i_t>(weights.size());
+  solution.assign(n, 0.0);
+  if (n == 0) { return static_cast<f_t>(0.0); }
+
+  // Wolter Algorithm 5.1 for KPSNF^rat: sort by p_j / u_j, add items while
+  // the strict capacity remains satisfied, and stop at the first item that
+  // does not fit. This is intentionally not the generic greedy knapsack
+  // heuristic, which keeps scanning for smaller later items.
+  std::vector<i_t> permutation(n);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
+    const f_t ratio_a = values[a] / weights[a];
+    const f_t ratio_b = values[b] / weights[b];
+    if (ratio_a != ratio_b) { return ratio_a > ratio_b; }
+    return weights[a] > weights[b];
+  });
+
+  f_t total_weight = 0.0;
+  f_t total_value  = 0.0;
+  for (i_t item : permutation) {
+    if (total_weight + weights[item] < strict_rhs) {
+      solution[item] = 1.0;
+      total_weight += weights[item];
+      total_value += values[item];
+    } else {
+      break;
+    }
+  }
   return total_value;
 }
 
