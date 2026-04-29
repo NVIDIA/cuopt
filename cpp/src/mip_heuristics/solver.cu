@@ -248,7 +248,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   if (timer_.check_time_limit()) {
     CUOPT_LOG_INFO("Time limit reached after presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     context.stats.total_solve_time = timer_.elapsed_time();
     context.problem_ptr->post_process_solution(sol);
     return sol;
@@ -265,7 +264,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.copy_new_assignment(
       host_copy(opt_sol.get_primal_solution(), context.problem_ptr->handle_ptr->get_stream()));
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal ||
