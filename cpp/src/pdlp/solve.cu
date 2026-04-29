@@ -1160,9 +1160,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
-  // Set the concurrent halt pointer
-  global_concurrent_halt        = 0;
-  settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  // Use a local halt flag only when the caller did not provide one.
+  if (settings_pdlp.concurrent_halt == nullptr) {
+    global_concurrent_halt        = 0;
+    settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  }
 
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
