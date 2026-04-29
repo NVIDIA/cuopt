@@ -60,6 +60,29 @@ There are two types of breaks,
 
 Only one of the type of breaks can be used at a time.
 
+EV Charging Breaks
+------------------------------
+
+For electric vehicle fleets, breaks can also be modeled as distance-based
+charging stops using ``add_ev_break``. Rather than time windows, the solver
+uses the vehicle's range to determine when a charging stop is mandatory.
+
+For a given ``max_range``, the solver enforces one charging stop per cycle
+within the distance window ``[k * max_range + min_range, (k+1) * max_range]``
+for ``k = 0, 1, ..., n_cycles - 1``. For example, if ``max_range=150`` and
+``n_cycles=3``, the vehicle must charge within:
+
+- Cycle 0: ``[0, 150]``
+- Cycle 1: ``[150, 300]``
+- Cycle 2: ``[300, 450]``
+
+Users can optionally restrict charging to specific locations using
+``charging_stations``. If no stations are provided, all locations are
+considered eligible.
+
+EV charging breaks can be combined with time-based breaks. When both are
+configured for a vehicle, the charging stop is treated as an ordinary break
+by the solver, subject to the same scheduling constraints.
 
 Prize Collection
 ------------------------
