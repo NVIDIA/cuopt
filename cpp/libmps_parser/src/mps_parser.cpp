@@ -14,11 +14,11 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 #ifdef MPS_PARSER_WITH_BZIP2
 #include <bzlib.h>
@@ -44,6 +44,13 @@ struct FcloseDeleter {
       fclose(fp) == 0, error_type_t::ValidationError, "Error closing MPS file!");
   }
 };
+
+std::vector<char> string_to_buffer(std::string_view input)
+{
+  std::vector<char> buf(input.begin(), input.end());
+  buf.push_back('\0');
+  return buf;
+}
 }  // end namespace
 
 #ifdef MPS_PARSER_WITH_BZIP2
@@ -243,14 +250,14 @@ BoundType convert(std::string_view str)
     return LowerBoundIntegerVariable;
   } else if (str == "UI") {
     return UpperBoundIntegerVariable;
-  } else if (str == "LC") {
-    return SemiContiniousVariable;
+  } else if (str == "SC" || str == "LC") {
+    return SemiContinuousVariable;
   } else {
     mps_parser_expects(false,
                        error_type_t::ValidationError,
                        "Invalid variable bound type found in BOUNDS section! Bound type=%s",
                        std::string(str).c_str());
-    return SemiContiniousVariable;
+    return SemiContinuousVariable;
   }
 }
 
@@ -272,21 +279,34 @@ ObjSenseType convert_to_obj_sense(const std::string& str)
 template <typename i_t, typename f_t>
 void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 {
+  // Row indices that have QCMATRIX blocks (quadratic rows follow linear rows in ROWS under
+  // our MPS section rules; names are not required to be QC0..QCN)
+  std::unordered_set<i_t> quadratic_row_ids{};
+  for (const auto& block : qcmatrix_blocks_) {
+    quadratic_row_ids.insert(block.constraint_row_id);
+  }
+  const auto is_quadratic_row = [&quadratic_row_ids](i_t row) {
+    return quadratic_row_ids.count(row);
+  };
+
   {
     std::vector<i_t> h_offsets{}, h_indices{};
     std::vector<f_t> h_values{};
 
     h_offsets.push_back(0);
+    i_t num_linear_rows = 0;
     for (i_t i = 0; i < (i_t)A_indices.size(); ++i) {
-      i_t off = h_offsets.size() > 0 ? h_offsets[h_offsets.size() - 1] : 0;
+      // Quadratic constraint rows are omitted from the linear CSR; linear pieces live in each
+      // quadratic_constraint_t bundle.
+      if (is_quadratic_row(i)) { continue; }
+      ++num_linear_rows;
       for (const auto& idx_itr : A_indices[i]) {
         h_indices.push_back(idx_itr);
       }
       for (const auto& val_itr : A_values[i]) {
         h_values.push_back(val_itr);
       }
-      off += A_indices[i].size();
-      h_offsets.push_back(off);
+      h_offsets.push_back(static_cast<i_t>(h_indices.size()));
     }
 
     problem.set_csr_constraint_matrix(h_values.data(),
@@ -296,11 +316,11 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                       h_offsets.data(),
                                       h_offsets.size());
 
-    mps_parser_expects(A_indices.size() + 1 == h_offsets.size(),
+    mps_parser_expects(static_cast<size_t>(num_linear_rows) + 1 == h_offsets.size(),
                        error_type_t::ValidationError,
                        "The row indexing vector for the constraint matrix was not constructed "
                        "successfully. Should be size %zu, but was size %zu",
-                       A_indices.size() + 1,
+                       static_cast<size_t>(num_linear_rows) + 1,
                        h_offsets.size());
     mps_parser_expects(
       h_indices.size() == h_values.size(),
@@ -320,8 +340,13 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       h_offsets[h_offsets.size() - 1]);
   }
 
-  // Set b & c
-  problem.set_constraint_bounds(b_values.data(), b_values.size());
+  // Set b & c (RHS entries for quadratic rows are stored only on quadratic_constraint_t)
+  std::vector<f_t> b_compacted{};
+  b_compacted.reserve(b_values.size());
+  for (i_t i = 0; i < (i_t)b_values.size(); ++i) {
+    if (!is_quadratic_row(i)) { b_compacted.push_back(b_values[i]); }
+  }
+  problem.set_constraint_bounds(b_compacted.data(), static_cast<i_t>(b_compacted.size()));
   problem.set_objective_coefficients(c_values.data(), c_values.size());
 
   // Set offset and scaling factor of objective function
@@ -343,22 +368,25 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
     problem.get_variable_lower_bounds().size(),
     problem.get_variable_upper_bounds().size());
 
-  // Determine the constraint bounds based on row types
+  // Determine the constraint bounds based on row types (quadratic rows use bundles only, not
+  // counted here)
   {
     std::vector<f_t> h_constraint_lower_bounds{};
     std::vector<f_t> h_constraint_upper_bounds{};
     for (i_t i = 0; i < (i_t)row_types.size(); ++i) {
+      if (is_quadratic_row(i)) { continue; }
       if (row_types[i] == Equality) {
         h_constraint_lower_bounds.push_back(b_values[i]);
         h_constraint_upper_bounds.push_back(b_values[i]);
+        const size_t r = h_constraint_lower_bounds.size() - 1;
         if (ranges_values.size() > 0 &&
             ranges_values[i] != unset_range_value)  // Add range value if specified
         {
-          mps_parser_expects(!std::isnan(h_constraint_lower_bounds[i]),
+          mps_parser_expects(!std::isnan(h_constraint_lower_bounds[r]),
                              error_type_t::ValidationError,
                              "Constraints lower bound %d shouldn't be nan",
                              i);
-          mps_parser_expects(!std::isnan(h_constraint_upper_bounds[i]),
+          mps_parser_expects(!std::isnan(h_constraint_upper_bounds[r]),
                              error_type_t::ValidationError,
                              "Constraints upper bound %d shouldn't be nan",
                              i);
@@ -367,17 +395,18 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                              "Equality range value %d shouldn't be nan",
                              i);
           if (ranges_values[i] < f_t(0))
-            h_constraint_lower_bounds[i] = h_constraint_lower_bounds[i] + ranges_values[i];
+            h_constraint_lower_bounds[r] = h_constraint_lower_bounds[r] + ranges_values[i];
           else  // Positive
-            h_constraint_upper_bounds[i] = h_constraint_upper_bounds[i] + ranges_values[i];
+            h_constraint_upper_bounds[r] = h_constraint_upper_bounds[r] + ranges_values[i];
         }
       } else if (row_types[i] == GreaterThanOrEqual) {
         h_constraint_lower_bounds.push_back(b_values[i]);
         h_constraint_upper_bounds.push_back(std::numeric_limits<f_t>::infinity());
+        const size_t r = h_constraint_lower_bounds.size() - 1;
         if (ranges_values.size() > 0 &&
             ranges_values[i] != unset_range_value)  // Add range value if specified
         {
-          mps_parser_expects(!std::isnan(h_constraint_lower_bounds[i]),
+          mps_parser_expects(!std::isnan(h_constraint_lower_bounds[r]),
                              error_type_t::ValidationError,
                              "Constraints lower bound %d shouldn't be nan",
                              i);
@@ -385,15 +414,16 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                              error_type_t::ValidationError,
                              "Greater range value %d shouldn't be nan",
                              i);
-          h_constraint_upper_bounds[i] = h_constraint_lower_bounds[i] + std::abs(ranges_values[i]);
+          h_constraint_upper_bounds[r] = h_constraint_lower_bounds[r] + std::abs(ranges_values[i]);
         }
       } else if (row_types[i] == LesserThanOrEqual) {
         h_constraint_lower_bounds.push_back(-std::numeric_limits<f_t>::infinity());
         h_constraint_upper_bounds.push_back(b_values[i]);
+        const size_t r = h_constraint_lower_bounds.size() - 1;
         if (ranges_values.size() > 0 &&
             ranges_values[i] != unset_range_value)  // Add range value if specified
         {
-          mps_parser_expects(!std::isnan(h_constraint_upper_bounds[i]),
+          mps_parser_expects(!std::isnan(h_constraint_upper_bounds[r]),
                              error_type_t::ValidationError,
                              "Constraints upper bound %d shouldn't be nan",
                              i);
@@ -401,17 +431,18 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                              error_type_t::ValidationError,
                              "Lesser range value %d shouldn't be nan",
                              i);
-          h_constraint_lower_bounds[i] = h_constraint_upper_bounds[i] - std::abs(ranges_values[i]);
+          h_constraint_lower_bounds[r] = h_constraint_upper_bounds[r] - std::abs(ranges_values[i]);
         }
       } else {
         mps_parser_expects(false,
                            error_type_t::ValidationError,
                            "Unsupported row type was passed to the Optimization Problem");
       }
+      const size_t r = h_constraint_lower_bounds.size() - 1;
       mps_parser_expects(
-        !std::isnan(h_constraint_lower_bounds[i]), error_type_t::ValidationError, "Cannot be nan");
+        !std::isnan(h_constraint_lower_bounds[r]), error_type_t::ValidationError, "Cannot be nan");
       mps_parser_expects(
-        !std::isnan(h_constraint_upper_bounds[i]), error_type_t::ValidationError, "Cannot be nan");
+        !std::isnan(h_constraint_upper_bounds[r]), error_type_t::ValidationError, "Cannot be nan");
     }
 
     problem.set_constraint_lower_bounds(h_constraint_lower_bounds.data(),
@@ -432,20 +463,26 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       problem.get_constraint_upper_bounds().size());
   }
 
+  const i_t num_vars_for_quad = static_cast<i_t>(var_names.size());
+
   problem.set_problem_name(problem_name);
   problem.set_objective_name(objective_name);
   problem.set_variable_names(std::move(var_names));
   problem.set_variable_types(std::move(var_types));
-  problem.set_row_names(std::move(row_names));
   problem.set_maximize(maximize);
 
   // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of
   // O(nnz*log(nnz))) For QUADOBJ: handles upper triangular input by expanding to full symmetric
-  // matrix
+  // matrix.
+  //
+  // @p value_scale:
+  // QUADOBJ/QMATRIX use 0.5 (MPS ½ xᵀQx vs internal xᵀQx);
+  // QCMATRIX uses 1.0 (symmetric Q defines xᵀQx directly in the constraint).
   auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
                                     i_t num_rows,
                                     i_t num_cols,
-                                    bool is_quadobj = false) {
+                                    bool symmetrize_upper_triangular,
+                                    f_t value_scale) {
     struct CSRResult {
       std::vector<f_t> values;
       std::vector<i_t> indices;
@@ -467,7 +504,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
       // For QUADOBJ (upper triangular), add both (row,col) and (col,row) if off-diagonal
       csc_data[col].emplace_back(row, val);
-      if (is_quadobj && row != col) { csc_data[row].emplace_back(col, val); }
+      if (symmetrize_upper_triangular && row != col) { csc_data[row].emplace_back(col, val); }
     }
 
     // Second transpose: convert CSC to CSR (entries sorted by row, columns within rows sorted)
@@ -485,9 +522,10 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
     for (i_t row = 0; row < num_rows; ++row) {
       for (const auto& [col, val] : csr_data[row]) {
-        // While the mps format expects to optimize for 0.5 xT Q x, cuopt optimizes for xT Q x
-        // so we have to multiply the value by 0.5 to get the correct value.
-        result.values.push_back(val * 0.5);
+        // While the mps format expects to optimize for 0.5 xT Q x, cuopt optimizes for xT Q xExpand
+        // commentComment on line L488 so we have to multiply the value by value_scale=0.5 to get
+        // the correct value.
+        result.values.push_back(val * value_scale);
         result.indices.push_back(col);
       }
       result.offsets.push_back(result.values.size());
@@ -500,8 +538,9 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   if (!quadobj_entries.empty()) {
     // Convert quadratic objective entries to CSR format using double transpose
     // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
-    i_t num_vars    = static_cast<i_t>(var_names.size());
-    auto csr_result = build_csr_via_transpose(quadobj_entries, num_vars, num_vars, true);
+    constexpr f_t k_mps_quad_half_scale = f_t(0.5);  // MPS ½ xᵀQx vs internal xᵀQx
+    auto csr_result                     = build_csr_via_transpose(
+      quadobj_entries, num_vars_for_quad, num_vars_for_quad, true, k_mps_quad_half_scale);
 
     // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
     problem.set_quadratic_objective_matrix(csr_result.values.data(),
@@ -513,8 +552,9 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   } else if (!qmatrix_entries.empty()) {
     // Convert quadratic objective entries to CSR format using double transpose
     // QMATRIX stores full symmetric matrix
-    i_t num_vars    = static_cast<i_t>(var_names.size());
-    auto csr_result = build_csr_via_transpose(qmatrix_entries, num_vars, num_vars, false);
+    constexpr f_t k_mps_quad_half_scale = f_t(0.5);
+    auto csr_result                     = build_csr_via_transpose(
+      qmatrix_entries, num_vars_for_quad, num_vars_for_quad, false, k_mps_quad_half_scale);
 
     // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
     problem.set_quadratic_objective_matrix(csr_result.values.data(),
@@ -523,6 +563,62 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                            csr_result.indices.size(),
                                            csr_result.offsets.data(),
                                            csr_result.offsets.size());
+  }
+
+  // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
+  // Bundle row metadata, row-linear coefficients (from COLUMNS), rhs, and quadratic part together.
+  constexpr f_t k_qcmatrix_value_scale = f_t(1);
+  const i_t linear_row_count = static_cast<i_t>(row_types.size() - quadratic_row_ids.size());
+  i_t quadratic_row_id       = 0;
+  for (const auto& block : qcmatrix_blocks_) {
+    auto csr_result = build_csr_via_transpose(
+      block.entries, num_vars_for_quad, num_vars_for_quad, false, k_qcmatrix_value_scale);
+    const i_t row_id = block.constraint_row_id;
+    mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
+                       error_type_t::ValidationError,
+                       "QCMATRIX row index %d is out of range for constraints",
+                       static_cast<int>(row_id));
+    problem.append_quadratic_constraint(linear_row_count + quadratic_row_id,
+                                        row_names[row_id],
+                                        static_cast<char>(row_types[row_id]),
+                                        A_values[row_id].data(),
+                                        static_cast<i_t>(A_values[row_id].size()),
+                                        A_indices[row_id].data(),
+                                        static_cast<i_t>(A_indices[row_id].size()),
+                                        b_values[row_id],
+                                        csr_result.values.data(),
+                                        static_cast<i_t>(csr_result.values.size()),
+                                        csr_result.indices.data(),
+                                        static_cast<i_t>(csr_result.indices.size()),
+                                        csr_result.offsets.data(),
+                                        static_cast<i_t>(csr_result.offsets.size()));
+    ++quadratic_row_id;
+  }
+
+  if (!quadratic_row_ids.empty()) {
+    std::vector<std::string> linear_row_names{};
+    std::vector<char> row_types_linear{};
+    linear_row_names.reserve(row_names.size());
+    row_types_linear.reserve(row_names.size());
+    for (size_t i = 0; i < row_names.size(); ++i) {
+      if (!is_quadratic_row(static_cast<i_t>(i))) {
+        linear_row_names.push_back(row_names[i]);
+        row_types_linear.push_back(static_cast<char>(row_types[i]));
+      }
+    }
+    problem.set_row_names(std::move(linear_row_names));
+    if (!row_types_linear.empty()) {
+      problem.set_row_types(row_types_linear.data(), static_cast<i_t>(row_types_linear.size()));
+    }
+  } else {
+    std::vector<char> row_types_host(row_types.size());
+    for (size_t i = 0; i < row_types.size(); ++i) {
+      row_types_host[i] = static_cast<char>(row_types[i]);
+    }
+    problem.set_row_names(std::move(row_names));
+    if (!row_types_host.empty()) {
+      problem.set_row_types(row_types_host.data(), static_cast<i_t>(row_types_host.size()));
+    }
   }
 }
 
@@ -594,6 +690,11 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
     // these lines mark the start of a particular "section"
     if (line[0] != ' ') {
       skip_line = false;
+      // Leaving QCMATRIX: any non-QCMATRIX section header ends the current block
+      if (inside_qcmatrix_ && line.find("QCMATRIX", 0, 8) != 0) {
+        flush_qcmatrix_block();
+        inside_qcmatrix_ = false;
+      }
       if (line.find("NAME", 0, 4) == 0) {
         encountered_sections.insert("NAME");
         auto name_start = line.find_first_not_of(" \t", 4);
@@ -704,6 +805,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objname_  = false;
         inside_objsense_ = false;
         inside_qmatrix_  = false;
+        inside_qcmatrix_ = false;
         inside_quadobj_  = true;
       } else if (line.find("QMATRIX", 0, 7) == 0) {
         encountered_sections.insert("QMATRIX");
@@ -716,6 +818,21 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objsense_ = false;
         inside_quadobj_  = false;
         inside_qmatrix_  = true;
+        inside_qcmatrix_ = false;
+      } else if (line.find("QCMATRIX", 0, 8) == 0) {
+        encountered_sections.insert("QCMATRIX");
+        flush_qcmatrix_block();
+        inside_rows_     = false;
+        inside_columns_  = false;
+        inside_rhs_      = false;
+        inside_bounds_   = false;
+        inside_ranges_   = false;
+        inside_objname_  = false;
+        inside_objsense_ = false;
+        inside_quadobj_  = false;
+        inside_qmatrix_  = false;
+        inside_qcmatrix_ = true;
+        parse_qcmatrix_header(line);
       } else if (line.find("ENDATA", 0, 6) == 0) {
         encountered_sections.insert("ENDATA");
         break;
@@ -732,6 +849,7 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
         inside_objname_  = false;
         inside_quadobj_  = false;
         inside_qmatrix_  = false;
+        inside_qcmatrix_ = false;
       } else {
         mps_parser_expects(false,
                            error_type_t::ValidationError,
@@ -758,6 +876,8 @@ void mps_parser_t<i_t, f_t>::parse_string(char* buf)
       parse_quad(line, true);
     } else if (inside_qmatrix_) {
       parse_quad(line, false);
+    } else if (inside_qcmatrix_) {
+      parse_qcmatrix_data(line);
     } else {
       mps_parser_expects(false,
                          error_type_t::ValidationError,
@@ -819,6 +939,19 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
   // raft::common::nvtx::range fun_scope("mps parser");
 
   std::vector<char> buf = file_to_string(file);
+
+  parse_string(buf.data());
+
+  fill_problem(problem);
+}
+
+template <typename i_t, typename f_t>
+mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+                                     std::string_view input,
+                                     bool _fixed_mps_format)
+  : mps_file{"<mps string>"}, fixed_mps_format(_fixed_mps_format)
+{
+  std::vector<char> buf = string_to_buffer(input);
 
   parse_string(buf.data());
 
@@ -1278,6 +1411,123 @@ void mps_parser_t<i_t, f_t>::parse_objname(std::string_view line)
 }
 
 template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::flush_qcmatrix_block()
+{
+  if (qcmatrix_active_row_id_ < 0) { return; }
+  if (qcmatrix_current_entries_.empty()) {
+    qcmatrix_active_row_id_ = -1;
+    return;
+  }
+  for (const auto& b : qcmatrix_blocks_) {
+    mps_parser_expects(b.constraint_row_id != qcmatrix_active_row_id_,
+                       error_type_t::ValidationError,
+                       "Duplicate QCMATRIX block for the same constraint row (index %d)",
+                       static_cast<int>(qcmatrix_active_row_id_));
+  }
+  qcmatrix_raw_block_t block;
+  block.constraint_row_id = qcmatrix_active_row_id_;
+  block.entries           = std::move(qcmatrix_current_entries_);
+  qcmatrix_blocks_.push_back(std::move(block));
+  qcmatrix_active_row_id_ = -1;
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_qcmatrix_header(std::string_view line)
+{
+  std::string row_name;
+  if (fixed_mps_format) {
+    mps_parser_expects(line.size() >= 19,
+                       error_type_t::ValidationError,
+                       "QCMATRIX header line too short! line=%s",
+                       std::string(line).c_str());
+    // fixed MPS: constraint name starts in column 12 (1-based) → 0-based index 11, 8 chars
+    row_name = std::string(trim(line.substr(11, 8)));
+  } else {
+    std::stringstream ss{std::string(line)};
+    std::string kw;
+    ss >> kw;
+    mps_parser_expects(kw == "QCMATRIX",
+                       error_type_t::ValidationError,
+                       "Expected QCMATRIX keyword! line=%s",
+                       std::string(line).c_str());
+    ss >> row_name;
+    mps_parser_expects(!row_name.empty(),
+                       error_type_t::ValidationError,
+                       "QCMATRIX missing constraint row name! line=%s",
+                       std::string(line).c_str());
+  }
+
+  auto row_it = row_names_map.find(row_name);
+  mps_parser_expects(row_it != row_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Unknown constraint row name '%s' in QCMATRIX! line=%s",
+                     row_name.c_str(),
+                     std::string(line).c_str());
+
+  qcmatrix_active_row_id_ = row_it->second;
+}
+
+template <typename i_t, typename f_t>
+void mps_parser_t<i_t, f_t>::parse_qcmatrix_data(std::string_view line)
+{
+  mps_parser_expects(qcmatrix_active_row_id_ >= 0,
+                     error_type_t::ValidationError,
+                     "QCMATRIX data line before a valid QCMATRIX header! line=%s",
+                     std::string(line).c_str());
+
+  std::string var1_name, var2_name;
+  f_t value;
+
+  if (fixed_mps_format) {
+    mps_parser_expects(line.size() >= 25,
+                       error_type_t::ValidationError,
+                       "QCMATRIX data line should have at least 3 entities! line=%s",
+                       std::string(line).c_str());
+
+    var1_name = std::string(trim(line.substr(4, 8)));
+    var2_name = std::string(trim(line.substr(14, 8)));
+    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+
+    i_t pos = 24;
+    value   = get_numerical_bound<false>(line, pos);
+  } else {
+    i_t pos                        = 0;
+    i_t end                        = 0;
+    const std::string_view var1_sv = get_next_string(line, pos, end);
+    mps_parser_expects(!var1_sv.empty(),
+                       error_type_t::ValidationError,
+                       "QCMATRIX data line missing first variable name! line=%s",
+                       std::string(line).c_str());
+    if (var1_sv[0] == '$') return;
+    const std::string_view var2_sv = get_next_string(line, pos, end);
+    mps_parser_expects(!var2_sv.empty(),
+                       error_type_t::ValidationError,
+                       "QCMATRIX data line missing second variable name! line=%s",
+                       std::string(line).c_str());
+    if (var2_sv[0] == '$') return;
+    value     = get_numerical_bound<false>(line, end);
+    var1_name = std::string(var1_sv);
+    var2_name = std::string(var2_sv);
+  }
+
+  auto var1_it = var_names_map.find(var1_name);
+  auto var2_it = var_names_map.find(var2_name);
+
+  mps_parser_expects(var1_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QCMATRIX! line=%s",
+                     var1_name.c_str(),
+                     std::string(line).c_str());
+  mps_parser_expects(var2_it != var_names_map.end(),
+                     error_type_t::ValidationError,
+                     "Variable '%s' not found in QCMATRIX! line=%s",
+                     var2_name.c_str(),
+                     std::string(line).c_str());
+
+  qcmatrix_current_entries_.emplace_back(var1_it->second, var2_it->second, value);
+}
+
+template <typename i_t, typename f_t>
 void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
 {
   // Parse QUADOBJ section for quadratic objective terms
@@ -1299,9 +1549,23 @@ void mps_parser_t<i_t, f_t>::parse_quad(std::string_view line, bool is_quadobj)
     i_t pos = 24;
     value   = get_numerical_bound<false>(line, pos);
   } else {
-    std::stringstream ss{std::string(line)};
-    ss >> var1_name >> var2_name >> value;
-    if (var1_name[0] == '$' || var2_name[0] == '$') return;
+    i_t pos                        = 0;
+    i_t end                        = 0;
+    const std::string_view var1_sv = get_next_string(line, pos, end);
+    mps_parser_expects(!var1_sv.empty(),
+                       error_type_t::ValidationError,
+                       "QUADOBJ/QMATRIX data line missing first variable name! line=%s",
+                       std::string(line).c_str());
+    if (var1_sv[0] == '$') return;
+    const std::string_view var2_sv = get_next_string(line, pos, end);
+    mps_parser_expects(!var2_sv.empty(),
+                       error_type_t::ValidationError,
+                       "QUADOBJ/QMATRIX data line missing second variable name! line=%s",
+                       std::string(line).c_str());
+    if (var2_sv[0] == '$') return;
+    value     = get_numerical_bound<false>(line, end);
+    var1_name = std::string(var1_sv);
+    var2_name = std::string(var2_sv);
   }
 
   // Find variable indices
@@ -1373,6 +1637,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
   switch (bound_type) {
     case LowerBound: {
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case UpperBound: {
@@ -1389,15 +1654,18 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       const f_t val                 = get_numerical_bound(line, start);
       variable_lower_bounds[var_id] = val;
       variable_upper_bounds[var_id] = val;
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case Free: {
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case LowerBoundNegInf:
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundInf:
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
@@ -1406,6 +1674,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       variable_lower_bounds[var_id] = 0;
       variable_upper_bounds[var_id] = 1;
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case LowerBoundIntegerVariable:
       // CPLEX MPS file references seems to imply that integer variables default to an upper bound
@@ -1415,6 +1684,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundIntegerVariable:
       variable_upper_bounds[var_id] = get_numerical_bound(line, start);
@@ -1426,11 +1696,15 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       var_types[var_id] = 'I';
       break;
-    case SemiContiniousVariable:
-      mps_parser_expects(false,
+    case SemiContinuousVariable:
+      // SC bound type: value is the upper bound U.
+      mps_parser_expects(start >= 0 && static_cast<size_t>(start) < line.size() &&
+                           !trim(line.substr(static_cast<size_t>(start))).empty(),
                          error_type_t::ValidationError,
-                         "Unsupported semi continous bound type found! Line=%s",
+                         "SC bound requires an upper bound value! Line=%s",
                          std::string(line).c_str());
+      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+      var_types[var_id]             = 'S';
       break;
     default:
       mps_parser_expects(false,
