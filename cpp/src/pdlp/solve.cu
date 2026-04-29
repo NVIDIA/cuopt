@@ -951,24 +951,45 @@ static void apply_batch_settings_overrides(
 
   const pdlp_solver_settings_t<i_t, f_t> default_settings{};
 
-  auto override_or_keep_given = [&](const auto& given_value, const auto& default_value, const auto& override_value) {
-    return given_value == default_value ? override_value : given_value;
-  };
+  auto override_or_keep_given =
+    [&](const auto& given_value, const auto& default_value, const auto& override_value) {
+      return given_value == default_value ? override_value : given_value;
+    };
 
-  batch_settings.method                               = cuopt::linear_programming::method_t::PDLP;
-  batch_settings.presolver                            = presolver_t::None;
-  batch_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable3;
-  batch_settings.detect_infeasibility                 = false;
-  batch_settings.iteration_limit                      = override_or_keep_given(original_settings.iteration_limit, default_settings.iteration_limit, batch_iteration_limit);
-  batch_settings.inside_mip                           = true;
+  batch_settings.method               = cuopt::linear_programming::method_t::PDLP;
+  batch_settings.presolver            = presolver_t::None;
+  batch_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
+  batch_settings.detect_infeasibility = false;
+  batch_settings.iteration_limit      = override_or_keep_given(
+    original_settings.iteration_limit, default_settings.iteration_limit, batch_iteration_limit);
+  batch_settings.inside_mip = true;
   // Override the tolerances unless the user has specified otherwise
-  // Only risk is overriding a user intentionnaly wanting to use numeric_limits<f_t>::max() as an iteration limit
-  batch_settings.tolerances.absolute_dual_tolerance   = override_or_keep_given(original_settings.tolerances.absolute_dual_tolerance, default_settings.tolerances.absolute_dual_tolerance, pdlp_tolerance);
-  batch_settings.tolerances.relative_dual_tolerance   = override_or_keep_given(original_settings.tolerances.relative_dual_tolerance, default_settings.tolerances.relative_dual_tolerance, pdlp_tolerance);
-  batch_settings.tolerances.absolute_primal_tolerance = override_or_keep_given(original_settings.tolerances.absolute_primal_tolerance, default_settings.tolerances.absolute_primal_tolerance, pdlp_tolerance);
-  batch_settings.tolerances.relative_primal_tolerance = override_or_keep_given(original_settings.tolerances.relative_primal_tolerance, default_settings.tolerances.relative_primal_tolerance, pdlp_tolerance);
-  batch_settings.tolerances.absolute_gap_tolerance    = override_or_keep_given(original_settings.tolerances.absolute_gap_tolerance, default_settings.tolerances.absolute_gap_tolerance, pdlp_tolerance);
-  batch_settings.tolerances.relative_gap_tolerance    = override_or_keep_given(original_settings.tolerances.relative_gap_tolerance, default_settings.tolerances.relative_gap_tolerance, pdlp_tolerance);
+  // Only risk is overriding a user intentionnaly wanting to use numeric_limits<f_t>::max() as an
+  // iteration limit
+  batch_settings.tolerances.absolute_dual_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_dual_tolerance,
+                           default_settings.tolerances.absolute_dual_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_dual_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_dual_tolerance,
+                           default_settings.tolerances.relative_dual_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.absolute_primal_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_primal_tolerance,
+                           default_settings.tolerances.absolute_primal_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_primal_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_primal_tolerance,
+                           default_settings.tolerances.relative_primal_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.absolute_gap_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_gap_tolerance,
+                           default_settings.tolerances.absolute_gap_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_gap_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_gap_tolerance,
+                           default_settings.tolerances.relative_gap_tolerance,
+                           pdlp_tolerance);
 
   constexpr bool pdlp_primal_dual_init       = true;
   constexpr bool primal_weight_init          = true;
@@ -1086,9 +1107,8 @@ static void validate_new_bounds(const optimization_problem_t<i_t, f_t>& problem,
     const auto lower      = std::get<2>(new_bound);
     const auto upper      = std::get<3>(new_bound);
 
-    cuopt_expects(climber_id >= 0,
-                  error_type_t::ValidationError,
-                  "new_bounds climber_id must be non-negative");
+    cuopt_expects(
+      climber_id >= 0, error_type_t::ValidationError, "new_bounds climber_id must be non-negative");
     if (settings.fixed_batch_size > 0) {
       cuopt_expects(climber_id < settings.fixed_batch_size,
                     error_type_t::ValidationError,

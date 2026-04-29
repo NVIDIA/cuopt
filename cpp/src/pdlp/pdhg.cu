@@ -121,8 +121,7 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
       cuopt_assert(seen_bounds.insert({climber_id[i], idx[i]}).second,
                    "new_bounds cannot contain duplicate (climber_id, variable_index) entries");
     }
-    raft::copy(
-      new_bounds_climber_id_.data(), climber_id.data(), climber_id.size(), stream_view_);
+    raft::copy(new_bounds_climber_id_.data(), climber_id.data(), climber_id.size(), stream_view_);
     raft::copy(new_bounds_idx_.data(), idx.data(), idx.size(), stream_view_);
     raft::copy(new_bounds_lower_.data(), lower.data(), lower.size(), stream_view_);
     raft::copy(new_bounds_upper_.data(), upper.data(), upper.size(), stream_view_);
@@ -157,8 +156,8 @@ using new_bounds_groups_t = std::vector<std::vector<new_bound_entry_t<i_t, f_t>>
 // new_bounds is stored as flat device arrays, but a climber can own any number of variable-bound
 // overrides. During context swaps we need to swap whole climber payloads, and we cannot know from
 // the flat device layout how many entries belong to each climber without first regrouping them.
-// Bring the flat arrays to the host, put each entry into the group it belongs to, and return the groups.
-// Then the group will be swapped before being copied back to the device.
+// Bring the flat arrays to the host, put each entry into the group it belongs to, and return the
+// groups. Then the group will be swapped before being copied back to the device.
 template <typename i_t, typename f_t>
 new_bounds_groups_t<i_t, f_t> copy_new_bounds_to_groups(
   const rmm::device_uvector<i_t>& new_bounds_climber_id,
@@ -302,7 +301,8 @@ void pdhg_solver_t<i_t, f_t>::resize_and_swap_new_bounds_context(
   }
 
   // We have just swapped the groups in the correct order and we know the new size
-  // We can thus porperly compute on the first new_size climbers what we be the final number of entries
+  // We can thus porperly compute on the first new_size climbers what we be the final number of
+  // entries
   size_t n_entries = 0;
   for (i_t c = 0; c < new_size; ++c) {
     n_entries += groups[c].size();
@@ -771,12 +771,11 @@ struct primal_reflected_major_projection_bulk_op {
     const f_t next = primal_val - step_size * (obj_coef - aty_val);
 
     // Variables bounds are common accross all climbers but their scaling factor changes.
-    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
-    const f_t bound_scale = bound_rescaling[batch_idx];
-    const f_t2 bounds     = variable_bounds[var_idx];
-    const f_t next_clamped =
-      cuda::std::max(cuda::std::min(next, get_upper(bounds) * bound_scale),
-                     get_lower(bounds) * bound_scale);
+    // Instead of creating a matrix of variable bounds, we scale the bounds here.
+    const f_t bound_scale  = bound_rescaling[batch_idx];
+    const f_t2 bounds      = variable_bounds[var_idx];
+    const f_t next_clamped = cuda::std::max(cuda::std::min(next, get_upper(bounds) * bound_scale),
+                                            get_lower(bounds) * bound_scale);
 
     potential_next_primal[idx] = next_clamped;
     dual_slack[idx]            = (next_clamped - next) / step_size;
@@ -937,10 +936,10 @@ struct refine_primal_projection_major_bulk_op {
   {
     i_t c       = climber_id[entry_idx];
     i_t var_idx = idx[entry_idx];
-        // Variables bounds are common accross all climbers but their scaling factor changes.
-    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
-    f_t l       = lower[entry_idx] * bound_rescaling[c];
-    f_t u       = upper[entry_idx] * bound_rescaling[c];
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here.
+    f_t l = lower[entry_idx] * bound_rescaling[c];
+    f_t u = upper[entry_idx] * bound_rescaling[c];
 
     size_t global_idx = (size_t)var_idx * batch_size + c;
 
@@ -977,10 +976,10 @@ struct refine_primal_projection_bulk_op {
   {
     i_t c       = climber_id[entry_idx];
     i_t var_idx = idx[entry_idx];
-        // Variables bounds are common accross all climbers but their scaling factor changes.
-    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
-    f_t l       = lower[entry_idx] * bound_rescaling[c];
-    f_t u       = upper[entry_idx] * bound_rescaling[c];
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here.
+    f_t l = lower[entry_idx] * bound_rescaling[c];
+    f_t u = upper[entry_idx] * bound_rescaling[c];
 
     size_t global_idx = (size_t)var_idx * batch_size + c;
 

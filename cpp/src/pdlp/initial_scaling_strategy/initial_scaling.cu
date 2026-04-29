@@ -606,12 +606,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       },
       stream_view_.value());
 
-    // In batch mode we don't scale the variable bounds (here) because they are shared across climbers.
-    // While the variable bounds are the same across climbers, there can be different bound rescaling
-    // factors for each climber.
-    // One solution would be to have per climber variable bounds but its costly from a memory perspective and from a memory bandwidth perspective.
-    // Since the variable bounds are the same across climbers but only the scaling factor changes, we pass the scaling factor to PDHG later.
-    // In PDHG we act the (almost fully) scaled variable bounds and add this missing scaling factor.
+    // In batch mode we don't scale the variable bounds (here) because they are shared across
+    // climbers. While the variable bounds are the same across climbers, there can be different
+    // bound rescaling factors for each climber. One solution would be to have per climber variable
+    // bounds but its costly from a memory perspective and from a memory bandwidth perspective.
+    // Since the variable bounds are the same across climbers but only the scaling factor changes,
+    // we pass the scaling factor to PDHG later. In PDHG we act the (almost fully) scaled variable
+    // bounds and add this missing scaling factor.
     if (original_batch_size_ == 1) {
       cub::DeviceTransform::Transform(
         op_problem_scaled_.variable_bounds.data(),

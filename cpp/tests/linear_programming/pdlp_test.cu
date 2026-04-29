@@ -256,15 +256,15 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
   cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
     cuopt::mps_parser::parse_mps<int, double>(path, true);
 
-  constexpr int batch_size = 2;
+  constexpr int batch_size           = 2;
   constexpr double tighter_tolerance = 1e-6;
 
   auto default_settings      = pdlp_solver_settings_t<int, double>{};
   default_settings.method    = method_t::PDLP;
   default_settings.presolver = presolver_t::None;
 
-  auto default_solution = solve_lp_batch_fixed<int, double>(
-    &handle_, op_problem, default_settings, batch_size);
+  auto default_solution =
+    solve_lp_batch_fixed<int, double>(&handle_, op_problem, default_settings, batch_size);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   ASSERT_EQ(static_cast<int>(default_solution.get_terminations_status().size()), batch_size);
   for (int i = 0; i < batch_size; ++i) {
@@ -278,8 +278,9 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
                            primal_i,
                            default_settings.tolerances.absolute_primal_tolerance);
     // By default we don't meet the 1e-6 relative primal tolerance
-    EXPECT_GT(default_solution.get_additional_termination_information(i).l2_relative_primal_residual,
-              tighter_tolerance)
+    EXPECT_GT(
+      default_solution.get_additional_termination_information(i).l2_relative_primal_residual,
+      tighter_tolerance)
       << "climber " << i;
   }
 
@@ -288,8 +289,8 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
   tighter_tolerance_settings.presolver = presolver_t::None;
   tighter_tolerance_settings.set_optimality_tolerance(tighter_tolerance);
 
-  auto tighter_tolerance_solution = solve_lp_batch_fixed<int, double>(
-    &handle_, op_problem, tighter_tolerance_settings, batch_size);
+  auto tighter_tolerance_solution =
+    solve_lp_batch_fixed<int, double>(&handle_, op_problem, tighter_tolerance_settings, batch_size);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   ASSERT_EQ(static_cast<int>(tighter_tolerance_solution.get_terminations_status().size()),
             batch_size);
@@ -304,10 +305,9 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
                            tighter_tolerance_solution.get_additional_termination_information(i),
                            primal_i,
                            tighter_tolerance);
-    EXPECT_LE(
-      tighter_tolerance_solution.get_additional_termination_information(i)
-        .l2_relative_primal_residual,
-      tighter_tolerance)
+    EXPECT_LE(tighter_tolerance_solution.get_additional_termination_information(i)
+                .l2_relative_primal_residual,
+              tighter_tolerance)
       << "climber " << i;
   }
 
@@ -317,8 +317,8 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
   iteration_limit_settings.iteration_limit = 10;
   iteration_limit_settings.set_optimality_tolerance(0);
 
-  auto iteration_limit_solution = solve_lp_batch_fixed<int, double>(
-    &handle_, op_problem, iteration_limit_settings, batch_size);
+  auto iteration_limit_solution =
+    solve_lp_batch_fixed<int, double>(&handle_, op_problem, iteration_limit_settings, batch_size);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
   ASSERT_EQ(static_cast<int>(iteration_limit_solution.get_terminations_status().size()),
             batch_size);
@@ -326,9 +326,9 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
     EXPECT_EQ(iteration_limit_solution.get_termination_status(i),
               pdlp_termination_status_t::IterationLimit)
       << "climber " << i;
-    EXPECT_EQ(iteration_limit_solution.get_additional_termination_information(i)
-                .number_of_steps_taken,
-              iteration_limit_settings.iteration_limit)
+    EXPECT_EQ(
+      iteration_limit_solution.get_additional_termination_information(i).number_of_steps_taken,
+      iteration_limit_settings.iteration_limit)
       << "climber " << i;
   }
 }
@@ -3441,7 +3441,7 @@ TEST(pdlp_class, strong_branching_multi_bounds_per_climber)
   for (int c = 0; c < batch_size; ++c) {
     auto ref_problem = op_problem;
     for (const auto var_idx : vars_by_climber[c]) {
-      const auto [lower, upper] = tightened_bounds(var_idx);
+      const auto [lower, upper]                        = tightened_bounds(var_idx);
       ref_problem.get_variable_lower_bounds()[var_idx] = lower;
       ref_problem.get_variable_upper_bounds()[var_idx] = upper;
       bound_specs.push_back({c, var_idx, lower, upper});
@@ -3501,10 +3501,21 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
     {{1, 13.0, 29.0}, {13, 31.0, 53.0}},
     {{2, 17.0, 31.0}, {14, 37.0, 61.0}, {19, 53.0, 71.0}, {25, 83.0, 89.0}, {30, 97.0, 101.0}},
     {{5, 19.0, 37.0}, {16, 41.0, 67.0}, {21, 59.0, 83.0}},
-    {{6, 23.0, 43.0}, {18, 47.0, 71.0}, {22, 67.0, 97.0}, {29, 103.0, 107.0}, {31, 109.0, 113.0}, {7, 127.0, 131.0}},
+    {{6, 23.0, 43.0},
+     {18, 47.0, 71.0},
+     {22, 67.0, 97.0},
+     {29, 103.0, 107.0},
+     {31, 109.0, 113.0},
+     {7, 127.0, 131.0}},
     {{7, 29.0, 47.0}, {20, 53.0, 79.0}},
     {{8, 31.0, 53.0}, {12, 59.0, 83.0}, {26, 79.0, 103.0}, {31, 127.0, 131.0}, {4, 137.0, 139.0}},
-    {{3, 37.0, 59.0}, {11, 67.0, 89.0}, {17, 83.0, 107.0}, {28, 137.0, 139.0}, {9, 149.0, 151.0}, {15, 157.0, 163.0}, {24, 167.0, 173.0}},
+    {{3, 37.0, 59.0},
+     {11, 67.0, 89.0},
+     {17, 83.0, 107.0},
+     {28, 137.0, 139.0},
+     {9, 149.0, 151.0},
+     {15, 157.0, 163.0},
+     {24, 167.0, 173.0}},
     {{4, 41.0, 61.0}, {10, 71.0, 97.0}, {15, 89.0, 109.0}},
   };
   const int batch_size = bound_offsets_by_climber.size();
@@ -3531,8 +3542,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
     for (const auto& bounds : custom_bounds_by_climber[i]) {
       ref_problem.get_variable_lower_bounds()[std::get<0>(bounds)] = std::get<1>(bounds);
       ref_problem.get_variable_upper_bounds()[std::get<0>(bounds)] = std::get<2>(bounds);
-      bound_specs.push_back(
-        {i, std::get<0>(bounds), std::get<1>(bounds), std::get<2>(bounds)});
+      bound_specs.push_back({i, std::get<0>(bounds), std::get<1>(bounds), std::get<2>(bounds)});
     }
     ref_problems.push_back(ref_problem);
 
@@ -3542,7 +3552,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
     ref_objectives[i] = ref_solution.get_additional_termination_information(0).primal_objective;
   }
 
-  auto batch_settings      = regular_pdlp_settings;
+  auto batch_settings                                = regular_pdlp_settings;
   batch_settings.generate_batch_primal_dual_solution = true;
   for (int i = 0; i < batch_size; ++i) {
     for (const auto& bounds : custom_bounds_by_climber[i]) {
@@ -3565,9 +3575,10 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
 
     const auto current_primal_solution =
       extract_subvector(batch_solution.get_primal_solution(), i * primal_size, primal_size);
-    test_objective_sanity(ref_problems[i],
-                          current_primal_solution,
-                          batch_solution.get_additional_termination_information(i).primal_objective);
+    test_objective_sanity(
+      ref_problems[i],
+      current_primal_solution,
+      batch_solution.get_additional_termination_information(i).primal_objective);
     test_constraint_sanity(ref_problems[i],
                            batch_solution.get_additional_termination_information(i),
                            current_primal_solution,
@@ -3636,7 +3647,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds_good_mps_some_var_bounds)
       host_copy(ref_solution.get_primal_solution(), ref_solution.get_primal_solution().stream());
   }
 
-  auto batch_settings      = regular_pdlp_settings;
+  auto batch_settings                                = regular_pdlp_settings;
   batch_settings.generate_batch_primal_dual_solution = true;
   for (int i = 0; i < batch_size; ++i) {
     for (const auto& bounds : custom_bounds_by_climber[i]) {
@@ -3662,9 +3673,10 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds_good_mps_some_var_bounds)
     for (size_t p = 0; p < primal_size; ++p) {
       EXPECT_NEAR(host_primal_solution[p], ref_primal_solutions[i][p], exact_tolerance);
     }
-    test_objective_sanity(ref_problems[i],
-                          current_primal_solution,
-                          batch_solution.get_additional_termination_information(i).primal_objective);
+    test_objective_sanity(
+      ref_problems[i],
+      current_primal_solution,
+      batch_solution.get_additional_termination_information(i).primal_objective);
     test_constraint_sanity(ref_problems[i],
                            batch_solution.get_additional_termination_information(i),
                            current_primal_solution,
@@ -3725,7 +3737,7 @@ TEST(pdlp_class, run_batch_fixed_api_many_different_bounds_good_mps_some_var_bou
       host_copy(ref_solution.get_primal_solution(), ref_solution.get_primal_solution().stream());
   }
 
-  auto batch_settings                              = regular_pdlp_settings;
+  auto batch_settings                                = regular_pdlp_settings;
   batch_settings.generate_batch_primal_dual_solution = true;
   batch_settings.fixed_batch_size                    = batch_size;
   for (int i = 0; i < batch_size; ++i) {
@@ -3754,9 +3766,10 @@ TEST(pdlp_class, run_batch_fixed_api_many_different_bounds_good_mps_some_var_bou
     for (size_t p = 0; p < primal_size; ++p) {
       EXPECT_NEAR(host_primal_solution[p], ref_primal_solutions[i][p], exact_tolerance);
     }
-    test_objective_sanity(ref_problems[i],
-                          current_primal_solution,
-                          batch_solution.get_additional_termination_information(i).primal_objective);
+    test_objective_sanity(
+      ref_problems[i],
+      current_primal_solution,
+      batch_solution.get_additional_termination_information(i).primal_objective);
     test_constraint_sanity(ref_problems[i],
                            batch_solution.get_additional_termination_information(i),
                            current_primal_solution,
@@ -4338,8 +4351,7 @@ TEST(pdlp_class, big_batch_fixed_path)
     all_constraint_lower.insert(all_constraint_lower.end(), original_lb.begin(), original_lb.end());
     all_constraint_upper.insert(all_constraint_upper.end(), original_ub.begin(), original_ub.end());
     all_offsets.push_back(original_offset);
-    solver_settings.new_bounds.push_back(
-      {static_cast<int>(i), 0, variable_lb[0], variable_ub[0]});
+    solver_settings.new_bounds.push_back({static_cast<int>(i), 0, variable_lb[0], variable_ub[0]});
   }
 
   auto stream = handle_.get_stream();

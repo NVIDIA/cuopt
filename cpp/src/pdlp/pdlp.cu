@@ -795,8 +795,7 @@ pdlp_solver_t<i_t, f_t>::finalize_batch_return_with_limit_reached(
     batch_solution_to_return_.get_additional_termination_informations());
   if (fallback_status != pdlp_termination_status_t::ConcurrentLimit) {
     for (size_t i = 0; i < climber_strategies_.size(); ++i) {
-      const auto original_index =
-        static_cast<size_t>(climber_strategies_[i].original_index);
+      const auto original_index = static_cast<size_t>(climber_strategies_[i].original_index);
       batch_solution_to_return_.get_additional_termination_informations()[original_index]
         .solved_by = method_t::PDLP;
     }
@@ -2793,13 +2792,14 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
     print("primal_step_size_", primal_step_size_);
     print("dual_step_size_", dual_step_size_);
 #endif
-    pdhg_solver_.take_step(primal_step_size_,
-                           dual_step_size_,
-                           initial_scaling_strategy_.get_bound_rescaling_vector(), // Only used in batch mode
-                           restart_strategy_.get_iterations_since_last_restart(),
-                           restart_strategy_.get_last_restart_was_average(),
-                           total_pdlp_iterations,
-                           is_major_iteration);
+    pdhg_solver_.take_step(
+      primal_step_size_,
+      dual_step_size_,
+      initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+      restart_strategy_.get_iterations_since_last_restart(),
+      restart_strategy_.get_last_restart_was_average(),
+      total_pdlp_iterations,
+      is_major_iteration);
 
     step_size_strategy_.compute_step_sizes(
       pdhg_solver_, primal_step_size_, dual_step_size_, total_pdlp_iterations);
@@ -2822,9 +2822,12 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
   pdhg_solver_.take_step(
-    primal_step_size_, dual_step_size_,
-    initial_scaling_strategy_.get_bound_rescaling_vector(), // Only used in batch mode
-    0, false, total_pdlp_iterations_,
+    primal_step_size_,
+    dual_step_size_,
+    initial_scaling_strategy_.get_bound_rescaling_vector(),  // Only used in batch mode
+    0,
+    false,
+    total_pdlp_iterations_,
     is_major_iteration);
 }
 
