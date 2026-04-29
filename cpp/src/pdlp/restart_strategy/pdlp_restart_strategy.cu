@@ -97,8 +97,8 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
                      climber_strategies,
                      hyper_params},
     current_duality_gap_{handle_ptr_,
-                         hyper_params.never_restart_to_average ? 0 : primal_size,
-                         hyper_params.never_restart_to_average ? 0 : dual_size,
+                         is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : primal_size,
+                         is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : dual_size,
                          climber_strategies,
                          hyper_params},
     last_restart_duality_gap_{
