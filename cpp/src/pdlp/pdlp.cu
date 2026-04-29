@@ -2287,7 +2287,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Remove unused device vectors in PDLP
   lighten_problem_for_pdlp(op_problem_scaled_, stream_view_);
-  lighten_problem_for_pdlp(*problem_ptr, stream_view_);
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())
@@ -2469,10 +2468,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     raft::print_device_vector("Initial primal_weight", primal_weight_.data(), 1, std::cout);
     raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
     raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
-  }
-  if (!settings_.per_constraint_residual) {
-    lighten_problem_for_pdlp(op_problem_scaled_, stream_view_);
-    lighten_problem_for_pdlp(*problem_ptr, stream_view_);
   }
 #ifdef CUPDLP_DEBUG_MODE
   raft::print_device_vector("Initial step_size", step_size_.data(), step_size_.size(), std::cout);
