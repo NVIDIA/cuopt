@@ -66,6 +66,28 @@ When the score passes, distill the learning into a skill artifact. Two types:
 - Must be runnable by `ci/test_skills_assets.sh`
 - Include a docstring explaining what the code does and why it was extracted
 
+### Choosing markdown vs code asset
+
+Default to markdown. Promote to a code asset only when the learning is a chunk of logic that downstream users would otherwise rewrite — typically when:
+
+- The same helper has been independently written in 2+ interactions (the recurrence is the signal)
+- The fix is more than ~15 lines of code, where embedding it as an example would dwarf the surrounding prose
+- It encodes a non-trivial algorithm (e.g. a constraint-builder, a formulation transform) that is easier to *call* than to read and re-implement
+
+A one-liner gotcha or a 3-line pattern belongs in markdown. A reusable function that several future problems will want to import belongs in `assets/`.
+
+### Writing style
+
+How a proposal is *written* matters as much as what it says. Skills are read on every future invocation, so prose has to earn its place.
+
+- **Imperative form.** "Use `LinearExpression(...)` for large objectives" beats "It is recommended that one consider using `LinearExpression(...)` when the objective is large."
+- **Explain the why.** A rule with no rationale rots — readers can't tell if it still applies. Pair every constraint with the reason it exists ("because chained `+` hits Python's recursion limit at ~1000 terms"). Today's models reason well from causes; they follow blind rules badly.
+- **Don't overfit to the triggering case.** The point of a skill is to help across a million future prompts, not to memorize the one that surfaced the lesson. Strip user-specific names, sizes, paths, and objective values. State the pattern at the level of "any LP with a large objective," not "the 5000-variable factory problem from the user's data."
+- **Avoid MUST-walls.** Stacking ALL-CAPS imperatives ("MUST", "ALWAYS", "NEVER") trains the reader to skim over them. Reserve them for genuine safety rules. For ergonomic guidance, prefer plain prose with the reasoning inline — the reader can then apply judgment to edge cases.
+- **Match the surrounding style.** A new table row in a table; a new subsection where subsections already exist; a new bullet in a bullet list. Don't introduce a heading style or formatting convention that the target skill doesn't already use.
+
+If a draft proposal feels heavy-handed or rigid, rewrite it as if explaining the lesson to a colleague who has never seen the bug. That tone usually lands closer to what works.
+
 ### Placement rule — target highest-impact skill
 
 Always place the learning in the **single skill where it has the widest effect**. Do NOT duplicate the same content across multiple skills.
