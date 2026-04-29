@@ -21,7 +21,7 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
                                                      const i_t primal_size,
                                                      const i_t dual_size,
                                                      const size_t batch_size,
-                                                     const bool is_cupdlpx)
+                                                     const bool need_primal_gradient)
   : primal_size_{primal_size},
     dual_size_{dual_size},
     primal_solution_{batch_size * primal_size, handle_ptr->get_stream()},
@@ -29,7 +29,7 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
     delta_primal_{batch_size * primal_size, handle_ptr->get_stream()},
     delta_dual_{batch_size * dual_size, handle_ptr->get_stream()},
     // Primal gradient is only used in trust region restart mode which does not support batch mode
-    primal_gradient_{is_cupdlpx ? 0 : static_cast<size_t>(primal_size), handle_ptr->get_stream()},
+    primal_gradient_{need_primal_gradient ? static_cast<size_t>(primal_size) : 0, handle_ptr->get_stream()},
     dual_gradient_{batch_size * dual_size, handle_ptr->get_stream()},
     current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
     next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}

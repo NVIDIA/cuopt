@@ -65,7 +65,7 @@ class saddle_point_state_t {
                        i_t primal_size,
                        i_t dual_size,
                        size_t batch_size,
-                       const bool is_cupdlpx = false);
+                       const bool need_primal_gradient);
 
   /**
    * @brief Copies the values of the solutions in another saddle_point_state_t
