@@ -1014,7 +1014,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   const i_t effective_batch_pdlp =
     (settings.sub_mip ||
      (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) ||
-     omp_get_num_threads() < 3)  // 1: heuristics, 1: B&B, 1: batch PDLP
+     omp_get_num_threads() <
+       CUOPT_MIP_BATCH_PDLP_MIN_THREAD_COUNT)  // 1: heuristics, 1: B&B, 1: batch PDLP
       ? 0
       : settings.mip_batch_pdlp_strong_branching;
 
@@ -1427,7 +1428,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
      unreliable_list.size() > min_num_candidates_for_pdlp &&
      pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
        min_percent_solved_by_batch_pdlp_at_root_for_pdlp &&
-     omp_get_num_threads() >= 3);  // 1: heuristics, 1: B&B, 1: batch PDLP);
+     omp_get_num_threads() >=
+       CUOPT_MIP_BATCH_PDLP_MIN_THREAD_COUNT);  // 1: heuristics, 1: B&B, 1: batch PDLP);
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");

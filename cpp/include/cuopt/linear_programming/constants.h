@@ -109,6 +109,13 @@
 #define CUOPT_MODE_OPPORTUNISTIC 0
 #define CUOPT_MODE_DETERMINISTIC 1
 
+/* @brief Minimimum number of threads to enable each part of the MIP Solver */
+#define CUOPT_MIP_FJ_MIN_THREAD_COUNT          8
+#define CUOPT_MIP_EARLY_GPUFJ_MIN_THREAD_COUNT 3
+#define CUOPT_MIP_EARLY_CPUFJ_MIN_THREAD_COUNT 2
+#define CUOPT_MIP_RINS_MIN_THREAD_COUNT        8
+#define CUOPT_MIP_BATCH_PDLP_MIN_THREAD_COUNT  3
+
 /* @brief LP/MIP termination status constants */
 #define CUOPT_TERMINATION_STATUS_NO_TERMINATION          0
 #define CUOPT_TERMINATION_STATUS_OPTIMAL                 1

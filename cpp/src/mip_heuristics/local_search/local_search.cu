@@ -52,7 +52,7 @@ template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < 8) return;
+  if (omp_get_num_threads() < CUOPT_MIP_FJ_MIN_THREAD_COUNT) return;
 
   pop_ptr = &population;
   std::vector<f_t> default_weights(context.problem_ptr->n_constraints, 1.);
@@ -106,7 +106,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
   population_t<i_t, f_t>& population)
 {
   // TODO: Find a way to enable this in low core count scenarios
-  if (omp_get_num_threads() < 8) return;
+  if (omp_get_num_threads() < CUOPT_MIP_FJ_MIN_THREAD_COUNT) return;
 
   pop_ptr = &population;
 
@@ -142,7 +142,7 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 template <typename i_t, typename f_t>
 void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 {
-  if (omp_get_num_threads() < 8) return;
+  if (omp_get_num_threads() < CUOPT_MIP_FJ_MIN_THREAD_COUNT) return;
 
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     scratch_cpu_fj[i]->halted = true;
@@ -164,7 +164,7 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
 {
   producer_sync_t& producer_sync = bb.get_producer_sync();
 
-  if (omp_get_num_threads() < 8) {
+  if (omp_get_num_threads() < CUOPT_MIP_FJ_MIN_THREAD_COUNT) {
     producer_sync.registration_complete();
     return;
   }
@@ -266,7 +266,7 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
   // Start CPU solver in background thread
 #pragma omp taskgroup
   {
-    if (ls_cpu_fj.size() > 0 && omp_get_num_threads() > 3) {
+    if (ls_cpu_fj.size() > 0 && omp_get_num_threads() > CUOPT_MIP_FJ_MIN_THREAD_COUNT) {
       size_t n = std::min<size_t>(omp_get_num_threads() - 1, ls_cpu_fj.size());
       CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", n);
 

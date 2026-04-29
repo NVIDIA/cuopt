@@ -600,7 +600,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     return sol;
   }
 
-  if (omp_get_num_threads() > 4) { rins.enable(); }
+  if (omp_get_num_threads() > CUOPT_MIP_RINS_MIN_THREAD_COUNT) { rins.enable(); }
 
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
