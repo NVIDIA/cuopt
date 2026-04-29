@@ -145,35 +145,11 @@ After inference interactions, review accumulated insights to find patterns.
 
 ## Provenance tagging
 
-Every change made through skill evolution MUST be tagged so its origin is traceable.
+Skill-evolution changes need a traceable origin so a reviewer can find and audit them later. The mechanism depends on what is being added.
 
 ### Updates to existing skills
 
-Wrap added content with **start** and **end** boundary markers so it is easy to locate, review, and remove:
-
-```markdown
-<!-- skill-evolution:start — <short trigger description> -->
-<added content>
-<!-- skill-evolution:end -->
-```
-
-For example, a new table row:
-
-```markdown
-<!-- skill-evolution:start — large objective recursion fix -->
-| Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` |
-<!-- skill-evolution:end -->
-```
-
-Or a new subsection:
-
-```markdown
-<!-- skill-evolution:start — warmstart gotcha -->
-### Warmstart gotcha
-
-Content here...
-<!-- skill-evolution:end -->
-```
+For inline edits to an existing SKILL.md (new bullets, table rows, paragraphs), do NOT wrap content in HTML comment markers. The visible noise compounds across many small edits, and `git log` / `git blame` already attribute every line to the commit that introduced it. Use the commit message and PR description as the audit trail: write a clear commit subject (e.g. "skill-evolution: add large-objective recursion gotcha to lp-milp-formulation") so the origin is greppable in history.
 
 ### New skills
 
@@ -242,7 +218,6 @@ Before proposing, verify:
 - [ ] It does not modify this skill (`skill-evolution`)
 - [ ] It does not expand agent permissions or reduce user control
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
-- [ ] Added content is wrapped with `<!-- skill-evolution:start -->` / `<!-- skill-evolution:end -->` markers
 - [ ] New skills have `origin: skill-evolution` in frontmatter
 - [ ] Code assets have `# origin: skill-evolution` header and are runnable
 - [ ] Placed in the single highest-impact skill (common > API > new); not duplicated across skills
