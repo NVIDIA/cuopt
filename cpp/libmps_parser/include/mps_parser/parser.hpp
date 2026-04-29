@@ -26,6 +26,8 @@ namespace cuopt::mps_parser {
  * QPS files (for quadratic programming). QPS files are MPS files with additional
  * sections:
  * - QUADOBJ: Defines quadratic terms in the objective function
+ * - QMATRIX: Full symmetric quadratic objective matrix (alternative to QUADOBJ)
+ * - QCMATRIX: Symmetric quadratic terms for a named constraint row (QCQP)
  *
  * Note: Compressed MPS files .mps.gz, .mps.bz2 can only be read if the compression
  * libraries zlib or libbzip2 are installed, respectively.
