@@ -193,7 +193,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   diversity_manager_t<i_t, f_t> dm(context);
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     for (auto callback : context.settings.get_mip_callbacks()) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
@@ -204,6 +203,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   dm.timer                   = timer_;
   const bool run_presolve    = context.settings.presolver != presolver_t::None;
   f_t time_limit             = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
