@@ -24,7 +24,7 @@ enum search_strategy_t : int {
   COEFFICIENT_DIVING = 4   // Coefficient diving (9.2.1)
 };
 
-enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
+enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 
 enum class branch_and_bound_mode_t { PARALLEL = 0, DETERMINISTIC = 1 };
 

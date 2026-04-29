@@ -90,7 +90,9 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
                               const std::vector<variable_type_t>& var_types,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::string& context_name)
-    : base_t(id, original_lp, Arow, var_types, settings), work_context(context_name), pc_snapshot(1)
+    : base_t(id, original_lp, Arow, var_types, settings),
+      work_context(context_name),
+      pc_snapshot(1, settings)
   {
     work_context.deterministic = true;
   }
@@ -156,7 +158,7 @@ class deterministic_bfs_worker_t
 
   mip_node_t<i_t, f_t>* enqueue_children_for_plunge(mip_node_t<i_t, f_t>* down_child,
                                                     mip_node_t<i_t, f_t>* up_child,
-                                                    rounding_direction_t preferred_direction)
+                                                    branch_direction_t preferred_direction)
   {
     if (!plunge_stack.empty()) {
       backlog.push(plunge_stack.back());
@@ -169,7 +171,7 @@ class deterministic_bfs_worker_t
     up_child->creation_seq       = next_creation_seq++;
 
     mip_node_t<i_t, f_t>* first_child;
-    if (preferred_direction == rounding_direction_t::UP) {
+    if (preferred_direction == branch_direction_t::UP) {
       plunge_stack.push_front(down_child);
       plunge_stack.push_front(up_child);
       first_child = up_child;

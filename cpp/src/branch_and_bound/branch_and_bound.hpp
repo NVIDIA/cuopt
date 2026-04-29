@@ -107,7 +107,7 @@ class branch_and_bound_t {
     }
   }
 
-  // Set a solution based on the user problem during solve time
+  // Set a solution based on the user problem during the course of the solve
   void set_new_solution(const std::vector<f_t>& solution);
 
   // This queues the solution to be processed at the correct work unit timestamp
@@ -318,7 +318,7 @@ class branch_and_bound_t {
 
   // Policy-based tree update shared between opportunistic and deterministic codepaths.
   template <typename WorkerT, typename Policy>
-  std::pair<node_status_t, rounding_direction_t> update_tree_impl(
+  std::pair<node_status_t, branch_direction_t> update_tree_impl(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
@@ -326,7 +326,7 @@ class branch_and_bound_t {
     Policy& policy);
 
   // Opportunistic tree update wrapper.
-  std::pair<node_status_t, rounding_direction_t> update_tree(
+  std::pair<node_status_t, branch_direction_t> update_tree(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,

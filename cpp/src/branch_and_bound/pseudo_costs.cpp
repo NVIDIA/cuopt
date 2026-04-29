@@ -897,9 +897,9 @@ static void batch_pdlp_reliability_branching_task(
   std::vector<f_t>& pdlp_obj_down,
   std::vector<f_t>& pdlp_obj_up)
 {
-  log.printf(rb_mode == 2 ? "RB batch PDLP only for %d candidates\n"
-                          : "RB cooperative batch PDLP and DS for %d candidates\n",
-             num_candidates);
+  log.debug(rb_mode == 2 ? "RB batch PDLP only for %d candidates\n"
+                         : "RB cooperative batch PDLP and DS for %d candidates\n",
+            num_candidates);
 
   f_t start_batch = tic();
 
@@ -961,7 +961,7 @@ static void batch_pdlp_reliability_branching_task(
 
   if (solutions.get_additional_termination_informations().size() !=
       static_cast<size_t>(num_candidates) * 2) {
-    log.printf("RB batch PDLP failed and produced no solutions\n");
+    log.debug("RB batch PDLP failed and produced no solutions\n");
     return;
   }
 
@@ -972,10 +972,10 @@ static void batch_pdlp_reliability_branching_task(
     }
   }
 
-  log.printf("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
-             batch_pdlp_time,
-             amount_done,
-             num_candidates * 2);
+  log.debug("RB batch PDLP completed in %.2fs. Solved %d/%d\n",
+            batch_pdlp_time,
+            amount_done,
+            num_candidates * 2);
 
   for (i_t k = 0; k < num_candidates; k++) {
     if (solutions.get_termination_status(k) == pdlp_termination_status_t::Optimal) {
@@ -1240,19 +1240,18 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 }
 
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
-f_t pseudo_costs_t<i_t, f_t, BnBMode>::calculate_pseudocost_score(
+pseudo_cost_value_t<f_t> pseudo_costs_t<i_t, f_t, BnBMode>::get_pseudocost(
   i_t j, const std::vector<f_t>& solution, pseudo_cost_averages_t<i_t, f_t> averages) const
 {
-  constexpr f_t eps = 1e-6;
-  i_t num_up        = pseudo_cost_num_up[j];
-  f_t sum_up        = pseudo_cost_sum_up[j];
-  i_t num_down      = pseudo_cost_num_down[j];
-  f_t sum_down      = pseudo_cost_sum_down[j];
-  f_t pc_up         = num_up > 0 ? sum_up / num_up : averages.up_avg;
-  f_t pc_down       = num_down > 0 ? sum_down / num_down : averages.down_avg;
-  f_t f_down        = solution[j] - std::floor(solution[j]);
-  f_t f_up          = std::ceil(solution[j]) - solution[j];
-  return std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+  i_t num_up   = pseudo_cost_num_up[j];
+  f_t sum_up   = pseudo_cost_sum_up[j];
+  i_t num_down = pseudo_cost_num_down[j];
+  f_t sum_down = pseudo_cost_sum_down[j];
+  f_t pc_up    = num_up > 0 ? sum_up / num_up : averages.up_avg;
+  f_t pc_down  = num_down > 0 ? sum_down / num_down : averages.down_avg;
+  f_t f_down   = solution[j] - std::floor(solution[j]);
+  f_t f_up     = std::ceil(solution[j]) - solution[j];
+  return {.f_up = f_up, .f_down = f_down, .pc_up = pc_up, .pc_down = pc_down};
 }
 
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
@@ -1260,11 +1259,11 @@ void pseudo_costs_t<i_t, f_t, BnBMode>::update_pseudo_costs(mip_node_t<i_t, f_t>
                                                             f_t leaf_objective)
 {
   const f_t change_in_obj = std::max(leaf_objective - node_ptr->lower_bound, 0.0);
-  const f_t frac          = node_ptr->branch_dir == rounding_direction_t::DOWN
+  const f_t frac          = node_ptr->branch_dir == branch_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
                               : std::ceil(node_ptr->fractional_val) - node_ptr->fractional_val;
 
-  if (node_ptr->branch_dir == rounding_direction_t::DOWN) {
+  if (node_ptr->branch_dir == branch_direction_t::DOWN) {
     pseudo_cost_sum_down[node_ptr->branch_var] += change_in_obj / frac;
     pseudo_cost_num_down[node_ptr->branch_var]++;
   } else {
@@ -1303,21 +1302,22 @@ pseudo_cost_averages_t<i_t, f_t> pseudo_costs_t<i_t, f_t, BnBMode>::compute_aver
 
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
 i_t pseudo_costs_t<i_t, f_t, BnBMode>::variable_selection(const std::vector<i_t>& fractional,
-                                                          const std::vector<f_t>& solution,
-                                                          logger_t& log)
+                                                          const std::vector<f_t>& solution)
 {
+  constexpr f_t eps                         = 1e-6;
   i_t branch_var                            = fractional[0];
   f_t max_score                             = -1;
   pseudo_cost_averages_t<i_t, f_t> averages = compute_averages();
 
-  log.printf("PC: num initialized down %d up %d avg down %e up %e\n",
-             averages.num_init_down,
-             averages.num_init_up,
-             averages.down_avg,
-             averages.up_avg);
+  settings.log.debug("PC: num initialized down %d up %d avg down %e up %e\n",
+                     averages.num_init_down,
+                     averages.num_init_up,
+                     averages.down_avg,
+                     averages.up_avg);
 
   for (i_t j : fractional) {
-    f_t score = calculate_pseudocost_score(j, solution, averages);
+    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, solution, averages);
+    f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
 
     if (score > max_score) {
       max_score  = score;
@@ -1325,10 +1325,10 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::variable_selection(const std::vector<i_t>
     }
   }
 
-  log.debug("Pseudocost branching on %d. Value %e. Score %e.\n",
-            branch_var,
-            solution[branch_var],
-            max_score);
+  settings.log.debug("Pseudocost branching on %d. Value %e. Score %e.\n",
+                     branch_var,
+                     solution[branch_var],
+                     max_score);
 
   return branch_var;
 }
@@ -1340,10 +1340,8 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   const std::vector<variable_type_t>& var_types,
   const branch_and_bound_stats_t<i_t, f_t>& bnb_stats,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
   f_t upper_bound,
   int max_num_tasks,
-  logger_t& log,
   const std::vector<i_t>& new_slacks,
   const lp_problem_t<i_t, f_t>& original_lp)
 {
@@ -1385,11 +1383,11 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   // method).
   if (reliable_threshold == 0) {
     averages = compute_averages();
-    log.printf("PC: num initialized down %d up %d avg down %e up %e\n",
-               averages.num_init_down,
-               averages.num_init_up,
-               averages.down_avg,
-               averages.up_avg);
+    settings.log.debug("PC: num initialized down %d up %d avg down %e up %e\n",
+                       averages.num_init_down,
+                       averages.num_init_up,
+                       averages.down_avg,
+                       averages.up_avg);
   }
 
   std::vector<std::pair<f_t, i_t>> unreliable_list;
@@ -1401,7 +1399,8 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
       unreliable_list.push_back(std::make_pair(-1, j));
       continue;
     }
-    f_t score = calculate_pseudocost_score(j, leaf_solution.x, averages);
+    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
+    f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
 
     if (score > max_score) {
       max_score  = score;
@@ -1410,10 +1409,10 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   }
 
   if (unreliable_list.empty()) {
-    log.printf("pc branching on %d. Value %e. Score %e\n",
-               branch_var,
-               leaf_solution.x[branch_var],
-               max_score);
+    settings.log.debug("pc branching on %d. Value %e. Score %e\n",
+                       branch_var,
+                       leaf_solution.x[branch_var],
+                       max_score);
 
     return branch_var;
   }
@@ -1436,18 +1435,18 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
                                              min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
 
   if (rb_mode != 0 && !pdlp_warm_cache->populated) {
-    log.printf("PDLP warm start data not populated, using DS only\n");
+    settings.log.debug("PDLP warm start data not populated, using DS only\n");
   } else if (rb_mode != 0 && settings.sub_mip) {
-    log.printf("Batch PDLP reliability branching is disabled because sub-MIP is enabled\n");
+    settings.log.debug("Batch PDLP reliability branching is disabled because sub-MIP is enabled\n");
   } else if (rb_mode != 0 && settings.deterministic) {
-    log.printf(
+    settings.log.debug(
       "Batch PDLP reliability branching is disabled because deterministic mode is enabled\n");
   } else if (rb_mode != 0 && unreliable_list.size() < min_num_candidates_for_pdlp) {
-    log.printf("Not enough candidates to use batch PDLP, using DS only\n");
+    settings.log.debug("Not enough candidates to use batch PDLP, using DS only\n");
   } else if (rb_mode != 0 && pdlp_warm_cache->percent_solved_by_batch_pdlp_at_root < 5.0) {
-    log.printf("Percent solved by batch PDLP at root is too low, using DS only\n");
+    settings.log.debug("Percent solved by batch PDLP at root is too low, using DS only\n");
   } else if (use_pdlp) {
-    log.printf(
+    settings.log.debug(
       "Using batch PDLP because populated, unreliable list size is %d (> %d), and percent solved "
       "by batch PDLP at root is %f%% (> %f%%)\n",
       static_cast<i_t>(unreliable_list.size()),
@@ -1468,7 +1467,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   assert(num_candidates > 0);
   assert(num_tasks > 0);
 
-  log.printf(
+  settings.log.debug(
     "RB iters = %d, B&B iters = %d, unreliable = %d, num_tasks = %d, reliable_threshold = %d\n",
     static_cast<int64_t>(strong_branching_lp_iter),
     branch_and_bound_lp_iters,
@@ -1517,7 +1516,8 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
           score = std::max(estimate.up_obj_change, eps) * std::max(estimate.down_obj_change, eps);
         } else {
           // Use the previous score, even if it is unreliable
-          score = calculate_pseudocost_score(j, leaf_solution.x, averages);
+          auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
+          score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
         }
       }
     } else {
@@ -1555,7 +1555,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 
   if (use_pdlp) {
 #pragma omp task default(shared)
-    batch_pdlp_reliability_branching_task(log,
+    batch_pdlp_reliability_branching_task(settings.log,
                                           rb_mode,
                                           num_candidates,
                                           start_time,
@@ -1573,7 +1573,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   }
 
   if (toc(start_time) > settings.time_limit) {
-    log.printf("Time limit reached\n");
+    settings.log.debug("Time limit reached\n");
     if (use_pdlp) {
       concurrent_halt.store(1);
 #pragma omp taskwait
@@ -1603,7 +1603,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
       if (toc(start_time) > settings.time_limit) { continue; }
 
       if (rb_mode == 1 && sb_view.is_solved(i)) {
-        log.printf(
+        settings.log.debug(
           "DS skipping variable %d branch down (shared_idx %d): already solved by PDLP\n", j, i);
       } else {
         pseudo_cost_mutex_down[j].lock();
@@ -1648,9 +1648,10 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 
       const i_t shared_idx = i + num_candidates;
       if (rb_mode == 1 && sb_view.is_solved(shared_idx)) {
-        log.printf("DS skipping variable %d branch up (shared_idx %d): already solved by PDLP\n",
-                   j,
-                   shared_idx);
+        settings.log.debug(
+          "DS skipping variable %d branch up (shared_idx %d): already solved by PDLP\n",
+          j,
+          shared_idx);
       } else {
         pseudo_cost_mutex_up[j].lock();
         if (pseudo_cost_num_up[j] < reliable_threshold) {
@@ -1691,7 +1692,9 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 
       if (toc(start_time) > settings.time_limit) { continue; }
 
-      score = calculate_pseudocost_score(j, leaf_solution.x, averages);
+      auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
+      score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+
       score_mutex.lock();
       if (score > max_score) {
         max_score  = score;
@@ -1708,14 +1711,14 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   // TODO put back
   // if (rb_mode != 2) {
   //  if (rb_mode == 1) {
-  //    log.printf(
+  //    settings.log.debug(
   //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed, %d skipped
   //      (PDLP) in %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
   //      dual_simplex_infeasible.load(), num_candidates * 2,
   //      dual_simplex_failed.load(), num_candidates * 2,
   //      dual_simplex_skipped.load(), dual_simplex_elapsed);
   //  } else {
-  //    log.printf(
+  //    settings.log.debug(
   //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed in
   //      %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
   //      dual_simplex_infeasible.load(), num_candidates * 2, dual_simplex_failed.load(),
@@ -1771,21 +1774,23 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
         }
       }
 
-      f_t score = calculate_pseudocost_score(j, leaf_solution.x, averages);
+      auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
+      f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+
       if (score > max_score) {
         max_score  = score;
         branch_var = j;
       }
     }
 
-    log.printf("RB batch PDLP: %d candidates, %d/%d optimal, %d applied to pseudo-costs\n",
-               num_candidates,
-               pdlp_optimal,
-               num_candidates * 2,
-               pdlp_applied);
+    settings.log.debug("RB batch PDLP: %d candidates, %d/%d optimal, %d applied to pseudo-costs\n",
+                       num_candidates,
+                       pdlp_optimal,
+                       num_candidates * 2,
+                       pdlp_applied);
   }
 
-  log.printf(
+  settings.log.debug(
     "pc branching on %d. Value %e. Score %e\n", branch_var, leaf_solution.x[branch_var], max_score);
 
   return branch_var;
@@ -1794,8 +1799,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
 f_t pseudo_costs_t<i_t, f_t, BnBMode>::obj_estimate(const std::vector<i_t>& fractional,
                                                     const std::vector<f_t>& solution,
-                                                    f_t lower_bound,
-                                                    logger_t& log)
+                                                    f_t lower_bound)
 {
   const i_t num_fractional = fractional.size();
   f_t estimate             = lower_bound;
@@ -1803,17 +1807,12 @@ f_t pseudo_costs_t<i_t, f_t, BnBMode>::obj_estimate(const std::vector<i_t>& frac
   pseudo_cost_averages_t<i_t, f_t> averages = compute_averages();
 
   for (i_t j : fractional) {
-    constexpr f_t eps = 1e-6;
-    i_t num_up        = pseudo_cost_num_up[j];
-    i_t num_down      = pseudo_cost_num_down[j];
-    f_t pc_up         = num_up > 0 ? pseudo_cost_sum_up[j] / num_up : averages.up_avg;
-    f_t pc_down       = num_down > 0 ? pseudo_cost_sum_down[j] / num_down : averages.down_avg;
-    f_t f_down        = solution[j] - std::floor(solution[j]);
-    f_t f_up          = std::ceil(solution[j]) - solution[j];
+    constexpr f_t eps                   = 1e-6;
+    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, solution, averages);
     estimate += std::min(pc_down * f_down, pc_up * f_up);
   }
 
-  log.printf("pseudocost estimate = %e\n", estimate);
+  settings.log.debug("pseudocost estimate = %e\n", estimate);
   return estimate;
 }
 

@@ -17,26 +17,26 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& root_solution,
                                           logger_t& log)
 {
-  constexpr f_t eps              = 1e-6;
-  i_t branch_var                 = -1;
-  f_t min_score                  = std::numeric_limits<f_t>::max();
-  rounding_direction_t round_dir = rounding_direction_t::NONE;
+  constexpr f_t eps            = 1e-6;
+  i_t branch_var               = -1;
+  f_t min_score                = std::numeric_limits<f_t>::max();
+  branch_direction_t round_dir = branch_direction_t::NONE;
 
   for (i_t j : fractional) {
-    f_t score                = inf;
-    rounding_direction_t dir = rounding_direction_t::NONE;
+    f_t score              = inf;
+    branch_direction_t dir = branch_direction_t::NONE;
 
     if (solution[j] < root_solution[j] - eps) {
       f_t f = solution[j] - std::floor(solution[j]);
       f_t d = root_solution[j] - solution[j];
       score = f / d;
-      dir   = rounding_direction_t::DOWN;
+      dir   = branch_direction_t::DOWN;
 
     } else if (solution[j] > root_solution[j] + eps) {
       f_t f = std::ceil(solution[j]) - solution[j];
       f_t d = solution[j] - root_solution[j];
       score = f / d;
-      dir   = rounding_direction_t::UP;
+      dir   = branch_direction_t::UP;
     }
 
     if (min_score > score) {
@@ -48,12 +48,12 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
 
   // If the current solution is equal to the root solution, arbitrarily
   // set the branch variable to the first fractional variable and round it down
-  if (round_dir == rounding_direction_t::NONE) {
+  if (round_dir == branch_direction_t::NONE) {
     branch_var = fractional[0];
-    round_dir  = rounding_direction_t::DOWN;
+    round_dir  = branch_direction_t::DOWN;
   }
 
-  assert(round_dir != rounding_direction_t::NONE);
+  assert(round_dir != branch_direction_t::NONE);
   assert(branch_var >= 0);
 
   log.debug("Line search diving: selected var %d with val = %e, round dir = %d and score = %e\n",
@@ -73,50 +73,43 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
                                          logger_t& log)
 {
   const i_t num_fractional = fractional.size();
-  if (num_fractional == 0) return {-1, rounding_direction_t::NONE};
+  if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  pseudo_cost_averages_t<i_t, f_t> avgs = pc.compute_averages();
+  pseudo_cost_averages_t<i_t, f_t> averages = pc.compute_averages();
 
-  i_t branch_var                 = fractional[0];
-  f_t max_score                  = std::numeric_limits<f_t>::lowest();
-  rounding_direction_t round_dir = rounding_direction_t::DOWN;
-  constexpr f_t eps              = f_t(1e-6);
+  i_t branch_var               = fractional[0];
+  f_t max_score                = std::numeric_limits<f_t>::lowest();
+  branch_direction_t round_dir = branch_direction_t::DOWN;
+  constexpr f_t eps            = f_t(1e-6);
 
   for (i_t j : fractional) {
-    f_t f_down  = solution[j] - std::floor(solution[j]);
-    f_t f_up    = std::ceil(solution[j]) - solution[j];
-    f_t pc_down = pc.pseudo_cost_num_down[j] != 0
-                    ? pc.pseudo_cost_sum_down[j] / pc.pseudo_cost_num_down[j]
-                    : avgs.down_avg;
-    f_t pc_up = pc.pseudo_cost_num_up[j] != 0 ? pc.pseudo_cost_sum_up[j] / pc.pseudo_cost_num_up[j]
-                                              : avgs.up_avg;
+    auto [f_up, f_down, pc_up, pc_down] = pc.get_pseudocost(j, solution, averages);
+    f_t score_down                      = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
+    f_t score_up                        = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
 
-    f_t score_down = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
-    f_t score_up   = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
-
-    f_t score                = 0;
-    rounding_direction_t dir = rounding_direction_t::DOWN;
+    f_t score              = 0;
+    branch_direction_t dir = branch_direction_t::DOWN;
 
     f_t root_val = (j < static_cast<i_t>(root_solution.size())) ? root_solution[j] : solution[j];
 
     if (solution[j] < root_val - f_t(0.4)) {
       score = score_down;
-      dir   = rounding_direction_t::DOWN;
+      dir   = branch_direction_t::DOWN;
     } else if (solution[j] > root_val + f_t(0.4)) {
       score = score_up;
-      dir   = rounding_direction_t::UP;
+      dir   = branch_direction_t::UP;
     } else if (f_down < f_t(0.3)) {
       score = score_down;
-      dir   = rounding_direction_t::DOWN;
+      dir   = branch_direction_t::DOWN;
     } else if (f_down > f_t(0.7)) {
       score = score_up;
-      dir   = rounding_direction_t::UP;
+      dir   = branch_direction_t::UP;
     } else if (pc_down < pc_up + eps) {
       score = score_down;
-      dir   = rounding_direction_t::DOWN;
+      dir   = branch_direction_t::DOWN;
     } else {
       score = score_up;
-      dir   = rounding_direction_t::UP;
+      dir   = branch_direction_t::UP;
     }
 
     if (score > max_score) {
@@ -126,9 +119,9 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
     }
   }
 
-  if (round_dir == rounding_direction_t::NONE) {
+  if (round_dir == branch_direction_t::NONE) {
     branch_var = fractional[0];
-    round_dir  = rounding_direction_t::DOWN;
+    round_dir  = branch_direction_t::DOWN;
   }
 
   return {branch_var, round_dir};
@@ -142,30 +135,24 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
                                      logger_t& log)
 {
   const i_t num_fractional = fractional.size();
-  if (num_fractional == 0) return {-1, rounding_direction_t::NONE};
+  if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  pseudo_cost_averages_t<i_t, f_t> avgs = pc.compute_averages();
+  pseudo_cost_averages_t<i_t, f_t> averages = pc.compute_averages();
 
-  i_t branch_var                 = fractional[0];
-  f_t max_score                  = std::numeric_limits<f_t>::lowest();
-  rounding_direction_t round_dir = rounding_direction_t::DOWN;
-  constexpr f_t eps              = f_t(1e-6);
+  i_t branch_var               = fractional[0];
+  f_t max_score                = std::numeric_limits<f_t>::lowest();
+  branch_direction_t round_dir = branch_direction_t::DOWN;
+  constexpr f_t eps            = f_t(1e-6);
 
   for (i_t j : fractional) {
-    f_t f_down    = solution[j] - std::floor(solution[j]);
-    f_t f_up      = std::ceil(solution[j]) - solution[j];
     f_t down_dist = std::abs(incumbent[j] - std::floor(solution[j]));
     f_t up_dist   = std::abs(std::ceil(solution[j]) - incumbent[j]);
-    rounding_direction_t dir =
-      down_dist < up_dist + eps ? rounding_direction_t::DOWN : rounding_direction_t::UP;
+    branch_direction_t dir =
+      down_dist < up_dist + eps ? branch_direction_t::DOWN : branch_direction_t::UP;
 
-    f_t pc_down = pc.pseudo_cost_num_down[j] != 0
-                    ? pc.pseudo_cost_sum_down[j] / pc.pseudo_cost_num_down[j]
-                    : avgs.down_avg;
-    f_t pc_up  = pc.pseudo_cost_num_up[j] != 0 ? pc.pseudo_cost_sum_up[j] / pc.pseudo_cost_num_up[j]
-                                               : avgs.up_avg;
-    f_t score1 = dir == rounding_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
-    f_t score2 = dir == rounding_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
+    auto [f_up, f_down, pc_up, pc_down] = pc.get_pseudocost(j, solution, averages);
+    f_t score1 = dir == branch_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
+    f_t score2 = dir == branch_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
     f_t score  = (score1 + score2) / 6;
 
     if (score > max_score) {
@@ -209,10 +196,10 @@ branch_variable_t<i_t> coefficient_diving(const lp_problem_t<i_t, f_t>& lp_probl
                                           const std::vector<i_t>& down_locks,
                                           logger_t& log)
 {
-  i_t branch_var                 = -1;
-  i_t min_locks                  = std::numeric_limits<i_t>::max();
-  rounding_direction_t round_dir = rounding_direction_t::NONE;
-  constexpr f_t eps              = 1e-6;
+  i_t branch_var               = -1;
+  i_t min_locks                = std::numeric_limits<i_t>::max();
+  branch_direction_t round_dir = branch_direction_t::NONE;
+  constexpr f_t eps            = 1e-6;
 
   for (i_t j : fractional) {
     f_t f_down    = solution[j] - std::floor(solution[j]);
@@ -230,18 +217,18 @@ branch_variable_t<i_t> coefficient_diving(const lp_problem_t<i_t, f_t>& lp_probl
       branch_var = j;
 
       if (up_lock < down_lock) {
-        round_dir = rounding_direction_t::UP;
+        round_dir = branch_direction_t::UP;
       } else if (up_lock > down_lock) {
-        round_dir = rounding_direction_t::DOWN;
+        round_dir = branch_direction_t::DOWN;
       } else if (f_down < f_up + eps) {
-        round_dir = rounding_direction_t::DOWN;
+        round_dir = branch_direction_t::DOWN;
       } else {
-        round_dir = rounding_direction_t::UP;
+        round_dir = branch_direction_t::UP;
       }
     }
   }
 
-  assert(round_dir != rounding_direction_t::NONE);
+  assert(round_dir != branch_direction_t::NONE);
   assert(branch_var >= 0);
 
   log.debug(
