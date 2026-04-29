@@ -97,7 +97,8 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
     var_names_{other.get_variable_names()},
-    row_names_{other.get_row_names()}
+    row_names_{other.get_row_names()},
+    quadratic_constraints_{other.get_quadratic_constraints()}
 {
 }
 
@@ -195,6 +196,14 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   cuopt::symmetrize_csr<i_t, f_t>(
     Q_values, Q_indices, Q_offsets, qn, Q_values_, Q_indices_, Q_offsets_);
   // FIX ME:: check for positive semi definite matrix
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -549,6 +558,19 @@ bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
 }
 
 template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
+}
+
+template <typename i_t, typename f_t>
 raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
@@ -818,6 +840,10 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
                                                    Q_offsets_.data(),
                                                    static_cast<i_t>(Q_offsets_.size()),
                                                    is_symmetrized);
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
   cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
