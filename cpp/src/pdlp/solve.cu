@@ -936,7 +936,7 @@ static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>
 }
 
 // We need to custom craft a solver settings for the batch mode as we need a specific set of values
-// The only transmitted values are the warm start values
+// We override iteration limit and pdlp tolerance unless the user has specified otherwise
 template <typename i_t, typename f_t>
 static void apply_batch_settings_overrides(
   const pdlp_solver_settings_t<i_t, f_t>& original_settings,
@@ -945,18 +945,26 @@ static void apply_batch_settings_overrides(
   constexpr int batch_iteration_limit = 100000;
   constexpr f_t pdlp_tolerance        = 1e-4;
 
+  const pdlp_solver_settings_t<i_t, f_t> default_settings{};
+
+  auto override_or_keep_given = [&](const auto& given_value, const auto& default_value, const auto& override_value) {
+    return given_value == default_value ? override_value : given_value;
+  };
+
   batch_settings.method                               = cuopt::linear_programming::method_t::PDLP;
   batch_settings.presolver                            = presolver_t::None;
   batch_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable3;
   batch_settings.detect_infeasibility                 = false;
-  batch_settings.iteration_limit                      = batch_iteration_limit;
+  batch_settings.iteration_limit                      = override_or_keep_given(original_settings.iteration_limit, default_settings.iteration_limit, batch_iteration_limit);
   batch_settings.inside_mip                           = true;
-  batch_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
-  batch_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
-  batch_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.absolute_gap_tolerance    = pdlp_tolerance;
-  batch_settings.tolerances.relative_gap_tolerance    = pdlp_tolerance;
+  // Override the tolerances unless the user has specified otherwise
+  // Only risk is overriding a user intentionnaly wanting to use numeric_limits<f_t>::max() as an iteration limit
+  batch_settings.tolerances.absolute_dual_tolerance   = override_or_keep_given(original_settings.tolerances.absolute_dual_tolerance, default_settings.tolerances.absolute_dual_tolerance, pdlp_tolerance);
+  batch_settings.tolerances.relative_dual_tolerance   = override_or_keep_given(original_settings.tolerances.relative_dual_tolerance, default_settings.tolerances.relative_dual_tolerance, pdlp_tolerance);
+  batch_settings.tolerances.absolute_primal_tolerance = override_or_keep_given(original_settings.tolerances.absolute_primal_tolerance, default_settings.tolerances.absolute_primal_tolerance, pdlp_tolerance);
+  batch_settings.tolerances.relative_primal_tolerance = override_or_keep_given(original_settings.tolerances.relative_primal_tolerance, default_settings.tolerances.relative_primal_tolerance, pdlp_tolerance);
+  batch_settings.tolerances.absolute_gap_tolerance    = override_or_keep_given(original_settings.tolerances.absolute_gap_tolerance, default_settings.tolerances.absolute_gap_tolerance, pdlp_tolerance);
+  batch_settings.tolerances.relative_gap_tolerance    = override_or_keep_given(original_settings.tolerances.relative_gap_tolerance, default_settings.tolerances.relative_gap_tolerance, pdlp_tolerance);
 
   constexpr bool pdlp_primal_dual_init       = true;
   constexpr bool primal_weight_init          = true;

@@ -245,6 +245,91 @@ TEST(pdlp_class, batch_iteration_limit_updates_additional_termination_stats)
   }
 }
 
+TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  constexpr int batch_size = 2;
+  constexpr double tighter_tolerance = 1e-6;
+
+  auto default_settings      = pdlp_solver_settings_t<int, double>{};
+  default_settings.method    = method_t::PDLP;
+  default_settings.presolver = presolver_t::None;
+
+  auto default_solution = solve_lp_batch_fixed<int, double>(
+    &handle_, op_problem, default_settings, batch_size);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+  ASSERT_EQ(static_cast<int>(default_solution.get_terminations_status().size()), batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(default_solution.get_termination_status(i), pdlp_termination_status_t::Optimal)
+      << "climber " << i;
+    auto primal_i = extract_subvector(default_solution.get_primal_solution(),
+                                      i * op_problem.get_n_variables(),
+                                      op_problem.get_n_variables());
+    test_constraint_sanity(op_problem,
+                           default_solution.get_additional_termination_information(i),
+                           primal_i,
+                           default_settings.tolerances.absolute_primal_tolerance);
+    // By default we don't meet the 1e-6 relative primal tolerance
+    EXPECT_GT(default_solution.get_additional_termination_information(i).l2_relative_primal_residual,
+              tighter_tolerance)
+      << "climber " << i;
+  }
+
+  auto tighter_tolerance_settings      = pdlp_solver_settings_t<int, double>{};
+  tighter_tolerance_settings.method    = method_t::PDLP;
+  tighter_tolerance_settings.presolver = presolver_t::None;
+  tighter_tolerance_settings.set_optimality_tolerance(tighter_tolerance);
+
+  auto tighter_tolerance_solution = solve_lp_batch_fixed<int, double>(
+    &handle_, op_problem, tighter_tolerance_settings, batch_size);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+  ASSERT_EQ(static_cast<int>(tighter_tolerance_solution.get_terminations_status().size()),
+            batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(tighter_tolerance_solution.get_termination_status(i),
+              pdlp_termination_status_t::Optimal)
+      << "climber " << i;
+    auto primal_i = extract_subvector(tighter_tolerance_solution.get_primal_solution(),
+                                      i * op_problem.get_n_variables(),
+                                      op_problem.get_n_variables());
+    test_constraint_sanity(op_problem,
+                           tighter_tolerance_solution.get_additional_termination_information(i),
+                           primal_i,
+                           tighter_tolerance);
+    EXPECT_LE(
+      tighter_tolerance_solution.get_additional_termination_information(i)
+        .l2_relative_primal_residual,
+      tighter_tolerance)
+      << "climber " << i;
+  }
+
+  auto iteration_limit_settings            = pdlp_solver_settings_t<int, double>{};
+  iteration_limit_settings.method          = method_t::PDLP;
+  iteration_limit_settings.presolver       = presolver_t::None;
+  iteration_limit_settings.iteration_limit = 10;
+  iteration_limit_settings.set_optimality_tolerance(0);
+
+  auto iteration_limit_solution = solve_lp_batch_fixed<int, double>(
+    &handle_, op_problem, iteration_limit_settings, batch_size);
+  RAFT_CUDA_TRY(cudaDeviceSynchronize());
+  ASSERT_EQ(static_cast<int>(iteration_limit_solution.get_terminations_status().size()),
+            batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    EXPECT_EQ(iteration_limit_solution.get_termination_status(i),
+              pdlp_termination_status_t::IterationLimit)
+      << "climber " << i;
+    EXPECT_EQ(iteration_limit_solution.get_additional_termination_information(i)
+                .number_of_steps_taken,
+              iteration_limit_settings.iteration_limit)
+      << "climber " << i;
+  }
+}
+
 TEST(pdlp_class, run_time_limit)
 {
   const raft::handle_t handle_{};
