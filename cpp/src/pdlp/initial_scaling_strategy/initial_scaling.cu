@@ -606,26 +606,19 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       },
       stream_view_.value());
 
-    cub::DeviceTransform::Transform(
-      op_problem_scaled_.variable_bounds.data(),
-      op_problem_scaled_.variable_bounds.data(),
-      op_problem_scaled_.variable_bounds.size(),
-      [bound_rescaling     = bound_rescaling_.data(),
-       objective_rescaling = objective_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
-        return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
-      },
-      stream_view_);
-
-    if (pdhg_solver_ptr_ && pdhg_solver_ptr_->get_new_bounds_idx().size() != 0) {
+    // In batch mode we don't scale the variable bounds (here) because they are shared across climbers.
+    // While the variable bounds are the same across climbers, there can be different bound rescaling
+    // factors for each climber.
+    // One solution would be to have per climber variable bounds but its costly from a memory perspective and from a memory bandwidth perspective.
+    // Since the variable bounds are the same across climbers but only the scaling factor changes, we pass the scaling factor to PDHG later.
+    // In PDHG we act the (almost fully) scaled variable bounds and add this missing scaling factor.
+    if (original_batch_size_ == 1) {
       cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(pdhg_solver_ptr_->get_new_bounds_lower().data(),
-                              pdhg_solver_ptr_->get_new_bounds_upper().data()),
-        thrust::make_zip_iterator(pdhg_solver_ptr_->get_new_bounds_lower().data(),
-                                  pdhg_solver_ptr_->get_new_bounds_upper().data()),
-        pdhg_solver_ptr_->get_new_bounds_idx().size(),
-        [bound_rescaling = bound_rescaling_.data()] __device__(
-          f_t lower, f_t upper) -> thrust::tuple<f_t, f_t> {
-          return {lower * *bound_rescaling, upper * *bound_rescaling};
+        op_problem_scaled_.variable_bounds.data(),
+        op_problem_scaled_.variable_bounds.data(),
+        op_problem_scaled_.variable_bounds.size(),
+        [bound_rescaling = bound_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
+          return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
         },
         stream_view_);
     }

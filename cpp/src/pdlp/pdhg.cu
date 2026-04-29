@@ -620,6 +620,7 @@ struct primal_reflected_major_projection_bulk_op {
   const f_t* current_AtY;
   const f_t2* variable_bounds;
   const f_t* primal_step_size;
+  const f_t* bound_rescaling;
   f_t* potential_next_primal;
   f_t* dual_slack;
   f_t* reflected_primal;
@@ -645,9 +646,13 @@ struct primal_reflected_major_projection_bulk_op {
 
     const f_t next = primal_val - step_size * (obj_coef - aty_val);
 
-    const f_t2 bounds = variable_bounds[var_idx];
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
+    const f_t bound_scale = bound_rescaling[batch_idx];
+    const f_t2 bounds     = variable_bounds[var_idx];
     const f_t next_clamped =
-      cuda::std::max(cuda::std::min(next, get_upper(bounds)), get_lower(bounds));
+      cuda::std::max(cuda::std::min(next, get_upper(bounds) * bound_scale),
+                     get_lower(bounds) * bound_scale);
 
     potential_next_primal[idx] = next_clamped;
     dual_slack[idx]            = (next_clamped - next) / step_size;
@@ -708,6 +713,7 @@ struct primal_reflected_projection_bulk_op {
   const f_t* current_AtY;
   const f_t2* variable_bounds;
   const f_t* primal_step_size;
+  const f_t* bound_rescaling;
   f_t* reflected_primal;
   int batch_size;
   bool per_climber_objectives;
@@ -731,8 +737,12 @@ struct primal_reflected_projection_bulk_op {
 
     f_t reflected = primal_val - step_size * (obj_coef - aty_val);
 
-    const f_t2 bounds = variable_bounds[var_idx];
-    reflected = cuda::std::max(cuda::std::min(reflected, get_upper(bounds)), get_lower(bounds));
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here.
+    const f_t bound_scale = bound_rescaling[batch_idx];
+    const f_t2 bounds     = variable_bounds[var_idx];
+    reflected = cuda::std::max(cuda::std::min(reflected, get_upper(bounds) * bound_scale),
+                               get_lower(bounds) * bound_scale);
 
     reflected_primal[idx] = f_t(2.0) * reflected - primal_val;
 
@@ -791,6 +801,7 @@ struct refine_primal_projection_major_bulk_op {
   raft::device_span<const f_t> objective;
   raft::device_span<const f_t> Aty;
   raft::device_span<const f_t> primal_step_size;
+  raft::device_span<const f_t> bound_rescaling;
   raft::device_span<f_t> potential_next;
   raft::device_span<f_t> dual_slack;
   raft::device_span<f_t> reflected_primal;
@@ -800,8 +811,11 @@ struct refine_primal_projection_major_bulk_op {
   HDI void operator()(size_t climber_id)
   {
     i_t var_idx = idx[climber_id];
-    f_t l       = lower[climber_id];
-    f_t u       = upper[climber_id];
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
+    f_t bound_scale = bound_rescaling[climber_id];
+    f_t l           = lower[climber_id] * bound_scale;
+    f_t u           = upper[climber_id] * bound_scale;
 
     size_t global_idx = (size_t)var_idx * batch_size + climber_id;
 
@@ -828,6 +842,7 @@ struct refine_primal_projection_bulk_op {
   raft::device_span<const f_t> objective;
   raft::device_span<const f_t> Aty;
   raft::device_span<const f_t> primal_step_size;
+  raft::device_span<const f_t> bound_rescaling;
   raft::device_span<f_t> reflected_primal;
   int batch_size;
   bool per_climber_objectives;
@@ -835,8 +850,11 @@ struct refine_primal_projection_bulk_op {
   HDI void operator()(size_t climber_id)
   {
     i_t var_idx = idx[climber_id];
-    f_t l       = lower[climber_id];
-    f_t u       = upper[climber_id];
+    // Variables bounds are common accross all climbers but their scaling factor changes.
+    // Instead of creating a matrix of variable bounds, we scale the bounds here. 
+    f_t bound_scale = bound_rescaling[climber_id];
+    f_t l           = lower[climber_id] * bound_scale;
+    f_t u           = upper[climber_id] * bound_scale;
 
     size_t global_idx = (size_t)var_idx * batch_size + climber_id;
 
@@ -855,14 +873,15 @@ struct refine_initial_primal_projection_bulk_op {
   raft::device_span<const i_t> idx;
   raft::device_span<const f_t> lower;
   raft::device_span<const f_t> upper;
+  raft::device_span<const f_t> bound_rescaling;
   raft::device_span<f_t> primal_solution;
   i_t n_variables;
 
   HDI void operator()(size_t climber_id)
   {
     i_t var_idx = idx[climber_id];
-    f_t l       = lower[climber_id];
-    f_t u       = upper[climber_id];
+    f_t l       = lower[climber_id] * bound_rescaling[climber_id];
+    f_t u       = upper[climber_id] * bound_rescaling[climber_id];
 
     // When refining, the solution is not yet transposed
     size_t global_idx           = (size_t)climber_id * n_variables + var_idx;
@@ -872,7 +891,8 @@ struct refine_initial_primal_projection_bulk_op {
 };
 
 template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::refine_initial_primal_projection()
+void pdhg_solver_t<i_t, f_t>::refine_initial_primal_projection(
+  const rmm::device_uvector<f_t>& bound_rescaling)
 {
   if (new_bounds_idx_.size() == 0) return;
 #ifdef CUPDLP_DEBUG_MODE
@@ -891,6 +911,7 @@ void pdhg_solver_t<i_t, f_t>::refine_initial_primal_projection()
                          make_span(new_bounds_idx_),
                          make_span(new_bounds_lower_),
                          make_span(new_bounds_upper_),
+                         make_span(bound_rescaling),
                          make_span(current_saddle_point_state_.get_primal_solution()),
                          problem_ptr->n_variables},
                        stream_view_.value());
@@ -900,6 +921,7 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
+  const rmm::device_uvector<f_t>& bound_rescaling,
   bool should_major)
 {
   raft::common::nvtx::range fun_scope("compute_next_primal_dual_solution_reflected");
@@ -933,6 +955,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             current_saddle_point_state_.get_current_AtY().data(),
             problem_ptr->variable_bounds.data(),
             primal_step_size.data(),
+            bound_rescaling.data(),
             potential_next_primal_solution_.data(),
             dual_slack_.data(),
             reflected_primal_.data(),
@@ -962,6 +985,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             make_span(problem_ptr->objective_coefficients),
             make_span(current_saddle_point_state_.get_current_AtY()),
             make_span(primal_step_size),
+            make_span(bound_rescaling),
             make_span(potential_next_primal_solution_),
             make_span(dual_slack_),
             make_span(reflected_primal_),
@@ -1046,6 +1070,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             current_saddle_point_state_.get_current_AtY().data(),
             problem_ptr->variable_bounds.data(),
             primal_step_size.data(),
+            bound_rescaling.data(),
             reflected_primal_.data(),
             (int)climber_strategies_.size(),
             problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
@@ -1073,6 +1098,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             make_span(problem_ptr->objective_coefficients),
             make_span(current_saddle_point_state_.get_current_AtY()),
             make_span(primal_step_size),
+            make_span(bound_rescaling),
             make_span(reflected_primal_),
             (int)climber_strategies_.size(),
             problem_ptr->objective_coefficients.size() > static_cast<size_t>(primal_size_h_)},
@@ -1128,6 +1154,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_size,
                                         rmm::device_uvector<f_t>& dual_step_size,
+                                        const rmm::device_uvector<f_t>& bound_rescaling,
                                         i_t iterations_since_last_restart,
                                         bool last_restart_was_average,
                                         i_t total_pdlp_iterations,
@@ -1150,6 +1177,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
     compute_next_primal_dual_solution_reflected(
       primal_step_size,
       dual_step_size,
+      bound_rescaling,
       is_major_iteration ||
         ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
   }

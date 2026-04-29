@@ -98,6 +98,18 @@ inline cublasStatus_t cublasGeam<double>(cublasHandle_t handle,
   return cublasDgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
 }
 
+template <typename f_t>
+struct scale_bounds_by_scalar_op {
+  using f_t2 = typename type_2<f_t>::type;
+
+  HDI f_t2 operator()(thrust::tuple<f_t2, f_t> value)
+  {
+    const auto bounds      = thrust::get<0>(value);
+    const auto bound_scale = thrust::get<1>(value);
+    return {get_lower(bounds) * bound_scale, get_upper(bounds) * bound_scale};
+  }
+};
+
 template <typename i_t, typename f_t>
 static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
@@ -2426,15 +2438,34 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   // Project initial primal solution
   if (settings_.hyper_params.project_initial_primal) {
     using f_t2 = typename type_2<f_t>::type;
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
-                            problem_wrap_container(op_problem_scaled_.variable_bounds)),
-      pdhg_solver_.get_primal_solution().data(),
-      pdhg_solver_.get_primal_solution().size(),
-      clamp<f_t, f_t2>(),
-      stream_view_.value());
+    if (batch_mode_) {
+      // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
+      // Apply it here too so the initial point is projected into the correct saacled space
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(
+          pdhg_solver_.get_primal_solution().data(),
+          thrust::make_transform_iterator(
+            thrust::make_zip_iterator(
+              problem_wrap_container(op_problem_scaled_.variable_bounds),
+              batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
+                                      primal_size_h_)),
+            scale_bounds_by_scalar_op<f_t>{})),
+        pdhg_solver_.get_primal_solution().data(),
+        pdhg_solver_.get_primal_solution().size(),
+        clamp<f_t, f_t2>(),
+        stream_view_.value());
+    } else {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                              problem_wrap_container(op_problem_scaled_.variable_bounds)),
+        pdhg_solver_.get_primal_solution().data(),
+        pdhg_solver_.get_primal_solution().size(),
+        clamp<f_t, f_t2>(),
+        stream_view_.value());
+    }
 
-    pdhg_solver_.refine_initial_primal_projection();
+    pdhg_solver_.refine_initial_primal_projection(
+      initial_scaling_strategy_.get_bound_rescaling_vector());
 
     if (!settings_.hyper_params.never_restart_to_average) {
       cuopt_expects(!batch_mode_,
@@ -2769,6 +2800,7 @@ void pdlp_solver_t<i_t, f_t>::take_adaptive_step(i_t total_pdlp_iterations, bool
 #endif
     pdhg_solver_.take_step(primal_step_size_,
                            dual_step_size_,
+                           initial_scaling_strategy_.get_bound_rescaling_vector(), // Only used in batch mode
                            restart_strategy_.get_iterations_since_last_restart(),
                            restart_strategy_.get_last_restart_was_average(),
                            total_pdlp_iterations,
@@ -2795,7 +2827,10 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::take_constant_step(bool is_major_iteration)
 {
   pdhg_solver_.take_step(
-    primal_step_size_, dual_step_size_, 0, false, total_pdlp_iterations_, is_major_iteration);
+    primal_step_size_, dual_step_size_,
+    initial_scaling_strategy_.get_bound_rescaling_vector(), // Only used in batch mode
+    0, false, total_pdlp_iterations_,
+    is_major_iteration);
 }
 
 template <typename i_t, typename f_t>
