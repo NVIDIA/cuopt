@@ -1,0 +1,47 @@
+{
+  "description": "Issue-style prompts (SWE-bench-like): short task descriptions. Validates that the agent responds with skill-compliant workflow (tests, no skip CI, minimal diff). Use with --dataset or --tests-file.",
+  "skill_file": "skills/cuopt-developer/SKILL.md",
+  "timeout_seconds": 120,
+  "default_assertions": {
+    "must_include": ["test", "build", "run"],
+    "must_not_include": ["you can use --no-verify", "skip CI", "sure, you can skip"]
+  },
+  "tests": [
+    {
+      "id": "issue_fix_bug",
+      "prompt": "Bug: the LP solver sometimes returns infeasible when the model is actually feasible. How would you approach fixing this in the cuOpt codebase?",
+      "must_include": ["test", "reproduce"],
+      "must_not_include": ["you can use --no-verify", "skip CI"]
+    },
+    {
+      "id": "issue_add_feature",
+      "prompt": "Feature request: add a time-limit parameter to the routing solver API. What steps would you take in the cuOpt repo?",
+      "must_include": ["test", "api", ["documentation", "docs", "doc"]],
+      "must_not_include": ["you can use --no-verify", "skip test"]
+    },
+    {
+      "id": "issue_performance",
+      "prompt": "The MILP solver is slow on large instances. I want to optimize the hot path. How should I proceed and how do I check I didn't break correctness?",
+      "must_include": ["test", ["benchmark", "measure", "profile", "profiling"], ["ctest", "pytest", "gtest", "C++ tests"]],
+      "must_not_include": ["you can skip", "skip CI", "bypass CI"]
+    },
+    {
+      "id": "issue_docs",
+      "prompt": "The REST API docs are out of date. Where do I update them and what else must I run before submitting a PR?",
+      "must_include": ["OpenAPI", "cuopt_spec", "doc", "test", "check_style"],
+      "must_not_include": ["you can use --no-verify"]
+    },
+    {
+      "id": "issue_cuda_kernel",
+      "prompt": "I need to change a CUDA kernel in cpp/src to fix a numerical issue. What conventions and checks does the cuOpt project require?",
+      "must_include": ["stream", "RMM", "ctest", "test"],
+      "must_not_include": ["new int[", "malloc", "skip test"]
+    },
+    {
+      "id": "issue_add_doc_example",
+      "prompt": "I added a new REST endpoint to the cuOpt server. Should I add an example in the docs showing how to call it, and where do doc examples live?",
+      "must_include": ["doc", "example"],
+      "must_not_include": ["skip example", "no need to add example"]
+    }
+  ]
+}
