@@ -9,6 +9,9 @@
 
 #include <mps_parser/mps_data_model.hpp>
 
+#include <string>
+#include <string_view>
+
 namespace cuopt::mps_parser {
 
 /**
@@ -36,5 +39,20 @@ namespace cuopt::mps_parser {
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file_path,
                                      bool fixed_mps_format = false);
+
+/**
+ * @brief Reads an MPS problem from in-memory file contents.
+ *
+ * This parses the same plain-text MPS format as parse_mps(), but the input is
+ * already loaded in memory. Compressed .mps.gz/.mps.bz2 inputs are only supported
+ * by parse_mps() because compression is detected from the file path.
+ *
+ * @param[in] mps_contents MPS file contents.
+ * @param[in] fixed_mps_format If MPS content should be parsed as fixed, false by default.
+ * @return mps_data_model_t A fully formed problem which represents the given content.
+ */
+template <typename i_t, typename f_t>
+mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
+                                                 bool fixed_mps_format = false);
 
 }  // namespace cuopt::mps_parser

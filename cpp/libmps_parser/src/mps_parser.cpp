@@ -44,6 +44,13 @@ struct FcloseDeleter {
       fclose(fp) == 0, error_type_t::ValidationError, "Error closing MPS file!");
   }
 };
+
+std::vector<char> string_to_buffer(std::string_view input)
+{
+  std::vector<char> buf(input.begin(), input.end());
+  buf.push_back('\0');
+  return buf;
+}
 }  // end namespace
 
 #ifdef MPS_PARSER_WITH_BZIP2
@@ -243,14 +250,14 @@ BoundType convert(std::string_view str)
     return LowerBoundIntegerVariable;
   } else if (str == "UI") {
     return UpperBoundIntegerVariable;
-  } else if (str == "LC") {
-    return SemiContiniousVariable;
+  } else if (str == "SC" || str == "LC") {
+    return SemiContinuousVariable;
   } else {
     mps_parser_expects(false,
                        error_type_t::ValidationError,
                        "Invalid variable bound type found in BOUNDS section! Bound type=%s",
                        std::string(str).c_str());
-    return SemiContiniousVariable;
+    return SemiContinuousVariable;
   }
 }
 
@@ -939,6 +946,19 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
+mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+                                     std::string_view input,
+                                     bool _fixed_mps_format)
+  : mps_file{"<mps string>"}, fixed_mps_format(_fixed_mps_format)
+{
+  std::vector<char> buf = string_to_buffer(input);
+
+  parse_string(buf.data());
+
+  fill_problem(problem);
+}
+
+template <typename i_t, typename f_t>
 void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
 {
   // raft::common::nvtx::range fun_scope("parse rows");
@@ -1617,6 +1637,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
   switch (bound_type) {
     case LowerBound: {
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case UpperBound: {
@@ -1633,15 +1654,18 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       const f_t val                 = get_numerical_bound(line, start);
       variable_lower_bounds[var_id] = val;
       variable_upper_bounds[var_id] = val;
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case Free: {
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     }
     case LowerBoundNegInf:
       variable_lower_bounds[var_id] = -std::numeric_limits<f_t>::infinity();
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundInf:
       variable_upper_bounds[var_id] = +std::numeric_limits<f_t>::infinity();
@@ -1650,6 +1674,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       variable_lower_bounds[var_id] = 0;
       variable_upper_bounds[var_id] = 1;
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case LowerBoundIntegerVariable:
       // CPLEX MPS file references seems to imply that integer variables default to an upper bound
@@ -1659,6 +1684,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       variable_lower_bounds[var_id] = get_numerical_bound(line, start);
       var_types[var_id]             = 'I';
+      lower_bounds_defined_for_var_id.insert(var_id);
       break;
     case UpperBoundIntegerVariable:
       variable_upper_bounds[var_id] = get_numerical_bound(line, start);
@@ -1670,11 +1696,15 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
       }
       var_types[var_id] = 'I';
       break;
-    case SemiContiniousVariable:
-      mps_parser_expects(false,
+    case SemiContinuousVariable:
+      // SC bound type: value is the upper bound U.
+      mps_parser_expects(start >= 0 && static_cast<size_t>(start) < line.size() &&
+                           !trim(line.substr(static_cast<size_t>(start))).empty(),
                          error_type_t::ValidationError,
-                         "Unsupported semi continous bound type found! Line=%s",
+                         "SC bound requires an upper bound value! Line=%s",
                          std::string(line).c_str());
+      variable_upper_bounds[var_id] = get_numerical_bound(line, start);
+      var_types[var_id]             = 'S';
       break;
     default:
       mps_parser_expects(false,
