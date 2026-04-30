@@ -22,8 +22,9 @@
     "question": "How do I run the cuOpt test suites after a successful build?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent gives the canonical commands: 'ctest --test-dir cpp/build' for C++ tests, 'pytest -v python/cuopt/cuopt/tests' for Python tests, and 'pytest -v python/cuopt_server/tests' for server tests. It warns that tests depend on MPS data files not checked into the repo and that a missing dataset surfaces as a 'MPS_PARSER_ERROR ... Error opening MPS file' failure at 0ms. It points the user to CONTRIBUTING.md ('Building for development' section) for the dataset download steps and the RAPIDS_DATASET_ROOT_DIR export.",
+    "ground_truth": "The agent first reminds the user to activate the conda env that was used to build (e.g., 'conda activate <env-name>') — tests link against libraries compiled inside that env, so a fresh shell will fail in confusing ways without it. It then gives the canonical commands: 'ctest --test-dir cpp/build' for C++ tests, 'pytest -v python/cuopt/cuopt/tests' for Python tests, and 'pytest -v python/cuopt_server/tests' for server tests. It warns that tests depend on MPS data files not checked into the repo and that a missing dataset surfaces as a 'MPS_PARSER_ERROR ... Error opening MPS file' failure at 0ms. It points the user to CONTRIBUTING.md ('Building for development' section) for the dataset download steps and the RAPIDS_DATASET_ROOT_DIR export.",
     "expected_behavior": [
+      "Reminds the user to activate the conda env used for the build before running tests",
       "Names ctest --test-dir cpp/build for C++ tests",
       "Names pytest invocations for python/cuopt/cuopt/tests and python/cuopt_server/tests",
       "Warns about the missing-dataset failure mode and points to CONTRIBUTING.md plus RAPIDS_DATASET_ROOT_DIR",
