@@ -2271,7 +2271,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets, indices),
   // then free the duplicated structural vectors from the scaled copy to save device memory.
-  pdhg_solver_.get_cusparse_view().redirect_rows_and_cols(*problem_ptr);
+  pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
   op_problem_scaled_.variables.resize(0, stream_view_);
   op_problem_scaled_.offsets.resize(0, stream_view_);
   op_problem_scaled_.reverse_constraints.resize(0, stream_view_);

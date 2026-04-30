@@ -1083,8 +1083,11 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
   }
 }
 
+// Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
+// so the duplicated row/column buffers can be freed.
 template <typename i_t, typename f_t>
-void cusparse_view_t<i_t, f_t>::redirect_rows_and_cols(const problem_t<i_t, f_t>& original_problem)
+void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
+  const problem_t<i_t, f_t>& original_problem)
 {
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
                                            const_cast<i_t*>(original_problem.offsets.data()),
