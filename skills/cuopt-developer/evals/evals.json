@@ -225,7 +225,7 @@
       "Names .cu for source files containing device code",
       "Names .cuh for headers containing device code",
       "Names .cpp/.hpp for non-device C++ files",
-      "Mentions nvcc compiles the .cu/.cuh files"
+      "Mentions nvcc compiles .cu translation units, which may include .cuh headers"
     ]
   },
   {
