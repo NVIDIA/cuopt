@@ -4,11 +4,15 @@
     "question": "I just cloned the cuOpt repo. How do I build everything from source?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent points to the top-level ./build.sh script as the canonical entry point, mentions PARALLEL_LEVEL controls the number of parallel compile jobs and that lowering it (e.g., export PARALLEL_LEVEL=8) avoids OOM on memory-constrained machines because CUDA compilation needs roughly 4-8 GB per job, references CONTRIBUTING.md as the authoritative source for the exact build steps, and notes ./build.sh --help lists component-level targets (libcuopt, cuopt, cuopt_server, docs) for partial builds.",
+    "ground_truth": "Before running any build command, the agent walks the user through environment setup. It instructs the user to check the GPU driver's maximum supported CUDA version with nvidia-smi (top-right 'CUDA Version' field), then to pick a conda env file from conda/environments/all_cuda-<ver>_arch-<arch>.yaml whose CUDA major version is at most the driver's max CUDA major. The agent warns that a CUDA major mismatch builds successfully but fails at runtime inside RMM with 'cudaMallocAsync not supported with this CUDA driver/runtime version', so this check must happen before the build, not after. The user then creates and activates the conda env. Only after the env is ready does the agent point to the top-level ./build.sh as the canonical build command. It mentions PARALLEL_LEVEL controls parallel compile jobs and that lowering it (e.g., export PARALLEL_LEVEL=8) avoids OOM on memory-constrained machines because CUDA compilation needs roughly 4-8 GB per job, references CONTRIBUTING.md as the authoritative source for exact steps, and notes ./build.sh --help lists component-level targets (libcuopt, cuopt, cuopt_server, docs) for partial builds.",
     "expected_behavior": [
-      "Names ./build.sh as the primary build command",
-      "References CONTRIBUTING.md or repo documentation as the authoritative source for exact commands",
+      "Tells the user to check the driver's max CUDA version with nvidia-smi before picking an env",
+      "Mentions selecting a conda env file from conda/environments/all_cuda-<ver>_arch-<arch>.yaml whose CUDA major is compatible with the driver",
+      "Warns that a CUDA major mismatch passes the build but fails at runtime in RMM (cudaMallocAsync error)",
+      "Mentions creating and activating the conda env before building",
+      "Names ./build.sh as the primary build command after the env is ready",
       "Mentions PARALLEL_LEVEL and that lowering it avoids OOM on memory-constrained machines",
+      "References CONTRIBUTING.md or repo documentation as the authoritative source for exact commands",
       "Does not invent build commands not present in the skill or repo",
       "Provides commands for the user to execute rather than running the build itself"
     ]
