@@ -109,14 +109,6 @@ static size_t batch_size_handler(const problem_t<i_t, f_t>& op_problem,
 }
 
 template <typename i_t, typename f_t>
-static void lighten_problem_for_pdlp(problem_t<i_t, f_t>& problem, rmm::cuda_stream_view stream)
-{
-  problem.variable_types.resize(0, stream);
-  problem.related_variables_offsets.resize(0, stream);
-  problem.integer_fixed_variable_map.resize(0, stream);
-}
-
-template <typename i_t, typename f_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
                                        bool is_legacy_batch_mode)
@@ -2284,9 +2276,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   op_problem_scaled_.offsets.resize(0, stream_view_);
   op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
   op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
-
-  // Remove unused device vectors in PDLP
-  lighten_problem_for_pdlp(op_problem_scaled_, stream_view_);
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())
