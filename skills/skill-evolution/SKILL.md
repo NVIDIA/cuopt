@@ -66,15 +66,15 @@ When the score passes, distill the learning into a skill artifact. Two types:
 - Must be runnable by `ci/test_skills_assets.sh`
 - Include a docstring explaining what the code does and why it was extracted
 
-### Choosing markdown vs code asset
+### Choosing Markdown vs code asset
 
-Default to markdown. Promote to a code asset only when the learning is a chunk of logic that downstream users would otherwise rewrite — typically when:
+Default to Markdown. Promote to a code asset only when the learning is a chunk of logic that downstream users would otherwise rewrite — typically when:
 
 - The same helper has been independently written in 2+ interactions (the recurrence is the signal)
 - The fix is more than ~15 lines of code, where embedding it as an example would dwarf the surrounding prose
 - It encodes a non-trivial algorithm (e.g. a constraint-builder, a formulation transform) that is easier to *call* than to read and re-implement
 
-A one-liner gotcha or a 3-line pattern belongs in markdown. A reusable function that several future problems will want to import belongs in `assets/`.
+A one-liner gotcha or a 3-line pattern belongs in Markdown. A reusable function that several future problems will want to import belongs in `assets/`.
 
 ### Writing style
 
