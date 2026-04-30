@@ -23,7 +23,7 @@ def _small_data_model(n_vehicles=3):
         [30, 25, 15, 20, 10,  0],
     ]
     d = routing.DataModel(n, n_vehicles)
-    d.add_cost_matrix(cudf.DataFrame(rows))
+    d.add_cost_matrix(cudf.DataFrame(rows, dtype="float32"))
     return d
 
 
@@ -193,7 +193,7 @@ def test_invalid_n_cycles_wrong_type(model, n_cycles):
 
 
 def test_charging_stations_out_of_range(model):
-    """Charging station indices must be within [0, num_locations]."""
+    """Charging station indices must be within [0, num_locations)."""
     bad_stations = cudf.Series([999], dtype="int32")
     with pytest.raises(ValueError, match="charging stations"):
         model.add_ev_break(0, max_range=100.0, charge_duration=10,

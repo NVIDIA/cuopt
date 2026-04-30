@@ -398,7 +398,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         vehicle_ids,
         max_range,
         charge_duration,
-        charging_stations=cudf.Series(),
+        charging_stations=None,
         min_range=0.0,
         n_cycles=None,
     ):
@@ -438,6 +438,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         ...     n_cycles=3,
         ... )
         """
+        if charging_stations is None:
+            charging_stations = cudf.Series(dtype="int32")
         if isinstance(vehicle_ids, int):
             vehicle_ids = [vehicle_ids]
 
