@@ -316,7 +316,7 @@ class iteration_data_t {
       if (n_dense_rows > 0) {
         settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
       }
-      settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
+      settings.log.printf("Density estimator time      : %.3fs\n", column_density_time);
       if ((settings.augmented != 0) &&
           (n_dense_columns > 50 || n_dense_rows > 10 ||
            lp.A.m == 0 /* handle case with no constraints */ ||
@@ -613,7 +613,7 @@ class iteration_data_t {
     float64_t adat_time = toc(start_form_adat);
 
     if (num_factorizations == 0) {
-      settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
+      settings_.log.printf("ADAT time                   : %.3fs\n", adat_time);
       settings_.log.printf("ADAT nonzeros               : %.2e\n",
                            static_cast<float64_t>(adat_nnz));
       settings_.log.printf(
@@ -1771,7 +1771,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     settings.log.printf("Initial factorization failed\n");
     return -1;
   }
-  settings.log.printf("Initial factorization took %.2fs\n", toc(initial_factorization_start_time));
+  settings.log.printf("Initial factorization took %.3fs\n", toc(initial_factorization_start_time));
   data.num_factorizations++;
   data.has_solve_info = false;
 
@@ -1818,7 +1818,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       q[k] = -soln[lp.num_cols + k];
     }
-    settings.log.printf("Initial solve took %.2fs\n", toc(initial_solve_start_time));
+    settings.log.printf("Initial solve took %.3fs\n", toc(initial_solve_start_time));
   } else {
     // rhs_x <-  A * Dinv * F * u  - b
     data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
@@ -3685,7 +3685,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     settings.log.printf(
       "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
     float64_t elapsed_time = toc(start_time);
-    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.2f\n",
                         iter,
                         compute_user_objective(lp, primal_objective),
                         compute_user_objective(lp, dual_objective),
@@ -3886,7 +3886,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                                              solution);
       }
 
-      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
+      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.2f\n",
                           iter,
                           compute_user_objective(lp, primal_objective),
                           compute_user_objective(lp, dual_objective),
@@ -3905,7 +3905,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       if (converged) {
         settings.log.printf("\n");
         settings.log.printf(
-          "Optimal solution found in %d iterations and %.2fs\n", iter, toc(start_time));
+          "Optimal solution found in %d iterations and %.3fs\n", iter, toc(start_time));
         settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective));
         settings.log.printf("Primal infeasibility (abs/rel): %8.2e/%8.2e\n",
                             primal_residual_norm,
