@@ -294,7 +294,15 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("Objective function is integral, scale %g",
                    context.problem_ptr->presolve_data.objective_scaling_factor);
   }
+  if (context.settings.objective_step && context.problem_ptr->get_objective_step().has_step()) {
+    CUOPT_LOG_INFO("Objective step size %g, bias %g",
+                   context.problem_ptr->get_objective_step().step_size,
+                   context.problem_ptr->get_objective_step().bias);
+  }
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
+  if (context.settings.objective_step) {
+    branch_and_bound_problem.objective_step = context.problem_ptr->get_objective_step();
+  }
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);

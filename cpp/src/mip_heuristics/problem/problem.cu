@@ -1392,6 +1392,387 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
       objective_is_integral = true;
     }
   }
+
+  // Compute objective step size.
+  // The objective takes values k * step_size + bias for integer k, when all
+  // variables with nonzero objective coefficient are integer or implied integer.
+  // The step size is gcd(|c_j|) over those variables, and the bias is
+  // sum(c_j * lb_j) mod step_size, where lb_j is the lower bound of variable j.
+  // This generalizes objective_is_integral: when step_size >= 1 the objective is integral.
+  compute_objective_step();
+}
+
+// Lattice propagation: for each variable, determine if it must lie on a lattice
+// x_j = k * step_j + bias_j for integer k. This is done by scanning equality constraints
+// (and inequalities treated as equalities with implicit slack variables) for constraints
+// with exactly one variable of unknown lattice structure, and solving for it.
+//
+// Internally uses rational arithmetic (int64_t numerator/denominator pairs) to avoid
+// floating-point GCD issues.
+template <typename i_t, typename f_t, typename f_t2>
+static bool propagate_lattice(i_t n_vars,
+                              i_t n_cons,
+                              const std::vector<i_t>& offsets,
+                              const std::vector<i_t>& variables,
+                              const std::vector<f_t>& coefficients,
+                              const std::vector<f_t>& con_lb,
+                              const std::vector<f_t>& con_ub,
+                              const std::vector<var_t>& var_types,
+                              const std::vector<i_t>& var_flags,
+                              const std::vector<f_t2>& var_bounds,
+                              std::vector<f_t>& lattice_step,
+                              std::vector<f_t>& lattice_bias)
+{
+  constexpr f_t eq_tol    = 1e-8;
+  constexpr int64_t max_d = 10000000;  // max denominator for rational approximation
+  constexpr double eps    = 1e-9;
+
+  // Rational number: p/q with q > 0
+  struct rat_t {
+    int64_t p{0};
+    int64_t q{1};
+
+    static rat_t from_double(double x)
+    {
+      auto [num, den] = rational_approximation(x, max_d, eps);
+      if (den <= 0) { den = 1; num = std::llround(x); }
+      return {num, den};
+    }
+
+    double to_double() const { return (double)p / (double)q; }
+
+    // Reduce to lowest terms
+    rat_t reduced() const
+    {
+      if (p == 0) return {0, 1};
+      int64_t g = std::gcd(std::abs(p), q);
+      return {p / g, q / g};
+    }
+
+    rat_t operator*(const rat_t& o) const
+    {
+      // Multiply with cross-cancellation to reduce overflow
+      int64_t g1 = std::gcd(std::abs(p), o.q);
+      int64_t g2 = std::gcd(std::abs(o.p), q);
+      return rat_t{(p / g1) * (o.p / g2), (q / g2) * (o.q / g1)};
+    }
+
+    rat_t operator/(const rat_t& o) const
+    {
+      if (o.p == 0) return {0, 1};
+      rat_t inv = (o.p > 0) ? rat_t{o.q, o.p} : rat_t{-o.q, -o.p};
+      return *this * inv;
+    }
+
+    rat_t operator+(const rat_t& o) const
+    {
+      int64_t g  = std::gcd(q, o.q);
+      int64_t lq = q / g;
+      return rat_t{p * (o.q / g) + o.p * lq, lq * o.q}.reduced();
+    }
+
+    rat_t operator-(const rat_t& o) const { return *this + rat_t{-o.p, o.q}; }
+
+    rat_t abs() const { return {std::abs(p), q}; }
+
+    bool is_zero() const { return p == 0; }
+  };
+
+  // GCD of two non-negative rationals: gcd(a/b, c/d) = gcd(a*d, c*b) / (b*d)
+  auto gcd_rat = [](rat_t a, rat_t b) -> rat_t {
+    if (a.is_zero()) return b.abs();
+    if (b.is_zero()) return a.abs();
+    a = a.abs();
+    b = b.abs();
+    int64_t num = std::gcd(a.p * b.q, b.p * a.q);
+    int64_t den = a.q * b.q;
+    int64_t g   = std::gcd(num, den);
+    return {num / g, den / g};
+  };
+
+  // Track lattice as rationals: step_r[j] and bias_r[j]
+  // step_r[j].p == 0 means unknown
+  std::vector<rat_t> step_r(n_vars);
+  std::vector<rat_t> bias_r(n_vars);
+
+  for (i_t j = 0; j < n_vars; ++j) {
+    bool is_int      = (var_types[j] == var_t::INTEGER);
+    bool is_impl_int = (var_flags[j] & (i_t)problem_t<i_t, f_t>::VAR_IMPLIED_INTEGER) != 0;
+    if (is_int || is_impl_int) {
+      step_r[j] = {1, 1};
+      bias_r[j] = rat_t::from_double(get_lower(var_bounds[j]));
+    }
+  }
+
+  // Rationalize constraint coefficients and RHS
+  // Build equation list
+  struct eq_info_t {
+    i_t con_idx;
+    rat_t rhs;
+    bool has_implicit_slack;
+  };
+  std::vector<eq_info_t> equations;
+
+  // Rationalize all matrix coefficients once
+  std::vector<rat_t> coef_r(coefficients.size());
+  for (size_t i = 0; i < coefficients.size(); ++i) {
+    coef_r[i] = rat_t::from_double(coefficients[i]);
+  }
+
+  for (i_t c = 0; c < n_cons; ++c) {
+    bool lb_finite = std::isfinite(con_lb[c]);
+    bool ub_finite = std::isfinite(con_ub[c]);
+
+    if (lb_finite && ub_finite && std::abs(con_lb[c] - con_ub[c]) < eq_tol) {
+      equations.push_back({c, rat_t::from_double(con_lb[c]), false});
+    } else if (lb_finite || ub_finite) {
+      f_t rhs = ub_finite ? con_ub[c] : con_lb[c];
+      equations.push_back({c, rat_t::from_double(rhs), true});
+    }
+  }
+
+  // Track how many equations each variable appears in
+  std::vector<i_t> var_eq_count(n_vars, 0);
+  for (const auto& eq : equations) {
+    for (i_t idx = offsets[eq.con_idx]; idx < offsets[eq.con_idx + 1]; ++idx) {
+      var_eq_count[variables[idx]]++;
+    }
+  }
+
+  // Iteratively propagate
+  bool any_discovered = false;
+  bool changed        = true;
+  while (changed) {
+    changed = false;
+
+    for (const auto& eq : equations) {
+      i_t c = eq.con_idx;
+
+      // Count unknowns
+      i_t unknown_count         = 0;
+      i_t single_eq_slack_count = 0;
+      i_t non_slack_unknown     = -1;
+
+      for (i_t idx = offsets[c]; idx < offsets[c + 1]; ++idx) {
+        i_t j = variables[idx];
+        if (step_r[j].is_zero()) {
+          unknown_count++;
+          if (var_eq_count[j] == 1) {
+            single_eq_slack_count++;
+          } else {
+            non_slack_unknown = j;
+          }
+        }
+      }
+
+      // Determine which variable to solve for
+      i_t solve_for = -1;
+      if (eq.has_implicit_slack) {
+        i_t non_slack_unknowns = unknown_count - single_eq_slack_count;
+        if (non_slack_unknowns == 1) {
+          solve_for = non_slack_unknown;
+        } else if (non_slack_unknowns == 0 && unknown_count > 0) {
+          for (i_t idx = offsets[c]; idx < offsets[c + 1]; ++idx) {
+            if (step_r[variables[idx]].is_zero()) { solve_for = variables[idx]; break; }
+          }
+        }
+      } else {
+        if (unknown_count == 1) {
+          for (i_t idx = offsets[c]; idx < offsets[c + 1]; ++idx) {
+            if (step_r[variables[idx]].is_zero()) { solve_for = variables[idx]; break; }
+          }
+        } else {
+          i_t non_slack_unknowns = unknown_count - single_eq_slack_count;
+          if (non_slack_unknowns == 1) {
+            solve_for = non_slack_unknown;
+          } else if (non_slack_unknowns == 0 && unknown_count > 0) {
+            for (i_t idx = offsets[c]; idx < offsets[c + 1]; ++idx) {
+              if (step_r[variables[idx]].is_zero()) { solve_for = variables[idx]; break; }
+            }
+          }
+        }
+      }
+
+      if (solve_for < 0) continue;
+
+      // Compute lattice for solve_for using rational arithmetic
+      rat_t a_unknown = {0, 1};
+      rat_t rhs       = eq.rhs;
+      rat_t step_sum  = {0, 1};
+
+      for (i_t idx = offsets[c]; idx < offsets[c + 1]; ++idx) {
+        i_t j = variables[idx];
+
+        if (j == solve_for) {
+          a_unknown = coef_r[idx];
+          continue;
+        }
+        if (step_r[j].is_zero()) continue;
+
+        rhs      = rhs - coef_r[idx] * bias_r[j];
+        step_sum = gcd_rat(step_sum, (coef_r[idx] * step_r[j]).abs());
+      }
+
+      if (a_unknown.is_zero()) continue;
+
+      rat_t new_step = step_sum / a_unknown.abs();
+      rat_t new_bias = rhs / a_unknown;
+
+      if (!new_step.is_zero()) {
+        step_r[solve_for] = new_step.reduced();
+        bias_r[solve_for] = new_bias.reduced();
+        changed           = true;
+        if (var_types[solve_for] == var_t::CONTINUOUS) { any_discovered = true; }
+      }
+    }
+  }
+
+  // Convert back to f_t
+  lattice_step.assign(n_vars, f_t(0));
+  lattice_bias.assign(n_vars, f_t(0));
+  for (i_t j = 0; j < n_vars; ++j) {
+    if (!step_r[j].is_zero()) {
+      lattice_step[j] = static_cast<f_t>(step_r[j].to_double());
+      lattice_bias[j] = static_cast<f_t>(bias_r[j].to_double());
+    }
+  }
+
+  return any_discovered;
+}
+
+// Compute the GCD of the absolute values of a vector of values that are close to integers.
+// Returns 0 if the vector is empty.
+template <typename f_t>
+static f_t gcd_of_integer_values(const std::vector<f_t>& values)
+{
+  int64_t g = 0;
+  for (f_t v : values) {
+    int64_t iv = std::llround(std::abs(v));
+    if (iv == 0) continue;
+    g = (g == 0) ? iv : std::gcd(g, iv);
+  }
+  return static_cast<f_t>(g);
+}
+
+template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::compute_objective_step()
+{
+  objective_step = {};
+
+  // Copy data to host
+  auto h_obj_coefs  = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
+  auto h_var_types  = cuopt::host_copy(variable_types, handle_ptr->get_stream());
+  auto h_var_flags  = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
+  auto h_var_bounds = cuopt::host_copy(variable_bounds, handle_ptr->get_stream());
+
+  // Check that every variable with nonzero objective coefficient is integer or implied integer.
+  bool all_obj_vars_integral = true;
+  for (i_t i = 0; i < n_variables; ++i) {
+    if (h_obj_coefs[i] == 0) continue;
+    bool is_int      = (h_var_types[i] == var_t::INTEGER);
+    bool is_impl_int = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
+    if (!is_int && !is_impl_int) {
+      all_obj_vars_integral = false;
+      break;
+    }
+  }
+
+  if (all_obj_vars_integral) {
+    // Simple case: all objective variables are integer or implied integer.
+    // Compute step = gcd(|c_j|), bias = sum(c_j * lb_j) mod step.
+    std::vector<f_t> nonzero_coefs;
+    f_t bias = 0;
+    for (i_t i = 0; i < n_variables; ++i) {
+      if (h_obj_coefs[i] == 0) continue;
+      f_t coef = h_obj_coefs[i];
+      f_t lb   = get_lower(h_var_bounds[i]);
+      nonzero_coefs.push_back(coef);
+      bias += coef * lb;
+    }
+    if (nonzero_coefs.empty()) return;
+
+    if (objective_is_integral) {
+      f_t g = gcd_of_integer_values(nonzero_coefs);
+      if (g > 0) {
+        objective_step.step_size = g;
+        objective_step.bias      = std::fmod(bias, g);
+        if (objective_step.bias < 0) objective_step.bias += g;
+      }
+      return;
+    }
+
+    // Try to find a scaling factor that makes all coefficients integral
+    std::vector<double> nonzero_coefs_double(nonzero_coefs.begin(), nonzero_coefs.end());
+    double scaling_factor = find_objective_scaling_factor(nonzero_coefs_double);
+    if (!std::isnan(scaling_factor)) {
+      std::vector<f_t> scaled_coefs;
+      for (f_t c : nonzero_coefs) {
+        scaled_coefs.push_back(std::round(static_cast<f_t>(scaling_factor) * c));
+      }
+      f_t g = gcd_of_integer_values(scaled_coefs);
+      if (g > 0) {
+        f_t sf                   = static_cast<f_t>(scaling_factor);
+        objective_step.step_size = g / sf;
+        f_t scaled_bias          = sf * bias;
+        f_t mod                  = std::fmod(scaled_bias, g);
+        objective_step.bias      = mod / sf;
+        if (objective_step.bias < 0) objective_step.bias += objective_step.step_size;
+      }
+    }
+    return;
+  }
+
+  // Some objective variables are continuous and not implied-integer.
+  // Run lattice propagation through equality constraints to see if we can
+  // determine their lattice structure.
+  auto h_offsets  = cuopt::host_copy(offsets, handle_ptr->get_stream());
+  auto h_vars     = cuopt::host_copy(variables, handle_ptr->get_stream());
+  auto h_coefs    = cuopt::host_copy(coefficients, handle_ptr->get_stream());
+  auto h_con_lb   = cuopt::host_copy(constraint_lower_bounds, handle_ptr->get_stream());
+  auto h_con_ub   = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
+
+  std::vector<f_t> lattice_step, lattice_bias;
+  bool discovered = propagate_lattice<i_t, f_t>(
+    n_variables, n_constraints, h_offsets, h_vars, h_coefs, h_con_lb, h_con_ub,
+    h_var_types, h_var_flags, h_var_bounds, lattice_step, lattice_bias);
+
+  if (!discovered) return;
+
+  // Check if all objective variables now have lattice info.
+  // Combine using rational arithmetic to compute objective step and bias.
+  // gcd(a/b, c/d) = gcd(a*d, c*b) / (b*d)
+  auto gcd_rat_double = [](double a, double b) -> double {
+    // Convert to rationals, compute GCD, convert back
+    constexpr int64_t max_d = 10000000;
+    constexpr double eps    = 1e-9;
+    if (std::abs(a) < eps) return std::abs(b);
+    if (std::abs(b) < eps) return std::abs(a);
+    auto [pa, qa] = rational_approximation(std::abs(a), max_d, eps);
+    auto [pb, qb] = rational_approximation(std::abs(b), max_d, eps);
+    if (qa <= 0 || qb <= 0) return 0;
+    int64_t num = std::gcd(pa * qb, pb * qa);
+    int64_t den = qa * qb;
+    int64_t g   = std::gcd(num, den);
+    return (double)(num / g) / (double)(den / g);
+  };
+
+  f_t obj_step = 0;
+  f_t obj_bias = 0;
+
+  for (i_t i = 0; i < n_variables; ++i) {
+    if (h_obj_coefs[i] == 0) continue;
+    if (lattice_step[i] == 0) return;  // Still unknown -- give up
+
+    f_t coef = h_obj_coefs[i];
+    obj_step = static_cast<f_t>(gcd_rat_double(obj_step, std::abs(coef * lattice_step[i])));
+    obj_bias += coef * lattice_bias[i];
+  }
+
+  if (obj_step > 1e-12) {
+    objective_step.step_size = obj_step;
+    objective_step.bias      = std::fmod(obj_bias, obj_step);
+    if (objective_step.bias < 0) objective_step.bias += obj_step;
+  }
 }
 
 template <typename i_t, typename f_t>

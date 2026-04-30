@@ -1227,7 +1227,13 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
     policy.graphviz(search_tree, node_ptr, "lower bound", leaf_obj);
     policy.update_pseudo_costs(node_ptr, leaf_obj);
     node_ptr->lower_bound = leaf_obj;
-    if (original_lp_.objective_is_integral) {
+    if (original_lp_.objective_step.has_step()) {
+      f_t step = original_lp_.objective_step.step_size;
+      f_t bias = original_lp_.objective_step.bias;
+      // Round up to next value on the lattice: k * step + bias >= leaf_obj
+      f_t k             = std::ceil((leaf_obj - bias) / step - settings_.integer_tol);
+      node_ptr->lower_bound = k * step + bias;
+    } else if (original_lp_.objective_is_integral) {
       node_ptr->lower_bound = std::ceil(leaf_obj - settings_.integer_tol);
     }
     policy.on_optimal_callback(leaf_solution.x, leaf_obj);
@@ -1345,8 +1351,18 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   lp_settings.concurrent_halt           = &node_concurrent_halt_;
   lp_settings.set_log(false);
   f_t cutoff = upper_bound_.load();
-  if (original_lp_.objective_is_integral) {
-    lp_settings.cut_off = std::ceil(cutoff - settings_.integer_tol) + settings_.dual_tol;
+  if (original_lp_.objective_step.has_step()) {
+    f_t step = original_lp_.objective_step.step_size;
+    f_t bias = original_lp_.objective_step.bias;
+    // Any improving feasible solution must have objective <= cutoff - step.
+    f_t k               = std::floor((cutoff - bias) / step + settings_.integer_tol);
+    lp_settings.cut_off = (k - 1) * step + bias + settings_.dual_tol;
+  } else if (original_lp_.objective_is_integral) {
+    // If the objective is integral, any feasible solution should produce an upper bound that is
+    // (approximately) integral. We add a small tolerance and floor this value to get an integer,
+    // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
+    lp_settings.cut_off =
+      std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
   } else {
     lp_settings.cut_off = cutoff + settings_.dual_tol;
   }
