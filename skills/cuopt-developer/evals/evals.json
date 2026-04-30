@@ -121,7 +121,7 @@
     "question": "I'm preparing a PR for a small bug fix. Should I target main, or is there a release branch I should use?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent explains the target branch depends on the release phase: during development phase, target main; during burn-down, fixes for the current release go to release/YY.MM (for example, release/26.06) and work for the next release goes to main. It tells the user to check whether a release branch exists with 'git branch -r | grep release' and points to the RAPIDS Maintainers Docs for the current timeline.",
+    "ground_truth": "The agent explains the target branch depends on the release phase: during development phase, target main; during burn-down, fixes for the current release go to the matching release/YY.MM branch and work for the next release goes to main. It tells the user to check whether a release branch exists with 'git branch -r | grep release' and points to the RAPIDS Maintainers Docs for the current timeline rather than naming a specific version.",
     "expected_behavior": [
       "States that main is the default target during the development phase",
       "Mentions release/YY.MM branches during burn-down for current-release fixes",
