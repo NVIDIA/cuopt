@@ -27,8 +27,8 @@ You MUST evaluate whether to enter the skill evolution workflow when ANY of thes
 
 1. **Solve the user's problem first.** Read the relevant skills, produce a solution, ship the fix. Skill evolution never blocks the user's task.
 2. **Notice if a trigger fired** (see Trigger conditions above). If nothing surfaced a generalizable learning, you are done.
-3. **Try to score the learning.** Use whatever ground truth is available (see Scoring criteria below). If the score fails, refine the candidate learning — tune the pattern, fix the example, add the missing detail — and re-score. Iterate until it scores or you conclude no version of it will; in the latter case, drop the proposal rather than ship an unscored claim.
-4. **If you cannot score it at all** (no test, no comparable answer, no solver run), proceed with `scored: no`. This is normal during inference-style interactions — the proposal is still useful, just lower-confidence.
+3. **Try to score the learning — when ground truth exists.** A test exists, a known-correct answer is available, the solver returns a check-able status, etc. If the score fails, refine the candidate learning — tune the pattern, fix the example, add the missing detail — and re-score. Iterate until it scores or you conclude no version of it will; in the latter case, drop the proposal rather than ship an unscored claim. (See Scoring criteria below for what counts as ground truth.)
+4. **If no ground truth is available at all** — no test to run, no comparable answer to check against, no solver to invoke — skip step 3 and proceed with `scored: no`. This is normal during inference-style interactions where the learning is qualitative — the proposal is still useful, just lower-confidence.
 5. **Distill, place, and propose** (see sections below). Apply only after the user approves.
 6. **Treat recurrence as evidence.** When the same unscored insight surfaces in 2+ independent interactions, the recurrence is itself a signal. Promote the insight to a stronger proposal — note the prior occurrences in the trigger field rather than re-deriving from scratch.
 
