@@ -20,6 +20,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include <thrust/count.h>
+
 namespace cuopt::linear_programming {
 
 // Buffer added to the solver's time_limit to account for worker startup,
@@ -209,6 +211,15 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
 
   // Check if user has set incumbent callbacks
   auto mip_callbacks   = settings.get_mip_callbacks();
+  const auto var_types = cpu_problem.get_variable_types_host();
+  const bool has_sc_variables =
+    thrust::count(var_types.begin(), var_types.end(), var_t::SEMI_CONTINUOUS) > 0;
+  if (has_sc_variables && !mip_callbacks.empty()) {
+    CUOPT_LOG_WARN(
+      "Disabling remote MIP get/set callbacks: semi-continuous models are not "
+      "supported with callbacks");
+    mip_callbacks.clear();
+  }
   bool has_incumbents  = !mip_callbacks.empty();
   bool enable_tracking = has_incumbents;
 

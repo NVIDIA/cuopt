@@ -135,7 +135,6 @@ int run_single_file(const std::string& file_path,
       std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
   }
 
-  // Populate the problem from MPS data model
   cuopt::linear_programming::populate_from_mps_data_model(problem_interface.get(), mps_data_model);
 
   const bool is_mip = (problem_interface->get_problem_category() ==
