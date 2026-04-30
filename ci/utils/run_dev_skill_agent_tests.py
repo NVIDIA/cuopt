@@ -14,6 +14,9 @@ Usage (from repo root):
   python ci/utils/run_dev_skill_agent_tests.py --runtimes-file out/runtimes.json  # write median runtimes to JSON
   python ci/utils/run_dev_skill_agent_tests.py --report out   # write results to out/YYYY-MM-DD_HH-MM-SS/
   python ci/utils/run_dev_skill_agent_tests.py --dataset      # main + issue-style (SWE-bench-like) set
+  python ci/utils/run_dev_skill_agent_tests.py --filter cuda  # only run tests whose label matches /cuda/i
+  python ci/utils/run_dev_skill_agent_tests.py --list         # list test labels (no Claude CLI call)
+  python ci/utils/run_dev_skill_agent_tests.py --junit out/junit.xml  # write JUnit XML for CI
 
 Requires: Claude CLI installed and authenticated (`claude auth login`) for live runs.
 """
@@ -61,12 +64,102 @@ def load_config(root: str, path: str) -> dict:
     if not os.path.isabs(path):
         path = os.path.join(root, path)
     with open(path, encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+    _validate_config_schema(cfg, path)
+    return cfg
+
+
+def _validate_config_schema(cfg: dict, source: str) -> None:
+    """Light schema check so typos in a test JSON surface immediately, not 50 prompts in.
+
+    Required: skill_file (string), tests (list of {id, prompt}). Optional fields are
+    typed but not required.
+    """
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{source}: config must be a JSON object")
+    if "skill_file" in cfg and not isinstance(cfg["skill_file"], str):
+        raise ValueError(f"{source}: skill_file must be a string")
+    tests = cfg.get("tests")
+    if not isinstance(tests, list) or not tests:
+        raise ValueError(f"{source}: 'tests' must be a non-empty list")
+    seen_ids: set[str] = set()
+    for i, t in enumerate(tests):
+        if not isinstance(t, dict):
+            raise ValueError(f"{source}: tests[{i}] must be an object")
+        for key in ("id", "prompt"):
+            if not isinstance(t.get(key), str) or not t[key]:
+                raise ValueError(f"{source}: tests[{i}].{key} must be a non-empty string")
+        if t["id"] in seen_ids:
+            raise ValueError(f"{source}: duplicate test id {t['id']!r}")
+        seen_ids.add(t["id"])
+        for key in ("must_include", "must_not_include"):
+            if key in t and not isinstance(t[key], list):
+                raise ValueError(f"{source}: tests[{i}].{key} must be a list")
 
 
 def config_suite_name(path: str) -> str:
     """Return a short name for save/replay subdir (e.g. dev_skill_agent_tests_issue_style)."""
     return os.path.splitext(os.path.basename(path))[0]
+
+
+def median_meta(metadata_list: list[dict], key: str) -> int:
+    """Median of a metadata key across attempts, rounded to int. 0 if empty."""
+    vals = [m.get(key, 0) for m in metadata_list if m]
+    return round(statistics.median(vals)) if vals else 0
+
+
+def make_report_row(*, label: str, test_id: str, prompt: str, status: str,
+                     runtimes: list[float], metadata_list: list[dict],
+                     failure_reasons: list[str], response_preview: str = "") -> dict:
+    """Uniform shape for the per-test report row consumed by CSV/Markdown output."""
+    return {
+        "label": label,
+        "test_id": test_id,
+        "prompt": prompt,
+        "passed": status,
+        "median_seconds": round(statistics.median(runtimes), 3) if runtimes else "",
+        "median_input_tokens": median_meta(metadata_list, "input_tokens"),
+        "median_output_tokens": median_meta(metadata_list, "output_tokens"),
+        "median_num_turns": median_meta(metadata_list, "num_turns"),
+        "failure_reasons": failure_reasons,
+        "response_preview": response_preview,
+    }
+
+
+def write_junit_xml(path: str, report_rows: list[dict], pass_at: int) -> None:
+    """Write a JUnit-style XML so CI dashboards can ingest results.
+
+    One <testcase> per row. FAIL → <failure>, SKIP → <skipped>. Median seconds go
+    into the time= attribute when present.
+    """
+    from xml.sax.saxutils import escape as xml_escape
+
+    def _attr(s: str) -> str:
+        return xml_escape(str(s), {'"': "&quot;"})
+
+    total = len(report_rows)
+    failures = sum(1 for r in report_rows if r["passed"] == "FAIL")
+    skipped = sum(1 for r in report_rows if r["passed"] == "SKIP")
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write(
+            f'<testsuite name="dev_skill_agent_tests" tests="{total}" '
+            f'failures="{failures}" skipped="{skipped}" pass_at="{pass_at}">\n'
+        )
+        for r in report_rows:
+            t = r.get("median_seconds")
+            time_attr = f' time="{t}"' if isinstance(t, (int, float)) else ""
+            f.write(
+                f'  <testcase classname="dev_skill" name="{_attr(r["label"])}"{time_attr}>\n'
+            )
+            if r["passed"] == "FAIL":
+                reason = "; ".join(r.get("failure_reasons") or []) or "assertion failure"
+                f.write(f'    <failure message="{_attr(reason)}">{xml_escape(reason)}</failure>\n')
+            elif r["passed"] == "SKIP":
+                f.write('    <skipped/>\n')
+            f.write("  </testcase>\n")
+        f.write("</testsuite>\n")
 
 
 def run_claude(root: str, skill_path: str | None, prompt: str, timeout: int) -> tuple[str, float, dict]:
@@ -256,6 +349,23 @@ def main() -> int:
         action="store_true",
         help="Baseline mode: run prompts without injecting the skill file (omits --append-system-prompt-file).",
     )
+    parser.add_argument(
+        "--filter",
+        metavar="REGEX",
+        dest="filter_pattern",
+        help="Run only tests whose label or id matches REGEX (Python regex, case-insensitive).",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_only",
+        help="List test labels for the configured suites and exit (no Claude CLI call).",
+    )
+    parser.add_argument(
+        "--junit",
+        metavar="PATH",
+        help="Write JUnit XML report to PATH for CI ingestion (file path or directory; if a directory, writes junit.xml inside the timestamped run dir).",
+    )
     args = parser.parse_args()
 
     # Apply default results dir when report/runtimes not explicitly set and not disabled
@@ -273,7 +383,8 @@ def main() -> int:
     run_results_dir: str | None = None  # actual path used for --report/--save (with timestamp)
 
     root = repo_root()
-    if not args.replay and not claude_available():
+    # --list and --replay don't need the Claude CLI; everything else does.
+    if not args.replay and not args.list_only and not claude_available():
         print("Claude CLI is not available or not authenticated. Run: claude auth login", file=sys.stderr)
         print("Use --replay DIR to validate saved responses without the CLI.", file=sys.stderr)
         return 2
@@ -292,6 +403,26 @@ def main() -> int:
         issue_path = "ci/utils/dev_skill_agent_tests_issue_style.json"
         if not any(s == config_suite_name(issue_path) for s, _ in configs_to_run):
             configs_to_run.append((config_suite_name(issue_path), load_config(root, issue_path)))
+
+    filter_re: re.Pattern | None = None
+    if args.filter_pattern:
+        try:
+            filter_re = re.compile(args.filter_pattern, re.IGNORECASE)
+        except re.error as e:
+            print(f"Invalid --filter regex {args.filter_pattern!r}: {e}", file=sys.stderr)
+            return 2
+
+    # --list: dump labels then exit. No CLI call, no report.
+    if args.list_only:
+        for suite_name, config in configs_to_run:
+            for test in config["tests"]:
+                label = (
+                    f"{suite_name}/{test['id']}" if len(configs_to_run) > 1 else test["id"]
+                )
+                if filter_re and not filter_re.search(label):
+                    continue
+                print(label)
+        return 0
 
     # Resolve timestamped output dirs for report, save, runtimes (YYYY-MM-DD_HH-MM-SS)
     save_dir_actual: str | None = None
@@ -361,6 +492,8 @@ def main() -> int:
                 replay_file = os.path.join(suite_name, f"{test_id}.txt")
 
             label = f"{suite_name}/{test_id}" if len(configs_to_run) > 1 else test_id
+            if filter_re and not filter_re.search(label):
+                continue
             runtimes: list[float] = []
             responses: list[str] = []
             metadata_list: list[dict] = []
@@ -373,7 +506,10 @@ def main() -> int:
                     print(f"SKIP {label}: no replay file {replay_path}")
                     skipped += 1
                     if args.report:
-                        report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "SKIP", "median_seconds": "", "median_input_tokens": "", "median_output_tokens": "", "median_num_turns": "", "failure_reasons": [], "response_preview": ""})
+                        report_rows.append(make_report_row(
+                            label=label, test_id=test_id, prompt=prompt, status="SKIP",
+                            runtimes=[], metadata_list=[], failure_reasons=[],
+                        ))
                     continue
                 t0 = time.perf_counter()
                 with open(replay_path, encoding="utf-8") as f:
@@ -421,23 +557,25 @@ def main() -> int:
                 failed += 1
                 print(f"FAIL {label} (all {pass_at} attempt(s) errored)")
                 if args.report:
-                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": "", "median_input_tokens": "", "median_output_tokens": "", "median_num_turns": "", "failure_reasons": attempt_errors or ["no response captured"], "response_preview": ""})
+                    report_rows.append(make_report_row(
+                        label=label, test_id=test_id, prompt=prompt, status="FAIL",
+                        runtimes=[], metadata_list=[],
+                        failure_reasons=attempt_errors or ["no response captured"],
+                    ))
                 continue
 
-            # Aggregate token/step metadata across attempts
-            def _median_meta(key: str) -> int:
-                vals = [m.get(key, 0) for m in metadata_list if m]
-                return round(statistics.median(vals)) if vals else 0
-
-            med_in_tok = _median_meta("input_tokens")
-            med_out_tok = _median_meta("output_tokens")
-            med_turns = _median_meta("num_turns")
+            med_in_tok = median_meta(metadata_list, "input_tokens")
+            med_out_tok = median_meta(metadata_list, "output_tokens")
+            med_turns = median_meta(metadata_list, "num_turns")
 
             if test_passed:
                 print(f"PASS {label}" + (f" (pass@{pass_at})" if pass_at > 1 else ""))
                 passed += 1
                 if args.report and runtimes:
-                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "PASS", "median_seconds": round(statistics.median(runtimes), 3), "median_input_tokens": med_in_tok, "median_output_tokens": med_out_tok, "median_num_turns": med_turns, "failure_reasons": [], "response_preview": ""})
+                    report_rows.append(make_report_row(
+                        label=label, test_id=test_id, prompt=prompt, status="PASS",
+                        runtimes=runtimes, metadata_list=metadata_list, failure_reasons=[],
+                    ))
             else:
                 print(f"FAIL {label}" + (f" (0/{pass_at} passed)" if pass_at > 1 else ""))
                 # Surface CLI errors from partial attempts alongside assertion failures.
@@ -451,7 +589,11 @@ def main() -> int:
                 failed += 1
                 if args.report:
                     preview = (responses[0][:800] + "..." if len(responses[0]) > 800 else responses[0]) if responses else ""
-                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": round(statistics.median(runtimes), 3) if runtimes else "", "median_input_tokens": med_in_tok, "median_output_tokens": med_out_tok, "median_num_turns": med_turns, "failure_reasons": combined_reasons, "response_preview": preview})
+                    report_rows.append(make_report_row(
+                        label=label, test_id=test_id, prompt=prompt, status="FAIL",
+                        runtimes=runtimes, metadata_list=metadata_list,
+                        failure_reasons=combined_reasons, response_preview=preview,
+                    ))
 
             if runtimes:
                 median_sec = statistics.median(runtimes)
@@ -630,6 +772,18 @@ def main() -> int:
             f.write(f"*Report written to {report_dir}*\n")
 
         print(f"\nReport written to {report_dir}: results.csv, report.md")
+
+    # JUnit XML for CI ingestion. If --junit points at a directory (or has no
+    # extension), drop junit.xml inside the run dir; otherwise treat it as a file.
+    if args.junit and report_rows:
+        junit_arg = args.junit
+        junit_path = junit_arg if os.path.isabs(junit_arg) else os.path.join(root, junit_arg)
+        if not junit_path.endswith(".xml"):
+            base_dir = run_results_dir or junit_path
+            os.makedirs(base_dir, exist_ok=True)
+            junit_path = os.path.join(base_dir, "junit.xml")
+        write_junit_xml(junit_path, report_rows, pass_at)
+        print(f"JUnit XML written to {junit_path}")
 
     return exit_code
 

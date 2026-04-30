@@ -12,6 +12,9 @@
 #   ./ci/run_dev_skill_agent_tests.sh --runtimes-file out/runtimes.json  # write median runtimes
 #   ./ci/run_dev_skill_agent_tests.sh --report out  # write results.csv + report.md to out/YYYY-MM-DD_HH-MM-SS/
 #   ./ci/run_dev_skill_agent_tests.sh --save ci/utils/dev_skill_responses    # run once, save for replay
+#   ./ci/run_dev_skill_agent_tests.sh --filter cuda    # run only tests whose label matches /cuda/i
+#   ./ci/run_dev_skill_agent_tests.sh --list           # list test labels and exit
+#   ./ci/run_dev_skill_agent_tests.sh --junit out/junit.xml  # write JUnit XML for CI ingestion
 
 set -euo pipefail
 
