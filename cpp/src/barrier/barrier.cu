@@ -1810,7 +1810,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
         data_.chol->solve(b, x);
       }
     } op(data);
-    iterative_refinement(op, rhs, soln);
+    // iterative_refinement(op, rhs, soln);
 
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.x[k] = soln[k];
