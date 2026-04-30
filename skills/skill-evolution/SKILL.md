@@ -96,13 +96,14 @@ Skill update proposal:
   Skill: skills/<name>/SKILL.md        (or skills/<name>/assets/<file>.py)
   Type: markdown | code
   Phase: learning (scored)
+  Removal: no | yes — if yes, the user must explicitly confirm before applying
   Section: <where it goes>
   Trigger: <what happened that surfaced this>
   Score: <how it was validated — e.g. "solver returned Optimal", "test passed">
   Change: <the exact content to add or modify>
 ```
 
-Only apply after the user approves. If the user declines, do not persist.
+Only apply after the user approves. If the user declines, do not persist. If `Removal: yes`, silence is not approval — proceed only on an explicit "yes" from the user.
 
 ## Phase 2: Inference (no ground truth)
 
@@ -128,6 +129,7 @@ Skill insight (unscored):
   Skill: skills/<name>/SKILL.md
   Type: markdown | code
   Phase: inference (unscored)
+  Removal: no | yes — if yes, the user must explicitly confirm before applying
   Section: <where it goes>
   Trigger: <what happened>
   Change: <the exact content to add or modify>
@@ -234,7 +236,7 @@ A proposal may:
 - **Add** new content (gotchas, examples, table rows, subsections, code assets)
 - **Clarify** existing content (more precise wording, better examples)
 - **Correct** factual errors (wrong API name, wrong status value)
-- **Remove** existing content — only when it is stale (refers to API or behavior that no longer exists), contradicted by current code, or demonstrably wrong. The proposal must cite the evidence (e.g. "function `X` removed in commit `abc123`", "current code returns `Y`, not `Z` as documented"). Removals require an extra approval step: present the proposal with `Removal: yes` highlighted, and proceed only if the user explicitly confirms — silence does not count.
+- **Remove** existing content — only when it is stale (refers to API or behavior that no longer exists), contradicted by current code, or demonstrably wrong. The proposal must cite the evidence (e.g. "function `X` removed in commit `abc123`", "current code returns `Y`, not `Z` as documented"). Removals require an extra approval step: set `Removal: yes` in the proposal format, and proceed only if the user explicitly confirms — silence does not count.
 
 A proposal must NOT:
 - **Rewrite** existing sections wholesale
