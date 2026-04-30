@@ -118,14 +118,15 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     stream_view_(handle_ptr_->get_stream()),
     settings_(settings),
     problem_ptr(&op_problem),
-    is_cupdlpx_(is_cupdlpx_restart<i_t, f_t>(settings.hyper_params)),
     op_problem_scaled_(
       op_problem, false),  // False to call the PDLP custom version of the problem copy constructor
-    unscaled_primal_avg_solution_{is_cupdlpx_ && !settings.get_pdlp_warm_start_data().is_populated()
+    unscaled_primal_avg_solution_{is_cupdlpx_restart<i_t, f_t>(settings.hyper_params) &&
+                                      !settings.get_pdlp_warm_start_data().is_populated()
                                     ? 0
                                     : static_cast<size_t>(op_problem.n_variables),
                                   stream_view_},
-    unscaled_dual_avg_solution_{is_cupdlpx_ && !settings.get_pdlp_warm_start_data().is_populated()
+    unscaled_dual_avg_solution_{is_cupdlpx_restart<i_t, f_t>(settings.hyper_params) &&
+                                    !settings.get_pdlp_warm_start_data().is_populated()
                                   ? 0
                                   : static_cast<size_t>(op_problem.n_constraints),
                                 stream_view_},
