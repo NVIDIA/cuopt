@@ -15,7 +15,6 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <limits>
 #include <tuple>
 #include <unordered_map>
@@ -34,44 +33,6 @@ namespace {
 #define CHECK_WORKSPACE   0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
-
-enum flow_cover_cut_status_t : int {
-  FLOW_COVER_CUT_FOUND              = 0,
-  FLOW_COVER_REJECT_SLACK           = -1,
-  FLOW_COVER_REJECT_RHS             = -2,
-  FLOW_COVER_REJECT_CONTINUOUS_TERM = -3,
-  FLOW_COVER_REJECT_RELAXATION      = -4,
-  FLOW_COVER_REJECT_NO_ARCS         = -5,
-  FLOW_COVER_REJECT_NO_COVER        = -6,
-  FLOW_COVER_REJECT_NO_ITEMS        = -7,
-  FLOW_COVER_REJECT_KPSNF           = -8,
-  FLOW_COVER_REJECT_LAMBDA          = -9,
-  FLOW_COVER_REJECT_UBAR            = -10,
-  FLOW_COVER_REJECT_NO_VIOLATION    = -11,
-  FLOW_COVER_REJECT_EMPTY_CUT       = -12,
-  FLOW_COVER_REJECT_MAPPED_CUT      = -13,
-};
-
-const char* flow_cover_status_name(int status)
-{
-  switch (status) {
-    case FLOW_COVER_CUT_FOUND: return "cut_found";
-    case FLOW_COVER_REJECT_SLACK: return "bad_slack";
-    case FLOW_COVER_REJECT_RHS: return "bad_rhs";
-    case FLOW_COVER_REJECT_CONTINUOUS_TERM: return "continuous_term_no_candidate";
-    case FLOW_COVER_REJECT_RELAXATION: return "invalid_snf_relaxation";
-    case FLOW_COVER_REJECT_NO_ARCS: return "no_arcs";
-    case FLOW_COVER_REJECT_NO_COVER: return "no_cover_capacity";
-    case FLOW_COVER_REJECT_NO_ITEMS: return "no_kpsnf_items";
-    case FLOW_COVER_REJECT_KPSNF: return "kpsnf_failed";
-    case FLOW_COVER_REJECT_LAMBDA: return "no_positive_lambda";
-    case FLOW_COVER_REJECT_UBAR: return "no_ubar_candidate";
-    case FLOW_COVER_REJECT_NO_VIOLATION: return "no_cmir_or_sgfci_violation";
-    case FLOW_COVER_REJECT_EMPTY_CUT: return "empty_mapped_cut";
-    case FLOW_COVER_REJECT_MAPPED_CUT: return "mapped_cut_not_violated";
-    default: return "unknown";
-  }
-}
 
 #if DEBUG_CLIQUE_CUTS
 #define CLIQUE_CUTS_DEBUG(...)                    \
@@ -985,11 +946,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   i_t flow_cover_row,
   inequality_t<i_t, f_t>& cut)
 {
-  const bool verbose                  = false;
-  const bool flow_cover_diag_verbose  = std::getenv("CUOPT_FLOW_COVER_DIAG_VERBOSE") != nullptr;
-  const char* flow_cover_diag_row_env = std::getenv("CUOPT_FLOW_COVER_DIAG_ROW");
-  const i_t flow_cover_diag_row =
-    flow_cover_diag_row_env != nullptr ? static_cast<i_t>(std::atoi(flow_cover_diag_row_env)) : -1;
+  static_cast<void>(settings);
   static_cast<void>(new_slacks);
   const f_t tol       = 1e-6;
   const f_t bound_tol = 1e-8;
@@ -1057,21 +1014,21 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     slack_col   = j;
     slack_coeff = row.coeff(k);
   }
-  if (slack_count > 1) { return FLOW_COVER_REJECT_SLACK; }
+  if (slack_count > 1) { return -1; }
   bool negate_row = reverse_row_requested;
   f_t b           = negate_row ? -row.rhs : row.rhs;
   if (slack_count == 1) {
-    if (std::abs(slack_coeff) <= tol) { return FLOW_COVER_REJECT_SLACK; }
+    if (std::abs(slack_coeff) <= tol) { return -1; }
     const f_t sigma_slack_lower =
       slack_coeff > 0.0 ? slack_coeff * lp.lower[slack_col] : slack_coeff * lp.upper[slack_col];
     const f_t sigma_slack_upper =
       slack_coeff > 0.0 ? slack_coeff * lp.upper[slack_col] : slack_coeff * lp.lower[slack_col];
     if (!reverse_row_requested) {
-      if (sigma_slack_lower <= -inf) { return FLOW_COVER_REJECT_RHS; }
+      if (sigma_slack_lower <= -inf) { return -1; }
       negate_row = false;
       b          = row.rhs - sigma_slack_lower;
     } else {
-      if (sigma_slack_upper >= inf) { return FLOW_COVER_REJECT_RHS; }
+      if (sigma_slack_upper >= inf) { return -1; }
       negate_row = true;
       b          = -row.rhs + sigma_slack_upper;
     }
@@ -1081,7 +1038,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   continuous_terms.reserve(row_len);
   std::vector<i_t> binary_columns;
   std::unordered_map<i_t, f_t> binary_coefficients;
-  if (!std::isfinite(b)) { return FLOW_COVER_REJECT_RHS; }
+  if (!std::isfinite(b)) { return -1; }
 
   cuopt_assert(
     [&]() {
@@ -1321,63 +1278,14 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     add_variable_lower_candidates();
     add_simple_bound_candidates();
 
-    if (candidates.empty()) {
-      if (flow_cover_diag_verbose) {
-        const i_t upper_start = variable_bounds.upper_offsets[j];
-        const i_t upper_end   = variable_bounds.upper_offsets[j + 1];
-        const i_t lower_start = variable_bounds.lower_offsets[j];
-        const i_t lower_end   = variable_bounds.lower_offsets[j + 1];
-        settings.log.printf(
-          "Flow cover row %d rejected: continuous col=%d coeff=%e lower=%e upper=%e "
-          "type=%d upper_vb=%d lower_vb=%d\n",
-          flow_cover_row,
-          j,
-          c,
-          lower_j,
-          upper_j,
-          static_cast<i_t>(var_types[j]),
-          upper_end - upper_start,
-          lower_end - lower_start);
-        if (flow_cover_diag_row == flow_cover_row) {
-          for (i_t p = upper_start; p < upper_end; p++) {
-            const i_t x_col = variable_bounds.upper_variables[p];
-            const f_t direct_coeff =
-              binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
-            settings.log.printf(
-              "  upper candidate bound_var=%d gamma=%e alpha=%e direct_coeff=%e "
-              "binary=%d xstar=%e\n",
-              x_col,
-              variable_bounds.upper_weights[p],
-              variable_bounds.upper_biases[p],
-              direct_coeff,
-              static_cast<i_t>(is_binary_variable(x_col)),
-              x_col >= 0 ? xstar[x_col] : 0.0);
-          }
-          for (i_t p = lower_start; p < lower_end; p++) {
-            const i_t x_col = variable_bounds.lower_variables[p];
-            const f_t direct_coeff =
-              binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
-            settings.log.printf(
-              "  lower candidate bound_var=%d gamma=%e alpha=%e direct_coeff=%e "
-              "binary=%d xstar=%e\n",
-              x_col,
-              variable_bounds.lower_weights[p],
-              variable_bounds.lower_biases[p],
-              direct_coeff,
-              static_cast<i_t>(is_binary_variable(x_col)),
-              x_col >= 0 ? xstar[x_col] : 0.0);
-          }
-        }
-      }
-      return FLOW_COVER_REJECT_CONTINUOUS_TERM;
-    }
+    if (candidates.empty()) { return -1; }
     auto best = std::min_element(
       candidates.begin(), candidates.end(), [](const snf_candidate_t& a, const snf_candidate_t& b) {
         return a.distance < b.distance;
       });
     if (best->arc.y_value < -1e-5 || best->arc.y_value - best->arc.u * best->arc.x_value >
                                        1e-4 * std::max<f_t>(1.0, best->arc.u)) {
-      return FLOW_COVER_REJECT_RELAXATION;
+      return -1;
     }
     if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
     arcs.push_back(best->arc);
@@ -1392,7 +1300,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     arcs.push_back(build_arc(u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
   }
 
-  if (arcs.empty()) { return FLOW_COVER_REJECT_NO_ARCS; }
+  if (arcs.empty()) { return -1; }
   f_t snf_b = b - b_shift;
   cuopt_assert(
     [&]() {
@@ -1427,7 +1335,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
 
   auto [has_binary_controlled_arc, has_n1, cover_capacity] = compute_structure();
   if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) {
-    return FLOW_COVER_REJECT_NO_COVER;
+    return -1;
   }
 
   std::vector<f_t> values;
@@ -1444,11 +1352,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     weights.push_back(arc.u);
     item_to_arc.push_back(k);
   }
-  if (values.empty()) { return FLOW_COVER_REJECT_NO_ITEMS; }
+  if (values.empty()) { return -1; }
 
   std::vector<f_t> solution;
   const f_t objective = prefix_ratio_knapsack_problem(values, weights, cover_capacity, solution);
-  if (std::isnan(objective)) { return FLOW_COVER_REJECT_KPSNF; }
+  if (std::isnan(objective)) { return -1; }
   static_cast<void>(objective);
 
   std::vector<uint8_t> in_c1(arcs.size(), 0);
@@ -1473,18 +1381,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     if (in_c2[k]) { sum_c2_u += arcs[k].u; }
   }
   const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
-  if (!c1_nonempty || lambda <= tol) {
-    if (flow_cover_diag_verbose) {
-      settings.log.printf(
-        "Flow cover row %d rejected: lambda=%e snf_b=%e cover_capacity=%e arcs=%d\n",
-        flow_cover_row,
-        lambda,
-        snf_b,
-        cover_capacity,
-        static_cast<i_t>(arcs.size()));
-    }
-    return FLOW_COVER_REJECT_LAMBDA;
-  }
+  if (!c1_nonempty || lambda <= tol) { return -1; }
 
   auto fractional_part_local = [](f_t value) {
     const f_t floor_value = std::floor(value);
@@ -1528,16 +1425,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   add_ubar_candidate(max_c1);
   add_ubar_candidate(max_u_ge_lambda + 1.0);
   add_ubar_candidate(lambda + 1.0);
-  if (ubar_candidates.empty()) {
-    if (flow_cover_diag_verbose) {
-      settings.log.printf("Flow cover row %d rejected: no ubar lambda=%e snf_b=%e arcs=%d\n",
-                          flow_cover_row,
-                          lambda,
-                          snf_b,
-                          static_cast<i_t>(arcs.size()));
-    }
-    return FLOW_COVER_REJECT_UBAR;
-  }
+  if (ubar_candidates.empty()) { return -1; }
 
   f_t best_violation = 0.0;
   f_t best_ubar      = 0.0;
@@ -1611,36 +1499,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
   const f_t sgfci_violation = sgfci_lhs_value - snf_b;
-  if (best_violation <= tol && sgfci_violation <= tol) {
-    if (flow_cover_diag_verbose) {
-      i_t n1_count = 0;
-      i_t n2_count = 0;
-      i_t c1_count = 0;
-      i_t c2_count = 0;
-      for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-        n1_count += arcs[k].in_n2 ? 0 : 1;
-        n2_count += arcs[k].in_n2 ? 1 : 0;
-        c1_count += in_c1[k] ? 1 : 0;
-        c2_count += in_c2[k] ? 1 : 0;
-      }
-      settings.log.printf(
-        "Flow cover row %d rejected: no violation cmir=%e sgfci=%e lambda=%e ubar_count=%d "
-        "snf_b=%e cover_capacity=%e arcs=%d n1=%d n2=%d c1=%d c2=%d\n",
-        flow_cover_row,
-        best_violation,
-        sgfci_violation,
-        lambda,
-        static_cast<i_t>(ubar_candidates.size()),
-        snf_b,
-        cover_capacity,
-        static_cast<i_t>(arcs.size()),
-        n1_count,
-        n2_count,
-        c1_count,
-        c2_count);
-    }
-    return FLOW_COVER_REJECT_NO_VIOLATION;
-  }
+  if (best_violation <= tol && sgfci_violation <= tol) { return -1; }
   const bool use_cmirfci = best_violation >= sgfci_violation;
 
   f_t lhs_constant = 0.0;
@@ -1727,23 +1586,14 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     const f_t coeff = lhs_coefficients[j];
     if (std::abs(coeff) > 1e-9) { cut.push_back(j, -coeff); }
   }
-  if (cut.size() == 0) { return FLOW_COVER_REJECT_EMPTY_CUT; }
+  if (cut.size() == 0) { return -1; }
   cut.rhs = lhs_constant - snf_b;
   cut.sort();
 
   const f_t dot = cut.vector.dot(xstar);
-  if (dot >= cut.rhs - tol) { return FLOW_COVER_REJECT_MAPPED_CUT; }
+  if (dot >= cut.rhs - tol) { return -1; }
 
-  if (verbose) {
-    settings.log.printf("Flow cover row %d violation %e lambda %e ubar %e type %s\n",
-                        flow_cover_row,
-                        use_cmirfci ? best_violation : sgfci_violation,
-                        lambda,
-                        best_ubar,
-                        use_cmirfci ? "c-MIRFCI" : "SGFCI");
-  }
-
-  return FLOW_COVER_CUT_FOUND;
+  return 0;
 }
 
 template <typename i_t, typename f_t>
@@ -2765,39 +2615,12 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   f_t start_time)
 {
   if (knapsack_generation_.num_flow_cover_constraints() > 0) {
-    const bool flow_cover_diag = std::getenv("CUOPT_FLOW_COVER_DIAG") != nullptr;
-    std::unordered_map<int, i_t> status_counts;
     for (i_t flow_cover_row : knapsack_generation_.get_flow_cover_constraints()) {
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = knapsack_generation_.generate_flow_cover_cut(
         lp, settings, Arow, new_slacks, variable_bounds, var_types, xstar, flow_cover_row, cut);
-      if (flow_cover_diag) { status_counts[status]++; }
       if (status == 0) { cut_pool_.add_cut(cut_type_t::FLOW_COVER, cut); }
-    }
-    if (flow_cover_diag) {
-      settings.log.printf("Flow cover diagnostics: rows=%d\n",
-                          knapsack_generation_.num_flow_cover_constraints());
-      const std::array<int, 14> statuses = {FLOW_COVER_CUT_FOUND,
-                                            FLOW_COVER_REJECT_SLACK,
-                                            FLOW_COVER_REJECT_RHS,
-                                            FLOW_COVER_REJECT_CONTINUOUS_TERM,
-                                            FLOW_COVER_REJECT_RELAXATION,
-                                            FLOW_COVER_REJECT_NO_ARCS,
-                                            FLOW_COVER_REJECT_NO_COVER,
-                                            FLOW_COVER_REJECT_NO_ITEMS,
-                                            FLOW_COVER_REJECT_KPSNF,
-                                            FLOW_COVER_REJECT_LAMBDA,
-                                            FLOW_COVER_REJECT_UBAR,
-                                            FLOW_COVER_REJECT_NO_VIOLATION,
-                                            FLOW_COVER_REJECT_EMPTY_CUT,
-                                            FLOW_COVER_REJECT_MAPPED_CUT};
-      for (int status : statuses) {
-        auto count_it = status_counts.find(status);
-        if (count_it != status_counts.end()) {
-          settings.log.printf("  %s: %d\n", flow_cover_status_name(status), count_it->second);
-        }
-      }
     }
   }
 }
