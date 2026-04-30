@@ -220,6 +220,7 @@ Before proposing, verify:
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
 - [ ] New skills have `origin: skill-evolution` in frontmatter
 - [ ] Code assets have `# origin: skill-evolution` header and are runnable
+- [ ] Commit subject starts with `skill-evolution:` so the audit trail is greppable from `git log`
 - [ ] Placed in the single highest-impact skill (common > API > new); not duplicated across skills
 - [ ] Phase is correctly identified (learning/inference/reflection)
 - [ ] Learning-phase proposals include a score; inference-phase proposals are marked unscored
