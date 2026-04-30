@@ -45,6 +45,7 @@ enum LPMethod {
 enum VariableType {
   CONTINUOUS = 0;
   INTEGER = 1;
+  SEMI_CONTINUOUS = 2;
 }
 
 enum ProblemCategory {

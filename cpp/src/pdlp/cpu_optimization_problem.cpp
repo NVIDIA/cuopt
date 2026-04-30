@@ -134,6 +134,14 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
 }
 
 template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
+}
+
+template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(
   const f_t* variable_lower_bounds, i_t size)
 {
@@ -494,6 +502,19 @@ bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
   return !Q_values_.empty();
 }
 
+template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+cpu_optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
+}
+
 // ==============================================================================
 // Host Getters (return references to CPU memory)
 // ==============================================================================
@@ -621,6 +642,12 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t con
                                                 Q_offsets_.size());
   }
 
+  if (!quadratic_constraints_.empty()) {
+    gpu_problem->set_quadratic_constraints(
+      std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>(
+        quadratic_constraints_));
+  }
+
   // Set variable bounds
   if (!variable_lower_bounds_.empty()) {
     gpu_problem->set_variable_lower_bounds(variable_lower_bounds_.data(),
@@ -738,6 +765,10 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
                                                    Q_offsets_.data(),
                                                    static_cast<i_t>(Q_offsets_.size()),
                                                    false);
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
   cuopt::mps_parser::write_mps(data_model_view, mps_file_path);

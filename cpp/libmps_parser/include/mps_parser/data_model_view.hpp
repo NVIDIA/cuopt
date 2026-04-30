@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <mps_parser/mps_data_model.hpp>
 #include <mps_parser/utilities/span.hpp>
 
 #include <cstdint>
@@ -415,6 +416,35 @@ class data_model_view_t {
    */
   bool is_Q_symmetrized() const noexcept;
 
+  /**
+   * @brief Quadratic constraints (MPS QCMATRIX); owned copy for writers when not using spans.
+   */
+  void set_quadratic_constraints(
+    std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints);
+  template <typename qc_t>
+  void set_quadratic_constraints(const std::vector<qc_t>& constraints)
+  {
+    quadratic_constraints_.clear();
+    quadratic_constraints_.reserve(constraints.size());
+    for (const auto& qc : constraints) {
+      quadratic_constraints_.push_back(
+        {static_cast<i_t>(qc.constraint_row_index),
+         qc.constraint_row_name,
+         qc.constraint_row_type,
+         std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
+         std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
+         static_cast<f_t>(qc.rhs_value),
+         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end()),
+         std::vector<i_t>(qc.quadratic_indices.begin(), qc.quadratic_indices.end()),
+         std::vector<i_t>(qc.quadratic_offsets.begin(), qc.quadratic_offsets.end())});
+    }
+  }
+
+  bool has_quadratic_constraints() const noexcept;
+
+  const std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>&
+  get_quadratic_constraints() const noexcept;
+
  private:
   bool maximize_{false};
   span<f_t const> A_;
@@ -444,6 +474,8 @@ class data_model_view_t {
   span<i_t const> Q_objective_indices_;
   span<i_t const> Q_objective_offsets_;
   bool is_Q_symmetrized_{false};
+
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> quadratic_constraints_;
 };  // class data_model_view_t
 
 }  // namespace cuopt::mps_parser

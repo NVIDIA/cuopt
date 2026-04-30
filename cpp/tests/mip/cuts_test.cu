@@ -721,8 +721,10 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
   std::vector<double> matrix_values  = base_lp_model.get_constraint_matrix_values();
   std::vector<int> matrix_indices    = base_lp_model.get_constraint_matrix_indices();
   std::vector<int> matrix_offsets    = base_lp_model.get_constraint_matrix_offsets();
+  std::vector<double> constraint_rhs = base_lp_model.get_constraint_bounds();
   std::vector<double> constraint_lbs = base_lp_model.get_constraint_lower_bounds();
   std::vector<double> constraint_ubs = base_lp_model.get_constraint_upper_bounds();
+  std::vector<char> row_types        = base_lp_model.get_row_types();
   std::vector<std::string> row_names = base_lp_model.get_row_names();
   if (matrix_offsets.empty()) { matrix_offsets.push_back(0); }
 
@@ -768,8 +770,14 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
       matrix_values.push_back(coeff);
     }
     matrix_offsets.push_back(static_cast<int>(matrix_indices.size()));
+    // Keep RHS / ROWS metadata aligned with appended bounds.
+    // Literal cut is lhs >= rhs, so row type is 'G'.
+    if (!constraint_rhs.empty()) {
+      constraint_rhs.push_back(static_cast<double>(num_complements - 1));
+    }
     constraint_lbs.push_back(static_cast<double>(num_complements - 1));
     constraint_ubs.push_back(std::numeric_limits<double>::infinity());
+    if (!row_types.empty()) { row_types.push_back('G'); }
     row_names.push_back("literal_cut_" + std::to_string(cut_idx));
   }
 
@@ -779,8 +787,12 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
                                             matrix_indices.size(),
                                             matrix_offsets.data(),
                                             matrix_offsets.size());
+  if (!constraint_rhs.empty()) {
+    model_with_cuts.set_constraint_bounds(constraint_rhs.data(), constraint_rhs.size());
+  }
   model_with_cuts.set_constraint_lower_bounds(constraint_lbs.data(), constraint_lbs.size());
   model_with_cuts.set_constraint_upper_bounds(constraint_ubs.data(), constraint_ubs.size());
+  if (!row_types.empty()) { model_with_cuts.set_row_types(row_types.data(), row_types.size()); }
   model_with_cuts.set_row_names(row_names);
   return model_with_cuts;
 }

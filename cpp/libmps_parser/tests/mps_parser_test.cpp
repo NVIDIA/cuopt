@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <utilities/common_utils.hpp>
+#include <utilities/inline_mps_test_utils.hpp>
 
 #include <mps_parser.hpp>
 #include <mps_parser/mps_writer.hpp>
@@ -13,10 +14,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -422,6 +426,59 @@ TEST(mps_bounds, upper_inf_var_bound)
   EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
 }
 
+TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
+{
+  struct Case {
+    const char* name;
+    const char* mps;
+    int n_vars;
+    double lower;
+    double upper;
+  };
+  const std::vector<Case> cases = {
+    {"sc_standard", cuopt::test::inline_mps::sc_standard_mps, 2, 2.0, 10.0},
+    {"sc_lb_zero", cuopt::test::inline_mps::sc_lb_zero_mps, 2, 0.0, 10.0},
+    {"sc_no_ub", cuopt::test::inline_mps::sc_no_ub_mps, 2, 2.0, 1e30},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.mps);
+    const auto& var_types = mps.get_variable_types();
+    const auto& lower     = mps.get_variable_lower_bounds();
+    const auto& upper     = mps.get_variable_upper_bounds();
+
+    ASSERT_EQ(c.n_vars, static_cast<int>(var_types.size()));
+    EXPECT_EQ('S', var_types[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(lower.size()));
+    ASSERT_EQ(c.n_vars, static_cast<int>(upper.size()));
+    EXPECT_DOUBLE_EQ(c.lower, lower[0]);
+    EXPECT_DOUBLE_EQ(c.upper, upper[0]);
+  }
+}
+
+TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
+{
+  auto mps = cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_lb_zero_mps);
+  const auto& var_types = mps.get_variable_types();
+  const auto& lower     = mps.get_variable_lower_bounds();
+  const auto& upper     = mps.get_variable_upper_bounds();
+
+  ASSERT_EQ(2, static_cast<int>(var_types.size()));
+  EXPECT_EQ('S', var_types[0]);
+  ASSERT_EQ(2, static_cast<int>(lower.size()));
+  ASSERT_EQ(2, static_cast<int>(upper.size()));
+  EXPECT_DOUBLE_EQ(0.0, lower[0]);
+  EXPECT_DOUBLE_EQ(10.0, upper[0]);
+}
+
+TEST(mps_bounds, semi_continuous_missing_upper_rejected)
+{
+  EXPECT_THROW(
+    cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_missing_upper_mps),
+    std::logic_error);
+}
+
 TEST(mps_ranges, fixed_ranges)
 {
   std::string file = "linear_programming/good-mps-fixed-ranges.mps";
@@ -555,16 +612,22 @@ TEST(mps_ranges, bad_value)
                std::logic_error);
 }
 
-TEST(mps_bounds, unsupported_or_invalid_mps_types)
+TEST(mps_bounds, semi_continuous_bound_type)
 {
-  std::stringstream ss;
-  static constexpr int NumMpsFiles = 2;
-  for (int i = 1; i <= NumMpsFiles; ++i) {
-    ss << "linear_programming/bad-mps-bound-" << i << ".mps";
-    ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
-    ss.str(std::string{});
-    ss.clear();
-  };
+  auto mps = read_from_mps("linear_programming/good-mps-semi-continuous-bound.mps", false);
+
+  ASSERT_EQ(int(2), mps.var_names.size());
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('S', mps.var_types[0]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_DOUBLE_EQ(0.0, mps.variable_lower_bounds[0]);
+  EXPECT_DOUBLE_EQ(2.0, mps.variable_upper_bounds[0]);
+}
+
+TEST(mps_bounds, invalid_bound_type)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
 }
 
 TEST(mps_parser, good_mps_file_mip_1)
@@ -855,6 +918,173 @@ TEST(qps_parser, quadratic_objective_basic)
   EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
 }
 
+// ================================================================================================
+// QCMATRIX Support Tests
+// ================================================================================================
+
+TEST(qps_parser, qcmatrix_append_api)
+{
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+
+  // Validate default-constructed struct shape.
+  model_t::quadratic_constraint_t default_qcm;
+  EXPECT_EQ(0, default_qcm.constraint_row_index);
+  EXPECT_TRUE(default_qcm.quadratic_values.empty());
+  EXPECT_TRUE(default_qcm.quadratic_indices.empty());
+  EXPECT_TRUE(default_qcm.quadratic_offsets.empty());
+  EXPECT_TRUE(default_qcm.linear_values.empty());
+  EXPECT_TRUE(default_qcm.linear_indices.empty());
+  EXPECT_EQ(0.0, default_qcm.rhs_value);
+
+  // QC0: [[10, 2], [2, 2]]
+  const std::vector<double> qc0_values        = {10.0, 2.0, 2.0, 2.0};
+  const std::vector<int> qc0_indices          = {0, 1, 0, 1};
+  const std::vector<int> qc0_offsets          = {0, 2, 4};
+  const std::vector<double> qc0_linear_values = {1.0, 1.0};
+  const std::vector<int> qc0_linear_indices   = {0, 1};
+  model.append_quadratic_constraint(0,
+                                    "QC0",
+                                    'L',
+                                    qc0_linear_values.data(),
+                                    qc0_linear_values.size(),
+                                    qc0_linear_indices.data(),
+                                    qc0_linear_indices.size(),
+                                    5.0,
+                                    qc0_values.data(),
+                                    qc0_values.size(),
+                                    qc0_indices.data(),
+                                    qc0_indices.size(),
+                                    qc0_offsets.data(),
+                                    qc0_offsets.size());
+
+  // QC1: [[4, 1], [1, 6]]
+  const std::vector<double> qc1_values        = {4.0, 1.0, 1.0, 6.0};
+  const std::vector<int> qc1_indices          = {0, 1, 0, 1};
+  const std::vector<int> qc1_offsets          = {0, 2, 4};
+  const std::vector<double> qc1_linear_values = {3.0, 1.0};
+  const std::vector<int> qc1_linear_indices   = {0, 1};
+  model.append_quadratic_constraint(1,
+                                    "QC1",
+                                    'L',
+                                    qc1_linear_values.data(),
+                                    qc1_linear_values.size(),
+                                    qc1_linear_indices.data(),
+                                    qc1_linear_indices.size(),
+                                    10.0,
+                                    qc1_values.data(),
+                                    qc1_values.size(),
+                                    qc1_indices.data(),
+                                    qc1_indices.size(),
+                                    qc1_offsets.data(),
+                                    qc1_offsets.size());
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(2u, qcs.size());
+
+  EXPECT_EQ(0, qcs[0].constraint_row_index);
+  EXPECT_EQ("QC0", qcs[0].constraint_row_name);
+  EXPECT_EQ('L', qcs[0].constraint_row_type);
+  EXPECT_EQ(qc0_linear_values, qcs[0].linear_values);
+  EXPECT_EQ(qc0_linear_indices, qcs[0].linear_indices);
+  EXPECT_EQ(5.0, qcs[0].rhs_value);
+  EXPECT_EQ(qc0_values, qcs[0].quadratic_values);
+  EXPECT_EQ(qc0_indices, qcs[0].quadratic_indices);
+  EXPECT_EQ(qc0_offsets, qcs[0].quadratic_offsets);
+
+  EXPECT_EQ(1, qcs[1].constraint_row_index);
+  EXPECT_EQ("QC1", qcs[1].constraint_row_name);
+  EXPECT_EQ('L', qcs[1].constraint_row_type);
+  EXPECT_EQ(qc1_linear_values, qcs[1].linear_values);
+  EXPECT_EQ(qc1_linear_indices, qcs[1].linear_indices);
+  EXPECT_EQ(10.0, qcs[1].rhs_value);
+  EXPECT_EQ(qc1_values, qcs[1].quadratic_values);
+  EXPECT_EQ(qc1_indices, qcs[1].quadratic_indices);
+  EXPECT_EQ(qc1_offsets, qcs[1].quadratic_offsets);
+}
+
+// QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
+TEST(qps_parser, qcmatrix_mps_linear_rhs_and_bounds)
+{
+  if (!file_exists("qcqp/QC_Test_1.mps")) {
+    GTEST_SKIP() << "qcqp/QC_Test_1.mps not in dataset root";
+  }
+  const auto model = parse_mps<int, double>(
+    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/QC_Test_1.mps", false);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(2u, qcs.size());
+
+  ASSERT_EQ(1, model.get_n_constraints());
+  ASSERT_EQ(1u, model.get_row_names().size());
+  EXPECT_EQ("LIN0", model.get_row_names()[0]);
+  EXPECT_EQ('L', model.get_row_types()[0]);
+
+  // LIN0: 2*x1 + x2 ≤ 15 (linear row only; not duplicated in quadratic_constraints)
+  EXPECT_DOUBLE_EQ(-std::numeric_limits<double>::infinity(),
+                   model.get_constraint_lower_bounds()[0]);
+  EXPECT_DOUBLE_EQ(15.0, model.get_constraint_upper_bounds()[0]);
+  const auto& A_off = model.get_constraint_matrix_offsets();
+  const auto& A_val = model.get_constraint_matrix_values();
+  const auto& A_idx = model.get_constraint_matrix_indices();
+  ASSERT_EQ(2, A_off[1] - A_off[0]);
+  EXPECT_EQ(2.0, A_val[A_off[0] + 0]);
+  EXPECT_EQ(1.0, A_val[A_off[0] + 1]);
+  EXPECT_EQ(0, A_idx[A_off[0] + 0]);
+  EXPECT_EQ(1, A_idx[A_off[0] + 1]);
+
+  // QC0: x1 + x2 + xᵀQ₀x ≤ 5 (MPS ROWS declaration index 1; OBJ 'N' rows are not counted)
+  EXPECT_EQ(1, qcs[0].constraint_row_index);
+  EXPECT_EQ("QC0", qcs[0].constraint_row_name);
+  EXPECT_EQ('L', qcs[0].constraint_row_type);
+  ASSERT_EQ(2u, qcs[0].linear_values.size());
+  EXPECT_EQ(1.0, qcs[0].linear_values[0]);
+  EXPECT_EQ(1.0, qcs[0].linear_values[1]);
+  EXPECT_EQ(0, qcs[0].linear_indices[0]);
+  EXPECT_EQ(1, qcs[0].linear_indices[1]);
+  EXPECT_DOUBLE_EQ(5.0, qcs[0].rhs_value);
+  EXPECT_FALSE(qcs[0].quadratic_values.empty());
+
+  // QC1: 3*x1 + x2 + xᵀQ₁x ≤ 10
+  EXPECT_EQ(2, qcs[1].constraint_row_index);
+  EXPECT_EQ("QC1", qcs[1].constraint_row_name);
+  EXPECT_EQ('L', qcs[1].constraint_row_type);
+  ASSERT_EQ(2u, qcs[1].linear_values.size());
+  EXPECT_EQ(3.0, qcs[1].linear_values[0]);
+  EXPECT_EQ(1.0, qcs[1].linear_values[1]);
+  EXPECT_DOUBLE_EQ(10.0, qcs[1].rhs_value);
+}
+
+TEST(qps_parser, qcqp_p0033_mps_sections)
+{
+  if (!file_exists("qcqp/p0033_qc1.mps")) {
+    GTEST_SKIP() << "qcqp/p0033_qc1.mps not in dataset root";
+  }
+  const auto model = parse_mps<int, double>(
+    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps", false);
+
+  EXPECT_EQ(12, model.get_n_constraints());
+  EXPECT_EQ(33, model.get_n_variables());
+  ASSERT_EQ(12u, model.get_row_types().size());
+  ASSERT_EQ(12u, model.get_row_names().size());
+
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(4u, qcs.size());
+  EXPECT_EQ(12, qcs[0].constraint_row_index);
+  ASSERT_EQ(1u, qcs[0].linear_values.size());
+  EXPECT_DOUBLE_EQ(1.0, qcs[0].linear_values[0]);
+
+  const auto& vnames = model.get_variable_names();
+  auto c159_it       = std::find(vnames.begin(), vnames.end(), std::string("C159"));
+  ASSERT_NE(c159_it, vnames.end());
+  EXPECT_EQ(static_cast<int>(c159_it - vnames.begin()), qcs[0].linear_indices[0]);
+
+  EXPECT_DOUBLE_EQ(1.0, qcs[0].rhs_value);
+  EXPECT_FALSE(qcs[0].quadratic_values.empty());
+}
+
 // Test actual QPS files from the dataset
 TEST(qps_parser, test_qps_files)
 {
@@ -1017,6 +1247,37 @@ void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
       EXPECT_EQ(orig_Q_off[i], reload_Q_off[i]) << "Q offset mismatch at index " << i;
     }
   }
+
+  EXPECT_EQ(original.has_quadratic_constraints(), reloaded.has_quadratic_constraints());
+  if (original.has_quadratic_constraints() && reloaded.has_quadratic_constraints()) {
+    const auto& oqc = original.get_quadratic_constraints();
+    const auto& rq  = reloaded.get_quadratic_constraints();
+    ASSERT_EQ(oqc.size(), rq.size()) << "Quadratic constraint count mismatch";
+    for (size_t k = 0; k < oqc.size(); ++k) {
+      EXPECT_EQ(oqc[k].constraint_row_index, rq[k].constraint_row_index);
+      EXPECT_EQ(oqc[k].constraint_row_name, rq[k].constraint_row_name);
+      EXPECT_EQ(oqc[k].constraint_row_type, rq[k].constraint_row_type);
+      EXPECT_NEAR(oqc[k].rhs_value, rq[k].rhs_value, tol);
+      ASSERT_EQ(oqc[k].linear_values.size(), rq[k].linear_values.size());
+      ASSERT_EQ(oqc[k].linear_indices.size(), rq[k].linear_indices.size());
+      for (size_t i = 0; i < oqc[k].linear_values.size(); ++i) {
+        EXPECT_NEAR(oqc[k].linear_values[i], rq[k].linear_values[i], tol);
+        EXPECT_EQ(oqc[k].linear_indices[i], rq[k].linear_indices[i]);
+      }
+      ASSERT_EQ(oqc[k].quadratic_values.size(), rq[k].quadratic_values.size());
+      ASSERT_EQ(oqc[k].quadratic_indices.size(), rq[k].quadratic_indices.size());
+      ASSERT_EQ(oqc[k].quadratic_offsets.size(), rq[k].quadratic_offsets.size());
+      for (size_t i = 0; i < oqc[k].quadratic_values.size(); ++i) {
+        EXPECT_NEAR(oqc[k].quadratic_values[i], rq[k].quadratic_values[i], tol);
+      }
+      for (size_t i = 0; i < oqc[k].quadratic_indices.size(); ++i) {
+        EXPECT_EQ(oqc[k].quadratic_indices[i], rq[k].quadratic_indices[i]);
+      }
+      for (size_t i = 0; i < oqc[k].quadratic_offsets.size(); ++i) {
+        EXPECT_EQ(oqc[k].quadratic_offsets[i], rq[k].quadratic_offsets[i]);
+      }
+    }
+  }
 }
 
 TEST(mps_roundtrip, linear_programming_basic)
@@ -1125,6 +1386,31 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
 
   // Cleanup
   std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, qcqp_p0033_qc1)
+{
+  if (!file_exists("qcqp/p0033_qc1.mps")) { GTEST_SKIP() << "Test file not found"; }
+
+  std::string input_file  = cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps";
+  std::string temp_file   = "/tmp/mps_roundtrip_p0033_qc1.mps";
+  std::string temp_file_2 = "/tmp/mps_roundtrip_p0033_qc1_r2.mps";
+
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective());
+  ASSERT_TRUE(original.has_quadratic_constraints());
+
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  mps_writer_t<int, double> writer_r2(reloaded);
+  writer_r2.write(temp_file_2);
+  auto reloaded_2 = parse_mps<int, double>(temp_file_2, false);
+  compare_data_models(reloaded, reloaded_2);
+
+  std::filesystem::remove(temp_file);
+  std::filesystem::remove(temp_file_2);
 }
 
 }  // namespace cuopt::mps_parser

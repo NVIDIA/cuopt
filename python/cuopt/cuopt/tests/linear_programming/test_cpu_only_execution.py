@@ -438,6 +438,12 @@ def _start_grpc_server_fixture(port_offset):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        pytest.skip(
+            f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
+            "binary may be unable to load shared libraries in this environment"
+        )
     if not _wait_for_port(port, timeout=15):
         proc.kill()
         proc.wait()

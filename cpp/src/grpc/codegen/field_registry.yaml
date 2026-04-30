@@ -118,6 +118,7 @@ enums:
     values:
     - CONTINUOUS
     - INTEGER
+    - SEMI_CONTINUOUS
 
   problem_category:
     domain: problem

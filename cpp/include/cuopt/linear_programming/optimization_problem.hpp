@@ -72,6 +72,9 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   static_assert(std::is_floating_point<f_t>::value,
                 "'optimization_problem_t' accepts only floating point types for weights");
 
+  // nvcc does not always find base typedefs in derived class scope; inject explicitly.
+  using typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t;
+
   /**
    * @brief A device-side view of the `optimization_problem_t` structure with
    * the RAII stuffs stripped out, to make it easy to work inside kernels
@@ -196,6 +199,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
                                       i_t size_offsets,
                                       bool validate_positive_semi_definite = false) override;
 
+  void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;
+
   /** @copydoc optimization_problem_interface_t::set_variable_lower_bounds */
   void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size) override;
   /** @copydoc optimization_problem_interface_t::set_variable_upper_bounds */
@@ -259,7 +264,9 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
   const std::vector<i_t>& get_quadratic_objective_indices() const override;
   const std::vector<f_t>& get_quadratic_objective_values() const override;
+  const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const override;
   bool has_quadratic_objective() const override;
+  bool has_quadratic_constraints() const override;
 
   // ============================================================================
   // Host getters
@@ -375,6 +382,9 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   std::vector<i_t> Q_offsets_;
   std::vector<i_t> Q_indices_;
   std::vector<f_t> Q_values_;
+
+  /** QCQP: quadratic constraints **/
+  std::vector<quadratic_constraint_t> quadratic_constraints_{};
 
   rmm::device_uvector<f_t> variable_lower_bounds_;
   rmm::device_uvector<f_t> variable_upper_bounds_;

@@ -7,6 +7,7 @@ cuopt::remote::VariableType to_proto_variable_type(var_t v)
   switch (v) {
     case var_t::CONTINUOUS: return cuopt::remote::CONTINUOUS;
     case var_t::INTEGER: return cuopt::remote::INTEGER;
+    case var_t::SEMI_CONTINUOUS: return cuopt::remote::SEMI_CONTINUOUS;
   }
   throw std::invalid_argument("Unknown var_t: " + std::to_string(static_cast<int>(v)));
 }
@@ -16,6 +17,7 @@ var_t from_proto_variable_type(cuopt::remote::VariableType v)
   switch (v) {
     case cuopt::remote::CONTINUOUS: return var_t::CONTINUOUS;
     case cuopt::remote::INTEGER: return var_t::INTEGER;
+    case cuopt::remote::SEMI_CONTINUOUS: return var_t::SEMI_CONTINUOUS;
   }
   throw std::invalid_argument("Unknown cuopt::remote::VariableType: " + std::to_string(static_cast<int>(v)));
 }
