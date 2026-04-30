@@ -941,26 +941,35 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   settings.log.printf("Number of knapsack constraints %d\n", num_knapsack_constraints);
 #endif
 
-  // Wolter's separator is applied to every row after attempting to construct a 0-1
-  // single-node-flow relaxation. Rows that do not admit the relaxation are rejected
-  // inside generate_flow_cover_cut.
-  flow_cover_constraints_.reserve(lp.num_rows);
+  // Wolter's separator is applied to every finite row side after attempting to construct a 0-1
+  // single-node-flow relaxation. Rows that do not admit the relaxation are rejected inside
+  // generate_flow_cover_cut.
+  flow_cover_constraints_.reserve(2 * lp.num_rows);
   for (i_t i = 0; i < lp.num_rows; i++) {
     if (Arow.row_start[i + 1] <= Arow.row_start[i]) { continue; }
-    flow_cover_constraints_.push_back(i);
-    bool has_slack = false;
-    i_t slack_col  = -1;
+    i_t slack_col   = -1;
+    f_t slack_coeff = 0.0;
+    i_t slack_count = 0;
     for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; p++) {
       if (is_slack_[Arow.j[p]]) {
-        has_slack = true;
-        slack_col = Arow.j[p];
-        break;
+        slack_col   = Arow.j[p];
+        slack_coeff = Arow.x[p];
+        slack_count++;
       }
     }
-    const bool equality_row =
-      !has_slack || (slack_col >= 0 && std::abs(lp.lower[slack_col]) <= 1e-9 &&
-                     std::abs(lp.upper[slack_col]) <= 1e-9);
-    if (equality_row) { flow_cover_constraints_.push_back(-(i + 1)); }
+    if (slack_count > 1 || (slack_count == 1 && std::abs(slack_coeff) <= 1e-9)) { continue; }
+    if (slack_count == 0) {
+      flow_cover_constraints_.push_back(i);
+      flow_cover_constraints_.push_back(-(i + 1));
+      continue;
+    }
+
+    const f_t sigma_slack_lower =
+      slack_coeff > 0.0 ? slack_coeff * lp.lower[slack_col] : slack_coeff * lp.upper[slack_col];
+    const f_t sigma_slack_upper =
+      slack_coeff > 0.0 ? slack_coeff * lp.upper[slack_col] : slack_coeff * lp.lower[slack_col];
+    if (sigma_slack_lower > -inf) { flow_cover_constraints_.push_back(i); }
+    if (sigma_slack_upper < inf) { flow_cover_constraints_.push_back(-(i + 1)); }
   }
 }
 
@@ -1038,26 +1047,40 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   const i_t actual_flow_cover_row  = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
   inequality_t<i_t, f_t> row(Arow, actual_flow_cover_row, lp.rhs[actual_flow_cover_row]);
   i_t slack_count   = 0;
+  i_t slack_col     = -1;
   f_t slack_coeff   = 0.0;
-  bool negate_row   = reverse_row_requested;
   const i_t row_len = row.size();
   for (i_t k = 0; k < row_len; k++) {
     const i_t j = row.index(k);
     if (!is_slack_[j]) { continue; }
     slack_count++;
+    slack_col   = j;
     slack_coeff = row.coeff(k);
   }
   if (slack_count > 1) { return FLOW_COVER_REJECT_SLACK; }
+  bool negate_row = reverse_row_requested;
+  f_t b           = negate_row ? -row.rhs : row.rhs;
   if (slack_count == 1) {
     if (std::abs(slack_coeff) <= tol) { return FLOW_COVER_REJECT_SLACK; }
-    negate_row = reverse_row_requested ? slack_coeff > 0.0 : slack_coeff < 0.0;
+    const f_t sigma_slack_lower =
+      slack_coeff > 0.0 ? slack_coeff * lp.lower[slack_col] : slack_coeff * lp.upper[slack_col];
+    const f_t sigma_slack_upper =
+      slack_coeff > 0.0 ? slack_coeff * lp.upper[slack_col] : slack_coeff * lp.lower[slack_col];
+    if (!reverse_row_requested) {
+      if (sigma_slack_lower <= -inf) { return FLOW_COVER_REJECT_RHS; }
+      negate_row = false;
+      b          = row.rhs - sigma_slack_lower;
+    } else {
+      if (sigma_slack_upper >= inf) { return FLOW_COVER_REJECT_RHS; }
+      negate_row = true;
+      b          = -row.rhs + sigma_slack_upper;
+    }
   }
 
   std::vector<std::pair<i_t, f_t>> continuous_terms;
   continuous_terms.reserve(row_len);
   std::vector<i_t> binary_columns;
   std::unordered_map<i_t, f_t> binary_coefficients;
-  f_t b = negate_row ? -row.rhs : row.rhs;
   if (!std::isfinite(b)) { return FLOW_COVER_REJECT_RHS; }
 
   for (i_t k = 0; k < row_len; k++) {
@@ -2264,11 +2287,10 @@ f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f
 }
 
 template <typename i_t, typename f_t>
-f_t knapsack_generation_t<i_t, f_t>::prefix_ratio_knapsack_problem(
-  const std::vector<f_t>& values,
-  const std::vector<f_t>& weights,
-  f_t strict_rhs,
-  std::vector<f_t>& solution)
+f_t knapsack_generation_t<i_t, f_t>::prefix_ratio_knapsack_problem(const std::vector<f_t>& values,
+                                                                   const std::vector<f_t>& weights,
+                                                                   f_t strict_rhs,
+                                                                   std::vector<f_t>& solution)
 {
   const i_t n = static_cast<i_t>(weights.size());
   solution.assign(n, 0.0);
@@ -2280,11 +2302,10 @@ f_t knapsack_generation_t<i_t, f_t>::prefix_ratio_knapsack_problem(
   // heuristic, which keeps scanning for smaller later items.
   std::vector<i_t> permutation(n);
   std::iota(permutation.begin(), permutation.end(), 0);
-  std::sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
+  std::stable_sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
     const f_t ratio_a = values[a] / weights[a];
     const f_t ratio_b = values[b] / weights[b];
-    if (ratio_a != ratio_b) { return ratio_a > ratio_b; }
-    return weights[a] > weights[b];
+    return ratio_a > ratio_b;
   });
 
   f_t total_weight = 0.0;
@@ -3834,12 +3855,14 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       if (row_len < 2) { continue; }
       const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
       if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
-      const f_t a_ij              = lp.A.x[p];
-      const f_t slack_lower       = lp.lower[slack_map_[i]];
-      const f_t slack_upper       = lp.upper[slack_map_[i]];
-      const f_t slack_coeff_i     = slack_coeff[i];
-      const f_t sigma_slack_lower = slack_coeff_i == 1.0 ? slack_lower : -slack_upper;
-      const f_t sigma_slack_upper = slack_coeff_i == 1.0 ? slack_upper : -slack_lower;
+      const f_t a_ij          = lp.A.x[p];
+      const f_t slack_lower   = lp.lower[slack_map_[i]];
+      const f_t slack_upper   = lp.upper[slack_map_[i]];
+      const f_t slack_coeff_i = slack_coeff[i];
+      const f_t sigma_slack_lower =
+        slack_coeff_i > 0.0 ? slack_coeff_i * slack_lower : slack_coeff_i * slack_upper;
+      const f_t sigma_slack_upper =
+        slack_coeff_i > 0.0 ? slack_coeff_i * slack_upper : slack_coeff_i * slack_lower;
 
       if (sigma_slack_lower > -inf) {
         const f_t beta = lp.rhs[i] - sigma_slack_lower;
@@ -3937,12 +3960,14 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       if (row_len < 2) { continue; }
       const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
       if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
-      const f_t a_ij              = lp.A.x[p];
-      const f_t slack_lower       = lp.lower[slack_map_[i]];
-      const f_t slack_upper       = lp.upper[slack_map_[i]];
-      const f_t slack_coeff_i     = slack_coeff[i];
-      const f_t sigma_slack_lower = slack_coeff_i == 1.0 ? slack_lower : -slack_upper;
-      const f_t sigma_slack_upper = slack_coeff_i == 1.0 ? slack_upper : -slack_lower;
+      const f_t a_ij          = lp.A.x[p];
+      const f_t slack_lower   = lp.lower[slack_map_[i]];
+      const f_t slack_upper   = lp.upper[slack_map_[i]];
+      const f_t slack_coeff_i = slack_coeff[i];
+      const f_t sigma_slack_lower =
+        slack_coeff_i > 0.0 ? slack_coeff_i * slack_lower : slack_coeff_i * slack_upper;
+      const f_t sigma_slack_upper =
+        slack_coeff_i > 0.0 ? slack_coeff_i * slack_upper : slack_coeff_i * slack_lower;
 
       if (sigma_slack_lower > -inf) {
         const f_t beta = lp.rhs[i] - sigma_slack_lower;
