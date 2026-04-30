@@ -1083,6 +1083,21 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   std::unordered_map<i_t, f_t> binary_coefficients;
   if (!std::isfinite(b)) { return FLOW_COVER_REJECT_RHS; }
 
+  cuopt_assert(
+    [&]() {
+      f_t row_side_activity = 0.0;
+      f_t row_side_scale    = std::max<f_t>(1.0, std::abs(b));
+      for (i_t k = 0; k < row_len; k++) {
+        const i_t j = row.index(k);
+        if (is_slack_[j]) { continue; }
+        const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
+        row_side_activity += coeff * xstar[j];
+        row_side_scale += std::abs(coeff * xstar[j]);
+      }
+      return row_side_activity <= b + 1e-5 * row_side_scale;
+    }(),
+    "Flow cover normalized row side excludes LP solution");
+
   for (i_t k = 0; k < row_len; k++) {
     const i_t j = row.index(k);
     if (is_slack_[j]) { continue; }
@@ -1379,6 +1394,21 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
 
   if (arcs.empty()) { return FLOW_COVER_REJECT_NO_ARCS; }
   f_t snf_b = b - b_shift;
+  cuopt_assert(
+    [&]() {
+      f_t snf_activity = 0.0;
+      f_t snf_scale    = std::max<f_t>(1.0, std::abs(snf_b));
+      for (const auto& arc : arcs) {
+        const f_t arc_tol = 1e-5 * std::max<f_t>(1.0, arc.u);
+        if (arc.y_value < -arc_tol) { return false; }
+        if (arc.y_value > arc.u * arc.x_value + arc_tol) { return false; }
+        const f_t signed_y = arc.in_n2 ? -arc.y_value : arc.y_value;
+        snf_activity += signed_y;
+        snf_scale += std::abs(signed_y);
+      }
+      return snf_activity <= snf_b + 1e-5 * snf_scale;
+    }(),
+    "Flow cover SNF relaxation excludes LP solution");
 
   auto compute_structure = [&]() {
     bool has_binary_controlled_arc = false;
