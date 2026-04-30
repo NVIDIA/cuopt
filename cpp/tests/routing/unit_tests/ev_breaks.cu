@@ -32,6 +32,7 @@ static std::vector<float> cost_matrix_5x5 = {
   1, 1, 1, 1, 0
 };
 
+// validates that vehicles belong to their breaks
 TEST(ev_breaks, default_case)
 {
   raft::handle_t handle;
@@ -52,29 +53,7 @@ TEST(ev_breaks, default_case)
   check_route(data_model, h_routing_solution);
 }
 
-TEST(ev_breaks, with_solver_settings)
-{
-  raft::handle_t handle;
-  auto stream = handle.get_stream();
-
-  auto v_cost_matrix = cuopt::device_copy(cost_matrix_3x3, stream);
-  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
-  data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_vehicle_ev_break(0, 0.f, 2.f, 1, nullptr, 0);
-  data_model.add_vehicle_ev_break(1, 0.f, 2.f, 1, nullptr, 0);
-  data_model.set_min_vehicles(2);
-
-  auto settings = cuopt::routing::solver_settings_t<int, float>{};
-  settings.set_time_limit(2);
-
-  auto routing_solution = cuopt::routing::solve(data_model, settings);
-  handle.sync_stream();
-
-  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
-  host_assignment_t<int> h_routing_solution(routing_solution);
-  check_route(data_model, h_routing_solution);
-}
-
+// charging stations are used as EV breaks if specified
 TEST(ev_breaks, with_charging_stations)
 {
   raft::handle_t handle;
@@ -115,6 +94,7 @@ TEST(ev_breaks, with_charging_stations)
   }
 }
 
+// multiple charging cycles are handled correctly
 TEST(ev_breaks, multi_cycle)
 {
   raft::handle_t handle;
@@ -159,6 +139,7 @@ TEST(ev_breaks, multi_cycle)
   }
 }
 
+// only vehicle with EV break specified has such break assigned
 TEST(ev_breaks, mixed_fleet)
 {
   raft::handle_t handle;

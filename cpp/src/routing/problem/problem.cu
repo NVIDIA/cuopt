@@ -513,6 +513,20 @@ NodeInfo<> problem_t<i_t, f_t>::get_brother_node_info(const NodeInfo<>& node) co
     brother_id, brother_location, node.is_pickup() ? node_type_t::DELIVERY : node_type_t::PICKUP);
 }
 
+
+/**
+ * @brief Builds and uploads to device all break node data required by the solver.
+ *
+ * This function translates the user-facing break specification (either uniform or
+ * per-vehicle) into the internal "special nodes" representation used during route
+ * optimization. It is a no-op if no vehicle breaks are defined.
+ *
+ * @throws cuopt_error (ValidationError) if any of the following are violated:
+ *   - A break time window falls outside the vehicle's time window.
+ *   - A break's latest time is before its earliest time.
+ *   - Two consecutive time-based breaks have overlapping time windows.
+ *   - A distance-based break has distance_max <= distance_min.
+ */
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::populate_special_nodes()
 {

@@ -56,9 +56,37 @@ class break_dimension_t {
   i_t const* break_duration_;
 };
 
+/**
+ * @brief Represents a mandatory break that must be taken by a vehicle during its route.
+ *
+ * A break can be constructed in one of two mutually exclusive ways:
+ *
+ * **Time-based**: The break must start within a time window [earliest, latest].
+ *   - Constructed via the time-window constructor.
+ *   - When time-based, distance_min and distance_max default to [0, FLOAT_MAX] (unconstrained).
+ *   - @see vehicle_break_t(i_t, i_t, i_t, raft::device_span<const i_t>)
+ *
+ * **Distance-based**: The break must be taken after the vehicle has traveled a cumulative
+ *   distance within [distance_min, distance_max] along its route.
+ *   - Constructed via the distance constructor.
+ *   - When distance-based, earliest and latest default to [0, INT_MAX] (unconstrained).
+ *   - @see vehicle_break_t(float, float, i_t, raft::device_span<const i_t>)
+ *
+ * @note If @p locations is empty, the break may be taken anywhere along the route.
+ *       If non-empty, the break must be taken at one of the specified location IDs.
+ */
 template <typename i_t>
 class vehicle_break_t {
  public:
+ /**
+   * @brief Constructs a time-based break that must start within a given time window.
+   *
+   * @param earliest  Earliest time at which the break may start.
+   * @param latest    Latest time at which the break may start.
+   * @param duration  Fixed duration of the break.
+   * @param locations Valid location IDs where the break may be taken.
+   *                  Pass an empty span to allow any location.
+   */
   vehicle_break_t(i_t earliest, i_t latest, i_t duration, raft::device_span<const i_t> locations)
     : earliest_(earliest),
       latest_(latest),
@@ -70,6 +98,18 @@ class vehicle_break_t {
   {
   }
 
+  /**
+   * @brief Constructs a distance-based break that must be taken within a cumulative
+   *        travel distance range along the route.
+   *
+   * @param distance_min  Minimum cumulative route distance before the break must be taken.
+   * @param distance_max  Maximum cumulative route distance before the break must be taken.
+   * @param duration      Fixed duration of the break.
+   * @param locations     Valid location IDs where the break may be taken.
+   *                      Pass an empty span to allow any location.
+   *
+   * @note earliest and latest are set to [0, INT_MAX].
+   */
   vehicle_break_t(float distance_min,
                   float distance_max,
                   i_t duration,

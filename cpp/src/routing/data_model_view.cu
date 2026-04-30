@@ -18,6 +18,11 @@
 
 namespace {
 
+
+/**
+ * @brief Validates that break locations are within the valid range
+ *        of the location matrix and that all entries are unique.
+ */
 template <typename i_t>
 void validate_break_locations(i_t const* locations,
                                i_t n,

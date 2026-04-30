@@ -402,6 +402,26 @@ __global__ void eject_inserted_requests(
   }
 }
 
+/**
+ * @brief A kernel that inserts missing break nodes into routes that lack them ("squeezing"
+ *        breaks into the route).
+ *
+ * Each thread block handles a single route (one block per route via blockIdx.x). For each
+ * break dimension that is absent from the route, the kernel finds and commits the least-cost
+ * insertion position before moving on to the next missing break dimension.
+ *
+ * @note Break dimensions are processed sequentially (one per outer loop iteration) because
+ *       each insertion changes the route structure and costs, which subsequent insertions
+ *       depend on. Parallelism is exploited within each insertion search.
+ * @note Intra-route node map indices are intentionally deferred until all insertions are
+ *       complete to avoid redundant updates during intermediate steps.
+ *
+ * @param solution          View of the current solution, including routes, node mappings,
+ *                          and problem data (vehicle info, break node sets, etc.).
+ * @param include_objective Whether to factor in objective cost (vs. infeasibility only)
+ *                          when evaluating insertion candidates.
+ * @param weights           Per-dimension weights used to compute infeasibility costs.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       const bool include_objective,

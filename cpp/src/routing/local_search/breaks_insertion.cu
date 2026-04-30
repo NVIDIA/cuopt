@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,6 +15,34 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
+/**
+ * @brief A kernel that attempts to improve solution by relocating break nodes within routes.
+ *
+ * Each thread block is responsible for a specific (route, break_dimension) pair, determined by
+ * blockIdx.x. For each such pair, the kernel:
+ *   1. Locates the existing break node of the given dimension in the route (ejection candidate).
+ *   2. Temporarily ejects that break node from a shared-memory copy of the route and recomputes
+ *      forward/backward propagation and route costs.
+ *   3. In parallel across threads, evaluates all possible re-insertion positions and break node
+ *      choices for the same break dimension, checking distance constraints, forward feasibility,
+ *      and combinability with neighboring nodes.
+ *   4. Tracks the insertion candidate that yields the greatest cost reduction (objective +
+ *      infeasibility), using a block-level reduction to find the thread-local best.
+ *   5. Atomically updates the global best candidate for the route if the block's best candidate
+ *      improves upon the current best.
+ *
+ * @param solution               View of the current solution, including routes and node mappings.
+ * @param include_objective      Whether to include objective cost (vs. infeasibility only) when
+ *                               evaluating candidate moves.
+ * @param weights                Per-dimension weights used to compute infeasibility costs.
+ * @param breaks_move_candidates Output structure holding the best break relocation candidate
+ *                               per route, along with per-route locks for atomic updates.
+ *
+ * @note Shared memory is used to stage a per-block copy of the route, avoiding repeated
+ *       global memory accesses during the insertion search.
+ * @note The else-branch (eject-only, no re-insertion) should never be reached in the current
+ *       implementation, as inserted_break_dim always equals ejected_break_dim.
+ */
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void find_break_insertions_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,
