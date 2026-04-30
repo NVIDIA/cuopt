@@ -12,11 +12,14 @@
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
 
 #include <utilities/copy_helpers.hpp>
 
+#include <cmath>
 #include <limits>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace cuopt::linear_programming {
@@ -117,15 +120,30 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
     // Use a practical tolerance for text-parsed MPS numeric values.
     const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
 
-    // SOC conversion accepts only diagonal Lorentz-form QCMATRIX rows:
-    //   -x_head^2 + sum_i x_tail_i^2 <= 0.
+    // SOC conversion accepts:
+    //   1) diagonal Lorentz-form QCMATRIX rows:
+    //        -x_head^2 + sum_i x_tail_i^2 <= 0
+    //   2) canonical rotated SOC rows:
+    //        -2*x_head0*x_head1 + sum_i x_tail_i^2 <= 0
+    //      represented in MPS QCMATRIX as symmetric off-diagonals (-1,-1).
     // The barrier consumes SOCs as trailing variable blocks [head, tails...], so we validate all
-    // QCMATRIX blocks first, then apply a single column permutation to the linear model.
+    // QCMATRIX blocks first, convert rotated cones via slack variables in standard SOC coordinates,
+    // then apply a single column permutation to the linear model.
+    struct rotated_soc_t {
+      i_t head0{};
+      i_t head1{};
+      std::vector<i_t> tails{};
+    };
+
     std::vector<std::vector<i_t>> cone_vars;
     std::vector<i_t> cone_dims;
+    std::vector<char> cone_is_rotated;
+    std::vector<rotated_soc_t> rotated_cones;
     std::vector<char> is_cone_var(static_cast<size_t>(n), 0);
     cone_vars.reserve(qcs.size());
     cone_dims.reserve(qcs.size());
+    cone_is_rotated.reserve(qcs.size());
+    rotated_cones.reserve(qcs.size());
 
     for (const auto& qc : qcs) {
       cuopt_expects(qc.constraint_row_type == 'L',
@@ -148,13 +166,12 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                     "mismatch for CSR Q",
                     qc.constraint_row_name.c_str());
 
-      const i_t q_n = static_cast<i_t>(qc.quadratic_values.size());
-      cuopt_expects(q_n >= 2,
+      const i_t q_nnz = static_cast<i_t>(qc.quadratic_values.size());
+      cuopt_expects(q_nnz >= 2,
                     error_type_t::ValidationError,
-                    "Quadratic constraint '%s' SOC must have at least 2 diagonal entries in Q (nnz "
-                    "%d)",
+                    "Quadratic constraint '%s' SOC must have at least 2 entries in Q (nnz %d)",
                     qc.constraint_row_name.c_str(),
-                    static_cast<int>(q_n));
+                    static_cast<int>(q_nnz));
 
       cuopt_expects(
         qc.quadratic_offsets.size() == static_cast<size_t>(n) + 1,
@@ -166,30 +183,31 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         qc.quadratic_offsets.size(),
         static_cast<int>(n));
       cuopt_expects(
-        qc.quadratic_offsets[static_cast<size_t>(n)] == q_n,
+        qc.quadratic_offsets[static_cast<size_t>(n)] == q_nnz,
         error_type_t::ValidationError,
-        "Quadratic constraint '%s' Q last CSR offset %d must equal number of nonzeros (nnz) %d for "
-        "this diagonal Q",
+        "Quadratic constraint '%s' Q last CSR offset %d must equal number of nonzeros (nnz) %d",
         qc.constraint_row_name.c_str(),
         static_cast<int>(qc.quadratic_offsets[static_cast<size_t>(n)]),
-        static_cast<int>(q_n));
+        static_cast<int>(q_nnz));
       cuopt_expects(qc.quadratic_offsets[0] == 0,
                     error_type_t::ValidationError,
                     "Quadratic constraint '%s' Q CSR offsets[0] must be 0",
                     qc.constraint_row_name.c_str());
 
-      // Verify Q: n by n CSR, diagonal entries only, Lorentz pattern.
-      // Scan each row r: empty or one nnz on (r,r) with value -1 (head) or +1 (tail);
-      // tail order follows this scan; no requirement that diagonal indices be sorted.
-      i_t head     = static_cast<i_t>(-1);
-      i_t n_head_m = 0;
-      std::vector<i_t> tail_row_vars{};
-      tail_row_vars.reserve(static_cast<size_t>(q_n - 1));
+      // Verify Q as either:
+      // - standard SOC diagonal Lorentz form, or
+      // - canonical rotated SOC with one symmetric (-1,-1) off-diagonal pair.
+      i_t head                    = static_cast<i_t>(-1);
+      i_t n_head_m                = 0;
+      std::vector<i_t> tail_vars{};
+      std::vector<std::pair<i_t, i_t>> offdiag_pairs{};
+      tail_vars.reserve(static_cast<size_t>(q_nnz));
+      offdiag_pairs.reserve(2);
 
       for (i_t r = 0; r < n; ++r) {
         const i_t p_beg = qc.quadratic_offsets[static_cast<size_t>(r)];
         const i_t p_end = qc.quadratic_offsets[static_cast<size_t>(r + 1)];
-        cuopt_expects(p_beg >= 0 && p_beg <= p_end && p_end <= q_n,
+        cuopt_expects(p_beg >= 0 && p_beg <= p_end && p_end <= q_nnz,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' Q row %d has invalid CSR offsets [%d, %d)",
                       qc.constraint_row_name.c_str(),
@@ -201,8 +219,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
         cuopt_expects(p_beg + 1 == p_end,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' Q row %d: expected at most one stored entry on "
-                      "the diagonal per "
+                      "Quadratic constraint '%s' Q row %d: expected at most one stored entry per "
                       "row (got end - beg = %d)",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(r),
@@ -210,58 +227,107 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
         const i_t col = qc.quadratic_indices[static_cast<size_t>(p_beg)];
         const f_t v   = qc.quadratic_values[static_cast<size_t>(p_beg)];
-        cuopt_expects(
-          col == r,
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' Q row %d: only main diagonal (j,j) entries are allowed; got "
-          "column %d",
-          qc.constraint_row_name.c_str(),
-          static_cast<int>(r),
-          static_cast<int>(col));
-
         const f_t neg_one_delta = v + f_t(1);
         const f_t pos_one_delta = v - f_t(1);
         const bool is_neg_one   = (neg_one_delta >= -tol && neg_one_delta <= tol);
         const bool is_pos_one   = (pos_one_delta >= -tol && pos_one_delta <= tol);
-        if (is_neg_one) {
-          ++n_head_m;
-          head = r;
-        } else if (is_pos_one) {
-          tail_row_vars.push_back(r);
+
+        if (col == r) {
+          if (is_neg_one) {
+            ++n_head_m;
+            head = r;
+          } else if (is_pos_one) {
+            tail_vars.push_back(r);
+          } else {
+            cuopt_expects(false,
+                          error_type_t::ValidationError,
+                          "Quadratic constraint '%s' Q row %d: diagonal for SOC must be -1 (head) "
+                          "or +1 (tail); got %.17g",
+                          qc.constraint_row_name.c_str(),
+                          static_cast<int>(r),
+                          static_cast<double>(v));
+          }
         } else {
-          cuopt_expects(false,
+          cuopt_expects(is_neg_one,
                         error_type_t::ValidationError,
-                        "Quadratic constraint '%s' Q row %d: diagonal for SOC must be -1 (head) or "
-                        "+1 (tail); got "
-                        "%.17g",
+                        "Quadratic constraint '%s' Q row %d: off-diagonal entries are only "
+                        "supported for rotated SOC as value -1; got %.17g at column %d",
                         qc.constraint_row_name.c_str(),
                         static_cast<int>(r),
-                        static_cast<double>(v));
+                        static_cast<double>(v),
+                        static_cast<int>(col));
+          offdiag_pairs.emplace_back(r, col);
         }
       }
-      cuopt_expects(
-        n_head_m == 1,
-        error_type_t::ValidationError,
-        "Quadratic constraint '%s' SOC Q: expected exactly one diagonal with value -1 (cone head), "
-        "found %d",
-        qc.constraint_row_name.c_str(),
-        static_cast<int>(n_head_m));
-      cuopt_expects(
-        static_cast<i_t>(tail_row_vars.size()) == q_n - 1,
-        error_type_t::ValidationError,
-        "Quadratic constraint '%s' SOC Q: expected %d diagonals with value +1 (tails), found %zu",
-        qc.constraint_row_name.c_str(),
-        static_cast<int>(q_n - 1),
-        tail_row_vars.size());
-      cuopt_expects(head >= 0,
-                    error_type_t::ValidationError,
-                    "Quadratic constraint '%s' SOC Q: internal error (head index invalid)",
-                    qc.constraint_row_name.c_str());
-
       std::vector<i_t> cone;
-      cone.reserve(static_cast<size_t>(q_n));
-      cone.push_back(head);
-      cone.insert(cone.end(), tail_row_vars.begin(), tail_row_vars.end());
+      if (offdiag_pairs.empty()) {
+        cuopt_expects(
+          n_head_m == 1,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s' SOC Q: expected exactly one diagonal with value -1 (cone "
+          "head), found %d",
+          qc.constraint_row_name.c_str(),
+          static_cast<int>(n_head_m));
+        cuopt_expects(
+          static_cast<i_t>(tail_vars.size()) == q_nnz - 1,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s' SOC Q: expected %d diagonals with value +1 (tails), found %zu",
+          qc.constraint_row_name.c_str(),
+          static_cast<int>(q_nnz - 1),
+          tail_vars.size());
+        cuopt_expects(head >= 0,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' SOC Q: internal error (head index invalid)",
+                      qc.constraint_row_name.c_str());
+
+        cone.reserve(static_cast<size_t>(q_nnz));
+        cone.push_back(head);
+        cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());
+      } else {
+        cuopt_expects(
+          n_head_m == 0,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s' rotated SOC Q cannot contain diagonal -1 entries; found %d",
+          qc.constraint_row_name.c_str(),
+          static_cast<int>(n_head_m));
+        cuopt_expects(
+          offdiag_pairs.size() == 2,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s' rotated SOC Q must contain exactly one symmetric off-diagonal "
+          "pair (-1,-1); found %zu off-diagonal entries",
+          qc.constraint_row_name.c_str(),
+          offdiag_pairs.size());
+
+        const i_t a = offdiag_pairs[0].first;
+        const i_t b = offdiag_pairs[0].second;
+        cuopt_expects(a != b,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC Q off-diagonal pair must use distinct "
+                      "variables",
+                      qc.constraint_row_name.c_str());
+        cuopt_expects(offdiag_pairs[1].first == b && offdiag_pairs[1].second == a,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC Q must have symmetric entries (a,b) "
+                      "and (b,a) with value -1",
+                      qc.constraint_row_name.c_str());
+        cuopt_expects(static_cast<i_t>(tail_vars.size()) == q_nnz - 2,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC Q: expected %d diagonal +1 entries "
+                      "(tails), found %zu",
+                      qc.constraint_row_name.c_str(),
+                      static_cast<int>(q_nnz - 2),
+                      tail_vars.size());
+        cuopt_expects(q_nnz >= 3,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC Q must have at least 1 tail entry",
+                      qc.constraint_row_name.c_str());
+
+        cone.reserve(static_cast<size_t>(q_nnz));
+        cone.push_back(a);
+        cone.push_back(b);
+        cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());
+        rotated_cones.push_back(rotated_soc_t{a, b, tail_vars});
+      }
       for (const i_t var : cone) {
         cuopt_expects(!is_cone_var[static_cast<size_t>(var)],
                       error_type_t::ValidationError,
@@ -270,14 +336,165 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                       static_cast<int>(var));
         is_cone_var[static_cast<size_t>(var)] = 1;
       }
-      cone_dims.push_back(q_n);
+      cone_dims.push_back(static_cast<i_t>(cone.size()));
       cone_vars.push_back(std::move(cone));
+      cone_is_rotated.push_back(offdiag_pairs.empty() ? static_cast<char>(0) : static_cast<char>(1));
     }
 
-    std::vector<i_t> old_to_new(static_cast<size_t>(n), i_t{-1});
+    i_t n_prob = static_cast<i_t>(n);
+
+    if (!rotated_cones.empty()) {
+      cuopt_expects(user_problem.Q_values.empty(),
+                    error_type_t::ValidationError,
+                    "Rotated SOC conversion is currently not supported when the objective has "
+                    "quadratic terms");
+
+      const f_t inf        = std::numeric_limits<f_t>::infinity();
+      const f_t inv_sqrt_2 = f_t(1) / std::sqrt(f_t(2));
+
+      for (const auto& rc : rotated_cones) {
+        cuopt_expects(user_problem.var_types[static_cast<size_t>(rc.head0)] ==
+                        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS &&
+                        user_problem.var_types[static_cast<size_t>(rc.head1)] ==
+                          cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
+                      error_type_t::ValidationError,
+                      "Rotated SOC head variables must be continuous");
+        for (const i_t t : rc.tails) {
+          cuopt_expects(user_problem.var_types[static_cast<size_t>(t)] ==
+                          cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
+                        error_type_t::ValidationError,
+                        "Rotated SOC tail variables must be continuous");
+        }
+      }
+
+      auto is_inf = [](f_t x) { return std::isinf(static_cast<double>(x)); };
+      for (const auto& rc : rotated_cones) {
+        const f_t l0 = user_problem.lower[static_cast<size_t>(rc.head0)];
+        const f_t u0 = user_problem.upper[static_cast<size_t>(rc.head0)];
+        const f_t l1 = user_problem.lower[static_cast<size_t>(rc.head1)];
+        const f_t u1 = user_problem.upper[static_cast<size_t>(rc.head1)];
+        cuopt_expects(l0 >= -tol && l0 <= tol && is_inf(u0) && u0 > 0,
+                      error_type_t::ValidationError,
+                      "Rotated SOC head variable %d must have bounds [0, +inf) for conversion",
+                      static_cast<int>(rc.head0));
+        cuopt_expects(l1 >= -tol && l1 <= tol && is_inf(u1) && u1 > 0,
+                      error_type_t::ValidationError,
+                      "Rotated SOC head variable %d must have bounds [0, +inf) for conversion",
+                      static_cast<int>(rc.head1));
+        for (const i_t t : rc.tails) {
+          const f_t lt = user_problem.lower[static_cast<size_t>(t)];
+          const f_t ut = user_problem.upper[static_cast<size_t>(t)];
+          cuopt_expects(is_inf(lt) && lt < 0 && is_inf(ut) && ut > 0,
+                        error_type_t::ValidationError,
+                        "Rotated SOC tail variable %d must be free [-inf, +inf) for conversion",
+                        static_cast<int>(t));
+        }
+      }
+
+      // Lift each rotated cone into standard SOC coordinates with two slacks:
+      //   s0 = (x_h0 + x_h1) / sqrt(2), s1 = (x_h0 - x_h1) / sqrt(2)
+      // so that 2*x_h0*x_h1 >= sum tails^2 becomes s0^2 >= s1^2 + sum tails^2.
+      // Only the rotated heads are replaced by slacks; tails remain unchanged.
+      i_t n_slack_total = 0;
+      for (size_t ci = 0; ci < cone_is_rotated.size(); ++ci) {
+        if (cone_is_rotated[ci]) { n_slack_total += 2; }
+      }
+
+      const i_t n_old = n_prob;
+      n_prob          = static_cast<i_t>(n_old + n_slack_total);
+
+      user_problem.objective.resize(static_cast<size_t>(n_prob), f_t(0));
+      user_problem.lower.resize(static_cast<size_t>(n_prob), -inf);
+      user_problem.upper.resize(static_cast<size_t>(n_prob), inf);
+      user_problem.var_types.resize(static_cast<size_t>(n_prob),
+                                    cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+      if (!user_problem.col_names.empty()) {
+        user_problem.col_names.resize(static_cast<size_t>(n_prob));
+        for (i_t j = n_old; j < n_prob; ++j) {
+          user_problem.col_names[static_cast<size_t>(j)] =
+            "_CUOPT_rsoc_slack_" + std::to_string(static_cast<int>(j - n_old));
+        }
+      }
+
+      is_cone_var.resize(static_cast<size_t>(n_prob), 0);
+
+      const i_t m_old = csr_A.m;
+      user_problem.rhs.resize(static_cast<size_t>(m_old + n_slack_total));
+      user_problem.row_sense.resize(static_cast<size_t>(m_old + n_slack_total));
+      if (!user_problem.row_names.empty()) {
+        user_problem.row_names.resize(static_cast<size_t>(m_old + n_slack_total));
+        for (i_t r = m_old; r < m_old + n_slack_total; ++r) {
+          user_problem.row_names[static_cast<size_t>(r)] =
+            "_CUOPT_rsoc_lift_" + std::to_string(static_cast<int>(r - m_old));
+        }
+      }
+
+      csr_A.n = n_prob;
+
+      dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+      size_t ri = 0;
+      i_t slack_base = n_old;
+      i_t row_idx    = m_old;
+
+      for (size_t ci = 0; ci < cone_vars.size(); ++ci) {
+        if (!cone_is_rotated[ci]) { continue; }
+        const auto& rc = rotated_cones[ri++];
+        const i_t dim = cone_dims[ci];
+        std::vector<i_t> new_cone;
+        new_cone.reserve(static_cast<size_t>(dim));
+        new_cone.push_back(slack_base);
+        new_cone.push_back(slack_base + 1);
+        new_cone.insert(new_cone.end(), rc.tails.begin(), rc.tails.end());
+        cone_vars[ci] = std::move(new_cone);
+
+        is_cone_var[static_cast<size_t>(rc.head0)] = 0;
+        is_cone_var[static_cast<size_t>(rc.head1)] = 0;
+        is_cone_var[static_cast<size_t>(slack_base)]     = 1;
+        is_cone_var[static_cast<size_t>(slack_base + 1)] = 1;
+
+        // s_0 - inv_sqrt_2 * x_h0 - inv_sqrt_2 * x_h1 = 0
+        eq_row.n = n_prob;
+        eq_row.i = {rc.head0, rc.head1, slack_base};
+        eq_row.x = {-inv_sqrt_2, -inv_sqrt_2, f_t(1)};
+        eq_row.sort();
+        csr_A.append_row(eq_row);
+        user_problem.row_sense[static_cast<size_t>(row_idx)] = 'E';
+        user_problem.rhs[static_cast<size_t>(row_idx)]       = f_t(0);
+        ++row_idx;
+
+        // s_1 - inv_sqrt_2 * x_h0 + inv_sqrt_2 * x_h1 = 0
+        eq_row.i = {rc.head0, rc.head1, slack_base + 1};
+        eq_row.x = {-inv_sqrt_2, inv_sqrt_2, f_t(1)};
+        eq_row.sort();
+        csr_A.append_row(eq_row);
+        user_problem.row_sense[static_cast<size_t>(row_idx)] = 'E';
+        user_problem.rhs[static_cast<size_t>(row_idx)]       = f_t(0);
+        ++row_idx;
+
+        slack_base += 2;
+      }
+
+      cuopt_expects(ri == rotated_cones.size(),
+                    error_type_t::RuntimeError,
+                    "Internal error: rotated SOC cone metadata mismatch");
+      cuopt_expects(slack_base == n_prob,
+                    error_type_t::RuntimeError,
+                    "Internal error: slack variable count mismatch");
+      cuopt_expects(row_idx == m_old + n_slack_total,
+                    error_type_t::RuntimeError,
+                    "Internal error: rotated SOC equality row count mismatch");
+      cuopt_expects(csr_A.m == m_old + n_slack_total,
+                    error_type_t::RuntimeError,
+                    "Internal error: CSR row count after rotated SOC lift");
+
+      user_problem.num_rows = csr_A.m;
+      user_problem.num_cols = n_prob;
+    }
+
+    std::vector<i_t> old_to_new(static_cast<size_t>(n_prob), i_t{-1});
     std::vector<i_t> new_to_old;
-    new_to_old.reserve(static_cast<size_t>(n));
-    for (i_t j = 0; j < n; ++j) {
+    new_to_old.reserve(static_cast<size_t>(n_prob));
+    for (i_t j = 0; j < n_prob; ++j) {
       if (is_cone_var[static_cast<size_t>(j)]) { continue; }
       old_to_new[static_cast<size_t>(j)] = static_cast<i_t>(new_to_old.size());
       new_to_old.push_back(j);
@@ -289,7 +506,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         new_to_old.push_back(old_j);
       }
     }
-    cuopt_expects(static_cast<i_t>(new_to_old.size()) == n,
+    cuopt_expects(static_cast<i_t>(new_to_old.size()) == n_prob,
                   error_type_t::RuntimeError,
                   "Internal error while building SOC variable permutation");
 
@@ -298,11 +515,11 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
            p < csr_A.row_start[static_cast<size_t>(row + 1)];
            ++p) {
         const i_t old_j = csr_A.j[static_cast<size_t>(p)];
-        cuopt_expects(old_j >= 0 && old_j < n,
+        cuopt_expects(old_j >= 0 && old_j < n_prob,
                       error_type_t::ValidationError,
                       "Linear constraint matrix column index %d is outside [0, %d)",
                       static_cast<int>(old_j),
-                      static_cast<int>(n));
+                      static_cast<int>(n_prob));
         csr_A.j[static_cast<size_t>(p)] = old_to_new[static_cast<size_t>(old_j)];
       }
     }
@@ -310,14 +527,14 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
     auto permute_dense_by_old_to_new = [&](auto& values, const char* name) {
       if (values.empty()) { return; }
       using value_t = typename std::decay_t<decltype(values)>::value_type;
-      cuopt_expects(values.size() == static_cast<size_t>(n),
+      cuopt_expects(values.size() == static_cast<size_t>(n_prob),
                     error_type_t::ValidationError,
                     "%s length %zu does not match number of variables %d",
                     name,
                     values.size(),
-                    static_cast<int>(n));
+                    static_cast<int>(n_prob));
       std::vector<value_t> permuted(values.size());
-      for (i_t old_j = 0; old_j < n; ++old_j) {
+      for (i_t old_j = 0; old_j < n_prob; ++old_j) {
         permuted[static_cast<size_t>(old_to_new[static_cast<size_t>(old_j)])] =
           std::move(values[static_cast<size_t>(old_j)]);
       }
@@ -331,23 +548,24 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
     permute_dense_by_old_to_new(user_problem.col_names, "column names");
 
     if (!user_problem.Q_values.empty()) {
+      const i_t n_model = static_cast<i_t>(n);
       cuopt_expects(user_problem.Q_indices.size() == user_problem.Q_values.size(),
                     error_type_t::ValidationError,
                     "Quadratic objective indices and values length mismatch");
-      cuopt_expects(user_problem.Q_offsets.size() == static_cast<size_t>(n) + 1,
+      cuopt_expects(user_problem.Q_offsets.size() == static_cast<size_t>(n_model) + 1,
                     error_type_t::ValidationError,
                     "Quadratic objective CSR offsets length must be n+1 when SOC QCMATRIX "
                     "conversion permutes variables");
       cuopt_expects(user_problem.Q_offsets[0] == 0,
                     error_type_t::ValidationError,
                     "Quadratic objective CSR offsets[0] must be 0");
-      cuopt_expects(user_problem.Q_offsets[static_cast<size_t>(n)] ==
+      cuopt_expects(user_problem.Q_offsets[static_cast<size_t>(n_model)] ==
                       static_cast<i_t>(user_problem.Q_values.size()),
                     error_type_t::ValidationError,
                     "Quadratic objective CSR last offset must equal number of nonzeros");
 
-      std::vector<i_t> q_offsets(static_cast<size_t>(n) + 1, 0);
-      for (i_t old_row = 0; old_row < n; ++old_row) {
+      std::vector<i_t> q_offsets(static_cast<size_t>(n_prob) + 1, 0);
+      for (i_t old_row = 0; old_row < n_model; ++old_row) {
         const i_t p_beg = user_problem.Q_offsets[static_cast<size_t>(old_row)];
         const i_t p_end = user_problem.Q_offsets[static_cast<size_t>(old_row + 1)];
         cuopt_expects(
@@ -358,24 +576,24 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         const i_t new_row                           = old_to_new[static_cast<size_t>(old_row)];
         q_offsets[static_cast<size_t>(new_row + 1)] = p_end - p_beg;
       }
-      for (i_t row = 0; row < n; ++row) {
+      for (i_t row = 0; row < n_prob; ++row) {
         q_offsets[static_cast<size_t>(row + 1)] += q_offsets[static_cast<size_t>(row)];
       }
 
-      std::vector<i_t> q_indices(user_problem.Q_indices.size());
+      std::vector<i_t> q_indices(user_problem.Q_values.size());
       std::vector<f_t> q_values(user_problem.Q_values.size());
       auto q_write = q_offsets;
-      for (i_t old_row = 0; old_row < n; ++old_row) {
+      for (i_t old_row = 0; old_row < n_model; ++old_row) {
         const i_t new_row = old_to_new[static_cast<size_t>(old_row)];
         for (i_t p = user_problem.Q_offsets[static_cast<size_t>(old_row)];
              p < user_problem.Q_offsets[static_cast<size_t>(old_row + 1)];
              ++p) {
           const i_t old_col = user_problem.Q_indices[static_cast<size_t>(p)];
-          cuopt_expects(old_col >= 0 && old_col < n,
+          cuopt_expects(old_col >= 0 && old_col < n_model,
                         error_type_t::ValidationError,
                         "Quadratic objective column index %d is outside [0, %d)",
                         static_cast<int>(old_col),
-                        static_cast<int>(n));
+                        static_cast<int>(n_model));
           const i_t dst                       = q_write[static_cast<size_t>(new_row)]++;
           q_indices[static_cast<size_t>(dst)] = old_to_new[static_cast<size_t>(old_col)];
           q_values[static_cast<size_t>(dst)]  = user_problem.Q_values[static_cast<size_t>(p)];
