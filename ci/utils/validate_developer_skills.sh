@@ -6,7 +6,7 @@
 # Run from repo root: ./ci/utils/validate_developer_skills.sh
 # Use this to ensure developer SKILL.md files stay in sync with the repo workflow.
 
-set -e
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
@@ -42,27 +42,36 @@ INSTALL_DEV_PHRASES=(
   "CONTRIBUTING"
 )
 
+# Escape regex metacharacters so a section title with special characters (e.g.
+# "Build & Test") is matched literally inside an extended regex.
+escape_ere() {
+  printf '%s' "$1" | sed -e 's/[][\.|^$()*+?{}\\/&]/\\&/g'
+}
+
 check_skill_file() {
   local skill_name="$1"
   local skill_md="${SKILLS_DIR}/${skill_name}/SKILL.md"
   if [[ ! -f "$skill_md" ]]; then
-    echo "SKIP: ${skill_name} (no SKILL.md)"
+    echo "ERROR: ${skill_name} missing SKILL.md at ${skill_md}"
+    ERRORS=$((ERRORS + 1))
     return 0
   fi
-  local content
-  content=$(cat "$skill_md")
   local failed=0
 
   if [[ "$skill_name" == "cuopt-developer" ]]; then
     for section in "${CUOPT_DEV_SECTIONS[@]}"; do
-      if ! echo "$content" | grep -q "$section"; then
-        echo "ERROR: ${skill_name}/SKILL.md missing section or heading: ${section}"
+      # Match Markdown headings only (lines starting with #). The previous
+      # `grep -q "$section"` matched section names appearing inline in prose.
+      local pattern
+      pattern="^[[:space:]]*#+[[:space:]]+$(escape_ere "$section")([[:space:]]|$)"
+      if ! grep -E -q "$pattern" "$skill_md"; then
+        echo "ERROR: ${skill_name}/SKILL.md missing heading: ${section}"
         ERRORS=$((ERRORS + 1))
         failed=1
       fi
     done
     for phrase in "${CUOPT_DEV_PHRASES[@]}"; do
-      if ! echo "$content" | grep -qF "$phrase"; then
+      if ! grep -qF "$phrase" "$skill_md"; then
         echo "ERROR: ${skill_name}/SKILL.md missing required phrase: ${phrase}"
         ERRORS=$((ERRORS + 1))
         failed=1
@@ -72,7 +81,7 @@ check_skill_file() {
 
   if [[ "$skill_name" == "cuopt-installation-developer" ]]; then
     for phrase in "${INSTALL_DEV_PHRASES[@]}"; do
-      if ! echo "$content" | grep -qi "$phrase"; then
+      if ! grep -qi "$phrase" "$skill_md"; then
         echo "ERROR: ${skill_name}/SKILL.md missing required concept: ${phrase}"
         ERRORS=$((ERRORS + 1))
         failed=1

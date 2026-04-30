@@ -13,7 +13,7 @@
 #   ./ci/run_dev_skill_agent_tests.sh --report out  # write results.csv + report.md to out/YYYY-MM-DD_HH-MM-SS/
 #   ./ci/run_dev_skill_agent_tests.sh --save ci/utils/dev_skill_responses    # run once, save for replay
 
-set -e
+set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$REPO_ROOT"

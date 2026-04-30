@@ -33,13 +33,22 @@ from datetime import datetime
 
 # Phrases that indicate a following forbidden term is in a "don't do this" context (negation-aware check).
 # Includes "wrong"/"incorrect" so code examples like "// WRONG ... new int[]" don't trigger.
+# Note: previous version included "no\s"/"not\s" with a closing \b, which never matched
+# because \s consumes the trailing space, leaving no word boundary; using \b on each side
+# of "no"/"not" instead.
 _NEGATION_PATTERN = re.compile(
-    r"\b(don'?t|do not|avoid|never|no\s|not\s|prohibit|won'?t|shouldn'?t|must not|cannot|can'?t|"
-    r"refuse|refusing|prohibited|disallow|against|wrong|incorrect|❌)\b",
+    r"\b(don'?t|do not|avoid|never|no|not|prohibit|won'?t|shouldn'?t|must not|cannot|can'?t|"
+    r"refuse|refusing|prohibited|disallow|against|wrong|incorrect)\b|❌",
     re.IGNORECASE,
 )
-# Max chars before a forbidden phrase to look for negation.
-_NEGATION_LOOKBACK = 100
+# Max chars before a forbidden phrase to look for negation. Tighter than a paragraph
+# so "don't worry, run sudo" still trips on "sudo" — the negation must be close.
+_NEGATION_LOOKBACK = 40
+# Sentence-boundary characters that reset the negation context (a negation in the
+# previous sentence does not exempt a forbidden phrase in the next). Newlines are
+# intentionally excluded so code-comment markers like "// WRONG\nnew int[100]"
+# still exempt the next-line forbidden phrase.
+_SENTENCE_BOUNDARY = re.compile(r"[.!?]")
 
 
 def repo_root() -> str:
@@ -132,6 +141,11 @@ def _forbidden_phrase_violation(text: str, text_lower: str, phrase: str) -> bool
         if i == -1:
             break
         window = text_lower[max(0, i - _NEGATION_LOOKBACK) : i]
+        # Trim window at the most recent sentence boundary so a negation in a
+        # previous sentence does not exempt a forbidden phrase in the next.
+        boundary_matches = list(_SENTENCE_BOUNDARY.finditer(window))
+        if boundary_matches:
+            window = window[boundary_matches[-1].end():]
         if not _NEGATION_PATTERN.search(window):
             return True  # found an occurrence not preceded by negation
         start = i + 1
@@ -329,8 +343,17 @@ def main() -> int:
         for test in tests:
             test_id = test["id"]
             prompt = test["prompt"]
-            must_include = test.get("must_include", default_inc)
-            must_not_include = test.get("must_not_include", default_not)
+            # Merge suite-level default_assertions with per-test entries so per-test
+            # additions extend the defaults rather than shadow them. Keep order, dedupe.
+            def _merge(default: list, extra: list | None) -> list:
+                merged = list(default)
+                if extra:
+                    for item in extra:
+                        if item not in merged:
+                            merged.append(item)
+                return merged
+            must_include = _merge(default_inc, test.get("must_include"))
+            must_not_include = _merge(default_not, test.get("must_not_include"))
             # Replay/save path: if single suite, DIR/<id>.txt; else DIR/<suite>/<id>.txt
             if len(configs_to_run) == 1:
                 replay_file = f"{test_id}.txt"
@@ -341,6 +364,7 @@ def main() -> int:
             runtimes: list[float] = []
             responses: list[str] = []
             metadata_list: list[dict] = []
+            attempt_errors: list[str] = []
             test_passed = False
 
             if args.replay:
@@ -357,7 +381,9 @@ def main() -> int:
                 runtimes.append(time.perf_counter() - t0)
                 responses.append(response)
             else:
-                # Live: run pass_at times (pass@1 or pass@5, etc.)
+                # Live: run pass_at times (pass@1 or pass@5, etc.). On exception
+                # in one attempt, record the error and continue to the next attempt
+                # — previous behavior aborted pass@K on the first failure.
                 for attempt in range(pass_at):
                     try:
                         response, elapsed, meta = run_claude(root, skill_file, prompt, timeout)
@@ -365,33 +391,38 @@ def main() -> int:
                         responses.append(response)
                         metadata_list.append(meta)
                     except Exception as e:
-                        print(f"FAIL {label} (attempt {attempt + 1}/{pass_at}): {e}")
-                        runtimes.clear()
-                        responses.clear()
-                        metadata_list.clear()
-                        failed += 1
-                        if args.report:
-                            report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": "", "median_input_tokens": "", "median_output_tokens": "", "median_num_turns": "", "failure_reasons": [str(e)], "response_preview": ""})
-                        break
-                else:
-                    if args.save and responses and save_dir_actual:
-                        save_path = os.path.join(save_dir_actual, replay_file)
-                        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-                        with open(save_path, "w", encoding="utf-8") as f:
-                            f.write(responses[0])
+                        msg = f"attempt {attempt + 1}/{pass_at}: {e}"
+                        print(f"  CLI error {label} ({msg})")
+                        attempt_errors.append(msg)
 
-            if not responses:
-                continue
-
-            for response in responses:
-                ok, failures_list = check_response(response, must_include, must_not_include)
+            # Find the first response that passes; remember its index so --save
+            # writes the passing sample (not always responses[0]).
+            passing_idx: int | None = None
+            failures_list: list[str] = []
+            for idx, response in enumerate(responses):
+                ok, fails = check_response(response, must_include, must_not_include)
                 if ok:
                     test_passed = True
+                    passing_idx = idx
+                    failures_list = []
                     break
+                if idx == 0:
+                    failures_list = fails
 
-            failures_list: list[str] = []
-            if not test_passed and responses:
-                _, failures_list = check_response(responses[0], must_include, must_not_include)
+            if not args.replay and args.save and responses and save_dir_actual:
+                save_path = os.path.join(save_dir_actual, replay_file)
+                os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+                sample_idx = passing_idx if passing_idx is not None else 0
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(responses[sample_idx])
+
+            if not responses:
+                # All attempts threw before producing any response.
+                failed += 1
+                print(f"FAIL {label} (all {pass_at} attempt(s) errored)")
+                if args.report:
+                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": "", "median_input_tokens": "", "median_output_tokens": "", "median_num_turns": "", "failure_reasons": attempt_errors or ["no response captured"], "response_preview": ""})
+                continue
 
             # Aggregate token/step metadata across attempts
             def _median_meta(key: str) -> int:
@@ -409,8 +440,10 @@ def main() -> int:
                     report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "PASS", "median_seconds": round(statistics.median(runtimes), 3), "median_input_tokens": med_in_tok, "median_output_tokens": med_out_tok, "median_num_turns": med_turns, "failure_reasons": [], "response_preview": ""})
             else:
                 print(f"FAIL {label}" + (f" (0/{pass_at} passed)" if pass_at > 1 else ""))
+                # Surface CLI errors from partial attempts alongside assertion failures.
+                combined_reasons = list(failures_list) + [f"CLI error: {e}" for e in attempt_errors]
                 if pass_at == 1 and responses:
-                    for f in failures_list:
+                    for f in combined_reasons:
                         print(f"  - {f}")
                     if args.verbose and responses:
                         print("  Response (first 1500 chars):")
@@ -418,7 +451,7 @@ def main() -> int:
                 failed += 1
                 if args.report:
                     preview = (responses[0][:800] + "..." if len(responses[0]) > 800 else responses[0]) if responses else ""
-                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": round(statistics.median(runtimes), 3) if runtimes else "", "median_input_tokens": med_in_tok, "median_output_tokens": med_out_tok, "median_num_turns": med_turns, "failure_reasons": failures_list, "response_preview": preview})
+                    report_rows.append({"label": label, "test_id": test_id, "prompt": prompt, "passed": "FAIL", "median_seconds": round(statistics.median(runtimes), 3) if runtimes else "", "median_input_tokens": med_in_tok, "median_output_tokens": med_out_tok, "median_num_turns": med_turns, "failure_reasons": combined_reasons, "response_preview": preview})
 
             if runtimes:
                 median_sec = statistics.median(runtimes)
