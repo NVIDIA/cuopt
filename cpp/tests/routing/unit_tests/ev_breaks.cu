@@ -24,13 +24,8 @@ static std::vector<float> cost_matrix_3x3 = {0, 1, 1, 1, 0, 1, 1, 1, 0};
 
 // 5-location problem used by the charging-stations and multi-cycle tests:
 // depot=0, orders=1-2, dedicated charging stations=3-4
-static std::vector<float> cost_matrix_5x5 = {
-  0, 1, 1, 1, 1,
-  1, 0, 1, 1, 1,
-  1, 1, 0, 1, 1,
-  1, 1, 1, 0, 1,
-  1, 1, 1, 1, 0
-};
+static std::vector<float> cost_matrix_5x5 = {0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0,
+                                             1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0};
 
 // validates that vehicles belong to their breaks
 TEST(ev_breaks, default_case)
@@ -63,8 +58,8 @@ TEST(ev_breaks, with_charging_stations)
   std::vector<int> order_locations   = {1, 2};
   std::vector<int> charging_stations = {3, 4};
 
-  auto v_cost_matrix      = cuopt::device_copy(cost_matrix_5x5, stream);
-  auto v_order_locations  = cuopt::device_copy(order_locations, stream);
+  auto v_cost_matrix       = cuopt::device_copy(cost_matrix_5x5, stream);
+  auto v_order_locations   = cuopt::device_copy(order_locations, stream);
   auto v_charging_stations = cuopt::device_copy(charging_stations, stream);
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 5, 2, 2);

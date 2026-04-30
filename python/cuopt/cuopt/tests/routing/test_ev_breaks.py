@@ -11,16 +11,17 @@ from cuopt import routing
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _small_data_model(n_vehicles=3):
     """Minimal DataModel for API-level tests (no solver needed)."""
     n = 6
     rows = [
         [0, 10, 20, 15, 25, 30],
-        [10,  0, 15, 20, 30, 25],
-        [20, 15,  0, 10, 20, 15],
-        [15, 20, 10,  0, 15, 20],
-        [25, 30, 20, 15,  0, 10],
-        [30, 25, 15, 20, 10,  0],
+        [10, 0, 15, 20, 30, 25],
+        [20, 15, 0, 10, 20, 15],
+        [15, 20, 10, 0, 15, 20],
+        [25, 30, 20, 15, 0, 10],
+        [30, 25, 15, 20, 10, 0],
     ]
     d = routing.DataModel(n, n_vehicles)
     d.add_cost_matrix(cudf.DataFrame(rows, dtype="float32"))
@@ -30,6 +31,7 @@ def _small_data_model(n_vehicles=3):
 # ---------------------------------------------------------------------------
 # API / data-model tests (no solve)
 # ---------------------------------------------------------------------------
+
 
 def test_ev_break_api_single_cycle_defaults():
     """Single cycle with min_range=0: distance window is [0, max_range]."""
@@ -110,7 +112,9 @@ def test_ev_break_api_charging_stations_stored():
     d = _small_data_model()
     stations = cudf.Series([1, 2, 3], dtype="int32")
 
-    d.add_ev_break(0, max_range=100.0, charge_duration=15, charging_stations=stations)
+    d.add_ev_break(
+        0, max_range=100.0, charge_duration=15, charging_stations=stations
+    )
 
     breaks = d.get_non_uniform_breaks()
     stored_locs = breaks[0][0]["locations"].to_arrow().to_pylist()
@@ -130,6 +134,7 @@ def test_ev_break_api_stacked_calls():
 # ---------------------------------------------------------------------------
 # Validation tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def model():
@@ -154,7 +159,9 @@ def test_max_range_must_be_positive(model, max_range):
 def test_negative_min_range_rejected(model):
     """min_range must be non-negative."""
     with pytest.raises(ValueError, match="min range"):
-        model.add_ev_break(0, max_range=100.0, charge_duration=10, min_range=-1.0)
+        model.add_ev_break(
+            0, max_range=100.0, charge_duration=10, min_range=-1.0
+        )
 
 
 @pytest.mark.parametrize(
@@ -182,19 +189,27 @@ def test_negative_charge_duration_rejected(model):
 def test_invalid_n_cycles_non_positive(model, n_cycles):
     """n_cycles <= 0 raises ValueError."""
     with pytest.raises(ValueError, match="n_cycles"):
-        model.add_ev_break(0, max_range=100.0, charge_duration=10, n_cycles=n_cycles)
+        model.add_ev_break(
+            0, max_range=100.0, charge_duration=10, n_cycles=n_cycles
+        )
 
 
 @pytest.mark.parametrize("n_cycles", [1.5, "3"])
 def test_invalid_n_cycles_wrong_type(model, n_cycles):
     """Non-integer n_cycles raises ValueError."""
     with pytest.raises(ValueError, match="n_cycles"):
-        model.add_ev_break(0, max_range=100.0, charge_duration=10, n_cycles=n_cycles)
+        model.add_ev_break(
+            0, max_range=100.0, charge_duration=10, n_cycles=n_cycles
+        )
 
 
 def test_charging_stations_out_of_range(model):
     """Charging station indices must be within [0, num_locations)."""
     bad_stations = cudf.Series([999], dtype="int32")
     with pytest.raises(ValueError, match="charging stations"):
-        model.add_ev_break(0, max_range=100.0, charge_duration=10,
-                           charging_stations=bad_stations)
+        model.add_ev_break(
+            0,
+            max_range=100.0,
+            charge_duration=10,
+            charging_stations=bad_stations,
+        )

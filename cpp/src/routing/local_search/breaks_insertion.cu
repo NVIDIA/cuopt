@@ -118,9 +118,9 @@ __global__ void find_break_insertions_kernel(
       curr_node.calculate_forward_all(break_node, sh_route.vehicle_info());
 
       if (!break_nodes.distance_min.empty()) {
-        double dist   = break_node.distance_dim.distance_forward;
-        double d_min  = break_nodes.distance_min[break_node_id];
-        double d_max  = break_nodes.distance_max[break_node_id];
+        double dist  = break_node.distance_dim.distance_forward;
+        double d_min = break_nodes.distance_min[break_node_id];
+        double d_max = break_nodes.distance_max[break_node_id];
         if (dist < d_min || d_max < dist) { continue; }
       }
 

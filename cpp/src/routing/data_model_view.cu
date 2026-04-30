@@ -18,27 +18,25 @@
 
 namespace {
 
-
 /**
  * @brief Validates that break locations are within the valid range
  *        of the location matrix and that all entries are unique.
  */
 template <typename i_t>
 void validate_break_locations(i_t const* locations,
-                               i_t n,
-                               i_t num_locations,
-                               raft::handle_t const* handle)
+                              i_t n,
+                              i_t num_locations,
+                              raft::handle_t const* handle)
 {
   if (n <= 0) { return; }
-  cuopt::cuopt_expects(
-    cuopt::routing::detail::check_min_max_values(
-      locations, n, i_t{0}, num_locations - 1, handle->get_stream()),
-    cuopt::error_type_t::ValidationError,
-    "Break locations should be at the end of the matrix");
+  cuopt::cuopt_expects(cuopt::routing::detail::check_min_max_values(
+                         locations, n, i_t{0}, num_locations - 1, handle->get_stream()),
+                       cuopt::error_type_t::ValidationError,
+                       "Break locations should be at the end of the matrix");
   rmm::device_uvector<i_t> tmp(n, handle->get_stream());
   raft::copy(tmp.begin(), locations, n, handle->get_stream());
-  auto end          = thrust::unique(handle->get_thrust_policy(), tmp.begin(), tmp.end());
-  i_t unique_items  = end - tmp.begin();
+  auto end         = thrust::unique(handle->get_thrust_policy(), tmp.begin(), tmp.end());
+  i_t unique_items = end - tmp.begin();
   cuopt::cuopt_expects(n == unique_items,
                        cuopt::error_type_t::ValidationError,
                        "There should be unique break locations");
@@ -190,9 +188,8 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
   cuopt_expects(break_earliest <= break_latest,
                 error_type_t::ValidationError,
                 "Break earliest must be less than or equal than break latest!");
-  cuopt_expects(break_duration >= 0,
-                error_type_t::ValidationError,
-                "break_duration must be non-negative!");
+  cuopt_expects(
+    break_duration >= 0, error_type_t::ValidationError, "break_duration must be non-negative!");
 
   if (validate_input) {
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
@@ -217,15 +214,13 @@ void data_model_view_t<i_t, f_t>::add_vehicle_ev_break(i_t vehicle_id,
   cuopt_expects(0 <= vehicle_id && vehicle_id < fleet_size_,
                 error_type_t::ValidationError,
                 "vehicle_id must be in [0, fleet_size)");
-  cuopt_expects(distance_min >= 0,
-                error_type_t::ValidationError,
-                "distance_min must be non-negative!");
+  cuopt_expects(
+    distance_min >= 0, error_type_t::ValidationError, "distance_min must be non-negative!");
   cuopt_expects(distance_max > distance_min,
                 error_type_t::ValidationError,
                 "EV break distance_max must be greater than distance_min!");
-  cuopt_expects(charge_duration >= 0,
-                error_type_t::ValidationError,
-                "charge_duration must be non-negative!");
+  cuopt_expects(
+    charge_duration >= 0, error_type_t::ValidationError, "charge_duration must be non-negative!");
 
   if (validate_input) {
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);

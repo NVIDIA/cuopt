@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -78,7 +78,7 @@ class break_dimension_t {
 template <typename i_t>
 class vehicle_break_t {
  public:
- /**
+  /**
    * @brief Constructs a time-based break that must start within a given time window.
    *
    * @param earliest  Earliest time at which the break may start.

@@ -513,7 +513,6 @@ NodeInfo<> problem_t<i_t, f_t>::get_brother_node_info(const NodeInfo<>& node) co
     brother_id, brother_location, node.is_pickup() ? node_type_t::DELIVERY : node_type_t::PICKUP);
 }
 
-
 /**
  * @brief Builds and uploads to device all break node data required by the solver.
  *
@@ -735,9 +734,9 @@ void problem_t<i_t, f_t>::populate_special_nodes()
   special_nodes.num_breaks_offset = cuopt::device_copy(break_offset_h, handle_ptr->get_stream());
   special_nodes.break_nodes_offset =
     cuopt::device_copy(break_nodes_offset_h, handle_ptr->get_stream());
-  special_nodes.node_infos       = cuopt::device_copy(node_infos_h, handle_ptr->get_stream());
-  special_nodes.earliest_time    = cuopt::device_copy(node_earliest_h, handle_ptr->get_stream());
-  special_nodes.latest_time      = cuopt::device_copy(node_latest_h, handle_ptr->get_stream());
+  special_nodes.node_infos    = cuopt::device_copy(node_infos_h, handle_ptr->get_stream());
+  special_nodes.earliest_time = cuopt::device_copy(node_earliest_h, handle_ptr->get_stream());
+  special_nodes.latest_time   = cuopt::device_copy(node_latest_h, handle_ptr->get_stream());
   if (!node_distance_min_h.empty()) {
     special_nodes.distance_min = cuopt::device_copy(node_distance_min_h, handle_ptr->get_stream());
     special_nodes.distance_max = cuopt::device_copy(node_distance_max_h, handle_ptr->get_stream());
