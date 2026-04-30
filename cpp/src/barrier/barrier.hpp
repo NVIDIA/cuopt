@@ -22,7 +22,7 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 struct barrier_solver_settings_t {
   i_t iteration_limit = 1000;
-  f_t step_scale      = 0.9;
+  f_t step_scale      = 0.99;
 };
 
 template <typename i_t, typename f_t>
