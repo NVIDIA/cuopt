@@ -36,29 +36,24 @@ mps_parser::mps_data_model_t<int, double> create_doc_example_problem()
   std::vector<int> offsets         = {0, 2, 4};
   std::vector<int> indices         = {0, 1, 0, 1};
   std::vector<double> coefficients = {2.0, 4.0, 3.0, 2.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {230.0, -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {std::numeric_limits<double>::infinity(), 190.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower_bounds = {0.0, 0.0};
   std::vector<double> var_upper_bounds = {std::numeric_limits<double>::infinity(),
                                           std::numeric_limits<double>::infinity()};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
 
   // Set objective coefficients (maximize 5x + 3y)
   std::vector<double> objective_coefficients = {5.0, 3.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
 
   // Set variable types (x is integer, y is continuous)
   std::vector<char> variable_types = {'I', 'C'};  // 'I' for Integer, 'C' for Continuous

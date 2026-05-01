@@ -309,12 +309,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       h_offsets.push_back(static_cast<i_t>(h_indices.size()));
     }
 
-    problem.set_csr_constraint_matrix(h_values.data(),
-                                      h_values.size(),
-                                      h_indices.data(),
-                                      h_indices.size(),
-                                      h_offsets.data(),
-                                      h_offsets.size());
+    problem.set_csr_constraint_matrix(h_values, h_indices, h_offsets);
 
     mps_parser_expects(static_cast<size_t>(num_linear_rows) + 1 == h_offsets.size(),
                        error_type_t::ValidationError,
@@ -346,16 +341,16 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   for (i_t i = 0; i < (i_t)b_values.size(); ++i) {
     if (!is_quadratic_row(i)) { b_compacted.push_back(b_values[i]); }
   }
-  problem.set_constraint_bounds(b_compacted.data(), static_cast<i_t>(b_compacted.size()));
-  problem.set_objective_coefficients(c_values.data(), c_values.size());
+  problem.set_constraint_bounds(b_compacted);
+  problem.set_objective_coefficients(c_values);
 
   // Set offset and scaling factor of objective function
   problem.set_objective_scaling_factor(objective_scaling_factor_value);
   problem.set_objective_offset(objective_offset_value);
 
   // Set lower and upper bounds
-  problem.set_variable_lower_bounds(variable_lower_bounds.data(), variable_lower_bounds.size());
-  problem.set_variable_upper_bounds(variable_upper_bounds.data(), variable_upper_bounds.size());
+  problem.set_variable_lower_bounds(variable_lower_bounds);
+  problem.set_variable_upper_bounds(variable_upper_bounds);
 
   mps_parser_expects(
     (problem.get_variable_lower_bounds().size() == problem.get_variable_upper_bounds().size()) &&
@@ -445,10 +440,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
         !std::isnan(h_constraint_upper_bounds[r]), error_type_t::ValidationError, "Cannot be nan");
     }
 
-    problem.set_constraint_lower_bounds(h_constraint_lower_bounds.data(),
-                                        h_constraint_lower_bounds.size());
-    problem.set_constraint_upper_bounds(h_constraint_upper_bounds.data(),
-                                        h_constraint_upper_bounds.size());
+    problem.set_constraint_lower_bounds(h_constraint_lower_bounds);
+    problem.set_constraint_upper_bounds(h_constraint_upper_bounds);
 
     mps_parser_expects(
       (problem.get_constraint_lower_bounds().size() ==
@@ -543,12 +536,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       quadobj_entries, num_vars_for_quad, num_vars_for_quad, true, k_mps_quad_half_scale);
 
     // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(csr_result.values.data(),
-                                           csr_result.values.size(),
-                                           csr_result.indices.data(),
-                                           csr_result.indices.size(),
-                                           csr_result.offsets.data(),
-                                           csr_result.offsets.size());
+    problem.set_quadratic_objective_matrix(
+      csr_result.values, csr_result.indices, csr_result.offsets);
   } else if (!qmatrix_entries.empty()) {
     // Convert quadratic objective entries to CSR format using double transpose
     // QMATRIX stores full symmetric matrix
@@ -557,12 +546,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       qmatrix_entries, num_vars_for_quad, num_vars_for_quad, false, k_mps_quad_half_scale);
 
     // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(csr_result.values.data(),
-                                           csr_result.values.size(),
-                                           csr_result.indices.data(),
-                                           csr_result.indices.size(),
-                                           csr_result.offsets.data(),
-                                           csr_result.offsets.size());
+    problem.set_quadratic_objective_matrix(
+      csr_result.values, csr_result.indices, csr_result.offsets);
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
@@ -581,17 +566,12 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
     problem.append_quadratic_constraint(linear_row_count + quadratic_row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
-                                        A_values[row_id].data(),
-                                        static_cast<i_t>(A_values[row_id].size()),
-                                        A_indices[row_id].data(),
-                                        static_cast<i_t>(A_indices[row_id].size()),
+                                        A_values[row_id],
+                                        A_indices[row_id],
                                         b_values[row_id],
-                                        csr_result.values.data(),
-                                        static_cast<i_t>(csr_result.values.size()),
-                                        csr_result.indices.data(),
-                                        static_cast<i_t>(csr_result.indices.size()),
-                                        csr_result.offsets.data(),
-                                        static_cast<i_t>(csr_result.offsets.size()));
+                                        csr_result.values,
+                                        csr_result.indices,
+                                        csr_result.offsets);
     ++quadratic_row_id;
   }
 
@@ -607,18 +587,14 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
       }
     }
     problem.set_row_names(std::move(linear_row_names));
-    if (!row_types_linear.empty()) {
-      problem.set_row_types(row_types_linear.data(), static_cast<i_t>(row_types_linear.size()));
-    }
+    problem.set_row_types(row_types_linear);
   } else {
     std::vector<char> row_types_host(row_types.size());
     for (size_t i = 0; i < row_types.size(); ++i) {
       row_types_host[i] = static_cast<char>(row_types[i]);
     }
     problem.set_row_names(std::move(row_names));
-    if (!row_types_host.empty()) {
-      problem.set_row_types(row_types_host.data(), static_cast<i_t>(row_types_host.size()));
-    }
+    problem.set_row_types(row_types_host);
   }
 }
 
