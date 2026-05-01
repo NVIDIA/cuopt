@@ -1,16 +1,17 @@
 ---
 name: cuopt-installation-developer
 version: "26.06.00"
-description: Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt.
+description: First-time dev env setup for cuOpt (CUDA check, conda env, initial build). Hand off to cuopt-developer for ongoing build/test/contribute work.
 ---
 
 # cuOpt Installation — Developer
 
-Set up an environment to **build cuOpt from source** and run tests. For contribution behavior and PRs, see the developer skill after the build works.
+**First-time dev environment setup**: verify CUDA/driver compatibility, create the conda env, clone, complete the first build. Once the env works, switch to `cuopt-developer` for ongoing build/test/contribute work.
 
 ## When to use this skill
 
-- User wants to *build* cuOpt (clone, build deps, build, tests).
+- User is **setting up the dev environment for the first time** — clone, conda env, build deps, initial build.
+- Once the env is working, switch to `cuopt-developer` for ongoing build, test, debug, and contribute work.
 - Not for *using* cuOpt (pip/conda) — use the user installation skill instead.
 
 ## Required questions (environment)
