@@ -484,7 +484,6 @@ target_include_directories(cuopt
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
         INTERFACE
         "$<INSTALL_INTERFACE:include>"
         ${CUDSS_INCLUDE}
@@ -505,8 +504,10 @@ set(CUOPT_PRIVATE_CUDA_LIBS
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
-set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
+rapids_find_package(mps_parser REQUIRED
+        BUILD_EXPORT_SET cuopt-exports
+        INSTALL_EXPORT_SET cuopt-exports
+)
 
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
@@ -583,14 +584,14 @@ else ()
 endif ()
 
 # adds the .so files to the runtime deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
         EXPORT cuopt-exports
 )
 
 # adds the .so files to the development deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )
@@ -803,7 +804,6 @@ if (NOT SKIP_GRPC_BUILD)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/server"
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
             "${CMAKE_CURRENT_BINARY_DIR}"
             PUBLIC
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

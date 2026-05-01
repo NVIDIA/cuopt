@@ -32,6 +32,7 @@ files:
       - depends_on_cudf
       - depends_on_cupy
       - depends_on_libraft_headers
+      - depends_on_libmps_parser
       - depends_on_librmm
       - depends_on_pylibraft
       - depends_on_rapids_logger
@@ -501,12 +502,18 @@ dependencies:
     common:
       - output_types: [requirements, pyproject, conda]
         packages:
-          - cuopt-mps-parser==26.6.*,>=0.0.0a0
+          # Frozen at 26.04 — cuopt no longer builds mps-parser in-tree, see
+          # PR test/freeze-mps-parser-26.04.
+          - cuopt-mps-parser==26.04.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
           - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+  depends_on_libmps_parser:
+    common:
+      - output_types: conda
+        packages:
+          - libmps-parser==26.04.*,>=0.0.0a0
   depends_on_libraft_headers:
     common:
       - output_types: conda

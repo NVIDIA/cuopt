@@ -42,14 +42,13 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     target_include_directories(C_API_TEST
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../libmps_parser/src"
         "${CUOPT_TEST_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )
 
     target_link_libraries(C_API_TEST
         PRIVATE
-        mps_parser
+        cuopt::mps_parser
         cuopt
         cuopttestutils
         c_api_tester
