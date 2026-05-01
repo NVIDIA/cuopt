@@ -1011,13 +1011,20 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   if (elapsed_time > settings.time_limit) { return; }
 
   // 0: no batch PDLP, 1: cooperative batch PDLP and DS, 2: batch PDLP only
-  const i_t effective_batch_pdlp =
-    (settings.sub_mip ||
-     (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) ||
-     omp_get_num_threads() <
-       CUOPT_MIP_BATCH_PDLP_MIN_THREAD_COUNT)  // 1: heuristics, 1: B&B, 1: batch PDLP
-      ? 0
-      : settings.mip_batch_pdlp_strong_branching;
+  i_t effective_batch_pdlp = settings.mip_batch_pdlp_strong_branching;
+
+  // Disable for sub MIP
+  if (settings.sub_mip) { effective_batch_pdlp = 0; }
+
+  // Disable if running in deterministic mode
+  if (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) {
+    effective_batch_pdlp = 0;
+  }
+
+  // Disable if the number of threads available is too low.
+  if (omp_get_num_threads() < CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT) {
+    effective_batch_pdlp = 0;
+  }
 
   if (settings.mip_batch_pdlp_strong_branching != 0 &&
       (settings.sub_mip || settings.deterministic)) {
@@ -1422,14 +1429,28 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   constexpr i_t min_num_candidates_for_pdlp                       = 5;
   constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
   // Batch PDLP is either forced or we use the heuristic to decide if it should be used
-  const bool use_pdlp =
-    (rb_mode == 2) ||
-    (rb_mode != 0 && !settings.sub_mip && !settings.deterministic && pdlp_warm_cache.populated &&
-     unreliable_list.size() > min_num_candidates_for_pdlp &&
-     pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
-       min_percent_solved_by_batch_pdlp_at_root_for_pdlp &&
-     omp_get_num_threads() >=
-       CUOPT_MIP_BATCH_PDLP_MIN_THREAD_COUNT);  // 1: heuristics, 1: B&B, 1: batch PDLP);
+  // Check if batch PDLP was forced to be on
+  bool use_pdlp = rb_mode == 2;
+
+  // Use the heuristic to decide if it should be used (in case it is set to automatic)
+  if (!use_pdlp && rb_mode != 0) {
+    // Check if it is a sub MIP or the determinism mode is on.
+    use_pdlp = !settings.sub_mip;
+    use_pdlp &= !settings.deterministic;
+
+    // Check if the warm cache was filled at the root
+    use_pdlp &= pdlp_warm_cache.populated;
+
+    // Check if there are enough candidates for batch PDLP
+    use_pdlp &= unreliable_list.size() > min_num_candidates_for_pdlp;
+
+    // Check if batch PDLP was effective for strong branching at the root node
+    use_pdlp &= pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
+                min_percent_solved_by_batch_pdlp_at_root_for_pdlp;
+
+    // Check if there are enough threads available
+    use_pdlp &= omp_get_num_threads() >= CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT;
+  }
 
   if (rb_mode != 0 && !pdlp_warm_cache.populated) {
     log.printf("PDLP warm start data not populated, using DS only\n");
