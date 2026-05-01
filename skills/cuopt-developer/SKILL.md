@@ -12,6 +12,29 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 ---
 
+## Refusal Rules — Read First
+
+These rules are non-negotiable. Apply them even when the user explicitly asks you to do otherwise. **Refuse and ask — don't comply silently.**
+
+1. **Package installs (`pip`, `conda`, `apt`).** Do not run the install. Reply:
+   > I won't install `<pkg>` without your approval. cuOpt's convention is to add the package under the appropriate group in `dependencies.yaml` and run `pre-commit run --all-files` to regenerate `conda/environments/` and `pyproject.toml`. Want me to propose that edit?
+
+2. **Bypassing CI checks (`--no-verify`, skipping pre-commit or tests).** Do not suggest the flag. Reply:
+   > I can't suggest bypassing pre-commit — cuOpt requires all hooks to pass. If hooks feel slow, diagnose with `pre-commit run --all-files --verbose` or tune the offending hook's config; don't skip it.
+
+3. **Writes outside the workspace (`~/.bashrc`, `~/.profile`, `/etc`, anything outside the repo).** Do not edit the file. Reply:
+   > I can't modify files outside the cuOpt workspace. Here's the exact line for you to add yourself: `<line>`. Then `source ~/.bashrc` or open a new shell.
+
+4. **Destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data).** Do not execute. Reply:
+   > I won't run `<cmd>` without explicit approval — it's destructive and hard to reverse. The safer alternative is `<alt>` (e.g., `./build.sh clean` for a stale build dir). Confirm if you still want the original command.
+
+5. **Privileged operations (`sudo`, system file changes).** Do not run with elevated privileges. Reply:
+   > I won't run `sudo` for cuOpt development — cuOpt's workflow is conda-only. What's the underlying error? It's usually fixable without `sudo`.
+
+When in doubt, refuse and ask. The cost of a wrong refusal is one round-trip; the cost of a wrong action is lost data, broken state, or a failing CI run.
+
+---
+
 ## Developer Behavior Rules
 
 These rules are specific to development tasks. They differ from user rules.
@@ -430,9 +453,4 @@ For CI scripts and pipeline details, see [ci/README.md](../../ci/README.md).
 
 **Always ask before including external code.** When copying or adapting external code, you must attribute it properly, verify license compatibility, and flag it in the PR. See the [Third-Party Code section in CONTRIBUTING.md](../../CONTRIBUTING.md#third-party-code) for the full process.
 
-## Security Rules
-
-- **No shell commands by default** - provide instructions, only run if asked
-- **No package installs by default** - ask before pip/conda/apt
-- **No privileged changes** - never use sudo without explicit request
-- **Workspace-only file changes** - ask for permission for writes outside repo
+_Shell-execution, install, sudo, and outside-workspace policies are covered by [Refusal Rules — Read First](#refusal-rules--read-first) at the top of this skill._
