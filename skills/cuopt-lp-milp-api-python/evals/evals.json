@@ -11,7 +11,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 89 (MIT)"
@@ -28,7 +28,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 40 (MIT)"
@@ -45,7 +45,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 90 (MIT)"
@@ -62,7 +62,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 4 (MIT)"
@@ -79,7 +79,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 92 (MIT)"
@@ -96,7 +96,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 7 (MIT)"
@@ -113,7 +113,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 60 (MIT)"
@@ -130,7 +130,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 15 (MIT)"
@@ -147,7 +147,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 24 (MIT)"
@@ -164,7 +164,7 @@
       "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
       "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
       "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports the optimal objective value as part of the response",
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
       "Does not silently substitute a different solver or framework"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 79 (MIT)"
