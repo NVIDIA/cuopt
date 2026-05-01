@@ -1241,7 +1241,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
 pseudo_cost_value_t<f_t> pseudo_costs_t<i_t, f_t, BnBMode>::get_pseudocost(
-  i_t j, const std::vector<f_t>& solution, pseudo_cost_averages_t<i_t, f_t> averages) const
+  i_t j, pseudo_cost_averages_t<i_t, f_t> averages) const
 {
   i_t num_up   = pseudo_cost_num_up[j];
   f_t sum_up   = pseudo_cost_sum_up[j];
@@ -1249,9 +1249,18 @@ pseudo_cost_value_t<f_t> pseudo_costs_t<i_t, f_t, BnBMode>::get_pseudocost(
   f_t sum_down = pseudo_cost_sum_down[j];
   f_t pc_up    = num_up > 0 ? sum_up / num_up : averages.up_avg;
   f_t pc_down  = num_down > 0 ? sum_down / num_down : averages.down_avg;
-  f_t f_down   = solution[j] - std::floor(solution[j]);
-  f_t f_up     = std::ceil(solution[j]) - solution[j];
-  return {.f_up = f_up, .f_down = f_down, .pc_up = pc_up, .pc_down = pc_down};
+  return {pc_up, pc_down};
+}
+
+template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
+f_t pseudo_costs_t<i_t, f_t, BnBMode>::calculate_pseudocost_score(
+  i_t j, const std::vector<f_t>& solution, pseudo_cost_averages_t<i_t, f_t> averages) const
+{
+  constexpr f_t eps     = 1e-6;
+  f_t f_down            = solution[j] - std::floor(solution[j]);
+  f_t f_up              = std::ceil(solution[j]) - solution[j];
+  auto [pc_up, pc_down] = get_pseudocost(j, averages);
+  return std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
 }
 
 template <typename i_t, typename f_t, branch_and_bound_mode_t BnBMode>
@@ -1316,8 +1325,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::variable_selection(const std::vector<i_t>
                      averages.up_avg);
 
   for (i_t j : fractional) {
-    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, solution, averages);
-    f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+    f_t score = calculate_pseudocost_score(j, solution, averages);
 
     if (score > max_score) {
       max_score  = score;
@@ -1399,8 +1407,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
       unreliable_list.push_back(std::make_pair(-1, j));
       continue;
     }
-    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
-    f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+    f_t score = calculate_pseudocost_score(j, leaf_solution.x, averages);
 
     if (score > max_score) {
       max_score  = score;
@@ -1516,8 +1523,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
           score = std::max(estimate.up_obj_change, eps) * std::max(estimate.down_obj_change, eps);
         } else {
           // Use the previous score, even if it is unreliable
-          auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
-          score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
+          score = calculate_pseudocost_score(j, leaf_solution.x, averages);
         }
       }
     } else {
@@ -1692,9 +1698,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
 
       if (toc(start_time) > settings.time_limit) { continue; }
 
-      auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
-      score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
-
+      score = calculate_pseudocost_score(j, leaf_solution.x, averages);
       score_mutex.lock();
       if (score > max_score) {
         max_score  = score;
@@ -1707,24 +1711,6 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
   }
 
   f_t dual_simplex_elapsed = toc(dual_simplex_start_time);
-
-  // TODO put back
-  // if (rb_mode != 2) {
-  //  if (rb_mode == 1) {
-  //    settings.log.debug(
-  //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed, %d skipped
-  //      (PDLP) in %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
-  //      dual_simplex_infeasible.load(), num_candidates * 2,
-  //      dual_simplex_failed.load(), num_candidates * 2,
-  //      dual_simplex_skipped.load(), dual_simplex_elapsed);
-  //  } else {
-  //    settings.log.debug(
-  //      "RB Dual Simplex: %d candidates, %d/%d optimal, %d/%d infeasible, %d/%d failed in
-  //      %.2fs\n", num_candidates, dual_simplex_optimal.load(), num_candidates * 2,
-  //      dual_simplex_infeasible.load(), num_candidates * 2, dual_simplex_failed.load(),
-  //      num_candidates * 2, dual_simplex_elapsed);
-  //  }
-  //}
 
   if (use_pdlp) {
 #pragma omp taskwait
@@ -1774,9 +1760,7 @@ i_t pseudo_costs_t<i_t, f_t, BnBMode>::reliable_variable_selection(
         }
       }
 
-      auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, leaf_solution.x, averages);
-      f_t score = std::max(f_down * pc_down, eps) * std::max(f_up * pc_up, eps);
-
+      f_t score = calculate_pseudocost_score(j, leaf_solution.x, averages);
       if (score > max_score) {
         max_score  = score;
         branch_var = j;
@@ -1807,8 +1791,10 @@ f_t pseudo_costs_t<i_t, f_t, BnBMode>::obj_estimate(const std::vector<i_t>& frac
   pseudo_cost_averages_t<i_t, f_t> averages = compute_averages();
 
   for (i_t j : fractional) {
-    constexpr f_t eps                   = 1e-6;
-    auto [f_up, f_down, pc_up, pc_down] = get_pseudocost(j, solution, averages);
+    constexpr f_t eps     = 1e-6;
+    auto [pc_up, pc_down] = get_pseudocost(j, averages);
+    f_t f_down            = solution[j] - std::floor(solution[j]);
+    f_t f_up              = std::ceil(solution[j]) - solution[j];
     estimate += std::min(pc_down * f_down, pc_up * f_up);
   }
 

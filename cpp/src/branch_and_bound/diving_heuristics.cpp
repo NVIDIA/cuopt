@@ -83,9 +83,11 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   constexpr f_t eps            = f_t(1e-6);
 
   for (i_t j : fractional) {
-    auto [f_up, f_down, pc_up, pc_down] = pc.get_pseudocost(j, solution, averages);
-    f_t score_down                      = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
-    f_t score_up                        = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
+    f_t f_down            = solution[j] - std::floor(solution[j]);
+    f_t f_up              = std::ceil(solution[j]) - solution[j];
+    auto [pc_up, pc_down] = pc.get_pseudocost(j, averages);
+    f_t score_down        = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
+    f_t score_up          = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
 
     f_t score              = 0;
     branch_direction_t dir = branch_direction_t::DOWN;
@@ -145,12 +147,14 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   constexpr f_t eps            = f_t(1e-6);
 
   for (i_t j : fractional) {
+    f_t f_down    = solution[j] - std::floor(solution[j]);
+    f_t f_up      = std::ceil(solution[j]) - solution[j];
     f_t down_dist = std::abs(incumbent[j] - std::floor(solution[j]));
     f_t up_dist   = std::abs(std::ceil(solution[j]) - incumbent[j]);
     branch_direction_t dir =
       down_dist < up_dist + eps ? branch_direction_t::DOWN : branch_direction_t::UP;
 
-    auto [f_up, f_down, pc_up, pc_down] = pc.get_pseudocost(j, solution, averages);
+    auto [pc_up, pc_down] = pc.get_pseudocost(j, averages);
     f_t score1 = dir == branch_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
     f_t score2 = dir == branch_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
     f_t score  = (score1 + score2) / 6;

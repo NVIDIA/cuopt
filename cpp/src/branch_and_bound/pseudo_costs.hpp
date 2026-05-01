@@ -94,8 +94,6 @@ struct pseudo_cost_averages_t {
 
 template <typename f_t>
 struct pseudo_cost_value_t {
-  f_t f_up;
-  f_t f_down;
   f_t pc_up;
   f_t pc_down;
 };
@@ -208,9 +206,12 @@ class pseudo_costs_t {
            detail::compute_hash(pseudo_cost_num_down) ^ detail::compute_hash(pseudo_cost_num_up);
   }
 
-  pseudo_cost_value_t<f_t> get_pseudocost(i_t j,
-                                          const std::vector<f_t>& solution,
+  pseudo_cost_value_t<f_t> get_pseudocost(i_t variable,
                                           pseudo_cost_averages_t<i_t, f_t> averages) const;
+
+  f_t calculate_pseudocost_score(i_t j,
+                                 const std::vector<f_t>& solution,
+                                 pseudo_cost_averages_t<i_t, f_t> averages) const;
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
   simplex_solver_settings_t<i_t, f_t> settings;
@@ -243,7 +244,11 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
     *this = other;
   }
 
-  pseudo_cost_snapshot_t(const Base& other) : Base(1, other.settings) { *this = other; }
+  pseudo_cost_snapshot_t(const pseudo_cost_snapshot_t& other) : Base(1, other.settings)
+  {
+    *this = other;
+  }
+
   pseudo_cost_snapshot_t& operator=(
     const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
   {
@@ -266,7 +271,7 @@ class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
     return *this;
   }
 
-  pseudo_cost_snapshot_t& operator=(const Base& other)
+  pseudo_cost_snapshot_t& operator=(const pseudo_cost_snapshot_t& other)
   {
     if (this != &other) {
       this->AT                   = other.AT;
