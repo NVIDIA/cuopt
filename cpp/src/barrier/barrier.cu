@@ -528,7 +528,7 @@ class iteration_data_t {
     }
 
     if (first_call) {
-      i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;
+      i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;    // conservantive estimate of nnz
       csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, new_nnz);
       std::vector<i_t> augmented_diagonal_indices(n + m, -1);
       std::vector<i_t> cone_csr_indices_host(total_block_nnz, -1);
@@ -571,7 +571,7 @@ class iteration_data_t {
           for (i_t c = 0; c < q_k; c++) {
             i_t col         = cone_col_start + c;
             f_t q_contrib   = f_t(0);
-            f_t initial_val = (c == local_r) ? f_t(1) : f_t(0);
+            f_t initial_val = (c == local_r) ? f_t(-dual_perturb) : f_t(0);   // diagonal entry of the cone block column
 
             if (qp < q_end && Q.i[qp] == col) {
               q_contrib = Q.x[qp];
@@ -2070,6 +2070,35 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 
   dense_vector_t<i_t, f_t> dual_res(lp.num_cols);
   float64_t epsilon_adjust = 10.0;
+
+  // Set the initial point for the SOC case separately
+  if (has_soc) {
+    const i_t cs = data.cone_start();
+    // Nonnegative primal / dual (linear orthant): x_j, z_j <- 1
+    for (i_t j = 0; j < cs; ++j) {
+      data.x[j] = 1.0;
+      data.z[j] = 1.0;
+    }
+    // Primal and dual SOC blocks: (t, x_bar) <- (1, 0, ..., 0)
+    i_t off = 0;
+    for (i_t k = 0; k < static_cast<i_t>(lp.second_order_cone_dims.size()); ++k) {
+      i_t q_k = lp.second_order_cone_dims[k];
+      data.x[cs + off] = 1.0;
+      data.z[cs + off] = 1.0;
+      for (i_t j = 1; j < q_k; ++j) {
+        data.x[cs + off + j] = 0.0;
+        data.z[cs + off + j] = 0.0;
+      }
+      off += q_k;
+    }
+    data.y.set_scalar(0.0);
+    if (data.n_upper_bounds > 0) {
+      data.w.set_scalar(1.0);
+      data.v.set_scalar(1.0);
+    }
+    return 0;
+  }
+
   if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
     // Use the dual starting point suggested by the paper
     // On Implementing Mehrotra’s Predictor–Corrector Interior-Point Method for Linear Programming
@@ -2179,27 +2208,27 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   data.w.ensure_positive(epsilon_adjust);
   data.x.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
 
-  if (has_soc) {
-    const auto& dims = lp.second_order_cone_dims;
-    i_t cs           = data.cone_start();
-    i_t off          = 0;
+  // if (has_soc) {
+  //   const auto& dims = lp.second_order_cone_dims;
+  //   i_t cs           = data.cone_start();
+  //   i_t off          = 0;
 
-    for (i_t k = 0; k < static_cast<i_t>(dims.size()); ++k) {
-      i_t q_k                  = dims[k];
-      auto shift_into_interior = [&](auto& vec) {
-        f_t tail_sq = f_t(0);
-        for (i_t j = 1; j < q_k; ++j) {
-          f_t v = vec[cs + off + j];
-          tail_sq += v * v;
-        }
-        f_t gap = std::sqrt(tail_sq) - vec[cs + off];
-        if (gap >= f_t(0)) { vec[cs + off] += f_t(1) + gap; }
-      };
-      shift_into_interior(data.x);
-      shift_into_interior(data.z);
-      off += q_k;
-    }
-  }
+  //   for (i_t k = 0; k < static_cast<i_t>(dims.size()); ++k) {
+  //     i_t q_k                  = dims[k];
+  //     auto shift_into_interior = [&](auto& vec) {
+  //       f_t tail_sq = f_t(0);
+  //       for (i_t j = 1; j < q_k; ++j) {
+  //         f_t v = vec[cs + off + j];
+  //         tail_sq += v * v;
+  //       }
+  //       f_t gap = std::sqrt(tail_sq) - vec[cs + off];
+  //       if (gap >= f_t(0)) { vec[cs + off] += f_t(1) + gap; }
+  //     };
+  //     shift_into_interior(data.x);
+  //     shift_into_interior(data.z);
+  //     off += q_k;
+  //   }
+  // }
 
 #ifdef PRINT_INFO
   settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
