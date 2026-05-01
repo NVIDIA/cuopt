@@ -131,19 +131,15 @@ class pseudo_costs_t {
  public:
   // Define the types used for storing the pseudocost of each variable.
   // Disable or enable atomics depending on if we are in REGULAR or DETERMINISTIC modes
-  using float_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<f_t>, f_t>;
+  using float_type = omp_atomic_t<f_t>;
 
-  using int_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<i_t>, i_t>;
+  using int_type = omp_atomic_t<i_t>;
 
   // Counting the number of LP iterations might require more than an int32 can hold.
-  using int64_type = std::
-    conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_atomic_t<int64_t>, int64_t>;
+  using int64_type = omp_atomic_t<int64_t>;
 
   // Disable or enable mutexes depending on if we are in REGULAR or DETERMINISTIC modes
-  using mutex_type =
-    std::conditional_t<BnBMode == branch_and_bound_mode_t::PARALLEL, omp_mutex_t, fake_omp_mutex_t>;
+  using mutex_type = omp_mutex_t;
 
   explicit pseudo_costs_t(i_t num_variables, const simplex_solver_settings_t<i_t, f_t>& settings)
     : settings(settings),
