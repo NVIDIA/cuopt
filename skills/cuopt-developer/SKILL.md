@@ -1,7 +1,7 @@
 ---
 name: cuopt-developer
 version: "26.06.00"
-description: Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture.
+description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 ---
 
 # cuOpt Developer Skill
@@ -139,6 +139,15 @@ cuopt/
 
 ## Build & Test
 
+### Pre-flight Checks (Required Before First Build or Test)
+
+Skipping any of these surfaces as confusing runtime errors later. Run them in order:
+
+1. **Check CUDA driver compatibility.** Run `nvidia-smi` and read the *CUDA Version* in the top-right corner — that's the maximum CUDA your driver supports. Pick a conda env file from `conda/environments/all_cuda-<ver>_arch-<arch>.yaml` whose CUDA major version is **≤** that. A mismatch builds successfully but fails at runtime inside RMM with `cudaMallocAsync not supported with this CUDA driver/runtime version` — verify this *before* the build, not after.
+2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command. Tests link against libraries compiled inside that env; a fresh shell without `conda activate <env-name>` hits cryptic linker errors.
+3. **Set `PARALLEL_LEVEL`** if RAM is constrained — see PARALLEL_LEVEL below. The default `$(nproc)` can OOM mid-build because CUDA compilation needs ~4–8 GB per job.
+4. **For tests, fetch datasets first.** cuOpt tests need MPS files not in the repo — follow the dataset download steps in [CONTRIBUTING.md](../../CONTRIBUTING.md) ("Building for development" section) and export `RAPIDS_DATASET_ROOT_DIR`.
+
 ### PARALLEL_LEVEL
 
 `PARALLEL_LEVEL` controls the number of parallel compile jobs. It defaults to `$(nproc)` (all cores), which can cause OOM on machines with limited RAM — CUDA compilation is memory-intensive. Set it based on your system's available RAM (roughly 4-8 GB per job):
@@ -165,6 +174,8 @@ export PARALLEL_LEVEL=8   # adjust based on available RAM
 ```
 
 ### Run Tests
+
+> Activate the conda env used to build first (`conda activate <env-name>`) and ensure datasets are fetched — see Pre-flight Checks above.
 
 ```bash
 # C++ tests

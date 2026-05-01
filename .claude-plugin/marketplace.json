@@ -18,7 +18,7 @@
       "name": "cuopt-developer",
       "source": "./skills/cuopt-developer",
       "skills": "./",
-      "description": "Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture."
+      "description": "Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions."
     },
     {
       "name": "cuopt-installation-common",
