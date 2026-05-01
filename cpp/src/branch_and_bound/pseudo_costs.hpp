@@ -19,7 +19,6 @@
 #include <utilities/omp_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
 
-#include <omp.h>
 #include <cmath>
 #include <rmm/device_uvector.hpp>
 
@@ -51,10 +50,10 @@ struct reliability_branching_settings_t {
   f_t bnb_lp_factor = 0.5;
   i_t bnb_lp_offset = 100000;
 
-  // Maximum and minimum points in curve to determine the value
+  // Maximum and minimum points in curve to determine the sumue
   // of the `reliable_threshold` based on the current number of LP
   // iterations in strong branching and B&B. Since it is a
-  // a curve, the actual value of `reliable_threshold` may be
+  // a curve, the actual sumue of `reliable_threshold` may be
   // higher than `max_reliable_threshold`.
   // Only used when `reliable_threshold` is negative
   i_t max_reliable_threshold = 5;
@@ -85,20 +84,6 @@ struct batch_pdlp_warm_cache_t {
 };
 
 template <typename i_t, typename f_t>
-struct pseudo_cost_averages_t {
-  f_t down_avg;
-  i_t num_init_down;
-  f_t up_avg;
-  i_t num_init_up;
-};
-
-template <typename f_t>
-struct pseudo_cost_value_t {
-  f_t pc_up;
-  f_t pc_down;
-};
-
-template <typename i_t, typename f_t>
 struct pseudo_cost_update_t {
   i_t variable;
   branch_direction_t direction;
@@ -115,30 +100,9 @@ struct pseudo_cost_update_t {
   }
 };
 
-// `BnBMode` specify how we control the memory accesses:
-// - If `BnBMode == branch_and_bound_mode_t::PARALLEL`, then we assume that this object is shared
-// among the B&B threads, and thus, require atomics and mutexes to avoid data races.
-//  - If `BnBMode == branch_and_bound_mode_t::DETERMINISTIC`, then each thread has it own pseudocost
-// snapshot, hence, we can disable all atomics and mutexes.
-// `BnBMode` is automatically set depending if it is a `pseudo_costs_t` (PARALLEL)
-// or a `pseudo_costs_snapshot_t` (DETERMINISTIC).
-template <typename i_t,
-          typename f_t,
-          branch_and_bound_mode_t BnBMode = branch_and_bound_mode_t::PARALLEL>
+template <typename i_t, typename f_t>
 class pseudo_costs_t {
  public:
-  // Define the types used for storing the pseudocost of each variable.
-  // Disable or enable atomics depending on if we are in REGULAR or DETERMINISTIC modes
-  using float_type = omp_atomic_t<f_t>;
-
-  using int_type = omp_atomic_t<i_t>;
-
-  // Counting the number of LP iterations might require more than an int32 can hold.
-  using int64_type = omp_atomic_t<int64_t>;
-
-  // Disable or enable mutexes depending on if we are in REGULAR or DETERMINISTIC modes
-  using mutex_type = omp_mutex_t;
-
   explicit pseudo_costs_t(i_t num_variables, const simplex_solver_settings_t<i_t, f_t>& settings)
     : settings(settings),
       pseudo_cost_sum_down(num_variables),
@@ -150,6 +114,24 @@ class pseudo_costs_t {
       AT(std::make_shared<csc_matrix_t<i_t, f_t>>(1, 1, 1)),
       pdlp_warm_cache(std::make_shared<batch_pdlp_warm_cache_t<i_t, f_t>>())
   {
+  }
+
+  pseudo_costs_t(const pseudo_costs_t<i_t, f_t>& other) : pseudo_costs_t(1, other.settings)
+  {
+    *this = other;
+  }
+
+  pseudo_costs_t& operator=(const pseudo_costs_t& other)
+  {
+    if (this != &other) {
+      this->AT                   = other.AT;
+      this->pdlp_warm_cache      = other.pdlp_warm_cache;
+      this->pseudo_cost_num_down = other.pseudo_cost_num_down;
+      this->pseudo_cost_num_up   = other.pseudo_cost_num_up;
+      this->pseudo_cost_sum_down = other.pseudo_cost_sum_down;
+      this->pseudo_cost_sum_up   = other.pseudo_cost_sum_up;
+    }
+    return *this;
   }
 
   void update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_objective);
@@ -177,7 +159,11 @@ class pseudo_costs_t {
     pseudo_cost_mutex_down.resize(num_variables);
   }
 
-  pseudo_cost_averages_t<i_t, f_t> compute_averages() const;
+  f_t get_pseudocost_down(i_t j, f_t avg) const;
+  f_t get_pseudocost_up(i_t j, f_t avg) const;
+
+  f_t compute_pseudocost_average_down();
+  f_t compute_pseudocost_average_up();
 
   f_t obj_estimate(const std::vector<i_t>& fractional,
                    const std::vector<f_t>& solution,
@@ -206,83 +192,56 @@ class pseudo_costs_t {
            detail::compute_hash(pseudo_cost_num_down) ^ detail::compute_hash(pseudo_cost_num_up);
   }
 
-  pseudo_cost_value_t<f_t> get_pseudocost(i_t variable,
-                                          pseudo_cost_averages_t<i_t, f_t> averages) const;
-
   f_t calculate_pseudocost_score(i_t j,
                                  const std::vector<f_t>& solution,
-                                 pseudo_cost_averages_t<i_t, f_t> averages) const;
+                                 f_t avg_down,
+                                 f_t avg_up) const;
+
+  std::shared_ptr<csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
+  std::shared_ptr<batch_pdlp_warm_cache_t<i_t, f_t>> pdlp_warm_cache;
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
   simplex_solver_settings_t<i_t, f_t> settings;
 
-  std::shared_ptr<csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
-  std::vector<float_type> pseudo_cost_sum_up;
-  std::vector<float_type> pseudo_cost_sum_down;
-  std::vector<int_type> pseudo_cost_num_up;
-  std::vector<int_type> pseudo_cost_num_down;
-  std::vector<mutex_type> pseudo_cost_mutex_up;
-  std::vector<mutex_type> pseudo_cost_mutex_down;
-  int64_type strong_branching_lp_iter = 0;
+ protected:
+  // Do not use this attributes directly. Instead rely on the get/update/set methods
+  // as they conditionally use atomics when needed
+  std::vector<f_t> pseudo_cost_sum_up;
+  std::vector<f_t> pseudo_cost_sum_down;
+  std::vector<i_t> pseudo_cost_num_up;
+  std::vector<i_t> pseudo_cost_num_down;
+  std::vector<omp_mutex_t> pseudo_cost_mutex_up;
+  std::vector<omp_mutex_t> pseudo_cost_mutex_down;
 
-  std::shared_ptr<batch_pdlp_warm_cache_t<i_t, f_t>> pdlp_warm_cache;
+  omp_atomic_t<int64_t> strong_branching_lp_iter = 0;
+
+  void update_pseudocost_down(i_t j, f_t delta);
+  void update_pseudocost_up(i_t j, f_t delta);
+
+  i_t get_pseudocost_num_down(i_t j);
+  i_t get_pseudocost_num_up(i_t j);
+
+  void lock_variable_up(i_t j);
+  void lock_variable_down(i_t j);
+  void unlock_variable_up(i_t j);
+  void unlock_variable_down(i_t j);
 };
 
-template <typename i_t,
-          typename f_t,
-          branch_and_bound_mode_t BnBMode = branch_and_bound_mode_t::DETERMINISTIC>
-class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t, BnBMode> {
+template <typename i_t, typename f_t>
+class pseudo_cost_snapshot_t : public pseudo_costs_t<i_t, f_t> {
  public:
-  using Base = pseudo_costs_t<i_t, f_t, BnBMode>;
+  using Base = pseudo_costs_t<i_t, f_t>;
+  using Base::Base;
 
-  pseudo_cost_snapshot_t(i_t num_variables, const simplex_solver_settings_t<i_t, f_t>& settings)
-    : Base(num_variables, settings) {};
-
-  pseudo_cost_snapshot_t(const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
-    : Base(1, other.settings)
+  pseudo_cost_snapshot_t(const pseudo_costs_t<i_t, f_t>& other) : Base(1, other.settings)
   {
-    *this = other;
+    Base::operator=(other);
   }
 
-  pseudo_cost_snapshot_t(const pseudo_cost_snapshot_t& other) : Base(1, other.settings)
+  pseudo_cost_snapshot_t operator=(const pseudo_costs_t<i_t, f_t>& other)
   {
-    *this = other;
+    return Base::operator=(other);
   }
-
-  pseudo_cost_snapshot_t& operator=(
-    const pseudo_costs_t<i_t, f_t, branch_and_bound_mode_t::PARALLEL>& other)
-  {
-    this->AT              = other.AT;
-    this->pdlp_warm_cache = other.pdlp_warm_cache;
-
-    i_t n = other.pseudo_cost_num_down.size();
-    this->pseudo_cost_num_down.resize(n);
-    this->pseudo_cost_num_up.resize(n);
-    this->pseudo_cost_sum_down.resize(n);
-    this->pseudo_cost_sum_up.resize(n);
-
-    for (i_t i = 0; i < n; ++i) {
-      this->pseudo_cost_num_down[i] = other.pseudo_cost_num_down[i].underlying();
-      this->pseudo_cost_num_up[i]   = other.pseudo_cost_num_up[i].underlying();
-      this->pseudo_cost_sum_down[i] = other.pseudo_cost_sum_down[i].underlying();
-      this->pseudo_cost_sum_up[i]   = other.pseudo_cost_sum_up[i].underlying();
-    }
-
-    return *this;
-  }
-
-  pseudo_cost_snapshot_t& operator=(const pseudo_cost_snapshot_t& other)
-  {
-    if (this != &other) {
-      this->AT                   = other.AT;
-      this->pdlp_warm_cache      = other.pdlp_warm_cache;
-      this->pseudo_cost_num_down = other.pseudo_cost_num_down;
-      this->pseudo_cost_num_up   = other.pseudo_cost_num_up;
-      this->pseudo_cost_sum_down = other.pseudo_cost_sum_down;
-      this->pseudo_cost_sum_up   = other.pseudo_cost_sum_up;
-    }
-    return *this;
-  };
 
   void queue_update(
     i_t variable, branch_direction_t direction, f_t delta, double clock, int worker_id)

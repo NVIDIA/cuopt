@@ -7,8 +7,6 @@
 
 #include <branch_and_bound/diving_heuristics.hpp>
 
-#include <tuple>
-
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -65,8 +63,8 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
   return {branch_var, round_dir};
 }
 
-template <typename i_t, typename f_t, branch_and_bound_mode_t Mode>
-branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
                                          const std::vector<i_t>& fractional,
                                          const std::vector<f_t>& solution,
                                          const std::vector<f_t>& root_solution,
@@ -75,7 +73,8 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   const i_t num_fractional = fractional.size();
   if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  pseudo_cost_averages_t<i_t, f_t> averages = pc.compute_averages();
+  f_t avg_down = pc.compute_pseudocost_average_down();
+  f_t avg_up   = pc.compute_pseudocost_average_up();
 
   i_t branch_var               = fractional[0];
   f_t max_score                = std::numeric_limits<f_t>::lowest();
@@ -83,11 +82,12 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   constexpr f_t eps            = f_t(1e-6);
 
   for (i_t j : fractional) {
-    f_t f_down            = solution[j] - std::floor(solution[j]);
-    f_t f_up              = std::ceil(solution[j]) - solution[j];
-    auto [pc_up, pc_down] = pc.get_pseudocost(j, averages);
-    f_t score_down        = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
-    f_t score_up          = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
+    f_t f_down     = solution[j] - std::floor(solution[j]);
+    f_t f_up       = std::ceil(solution[j]) - solution[j];
+    f_t pc_down    = pc.get_pseudocost_down(j, avg_down);
+    f_t pc_up      = pc.get_pseudocost_up(j, avg_up);
+    f_t score_down = std::sqrt(f_up) * (1 + pc_up) / (1 + pc_down);
+    f_t score_up   = std::sqrt(f_down) * (1 + pc_down) / (1 + pc_up);
 
     f_t score              = 0;
     branch_direction_t dir = branch_direction_t::DOWN;
@@ -129,8 +129,8 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   return {branch_var, round_dir};
 }
 
-template <typename i_t, typename f_t, branch_and_bound_mode_t Mode>
-branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
                                      const std::vector<i_t>& fractional,
                                      const std::vector<f_t>& solution,
                                      const std::vector<f_t>& incumbent,
@@ -139,7 +139,8 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
   const i_t num_fractional = fractional.size();
   if (num_fractional == 0) return {-1, branch_direction_t::NONE};
 
-  pseudo_cost_averages_t<i_t, f_t> averages = pc.compute_averages();
+  f_t avg_down = pc.compute_pseudocost_average_down();
+  f_t avg_up   = pc.compute_pseudocost_average_up();
 
   i_t branch_var               = fractional[0];
   f_t max_score                = std::numeric_limits<f_t>::lowest();
@@ -154,10 +155,11 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t, Mode>& pc,
     branch_direction_t dir =
       down_dist < up_dist + eps ? branch_direction_t::DOWN : branch_direction_t::UP;
 
-    auto [pc_up, pc_down] = pc.get_pseudocost(j, averages);
-    f_t score1 = dir == branch_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
-    f_t score2 = dir == branch_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
-    f_t score  = (score1 + score2) / 6;
+    f_t pc_down = pc.get_pseudocost_down(j, avg_down);
+    f_t pc_up   = pc.get_pseudocost_up(j, avg_up);
+    f_t score1  = dir == branch_direction_t::DOWN ? 5 * pc_down * f_down : 5 * pc_up * f_up;
+    f_t score2  = dir == branch_direction_t::DOWN ? pc_up * f_up : pc_down * f_down;
+    f_t score   = (score1 + score2) / 6;
 
     if (score > max_score) {
       max_score  = score;
@@ -257,25 +259,11 @@ template branch_variable_t<int> pseudocost_diving(pseudo_costs_t<int, double>& p
                                                   const std::vector<double>& root_solution,
                                                   logger_t& log);
 
-template branch_variable_t<int> pseudocost_diving(
-  pseudo_costs_t<int, double, branch_and_bound_mode_t::DETERMINISTIC>& pc,
-  const std::vector<int>& fractional,
-  const std::vector<double>& solution,
-  const std::vector<double>& root_solution,
-  logger_t& log);
-
 template branch_variable_t<int> guided_diving(pseudo_costs_t<int, double>& pc,
                                               const std::vector<int>& fractional,
                                               const std::vector<double>& solution,
                                               const std::vector<double>& incumbent,
                                               logger_t& log);
-
-template branch_variable_t<int> guided_diving(
-  pseudo_costs_t<int, double, branch_and_bound_mode_t::DETERMINISTIC>& pc,
-  const std::vector<int>& fractional,
-  const std::vector<double>& solution,
-  const std::vector<double>& incumbent,
-  logger_t& log);
 
 template void calculate_variable_locks(const lp_problem_t<int, double>& lp_problem,
                                        std::vector<int>& up_locks,
