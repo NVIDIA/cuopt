@@ -20,7 +20,7 @@
 
 namespace cuopt::linear_programming {
 
-enum class var_t { CONTINUOUS = 0, INTEGER };
+enum class var_t { CONTINUOUS = 0, INTEGER, SEMI_CONTINUOUS };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 template <typename i_t, typename f_t>
@@ -56,7 +56,51 @@ class optimization_problem_interface_t {
   static_assert(std::is_floating_point<f_t>::value,
                 "'optimization_problem_interface_t' accepts only floating point types for weights");
 
+  /** Quadratic constraint bundle used by core optimization problem interfaces. */
+  struct quadratic_constraint_t {
+    i_t constraint_row_index{};
+    std::string constraint_row_name{};
+    char constraint_row_type{};
+    std::vector<f_t> linear_values{};
+    std::vector<i_t> linear_indices{};
+    f_t rhs_value{f_t(0)};
+    std::vector<f_t> quadratic_values{};
+    std::vector<i_t> quadratic_indices{};
+    std::vector<i_t> quadratic_offsets{};
+  };
+
   virtual ~optimization_problem_interface_t() = default;
+
+  /**
+   * @brief Store quadratic constraints for MPS round-trip (linear + Q parts per QC row).
+   */
+  virtual void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) = 0;
+  template <typename qc_t,
+            typename = std::enable_if_t<!std::is_same_v<qc_t, quadratic_constraint_t>>>
+  void set_quadratic_constraints(const std::vector<qc_t>& constraints)
+  {
+    std::vector<quadratic_constraint_t> converted_constraints;
+    converted_constraints.reserve(constraints.size());
+    for (const auto& qc : constraints) {
+      converted_constraints.push_back(
+        {static_cast<i_t>(qc.constraint_row_index),
+         qc.constraint_row_name,
+         qc.constraint_row_type,
+         std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
+         std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
+         static_cast<f_t>(qc.rhs_value),
+         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end()),
+         std::vector<i_t>(qc.quadratic_indices.begin(), qc.quadratic_indices.end()),
+         std::vector<i_t>(qc.quadratic_offsets.begin(), qc.quadratic_offsets.end())});
+    }
+    set_quadratic_constraints(std::move(converted_constraints));
+  }
+
+  /** @brief Whether quadratic constraint metadata is present (for MPS export). */
+  virtual bool has_quadratic_constraints() const = 0;
+
+  /** @brief Quadratic constraints for MPS export (empty if none). */
+  virtual const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const = 0;
 
   // ============================================================================
   // Setters (accept both CPU and GPU pointers)

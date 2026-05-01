@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <utility>
 
 namespace cuopt::mps_parser {
 
@@ -217,6 +218,88 @@ void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_val
     size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
   Q_objective_offsets_.resize(size_offsets);
   std::copy(Q_offsets, Q_offsets + size_offsets, Q_objective_offsets_.data());
+}
+
+template <typename i_t, typename f_t>
+void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_index,
+                                                             const std::string& constraint_row_name,
+                                                             char constraint_row_type,
+                                                             const f_t* linear_values,
+                                                             i_t linear_nnz,
+                                                             const i_t* linear_indices,
+                                                             i_t linear_indices_nnz,
+                                                             f_t rhs_value,
+                                                             const f_t* quadratic_values,
+                                                             i_t quadratic_size_values,
+                                                             const i_t* quadratic_indices,
+                                                             i_t quadratic_size_indices,
+                                                             const i_t* quadratic_offsets,
+                                                             i_t quadratic_size_offsets)
+{
+  mps_parser_expects(constraint_row_index >= 0,
+                     error_type_t::ValidationError,
+                     "constraint_row_index must be non-negative");
+
+  mps_parser_expects(constraint_row_type == 'L',
+                     error_type_t::ValidationError,
+                     "Quadratic constraint ROWS type must be 'L' (less-or-equal); got '%c'. "
+                     "Only 'L' is supported for convex quadratic constraints.",
+                     constraint_row_type);
+
+  mps_parser_expects(linear_nnz == linear_indices_nnz,
+                     error_type_t::ValidationError,
+                     "linear_values and linear_indices must have the same nnz count");
+  if (linear_nnz != 0) {
+    mps_parser_expects(linear_values != nullptr && linear_indices != nullptr,
+                       error_type_t::ValidationError,
+                       "linear_values and linear_indices cannot be null when linear_nnz > 0");
+  }
+
+  if (quadratic_size_values != 0) {
+    mps_parser_expects(quadratic_values != nullptr,
+                       error_type_t::ValidationError,
+                       "quadratic_values cannot be null");
+  }
+  mps_parser_expects(quadratic_offsets != nullptr,
+                     error_type_t::ValidationError,
+                     "quadratic_offsets cannot be null");
+  if (quadratic_size_indices != 0) {
+    mps_parser_expects(quadratic_indices != nullptr,
+                       error_type_t::ValidationError,
+                       "quadratic_indices cannot be null");
+  }
+  mps_parser_expects(quadratic_size_offsets > 0,
+                     error_type_t::ValidationError,
+                     "quadratic_size_offsets cannot be empty");
+
+  quadratic_constraint_t qc;
+  qc.constraint_row_index = constraint_row_index;
+  qc.constraint_row_name  = constraint_row_name;
+  qc.constraint_row_type  = constraint_row_type;
+  qc.rhs_value            = rhs_value;
+
+  qc.linear_values.resize(linear_nnz);
+  qc.linear_indices.resize(linear_nnz);
+  if (linear_nnz > 0) {
+    std::copy(linear_values, linear_values + linear_nnz, qc.linear_values.data());
+    std::copy(linear_indices, linear_indices + linear_nnz, qc.linear_indices.data());
+  }
+
+  qc.quadratic_values.resize(quadratic_size_values);
+  if (quadratic_size_values > 0) {
+    std::copy(
+      quadratic_values, quadratic_values + quadratic_size_values, qc.quadratic_values.data());
+  }
+  qc.quadratic_indices.resize(quadratic_size_indices);
+  if (quadratic_size_indices > 0) {
+    std::copy(
+      quadratic_indices, quadratic_indices + quadratic_size_indices, qc.quadratic_indices.data());
+  }
+  qc.quadratic_offsets.resize(quadratic_size_offsets);
+  std::copy(
+    quadratic_offsets, quadratic_offsets + quadratic_size_offsets, qc.quadratic_offsets.data());
+
+  quadratic_constraints_.push_back(std::move(qc));
 }
 
 template <typename i_t, typename f_t>
@@ -455,9 +538,22 @@ std::vector<i_t>& mps_data_model_t<i_t, f_t>::get_quadratic_objective_offsets()
 }
 
 template <typename i_t, typename f_t>
+auto mps_data_model_t<i_t, f_t>::get_quadratic_constraints() const
+  -> const std::vector<quadratic_constraint_t>&
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
 bool mps_data_model_t<i_t, f_t>::has_quadratic_objective() const noexcept
 {
   return !Q_objective_values_.empty();
+}
+
+template <typename i_t, typename f_t>
+bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
+{
+  return !quadratic_constraints_.empty();
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error

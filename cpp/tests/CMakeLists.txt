@@ -40,13 +40,6 @@ set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 function(ConfigureTest CMAKE_TEST_NAME)
     cmake_parse_arguments(CT "" "" "LABELS" ${ARGN})
     add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
-    set_target_properties(${CMAKE_TEST_NAME}
-      PROPERTIES
-      CXX_STANDARD 20
-      CXX_STANDARD_REQUIRED ON
-      CUDA_STANDARD 20
-      CUDA_STANDARD_REQUIRED ON
-    )
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"

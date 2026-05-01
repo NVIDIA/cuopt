@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -262,6 +262,57 @@ class mps_data_model_t {
                                       const i_t* Q_offsets,
                                       i_t size_offsets);
 
+  /**
+   * @brief One quadratic constraint as parsed from MPS sections (ROWS, COLUMNS, RHS, QCMATRIX).
+   *
+   * This bundles all pieces of a quadratic row:
+   * - row identity and type (from ROWS),
+   * - sparse linear coefficients (from COLUMNS),
+   * - RHS value (from RHS),
+   * - quadratic matrix Q in CSR (from QCMATRIX).
+   */
+  struct quadratic_constraint_t {
+    /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
+    i_t constraint_row_index{};
+    std::string constraint_row_name{};
+    /** MPS ROWS sense for this quadratic row; only 'L' (≤) is supported for convex QCQP at the
+     * moment. */
+    char constraint_row_type{};
+    std::vector<f_t> linear_values{};
+    std::vector<i_t> linear_indices{};
+    f_t rhs_value{f_t(0)};
+    std::vector<f_t> quadratic_values{};
+    std::vector<i_t> quadratic_indices{};
+    std::vector<i_t> quadratic_offsets{};
+  };
+
+  /**
+   * @brief Append one complete quadratic constraint (row + linear + rhs + quadratic Q).
+   * @note Pointer+size signature is kept for current CI/toolchain compatibility; `std::span`
+   *       can be revisited later when compatibility constraints are lifted.
+   * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
+   * @param quadratic_values, quadratic_indices CSR nnz; may be empty if Q is empty.
+   * @param quadratic_offsets CSR row starts; must be non-empty.
+   * @param constraint_row_type MPS ROWS type; must be 'L'. 'G' and 'E' quadratic rows are not
+   *        supported.
+   */
+  void append_quadratic_constraint(i_t constraint_row_index,
+                                   const std::string& constraint_row_name,
+                                   char constraint_row_type,
+                                   const f_t* linear_values,
+                                   i_t linear_nnz,
+                                   const i_t* linear_indices,
+                                   i_t linear_indices_nnz,
+                                   f_t rhs_value,
+                                   const f_t* quadratic_values,
+                                   i_t quadratic_size_values,
+                                   const i_t* quadratic_indices,
+                                   i_t quadratic_size_indices,
+                                   const i_t* quadratic_offsets,
+                                   i_t quadratic_size_offsets);
+
+  const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
+
   i_t get_n_variables() const;
   i_t get_n_constraints() const;
   i_t get_nnz() const;
@@ -306,6 +357,8 @@ class mps_data_model_t {
 
   bool has_quadratic_objective() const noexcept;
 
+  bool has_quadratic_constraints() const noexcept;
+
   /** whether to maximize or minimize the objective function */
   bool maximize_;
   /**
@@ -342,7 +395,7 @@ class mps_data_model_t {
   std::string problem_name_;
   /** names of each of the variables in the OP */
   std::vector<std::string> var_names_{};
-  /** names of each of the rows (aka constraints or objective) in the OP */
+  /** names of linear constraint rows in exported MPS order. */
   std::vector<std::string> row_names_{};
   /** number of variables */
   i_t n_vars_{0};
@@ -360,6 +413,9 @@ class mps_data_model_t {
   std::vector<f_t> Q_objective_values_;
   std::vector<i_t> Q_objective_indices_;
   std::vector<i_t> Q_objective_offsets_;
+
+  /** One full quadratic constraint per QCMATRIX block, in order of appearance in the file */
+  std::vector<quadratic_constraint_t> quadratic_constraints_;
 
 };  // class mps_data_model_t
 

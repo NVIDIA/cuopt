@@ -7,9 +7,10 @@
 
 #pragma once
 
-#include <mps_parser/utilities/span.hpp>
+#include <mps_parser/mps_data_model.hpp>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -268,33 +269,33 @@ class data_model_view_t {
   /**
    * @brief Get the CSR constraint matrix values
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_constraint_matrix_values() const noexcept;
+  std::span<f_t const> get_constraint_matrix_values() const noexcept;
   /**
    * @brief Get the CSR constraint matrix indices
    *
-   * @return span<i_t const>
+   * @return std::span<i_t const>
    */
-  span<i_t const> get_constraint_matrix_indices() const noexcept;
+  std::span<i_t const> get_constraint_matrix_indices() const noexcept;
   /**
    * @brief Get the CSR constraint matrix offsets
    *
-   * @return span<i_t const>
+   * @return std::span<i_t const>
    */
-  span<i_t const> get_constraint_matrix_offsets() const noexcept;
+  std::span<i_t const> get_constraint_matrix_offsets() const noexcept;
   /**
    * @brief Get the b (right-hand side) constraints array
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_constraint_bounds() const noexcept;
+  std::span<f_t const> get_constraint_bounds() const noexcept;
   /**
    * @brief Get the c vector (weights of each x variable).
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_objective_coefficients() const noexcept;
+  std::span<f_t const> get_objective_coefficients() const noexcept;
   /**
    * @brief Get the objective scaling factor
    *
@@ -310,62 +311,62 @@ class data_model_view_t {
   /**
    * @brief Get the variables (x) lower bounds
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_variable_lower_bounds() const noexcept;
+  std::span<f_t const> get_variable_lower_bounds() const noexcept;
   /**
    * @brief Get the variables (x) upper bounds
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_variable_upper_bounds() const noexcept;
+  std::span<f_t const> get_variable_upper_bounds() const noexcept;
   /**
    * @brief Get the variables (x) types
    *
-   * @return span<char const>
+   * @return std::span<char const>
    */
-  span<char const> get_variable_types() const noexcept;
+  std::span<char const> get_variable_types() const noexcept;
   /**
    * @brief Get the row types
    *
-   * @return span<char const>
+   * @return std::span<char const>
    */
-  span<char const> get_row_types() const noexcept;
+  std::span<char const> get_row_types() const noexcept;
   /**
    * @brief Get the constraints lower bounds
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_constraint_lower_bounds() const noexcept;
+  std::span<f_t const> get_constraint_lower_bounds() const noexcept;
   /**
    * @brief Get the constraints upper bounds
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_constraint_upper_bounds() const noexcept;
+  std::span<f_t const> get_constraint_upper_bounds() const noexcept;
   /**
    * @brief Get the initial primal solution
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_initial_primal_solution() const noexcept;
+  std::span<f_t const> get_initial_primal_solution() const noexcept;
   /**
    * @brief Get the initial dual solution
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_initial_dual_solution() const noexcept;
+  std::span<f_t const> get_initial_dual_solution() const noexcept;
 
   /**
    * @brief Get the variable names
    *
-   * @return span<std::string const>
+   * @return const std::vector<std::string>&
    */
   const std::vector<std::string>& get_variable_names() const noexcept;
   /**
    * @brief Get the row names
    *
-   * @return span<std::string const>
+   * @return const std::vector<std::string>&
    */
   const std::vector<std::string>& get_row_names() const noexcept;
 
@@ -386,21 +387,21 @@ class data_model_view_t {
   /**
    * @brief Get the quadratic objective matrix values
    *
-   * @return span<f_t const>
+   * @return std::span<f_t const>
    */
-  span<f_t const> get_quadratic_objective_values() const noexcept;
+  std::span<f_t const> get_quadratic_objective_values() const noexcept;
   /**
    * @brief Get the quadratic objective matrix indices
    *
-   * @return span<i_t const>
+   * @return std::span<i_t const>
    */
-  span<i_t const> get_quadratic_objective_indices() const noexcept;
+  std::span<i_t const> get_quadratic_objective_indices() const noexcept;
   /**
    * @brief Get the quadratic objective matrix offsets
    *
-   * @return span<i_t const>
+   * @return std::span<i_t const>
    */
-  span<i_t const> get_quadratic_objective_offsets() const noexcept;
+  std::span<i_t const> get_quadratic_objective_offsets() const noexcept;
   /**
    * @brief Check if the problem has quadratic objective terms
    *
@@ -415,35 +416,66 @@ class data_model_view_t {
    */
   bool is_Q_symmetrized() const noexcept;
 
+  /**
+   * @brief Quadratic constraints (MPS QCMATRIX); owned copy for writers when not using spans.
+   */
+  void set_quadratic_constraints(
+    std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints);
+  template <typename qc_t>
+  void set_quadratic_constraints(const std::vector<qc_t>& constraints)
+  {
+    quadratic_constraints_.clear();
+    quadratic_constraints_.reserve(constraints.size());
+    for (const auto& qc : constraints) {
+      quadratic_constraints_.push_back(
+        {static_cast<i_t>(qc.constraint_row_index),
+         qc.constraint_row_name,
+         qc.constraint_row_type,
+         std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
+         std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
+         static_cast<f_t>(qc.rhs_value),
+         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end()),
+         std::vector<i_t>(qc.quadratic_indices.begin(), qc.quadratic_indices.end()),
+         std::vector<i_t>(qc.quadratic_offsets.begin(), qc.quadratic_offsets.end())});
+    }
+  }
+
+  bool has_quadratic_constraints() const noexcept;
+
+  const std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>&
+  get_quadratic_constraints() const noexcept;
+
  private:
   bool maximize_{false};
-  span<f_t const> A_;
-  span<i_t const> A_indices_;
-  span<i_t const> A_offsets_;
-  span<f_t const> b_;
-  span<f_t const> c_;
+  std::span<f_t const> A_;
+  std::span<i_t const> A_indices_;
+  std::span<i_t const> A_offsets_;
+  std::span<f_t const> b_;
+  std::span<f_t const> c_;
   f_t objective_scaling_factor_{1};
   f_t objective_offset_{0};
-  span<f_t const> variable_lower_bounds_;
-  span<f_t const> variable_upper_bounds_;
-  span<char const> variable_types_;
-  span<char const> row_types_;
+  std::span<f_t const> variable_lower_bounds_;
+  std::span<f_t const> variable_upper_bounds_;
+  std::span<char const> variable_types_;
+  std::span<char const> row_types_;
   std::string objective_name_;
   std::string problem_name_;
   std::vector<std::string> variable_names_;
   std::vector<std::string> row_names_;
-  span<f_t const> constraint_lower_bounds_;
-  span<f_t const> constraint_upper_bounds_;
+  std::span<f_t const> constraint_lower_bounds_;
+  std::span<f_t const> constraint_upper_bounds_;
 
   // TODO move to solver_settings in next release
-  span<f_t const> initial_primal_solution_;
-  span<f_t const> initial_dual_solution_;
+  std::span<f_t const> initial_primal_solution_;
+  std::span<f_t const> initial_dual_solution_;
 
   // QPS-specific data members for quadratic programming support
-  span<f_t const> Q_objective_;
-  span<i_t const> Q_objective_indices_;
-  span<i_t const> Q_objective_offsets_;
+  std::span<f_t const> Q_objective_;
+  std::span<i_t const> Q_objective_indices_;
+  std::span<i_t const> Q_objective_offsets_;
   bool is_Q_symmetrized_{false};
+
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> quadratic_constraints_;
 };  // class data_model_view_t
 
 }  // namespace cuopt::mps_parser

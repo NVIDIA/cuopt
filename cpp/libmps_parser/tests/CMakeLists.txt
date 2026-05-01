@@ -12,11 +12,6 @@ function(ConfigureTest CMAKE_TEST_NAME)
 
     set_target_properties(${CMAKE_TEST_NAME}
         PROPERTIES
-        # set target compile options
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
         POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
     )
@@ -26,6 +21,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../src"
         "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}

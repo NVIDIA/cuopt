@@ -12,15 +12,28 @@
 #include <utilities/error.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
+#include <vector>
 
 namespace cuopt::mps_parser {
+
+namespace {
+
+template <typename f_t>
+char linear_row_type_from_bounds(f_t cl, f_t cu)
+{
+  if (cl == cu) { return 'E'; }
+  if (std::isinf(cu)) { return 'G'; }
+  return 'L';
+}
+
+}  // namespace
 
 template <typename i_t, typename f_t>
 mps_writer_t<i_t, f_t>::mps_writer_t(const data_model_view_t<i_t, f_t>& problem) : problem_(problem)
@@ -103,6 +116,12 @@ data_model_view_t<i_t, f_t> mps_writer_t<i_t, f_t>::create_view(
                                         static_cast<i_t>(Q_offsets.size()));
   }
 
+  if (model.has_quadratic_constraints()) {
+    view.set_quadratic_constraints(
+      std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>(
+        model.get_quadratic_constraints()));
+  }
+
   return view;
 }
 
@@ -129,6 +148,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     n_constraints = problem_.get_constraint_bounds().size();
   else
     n_constraints = problem_.get_constraint_lower_bounds().size();
+  const auto& quadratic_constraints = problem_.get_quadratic_constraints();
+  const i_t n_quadratic_constraints = static_cast<i_t>(quadratic_constraints.size());
 
   std::vector<f_t> objective_coefficients(problem_.get_objective_coefficients().size());
   std::vector<f_t> constraint_lower_bounds(n_constraints);
@@ -211,15 +232,19 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   mps_file << " N  "
            << (problem_.get_objective_name().empty() ? "OBJ" : problem_.get_objective_name())
            << "\n";
-  for (size_t i = 0; i < (size_t)n_constraints; i++) {
+  for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
     std::string row_name =
-      i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
-    char type = 'L';
-    if (constraint_lower_bounds[i] == constraint_upper_bounds[i])
-      type = 'E';
-    else if (std::isinf(constraint_upper_bounds[i]))
-      type = 'G';
+      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    char const type =
+      linear_row_type_from_bounds(constraint_lower_bounds[k], constraint_upper_bounds[k]);
     mps_file << " " << type << "  " << row_name << "\n";
+  }
+  for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
+    const auto& qc = quadratic_constraints[q];
+    std::string row_name =
+      qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
+    // Quadratic rows are currently restricted to MPS 'L' (<=).
+    mps_file << " L  " << row_name << "\n";
   }
 
   // COLUMNS section
@@ -230,9 +255,13 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   std::vector<bool> var_in_constraint(n_variables, false);
   std::map<i_t, std::vector<std::pair<i_t, f_t>>> integral_col_nnzs;
   std::map<i_t, std::vector<std::pair<i_t, f_t>>> continuous_col_nnzs;
-  for (size_t row_id = 0; row_id < (size_t)n_constraints; row_id++) {
-    for (size_t k = (size_t)constraint_matrix_offsets[row_id];
-         k < (size_t)constraint_matrix_offsets[row_id + 1];
+
+  // iterate over the constraint matrix and add the nonzeros to the integral and continuous col_nnzs
+  // maps
+  for (size_t csr_row = 0; csr_row < (size_t)n_constraints; csr_row++) {
+    const i_t row_id = static_cast<i_t>(csr_row);
+    for (size_t k = (size_t)constraint_matrix_offsets[csr_row];
+         k < (size_t)constraint_matrix_offsets[csr_row + 1];
          k++) {
       size_t var = (size_t)constraint_matrix_indices[k];
       if (variable_types[var] == 'I') {
@@ -241,6 +270,24 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
         continuous_col_nnzs[var].emplace_back(row_id, constraint_matrix_values[k]);
       }
       var_in_constraint[var] = true;
+    }
+  }
+
+  // Quadratic constraint rows omit linear coefficients from global A; add them from QC bundles.
+  if (problem_.has_quadratic_constraints()) {
+    for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
+      const auto& qc      = quadratic_constraints[q];
+      const size_t row_id = static_cast<size_t>(n_constraints) + q;
+      for (size_t t = 0; t < qc.linear_indices.size(); ++t) {
+        size_t var = static_cast<size_t>(qc.linear_indices[t]);
+        f_t val    = qc.linear_values[t];
+        if (variable_types[var] == 'I') {
+          integral_col_nnzs[var].emplace_back(row_id, val);
+        } else {
+          continuous_col_nnzs[var].emplace_back(row_id, val);
+        }
+        var_in_constraint[var] = true;
+      }
     }
   }
 
@@ -276,9 +323,21 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                                ? problem_.get_variable_names()[var_id]
                                : "C" + std::to_string(var_id);
       for (auto& nnz : nnzs) {
-        std::string row_name = nnz.first < problem_.get_row_names().size()
-                                 ? problem_.get_row_names()[nnz.first]
-                                 : "R" + std::to_string(nnz.first);
+        std::string row_name;
+        if (static_cast<size_t>(nnz.first) < static_cast<size_t>(n_constraints)) {
+          // Linear rows: do not use row-name count here—names are optional; row id is 0..m-1.
+          row_name = static_cast<size_t>(nnz.first) < problem_.get_row_names().size()
+                       ? problem_.get_row_names()[nnz.first]
+                       : "R" + std::to_string(nnz.first);
+        } else if (static_cast<size_t>(nnz.first) <
+                   static_cast<size_t>(n_constraints) + quadratic_constraints.size()) {
+          const size_t q = static_cast<size_t>(nnz.first) - static_cast<size_t>(n_constraints);
+          row_name       = quadratic_constraints[q].constraint_row_name.empty()
+                             ? "QC" + std::to_string(q)
+                             : quadratic_constraints[q].constraint_row_name;
+        } else {
+          row_name = "R" + std::to_string(nnz.first);
+        }
         mps_file << "    " << col_name << " " << row_name << " " << nnz.second << "\n";
       }
       // Write objective coefficients
@@ -293,21 +352,28 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   // RHS section
   mps_file << "RHS\n";
-  for (size_t i = 0; i < (size_t)n_constraints; i++) {
+  for (size_t k = 0; k < static_cast<size_t>(n_constraints); ++k) {
     std::string row_name =
-      i < problem_.get_row_names().size() ? problem_.get_row_names()[i] : "R" + std::to_string(i);
-
-    f_t rhs;
+      k < problem_.get_row_names().size() ? problem_.get_row_names()[k] : "R" + std::to_string(k);
+    f_t rhs{0};
     if (constraint_bounds.size() > 0)
-      rhs = constraint_bounds[i];
-    else if (std::isinf(constraint_lower_bounds[i])) {
-      rhs = constraint_upper_bounds[i];
-    } else if (std::isinf(constraint_upper_bounds[i])) {
-      rhs = constraint_lower_bounds[i];
-    } else {  // RANGES, encode the lower bound
-      rhs = constraint_lower_bounds[i];
+      rhs = constraint_bounds[k];
+    else if (std::isinf(constraint_lower_bounds[k])) {
+      rhs = constraint_upper_bounds[k];
+    } else if (std::isinf(constraint_upper_bounds[k])) {
+      rhs = constraint_lower_bounds[k];
+    } else {
+      rhs = constraint_lower_bounds[k];
     }
-
+    if (std::isfinite(rhs) && rhs != 0.0) {
+      mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
+    }
+  }
+  for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
+    const auto& qc = quadratic_constraints[q];
+    std::string row_name =
+      qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
+    const f_t rhs = qc.rhs_value;
     if (std::isfinite(rhs) && rhs != 0.0) {
       mps_file << "    RHS1      " << row_name << " " << rhs << "\n";
     }
@@ -421,6 +487,29 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                                      ? problem_.get_variable_names()[j]
                                      : "C" + std::to_string(j);
             mps_file << "    " << row_name << " " << col_name << " " << v << "\n";
+          }
+        }
+      }
+    }
+  }
+
+  // QCMATRIX sections for quadratic constraints (QCQP)
+  if (problem_.has_quadratic_constraints()) {
+    for (const auto& qc : problem_.get_quadratic_constraints()) {
+      mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
+      const i_t n_quad_rows = static_cast<i_t>(qc.quadratic_offsets.size()) - 1;
+      for (i_t i = 0; i < n_quad_rows; ++i) {
+        std::string row_var_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
+                                     ? problem_.get_variable_names()[i]
+                                     : "C" + std::to_string(i);
+        for (i_t p = qc.quadratic_offsets[i]; p < qc.quadratic_offsets[i + 1]; ++p) {
+          i_t j                    = qc.quadratic_indices[p];
+          f_t v                    = qc.quadratic_values[p];
+          std::string col_var_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
+                                       ? problem_.get_variable_names()[j]
+                                       : "C" + std::to_string(j);
+          if (v != f_t(0)) {
+            mps_file << "    " << row_var_name << " " << col_var_name << " " << v << "\n";
           }
         }
       }
