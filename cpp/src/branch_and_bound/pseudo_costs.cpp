@@ -23,6 +23,10 @@
 
 #include <omp.h>
 
+#include <mip_heuristics/mip_constants.hpp>
+
+#include "branch_and_bound_worker.hpp"
+
 namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
