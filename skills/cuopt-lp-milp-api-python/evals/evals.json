@@ -6,13 +6,7 @@
     "expected_script": null,
     "ground_truth": "219816.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 0 (MIT)"
   },
@@ -23,13 +17,7 @@
     "expected_script": null,
     "ground_truth": "1350.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 1 (MIT)"
   },
@@ -40,13 +28,7 @@
     "expected_script": null,
     "ground_truth": "10349920.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 2 (MIT)"
   },
@@ -57,13 +39,7 @@
     "expected_script": null,
     "ground_truth": "30400.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 3 (MIT)"
   },
@@ -74,13 +50,7 @@
     "expected_script": null,
     "ground_truth": "18.95657143",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 4 (MIT)"
   },
@@ -91,13 +61,7 @@
     "expected_script": null,
     "ground_truth": "10755.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 5 (MIT)"
   },
@@ -108,13 +72,7 @@
     "expected_script": null,
     "ground_truth": "904590.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 6 (MIT)"
   },
@@ -125,13 +83,7 @@
     "expected_script": null,
     "ground_truth": "14.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 7 (MIT)"
   },
@@ -142,13 +94,7 @@
     "expected_script": null,
     "ground_truth": "623.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 8 (MIT)"
   },
@@ -159,13 +105,7 @@
     "expected_script": null,
     "ground_truth": "3.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 9 (MIT)"
   },
@@ -176,13 +116,7 @@
     "expected_script": null,
     "ground_truth": "272.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 10 (MIT)"
   },
@@ -193,13 +127,7 @@
     "expected_script": null,
     "ground_truth": "43200.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 11 (MIT)"
   },
@@ -210,13 +138,7 @@
     "expected_script": null,
     "ground_truth": "180000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 12 (MIT)"
   },
@@ -227,13 +149,7 @@
     "expected_script": null,
     "ground_truth": "123.8",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 13 (MIT)"
   },
@@ -244,13 +160,7 @@
     "expected_script": null,
     "ground_truth": "134.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 14 (MIT)"
   },
@@ -261,13 +171,7 @@
     "expected_script": null,
     "ground_truth": "4100.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 15 (MIT)"
   },
@@ -278,13 +182,7 @@
     "expected_script": null,
     "ground_truth": "5.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 16 (MIT)"
   },
@@ -295,13 +193,7 @@
     "expected_script": null,
     "ground_truth": "4000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 17 (MIT)"
   },
@@ -312,13 +204,7 @@
     "expected_script": null,
     "ground_truth": "956.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 18 (MIT)"
   },
@@ -329,13 +215,7 @@
     "expected_script": null,
     "ground_truth": "15000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 19 (MIT)"
   },
@@ -346,13 +226,7 @@
     "expected_script": null,
     "ground_truth": "270290.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 20 (MIT)"
   },
@@ -363,13 +237,7 @@
     "expected_script": null,
     "ground_truth": "24000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 21 (MIT)"
   },
@@ -380,13 +248,7 @@
     "expected_script": null,
     "ground_truth": "1000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 22 (MIT)"
   },
@@ -397,13 +259,7 @@
     "expected_script": null,
     "ground_truth": "510000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 23 (MIT)"
   },
@@ -414,13 +270,7 @@
     "expected_script": null,
     "ground_truth": "53.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 24 (MIT)"
   },
@@ -431,13 +281,7 @@
     "expected_script": null,
     "ground_truth": "1146.4142",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 25 (MIT)"
   },
@@ -448,13 +292,7 @@
     "expected_script": null,
     "ground_truth": "580000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 26 (MIT)"
   },
@@ -465,13 +303,7 @@
     "expected_script": null,
     "ground_truth": "2000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 27 (MIT)"
   },
@@ -482,13 +314,7 @@
     "expected_script": null,
     "ground_truth": "32.43589744",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 28 (MIT)"
   },
@@ -499,13 +325,7 @@
     "expected_script": null,
     "ground_truth": "1190.38",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 29 (MIT)"
   },
@@ -516,13 +336,7 @@
     "expected_script": null,
     "ground_truth": "2924.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 30 (MIT)"
   },
@@ -533,13 +347,7 @@
     "expected_script": null,
     "ground_truth": "1000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 31 (MIT)"
   },
@@ -550,13 +358,7 @@
     "expected_script": null,
     "ground_truth": "7.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 32 (MIT)"
   },
@@ -567,13 +369,7 @@
     "expected_script": null,
     "ground_truth": "14.1",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 33 (MIT)"
   },
@@ -584,13 +380,7 @@
     "expected_script": null,
     "ground_truth": "175.37",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 34 (MIT)"
   },
@@ -601,13 +391,7 @@
     "expected_script": null,
     "ground_truth": "11250.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 35 (MIT)"
   },
@@ -618,13 +402,7 @@
     "expected_script": null,
     "ground_truth": "14.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 36 (MIT)"
   },
@@ -635,13 +413,7 @@
     "expected_script": null,
     "ground_truth": "600.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 37 (MIT)"
   },
@@ -652,13 +424,7 @@
     "expected_script": null,
     "ground_truth": "36288567.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 38 (MIT)"
   },
@@ -669,13 +435,7 @@
     "expected_script": null,
     "ground_truth": "964640.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 39 (MIT)"
   },
@@ -686,13 +446,7 @@
     "expected_script": null,
     "ground_truth": "150.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 40 (MIT)"
   },
@@ -703,13 +457,7 @@
     "expected_script": null,
     "ground_truth": "6800.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 41 (MIT)"
   },
@@ -720,13 +468,7 @@
     "expected_script": null,
     "ground_truth": "685.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 42 (MIT)"
   },
@@ -737,13 +479,7 @@
     "expected_script": null,
     "ground_truth": "712.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 43 (MIT)"
   },
@@ -754,13 +490,7 @@
     "expected_script": null,
     "ground_truth": "717.9",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 44 (MIT)"
   },
@@ -771,13 +501,7 @@
     "expected_script": null,
     "ground_truth": "20241.8",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 45 (MIT)"
   },
@@ -788,13 +512,7 @@
     "expected_script": null,
     "ground_truth": "11250.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 46 (MIT)"
   },
@@ -805,13 +523,7 @@
     "expected_script": null,
     "ground_truth": "113000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 47 (MIT)"
   },
@@ -822,13 +534,7 @@
     "expected_script": null,
     "ground_truth": "9100.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 48 (MIT)"
   },
@@ -839,13 +545,7 @@
     "expected_script": null,
     "ground_truth": "4240.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 49 (MIT)"
   },
@@ -856,13 +556,7 @@
     "expected_script": null,
     "ground_truth": "150.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 50 (MIT)"
   },
@@ -873,13 +567,7 @@
     "expected_script": null,
     "ground_truth": "3050.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 51 (MIT)"
   },
@@ -890,13 +578,7 @@
     "expected_script": null,
     "ground_truth": "134.5",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 52 (MIT)"
   },
@@ -907,13 +589,7 @@
     "expected_script": null,
     "ground_truth": "4.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 53 (MIT)"
   },
@@ -924,13 +600,7 @@
     "expected_script": null,
     "ground_truth": "-700.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 54 (MIT)"
   },
@@ -941,13 +611,7 @@
     "expected_script": null,
     "ground_truth": "600.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 55 (MIT)"
   },
@@ -958,13 +622,7 @@
     "expected_script": null,
     "ground_truth": "264000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 56 (MIT)"
   },
@@ -975,13 +633,7 @@
     "expected_script": null,
     "ground_truth": "6160.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 57 (MIT)"
   },
@@ -992,13 +644,7 @@
     "expected_script": null,
     "ground_truth": "153.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 58 (MIT)"
   },
@@ -1009,13 +655,7 @@
     "expected_script": null,
     "ground_truth": "37000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 59 (MIT)"
   },
@@ -1026,13 +666,7 @@
     "expected_script": null,
     "ground_truth": "90000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 60 (MIT)"
   },
@@ -1043,13 +677,7 @@
     "expected_script": null,
     "ground_truth": "640.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 61 (MIT)"
   },
@@ -1060,13 +688,7 @@
     "expected_script": null,
     "ground_truth": "38000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 62 (MIT)"
   },
@@ -1077,13 +699,7 @@
     "expected_script": null,
     "ground_truth": "30500.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 63 (MIT)"
   },
@@ -1094,13 +710,7 @@
     "expected_script": null,
     "ground_truth": "25000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 64 (MIT)"
   },
@@ -1111,13 +721,7 @@
     "expected_script": null,
     "ground_truth": "3160500.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 65 (MIT)"
   },
@@ -1128,13 +732,7 @@
     "expected_script": null,
     "ground_truth": "1030.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 66 (MIT)"
   },
@@ -1145,13 +743,7 @@
     "expected_script": null,
     "ground_truth": "53.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 67 (MIT)"
   },
@@ -1162,13 +754,7 @@
     "expected_script": null,
     "ground_truth": "35.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 68 (MIT)"
   },
@@ -1179,13 +765,7 @@
     "expected_script": null,
     "ground_truth": "330.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 69 (MIT)"
   },
@@ -1196,13 +776,7 @@
     "expected_script": null,
     "ground_truth": "135000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 70 (MIT)"
   },
@@ -1213,13 +787,7 @@
     "expected_script": null,
     "ground_truth": "1600.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 71 (MIT)"
   },
@@ -1230,13 +798,7 @@
     "expected_script": null,
     "ground_truth": "115000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 72 (MIT)"
   },
@@ -1247,13 +809,7 @@
     "expected_script": null,
     "ground_truth": "57.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 73 (MIT)"
   },
@@ -1264,13 +820,7 @@
     "expected_script": null,
     "ground_truth": "4700.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 74 (MIT)"
   },
@@ -1281,13 +831,7 @@
     "expected_script": null,
     "ground_truth": "1005.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 75 (MIT)"
   },
@@ -1298,13 +842,7 @@
     "expected_script": null,
     "ground_truth": "172.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 76 (MIT)"
   },
@@ -1315,13 +853,7 @@
     "expected_script": null,
     "ground_truth": "9800.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 77 (MIT)"
   },
@@ -1332,13 +864,7 @@
     "expected_script": null,
     "ground_truth": "84000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 78 (MIT)"
   },
@@ -1349,13 +875,7 @@
     "expected_script": null,
     "ground_truth": "28.6",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 79 (MIT)"
   },
@@ -1366,13 +886,7 @@
     "expected_script": null,
     "ground_truth": "28.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 80 (MIT)"
   },
@@ -1383,13 +897,7 @@
     "expected_script": null,
     "ground_truth": "26.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 81 (MIT)"
   },
@@ -1400,13 +908,7 @@
     "expected_script": null,
     "ground_truth": "23000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 82 (MIT)"
   },
@@ -1417,13 +919,7 @@
     "expected_script": null,
     "ground_truth": "1861.466667",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 83 (MIT)"
   },
@@ -1434,13 +930,7 @@
     "expected_script": null,
     "ground_truth": "77500.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 84 (MIT)"
   },
@@ -1451,13 +941,7 @@
     "expected_script": null,
     "ground_truth": "4170.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 85 (MIT)"
   },
@@ -1468,13 +952,7 @@
     "expected_script": null,
     "ground_truth": "1.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 86 (MIT)"
   },
@@ -1485,13 +963,7 @@
     "expected_script": null,
     "ground_truth": "140.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 87 (MIT)"
   },
@@ -1502,13 +974,7 @@
     "expected_script": null,
     "ground_truth": "3600.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 88 (MIT)"
   },
@@ -1519,13 +985,7 @@
     "expected_script": null,
     "ground_truth": "408.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 89 (MIT)"
   },
@@ -1536,13 +996,7 @@
     "expected_script": null,
     "ground_truth": "6200.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 90 (MIT)"
   },
@@ -1553,13 +1007,7 @@
     "expected_script": null,
     "ground_truth": "3360.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 91 (MIT)"
   },
@@ -1570,13 +1018,7 @@
     "expected_script": null,
     "ground_truth": "5000000.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 92 (MIT)"
   },
@@ -1587,13 +1029,7 @@
     "expected_script": null,
     "ground_truth": "528.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 93 (MIT)"
   },
@@ -1604,13 +1040,7 @@
     "expected_script": null,
     "ground_truth": "21.5",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 94 (MIT)"
   },
@@ -1621,13 +1051,7 @@
     "expected_script": null,
     "ground_truth": "450.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 95 (MIT)"
   },
@@ -1638,13 +1062,7 @@
     "expected_script": null,
     "ground_truth": "165900.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 96 (MIT)"
   },
@@ -1655,13 +1073,7 @@
     "expected_script": null,
     "ground_truth": "0.6075",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 97 (MIT)"
   },
@@ -1672,13 +1084,7 @@
     "expected_script": null,
     "ground_truth": "84.0",
     "expected_behavior": [
-      "Identifies the decision variables and their domains from the problem",
-      "Encodes every constraint stated in the problem (none invented, none silently skipped)",
-      "Sets the optimization objective with the correct sense (minimize or maximize) per the problem statement",
-      "Uses the cuOpt Python LP/MILP API to encode and solve the problem",
-      "Asks the user for clarification if any parameter, constraint, or objective in the problem statement is genuinely ambiguous",
-      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)",
-      "Does not silently substitute a different solver or framework"
+      "Reports an optimal objective value that exactly matches the ground_truth to the precision shown (no rounding tolerance is allowed)"
     ],
     "source": "microsoft/OptiGuide optimind_cleaned_classified_industryor.csv row 98 (MIT)"
   }
