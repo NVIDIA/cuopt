@@ -12,7 +12,7 @@
       "name": "cuopt-user-rules",
       "source": "./skills/cuopt-user-rules",
       "skills": "./",
-      "description": "Base behavior rules for using NVIDIA cuOpt. Read first when helping users with cuOpt (routing, LP/MILP, QP, installation, server)."
+      "description": "Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server). Not for cuOpt internals — use cuopt-developer for those."
     },
     {
       "name": "cuopt-developer",

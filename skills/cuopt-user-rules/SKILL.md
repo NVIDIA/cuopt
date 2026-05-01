@@ -1,12 +1,12 @@
 ---
 name: cuopt-user-rules
 version: "26.06.00"
-description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
+description: Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server). Not for cuOpt internals — use cuopt-developer for those.
 ---
 
 # cuOpt User Rules
 
-**Read this before using any cuOpt skill.** These rules ensure you help users effectively and safely.
+**Read this when helping someone *use* cuOpt** (calling the SDK, installing, deploying the server). For modifying cuOpt itself, switch to `cuopt-developer`.
 
 ---
 
