@@ -1239,135 +1239,17 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 }
 
 template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::update_pseudocost_down(i_t j, f_t delta)
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    pseudo_cost_sum_down[j] += delta;
-    pseudo_cost_num_down[j]++;
-  } else {
-#pragma omp atomic
-    pseudo_cost_sum_down[j] += delta;
-
-#pragma omp atomic
-    pseudo_cost_num_down[j]++;
-  }
-}
-
-template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::update_pseudocost_up(i_t j, f_t delta)
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    pseudo_cost_sum_up[j] += delta;
-    pseudo_cost_num_up[j]++;
-  } else {
-#pragma omp atomic
-    pseudo_cost_sum_up[j] += delta;
-
-#pragma omp atomic
-    pseudo_cost_num_up[j]++;
-  }
-}
-
-template <typename i_t, typename f_t>
-inline i_t pseudo_costs_t<i_t, f_t>::get_pseudocost_num_down(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    return pseudo_cost_num_down[j];
-  } else {
-    i_t num;
-#pragma omp atomic read
-    num = pseudo_cost_num_down[j];
-    return num;
-  }
-}
-
-template <typename i_t, typename f_t>
-inline i_t pseudo_costs_t<i_t, f_t>::get_pseudocost_num_up(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    return pseudo_cost_num_up[j];
-  } else {
-    i_t num;
-#pragma omp atomic read
-    num = pseudo_cost_num_up[j];
-    return num;
-  }
-}
-
-template <typename i_t, typename f_t>
-inline f_t pseudo_costs_t<i_t, f_t>::get_pseudocost_down(i_t j, f_t avg) const
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    return pseudo_cost_num_down[j] > 0 ? pseudo_cost_sum_down[j] / pseudo_cost_num_down[j] : avg;
-  } else {
-    i_t num;
-    f_t sum;
-
-#pragma omp atomic read
-    num = pseudo_cost_num_down[j];
-
-    if (num > 0) {
-#pragma omp atomic read
-      sum = pseudo_cost_sum_down[j];
-
-      return sum / num;
-    } else {
-      return avg;
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
-inline f_t pseudo_costs_t<i_t, f_t>::get_pseudocost_up(i_t j, f_t avg) const
-{
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    return pseudo_cost_num_up[j] > 0 ? pseudo_cost_sum_up[j] / pseudo_cost_num_up[j] : avg;
-  } else {
-    i_t num;
-    f_t sum;
-
-#pragma omp atomic read
-    num = pseudo_cost_num_up[j];
-
-    if (num > 0) {
-#pragma omp atomic read
-      sum = pseudo_cost_sum_up[j];
-
-      return sum / num;
-    } else {
-      return avg;
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
 inline f_t pseudo_costs_t<i_t, f_t>::compute_pseudocost_average_down()
 {
   i_t num_initialized = 0;
   f_t avg             = 0.0;
 
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    for (size_t j = 0; j < pseudo_cost_sum_down.size(); ++j) {
-      if (pseudo_cost_num_down[j] > 0 && std::isfinite(pseudo_cost_sum_down[j])) {
-        ++num_initialized;
-        avg += pseudo_cost_sum_down[j] / pseudo_cost_num_down[j];
-      }
-    }
-  } else {
-    for (size_t j = 0; j < pseudo_cost_sum_down.size(); ++j) {
-      i_t n;
-      f_t sum;
-
-#pragma omp atomic read
-      n = pseudo_cost_num_down[j];
-
-#pragma omp atomic read
-      sum = pseudo_cost_sum_down[j];
-
-      if (n > 0 && std::isfinite(sum)) {
-        ++num_initialized;
-        avg += sum / n;
-      }
+  for (size_t j = 0; j < pseudo_cost_sum_down.size(); ++j) {
+    i_t num = pseudo_cost_num_down[j];
+    f_t sum = pseudo_cost_sum_down[j];
+    if (num > 0 && std::isfinite(sum)) {
+      ++num_initialized;
+      avg += sum / num;
     }
   }
 
@@ -1380,56 +1262,16 @@ inline f_t pseudo_costs_t<i_t, f_t>::compute_pseudocost_average_up()
   i_t num_initialized = 0;
   f_t avg             = 0.0;
 
-  if (settings.deterministic == CUOPT_MODE_DETERMINISTIC) {
-    for (size_t j = 0; j < pseudo_cost_sum_up.size(); ++j) {
-      if (pseudo_cost_num_up[j] > 0 && std::isfinite(pseudo_cost_sum_up[j])) {
-        ++num_initialized;
-        avg += pseudo_cost_sum_up[j] / pseudo_cost_num_up[j];
-      }
-    }
-  } else {
-    for (size_t j = 0; j < pseudo_cost_sum_up.size(); ++j) {
-      i_t n;
-      f_t sum;
-
-#pragma omp atomic read
-      n = pseudo_cost_num_up[j];
-
-#pragma omp atomic read
-      sum = pseudo_cost_sum_up[j];
-
-      if (n > 0 && std::isfinite(sum)) {
-        ++num_initialized;
-        avg += sum / n;
-      }
+  for (size_t j = 0; j < pseudo_cost_sum_up.size(); ++j) {
+    i_t num = pseudo_cost_num_up[j];
+    f_t sum = pseudo_cost_sum_up[j];
+    if (num > 0 && std::isfinite(sum)) {
+      ++num_initialized;
+      avg += sum / num;
     }
   }
 
   return (num_initialized > 0) ? avg / num_initialized : 1.0;
-}
-
-template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::lock_variable_up(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_OPPORTUNISTIC) { pseudo_cost_mutex_up[j].lock(); }
-}
-
-template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::lock_variable_down(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_OPPORTUNISTIC) { pseudo_cost_mutex_down[j].lock(); }
-}
-
-template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::unlock_variable_up(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_OPPORTUNISTIC) { pseudo_cost_mutex_up[j].unlock(); }
-}
-
-template <typename i_t, typename f_t>
-inline void pseudo_costs_t<i_t, f_t>::unlock_variable_down(i_t j)
-{
-  if (settings.deterministic == CUOPT_MODE_OPPORTUNISTIC) { pseudo_cost_mutex_down[j].unlock(); }
 }
 
 template <typename i_t, typename f_t>
@@ -1456,9 +1298,11 @@ void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_pt
                               : std::ceil(node_ptr->fractional_val) - node_ptr->fractional_val;
 
   if (node_ptr->branch_dir == branch_direction_t::DOWN) {
-    update_pseudocost_down(node_ptr->branch_var, change_in_obj / frac);
+    pseudo_cost_sum_down[node_ptr->branch_var] += change_in_obj / frac;
+    pseudo_cost_num_down[node_ptr->branch_var]++;
   } else {
-    update_pseudocost_up(node_ptr->branch_var, change_in_obj / frac);
+    pseudo_cost_sum_up[node_ptr->branch_var] += change_in_obj / frac;
+    pseudo_cost_num_up[node_ptr->branch_var]++;
   }
 }
 
@@ -1549,8 +1393,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   omp_mutex_t score_mutex;
 
   for (i_t j : fractional) {
-    if (get_pseudocost_num_down(j) < reliable_threshold ||
-        get_pseudocost_num_up(j) < reliable_threshold) {
+    if (pseudo_cost_num_down[j] < reliable_threshold ||
+        pseudo_cost_num_up[j] < reliable_threshold) {
       unreliable_list.push_back(std::make_pair(-1, j));
       continue;
     }
@@ -1664,7 +1508,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       }
 
       for (auto& [score, j] : unreliable_list) {
-        if (get_pseudocost_num_down(j) == 0 || get_pseudocost_num_up(j) == 0) {
+        if (pseudo_cost_num_down[j] == 0 || pseudo_cost_num_up[j] == 0) {
           // Estimate the objective change by performing a single pivot of dual simplex.
           objective_change_estimate_t<f_t> estimate =
             single_pivot_objective_change_estimate(worker->leaf_problem,
@@ -1774,8 +1618,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         settings.log.debug(
           "DS skipping variable %d branch down (shared_idx %d): already solved by PDLP\n", j, i);
       } else {
-        lock_variable_down(j);
-        if (get_pseudocost_num_down(j) < reliable_threshold) {
+        pseudo_cost_mutex_down[j].lock();
+        if (pseudo_cost_num_down[j] < reliable_threshold) {
           // Do trial branching on the down branch
           i_t iter                 = 0;
           const auto [obj, status] = trial_branching(worker->leaf_problem,
@@ -1800,14 +1644,15 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = leaf_solution.x[j] - std::floor(leaf_solution.x[j]);
-            update_pseudocost_down(j, change_in_obj / change_in_x);
+            pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
+            pseudo_cost_num_down[j]++;
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(i); }
           }
         } else {
           // Variable became reliable, make it as solved so that batch PDLP does not solve it again
           if (rb_mode == 1) sb_view.mark_solved(i);
         }
-        unlock_variable_down(j);
+        pseudo_cost_mutex_down[j].unlock();
       }
 
       if (toc(start_time) > settings.time_limit) { continue; }
@@ -1819,8 +1664,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           j,
           shared_idx);
       } else {
-        lock_variable_up(j);
-        if (get_pseudocost_num_up(j) < reliable_threshold) {
+        pseudo_cost_mutex_up[j].lock();
+        if (pseudo_cost_num_up[j] < reliable_threshold) {
           i_t iter                 = 0;
           const auto [obj, status] = trial_branching(worker->leaf_problem,
                                                      settings,
@@ -1844,14 +1689,15 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           if (!std::isnan(obj)) {
             f_t change_in_obj = std::max(obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(leaf_solution.x[j]) - leaf_solution.x[j];
-            update_pseudocost_up(j, change_in_obj / change_in_x);
+            pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
+            pseudo_cost_num_up[j]++;
             if (rb_mode == 1 && is_dual_simplex_done(status)) { sb_view.mark_solved(shared_idx); }
           }
         } else {
           // Variable became reliable, make it as solved so that batch PDLP does not solve it again
           if (rb_mode == 1) sb_view.mark_solved(shared_idx);
         }
-        unlock_variable_up(j);
+        pseudo_cost_mutex_up[j].unlock();
       }
 
       if (toc(start_time) > settings.time_limit) { continue; }
@@ -1886,14 +1732,15 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
         if (source == sb_source_t::PDLP) {
-          lock_variable_down(j);
-          if (get_pseudocost_num_down(j) < reliable_threshold) {
+          pseudo_cost_mutex_down[j].lock();
+          if (pseudo_cost_num_down[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = leaf_solution.x[j] - std::floor(leaf_solution.x[j]);
-            update_pseudocost_down(j, change_in_obj / change_in_x);
+            pseudo_cost_sum_down[j] += change_in_obj / change_in_x;
+            pseudo_cost_num_down[j]++;
             pdlp_applied++;
           }
-          unlock_variable_down(j);
+          pseudo_cost_mutex_down[j].unlock();
         }
       }
 
@@ -1905,14 +1752,15 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         // PDLP won the merge, update the pseudo-cost only if node is still unreliable (concurrent
         // calls may have made it reliable)
         if (source == sb_source_t::PDLP) {
-          lock_variable_up(j);
-          if (get_pseudocost_num_up(j) < reliable_threshold) {
+          pseudo_cost_mutex_up[j].lock();
+          if (pseudo_cost_num_up[j] < reliable_threshold) {
             f_t change_in_obj = std::max(merged_obj - node_ptr->lower_bound, eps);
             f_t change_in_x   = std::ceil(leaf_solution.x[j]) - leaf_solution.x[j];
-            update_pseudocost_up(j, change_in_obj / change_in_x);
+            pseudo_cost_sum_up[j] += change_in_obj / change_in_x;
+            pseudo_cost_num_up[j]++;
             pdlp_applied++;
           }
-          unlock_variable_up(j);
+          pseudo_cost_mutex_up[j].unlock();
         }
       }
 

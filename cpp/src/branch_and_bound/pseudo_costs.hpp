@@ -159,8 +159,19 @@ class pseudo_costs_t {
     pseudo_cost_mutex_down.resize(num_variables);
   }
 
-  f_t get_pseudocost_down(i_t j, f_t avg) const;
-  f_t get_pseudocost_up(i_t j, f_t avg) const;
+  f_t get_pseudocost_down(i_t j, f_t avg) const
+  {
+    i_t num = pseudo_cost_num_down[j];
+    f_t sum = pseudo_cost_sum_down[j];
+    return num > 0 ? sum / num : avg;
+  }
+
+  f_t get_pseudocost_up(i_t j, f_t avg) const
+  {
+    i_t num = pseudo_cost_num_up[j];
+    f_t sum = pseudo_cost_sum_up[j];
+    return num > 0 ? sum / num : avg;
+  }
 
   f_t compute_pseudocost_average_down();
   f_t compute_pseudocost_average_up();
@@ -204,27 +215,14 @@ class pseudo_costs_t {
   simplex_solver_settings_t<i_t, f_t> settings;
 
  protected:
-  // Do not use this attributes directly. Instead rely on the get/update/set methods
-  // as they conditionally use atomics when needed
-  std::vector<f_t> pseudo_cost_sum_up;
-  std::vector<f_t> pseudo_cost_sum_down;
-  std::vector<i_t> pseudo_cost_num_up;
-  std::vector<i_t> pseudo_cost_num_down;
+  std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
+  std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_down;
+  std::vector<omp_atomic_t<i_t>> pseudo_cost_num_up;
+  std::vector<omp_atomic_t<i_t>> pseudo_cost_num_down;
   std::vector<omp_mutex_t> pseudo_cost_mutex_up;
   std::vector<omp_mutex_t> pseudo_cost_mutex_down;
 
   omp_atomic_t<int64_t> strong_branching_lp_iter = 0;
-
-  void update_pseudocost_down(i_t j, f_t delta);
-  void update_pseudocost_up(i_t j, f_t delta);
-
-  i_t get_pseudocost_num_down(i_t j);
-  i_t get_pseudocost_num_up(i_t j);
-
-  void lock_variable_up(i_t j);
-  void lock_variable_down(i_t j);
-  void unlock_variable_up(i_t j);
-  void unlock_variable_down(i_t j);
 };
 
 template <typename i_t, typename f_t>
