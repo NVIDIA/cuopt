@@ -63,6 +63,14 @@ cd -
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
+RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+export RAPIDS_TESTS_DIR
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
+EXITCODE=0
+trap "EXITCODE=1" ERR
+set +e
+
 # Run CLI tests
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
@@ -76,3 +84,9 @@ if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
     ./ci/thirdparty-testing/run_pulp_tests.sh
     ./ci/thirdparty-testing/run_pyomo_tests.sh
 fi
+
+# Generate nightly test report
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "wheel-python" --with-python-version
+
+exit ${EXITCODE}

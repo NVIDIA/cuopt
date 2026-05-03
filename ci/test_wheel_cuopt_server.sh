@@ -39,7 +39,22 @@ rapids-pip-retry install \
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
-timeout 30m ./ci/run_cuopt_server_pytests.sh --verbose --capture=no
+RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
+EXITCODE=0
+trap "EXITCODE=1" ERR
+set +e
+
+timeout 30m ./ci/run_cuopt_server_pytests.sh \
+  --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
+  --verbose --capture=no
 
 # Run documentation tests
 ./ci/test_doc_examples.sh
+
+# Generate nightly test report
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "wheel-server" --with-python-version
+
+exit ${EXITCODE}

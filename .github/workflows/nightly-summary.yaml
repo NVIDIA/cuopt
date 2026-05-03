@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: nightly-summary
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch name the run targets"
+        required: true
+        type: string
+        default: main
+      sha:
+        description: "Full git commit SHA to check out"
+        required: true
+        type: string
+      build_type:
+        description: "Build type (nightly, pull-request, branch)"
+        required: true
+        type: string
+        default: nightly
+      date:
+        description: "Date (YYYY-MM-DD) for this run. Defaults to today."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+      build_type:
+        required: true
+        type: string
+      date:
+        required: false
+        type: string
+    secrets:
+      CUOPT_AWS_ACCESS_KEY_ID:
+        required: true
+      CUOPT_AWS_SECRET_ACCESS_KEY:
+        required: true
+      CUOPT_S3_URI:
+        required: true
+      CUOPT_SLACK_BOT_TOKEN:
+        required: false
+      CUOPT_SLACK_CHANNEL_ID:
+        required: false
+
+jobs:
+  nightly-summary:
+    runs-on: linux-amd64-cpu4
+    container:
+      image: python:3.14-slim
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Install dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl
+          pip install awscli
+      - name: Run nightly summary
+        env:
+          CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+          CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
+          CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+          CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RAPIDS_BRANCH: ${{ inputs.branch }}
+          RAPIDS_BUILD_TYPE: ${{ inputs.build_type }}
+          RUN_DATE: ${{ inputs.date }}
+        run: bash ci/nightly_summary.sh
