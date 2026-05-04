@@ -84,7 +84,7 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
     if (!best_feasible_ref.get_feasible()) { return; }
 
     incumbent_solution_snapshot = best_feasible_ref.get_host_assignment();
-    lp_optimal_solution = solution;
+    lp_optimal_solution         = solution;
   }
   rins_thread->start_cpu_solver();
 }
