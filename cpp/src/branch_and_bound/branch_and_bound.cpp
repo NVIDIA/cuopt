@@ -33,13 +33,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
-#include <future>
 #include <limits>
-#include <map>
 #include <optional>
 #include <string>
-#include <thread>
-#include <unordered_map>
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
@@ -2061,29 +2057,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
 
+  omp_atomic_t<bool>* clique_signal = &signal_extend_cliques_;
+
   if (settings_.clique_cuts != 0 && clique_table_ == nullptr) {
-    signal_extend_cliques_.store(false, std::memory_order_release);
-    typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t
-      tolerances_for_clique{};
+    signal_extend_cliques_ = false;
+    typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
     tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
     tolerances_for_clique.absolute_tolerance          = settings_.primal_tol;
     tolerances_for_clique.relative_tolerance          = settings_.zero_tol;
     tolerances_for_clique.integrality_tolerance       = settings_.integer_tol;
     tolerances_for_clique.absolute_mip_gap            = settings_.absolute_mip_gap_tol;
     tolerances_for_clique.relative_mip_gap            = settings_.relative_mip_gap_tol;
-    auto* signal_ptr                                  = &signal_extend_cliques_;
-    clique_table_future_ =
-      std::async(std::launch::async,
-                 [this,
-                  tolerances_for_clique,
-                  signal_ptr]() -> std::shared_ptr<detail::clique_table_t<i_t, f_t>> {
-                   user_problem_t<i_t, f_t> problem_copy = original_problem_;
-                   cuopt::timer_t timer(std::numeric_limits<double>::infinity());
-                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> table;
-                   detail::find_initial_cliques(
-                     problem_copy, tolerances_for_clique, &table, timer, false, signal_ptr);
-                   return table;
-                 });
+
+#pragma omp task depend(out : *clique_signal) firstprivate(tolerances_for_clique)
+    {
+      user_problem_t<i_t, f_t> problem_copy = original_problem_;
+      timer_t timer(std::numeric_limits<double>::infinity());
+      detail::find_initial_cliques(
+        problem_copy, tolerances_for_clique, &clique_table_, timer, false, clique_signal);
+    }
   }
 
   i_t original_rows                           = original_lp_.num_rows;
@@ -2126,16 +2118,10 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
   exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
 
-  auto finish_clique_thread = [this]() {
-    if (clique_table_future_.valid()) {
-      signal_extend_cliques_.store(true, std::memory_order_release);
-      clique_table_ = clique_table_future_.get();
-    }
-  };
-
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::INFEASIBLE;
   }
   if (root_status == lp_status_t::UNBOUNDED) {
@@ -2143,27 +2129,31 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::UNBOUNDED;
   }
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
     solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
   if (root_status == lp_status_t::NUMERICAL_ISSUES) {
     solver_status_ = mip_status_t::NUMERICAL;
     set_final_solution(solution, -inf);
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
 
@@ -2194,7 +2184,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional == 0) {
     set_solution_at_root(solution, cut_info);
-    finish_clique_thread();
+    signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::OPTIMAL;
   }
 
@@ -2218,8 +2209,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                             original_problem_,
                                             probing_implied_bound_,
                                             clique_table_,
-                                            &clique_table_future_,
-                                            &signal_extend_cliques_);
+                                            clique_signal);
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
@@ -2268,7 +2258,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         if (settings_.heuristic_preemption_callback != nullptr) {
           settings_.heuristic_preemption_callback();
         }
-        finish_clique_thread();
+        signal_extend_cliques_ = true;
+#pragma omp taskwait depend(in : *clique_signal)
         return mip_status_t::INFEASIBLE;
       }
       f_t cut_generation_time = toc(cut_start_time);

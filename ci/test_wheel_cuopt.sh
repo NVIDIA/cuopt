@@ -75,7 +75,9 @@ set +e
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-timeout 30m ./ci/run_cuopt_pytests.sh --verbose --capture=no
+timeout 30m ./ci/run_cuopt_pytests.sh \
+  --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
+  --verbose --capture=no
 
 # run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
