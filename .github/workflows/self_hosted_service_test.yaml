@@ -94,4 +94,6 @@ jobs:
           sha: ${{ inputs.sha }}
 
       - name: Run tests
-        run: ${{ inputs.script }}
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: bash "$SCRIPT"

@@ -71,13 +71,18 @@ jobs:
 
       - name: Compute matrix
         id: compute-matrix
+        env:
+          ARCH: ${{ inputs.arch }}
+          CUDA_VER: ${{ inputs.cuda_ver }}
+          PYTHON_VER: ${{ inputs.python_ver }}
+          LINUX_VER: ${{ inputs.linux_ver }}
         run: |
           MATRIX=$(jq -c '.' <<EOF
           {
-            "arch": ${{ inputs.arch }},
-            "cuda_ver": ${{ inputs.cuda_ver }},
-            "python_ver": ${{ inputs.python_ver }},
-            "linux_ver": ${{ inputs.linux_ver }}
+            "arch": $ARCH,
+            "cuda_ver": $CUDA_VER,
+            "python_ver": $PYTHON_VER,
+            "linux_ver": $LINUX_VER
           }
           EOF
           )
@@ -146,9 +151,12 @@ jobs:
           password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
       - name: Trim CUDA and Python versions
         id: trim
+        env:
+          CUDA_VER: ${{ matrix.CUDA_VER }}
+          PYTHON_VER: ${{ matrix.PYTHON_VER }}
         run: |
-          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Create multiarch manifest
         shell: bash
         env:

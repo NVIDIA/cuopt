@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Extract PR number from branch name (pull-request/123 -> 123)
-          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          PR_NUMBER=$(echo "$GITHUB_REF" | sed 's|refs/heads/pull-request/||')
           echo "Checking PR #$PR_NUMBER for lean-ci label..."
 
           # Check if the PR has the 'lean-ci' label
@@ -79,8 +79,10 @@ jobs:
     needs: check-lean-ci
     steps:
       - name: Check lean-ci status
+        env:
+          LEAN_CI: ${{ steps.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
-          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+          if [ "$LEAN_CI" == "true" ]; then
             echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
             echo "Lean CI is only for testing purposes and should not be merged."
             echo "Please remove the 'lean-ci' label and run full CI before merging."
@@ -105,8 +107,10 @@ jobs:
     steps:
       - name: Set matrix filters
         id: set-filters
+        env:
+          LEAN_CI: ${{ steps.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
-          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+          if [ "$LEAN_CI" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.11\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT

@@ -77,9 +77,12 @@ jobs:
           endpoint: ./ci/docker/context
       - name: Trim CUDA and Python versions
         id: trim
+        env:
+          CUDA_VER: ${{ inputs.CUDA_VER }}
+          PYTHON_VER: ${{ inputs.PYTHON_VER }}
         run: |
-          echo "CUDA_SHORT=$(echo '${{ inputs.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo '${{ inputs.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Build image and push to DockerHub and NGC
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -99,6 +102,11 @@ jobs:
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
 
       - name: Push image to NGC
+        env:
+          IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
+          ARCH: ${{ matrix.ARCH }}
+          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
         run: |
-            docker tag nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }} nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
-            docker push nvcr.io/nvstaging/nvaie/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-py${{ steps.trim.outputs.PYTHON_SHORT }}-${{ matrix.ARCH }}
+          docker tag "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}" "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}"
+          docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}"
