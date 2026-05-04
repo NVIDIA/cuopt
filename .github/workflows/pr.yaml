@@ -33,7 +33,7 @@ jobs:
       - wheel-build-cuopt-mps-parser
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
     if: always()
     with:
@@ -110,7 +110,7 @@ jobs:
           fi
 
   changed-files:
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
@@ -355,7 +355,7 @@ jobs:
           - '!ucf/**'
           - '!utilities/**'
   checks:
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
@@ -366,7 +366,7 @@ jobs:
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: pull-request
@@ -393,7 +393,7 @@ jobs:
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: pull-request
@@ -417,7 +417,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   docs-build:
     needs: [conda-python-build, changed-files]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     with:
@@ -432,7 +432,7 @@ jobs:
     needs: [compute-matrix-filters, changed-files]
     # All wheel-build-* jobs feed the wheel test jobs, so they gate on the same group.
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -445,7 +445,7 @@ jobs:
   wheel-build-libcuopt:
     needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
@@ -457,7 +457,7 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -483,7 +483,7 @@ jobs:
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -496,7 +496,7 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -524,7 +524,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/self_hosted_service_test.yaml
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:

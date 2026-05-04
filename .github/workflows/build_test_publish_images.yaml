@@ -106,7 +106,7 @@ jobs:
   build-images:
     name: Build images
     needs: compute-matrix
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
     uses: ./.github/workflows/build_images.yaml
@@ -162,7 +162,7 @@ jobs:
   test-images:
     name: Test images
     needs: [build-cuopt-multiarch-manifest, compute-matrix]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix:
         CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
