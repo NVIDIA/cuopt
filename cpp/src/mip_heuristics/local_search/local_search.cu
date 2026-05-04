@@ -125,12 +125,13 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
     solution_lp, default_weights, default_weights, 0., context.preempt_heuristic_solver_);
   scratch_cpu_fj_on_lp_opt.fj_cpu->log_prefix = "******* scratch on LP optimal: ";
   scratch_cpu_fj_on_lp_opt.fj_cpu->improvement_callback =
-    [&population](f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
+    [&population, problem_ptr = context.problem_ptr](
+      f_t obj, const std::vector<f_t>& h_vec, double /*work_units*/) {
       population.add_external_solution(h_vec, obj, solution_origin_t::CPUFJ);
       if (obj < local_search_best_obj) {
         CUOPT_LOG_DEBUG("******* New local search best obj %g, best overall %g",
-                        context.problem_ptr->get_user_obj_from_solver_obj(obj),
-                        context.problem_ptr->get_user_obj_from_solver_obj(
+                        problem_ptr->get_user_obj_from_solver_obj(obj),
+                        problem_ptr->get_user_obj_from_solver_obj(
                           population.is_feasible() ? population.best_feasible().get_objective()
                                                    : std::numeric_limits<f_t>::max()));
         local_search_best_obj = obj;

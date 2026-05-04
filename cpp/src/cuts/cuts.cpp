@@ -10,6 +10,7 @@
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
 #include <cstdint>
@@ -443,6 +444,365 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                     static_cast<long long>(clique_vertices.size() - initial_clique_vertices));
 }
 
+// Build a zero-half (odd-cycle / odd-wheel) cut from a cycle and optional wheel
+// centers. cycle_vertices is a simple odd cycle in the conflict graph using the
+// 2*num_vars vertex indexing (var j and complement j+num_vars). wheel_centers
+// are extra vertices each adjacent to every vertex in cycle_vertices. The
+// resulting cut is stored in the form a^T x >= rhs to match cut_pool_t.
+template <typename i_t, typename f_t>
+clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vertices,
+                                              const std::vector<i_t>& wheel_centers,
+                                              i_t num_vars,
+                                              const std::vector<variable_type_t>& var_types,
+                                              const std::vector<f_t>& lower_bounds,
+                                              const std::vector<f_t>& upper_bounds,
+                                              const std::vector<f_t>& xstar,
+                                              f_t bound_tol,
+                                              f_t min_violation,
+                                              sparse_vector_t<i_t, f_t>& cut,
+                                              f_t& cut_rhs,
+                                              f_t* work_estimate,
+                                              f_t max_work_estimate)
+{
+  const size_t cycle_size = cycle_vertices.size();
+  if (cycle_size < 5 || (cycle_size % 2) == 0) { return clique_cut_build_status_t::NO_CUT; }
+  cuopt_assert(num_vars > 0, "Zero-half cut num_vars must be positive");
+  cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
+               "Zero-half cut lower bounds size mismatch");
+  cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Zero-half cut xstar size mismatch");
+
+  const i_t m              = static_cast<i_t>((cycle_size - 1) / 2);
+  const f_t f_m            = static_cast<f_t>(m);
+  const f_t total_size     = static_cast<f_t>(cycle_size + wheel_centers.size());
+  const f_t estimated_work = 8.0 * total_size + 2.0 * total_size * std::log2(total_size + 1.0);
+  if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
+    return clique_cut_build_status_t::NO_CUT;
+  }
+
+  cut.i.clear();
+  cut.x.clear();
+
+  std::unordered_map<i_t, f_t> coeff_by_var;
+  std::unordered_set<i_t> seen_original;
+  std::unordered_set<i_t> seen_complement;
+  coeff_by_var.reserve(cycle_size + wheel_centers.size());
+  seen_original.reserve(cycle_size + wheel_centers.size());
+  seen_complement.reserve(cycle_size + wheel_centers.size());
+
+  f_t rhs_acc = -f_m;
+
+  auto accumulate =
+    [&](const std::vector<i_t>& verts, f_t weight, bool is_cycle) -> clique_cut_build_status_t {
+    for (const auto vertex_idx : verts) {
+      cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Zero-half vertex out of range");
+      const i_t var_idx     = vertex_idx % num_vars;
+      const bool complement = vertex_idx >= num_vars;
+      const f_t lower_bound = lower_bounds[var_idx];
+      const f_t upper_bound = upper_bounds[var_idx];
+      cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
+                   "Zero-half cut contains continuous variable");
+      cuopt_assert(lower_bound >= -bound_tol, "Zero-half variable lower bound below zero");
+      cuopt_assert(upper_bound <= 1 + bound_tol, "Zero-half variable upper bound above one");
+
+      // is_cycle is currently informational only; both cycle and wheel paths
+      // share the same accumulation logic
+      (void)is_cycle;
+
+      if (complement) {
+        if (seen_original.count(var_idx) > 0) { return clique_cut_build_status_t::NO_CUT; }
+        seen_complement.insert(var_idx);
+        coeff_by_var[var_idx] += weight;
+        rhs_acc += weight;
+      } else {
+        if (seen_complement.count(var_idx) > 0) { return clique_cut_build_status_t::NO_CUT; }
+        seen_original.insert(var_idx);
+        coeff_by_var[var_idx] -= weight;
+      }
+    }
+    return clique_cut_build_status_t::CUT_ADDED;
+  };
+
+  if (accumulate(cycle_vertices, static_cast<f_t>(1), true) !=
+      clique_cut_build_status_t::CUT_ADDED) {
+    return clique_cut_build_status_t::NO_CUT;
+  }
+  if (m > 0 && !wheel_centers.empty()) {
+    if (accumulate(wheel_centers, f_m, false) != clique_cut_build_status_t::CUT_ADDED) {
+      return clique_cut_build_status_t::NO_CUT;
+    }
+  }
+
+  const f_t coeff_zero_tol = static_cast<f_t>(1e-12);
+  cut.i.reserve(coeff_by_var.size());
+  cut.x.reserve(coeff_by_var.size());
+  for (const auto& kv : coeff_by_var) {
+    if (std::abs(kv.second) <= coeff_zero_tol) { continue; }
+    cut.i.push_back(kv.first);
+    cut.x.push_back(kv.second);
+  }
+
+  if (cut.i.empty()) {
+    CUOPT_LOG_DEBUG("[zero_half] build_zero_half_cut empty support after accumulation");
+    return clique_cut_build_status_t::NO_CUT;
+  }
+
+  cut_rhs = rhs_acc;
+  cut.sort();
+
+  const f_t dot       = cut.dot(xstar);
+  const f_t violation = cut_rhs - dot;
+  CUOPT_LOG_DEBUG(
+    "[zero_half] build_zero_half_cut nz=%lld rhs=%g dot=%g violation=%g threshold=%g cycle=%lld "
+    "wheel=%lld",
+    static_cast<long long>(cut.i.size()),
+    static_cast<double>(cut_rhs),
+    static_cast<double>(dot),
+    static_cast<double>(violation),
+    static_cast<double>(min_violation),
+    static_cast<long long>(cycle_size),
+    static_cast<long long>(wheel_centers.size()));
+  if (violation > min_violation) { return clique_cut_build_status_t::CUT_ADDED; }
+  return clique_cut_build_status_t::NO_CUT;
+}
+
+// Run Dijkstra over the bipartite auxiliary graph G' built from the fractional
+// sub-CG. local_adj is the adjacency in CG (local indices). weights[v] is the
+// LP value of vertex v in CG. The auxiliary graph has 2 * num_local vertices,
+// with bipartite_idx = local_idx + part * num_local, part in {0, 1}.
+// Edge weight in G' is max(0, (1 - weights[u] - weights[v]) / 2). We seek the
+// shortest path from `source_local + 0 * num_local` to `source_local + num_local`.
+// On success, returns true and fills `path` with the path (sequence of bipartite
+// indices) and `total_weight` with its cost. Otherwise returns false.
+template <typename i_t, typename f_t>
+bool dijkstra_odd_cycle(i_t source_local,
+                        const std::vector<std::vector<i_t>>& local_adj,
+                        const std::vector<f_t>& weights,
+                        f_t cutoff,
+                        std::vector<i_t>& path,
+                        f_t& total_weight,
+                        f_t* work_estimate,
+                        f_t max_work_estimate)
+{
+  const i_t num_local = static_cast<i_t>(local_adj.size());
+  cuopt_assert(source_local >= 0 && source_local < num_local,
+               "Zero-half Dijkstra source out of range");
+  cuopt_assert(weights.size() == static_cast<size_t>(num_local),
+               "Zero-half Dijkstra weights size mismatch");
+
+  const i_t source_idx = source_local;
+  const i_t target_idx = source_local + num_local;
+  const i_t total_idx  = 2 * num_local;
+  const f_t f_inf      = std::numeric_limits<f_t>::infinity();
+
+  std::vector<f_t> dist(static_cast<size_t>(total_idx), f_inf);
+  std::vector<i_t> prev(static_cast<size_t>(total_idx), -1);
+  dist[source_idx] = 0;
+
+  using node_t = std::pair<f_t, i_t>;
+  std::priority_queue<node_t, std::vector<node_t>, std::greater<node_t>> pq;
+  pq.emplace(static_cast<f_t>(0), source_idx);
+
+  while (!pq.empty()) {
+    auto [d, u] = pq.top();
+    pq.pop();
+    if (d > dist[u]) { continue; }
+    if (u == target_idx) { break; }
+    if (cutoff > 0 && d >= cutoff) { break; }
+
+    const i_t u_local = u % num_local;
+    const i_t u_part  = u / num_local;
+    const i_t v_part  = 1 - u_part;
+    cuopt_assert(u_part == 0 || u_part == 1, "Bipartite part out of range");
+
+    const auto& neigh = local_adj[u_local];
+    if (add_work_estimate(static_cast<f_t>(neigh.size()) + 4.0, work_estimate, max_work_estimate)) {
+      return false;
+    }
+    for (const auto v_local : neigh) {
+      cuopt_assert(v_local >= 0 && v_local < num_local, "Zero-half Dijkstra neighbor out of range");
+      f_t edge_w = (static_cast<f_t>(1) - weights[u_local] - weights[v_local]) / 2;
+      if (edge_w < 0) { edge_w = 0; }
+      const i_t v  = v_local + v_part * num_local;
+      const f_t nd = d + edge_w;
+      if (nd < dist[v]) {
+        dist[v] = nd;
+        prev[v] = u;
+        pq.emplace(nd, v);
+      }
+    }
+  }
+
+  if (!std::isfinite(dist[target_idx])) { return false; }
+  total_weight = dist[target_idx];
+  if (cutoff > 0 && total_weight >= cutoff) { return false; }
+
+  path.clear();
+  for (i_t cur = target_idx; cur != -1; cur = prev[cur]) {
+    path.push_back(cur);
+    if (cur == source_idx) { break; }
+  }
+  cuopt_assert(!path.empty(), "Zero-half Dijkstra path empty");
+  cuopt_assert(path.back() == source_idx, "Zero-half Dijkstra path missing source");
+  std::reverse(path.begin(), path.end());
+  // bipartite path from j1 to j2 must have odd number of edges
+  cuopt_assert((path.size() % 2) == 0, "Zero-half bipartite path must have even node count");
+  return true;
+}
+
+// Convert a bipartite-graph path (sequence of bipartite indices) into a simple
+// odd cycle expressed as global CG vertex indices in [0, 2*num_vars). Returns
+// true and fills `cycle_vertices` if a simple cycle of odd length >= 5 (so >
+// triangle) was successfully extracted.
+template <typename i_t, typename f_t>
+bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
+                       const std::vector<i_t>& vertices,
+                       i_t num_local,
+                       i_t num_vars,
+                       std::vector<i_t>& cycle_vertices,
+                       f_t* work_estimate,
+                       f_t max_work_estimate)
+{
+  cycle_vertices.clear();
+  if (bipartite_path.size() < 4) { return false; }
+  if (add_work_estimate(
+        static_cast<f_t>(bipartite_path.size()) * 2.0, work_estimate, max_work_estimate)) {
+    return false;
+  }
+
+  std::vector<i_t> local_seq;
+  local_seq.reserve(bipartite_path.size());
+  for (const auto bv : bipartite_path) {
+    local_seq.push_back(bv % num_local);
+  }
+  // First and last entry should both correspond to the source CG vertex
+  cuopt_assert(local_seq.front() == local_seq.back(), "Zero-half cycle path endpoints must match");
+
+  // Drop the duplicate end so we have a sequence covering each cycle vertex once
+  local_seq.pop_back();
+  if ((local_seq.size() % 2) == 0 || local_seq.size() < 5) { return false; }
+
+  std::unordered_set<i_t> seen_local;
+  seen_local.reserve(local_seq.size());
+  for (const auto lv : local_seq) {
+    if (!seen_local.insert(lv).second) {
+      // Same CG vertex appears twice in the path; reject (degenerate cycle)
+      return false;
+    }
+  }
+
+  cycle_vertices.reserve(local_seq.size());
+  std::unordered_set<i_t> seen_var;
+  seen_var.reserve(local_seq.size());
+  for (const auto lv : local_seq) {
+    cuopt_assert(lv >= 0 && lv < num_local, "Zero-half local idx out of range");
+    const i_t global = vertices[lv];
+    cuopt_assert(global >= 0 && global < 2 * num_vars, "Zero-half global vertex out of range");
+    const i_t var_idx = global % num_vars;
+    if (!seen_var.insert(var_idx).second) {
+      // Variable appears as both x and ¯x in the cycle; reject (degenerate)
+      return false;
+    }
+    cycle_vertices.push_back(global);
+  }
+  return cycle_vertices.size() >= 5;
+}
+
+// Greedy lifting: extend an odd cycle by attaching a clique of "wheel center"
+// vertices that are adjacent (in CG) to every vertex of the cycle. Mirrors the
+// behavior of extend_clique_vertices but uses the cycle as the seed.
+template <typename i_t, typename f_t>
+void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
+                         std::vector<i_t>& wheel_centers,
+                         detail::clique_table_t<i_t, f_t>& graph,
+                         const std::vector<f_t>& reduced_costs,
+                         i_t num_vars,
+                         f_t start_time,
+                         f_t time_limit,
+                         f_t* work_estimate,
+                         f_t max_work_estimate)
+{
+  wheel_centers.clear();
+  if (cycle_vertices.empty()) { return; }
+  if (toc(start_time) >= time_limit) { return; }
+
+  i_t smallest_degree     = std::numeric_limits<i_t>::max();
+  i_t smallest_degree_var = -1;
+  for (auto v : cycle_vertices) {
+    if (toc(start_time) >= time_limit) { return; }
+    i_t degree = graph.get_degree_of_var(v);
+    if (degree < smallest_degree) {
+      smallest_degree     = degree;
+      smallest_degree_var = v;
+    }
+  }
+  if (smallest_degree_var < 0) { return; }
+
+  auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
+  std::unordered_set<i_t> cycle_members(cycle_vertices.begin(), cycle_vertices.end());
+  std::vector<i_t> candidates;
+  candidates.reserve(adj_set.size());
+  for (const auto candidate : adj_set) {
+    if (toc(start_time) >= time_limit) { return; }
+    if (cycle_members.count(candidate) != 0) { continue; }
+    bool adj_to_all = true;
+    for (const auto v : cycle_vertices) {
+      if (candidate == v) {
+        adj_to_all = false;
+        break;
+      }
+      if (!graph.check_adjacency(candidate, v)) {
+        adj_to_all = false;
+        break;
+      }
+    }
+    if (adj_to_all) { candidates.push_back(candidate); }
+  }
+  if (candidates.empty()) { return; }
+
+  const f_t candidate_size = static_cast<f_t>(candidates.size());
+  const f_t cycle_size_f   = static_cast<f_t>(cycle_vertices.size());
+  const f_t adj_set_cost   = 2.0 * static_cast<f_t>(adj_set.size());
+  const f_t sort_cost =
+    candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
+  if (add_work_estimate(adj_set_cost + cycle_size_f * candidate_size + sort_cost,
+                        work_estimate,
+                        max_work_estimate)) {
+    return;
+  }
+
+  auto reduced_cost = [&](i_t vertex_idx) -> f_t {
+    i_t var_idx = vertex_idx % num_vars;
+    cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
+                 "Reduced cost index out of range");
+    f_t rc = reduced_costs[var_idx];
+    if (!std::isfinite(rc)) { rc = 0.0; }
+    return vertex_idx >= num_vars ? -rc : rc;
+  };
+
+  std::sort(candidates.begin(), candidates.end(), [&](i_t a, i_t b) {
+    return reduced_cost(a) < reduced_cost(b);
+  });
+
+  const f_t adj_check_cost = 5.0;
+  for (const auto candidate : candidates) {
+    if (toc(start_time) >= time_limit) { return; }
+    bool adj_to_wheel = true;
+    i_t checks        = 0;
+    for (const auto w : wheel_centers) {
+      checks++;
+      if (!graph.check_adjacency(candidate, w)) {
+        adj_to_wheel = false;
+        break;
+      }
+    }
+    if (add_work_estimate(
+          adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
+      break;
+    }
+    if (adj_to_wheel) { wheel_centers.push_back(candidate); }
+  }
+}
+
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -505,6 +865,81 @@ std::vector<std::vector<int>> find_maximal_cliques_for_test(
   }
   bron_kerbosch<int, double>(ctx, R, P, X, 0.0);
   return ctx.cliques;
+}
+
+// This function is only used in tests
+std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& x_values,
+  double min_violation,
+  double time_limit)
+{
+  const size_t n_vertices = adjacency_list.size();
+  if (n_vertices == 0) { return {}; }
+  cuopt_assert(x_values.size() == n_vertices, "x_values size mismatch in odd-cycle test helper");
+
+  const int num_local = static_cast<int>(n_vertices);
+  std::vector<std::vector<int>> adj_local(n_vertices);
+  for (size_t v = 0; v < n_vertices; ++v) {
+    adj_local[v].reserve(adjacency_list[v].size());
+    for (const auto nbr : adjacency_list[v]) {
+      cuopt_assert(nbr >= 0 && static_cast<size_t>(nbr) < n_vertices,
+                   "Neighbor index out of range in odd-cycle test helper");
+      adj_local[v].push_back(nbr);
+    }
+  }
+
+  double work_estimate           = 0.0;
+  const double max_work_estimate = std::numeric_limits<double>::infinity();
+  const double start_time        = tic();
+  const double cutoff            = 0.5 - min_violation;
+
+  std::vector<std::vector<int>> result;
+  std::vector<int> bipartite_path;
+  std::vector<int> cycle_local;
+  std::vector<char> already_used(n_vertices, 0);
+
+  for (int s = 0; s < num_local; ++s) {
+    if (toc(start_time) >= time_limit) { break; }
+    if (already_used[s]) { continue; }
+
+    double total_weight = 0;
+    if (!dijkstra_odd_cycle<int, double>(s,
+                                         adj_local,
+                                         x_values,
+                                         cutoff,
+                                         bipartite_path,
+                                         total_weight,
+                                         &work_estimate,
+                                         max_work_estimate)) {
+      continue;
+    }
+    cycle_local.clear();
+    if (bipartite_path.size() < 4) { continue; }
+    std::vector<int> seq;
+    seq.reserve(bipartite_path.size());
+    for (const auto bv : bipartite_path) {
+      seq.push_back(bv % num_local);
+    }
+    cuopt_assert(seq.front() == seq.back(), "Odd-cycle test helper path endpoints must match");
+    seq.pop_back();
+    if ((seq.size() % 2) == 0 || seq.size() < 5) { continue; }
+    bool simple = true;
+    std::unordered_set<int> seen;
+    seen.reserve(seq.size());
+    for (const auto v : seq) {
+      if (!seen.insert(v).second) {
+        simple = false;
+        break;
+      }
+    }
+    if (!simple) { continue; }
+    result.push_back(seq);
+    for (const auto v : seq) {
+      already_used[v] = 1;
+    }
+  }
+  return result;
 }
 
 template <typename i_t, typename f_t>
@@ -1827,6 +2262,20 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
+  // Generate Zero-half (odd-cycle / odd-wheel) cuts; reuses the clique table built above
+  if (settings.zero_half_cuts != 0) {
+    f_t cut_start_time = tic();
+    bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    if (!feasible) {
+      settings.log.printf("Zero-half cuts proved infeasible\n");
+      return false;
+    }
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("Zero-half cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+
   // Generate implied bound cuts
   if (settings.implied_bound_cuts != 0) {
     f_t cut_start_time = tic();
@@ -2133,6 +2582,196 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     static_cast<long long>(extension_gain),
     static_cast<double>(work_estimate));
 #endif
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar,
+  const std::vector<f_t>& reduced_costs,
+  f_t start_time)
+{
+  if (settings.zero_half_cuts == 0) { return true; }
+  if (toc(start_time) >= settings.time_limit) { return true; }
+
+  const i_t num_vars = user_problem_.num_cols;
+  CUOPT_LOG_DEBUG("[zero_half] generate_zero_half_cuts start num_vars=%lld elapsed=%g",
+                  static_cast<long long>(num_vars),
+                  static_cast<double>(toc(start_time)));
+
+  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
+      clique_table_future_->valid()) {
+    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
+    clique_table_        = clique_table_future_->get();
+    clique_table_future_ = nullptr;
+  }
+
+  if (clique_table_ == nullptr) {
+    CUOPT_LOG_DEBUG("[zero_half] no clique table available, skipping");
+    return true;
+  }
+  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
+    CUOPT_LOG_DEBUG("[zero_half] empty clique table, nothing to separate");
+    return true;
+  }
+
+  cuopt_assert(clique_table_->n_variables == num_vars,
+               "Zero-half clique table variable count mismatch");
+  cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Zero-half xstar size mismatch");
+  cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
+               "Zero-half user problem var_types size mismatch");
+
+  const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
+  const f_t bound_tol     = settings.primal_tol;
+  // shortest path of length >= 0.5 - min_violation cannot yield a violated cut
+  const f_t cutoff            = static_cast<f_t>(0.5) - min_violation;
+  f_t work_estimate           = 0.0;
+  const f_t max_work_estimate = 1e8;
+
+  std::vector<i_t> vertices;
+  std::vector<f_t> weights;
+  vertices.reserve(num_vars * 2);
+  weights.reserve(num_vars * 2);
+
+  for (i_t j = 0; j < num_vars; ++j) {
+    if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
+    const f_t lower_bound = user_problem_.lower[j];
+    const f_t upper_bound = user_problem_.upper[j];
+    if (lower_bound < -bound_tol || upper_bound > 1 + bound_tol) { continue; }
+    const f_t xj = xstar[j];
+    if (std::abs(xj - std::round(xj)) <= settings.integer_tol) { continue; }
+    vertices.push_back(j);
+    weights.push_back(xj);
+    vertices.push_back(j + num_vars);
+    weights.push_back(1.0 - xj);
+  }
+  work_estimate += 4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(vertices.size());
+  if (work_estimate > max_work_estimate) { return true; }
+  if (vertices.empty()) {
+    CUOPT_LOG_DEBUG("[zero_half] no fractional binary vertices");
+    return true;
+  }
+
+  const i_t num_local = static_cast<i_t>(vertices.size());
+  CUOPT_LOG_DEBUG("[zero_half] fractional sub-CG vertices=%lld", static_cast<long long>(num_local));
+
+  std::vector<i_t> vertex_to_local(2 * num_vars, -1);
+  std::vector<char> in_subgraph(2 * num_vars, 0);
+  for (i_t idx = 0; idx < num_local; ++idx) {
+    const i_t vertex_idx        = vertices[idx];
+    vertex_to_local[vertex_idx] = idx;
+    in_subgraph[vertex_idx]     = 1;
+  }
+  work_estimate += 3.0 * static_cast<f_t>(num_local);
+  if (work_estimate > max_work_estimate) { return true; }
+
+  std::vector<std::vector<i_t>> adj_local(num_local);
+  for (i_t idx = 0; idx < num_local; ++idx) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
+    const i_t vertex_idx = vertices[idx];
+    auto adj_set         = clique_table_->get_adj_set_of_var(vertex_idx);
+    auto& adj            = adj_local[idx];
+    adj.reserve(adj_set.size());
+    for (const auto neighbor : adj_set) {
+      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Zero-half neighbor out of range");
+      if (!in_subgraph[neighbor]) { continue; }
+      const i_t local_neighbor = vertex_to_local[neighbor];
+      cuopt_assert(local_neighbor >= 0, "Zero-half local neighbor out of range");
+      adj.push_back(local_neighbor);
+    }
+    work_estimate += static_cast<f_t>(adj_set.size());
+  }
+  if (work_estimate > max_work_estimate) { return true; }
+
+  sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
+  f_t cut_rhs = 0.0;
+  std::vector<i_t> bipartite_path;
+  std::vector<i_t> cycle_vertices;
+  std::vector<i_t> wheel_centers;
+
+  i_t cycles_found  = 0;
+  i_t cuts_added    = 0;
+  i_t added_per_var = 0;
+  std::vector<char> already_used(num_local, 0);
+
+  for (i_t s = 0; s < num_local; ++s) {
+    if (toc(start_time) >= settings.time_limit) { break; }
+    if (work_estimate > max_work_estimate) { break; }
+    if (already_used[s]) { continue; }
+
+    f_t total_weight = 0;
+    if (!dijkstra_odd_cycle<i_t, f_t>(s,
+                                      adj_local,
+                                      weights,
+                                      cutoff,
+                                      bipartite_path,
+                                      total_weight,
+                                      &work_estimate,
+                                      max_work_estimate)) {
+      continue;
+    }
+    if (!path_to_odd_cycle<i_t, f_t>(bipartite_path,
+                                     vertices,
+                                     num_local,
+                                     num_vars,
+                                     cycle_vertices,
+                                     &work_estimate,
+                                     max_work_estimate)) {
+      continue;
+    }
+    cycles_found++;
+
+    extend_to_odd_wheel<i_t, f_t>(cycle_vertices,
+                                  wheel_centers,
+                                  *clique_table_,
+                                  reduced_costs,
+                                  num_vars,
+                                  start_time,
+                                  settings.time_limit,
+                                  &work_estimate,
+                                  max_work_estimate);
+
+    const auto build_status = build_zero_half_cut<i_t, f_t>(cycle_vertices,
+                                                            wheel_centers,
+                                                            num_vars,
+                                                            var_types,
+                                                            user_problem_.lower,
+                                                            user_problem_.upper,
+                                                            xstar,
+                                                            bound_tol,
+                                                            min_violation,
+                                                            cut,
+                                                            cut_rhs,
+                                                            &work_estimate,
+                                                            max_work_estimate);
+    if (work_estimate > max_work_estimate) { break; }
+    if (build_status == clique_cut_build_status_t::INFEASIBLE) {
+      CUOPT_LOG_DEBUG("[zero_half] infeasible cycle detected");
+      return false;
+    }
+    if (build_status == clique_cut_build_status_t::CUT_ADDED) {
+      inequality_t<i_t, f_t> cut_inequality;
+      cut_inequality.vector = cut;
+      cut_inequality.rhs    = cut_rhs;
+      cut_pool_.add_cut(cut_type_t::ZERO_HALF, cut_inequality);
+      cuts_added++;
+      added_per_var++;
+      // mark all CG vertices that participated so we do not re-derive the same
+      // cycle from a different source vertex
+      for (const auto v : cycle_vertices) {
+        const i_t lv = vertex_to_local[v];
+        if (lv >= 0) { already_used[lv] = 1; }
+      }
+    }
+  }
+
+  CUOPT_LOG_DEBUG("[zero_half] generate_zero_half_cuts done cycles=%lld cuts=%lld work=%g",
+                  static_cast<long long>(cycles_found),
+                  static_cast<long long>(cuts_added),
+                  static_cast<double>(work_estimate));
   return true;
 }
 

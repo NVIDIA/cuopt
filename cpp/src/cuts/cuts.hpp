@@ -20,6 +20,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <cmath>
@@ -39,7 +40,8 @@ enum cut_type_t : int8_t {
   CHVATAL_GOMORY         = 3,
   CLIQUE                 = 4,
   IMPLIED_BOUND          = 5,
-  MAX_CUT_TYPE           = 6
+  ZERO_HALF              = 6,
+  MAX_CUT_TYPE           = 7
 };
 
 template <typename f_t>
@@ -178,7 +180,8 @@ struct cut_info_t {
                                               "Knapsack      ",
                                               "Strong CG     ",
                                               "Clique        ",
-                                              "Implied Bounds"};
+                                              "Implied Bounds",
+                                              "Zero-Half     "};
   std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
@@ -269,6 +272,16 @@ std::vector<std::vector<int>> find_maximal_cliques_for_test(
   int max_calls,
   double time_limit);
 
+// Test-only helper to run the production odd-cycle separator used by zero-half cuts.
+// adjacency_list must contain local vertex indices in [0, n_vertices). x_values gives
+// the LP value for each vertex. Returns simple odd cycles whose induced edge weight
+// sum is < 0.5 - min_violation.
+std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
+  const std::vector<std::vector<int>>& adjacency_list,
+  const std::vector<double>& x_values,
+  double min_violation,
+  double time_limit);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
@@ -279,6 +292,8 @@ class cut_pool_t {
       rhs_storage_(0),
       cut_age_(0),
       cut_type_(0),
+      cut_inv_norm_(0),
+      cut_max_abs_coef_(0),
       scored_cuts_(0)
   {
   }
@@ -288,7 +303,23 @@ class cut_pool_t {
   // cut'*xstart < rhs
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
+  // Backward-compatible scoring entry-point. Falls back to the legacy
+  // geometric-distance / nnz-penalty score when bounds are not provided.
   void score_cuts(std::vector<f_t>& x_relax);
+
+  // HiGHS-like active-support scoring with adaptive threshold, adaptive
+  // parallelism rejection, and violation-based aging. Selected
+  // rows remain in the pool so they can be reconsidered if later removed
+  // from the LP and violated again.
+  void score_cuts(const std::vector<f_t>& x_relax,
+                  const std::vector<f_t>& lower,
+                  const std::vector<f_t>& upper,
+                  f_t feastol);
+  void score_cuts(const std::vector<f_t>& x_relax,
+                  const std::vector<f_t>& lower,
+                  const std::vector<f_t>& upper,
+                  const std::vector<variable_type_t>& var_types,
+                  f_t feastol);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
   i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
@@ -301,22 +332,65 @@ class cut_pool_t {
 
   i_t pool_size() const { return cut_storage_.m; }
 
+  // Number of nonzeros in the cut at row `row` of the cut pool.
+  i_t cut_nz(i_t row) const { return cut_storage_.row_length(row); }
+
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
   void check_for_duplicate_cuts();
+
+  // Configuration knobs for the HiGHS-like cut pool. Defaults match the
+  // recommended starting values from the cut-selection design note.
+  void set_pool_age_limit(i_t v) { pool_age_limit_ = v; }
+  void set_pool_soft_limit(i_t v) { pool_soft_limit_ = v; }
+  void set_max_parallelism(f_t v) { max_parallelism_ = v; }
 
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
   f_t cut_orthogonality(i_t i, i_t j);
 
+  // HiGHS-like active-support score for a single pool row. Returns true if
+  // the cut is currently violated (violation > feastol). Falls back to the
+  // full row norm if no variable is "active" (rare for a violated cut).
+  bool compute_active_support_score(i_t row,
+                                    const std::vector<f_t>& x,
+                                    const std::vector<f_t>& lower,
+                                    const std::vector<f_t>& upper,
+                                    const std::vector<variable_type_t>& var_types,
+                                    f_t feastol,
+                                    f_t& violation,
+                                    f_t& score) const;
+
+  // Parallelism in [-1, 1] using stored 1/||a||_2. We use the absolute
+  // value because cuts are stored in a fixed sign convention (a^T x >= rhs)
+  // but two equivalent cuts may differ by a global sign.
+  f_t parallelism_abs(i_t i, i_t j) const;
+
+  // Compact: drop pool rows for which keep_row[r] == 0.
+  void compact_pool(const std::vector<i_t>& keep_row);
+  uint64_t support_hash(const i_t* indices, i_t size) const;
+  void rebuild_support_hash_buckets();
+  static bool is_integral_type(variable_type_t t)
+  {
+    return t == variable_type_t::INTEGER || t == variable_type_t::BINARY;
+  }
+
   i_t original_vars_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 
   csr_matrix_t<i_t, f_t> cut_storage_;
   std::vector<f_t> rhs_storage_;
+  // Age convention:
+  //   age >= 0 : cut is in the pool, available for selection. Newly added
+  //              cuts start at max(0, pool_age_limit_ - 5). Each separation
+  //              round, non-violated cuts have age++ and are deleted once
+  //              age >= effective_age_limit; violated cuts reset to age = 0.
   std::vector<i_t> cut_age_;
   std::vector<cut_type_t> cut_type_;
+  // 1 / sqrt(sum a_j^2). 0.0 means the cut is degenerate / removed.
+  std::vector<f_t> cut_inv_norm_;
+  std::vector<f_t> cut_max_abs_coef_;
 
   i_t scored_cuts_;
   std::vector<f_t> cut_distances_;
@@ -325,6 +399,16 @@ class cut_pool_t {
   std::vector<f_t> cut_scores_;
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
+
+  // HiGHS-like cut-pool configuration
+  i_t pool_age_limit_{30};
+  i_t pool_soft_limit_{10000};
+  f_t max_parallelism_{0.1};
+  f_t min_score_factor_{0.9};
+  f_t best_observed_score_{0.0};
+  f_t integer_support_weight_{0.1};
+  f_t full_support_penalty_{0.01};
+  std::unordered_map<uint64_t, std::vector<i_t>> support_hash_buckets_;
 };
 
 template <typename i_t, typename f_t>
@@ -480,6 +564,14 @@ class cut_generation_t {
                             const std::vector<f_t>& xstar,
                             const std::vector<f_t>& reduced_costs,
                             f_t start_time);
+
+  // Generate zero-half (odd-cycle / odd-wheel) cuts from the conflict graph
+  bool generate_zero_half_cuts(const lp_problem_t<i_t, f_t>& lp,
+                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                               const std::vector<variable_type_t>& var_types,
+                               const std::vector<f_t>& xstar,
+                               const std::vector<f_t>& reduced_costs,
+                               f_t start_time);
 
   // Generate implied bounds cuts from probing implications
   void generate_implied_bound_cuts(const lp_problem_t<i_t, f_t>& lp,

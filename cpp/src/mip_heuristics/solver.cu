@@ -18,6 +18,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -337,6 +338,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.knapsack_cuts      = context.settings.knapsack_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
     branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
+    branch_and_bound_settings.zero_half_cuts     = context.settings.zero_half_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
@@ -386,7 +388,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                   std::placeholders::_2);
     }
 
-    // Create the branch and bound object
+    // Create the branch and bound object.
+    //
+    // Clique-table lifecycle: presolve no longer builds an initial clique
+    // table, so context.problem_ptr->clique_table is expected to be null
+    // here. B&B's async build (kicked off inside branch_and_bound_t::solve)
+    // produces the table and, via the publish callback installed below,
+    // atomically stores it into context.problem_ptr->clique_table so
+    // heuristic ensure_clique_data() can observe it on its next iteration.
     branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
       branch_and_bound_problem,
       branch_and_bound_settings,
@@ -394,6 +403,16 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       probing_implied_bound,
       context.problem_ptr->clique_table);
     context.branch_and_bound_ptr = branch_and_bound.get();
+
+    // Publish the async-built clique_table onto context.problem_ptr so
+    // heuristics pick it up via the atomic snapshot accessor.
+    // {
+    //   auto* pb = context.problem_ptr;
+    //   branch_and_bound->set_clique_publish_callback(
+    //     [pb](std::shared_ptr<clique_table_t<i_t, f_t>> ct) {
+    //       pb->publish_clique_table(std::move(ct));
+    //     });
+    // }
 
     // Convert the best external upper bound from user-space to B&B's internal objective space.
     // context.problem_ptr is the post-trivial-presolve problem, whose get_solver_obj_from_user_obj

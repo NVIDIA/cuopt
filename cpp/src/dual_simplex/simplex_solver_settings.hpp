@@ -102,6 +102,7 @@ struct simplex_solver_settings_t {
       knapsack_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
+      zero_half_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
@@ -186,6 +187,7 @@ struct simplex_solver_settings_t {
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
+  i_t zero_half_cuts;              // -1 automatic, 0 to disable, >0 to enable zero-half cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost

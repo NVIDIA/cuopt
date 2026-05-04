@@ -2055,7 +2055,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   root_relax_soln_.resize(original_lp_.num_rows, original_lp_.num_cols);
 
-  if (settings_.clique_cuts != 0 && clique_table_ == nullptr) {
+  if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr) {
     signal_extend_cliques_.store(false, std::memory_order_release);
     typename ::cuopt::linear_programming::mip_solver_settings_t<i_t, f_t>::tolerances_t
       tolerances_for_clique{};
