@@ -3565,6 +3565,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                                               const barrier_solver_settings_t<i_t, f_t>& options,
                                               lp_solution_t<i_t, f_t>& solution)
 {
+  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
@@ -3595,6 +3596,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
+
+    settings.log.printf("Iteration data created at %.2f seconds\n", toc(start_time));
     // Set up native free variable tracking for QPs
     if (!presolve_info.free_variable_indices.empty()) {
       data.n_free_vars = presolve_info.free_variable_indices.size();
@@ -3631,6 +3634,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     }
 
     i_t initial_status = initial_point(data);
+    settings.log.printf("Initial point computed at %.2f seconds\n", toc(start_time));
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
