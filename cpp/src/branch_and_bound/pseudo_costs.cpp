@@ -569,10 +569,13 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
 
   // Set CSR constraint matrix
   mps_model.set_csr_constraint_matrix(
-    csr_A.x.data(), nz, csr_A.j.data(), nz, csr_A.row_start.data(), m + 1);
+    std::span<const f_t>{csr_A.x.data(), static_cast<size_t>(nz)},
+    std::span<const i_t>{csr_A.j.data(), static_cast<size_t>(nz)},
+    std::span<const i_t>{csr_A.row_start.data(), static_cast<size_t>(m + 1)});
 
   // Set objective coefficients
-  mps_model.set_objective_coefficients(lp.objective.data(), n);
+  mps_model.set_objective_coefficients(
+    std::span<const f_t>{lp.objective.data(), static_cast<size_t>(n)});
 
   // The LP is already in minimization form (objective negated for max problems).
   // Pass identity scaling so PDLP returns the raw DS-space objective directly.
@@ -580,8 +583,10 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   mps_model.set_objective_offset(f_t(0.0));
 
   // Set variable bounds
-  mps_model.set_variable_lower_bounds(lp.lower.data(), n);
-  mps_model.set_variable_upper_bounds(lp.upper.data(), n);
+  mps_model.set_variable_lower_bounds(
+    std::span<const f_t>{lp.lower.data(), static_cast<size_t>(n)});
+  mps_model.set_variable_upper_bounds(
+    std::span<const f_t>{lp.upper.data(), static_cast<size_t>(n)});
 
   // Convert row sense and RHS to constraint bounds
   std::vector<f_t> constraint_lower(m);
@@ -629,8 +634,8 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
     }
   }
 
-  mps_model.set_constraint_lower_bounds(constraint_lower.data(), m);
-  mps_model.set_constraint_upper_bounds(constraint_upper.data(), m);
+  mps_model.set_constraint_lower_bounds(constraint_lower);
+  mps_model.set_constraint_upper_bounds(constraint_upper);
   mps_model.set_maximize(false);
 
   return mps_model;

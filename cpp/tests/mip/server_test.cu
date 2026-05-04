@@ -34,28 +34,23 @@ mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
   std::vector<int> offsets         = {0, 2};
   std::vector<int> indices         = {0, 1};
   std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {0.0};
   std::vector<double> upper_bounds = {5000.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower = {0.0, 0.0};
   std::vector<double> var_upper = {3000.0, 5000.0};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+  problem.set_variable_lower_bounds(var_lower);
+  problem.set_variable_upper_bounds(var_upper);
 
   // Set objective coefficients
   std::vector<double> obj_coeffs = {1.2, 1.7};
-  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
+  problem.set_objective_coefficients(obj_coeffs);
   problem.set_maximize(false);
 
   return problem;
