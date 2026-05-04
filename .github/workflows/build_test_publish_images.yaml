@@ -138,6 +138,7 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to DockerHub
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:

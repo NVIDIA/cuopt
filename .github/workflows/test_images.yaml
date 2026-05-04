@@ -65,6 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.sha }}
+          persist-credentials: false
       - name: Test cuopt
         run: |
           bash ./ci/docker/test_image.sh
