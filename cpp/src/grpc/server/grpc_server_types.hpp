@@ -255,9 +255,16 @@ inline std::map<std::string, ChunkedUploadState> chunked_uploads;
 inline std::mutex chunked_downloads_mutex;
 inline std::map<std::string, ChunkedDownloadState> chunked_downloads;
 
-inline const char* SHM_JOB_QUEUE    = "/cuopt_job_queue";
-inline const char* SHM_RESULT_QUEUE = "/cuopt_result_queue";
-inline const char* SHM_CONTROL      = "/cuopt_control";
+// Shared memory names include PID to prevent local users from accessing
+// segments belonging to other server instances on the same host.
+inline std::string make_shm_name(const char* base)
+{
+  return std::string(base) + "_" + std::to_string(getpid());
+}
+
+inline std::string SHM_JOB_QUEUE    = make_shm_name("/cuopt_job_queue");
+inline std::string SHM_RESULT_QUEUE = make_shm_name("/cuopt_result_queue");
+inline std::string SHM_CONTROL      = make_shm_name("/cuopt_control");
 
 inline const std::string LOG_DIR = "/tmp/cuopt_logs";
 

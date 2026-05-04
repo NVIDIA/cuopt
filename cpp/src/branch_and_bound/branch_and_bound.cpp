@@ -299,10 +299,11 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  f_t lower_bound      = lower_bound_ceiling_.load();
-  f_t heap_lower_bound = node_queue_.get_lower_bound();
-  lower_bound          = std::min(heap_lower_bound, lower_bound);
-  lower_bound          = std::min(worker_pool_.get_lower_bound(), lower_bound);
+  f_t lower_bound        = lower_bound_ceiling_.load();
+  f_t heap_lower_bound   = node_queue_.get_lower_bound();
+  f_t worker_lower_bound = worker_pool_.get_lower_bound();
+  lower_bound            = std::min(heap_lower_bound, lower_bound);
+  lower_bound            = std::min(worker_lower_bound, lower_bound);
 
   if (std::isfinite(lower_bound)) {
     return lower_bound;
@@ -1800,7 +1801,8 @@ void branch_and_bound_t<i_t, f_t>::run_scheduler()
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 {
-  branch_and_bound_worker_t<i_t, f_t> worker(0, original_lp_, Arow_, var_types_, settings_);
+  worker_pool_.init(1, original_lp_, Arow_, var_types_, settings_);
+  branch_and_bound_worker_t<i_t, f_t>* worker = worker_pool_.get_idle_worker();
 
   f_t lower_bound = get_lower_bound();
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
@@ -1808,7 +1810,6 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && node_queue_.best_first_queue_size() > 0) {
-    bool launched_any_task = false;
     repair_heuristic_solutions();
 
     f_t now = toc(exploration_stats_.start_time);
@@ -1844,8 +1845,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
       continue;
     }
 
-    worker.init_best_first(start_node.value(), original_lp_);
-    plunge_with(&worker);
+    worker->init_best_first(start_node.value(), original_lp_);
+    plunge_with(worker);
 
     lower_bound = get_lower_bound();
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);

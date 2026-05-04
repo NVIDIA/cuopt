@@ -2547,7 +2547,6 @@ dual::status_t dual_phase2(i_t phase,
   const i_t n = lp.num_cols;
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
-  std::vector<i_t> superbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
   const bool initialize_basis = true;
   return dual_phase2_with_advanced_basis(phase,
@@ -2752,6 +2751,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                         vector_norm2<i_t, f_t>(delta_y_steepest_edge));
   }
 
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
+
   if (phase == 2) {
     settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.     Perturb  Time\n");
   }
@@ -2802,11 +2805,19 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
   lp.A.to_compressed_row(Arow);
   phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
+
   std::vector<i_t> nonbasic_end(m);
   std::vector<i_t> row_mark;
   row_mark.reserve(m);
   compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
   phase2_work_estimate += lp.A.col_start[lp.A.n];
+
+  if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+    return dual::status_t::CONCURRENT_LIMIT;
+  }
 
   f_t obj = compute_objective(lp, x);
   phase2_work_estimate += 2 * n;
@@ -2981,6 +2992,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     timers.btran_time += timers.stop_timer();
     solve_work += (ft.work_estimate() - btran_start_work);
 
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
+
     const f_t steepest_edge_norm_check = delta_y_sparse.norm2_squared();
     phase2_work_estimate += 2 * delta_y_sparse.i.size();
     if (delta_y_steepest_edge[leaving_index] <
@@ -3038,6 +3053,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       }
     }
     timers.delta_z_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_residual;
@@ -3374,6 +3392,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     }
     solve_work += (ft.work_estimate() - ftran_start_work);
     timers.ftran_time += timers.stop_timer();
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
 #ifdef CHECK_PRIMAL_STEP
     std::vector<f_t> residual(m);
@@ -3406,6 +3427,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(steepest_edge_status == 0);
     timers.se_norms_time += timers.stop_timer();
     solve_work += (ft.work_estimate() - se_norms_start_work);
+
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return dual::status_t::CONCURRENT_LIMIT;
+    }
 
     timers.start_timer();
     // x <- x + delta_x

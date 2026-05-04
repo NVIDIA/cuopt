@@ -447,9 +447,9 @@ class SolverConfig(BaseModel):
         "<br>"
         "- 0: No scaling"
         "<br>"
-        "- 1: Full scaling (objective + row), default"
+        "- 1: Full scaling (objective + row)"
         "<br>"
-        "- 2: Row scaling only (no objective scaling)",
+        "- 2: Row scaling only (no objective scaling), default",
     )
     mip_heuristics_only: Optional[bool] = Field(
         default=False,
