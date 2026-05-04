@@ -380,7 +380,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         }
         work_estimate += 3 * Sdim;
 
-        Srank = right_looking_lu(S,
+        Srank = right_looking_lu2(S,
                                  settings,
                                  settings.threshold_partial_pivoting_tol,
                                  identity,

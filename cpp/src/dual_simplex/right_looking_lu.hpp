@@ -27,6 +27,18 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
                      f_t& work_estimate);
 
 template <typename i_t, typename f_t>
+i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      f_t tol,
+                      const std::vector<i_t>& column_list,
+                      f_t start_time,
+                      std::vector<i_t>& q,
+                      csc_matrix_t<i_t, f_t>& L,
+                      csc_matrix_t<i_t, f_t>& U,
+                      std::vector<i_t>& pinv,
+                      f_t& work_estimate);
+
+template <typename i_t, typename f_t>
 i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
                                           const simplex_solver_settings_t<i_t, f_t>& settings,
                                           f_t tol,

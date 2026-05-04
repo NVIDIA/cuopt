@@ -1422,8 +1422,18 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
-      settings.presolver = presolver_t::PSLP;
-      CUOPT_LOG_INFO("Using PSLP presolver");
+      // Skip presolve for small problems where the fixed overhead (~20-30ms)
+      // exceeds the simplex solve time. Based on Netlib benchmarks, problems
+      // with fewer than 8000 nonzeros never benefit from PSLP presolve.
+      constexpr i_t presolve_nnz_threshold = 8000;
+      if (op_problem.get_nnz() >= presolve_nnz_threshold) {
+        settings.presolver = presolver_t::PSLP;
+        CUOPT_LOG_INFO("Using PSLP presolver");
+      } else {
+        settings.presolver = presolver_t::None;
+        CUOPT_LOG_INFO("Skipping presolve for small problem (nnz=%d < %d)",
+                       op_problem.get_nnz(), presolve_nnz_threshold);
+      }
     }
 
     [[maybe_unused]] double presolve_time = 0.0;

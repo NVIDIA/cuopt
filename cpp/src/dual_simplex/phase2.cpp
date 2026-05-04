@@ -2829,7 +2829,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t num_refactors         = 0;
   i_t total_bound_flips     = 0;
   f_t delta_y_nz_percentage = 0.0;
-  phase2::phase2_timers_t<i_t, f_t> timers(true);
+  phase2::phase2_timers_t<i_t, f_t> timers(false);
 
   // Sparse vectors for main loop (declared outside loop for instrumentation)
   sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
