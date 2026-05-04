@@ -9,8 +9,13 @@ on:
     - cron: "0 5 * * *" # 5am UTC / 1am EST
 
 
+permissions: {}
+
 jobs:
   trigger-nightly-builds-and-tests:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

@@ -52,8 +52,12 @@ on:
       CUOPT_SLACK_MENTION_ID:
         required: false
 
+permissions: {}
+
 jobs:
   nightly-summary:
+    permissions:
+      contents: read
     runs-on: linux-amd64-cpu4
     container:
       image: python:3.14-slim
