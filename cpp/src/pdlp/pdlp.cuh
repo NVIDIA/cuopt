@@ -146,7 +146,7 @@ class pdlp_solver_t {
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
   problem_t<i_t, f_t> op_problem_scaled_;
-  
+
   rmm::device_uvector<f_t> unscaled_primal_avg_solution_;
   rmm::device_uvector<f_t> unscaled_dual_avg_solution_;
 

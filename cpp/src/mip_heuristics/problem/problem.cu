@@ -343,8 +343,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.combined_bounds, handle_ptr->get_stream())
         : rmm::device_uvector<f_t>(problem_.combined_bounds.size(), handle_ptr->get_stream())),
-    variable_types(
-      (!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
+    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
     integer_indices((!no_deep_copy) ? 0 : problem_.integer_indices.size(),
                     handle_ptr->get_stream()),
     binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(), handle_ptr->get_stream()),
