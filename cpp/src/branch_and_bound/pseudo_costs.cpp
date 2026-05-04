@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include "branch_and_bound_worker.hpp"
+
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/shared_strong_branching_context.hpp>
 
@@ -13,7 +15,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <pdlp/pdlp_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/linear_programming/solve.hpp>
 
@@ -23,12 +25,7 @@
 
 #include <omp.h>
 
-#include <mip_heuristics/mip_constants.hpp>
-
-#include "branch_and_bound_worker.hpp"
-
 namespace cuopt::linear_programming::dual_simplex {
-
 namespace {
 
 static bool is_dual_simplex_done(dual::status_t status)
