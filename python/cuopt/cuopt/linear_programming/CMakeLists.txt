@@ -16,6 +16,9 @@ project(
             # that is fixed we need to keep C.
             C CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 option(FIND_MPS_PARSER_CPP "Search for existing CUOPT C++ installations before defaulting to local files"
        OFF)
 option(CUOPT_BUILD_WHEELS "Whether this build is generating a Python wheel." ON)

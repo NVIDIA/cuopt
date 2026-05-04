@@ -83,6 +83,7 @@ ss.set_error_logging_mode(True)
 | Infeasible orders | Increase fleet or capacity |
 | Status != 0 with time windows | Add `add_transit_time_matrix()` |
 | Wrong cost | Check cost_matrix is symmetric |
+| `compute_waypoint_sequence` alters route_df | It replaces the `location` column with waypoint ids in place — pass `route_df.copy()` if you still need cost-matrix indices (e.g. when iterating per truck) |
 
 ## Debugging
 

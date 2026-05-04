@@ -30,6 +30,7 @@ conda activate test
 set -u
 
 RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+export RAPIDS_TESTS_DIR
 RAPIDS_COVERAGE_DIR=${RAPIDS_COVERAGE_DIR:-"${PWD}/coverage-results"}
 mkdir -p "${RAPIDS_TESTS_DIR}" "${RAPIDS_COVERAGE_DIR}"
 
@@ -76,6 +77,10 @@ timeout 20m ./ci/run_cuopt_server_pytests.sh \
 
 rapids-logger "Test skills/ assets (Python, C, CLI)"
 timeout 10m ./ci/test_skills_assets.sh
+
+rapids-logger "Generate nightly test report"
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "python" --with-python-version
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}

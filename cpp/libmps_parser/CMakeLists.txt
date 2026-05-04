@@ -16,6 +16,9 @@ project(
   LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Disable C++20 module scanning as the codebase doesn't use modules
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
 
@@ -80,10 +83,6 @@ add_library(mps_parser SHARED
 set_target_properties(mps_parser
   PROPERTIES BUILD_RPATH "\$ORIGIN"
   INSTALL_RPATH "\$ORIGIN"
-
-  # set target compile options
-  CXX_STANDARD 20
-  CXX_STANDARD_REQUIRED ON
   INTERFACE_POSITION_INDEPENDENT_CODE ON
   CXX_SCAN_FOR_MODULES OFF
 )
