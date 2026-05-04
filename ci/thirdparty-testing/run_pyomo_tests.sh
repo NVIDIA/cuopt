@@ -23,11 +23,15 @@ python -m pip install \
 
 pip check
 
+RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
 rapids-logger "running Pyomo tests (cuopt_direct / cuOpt-related)"
 # Run only tests that reference cuopt (cuopt_direct solver)
 timeout 5m python -m pytest \
     --verbose \
     --capture=no \
+    --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-pyomo.xml" \
     -k "cuopt or CUOPT" \
     pyomo/solvers/tests/
 

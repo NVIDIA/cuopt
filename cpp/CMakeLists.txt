@@ -29,6 +29,11 @@ project(
         LANGUAGES CXX CUDA C
 )
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 # Disable C++20 module scanning as the codebase doesn't use modules
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
 
@@ -430,12 +435,6 @@ add_library(cuopt SHARED
 set_target_properties(cuopt
         PROPERTIES BUILD_RPATH "\$ORIGIN"
         INSTALL_RPATH "\$ORIGIN"
-
-        # set target compile options
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
@@ -667,8 +666,6 @@ if (NOT BUILD_LP_ONLY)
     # (ET_EXEC) binaries are prone to corrupt segment layout. PIE (ET_DYN) survives RPATH edits.
     set_target_properties(cuopt_cli
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
@@ -725,8 +722,6 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
 
     set_target_properties(solve_MIP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -757,10 +752,6 @@ if (BUILD_LP_BENCHMARKS)
 
     set_target_properties(solve_LP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
-            CUDA_STANDARD 20
-            CUDA_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -796,8 +787,6 @@ if (NOT SKIP_GRPC_BUILD)
 
     set_target_properties(cuopt_grpc_server
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
