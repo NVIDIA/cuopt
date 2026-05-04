@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -16,7 +16,17 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/cuda_helpers.cuh>
 
+#include <thrust/device_ptr.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/sort.h>
+#include <thrust/tabulate.h>
+#include <thrust/tuple.h>
+
 namespace cuopt::linear_programming::dual_simplex {
+
+template <typename IndexType, typename ValueType>
+class device_csr_matrix_t;
 
 template <typename f_t>
 struct sum_reduce_helper_t {
@@ -158,6 +168,9 @@ class device_csc_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
+  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on device. */
+  void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
+
   void form_col_index(rmm::cuda_stream_view stream)
   {
     col_index.resize(x.size(), stream);
@@ -292,5 +305,83 @@ class device_csr_matrix_t {
   static_assert(std::is_signed_v<i_t>);  // Require signed integers (we make use of this
                                          // to avoid extra space / computation)
 };
+
+template <typename i_t, typename f_t>
+void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow,
+                                                      rmm::cuda_stream_view stream) const
+{
+  static_assert(std::is_signed_v<i_t>);
+  i_t const mm = m;
+  i_t const nn = n;
+  i_t const nz = nz_max;
+
+  Arow.m      = mm;
+  Arow.n      = nn;
+  Arow.nz_max = nz;
+  Arow.row_start.resize(mm + 1, stream);
+  Arow.j.resize(nz, stream);
+  Arow.x.resize(nz, stream);
+
+  auto exec = rmm::exec_policy(stream);
+
+  if (nz == 0) {
+    RAFT_CUDA_TRY(cudaMemsetAsync(Arow.row_start.data(), 0, sizeof(i_t) * (mm + 1), stream));
+    return;
+  }
+
+  rmm::device_uvector<i_t> row_counts(mm, stream);
+  RAFT_CUDA_TRY(cudaMemsetAsync(row_counts.data(), 0, sizeof(i_t) * mm, stream));
+
+  thrust::for_each(exec,
+                   thrust::make_counting_iterator<i_t>(0),
+                   thrust::make_counting_iterator<i_t>(nz),
+                   [row_ind = i.data(), counts = row_counts.data()] __device__(i_t p) {
+                     atomicAdd(counts + row_ind[p], i_t(1));
+                   });
+
+  rmm::device_buffer scan_tmp;
+  std::size_t scan_bytes = 0;
+  cub::DeviceScan::ExclusiveSum(
+    nullptr, scan_bytes, row_counts.data(), Arow.row_start.data(), mm, stream);
+  scan_tmp.resize(scan_bytes, stream);
+  cub::DeviceScan::ExclusiveSum(
+    scan_tmp.data(), scan_bytes, row_counts.data(), Arow.row_start.data(), mm, stream);
+
+  RAFT_CUDA_TRY(
+    cudaMemcpyAsync(Arow.row_start.data() + mm, &nz, sizeof(i_t), cudaMemcpyHostToDevice, stream));
+
+  rmm::device_uvector<i_t> rows(nz, stream);
+  rmm::device_uvector<i_t> cols(nz, stream);
+  rmm::device_uvector<f_t> vals(nz, stream);
+  raft::copy(rows.data(), i.data(), nz, stream);
+  raft::copy(vals.data(), x.data(), nz, stream);
+
+  thrust::tabulate(exec,
+                   thrust::device_pointer_cast(cols.data()),
+                   thrust::device_pointer_cast(cols.data() + nz),
+                   [cs = col_start.data(), nn_c = nn] __device__(i_t p) {
+                     i_t lo = 0;
+                     i_t hi = nn_c;
+                     while (lo < hi) {
+                       i_t mid = lo + (hi - lo) / 2;
+                       if (cs[mid] <= p) {
+                         lo = mid + 1;
+                       } else {
+                         hi = mid;
+                       }
+                     }
+                     return lo - 1;
+                   });
+
+  auto row_iter = thrust::device_pointer_cast(rows.data());
+  auto col_iter = thrust::device_pointer_cast(cols.data());
+  thrust::sort_by_key(exec,
+                      thrust::make_zip_iterator(thrust::make_tuple(row_iter, col_iter)),
+                      thrust::make_zip_iterator(thrust::make_tuple(row_iter + nz, col_iter + nz)),
+                      thrust::device_pointer_cast(vals.data()));
+
+  raft::copy(Arow.j.data(), cols.data(), nz, stream);
+  raft::copy(Arow.x.data(), vals.data(), nz, stream);
+}
 
 }  // namespace cuopt::linear_programming::dual_simplex

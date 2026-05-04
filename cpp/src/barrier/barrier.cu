@@ -94,7 +94,8 @@ class iteration_data_t {
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings)
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   const f_t start_time)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -222,6 +223,7 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
+    settings_.log.printf("Iteration data creation started at %.2f seconds\n", toc(start_time));
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
@@ -260,6 +262,7 @@ class iteration_data_t {
       raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
     }
 
+    settings_.log.printf("Forming ADAT started at %.2f seconds\n", toc(start_time));
     // Allocating GPU flag data for Form ADAT
     RAFT_CUDA_TRY(cub::DeviceSelect::Flagged(
       nullptr,
@@ -338,6 +341,7 @@ class iteration_data_t {
       settings.log.printf("Linear system               : ADAT\n");
     }
 
+    settings_.log.printf("Forming diag started at %.2f seconds\n", toc(start_time));
     // D = I + EET
     diag.set_scalar(1.0);
     if (n_upper_bounds > 0) {
@@ -365,6 +369,7 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
+    settings_.log.printf("Copying A into AD started at %.2f seconds\n", toc(start_time));
     // Copy A into AD
     AD = lp.A;
     if (!use_augmented && n_dense_columns > 0) {
@@ -393,22 +398,29 @@ class iteration_data_t {
         A_dense.from_sparse(lp.A, j, k++);
       }
     }
-    original_A_values = AD.x;
-    d_original_A_values.resize(original_A_values.size(), handle_ptr->get_stream());
-    raft::copy(d_original_A_values.data(), AD.x.data(), AD.x.size(), handle_ptr->get_stream());
+
     AD.transpose(AT);
 
-    device_AD.copy(AD, handle_ptr->get_stream());
-    // For efficient scaling of AD col we form the col index array
-    device_AD.form_col_index(handle_ptr->get_stream());
-    device_A_x_values.resize(original_A_values.size(), handle_ptr->get_stream());
-    raft::copy(
-      device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
-    csr_matrix_t<i_t, f_t> host_A_CSR(1, 1, 1);  // Sizes will be set by to_compressed_row()
-    AD.to_compressed_row(host_A_CSR);
-    device_A.copy(host_A_CSR, lp.handle_ptr->get_stream());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
+    if (!use_augmented) {
+      device_AD.copy(AD, handle_ptr->get_stream());
+      d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
+      raft::copy(d_original_A_values.data(),
+                 device_AD.x.data(),
+                 device_AD.x.size(),
+                 handle_ptr->get_stream());
+      // For efficient scaling of AD col we form the col index array
+      device_AD.form_col_index(handle_ptr->get_stream());
+      device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
+      raft::copy(
+        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
+      settings_.log.printf("Convert to csr matrix  from csc matrix started at %.2f seconds\n",
+                           toc(start_time));
+      device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    }
 
+    settings_.log.printf("Forming cholesky started at %.2f seconds\n", toc(start_time));
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
     chol =
@@ -1509,7 +1521,6 @@ class iteration_data_t {
   pinned_dense_vector_t<i_t, f_t> inv_diag;
   pinned_dense_vector_t<i_t, f_t> inv_sqrt_diag;
 
-  std::vector<f_t> original_A_values;
   rmm::device_uvector<f_t> d_original_A_values;
 
   csc_matrix_t<i_t, f_t> AD;
@@ -3592,10 +3603,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       if (lp.upper[j] < inf) { num_upper_bounds++; }
     }
 
+    settings.log.printf("Creating Q at %.2f seconds\n", toc(start_time));
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
+    settings.log.printf("Q created at %.2f seconds\n", toc(start_time));
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
+    settings.log.printf("Iteration data creation started at %.2f seconds\n", toc(start_time));
+    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings, start_time);
 
     settings.log.printf("Iteration data created at %.2f seconds\n", toc(start_time));
     // Set up native free variable tracking for QPs
