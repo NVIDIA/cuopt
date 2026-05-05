@@ -47,7 +47,6 @@ class trailing_matrix_t {
                     const std::vector<i_t>& column_list)
     : m(A.m),
       n(column_list.size()),
-      remaining_pivots(column_list.size()),
       col_start(n),
       col_end(n),
       col_max(n),
@@ -170,7 +169,6 @@ class trailing_matrix_t {
     f_t markowitz = static_cast<f_t>(m) * static_cast<f_t>(n); // Upper bound on markowitz criteria
     i_t nz      = 1;
     i_t nsearch            = 0;
-    const i_t search_limit = std::min(remaining_pivots, static_cast<i_t>(8));
     constexpr bool verbose = false;
     i_t nz_max             = std::min(m, n);
     while (nz <= nz_max) {
@@ -195,11 +193,9 @@ class trailing_matrix_t {
         }
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
-        if (nsearch >= search_limit && pivot_i != -1) { break; }
       }
 
       if (markowitz <= markowitz_lower_bound) { break; }
-      if (nsearch >= search_limit && pivot_i != -1) { break; }
 
       markowitz_lower_bound = (nz - 1) * nz;
 
@@ -228,14 +224,11 @@ class trailing_matrix_t {
         }
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
-        if (nsearch >= search_limit && pivot_i != -1) { break; }
       }
 
-      if (nsearch >= search_limit && pivot_i != -1) { break; }
       if (pivot_i != -1 && nz >= 2) { break; }
       nz++;
     }
-    remaining_pivots--;
     if (nsearch > 10) {
       if constexpr (verbose) { printf("nsearch %d\n", nsearch); }
     }
@@ -835,7 +828,6 @@ class trailing_matrix_t {
 
   i_t m;
   i_t n;
-  i_t remaining_pivots;  // Number of pivots remaining (decremented each pivot step)
 
 
   // The representation of the matrix by column
