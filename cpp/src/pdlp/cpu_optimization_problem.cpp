@@ -724,7 +724,11 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     for (size_t i = 0; i < var_types_char.size(); ++i) {
       var_types_char[i] = (variable_types_[i] == var_t::INTEGER) ? 'I' : 'C';
     }
-
+  } else if (get_n_variables() > 0) {
+    // Variable types not set (e.g. pure LP); default to all continuous
+    var_types_char.assign(get_n_variables(), 'C');
+  }
+  if (!var_types_char.empty()) {
     data_model_view.set_variable_types(var_types_char.data(), var_types_char.size());
   }
 
