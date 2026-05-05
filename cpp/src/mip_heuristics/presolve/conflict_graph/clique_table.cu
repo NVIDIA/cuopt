@@ -1085,7 +1085,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double find_work_estimate = 0.0;
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
-    if (signal_extend && *signal_extend) { break; }
+    if (signal_extend && signal_extend->load(std::memory_order_acquire)) { break; }
     find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, additional_cliques_timer);
     find_work_estimate += knapsack_constraint.entries.size();
   }

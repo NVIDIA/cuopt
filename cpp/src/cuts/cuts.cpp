@@ -1880,7 +1880,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
 
   if (clique_table_ == nullptr) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts signaling background thread and waiting");
-    if (signal_extend_) { *signal_extend_ = true; }
+    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
 #pragma omp taskwait depend(in : *signal_extend_)
     if (clique_table_) {
       CLIQUE_CUTS_DEBUG("generate_clique_cuts received clique table first=%lld addtl=%lld",

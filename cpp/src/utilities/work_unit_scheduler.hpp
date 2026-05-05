@@ -45,8 +45,8 @@ class work_unit_scheduler_t {
 
   double current_sync_target() const;
 
-  void signal_shutdown() { shutdown_ = true; }
-  bool is_shutdown() const { return shutdown_; }
+  void signal_shutdown() { shutdown_.store(true, std::memory_order_release); }
+  bool is_shutdown() const { return shutdown_.load(std::memory_order_acquire); }
 
  public:
   bool verbose{false};
