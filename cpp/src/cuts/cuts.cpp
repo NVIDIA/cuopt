@@ -3772,10 +3772,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   if (settings.sub_mip) {
     return;  // Don't compute the variable upper/lower bounds inside sub-MIP
   }
-  f_t start_time                                   = tic();
-  const f_t bound_tol                              = 1e-9;
-  constexpr i_t max_propagation_rounds             = 3;
-  constexpr i_t max_propagated_bounds_per_variable = 128;
+  f_t start_time = tic();
 
   struct variable_bound_edge_t {
     i_t variable;
@@ -3783,41 +3780,10 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     f_t bias;
   };
 
-  auto is_binary_variable = [&](i_t j) {
-    return var_types[j] == variable_type_t::INTEGER && std::abs(lp.lower[j]) <= bound_tol &&
-           std::abs(lp.upper[j] - 1.0) <= bound_tol;
-  };
-
-  auto valid_bound_edge = [&](const variable_bound_edge_t& edge) {
-    return edge.variable >= 0 && edge.variable < lp.num_cols && std::isfinite(edge.weight) &&
-           std::isfinite(edge.bias);
-  };
-
-  auto already_has_bound = [](const std::vector<variable_bound_edge_t>& bounds,
-                              const variable_bound_edge_t& candidate) {
-    constexpr f_t duplicate_tol = 1e-9;
-    for (const auto& bound : bounds) {
-      if (bound.variable != candidate.variable) { continue; }
-      const f_t scale = std::max<f_t>(1.0,
-                                      std::max<f_t>({std::abs(bound.weight),
-                                                     std::abs(bound.bias),
-                                                     std::abs(candidate.weight),
-                                                     std::abs(candidate.bias)}));
-      if (std::abs(bound.weight - candidate.weight) <= duplicate_tol * scale &&
-          std::abs(bound.bias - candidate.bias) <= duplicate_tol * scale) {
-        return true;
-      }
-    }
-    return false;
-  };
-
   // This is not the flow-cover inequality itself. It is row-to-SNF preprocessing:
-  // the separator needs bounds like z <= gamma x + alpha or z >= gamma x + alpha
-  // to turn continuous row terms into arcs with 0 <= y <= u x. Edges whose
-  // controller is already binary can be used directly; edges through continuous
-  // variables are kept so short linking chains can be composed into binary bounds.
-  std::vector<std::vector<variable_bound_edge_t>> continuous_upper_bounds(lp.num_cols);
-  std::vector<std::vector<variable_bound_edge_t>> continuous_lower_bounds(lp.num_cols);
+  // the separator needs direct bounds like z <= gamma x + alpha or
+  // z >= gamma x + alpha to turn continuous row terms into arcs with 0 <= y <= u x.
+  // Bounds through continuous linking variables are intentionally not propagated here.
 
   // Construct the slack map
   slack_map_.resize(lp.num_rows, -1);
@@ -3911,8 +3877,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
       if (row_len < 2) { continue; }
-      const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
-      if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
+      if (num_integer_in_row[i] < 1) { continue; }
       const f_t a_ij          = lp.A.x[p];
       const f_t slack_lower   = lp.lower[slack_map_[i]];
       const f_t slack_upper   = lp.upper[slack_map_[i]];
@@ -3950,9 +3915,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
               const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              if (var_types[l] == variable_type_t::CONTINUOUS) {
-                continuous_upper_bounds[j].push_back(edge);
-              } else {
+              if (var_types[l] != variable_type_t::CONTINUOUS) {
                 upper_variables.push_back(edge.variable);
                 upper_weights.push_back(edge.weight);
                 upper_biases.push_back(edge.bias);
@@ -3986,9 +3949,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
               const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              if (var_types[l] == variable_type_t::CONTINUOUS) {
-                continuous_upper_bounds[j].push_back(edge);
-              } else {
+              if (var_types[l] != variable_type_t::CONTINUOUS) {
                 upper_variables.push_back(edge.variable);
                 upper_weights.push_back(edge.weight);
                 upper_biases.push_back(edge.bias);
@@ -4016,8 +3977,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
       if (row_len < 2) { continue; }
-      const bool small_continuous_linking_row = num_integer_in_row[i] == 0 && row_len <= 3;
-      if (num_integer_in_row[i] < 1 && !small_continuous_linking_row) { continue; }
+      if (num_integer_in_row[i] < 1) { continue; }
       const f_t a_ij          = lp.A.x[p];
       const f_t slack_lower   = lp.lower[slack_map_[i]];
       const f_t slack_upper   = lp.upper[slack_map_[i]];
@@ -4051,9 +4011,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
               const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              if (var_types[l] == variable_type_t::CONTINUOUS) {
-                continuous_lower_bounds[j].push_back(edge);
-              } else {
+              if (var_types[l] != variable_type_t::CONTINUOUS) {
                 lower_variables.push_back(edge.variable);
                 lower_weights.push_back(edge.weight);
                 lower_biases.push_back(edge.bias);
@@ -4087,9 +4045,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
               const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              if (var_types[l] == variable_type_t::CONTINUOUS) {
-                continuous_lower_bounds[j].push_back(edge);
-              } else {
+              if (var_types[l] != variable_type_t::CONTINUOUS) {
                 lower_variables.push_back(edge.variable);
                 lower_weights.push_back(edge.weight);
                 lower_biases.push_back(edge.bias);
@@ -4103,129 +4059,6 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   }
   lower_offsets[lp.num_cols] = lower_edges;
   settings.log.printf("%d variable lower bounds in %.2f seconds\n", lower_edges, toc(start_time));
-
-  std::vector<std::vector<variable_bound_edge_t>> upper_bounds(lp.num_cols);
-  std::vector<std::vector<variable_bound_edge_t>> lower_bounds(lp.num_cols);
-  std::vector<std::vector<variable_bound_edge_t>> binary_upper_bounds(lp.num_cols);
-  std::vector<std::vector<variable_bound_edge_t>> binary_lower_bounds(lp.num_cols);
-
-  for (i_t j = 0; j < lp.num_cols; j++) {
-    upper_bounds[j].reserve(upper_offsets[j + 1] - upper_offsets[j]);
-    for (i_t p = upper_offsets[j]; p < upper_offsets[j + 1]; p++) {
-      variable_bound_edge_t edge{upper_variables[p], upper_weights[p], upper_biases[p]};
-      upper_bounds[j].push_back(edge);
-      if (is_binary_variable(edge.variable)) { binary_upper_bounds[j].push_back(edge); }
-    }
-    lower_bounds[j].reserve(lower_offsets[j + 1] - lower_offsets[j]);
-    for (i_t p = lower_offsets[j]; p < lower_offsets[j + 1]; p++) {
-      variable_bound_edge_t edge{lower_variables[p], lower_weights[p], lower_biases[p]};
-      lower_bounds[j].push_back(edge);
-      if (is_binary_variable(edge.variable)) { binary_lower_bounds[j].push_back(edge); }
-    }
-  }
-
-  std::vector<i_t> propagated_upper_count(lp.num_cols, 0);
-  std::vector<i_t> propagated_lower_count(lp.num_cols, 0);
-  i_t propagated_upper_edges = 0;
-  i_t propagated_lower_edges = 0;
-
-  auto add_propagated_bound = [&](i_t j,
-                                  variable_bound_edge_t edge,
-                                  std::vector<std::vector<variable_bound_edge_t>>& all_bounds,
-                                  std::vector<std::vector<variable_bound_edge_t>>& binary_bounds,
-                                  std::vector<i_t>& propagated_count,
-                                  i_t& propagated_edges) {
-    if (!valid_bound_edge(edge) || !is_binary_variable(edge.variable) || edge.variable == j) {
-      return false;
-    }
-    if (std::abs(edge.weight) <= bound_tol) { return false; }
-    if (propagated_count[j] >= max_propagated_bounds_per_variable) { return false; }
-    if (already_has_bound(binary_bounds[j], edge)) { return false; }
-    binary_bounds[j].push_back(edge);
-    all_bounds[j].push_back(edge);
-    propagated_count[j]++;
-    propagated_edges++;
-    return true;
-  };
-
-  // Compose affine bounds during row-to-SNF preprocessing. For example,
-  //
-  //   z <= a w + b,   w <= c x + d
-  //
-  // gives
-  //
-  //   z <= a c x + (b + a d).
-  //
-  // If a is negative, the caller swaps upper/lower source bounds.
-  auto compose_bound = [](const variable_bound_edge_t& outer, const variable_bound_edge_t& inner) {
-    return variable_bound_edge_t{
-      inner.variable, outer.weight * inner.weight, outer.bias + outer.weight * inner.bias};
-  };
-
-  for (i_t round = 0; round < max_propagation_rounds; round++) {
-    bool changed = false;
-    for (i_t j = 0; j < lp.num_cols; j++) {
-      if (var_types[j] != variable_type_t::CONTINUOUS) { continue; }
-
-      for (const auto& edge : continuous_upper_bounds[j]) {
-        if (!valid_bound_edge(edge) || std::abs(edge.weight) <= bound_tol) { continue; }
-        const auto& source_bounds = edge.weight > 0.0 ? binary_upper_bounds[edge.variable]
-                                                      : binary_lower_bounds[edge.variable];
-        for (const auto& source_bound : source_bounds) {
-          changed |= add_propagated_bound(j,
-                                          compose_bound(edge, source_bound),
-                                          upper_bounds,
-                                          binary_upper_bounds,
-                                          propagated_upper_count,
-                                          propagated_upper_edges);
-        }
-      }
-
-      for (const auto& edge : continuous_lower_bounds[j]) {
-        if (!valid_bound_edge(edge) || std::abs(edge.weight) <= bound_tol) { continue; }
-        const auto& source_bounds = edge.weight > 0.0 ? binary_lower_bounds[edge.variable]
-                                                      : binary_upper_bounds[edge.variable];
-        for (const auto& source_bound : source_bounds) {
-          changed |= add_propagated_bound(j,
-                                          compose_bound(edge, source_bound),
-                                          lower_bounds,
-                                          binary_lower_bounds,
-                                          propagated_lower_count,
-                                          propagated_lower_edges);
-        }
-      }
-    }
-    if (!changed) { break; }
-  }
-
-  auto flatten_bounds = [&](const std::vector<std::vector<variable_bound_edge_t>>& bounds,
-                            std::vector<i_t>& offsets,
-                            std::vector<i_t>& variables,
-                            std::vector<f_t>& weights,
-                            std::vector<f_t>& biases) {
-    offsets.assign(lp.num_cols + 1, 0);
-    variables.clear();
-    weights.clear();
-    biases.clear();
-    for (i_t j = 0; j < lp.num_cols; j++) {
-      offsets[j] = static_cast<i_t>(variables.size());
-      for (const auto& edge : bounds[j]) {
-        variables.push_back(edge.variable);
-        weights.push_back(edge.weight);
-        biases.push_back(edge.bias);
-      }
-    }
-    offsets[lp.num_cols] = static_cast<i_t>(variables.size());
-  };
-
-  if (propagated_upper_edges > 0 || propagated_lower_edges > 0) {
-    flatten_bounds(upper_bounds, upper_offsets, upper_variables, upper_weights, upper_biases);
-    flatten_bounds(lower_bounds, lower_offsets, lower_variables, lower_weights, lower_biases);
-    settings.log.printf(
-      "%d propagated variable upper bounds and %d propagated variable lower bounds\n",
-      propagated_upper_edges,
-      propagated_lower_edges);
-  }
 }
 
 template <typename i_t, typename f_t>
