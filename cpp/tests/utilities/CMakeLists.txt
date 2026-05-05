@@ -4,5 +4,4 @@
 # cmake-format: on
 
 # Add CLI end-to-end test
-ConfigureTest(CLI_TEST test_cli.cpp
-    LABELS numopt)
+ConfigureTest(CLI_TEST test_cli.cpp LABELS numopt)

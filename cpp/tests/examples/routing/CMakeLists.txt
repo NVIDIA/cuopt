@@ -11,16 +11,6 @@ add_executable(service_team_routing service_team_routing.cu)
 add_executable(pdptw_mixed_fleet pdptw_mixed_fleet.cu)
 add_executable(cvrp_daily_deliveries cvrp_daily_deliveries.cu)
 
-# Set CUDA standard for all examples
-set_target_properties(
-  service_team_routing
-  pdptw_mixed_fleet
-  cvrp_daily_deliveries
-  PROPERTIES
-  CUDA_STANDARD 20
-  CUDA_STANDARD_REQUIRED ON
-)
-
 # Link libraries for all examples
 foreach(target
     service_team_routing

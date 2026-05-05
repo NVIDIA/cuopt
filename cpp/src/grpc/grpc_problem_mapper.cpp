@@ -111,6 +111,9 @@ void map_problem_to_proto(const cpu_optimization_problem_t<i_t, f_t>& cpu_proble
       switch (vt) {
         case var_t::CONTINUOUS: pb_problem->add_variable_types(cuopt::remote::CONTINUOUS); break;
         case var_t::INTEGER: pb_problem->add_variable_types(cuopt::remote::INTEGER); break;
+        case var_t::SEMI_CONTINUOUS:
+          pb_problem->add_variable_types(cuopt::remote::SEMI_CONTINUOUS);
+          break;
         default:
           throw std::runtime_error("map_problem_to_proto: unknown var_t value " +
                                    std::to_string(static_cast<int>(vt)));
@@ -214,6 +217,7 @@ void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
       switch (pb_problem.variable_types(i)) {
         case cuopt::remote::CONTINUOUS: var_types.push_back(var_t::CONTINUOUS); break;
         case cuopt::remote::INTEGER: var_types.push_back(var_t::INTEGER); break;
+        case cuopt::remote::SEMI_CONTINUOUS: var_types.push_back(var_t::SEMI_CONTINUOUS); break;
         default:
           throw std::runtime_error("Unknown VariableType enum value " +
                                    std::to_string(pb_problem.variable_types(i)));
@@ -513,6 +517,10 @@ void map_chunked_arrays_to_problem(const cuopt::remote::ChunkedProblemHeader& he
           vtypes.push_back(var_t::INTEGER);
           has_ints = true;
           break;
+        case cuopt::remote::SEMI_CONTINUOUS:
+          vtypes.push_back(var_t::SEMI_CONTINUOUS);
+          has_ints = true;
+          break;
         default:
           throw std::runtime_error("Unknown VariableType enum value " + std::to_string(v) +
                                    " in chunked variable_types");
@@ -641,6 +649,7 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
       switch (vt) {
         case var_t::CONTINUOUS: vt_enums.push_back(cuopt::remote::CONTINUOUS); break;
         case var_t::INTEGER: vt_enums.push_back(cuopt::remote::INTEGER); break;
+        case var_t::SEMI_CONTINUOUS: vt_enums.push_back(cuopt::remote::SEMI_CONTINUOUS); break;
         default:
           throw std::runtime_error("chunk_problem_to_proto: unknown var_t value " +
                                    std::to_string(static_cast<int>(vt)));

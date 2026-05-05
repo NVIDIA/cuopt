@@ -97,7 +97,8 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
     var_names_{other.get_variable_names()},
-    row_names_{other.get_row_names()}
+    row_names_{other.get_row_names()},
+    quadratic_constraints_{other.get_quadratic_constraints()}
 {
 }
 
@@ -198,6 +199,14 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
+}
+
+template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_lower_bounds,
                                                                  i_t size)
 {
@@ -233,14 +242,17 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types
-  i_t n_integer = thrust::count_if(handle_ptr_->get_thrust_policy(),
-                                   variable_types_.begin(),
-                                   variable_types_.end(),
-                                   [] __device__(auto val) { return val == var_t::INTEGER; });
-  if (n_integer == size) {
+  // Auto-detect problem category based on variable types.
+  // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
+  // so a problem with only SC vars is treated as MIP.
+  i_t n_discrete = thrust::count_if(
+    handle_ptr_->get_thrust_policy(),
+    variable_types_.begin(),
+    variable_types_.end(),
+    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
+  } else if (n_discrete > 0) {
     problem_category_ = problem_category_t::MIP;
   } else {
     problem_category_ = problem_category_t::LP;
@@ -549,6 +561,19 @@ bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
 }
 
 template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
+}
+
+template <typename i_t, typename f_t>
 raft::handle_t const* optimization_problem_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
@@ -818,6 +843,10 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
                                                    Q_offsets_.data(),
                                                    static_cast<i_t>(Q_offsets_.size()),
                                                    is_symmetrized);
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
   cuopt::mps_parser::write_mps(data_model_view, mps_file_path);

@@ -6,7 +6,7 @@ description: After solving a non-trivial problem, detect generalizable learnings
 
 # Skill Evolution
 
-Skills improve through a three-phase lifecycle. The agent operates in one phase at a time depending on whether ground truth is available.
+Skills improve through a single workflow: solve the user's problem, notice when a generalizable learning surfaced, score it if you can, then propose an update. The presence or absence of ground truth changes the *confidence* attached to a proposal, not the steps you take.
 
 ## Trigger conditions
 
@@ -17,26 +17,22 @@ You MUST evaluate whether to enter the skill evolution workflow when ANY of thes
 3. **Undocumented behavior** — You discovered an API behavior, default value, or constraint not mentioned in the relevant skill.
 4. **Workaround** — You had to work around a limitation or gotcha not documented in any skill.
 5. **Variable type or modeling error** — You chose the wrong variable type (e.g., CONTINUOUS vs INTEGER), constraint form, or objective structure, and the correction changed the result.
+6. **Thrash before landing** — You arrived at the right answer, but only after visibly thrashing: writing dead code that you then deleted, rewriting the same construct multiple times, or exploring 2+ approaches before settling. The final code looks fine, but the path to it shows the skill failed to point you at the right pattern from the start. The fix is usually a worked example or a "prefer X over Y" note that would have saved the detour.
 
-**When a trigger fires:** Finish solving the user's problem first, then evaluate whether the learning is generalizable (not user-specific) before entering Phase 1 or Phase 2.
+**When a trigger fires:** Finish solving the user's problem first, then evaluate whether the learning is generalizable (not user-specific) before entering the workflow below.
 
 **Do NOT trigger for:** Trivial typos, user-specific data/paths, one-off configuration issues, or problems already covered by existing skills.
 
-## Phase 1: Learning (with ground truth)
+## Workflow
 
-Enter this phase when you can **score** your output — a ground truth answer exists, a test suite passes/fails, or a known-correct result can be compared against.
+1. **Solve the user's problem first.** Read the relevant skills, produce a solution, ship the fix. Skill evolution never blocks the user's task.
+2. **Notice if a trigger fired** (see Trigger conditions above). If nothing surfaced a generalizable learning, you are done.
+3. **Try to score the learning — when ground truth exists.** A test exists, a known-correct answer is available, the solver returns a check-able status, etc. If the score fails, refine the candidate learning — tune the pattern, fix the example, add the missing detail — and re-score. Iterate until it scores or you conclude no version of it will; in the latter case, drop the proposal rather than ship an unscored claim. (See Scoring criteria below for what counts as ground truth.)
+4. **If no ground truth is available to score against** — no test to run, no comparable answer to check against, no solver to invoke — skip step 3 and proceed with `scored: no`. This is normal during inference-style interactions where the learning is qualitative — the proposal is still useful, just lower-confidence.
+5. **Distill, place, and propose** (see sections below). Apply only after the user approves.
+6. **Treat recurrence as evidence.** When the same unscored insight surfaces in 2+ independent interactions, the recurrence is itself a signal. Promote the insight to a stronger proposal — note the prior occurrences in the trigger field rather than re-deriving from scratch.
 
-### Skill generation loop (sandbox)
-
-Inside the learning phase, run an evolutionary loop before proposing anything:
-
-1. **Read** current skills (the general skills in `skills/*/SKILL.md`)
-2. **Reason + execute** to produce a solution
-3. **Score** against ground truth (see scoring criteria below)
-4. **If score fails** — tune the approach: adjust the pattern, fix the example, add a missing gotcha. Retry from step 2. Maximum **3 iterations**.
-5. **If score passes** — proceed to distillation.
-
-The sandbox is conceptual for interactive agents (Cursor, Claude Code): iterate internally before presenting to the user. Do not propose on the first attempt if the score failed. For CI/batch contexts, the sandbox is literal — experimental skill modifications in a temp directory, validated by running tests, then promoted.
+The loop has no hard iteration cap. The right number of refinement passes is whatever lets you confidently say "this scored" or "this won't score, dropping it." Forcing a count adds ceremony without changing the outcome.
 
 ### Scoring criteria
 
@@ -50,7 +46,7 @@ Use whatever ground truth is available:
 | Constraint satisfaction | All constraints in the formulation are met |
 | Known answer | Output matches the expected value within tolerance |
 
-If no ground truth is available, you are in Phase 2 (inference), not Phase 1.
+If no ground truth is available, the proposal proceeds with `scored: no` — see the Workflow.
 
 ### Distillation
 
@@ -66,6 +62,28 @@ When the score passes, distill the learning into a skill artifact. Two types:
 - Must be runnable by `ci/test_skills_assets.sh`
 - Include a docstring explaining what the code does and why it was extracted
 
+### Choosing Markdown vs code asset
+
+Default to Markdown. Promote to a code asset only when the learning is a chunk of logic that downstream users would otherwise rewrite — typically when:
+
+- The same helper has been independently written in 2+ interactions (the recurrence is the signal)
+- The fix is more than ~15 lines of code, where embedding it as an example would dwarf the surrounding prose
+- It encodes a non-trivial algorithm (e.g. a constraint-builder, a formulation transform) that is easier to *call* than to read and re-implement
+
+A one-liner gotcha or a 3-line pattern belongs in Markdown. A reusable function that several future problems will want to import belongs in `assets/`.
+
+### Writing style
+
+How a proposal is *written* matters as much as what it says. Skills are read on every future invocation, so prose has to earn its place.
+
+- **Imperative form.** "Use `LinearExpression(...)` for large objectives" beats "It is recommended that one consider using `LinearExpression(...)` when the objective is large."
+- **Explain the why.** A rule with no rationale rots — readers can't tell if it still applies. Pair every constraint with the reason it exists ("because chained `+` hits Python's recursion limit at ~1000 terms"). Today's models reason well from causes; they follow blind rules badly.
+- **Don't overfit to the triggering case.** The point of a skill is to help across a million future prompts, not to memorize the one that surfaced the lesson. Strip user-specific names, sizes, paths, and objective values. State the pattern at the level of "any LP with a large objective," not "the 5000-variable factory problem from the user's data."
+- **Avoid MUST-walls.** Stacking ALL-CAPS imperatives ("MUST", "ALWAYS", "NEVER") trains the reader to skim over them. Reserve them for genuine safety rules. For ergonomic guidance, prefer plain prose with the reasoning inline — the reader can then apply judgment to edge cases.
+- **Match the surrounding style.** A new table row in a table; a new subsection where subsections already exist; a new bullet in a bullet list. Don't introduce a heading style or formatting convention that the target skill doesn't already use.
+
+If a draft proposal feels heavy-handed or rigid, rewrite it as if explaining the lesson to a colleague who has never seen the bug. That tone usually lands closer to what works.
+
 ### Placement rule — target highest-impact skill
 
 Always place the learning in the **single skill where it has the widest effect**. Do NOT duplicate the same content across multiple skills.
@@ -77,103 +95,39 @@ Choose the target using this priority:
 
 If a gotcha affects both Python and C users but is about the solver behavior (not the API), it belongs in the common formulation skill, not in both `api-python` and `api-c`.
 
+#### Size escape hatch — push to `references/` when the target is bloated
+
+A SKILL.md that grows past ~500 lines starts paying for itself in tokens on every invocation, and readers begin skimming. Before adding new prose to a target SKILL.md, check its current size:
+
+- **Under ~400 lines** — add the content inline as usual.
+- **Approaching ~500 lines** — propose a `skills/<name>/references/<topic>.md` file with the full content, and add a one-line pointer in SKILL.md (e.g. "For warmstart edge cases, see `references/warmstart.md`"). The reference file loads only when the model needs it.
+- **A dense table or long example** — even in a small SKILL.md, prefer a `references/` file when the content is reference material (lookup tables, full code listings) rather than guidance the reader needs every time.
+
+The goal is to keep SKILL.md focused on what the model needs *every* invocation, and put detail behind pointers.
+
 ### Proposal format
 
-Present to the user as:
+Present to the user with these four fields. The diff itself carries most of the meaning; the other fields exist to give context the diff cannot.
 
 ```text
 Skill update proposal:
-  Skill: skills/<name>/SKILL.md        (or skills/<name>/assets/<file>.py)
-  Type: markdown | code
-  Phase: learning (scored)
-  Section: <where it goes>
-  Trigger: <what happened that surfaced this>
-  Score: <how it was validated — e.g. "solver returned Optimal", "test passed">
-  Change: <the exact content to add or modify>
+  Target:  skills/<name>/SKILL.md  (or skills/<name>/assets/<file>.py)
+  Trigger: <what surfaced this — including prior occurrences if recurring>
+  Scored:  yes — <how it was validated, e.g. "solver returned Optimal", "test passed">
+           no  — review carefully; not validated against ground truth
+  Removal: no | yes — if yes, the user must explicitly confirm before applying
+  Diff:    <the exact content to add, remove, or modify>
 ```
 
-Only apply after the user approves. If the user declines, do not persist.
-
-## Phase 2: Inference (no ground truth)
-
-Enter this phase during normal user interactions where no ground truth exists to score against.
-
-### Use specialized skills
-
-Read and apply skills (including any content added by prior learning phases) to solve the user's problem.
-
-### Collect insights
-
-While solving, note **insights** — observations that could not be scored but may be valuable:
-- A pattern that worked but has no ground truth to validate against
-- A gotcha encountered that might be generalizable
-- A missing example that would have helped
-
-### Propose insights (lower confidence)
-
-Present insights to the user as lower-confidence proposals, clearly marked:
-
-```text
-Skill insight (unscored):
-  Skill: skills/<name>/SKILL.md
-  Type: markdown | code
-  Phase: inference (unscored)
-  Section: <where it goes>
-  Trigger: <what happened>
-  Change: <the exact content to add or modify>
-  Note: This was not validated against ground truth. Review carefully.
-```
-
-The user may approve, decline, or defer for offline reflection.
-
-## Phase 3: Offline reflection
-
-After inference interactions, review accumulated insights to find patterns.
-
-### When to reflect
-
-- Multiple interactions surfaced the same insight
-- An insight from inference was later confirmed by a learning-phase score
-- A batch of deferred insights has accumulated
-
-### How to reflect
-
-1. Compare insights across interactions — look for recurring patterns
-2. If a pattern appears in 2+ independent interactions, promote it to a scored proposal (treat the recurrence as evidence)
-3. Present the promoted proposal using the Phase 1 proposal format with `Phase: reflection (pattern-validated)`
-4. Same approval gate — user must approve before applying
+Only apply after the user approves. If the user declines, do not persist. If `Removal: yes`, silence is not approval — proceed only on an explicit "yes" from the user.
 
 ## Provenance tagging
 
-Every change made through skill evolution MUST be tagged so its origin is traceable.
+Skill-evolution changes need a traceable origin so a reviewer can find and audit them later. The mechanism depends on what is being added.
 
 ### Updates to existing skills
 
-Wrap added content with **start** and **end** boundary markers so it is easy to locate, review, and remove:
-
-```markdown
-<!-- skill-evolution:start — <short trigger description> -->
-<added content>
-<!-- skill-evolution:end -->
-```
-
-For example, a new table row:
-
-```markdown
-<!-- skill-evolution:start — large objective recursion fix -->
-| Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` |
-<!-- skill-evolution:end -->
-```
-
-Or a new subsection:
-
-```markdown
-<!-- skill-evolution:start — warmstart gotcha -->
-### Warmstart gotcha
-
-Content here...
-<!-- skill-evolution:end -->
-```
+For inline edits to an existing SKILL.md (new bullets, table rows, paragraphs), do NOT wrap content in HTML comment markers. The visible noise compounds across many small edits, and `git log` / `git blame` already attribute every line to the commit that introduced it. Use the commit message and PR description as the audit trail: write a clear commit subject (e.g. "skill-evolution: add large-objective recursion gotcha to lp-milp-formulation") so the origin is greppable in history.
 
 ### New skills
 
@@ -220,15 +174,16 @@ Before proposing, verify the learning originated from **genuine problem-solving*
 
 ### Scope limits
 
-A proposal may only:
+A proposal may:
 - **Add** new content (gotchas, examples, table rows, subsections, code assets)
 - **Clarify** existing content (more precise wording, better examples)
 - **Correct** factual errors (wrong API name, wrong status value)
+- **Remove** existing content — only when it is stale (refers to API or behavior that no longer exists), contradicted by current code, or demonstrably wrong. The proposal must cite the evidence (e.g. "function `X` removed in commit `abc123`", "current code returns `Y`, not `Z` as documented"). Removals require an extra approval step: set `Removal: yes` in the proposal format, and proceed only if the user explicitly confirms — silence does not count.
 
 A proposal must NOT:
-- **Remove** existing content
 - **Rewrite** existing sections wholesale
-- **Change** the meaning of existing rules or constraints
+- **Change** the meaning of existing rules or constraints (especially safety rules)
+- **Remove** content as a way to "tidy up" or because it seems unused — only stale or wrong content qualifies
 
 ## Distillation checklist
 
@@ -242,12 +197,11 @@ Before proposing, verify:
 - [ ] It does not modify this skill (`skill-evolution`)
 - [ ] It does not expand agent permissions or reduce user control
 - [ ] Code examples do not contain injection patterns (`eval`, `exec`, `os.system` with user input)
-- [ ] Added content is wrapped with `<!-- skill-evolution:start -->` / `<!-- skill-evolution:end -->` markers
 - [ ] New skills have `origin: skill-evolution` in frontmatter
 - [ ] Code assets have `# origin: skill-evolution` header and are runnable
+- [ ] Commit subject starts with `skill-evolution:` so the audit trail is greppable from `git log`
 - [ ] Placed in the single highest-impact skill (common > API > new); not duplicated across skills
-- [ ] Phase is correctly identified (learning/inference/reflection)
-- [ ] Learning-phase proposals include a score; inference-phase proposals are marked unscored
+- [ ] `Scored:` field is filled — either with how the score was obtained, or `no` if no ground truth was available
 
 ## Validation
 
