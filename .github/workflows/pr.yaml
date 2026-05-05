@@ -36,12 +36,7 @@ jobs:
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
     permissions:
-      actions: read
       contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
     if: always()
     with:
@@ -132,10 +127,8 @@ jobs:
     permissions:
       actions: read
       contents: read
-      id-token: write
       packages: read
       pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
@@ -381,12 +374,7 @@ jobs:
           - '!utilities/**'
   checks:
     permissions:
-      actions: read
       contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
