@@ -23,6 +23,9 @@ python -m pip install \
 
 pip check
 
+RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
 rapids-logger "running PuLP tests (cuOpt-related)"
 # PuLP uses pytest; run only tests that reference cuopt/CUOPT
 # Exit code 5 = no tests collected; then try run_tests.py which detects solvers (including cuopt)
@@ -30,6 +33,7 @@ pytest_rc=0
 timeout 5m python -m pytest \
     --verbose \
     --capture=no \
+    --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-pulp.xml" \
     -k "cuopt or CUOPT" \
     pulp/tests/ || pytest_rc=$?
 
