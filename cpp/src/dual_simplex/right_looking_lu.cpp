@@ -574,17 +574,19 @@ class trailing_matrix_t {
       printf("Garbage collected column %e\n", unused_col_nz / static_cast<f_t>(c_i.size()));
       std::vector<i_t> new_c_i;
       std::vector<f_t> new_c_x;
-      new_c_i.reserve(c_i.size() - unused_col_nz + kSlackSlots * n);
-      new_c_x.reserve(c_x.size() - unused_col_nz + kSlackSlots * n);
+      new_c_i.reserve(c_i.size() - unused_col_nz);
+      new_c_x.reserve(c_x.size() - unused_col_nz);
       for (i_t j = 0; j < n; j++) {
         const i_t new_start = static_cast<i_t>(new_c_i.size());
+        const i_t col_size = col_end[j] - col_start[j];
         for (i_t p = col_start[j]; p < col_end[j]; p++) {
           new_c_i.push_back(c_i[p]);
           new_c_x.push_back(c_x[p]);
         }
         col_start[j] = new_start;
         col_end[j] = static_cast<i_t>(new_c_i.size());
-        for (i_t s = 0; s < kSlackSlots; s++) {
+        // Reserve space equal to current size (doubling strategy)
+        for (i_t s = 0; s < col_size; s++) {
           new_c_i.push_back(kNone);
           new_c_x.push_back(0.0);
         }
@@ -599,15 +601,17 @@ class trailing_matrix_t {
     if (unused_row_nz > max_unused_fraction * static_cast<f_t>(r_j.size())) {
       printf("Garbage collected row %e\n", unused_row_nz / static_cast<f_t>(r_j.size()));
       std::vector<i_t> new_r_j;
-      new_r_j.reserve(r_j.size() - unused_row_nz + kSlackSlots * m);
+      new_r_j.reserve(r_j.size() - unused_row_nz);
       for (i_t i = 0; i < m; i++) {
         const i_t new_start = static_cast<i_t>(new_r_j.size());
+        const i_t row_size = row_end[i] - row_start[i];
         for (i_t p = row_start[i]; p < row_end[i]; p++) {
           new_r_j.push_back(r_j[p]);
         }
         row_start[i] = new_start;
         row_end[i] = static_cast<i_t>(new_r_j.size());
-        for (i_t s = 0; s < kSlackSlots; s++) {
+        // Reserve space equal to current size (doubling strategy)
+        for (i_t s = 0; s < row_size; s++) {
           new_r_j.push_back(kNone);
         }
         row_max[i] = static_cast<i_t>(new_r_j.size());
@@ -670,7 +674,7 @@ class trailing_matrix_t {
     col_start[j] = new_start;
     col_end[j] = c_i.size();
     // Reserve space using doubling strategy to reduce future relocations
-    i_t extra = std::max(current_size, needed + kSlackSlots);
+    i_t extra = std::max(current_size, needed);
     for (i_t k = 0; k < extra; k++) {
       c_i.push_back(kNone);
       c_x.push_back(0.0);
@@ -697,7 +701,7 @@ class trailing_matrix_t {
     row_start[i] = new_start;
     row_end[i] = r_j.size();
     // Reserve space using doubling strategy to reduce future relocations
-    i_t extra = std::max(current_size, needed + kSlackSlots);
+    i_t extra = std::max(current_size, needed);
     for (i_t k = 0; k < extra; k++) {
       r_j.push_back(kNone);
     }
@@ -739,8 +743,9 @@ class trailing_matrix_t {
       col_start[j] = start;
       col_end[j] = c_i.size();
 
-      // Add additional space
-      for (i_t s = 0; s < kSlackSlots; s++) {
+      // Add additional space (doubling strategy)
+      i_t col_size = col_end[j] - col_start[j];
+      for (i_t s = 0; s < col_size; s++) {
         c_i.push_back(kNone);
         c_x.push_back(0.0);
       }
@@ -766,8 +771,9 @@ class trailing_matrix_t {
       row_start[i] = start;
       row_end[i] = r_j.size();
 
-      // Add additional space
-      for (i_t s = 0; s < kSlackSlots; s++) {
+      // Add additional space (doubling strategy)
+      i_t row_size = row_end[i] - row_start[i];
+      for (i_t s = 0; s < row_size; s++) {
         r_j.push_back(kNone);
       }
       row_max[i] = r_j.size();
