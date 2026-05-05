@@ -45,10 +45,10 @@
       "description": "Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt."
     },
     {
-      "name": "lp-milp-formulation",
-      "source": "./skills/lp-milp-formulation",
+      "name": "numerical-optimization-formulation",
+      "source": "./skills/numerical-optimization-formulation",
       "skills": "./",
-      "description": "LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements."
+      "description": "Numerical optimization (LP, MILP, QP) — concepts, problem-text parsing, and formulation patterns. What LP, MILP, and QP are, required formulation questions, modeling elements, common patterns, and how to parse problem statements (parameters, constraints, decisions, objective). Domain concepts; no API or interface."
     },
     {
       "name": "cuopt-lp-milp-api-python",
@@ -79,12 +79,6 @@
       "source": "./skills/cuopt-routing-api-python",
       "skills": "./",
       "description": "Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python."
-    },
-    {
-      "name": "qp-formulation",
-      "source": "./skills/qp-formulation",
-      "skills": "./",
-      "description": "Quadratic Programming (QP) — problem form and constraints. Domain concepts; no API or interface. QP is beta."
     },
     {
       "name": "cuopt-qp-api-python",
