@@ -844,7 +844,6 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
                                                      exploration_stats_,
                                                      upper_bound_,
                                                      bfs_worker_pool_.num_idle_workers(),
-                                                     log,
                                                      new_slacks_,
                                                      original_lp_);
       } else {
@@ -1032,9 +1031,7 @@ struct deterministic_bfs_policy_t
                                                 const std::vector<i_t>& fractional,
                                                 const std::vector<f_t>& x) override
   {
-    logger_t log;
-    log.log  = false;
-    i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x, log);
+    i_t var  = this->worker.pc_snapshot.variable_selection(fractional, x);
     auto dir = martin_criteria(x[var], this->bnb.root_relax_soln_.x[var]);
     return {var, dir};
   }
@@ -1046,7 +1043,7 @@ struct deterministic_bfs_policy_t
     logger_t log;
     log.log = false;
     node->objective_estimate =
-      this->worker.pc_snapshot.obj_estimate(fractional, x, node->lower_bound, log);
+      this->worker.pc_snapshot.obj_estimate(fractional, x, node->lower_bound);
   }
 
   void on_node_completed(mip_node_t<i_t, f_t>* node,
@@ -1187,9 +1184,6 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   const f_t upper_bound                  = policy.upper_bound();
   node_status_t status                   = node_status_t::PENDING;
   branch_direction_t round_dir           = branch_direction_t::NONE;
-
-  worker->recompute_basis  = true;
-  worker->recompute_bounds = true;
 
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
@@ -2215,8 +2209,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) {
     settings_.log.printf(
-      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | "
-      "  "
+      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node |   "
       "Gap    "
       "|  Time  |\n");
   }
