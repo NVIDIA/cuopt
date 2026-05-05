@@ -951,23 +951,52 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   const f_t tol       = 1e-6;
   const f_t bound_tol = 1e-8;
 
+  // Implementation outline:
+  //
+  // 1. Pick one finite side of one MIP row and normalize it as a'x <= b.
+  // 2. Build an explicit 0-1 single-node-flow (SNF) relaxation for that row side:
+  //
+  //      sum_{j in N1} y_j - sum_{j in N2} y_j <= b_snf,
+  //      0 <= y_j <= u_j x_j.
+  //
+  //    Wolter's separator starts from this SNF form. cuOpt starts from general
+  //    MIP rows, so this step is a mapping layer: every synthetic SNF y_j must
+  //    remember how to substitute back to the original variables.
+  // 3. Run the KPSNF cover-selection heuristic to choose C1 and C2.
+  // 4. Test c-MIRFCI candidates and the simpler SGFCI fallback at the current LP point.
+  // 5. Substitute each synthetic y_j back into original variables and emit a cuOpt cut.
+  //
+  // A row side is converted to a 0-1 single-node-flow relaxation
+  //
+  //   sum_{j in N1} y_j - sum_{j in N2} y_j <= b,
+  //   0 <= y_j <= u_j x_j, x_j in {0, 1}.
+  //
+  // Each arc stores both the SNF data (u, N1/N2 membership, binary controller x_j)
+  // and the affine expression used to map y_j back to the original row variables.
   struct snf_arc_t {
-    f_t u;
-    bool in_n2;
-    i_t x_col;
-    f_t x_value;
+    f_t u;        // Capacity u_j in 0 <= y_j <= u_j x_j.
+    bool in_n2;   // false: y_j appears with + sign (N1), true: with - sign (N2).
+    i_t x_col;    // Binary controller column, or -1 for a fixed-control simple-bound arc.
+    f_t x_value;  // Current LP value of x_col, or the fixed-control value.
+
+    // cuOpt mapping layer: synthetic y_j equals
+    //
+    //   y_const + y_coeff * original_y_col + y_x_coeff * x_col.
+    //
+    // This is not thesis notation; it is how we later substitute the SNF cut back
+    // into the original MIP variables.
     f_t y_const;
     i_t y_col;
     f_t y_coeff;
     f_t y_x_coeff;
-    f_t y_value;
+    f_t y_value;  // Current LP value of the synthetic y_j.
   };
 
   struct snf_candidate_t {
-    snf_arc_t arc;
-    f_t b_shift;
-    f_t distance;
-    bool absorbs_binary_coeff;
+    snf_arc_t arc;              // One possible SNF rewrite of an original row term.
+    f_t b_shift;                // Constant moved from the row activity into the SNF RHS.
+    f_t distance;               // How close the active bound used by this rewrite is to z*.
+    bool absorbs_binary_coeff;  // True if a direct x coefficient was folded into this arc.
   };
 
   auto is_binary_variable = [&](i_t j) {
@@ -981,6 +1010,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     return x_col >= 0 ? clamp01(xstar[x_col]) : fixed_value;
   };
 
+  // Materialize the synthetic y_j mapping and evaluate it at the current LP point.
+  // Pure simple-bound arcs have no binary controller, so x_col = -1 and fixed_x is
+  // used only to evaluate constants like u * 1.
   auto build_arc = [&](f_t u,
                        bool in_n2,
                        i_t x_col,
@@ -1015,6 +1047,21 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     slack_coeff = row.coeff(k);
   }
   if (slack_count > 1) { return -1; }
+  // A row can contribute either finite side. Internally the row is equality-like:
+  //
+  //   a x + sigma * slack = rhs.
+  //
+  // A finite lower slack activity gives:
+  //
+  //   a x <= rhs - sigma_slack_lower.
+  //
+  // A finite upper slack activity gives:
+  //
+  //   a x >= rhs - sigma_slack_upper,
+  //
+  // which we negate to keep the normalized form a'x <= b.
+  //
+  // b is the RHS after moving the selected finite slack activity into the constant.
   bool negate_row = reverse_row_requested;
   f_t b           = negate_row ? -row.rhs : row.rhs;
   if (slack_count == 1) {
@@ -1034,6 +1081,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
 
+  // Split the normalized row a'x <= b into two groups:
+  //
+  // - Binary coefficients a_j x_j can directly become SNF arcs with y_j = |a_j| x_j.
+  // - Continuous terms c z need a bound z <= gamma x + alpha or z >= gamma x + alpha
+  //   before they can become arcs with 0 <= y <= u x.
   std::vector<std::pair<i_t, f_t>> continuous_terms;
   continuous_terms.reserve(row_len);
   std::vector<i_t> binary_columns;
@@ -1075,6 +1127,15 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   arcs.reserve(row_len);
   f_t b_shift = 0.0;
 
+  // Candidate arcs are alternative algebraic rewrites of one original row term c z.
+  // For example, with z <= gamma x + alpha and a positive row coefficient c:
+  //
+  //   c z = c alpha + y,    y = c (z - alpha),    0 <= y <= c gamma x.
+  //
+  // The c alpha constant is accumulated in b_shift, so the final SNF RHS is
+  // snf_b = b - b_shift. If the same binary controller x also has a direct row
+  // coefficient a x, we try two candidates: absorb a x into this arc capacity or
+  // leave a x for a later pure-binary arc.
   auto push_candidate = [&](std::vector<snf_candidate_t>& candidates,
                             f_t u,
                             bool in_n2,
@@ -1105,6 +1166,13 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     const f_t y_star  = xstar[j];
     std::vector<snf_candidate_t> candidates;
 
+    // Use upper variable bounds z <= gamma x + alpha. With c > 0 this naturally
+    // creates an N1 arc:
+    //
+    //   c z = c alpha + y,  y = c(z - alpha) + a x,  u = c gamma + a.
+    //
+    // With c < 0 the signs flip and the same rewrite creates an N2 arc. The guards
+    // below check that y is nonnegative at the valid endpoint and that u is nonnegative.
     auto add_variable_upper_candidates = [&]() {
       const i_t start = variable_bounds.upper_offsets[j];
       const i_t end   = variable_bounds.upper_offsets[j + 1];
@@ -1116,6 +1184,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
         if (!std::isfinite(gamma) || !std::isfinite(alpha) || lower_j <= -inf) { continue; }
         const f_t direct_coeff =
           binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+        // First try folding the direct x coefficient into this arc, then try the
+        // pure variable-bound arc. If there is no direct coefficient, only the pure
+        // candidate is generated.
         const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
         const i_t num_a_values            = std::abs(direct_coeff) > tol ? 2 : 1;
         for (i_t h = 0; h < num_a_values; h++) {
@@ -1159,6 +1230,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
       }
     };
 
+    // Use lower variable bounds z >= gamma x + alpha. This is the symmetric case:
+    // with c > 0 we represent the term through an N2 arc, and with c < 0 through
+    // an N1 arc. The endpoint checks mirror the upper-bound case.
     auto add_variable_lower_candidates = [&]() {
       const i_t start = variable_bounds.lower_offsets[j];
       const i_t end   = variable_bounds.lower_offsets[j + 1];
@@ -1170,6 +1244,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
         if (!std::isfinite(gamma) || !std::isfinite(alpha) || upper_j >= inf) { continue; }
         const f_t direct_coeff =
           binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
+        // As above, test both variants: absorb a direct x coefficient into the
+        // arc or keep it as a separate pure-binary arc.
         const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
         const i_t num_a_values            = std::abs(direct_coeff) > tol ? 2 : 1;
         for (i_t h = 0; h < num_a_values; h++) {
@@ -1213,6 +1289,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
       }
     };
 
+    // If no binary-controlled variable bound is available, finite simple bounds
+    // l <= z <= u still give a valid fixed-control arc. These arcs can preserve
+    // the SNF row algebra, but they do not create useful binary cover structure.
     auto add_simple_bound_candidates = [&]() {
       if (lower_j <= -inf || upper_j >= inf) { return; }
       const f_t capacity = std::abs(c) * (upper_j - lower_j);
@@ -1279,6 +1358,10 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     add_simple_bound_candidates();
 
     if (candidates.empty()) { return -1; }
+    // Pick the rewrite whose active bound is closest to z*. Several rewrites can
+    // be algebraically valid for the integer set, but the separator evaluates cuts
+    // at the current LP point. We therefore keep the rewrite that is least likely
+    // to exclude (x*, y*) from the constructed SNF relaxation.
     auto best = std::min_element(
       candidates.begin(), candidates.end(), [](const snf_candidate_t& a, const snf_candidate_t& b) {
         return a.distance < b.distance;
@@ -1293,6 +1376,10 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     if (best->absorbs_binary_coeff) { binary_coefficients[best->arc.x_col] = 0.0; }
   }
 
+  // Remaining pure binary coefficients a x become arcs with y = u x and u = |a|:
+  //
+  //   a > 0:  +u x contributes as an N1 arc,
+  //   a < 0:  -u x contributes as an N2 arc.
   for (i_t j : binary_columns) {
     const f_t coeff = binary_coefficients[j];
     if (std::abs(coeff) <= tol) { continue; }
@@ -1318,6 +1405,13 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }(),
     "Flow cover SNF relaxation excludes LP solution");
 
+  // Coarse structural test before separation. A flow cover exists only if the N1
+  // capacities can exceed the RHS:
+  //
+  //   lambda(C = N1, empty C2) = -b + sum_{j in N1} u_j > 0.
+  //
+  // This is the capacity surplus the KPSNF separator tries to keep positive while
+  // choosing a cover that is violated by the current LP point.
   auto compute_structure = [&]() {
     bool has_binary_controlled_arc = false;
     bool has_n1                    = false;
@@ -1334,9 +1428,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   };
 
   auto [has_binary_controlled_arc, has_n1, cover_capacity] = compute_structure();
-  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) {
-    return -1;
-  }
+  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= tol) { return -1; }
 
   std::vector<f_t> values;
   std::vector<f_t> weights;
@@ -1344,6 +1436,18 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   values.reserve(arcs.size());
   weights.reserve(arcs.size());
   item_to_arc.reserve(arcs.size());
+  // KPSNF separation chooses which arcs to keep out of the cover by solving:
+  //
+  //   max sum_{N1} (1 - x*_j) zbar_j + sum_{N2} x*_j z_j
+  //   s.t. sum u_j z_j < -b + sum_{N1} u_j.
+  //
+  // Interpretation after solving:
+  //
+  //   N1: zbar_j = 0 means j enters C1.
+  //   N2: z_j    = 1 means j enters C2.
+  //
+  // The current implementation uses the ratio-prefix approximation from the
+  // rational KPSNF path instead of the exact integer DP path.
   for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
     const auto& arc = arcs[k];
     if (arc.u <= tol) { continue; }
@@ -1359,6 +1463,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   if (std::isnan(objective)) { return -1; }
   static_cast<void>(objective);
 
+  // Convert the KPSNF solution into the flow-cover sets:
+  //
+  //   C1 = {j in N1 : zbar_j = 0},   C2 = {j in N2 : z_j = 1}.
   std::vector<uint8_t> in_c1(arcs.size(), 0);
   std::vector<uint8_t> in_c2(arcs.size(), 0);
   for (i_t item = 0; item < static_cast<i_t>(solution.size()); item++) {
@@ -1380,6 +1487,11 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
     if (in_c2[k]) { sum_c2_u += arcs[k].u; }
   }
+  // lambda is the cover excess:
+  //
+  //   lambda = -b + sum_{j in C1} u_j - sum_{j in C2} u_j.
+  //
+  // A positive lambda is required for the flow-cover inequality to cut anything.
   const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
   if (!c1_nonempty || lambda <= tol) { return -1; }
 
@@ -1388,12 +1500,18 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     return value - floor_value;
   };
 
+  // MIR rounding function used by the c-MIR flow-cover inequality:
+  //
+  //   F_alpha(t) = floor(t) + max(0, frac(t) - alpha) / (1 - alpha).
   auto mir_F = [&](f_t alpha, f_t value) {
     const f_t floor_value = std::floor(value);
     const f_t frac_value  = value - floor_value;
     return floor_value + std::max<f_t>(0.0, frac_value - alpha) / (1.0 - alpha);
   };
 
+  // ubar controls the c-MIR scaling beta = -lambda / ubar. The rounded coefficients
+  // only change at capacity-related breakpoints, so we test a small candidate set
+  // derived from capacities in and around C1, C2, L1, and L2.
   std::vector<f_t> ubar_candidates;
   auto add_ubar_candidate = [&](f_t candidate) {
     if (candidate <= lambda + tol || !std::isfinite(candidate)) { return; }
@@ -1432,6 +1550,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   std::vector<uint8_t> best_in_l1(arcs.size(), 0);
   std::vector<uint8_t> best_in_l2(arcs.size(), 0);
 
+  // Evaluate one candidate c-MIRFCI at the current LP point. This mirrors the
+  // inequality terms but does not write the cut yet; it is only used to choose the
+  // best ubar and the L1/L2 sets.
   auto contribution = [&](const snf_arc_t& arc,
                           bool arc_in_c1,
                           bool arc_in_c2,
@@ -1454,6 +1575,12 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     const f_t f_beta = fractional_part_local(beta);
     if (f_beta < 0.01 || f_beta > 0.95) { continue; }
 
+    // L1 and L2 are chosen by local comparison at (x*, y*):
+    //
+    // - For N1 \ C1, use the strengthened expression only if it contributes at
+    //   least as much violation as dropping the term.
+    // - For N2 \ C2, use the x-term only if it contributes at least as much
+    //   violation as the baseline -y term.
     std::vector<uint8_t> in_l1(arcs.size(), 0);
     std::vector<uint8_t> in_l2(arcs.size(), 0);
     for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
@@ -1481,6 +1608,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
 
+  // SGFCI fallback: this is the non-c-MIR strengthened flow-cover inequality. We
+  // evaluate it too because it can be violated when no tested ubar gives a useful
+  // c-MIRFCI, and we keep whichever of the two cuts is more violated.
   std::vector<uint8_t> sgfci_in_l2(arcs.size(), 0);
   f_t sgfci_lhs_value = 0.0;
   for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
@@ -1516,6 +1646,16 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   };
 
+  // Map the selected SNF inequality
+  //
+  //   lhs_snf(x, y) <= b
+  //
+  // back through each arc's affine y-expression, accumulating
+  //
+  //   lhs_constant + sum_j lhs_coefficients[j] * original_x_j <= snf_b.
+  //
+  // add_y substitutes synthetic y_j. add_x and add_one_minus_x handle the binary
+  // controller terms that appear in the c-MIRFCI/SGFCI formula.
   auto add_y = [&](const snf_arc_t& arc, f_t multiplier) {
     lhs_constant += multiplier * arc.y_const;
     if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
@@ -1580,6 +1720,13 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
 
+  // cuOpt stores cuts in the opposite >= form. Therefore
+  //
+  //   lhs_constant + lhs_coefficients * x <= snf_b
+  //
+  // becomes
+  //
+  //   -lhs_coefficients * x >= lhs_constant - snf_b.
   cut.clear();
   cut.reserve(lhs_indices.size());
   for (i_t j : lhs_indices) {
@@ -3611,6 +3758,11 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     return false;
   };
 
+  // This is not the flow-cover inequality itself. It is row-to-SNF preprocessing:
+  // the separator needs bounds like z <= gamma x + alpha or z >= gamma x + alpha
+  // to turn continuous row terms into arcs with 0 <= y <= u x. Edges whose
+  // controller is already binary can be used directly; edges through continuous
+  // variables are kept so short linking chains can be composed into binary bounds.
   std::vector<std::vector<variable_bound_edge_t>> continuous_upper_bounds(lp.num_cols);
   std::vector<std::vector<variable_bound_edge_t>> continuous_lower_bounds(lp.num_cols);
 
@@ -3943,6 +4095,15 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     return true;
   };
 
+  // Compose affine bounds during row-to-SNF preprocessing. For example,
+  //
+  //   z <= a w + b,   w <= c x + d
+  //
+  // gives
+  //
+  //   z <= a c x + (b + a d).
+  //
+  // If a is negative, the caller swaps upper/lower source bounds.
   auto compose_bound = [](const variable_bound_edge_t& outer, const variable_bound_edge_t& inner) {
     return variable_bound_edge_t{
       inner.variable, outer.weight * inner.weight, outer.bias + outer.weight * inner.bias};
