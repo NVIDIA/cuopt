@@ -1760,7 +1760,8 @@ void barrier_solver_t<i_t, f_t>::create_Q(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
+int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data,
+                                              const barrier_solver_settings_t<i_t, f_t>& options)
 {
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
@@ -1821,7 +1822,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
         data_.chol->solve(b, x);
       }
     } op(data);
-    // iterative_refinement(op, rhs, soln);
+
+    if (options.use_iterative_refinement) { iterative_refinement<i_t, f_t, op_t>(op, rhs, soln); }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.x[k] = soln[k];
@@ -2256,13 +2258,15 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
 }
 
 template <typename i_t, typename f_t>
-i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
-                                                             pinned_dense_vector_t<i_t, f_t>& dw,
-                                                             pinned_dense_vector_t<i_t, f_t>& dx,
-                                                             pinned_dense_vector_t<i_t, f_t>& dy,
-                                                             pinned_dense_vector_t<i_t, f_t>& dv,
-                                                             pinned_dense_vector_t<i_t, f_t>& dz,
-                                                             f_t& max_residual)
+i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(
+  iteration_data_t<i_t, f_t>& data,
+  pinned_dense_vector_t<i_t, f_t>& dw,
+  pinned_dense_vector_t<i_t, f_t>& dx,
+  pinned_dense_vector_t<i_t, f_t>& dy,
+  pinned_dense_vector_t<i_t, f_t>& dv,
+  pinned_dense_vector_t<i_t, f_t>& dz,
+  f_t& max_residual,
+  const barrier_solver_settings_t<i_t, f_t>& options)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_search_direction");
 
@@ -2528,9 +2532,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
-    if (solve_err > 1e-1) {
-      settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
+    if (options.use_iterative_refinement) {
+      auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
+      if (solve_err > 1e-1) {
+        settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
+      }
     }
 
     raft::copy(data.d_dx_.data(), d_augmented_soln.data(), lp.num_cols, stream_view_);
@@ -3647,7 +3653,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       return lp_status_t::TIME_LIMIT;
     }
 
-    i_t initial_status = initial_point(data);
+    i_t initial_status = initial_point(data, options);
     settings.log.printf("Initial point computed at %.2f seconds\n", toc(start_time));
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -3763,8 +3769,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
-      i_t status = gpu_compute_search_direction(
-        data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
+      i_t status = gpu_compute_search_direction(data,
+                                                data.dw_aff,
+                                                data.dx_aff,
+                                                data.dy_aff,
+                                                data.dv_aff,
+                                                data.dz_aff,
+                                                max_affine_residual,
+                                                options);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -3803,7 +3815,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       f_t max_corrector_residual = 0.0;
 
       status = gpu_compute_search_direction(
-        data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
+        data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual, options);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
