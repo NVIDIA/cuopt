@@ -19,7 +19,7 @@ using cuopt::ins_vector;
 
 // Define MATCH_LU to make right_looking_lu2 match the behavior of right_looking_lu
 // by skipping cancellation removal (keeping near-zero entries in the trailing matrix).
-#define MATCH_LU
+//#define MATCH_LU
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -43,12 +43,11 @@ constexpr int kNone = -1;
 template <typename i_t, typename f_t>
 class trailing_matrix_t {
  public:
-  static constexpr i_t kSlackSlots = 10;  // number of extra slots reserved per row/column
-
   trailing_matrix_t(const csc_matrix_t<i_t, f_t>& A,
                     const std::vector<i_t>& column_list)
     : m(A.m),
       n(column_list.size()),
+      remaining_pivots(column_list.size()),
       col_start(n),
       col_end(n),
       col_max(n),
@@ -112,8 +111,9 @@ class trailing_matrix_t {
     }
     work_estimate += 4 * m;
 
-    i_t col_nz = Bnz + kSlackSlots * n;
-    i_t row_nz = Bnz + kSlackSlots * m;
+    // Allocate 2x initial size per column/row to reduce early relocations
+    i_t col_nz = 2 * Bnz;
+    i_t row_nz = 2 * Bnz;
 
     c_i.resize(col_nz);
     c_x.resize(col_nz);
@@ -124,8 +124,9 @@ class trailing_matrix_t {
     for (i_t i = 0; i < m; i++) {
       row_start[i] = nz;
       row_end[i] = nz;  // Temporary value used for initializing r_j. Will be updated in loop
-      row_max[i] = Rdegree[i] + nz + kSlackSlots;
-      nz += Rdegree[i] + kSlackSlots;
+      i_t row_space = 2 * Rdegree[i];
+      row_max[i] = nz + row_space;
+      nz += row_space;
     }
     assert(nz == row_nz);
 
@@ -135,7 +136,8 @@ class trailing_matrix_t {
       const i_t A_start = A.col_start[j];
       const i_t A_end = A.col_start[j + 1];
       const i_t len  = A_end - A_start;
-      col_max[k] = nz + len + kSlackSlots;
+      i_t col_space = 2 * len;
+      col_max[k] = nz + col_space;
       col_start[k] = nz;
       col_end[k] = nz + len;
       for (i_t p = A_start; p < A_end; p++) {
@@ -147,7 +149,7 @@ class trailing_matrix_t {
         r_j[row_end[row]] = k;
         row_end[row]++;
       }
-      nz += kSlackSlots; // Slack slots for col_max
+      nz += col_space - len; // Remaining slack for this column
     }
     assert(nz == col_nz);
 
@@ -168,6 +170,7 @@ class trailing_matrix_t {
     f_t markowitz = static_cast<f_t>(m) * static_cast<f_t>(n); // Upper bound on markowitz criteria
     i_t nz      = 1;
     i_t nsearch            = 0;
+    const i_t search_limit = std::min(remaining_pivots, static_cast<i_t>(8));
     constexpr bool verbose = false;
     i_t nz_max             = std::min(m, n);
     while (nz <= nz_max) {
@@ -192,9 +195,11 @@ class trailing_matrix_t {
         }
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
+        if (nsearch >= search_limit && pivot_i != -1) { break; }
       }
 
       if (markowitz <= markowitz_lower_bound) { break; }
+      if (nsearch >= search_limit && pivot_i != -1) { break; }
 
       markowitz_lower_bound = (nz - 1) * nz;
 
@@ -223,11 +228,14 @@ class trailing_matrix_t {
         }
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
+        if (nsearch >= search_limit && pivot_i != -1) { break; }
       }
 
+      if (nsearch >= search_limit && pivot_i != -1) { break; }
       if (pivot_i != -1 && nz >= 2) { break; }
       nz++;
     }
+    remaining_pivots--;
     if (nsearch > 10) {
       if constexpr (verbose) { printf("nsearch %d\n", nsearch); }
     }
@@ -402,22 +410,27 @@ class trailing_matrix_t {
               row_pos[i] = row_counts[rdeg + 1].size();
               row_counts[++Rdegree[i]].push_back(i);
             }
-            // Update column degree
-            {
-              i_t cdeg = Cdegree[j];
-              i_t pos = col_pos[j];
-              i_t other = col_counts[cdeg].back();
-              col_counts[cdeg][pos] = other;
-              col_pos[other] = pos;
-              col_counts[cdeg].pop_back();
-              col_pos[j] = col_counts[cdeg + 1].size();
-              col_counts[++Cdegree[j]].push_back(j);
-            }
           }
         }
       }
 
-      // Step 2d: Reset all pivot column marks back to 1 for the next column.
+      // Step 2d: Update column degree bucket once for this column.
+      {
+        i_t new_cdeg = col_end[j] - col_start[j];
+        if (new_cdeg != Cdegree[j]) {
+          i_t old_cdeg = Cdegree[j];
+          i_t pos = col_pos[j];
+          i_t other = col_counts[old_cdeg].back();
+          col_counts[old_cdeg][pos] = other;
+          col_pos[other] = pos;
+          col_counts[old_cdeg].pop_back();
+          Cdegree[j] = new_cdeg;
+          col_pos[j] = col_counts[new_cdeg].size();
+          col_counts[new_cdeg].push_back(j);
+        }
+      }
+
+      // Step 2e: Reset all pivot column marks back to 1 for the next column.
       // Some marks were cleared to 0 during the scan of column j (matched entries).
       // We restore them by iterating the pivot column index list.
       for (i_t k = 0; k < pivot_col_count; k++) {
@@ -647,7 +660,8 @@ class trailing_matrix_t {
     i_t shortfall = needed - (col_max[j] - col_end[j]);
     col_realloc_hist[shortfall]++;
     // Relocate column j to the end of c_i/c_x
-    unused_col_nz += col_end[j] - col_start[j];
+    i_t current_size = col_end[j] - col_start[j];
+    unused_col_nz += current_size;
     i_t new_start = c_i.size();
     for (i_t p = col_start[j]; p < col_end[j]; p++) {
       c_i.push_back(c_i[p]);
@@ -655,8 +669,8 @@ class trailing_matrix_t {
     }
     col_start[j] = new_start;
     col_end[j] = c_i.size();
-    // Reserve space for the fill-ins plus slack
-    i_t extra = needed + kSlackSlots;
+    // Reserve space using doubling strategy to reduce future relocations
+    i_t extra = std::max(current_size, needed + kSlackSlots);
     for (i_t k = 0; k < extra; k++) {
       c_i.push_back(kNone);
       c_x.push_back(0.0);
@@ -674,15 +688,16 @@ class trailing_matrix_t {
     i_t shortfall = needed - (row_max[i] - row_end[i]);
     row_realloc_hist[shortfall]++;
     // Relocate row i to the end of r_j
-    unused_row_nz += row_end[i] - row_start[i];
+    i_t current_size = row_end[i] - row_start[i];
+    unused_row_nz += current_size;
     i_t new_start = r_j.size();
     for (i_t p = row_start[i]; p < row_end[i]; p++) {
       r_j.push_back(r_j[p]);
     }
     row_start[i] = new_start;
     row_end[i] = r_j.size();
-    // Reserve space for the fill-ins plus slack
-    i_t extra = needed + kSlackSlots;
+    // Reserve space using doubling strategy to reduce future relocations
+    i_t extra = std::max(current_size, needed + kSlackSlots);
     for (i_t k = 0; k < extra; k++) {
       r_j.push_back(kNone);
     }
@@ -814,6 +829,7 @@ class trailing_matrix_t {
 
   i_t m;
   i_t n;
+  i_t remaining_pivots;  // Number of pivots remaining (decremented each pivot step)
 
 
   // The representation of the matrix by column
