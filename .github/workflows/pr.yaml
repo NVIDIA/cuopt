@@ -150,6 +150,7 @@ jobs:
           - '!README.md'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
+          - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_*.pytests.sh'
           - '!ci/run_ctests.sh'
@@ -207,6 +208,7 @@ jobs:
           - '!ci/build_python.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
+          - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/test_python.sh'
           - '!ci/test_self_hosted_service.sh'
@@ -223,6 +225,7 @@ jobs:
           - '!notebooks/**'
           - '!python/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
@@ -268,6 +271,7 @@ jobs:
           - '!ci/build_docs.sh'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
+          - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
@@ -282,6 +286,7 @@ jobs:
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
@@ -328,6 +333,7 @@ jobs:
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
           - '!ci/check_style.sh'
+          - '!ci/docker/**'
           - '!ci/release/**'
           - '!ci/run_ctests.sh'
           - '!ci/test_python.sh'
@@ -342,6 +348,7 @@ jobs:
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
@@ -374,8 +381,8 @@ jobs:
       script: ci/test_cpp.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -402,8 +409,8 @@ jobs:
       script: ci/test_python.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -467,8 +474,8 @@ jobs:
       script: ci/test_wheel_cuopt.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
@@ -509,8 +516,8 @@ jobs:
       script: ci/test_wheel_cuopt_server.sh
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
