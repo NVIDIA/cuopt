@@ -5,7 +5,7 @@
 *  2.7 * VAR1 + 10.1 * VAR2 <= 4.9
 *  0 = VAR1 or 1 <= VAR1 <= 2 semi-cont integer variable
 *  0  <= VAR2 <= inf
-NAME   bad-mps-bound-not_valid_bound_type
+NAME   bad-mps-bound-SC
 ROWS
  N  COST
  L  ROW1
@@ -18,5 +18,5 @@ COLUMNS
 RHS
     RHS1      ROW1      5.4            ROW2      4.9
 BOUNDS
- LS bnd       VAR1      2
+ SC bnd       VAR1      2
 ENDATA

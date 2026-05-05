@@ -255,7 +255,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     incumbent_(1),
     root_relax_soln_(1, 1),
     root_crossover_soln_(1, 1),
-    pc_(1),
+    pc_(1, solver_settings),
     solver_status_(mip_status_t::UNSET)
 {
   exploration_stats_.start_time = start_time;
@@ -804,7 +804,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 // Technische Universit¨at Berlin, Berlin, 1999. Accessed: Aug. 08, 2025.
 // [Online]. Available: https://opus4.kobv.de/opus4-zib/frontdoor/index/index/docId/391
 template <typename f_t>
-rounding_direction_t martin_criteria(f_t val, f_t root_val)
+branch_direction_t martin_criteria(f_t val, f_t root_val)
 {
   const f_t down_val  = std::floor(root_val);
   const f_t up_val    = std::ceil(root_val);
@@ -813,10 +813,10 @@ rounding_direction_t martin_criteria(f_t val, f_t root_val)
   constexpr f_t eps   = 1e-6;
 
   if (down_dist < up_dist + eps) {
-    return rounding_direction_t::DOWN;
+    return branch_direction_t::DOWN;
 
   } else {
-    return rounding_direction_t::UP;
+    return branch_direction_t::UP;
   }
 }
 
@@ -827,9 +827,9 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   branch_and_bound_worker_t<i_t, f_t>* worker)
 {
   logger_t log;
-  log.log                        = false;
-  i_t branch_var                 = -1;
-  rounding_direction_t round_dir = rounding_direction_t::NONE;
+  log.log                      = false;
+  i_t branch_var               = -1;
+  branch_direction_t round_dir = branch_direction_t::NONE;
   std::vector<f_t> current_incumbent;
   std::vector<f_t>& solution = worker->leaf_solution.x;
 
@@ -842,14 +842,13 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
                                                      worker,
                                                      var_types_,
                                                      exploration_stats_,
-                                                     settings_,
                                                      upper_bound_,
                                                      bfs_worker_pool_.num_idle_workers(),
                                                      log,
                                                      new_slacks_,
                                                      original_lp_);
       } else {
-        branch_var = pc_.variable_selection(fractional, solution, log);
+        branch_var = pc_.variable_selection(fractional, solution);
       }
 
       round_dir = martin_criteria(solution[branch_var], root_relax_soln_.x[branch_var]);
@@ -875,7 +874,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
     default:
       log.debug("Unknown variable selection method: %d\n", worker->search_strategy);
-      return {-1, rounding_direction_t::NONE};
+      return {-1, branch_direction_t::NONE};
   }
 }
 
@@ -902,7 +901,7 @@ struct tree_update_policy_t {
                                          const std::vector<f_t>& x)                = 0;
   virtual void on_node_completed(mip_node_t<i_t, f_t>* node,
                                  node_status_t status,
-                                 rounding_direction_t dir)                         = 0;
+                                 branch_direction_t dir)                           = 0;
   virtual void on_numerical_issue(mip_node_t<i_t, f_t>*)                           = 0;
   virtual void graphviz(search_tree_t<i_t, f_t>&, mip_node_t<i_t, f_t>*, const char*, f_t) = 0;
   virtual void on_optimal_callback(const std::vector<f_t>&, f_t)                           = 0;
@@ -947,9 +946,7 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
                                  const std::vector<f_t>& x) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      logger_t pc_log;
-      pc_log.log               = false;
-      node->objective_estimate = bnb.pc_.obj_estimate(fractional, x, node->lower_bound, pc_log);
+      node->objective_estimate = bnb.pc_.obj_estimate(fractional, x, node->lower_bound);
     }
   }
 
@@ -981,7 +978,7 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
     }
   }
 
-  void on_node_completed(mip_node_t<i_t, f_t>*, node_status_t, rounding_direction_t) override {}
+  void on_node_completed(mip_node_t<i_t, f_t>*, node_status_t, branch_direction_t) override {}
 };
 
 template <typename i_t, typename f_t, typename WorkerT>
@@ -1000,7 +997,7 @@ struct deterministic_policy_base_t : tree_update_policy_t<i_t, f_t> {
   {
     if (node->branch_var < 0) return;
     f_t change = std::max(leaf_obj - node->lower_bound, f_t(0));
-    f_t frac   = node->branch_dir == rounding_direction_t::DOWN
+    f_t frac   = node->branch_dir == branch_direction_t::DOWN
                    ? node->fractional_val - std::floor(node->fractional_val)
                    : std::ceil(node->fractional_val) - node->fractional_val;
     if (frac > 1e-10) {
@@ -1054,7 +1051,7 @@ struct deterministic_bfs_policy_t
 
   void on_node_completed(mip_node_t<i_t, f_t>* node,
                          node_status_t status,
-                         rounding_direction_t dir) override
+                         branch_direction_t dir) override
   {
     switch (status) {
       case node_status_t::INFEASIBLE: this->worker.record_infeasible(node); break;
@@ -1143,7 +1140,7 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
-      default: CUOPT_LOG_ERROR("Invalid diving method!"); return {-1, rounding_direction_t::NONE};
+      default: CUOPT_LOG_ERROR("Invalid diving method!"); return {-1, branch_direction_t::NONE};
     }
   }
 
@@ -1155,10 +1152,10 @@ struct deterministic_diving_policy_t
 
   void on_node_completed(mip_node_t<i_t, f_t>* node,
                          node_status_t status,
-                         rounding_direction_t dir) override
+                         branch_direction_t dir) override
   {
     if (status == node_status_t::HAS_CHILDREN) {
-      if (dir == rounding_direction_t::UP) {
+      if (dir == branch_direction_t::UP) {
         stack.push_front(node->get_down_child());
         stack.push_front(node->get_up_child());
       } else {
@@ -1177,7 +1174,7 @@ struct deterministic_diving_policy_t
 
 template <typename i_t, typename f_t>
 template <typename WorkerT, typename Policy>
-std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::update_tree_impl(
+std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::update_tree_impl(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   WorkerT* worker,
@@ -1189,7 +1186,10 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
   lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
   const f_t upper_bound                  = policy.upper_bound();
   node_status_t status                   = node_status_t::PENDING;
-  rounding_direction_t round_dir         = rounding_direction_t::NONE;
+  branch_direction_t round_dir           = branch_direction_t::NONE;
+
+  worker->recompute_basis  = true;
+  worker->recompute_bounds = true;
 
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
@@ -1250,7 +1250,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
 
       assert(worker->leaf_vstatus.size() == leaf_problem.num_cols);
       assert(branch_var >= 0);
-      assert(dir != rounding_direction_t::NONE);
+      assert(dir != branch_direction_t::NONE);
 
       policy.update_objective_estimate(node_ptr, leaf_fractional, leaf_solution.x);
       worker->recompute_basis  = false;
@@ -1291,7 +1291,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
 }
 
 template <typename i_t, typename f_t>
-std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::update_tree(
+std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::update_tree(
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   branch_and_bound_worker_t<i_t, f_t>* worker,
@@ -1385,7 +1385,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     node_ptr->node_id,
     node_ptr->depth,
     node_ptr->branch_var,
-    node_ptr->branch_dir == rounding_direction_t::DOWN ? "DOWN" : "UP",
+    node_ptr->branch_dir == branch_direction_t::DOWN ? "DOWN" : "UP",
     node_ptr->fractional_val,
     node_ptr->branch_var_lower,
     node_ptr->branch_var_upper,
@@ -1583,7 +1583,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
       exploration_stats_.nodes_unexplored += 2;
 
-      if (round_dir == rounding_direction_t::UP) {
+      if (round_dir == branch_direction_t::UP) {
         if (worker->node_queue.best_first_queue_size() < min_node_queue_size_) {
           worker->node_queue.lock();
           worker->node_queue.push(node_ptr->get_down_child());
@@ -1781,7 +1781,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
     worker->recompute_bounds = node_status != node_status_t::HAS_CHILDREN;
 
     if (node_status == node_status_t::HAS_CHILDREN) {
-      if (round_dir == rounding_direction_t::UP) {
+      if (round_dir == branch_direction_t::UP) {
         stack.push_front(node_ptr->get_down_child());
         stack.push_front(node_ptr->get_up_child());
       } else {
@@ -2597,7 +2597,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   // Choose variable to branch on
-  i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x, log);
+  i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x);
 
   search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
   search_tree_.num_nodes = 0;

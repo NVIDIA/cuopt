@@ -30,6 +30,7 @@
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -1159,9 +1160,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
-  // Set the concurrent halt pointer
-  global_concurrent_halt        = 0;
-  settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  // Use a local halt flag only when the caller did not provide one.
+  if (settings_pdlp.concurrent_halt == nullptr) {
+    global_concurrent_halt        = 0;
+    settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  }
 
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
@@ -1631,11 +1634,10 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   }
   if (data_model.get_variable_types().size() != 0) {
     std::vector<var_t> enum_variable_types(data_model.get_variable_types().size());
-    std::transform(
-      data_model.get_variable_types().cbegin(),
-      data_model.get_variable_types().cend(),
-      enum_variable_types.begin(),
-      [](const auto val) -> var_t { return val == 'I' ? var_t::INTEGER : var_t::CONTINUOUS; });
+    std::transform(data_model.get_variable_types().cbegin(),
+                   data_model.get_variable_types().cend(),
+                   enum_variable_types.begin(),
+                   detail::char_to_var_type);
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 

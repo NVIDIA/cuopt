@@ -28,7 +28,7 @@ enum search_strategy_t : int {
 constexpr std::array search_strategies = {
   BEST_FIRST, PSEUDOCOST_DIVING, LINE_SEARCH_DIVING, GUIDED_DIVING, COEFFICIENT_DIVING};
 
-enum class rounding_direction_t { NONE = -1, DOWN = 0, UP = 1 };
+enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 
 enum class branch_and_bound_mode_t { PARALLEL = 0, DETERMINISTIC = 1 };
 

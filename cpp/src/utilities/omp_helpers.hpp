@@ -126,7 +126,6 @@ class omp_atomic_t {
 
   // Get the underlying value without atomics
   T& underlying() { return val; }
-
   T underlying() const { return val; }
 
  private:
