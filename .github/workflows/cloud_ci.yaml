@@ -18,7 +18,7 @@ jobs:
     runs-on: 'ubuntu-22.04'
     steps:
       - run: echo "Starting GitHub Actions Job for Cloud CI test notification"
-      - uses: cinotify/github-action@89d5abbbfb50cdba9d4b462d47d9378d7d204d75 # main
+      - uses: cinotify/github-action@92a15ed24b17cce1bb185b985c0d463859c5b800 # v1.6.0
         with:
           to: 'cuopt-eng@nvidia.com'
           subject: 'Cloud scripts change notification'

@@ -66,7 +66,7 @@ jobs:
         - /tmp/asset_dir/:/tmp/asset_dir/
         - /tmp/response_dir/:/tmp/response_dir/
     steps:
-      - uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v1-node16
+      - uses: aws-actions/configure-aws-credentials@023daa7fe5f7f817faa31fc0fc4a8d0fb6224ed0 # v1-node16
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -78,7 +78,7 @@ jobs:
         run: printf 'machine pypi.k8s.rapids.ai\n\tlogin cibuildwheel\n\tpassword ${{ secrets.RAPIDSAI_PYPI_CI_PASSWORD }}\n' > ~/.netrc
 
       - name: checkout code repo
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.sha }}
