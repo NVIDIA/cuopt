@@ -36,8 +36,8 @@ TEST(ev_breaks, default_case)
   auto v_cost_matrix = cuopt::device_copy(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_vehicle_ev_break(0, 0.f, 2.f, 1, nullptr, 0);
-  data_model.add_vehicle_ev_break(1, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_ev_break(0, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_ev_break(1, 0.f, 2.f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto routing_solution = cuopt::routing::solve(data_model);
@@ -65,9 +65,9 @@ TEST(ev_breaks, with_charging_stations)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 5, 2, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_vehicle_ev_break(
+  data_model.add_ev_break(
     0, 0.f, 2.f, 1, v_charging_stations.data(), (int)v_charging_stations.size());
-  data_model.add_vehicle_ev_break(
+  data_model.add_ev_break(
     1, 0.f, 2.f, 1, v_charging_stations.data(), (int)v_charging_stations.size());
   data_model.set_min_vehicles(2);
 
@@ -107,8 +107,8 @@ TEST(ev_breaks, multi_cycle)
   data_model.set_order_locations(v_order_locations.data());
 
   for (int vid = 0; vid < 2; ++vid) {
-    data_model.add_vehicle_ev_break(vid, 0.f, 2.f, 1, nullptr, 0);
-    data_model.add_vehicle_ev_break(vid, 2.f, 4.f, 1, nullptr, 0);
+    data_model.add_ev_break(vid, 0.f, 2.f, 1, nullptr, 0);
+    data_model.add_ev_break(vid, 2.f, 4.f, 1, nullptr, 0);
   }
   data_model.set_min_vehicles(2);
 
@@ -134,6 +134,74 @@ TEST(ev_breaks, multi_cycle)
   }
 }
 
+// break must appear within its distance window even when visiting the charger first
+// is more expensive than the direct route to the customer
+TEST(ev_breaks, break_distance_window_enforced)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  // 3 locations: depot(0), customer(1), charger(2)
+  //
+  // Asymmetric matrix chosen so the two candidate routes have DIFFERENT costs:
+  //   customer-first: 0→1→2→0 = 100+5+1 = 106  (CHEAPER, solver prefers this)
+  //     break at charger: cumulative = 105 > d_max=60  (VIOLATES window)
+  //   charger-first:  0→2→1→0 = 50+55+100 = 205 (more expensive)
+  //     break at charger: cumulative = 50 ≤ d_max=60   (feasible)
+  //
+  // Without the window-violation penalty the relocation costs +99, so
+  // execute_break_moves skips it (cost > 0) and the break stays infeasible.
+  // The penalty forces the relocation despite the cost increase.
+  std::vector<float> cost_matrix_3 = {
+    0,
+    100,
+    50,
+    100,
+    0,
+    5,
+    1,
+    55,
+    0,
+  };
+  std::vector<int> order_locations   = {1};
+  std::vector<int> charging_stations = {2};
+
+  auto v_cost_matrix       = cuopt::device_copy(cost_matrix_3, stream);
+  auto v_order_locations   = cuopt::device_copy(order_locations, stream);
+  auto v_charging_stations = cuopt::device_copy(charging_stations, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  // EV break: must charge within [0, 60] km
+  data_model.add_ev_break(0, 0.f, 60.f, 0, v_charging_stations.data(), 1);
+
+  auto settings = cuopt::routing::solver_settings_t<int, float>{};
+  settings.set_time_limit(10);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+  host_assignment_t<int> h(routing_solution);
+
+  // Walk the route, accumulate distance, and check every break node.
+  float cumulative = 0.f;
+  int prev_loc     = 0;
+  bool found_break = false;
+  for (size_t i = 0; i < h.locations.size(); ++i) {
+    int loc = h.locations[i];
+    cumulative += cost_matrix_3[prev_loc * 3 + loc];
+    if (static_cast<node_type_t>(h.node_types[i]) == node_type_t::BREAK) {
+      found_break = true;
+      EXPECT_LE(cumulative, 60.f) << "break at cumulative distance " << cumulative
+                                  << " exceeds d_max=60";
+    }
+    prev_loc = loc;
+  }
+  EXPECT_TRUE(found_break) << "no break found in solution";
+}
+
 // only vehicle with EV break specified has such break assigned
 TEST(ev_breaks, mixed_fleet)
 {
@@ -144,7 +212,7 @@ TEST(ev_breaks, mixed_fleet)
   auto v_cost_matrix = cuopt::device_copy(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_vehicle_ev_break(0, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_ev_break(0, 0.f, 2.f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};

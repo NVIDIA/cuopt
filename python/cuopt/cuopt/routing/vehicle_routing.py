@@ -467,7 +467,7 @@ class DataModel(vehicle_routing_wrapper.DataModel):
             for k in range(n_cycles):
                 d_min = k * max_range + min_range
                 d_max = (k + 1) * max_range
-                super().add_vehicle_ev_break(
+                super().add_ev_break(
                     vid, d_min, d_max, charge_duration, charging_stations
                 )
 

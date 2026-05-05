@@ -100,6 +100,18 @@ __global__ void find_break_insertions_kernel(
     auto break_nodes =
       solution.problem.special_nodes.subset(sh_route.get_vehicle_id(), inserted_break_dim);
 
+    // If the break is outside its distance window, any valid re-insertion
+    // position must win. Apply a large negative bias so that execute_break_moves is
+    // guaranteed to relocate the break to a feasible position.
+    bool current_pos_violates_window = false;
+    if (!break_nodes.distance_min.empty()) {
+      double curr_dist = global_route.get_node(ejected_intra_idx).distance_dim.distance_forward;
+      double d_min     = break_nodes.distance_min[0];
+      double d_max     = break_nodes.distance_max[0];
+      current_pos_violates_window = (curr_dist < d_min || d_max < curr_dist);
+    }
+    const double window_violation_bias = current_pos_violates_window ? -1e9 : 0.0;
+
     break_cand_t thread_best_cand;
 
     i_t route_size      = sh_route.get_num_nodes();
@@ -138,6 +150,7 @@ __global__ void find_break_insertions_kernel(
                                                                             weights,
                                                                             old_objective_cost,
                                                                             old_infeasbility_cost);
+        cost_difference += window_violation_bias;
 
         if (cost_difference < thread_best_cand.cost) {
           thread_best_cand.ejection_idx        = ejected_intra_idx;

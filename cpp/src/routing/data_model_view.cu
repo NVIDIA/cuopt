@@ -32,7 +32,7 @@ void validate_break_locations(i_t const* locations,
   cuopt::cuopt_expects(cuopt::routing::detail::check_min_max_values(
                          locations, n, i_t{0}, num_locations - 1, handle->get_stream()),
                        cuopt::error_type_t::ValidationError,
-                       "Break locations should be at the end of the matrix");
+                       "Break locations should be in [0, num_locations) range");
   rmm::device_uvector<i_t> tmp(n, handle->get_stream());
   raft::copy(tmp.begin(), locations, n, handle->get_stream());
   auto end         = thrust::unique(handle->get_thrust_policy(), tmp.begin(), tmp.end());
@@ -203,13 +203,13 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
 }
 
 template <typename i_t, typename f_t>
-void data_model_view_t<i_t, f_t>::add_vehicle_ev_break(i_t vehicle_id,
-                                                       f_t distance_min,
-                                                       f_t distance_max,
-                                                       i_t charge_duration,
-                                                       i_t const* break_locations,
-                                                       i_t num_break_locations,
-                                                       bool validate_input)
+void data_model_view_t<i_t, f_t>::add_ev_break(i_t vehicle_id,
+                                               f_t distance_min,
+                                               f_t distance_max,
+                                               i_t charge_duration,
+                                               i_t const* break_locations,
+                                               i_t num_break_locations,
+                                               bool validate_input)
 {
   cuopt_expects(0 <= vehicle_id && vehicle_id < fleet_size_,
                 error_type_t::ValidationError,

@@ -181,13 +181,13 @@ class data_model_view_t {
    * @param num_break_locations Number of entries in break_locations.
    * @param validate_input     Run input validation. Defaults to true.
    */
-  void add_vehicle_ev_break(i_t vehicle_id,
-                            f_t distance_min,
-                            f_t distance_max,
-                            i_t charge_duration,
-                            i_t const* break_locations,
-                            i_t num_break_locations,
-                            bool validate_input = true);
+  void add_ev_break(i_t vehicle_id,
+                    f_t distance_min,
+                    f_t distance_max,
+                    i_t charge_duration,
+                    i_t const* break_locations,
+                    i_t num_break_locations,
+                    bool validate_input = true);
 
   /**
    * @brief During improvement phase the solver only optimizes for the cost.

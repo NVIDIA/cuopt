@@ -478,7 +478,7 @@ cdef class DataModel:
             vehicle_id, earliest, latest, duration,
             <const int *> c_locations_ptr, len(locations))
 
-    def add_vehicle_ev_break(
+    def add_ev_break(
         self, vehicle_id, distance_min, distance_max, duration, locations
     ):
         breaks = self.non_uniform_breaks.setdefault(vehicle_id, {})
@@ -499,7 +499,7 @@ cdef class DataModel:
             casted_locations.__cuda_array_interface__['data'][0]
         )
 
-        self.c_data_model_view.get().add_vehicle_ev_break(
+        self.c_data_model_view.get().add_ev_break(
             vehicle_id,
             <float> distance_min,
             <float> distance_max,

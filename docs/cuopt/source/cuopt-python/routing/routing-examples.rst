@@ -66,3 +66,63 @@ Sample output:
 - All problems in the batch use the **same** :class:`cuopt.routing.SolverSettings` (e.g., time limit, solver options).
 - Callbacks are not supported in batch mode.
 - For best practices when batching many instances, see the *Add best practices for batch solving* note in the release documentation.
+
+EV Charging Breaks
+------------------
+
+Electric vehicles require mandatory charging stops when their battery approaches depletion.
+:meth:`cuopt.routing.DataModel.add_ev_break` models this as a **distance-triggered break**:
+the solver must insert one charging stop per cycle within the window
+``[k * max_range + min_range, (k+1) * max_range]`` for each cycle ``k``.
+
+**Problem details:**
+
+- 9 locations: 1 depot, 5 customer delivery points, 3 charging stations (A, B, C)
+- 2 electric vans, ``min_range=0``, ``max_range=75`` km between charges
+- 5 delivery orders (one per customer)
+- ``n_cycles=5``: each van makes five charging stops per route within the windows
+  ``[0, 75)``, ``[75, 150)``, ``[150, 225)``, ``[225, 300)``, and ``[300, 375)`` km
+  of cumulative route distance
+
+Charging stations A (60 km), B (135 km), and C (210 km) cover the first three windows.
+The solver reuses them for the later windows as the route doubles back after the
+furthest customer.
+
+:download:`ev_break_example.py <examples/ev_break_example.py>`
+
+.. literalinclude:: examples/ev_break_example.py
+   :language: python
+   :linenos:
+
+Sample output:
+
+.. code-block:: text
+
+   Total route cost: 446.9 km
+   Vehicles used:    1
+
+   Vehicle 0:
+     Depot       depot
+     Break       charger A
+     Delivery    customer 1
+     Break       charger B
+     Delivery    customer 2
+     Break       charger C
+     Delivery    customer 5
+     Break       charger C
+     Delivery    customer 4
+     Break       charger B
+     Delivery    customer 3
+     Depot       depot
+
+**Notes:**
+
+- The charge window for cycle ``k`` is ``[k * max_range + min_range, (k+1) * max_range]``.
+  Set ``min_range > 0`` to prevent consecutive charges at the start of a route (the default
+  ``min_range=0`` allows a charge immediately after leaving the depot).
+- ``charging_stations`` limits which locations the solver may use for a charging stop.
+  Omit it to allow any location.
+- Each call to :meth:`~cuopt.routing.DataModel.add_ev_break` applies the same schedule
+  to all ``vehicle_ids``. Call it again with a different ``max_range`` or ``n_cycles`` to
+  model a mixed fleet with different battery capacities.
+- ``charge_duration`` uses the same unit as order service times.
