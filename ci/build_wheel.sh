@@ -12,6 +12,15 @@ source rapids-configure-sccache
 source rapids-date-string
 source rapids-init-pip
 
+# Workaround for sccache regression (0.14.0-rapids.12): the launcher
+# mishandles .c files when wrapping a gcc-toolset gcc, causing
+# __cplusplus to be defined and CMake's C compiler test to fail with
+# 'The CMAKE_C_COMPILER is set to a C++ compiler'. Drop the launcher
+# for C only; keep it for CXX/CUDA where the bug does not trigger.
+if [[ "$(command -v gcc 2>/dev/null)" == /opt/rh/gcc-toolset-*/root/usr/bin/gcc ]]; then
+  unset CMAKE_C_COMPILER_LAUNCHER
+fi
+
 # Update the version to accomdate nightly and release changes for the wheel name
 rapids-generate-version > ./VERSION
 
