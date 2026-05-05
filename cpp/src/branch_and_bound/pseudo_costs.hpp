@@ -50,10 +50,10 @@ struct reliability_branching_settings_t {
   f_t bnb_lp_factor = 0.5;
   i_t bnb_lp_offset = 100000;
 
-  // Maximum and minimum points in curve to determine the sumue
+  // Maximum and minimum points in curve to determine the value
   // of the `reliable_threshold` based on the current number of LP
   // iterations in strong branching and B&B. Since it is a
-  // a curve, the actual sumue of `reliable_threshold` may be
+  // a curve, the actual value of `reliable_threshold` may be
   // higher than `max_reliable_threshold`.
   // Only used when `reliable_threshold` is negative
   i_t max_reliable_threshold = 5;
