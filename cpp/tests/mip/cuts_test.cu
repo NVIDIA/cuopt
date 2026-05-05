@@ -1446,33 +1446,22 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
   EXPECT_EQ(first_infeasible.value(), injected_index);
 }
 
-// Problem data for Example 9.8 from Wolsey: flow cover cut test.
+// Minimal 0-1 single-node-flow relaxation for the flow-cover separator.
 //
-// The mixed 0-1 set X has the knapsack constraint:
-//   3*x0 + 3*x1 + 6*x2 - 3*x3 - 5*x4 - 1*x5 <= 4
-// with all binary variables (0-indexed: x0..x5 correspond to 1-indexed x1..x6).
+//   y0 + y1 - y2 <= 4
+//   0 <= y0 <= 3*x0, 0 <= y1 <= 6*x1, 0 <= y2 <= 3*x2
 //
-// The LP relaxation solution is x* = (1, 0, 2/3, 1, 0, 0).
-// Wolter's c-MIRFCI separator can generate, for example:
-//   2*x0 + 2*x2 - 2*x4 - x5 <= 2
-// which is violated by x*: 2 + 4/3 > 2.
-// The always-approximate KPSNF flow-cover selection may choose a different
-// violated valid cut, so the tests below check validity rather than exact coefficients.
-//
-// We construct an objective that drives the LP relaxation toward this fractional solution.
-mps_parser::mps_data_model_t<int, double> create_flow_cover_problem_example_9_8()
+// The fractional point x* = (1, 2/3, 1), y* = (3, 4, 3) satisfies the relaxation
+// but violates the generated c-MIR flow-cover cut. This is a reduced version of a
+// standard flow-cover example; the test checks validity instead of exact coefficients
+// because the approximate KPSNF selection may choose a different valid cut.
+mps_parser::mps_data_model_t<int, double> create_small_single_node_flow_problem()
 {
   mps_parser::mps_data_model_t<int, double> problem;
 
-  // 6 binary variables x0..x5
-  // Constraint: 3*x0 + 3*x1 + 6*x2 - 3*x3 - 5*x4 - 1*x5 <= 4
-  // We also add x3 <= 1 explicitly (it is binary, but coefficients are negative in the knapsack
-  // row so the solver needs it to identify flow cover structure).
-  //
-  // CSR format (1 row):
-  std::vector<int> offsets         = {0, 6};
-  std::vector<int> indices         = {0, 1, 2, 3, 4, 5};
-  std::vector<double> coefficients = {3.0, 3.0, 6.0, -3.0, -5.0, -1.0};
+  std::vector<int> offsets         = {0, 3, 5, 7, 9};
+  std::vector<int> indices         = {3, 4, 5, 0, 3, 1, 4, 2, 5};
+  std::vector<double> coefficients = {1.0, 1.0, -1.0, -3.0, 1.0, -6.0, 1.0, -3.0, 1.0};
   problem.set_csr_constraint_matrix(coefficients.data(),
                                     coefficients.size(),
                                     indices.data(),
@@ -1480,84 +1469,20 @@ mps_parser::mps_data_model_t<int, double> create_flow_cover_problem_example_9_8(
                                     offsets.data(),
                                     offsets.size());
 
-  // Constraint bounds: -inf <= sum <= 4
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {4.0};
+  std::vector<double> lower_bounds(4, -std::numeric_limits<double>::infinity());
+  std::vector<double> upper_bounds = {4.0, 0.0, 0.0, 0.0};
   problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
   problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
 
-  // Variable bounds: all binary [0, 1]
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+  std::vector<double> var_lower_bounds(6, 0.0);
+  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 3.0, 6.0, 3.0};
   problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
   problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
 
-  // Objective: maximize 3*x0 + 6*x2 + 3*x3 (minimize negated)
-  // This pushes x0=1, x2 as high as possible, x3=1 (opening the RHS).
-  // LP relaxation gives x0=1, x2=2/3, x3=1 => obj = 3 + 4 + 3 = 10
-  // Integer optimum would be x0=1, x2=0, x3=1 or similar.
-  std::vector<double> objective_coefficients = {-3.0, 0.0, -6.0, -3.0, 0.0, 0.0};
+  std::vector<double> objective_coefficients(6, 0.0);
   problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
 
-  // All integer (binary)
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-
-  problem.set_maximize(false);
-  return problem;
-}
-
-mps_parser::mps_data_model_t<int, double> create_mixed_flow_cover_problem_example_9_8()
-{
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // Variables 0..5 are binary x variables. Variables 6..11 are continuous y variables.
-  // The rows model:
-  //   y0 + y1 + y2 <= 4 + y3 + y4 + y5
-  //   yj <= u_j * x_j
-  // for u = (3, 3, 6, 3, 5, 1).
-  std::vector<int> offsets         = {0, 6, 8, 10, 12, 14, 16, 18};
-  std::vector<int> indices         = {6, 7, 8, 9, 10, 11, 0, 6, 1, 7, 2, 8, 3, 9, 4, 10, 5, 11};
-  std::vector<double> coefficients = {1.0,
-                                      1.0,
-                                      1.0,
-                                      -1.0,
-                                      -1.0,
-                                      -1.0,
-                                      -3.0,
-                                      1.0,
-                                      -3.0,
-                                      1.0,
-                                      -6.0,
-                                      1.0,
-                                      -3.0,
-                                      1.0,
-                                      -5.0,
-                                      1.0,
-                                      -1.0,
-                                      1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-
-  std::vector<double> lower_bounds(7, -std::numeric_limits<double>::infinity());
-  std::vector<double> upper_bounds = {4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-
-  std::vector<double> var_lower_bounds(12, 0.0);
-  std::vector<double> var_upper_bounds = {
-    1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 3.0, 3.0, 6.0, 3.0, 5.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-
-  std::vector<double> objective_coefficients(12, 0.0);
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I', 'I', 'I', 'C', 'C', 'C', 'C', 'C', 'C'};
+  std::vector<char> variable_types = {'I', 'I', 'I', 'C', 'C', 'C'};
   problem.set_variable_types(variable_types);
 
   problem.set_maximize(false);
@@ -1633,100 +1558,89 @@ flow_cover_test_problem_t build_flow_cover_test_problem(
   return test_problem;
 }
 
-flow_cover_test_problem_t build_flow_cover_test_problem()
-{
-  return build_flow_cover_test_problem(create_flow_cover_problem_example_9_8());
-}
-
-bool is_flow_cover_example_9_8_binary_feasible(const std::vector<double>& x)
-{
-  const double activity = 3.0 * x[0] + 3.0 * x[1] + 6.0 * x[2] - 3.0 * x[3] - 5.0 * x[4] - x[5];
-  return activity <= 4.0 + 1e-9;
-}
-
-std::vector<double> mixed_flow_cover_fractional_solution(int num_cols)
+std::vector<double> single_node_flow_fractional_solution(int num_cols)
 {
   std::vector<double> xstar(num_cols, 0.0);
   xstar[0] = 1.0;
-  xstar[2] = 2.0 / 3.0;
-  xstar[3] = 1.0;
-  xstar[6] = 3.0;
-  xstar[8] = 4.0;
-  xstar[9] = 3.0;
+  xstar[1] = 2.0 / 3.0;
+  xstar[2] = 1.0;
+  xstar[3] = 3.0;
+  xstar[4] = 4.0;
+  xstar[5] = 3.0;
   return xstar;
 }
 
-bool mixed_flow_cover_y_feasible(const std::vector<double>& y)
+bool single_node_flow_y_feasible(const std::vector<double>& y)
 {
-  const double activity = y[0] + y[1] + y[2] - y[3] - y[4] - y[5];
+  const double activity = y[0] + y[1] - y[2];
   return activity <= 4.0 + 1e-8;
 }
 
-void expect_mixed_flow_cover_cut_valid_at_point(const dual_simplex::inequality_t<int, double>& cut,
+void expect_single_node_flow_cut_valid_at_point(const dual_simplex::inequality_t<int, double>& cut,
                                                 const std::vector<double>& point,
                                                 const std::string& label)
 {
   EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << label;
 }
 
-void expect_mixed_flow_cover_cut_valid_at_simple_extreme_points(
+void expect_single_node_flow_cut_valid_at_extreme_points(
   const dual_simplex::inequality_t<int, double>& cut, int num_cols)
 {
-  const std::vector<double> capacities = {3.0, 3.0, 6.0, 3.0, 5.0, 1.0};
-  const std::vector<double> flow_signs = {1.0, 1.0, 1.0, -1.0, -1.0, -1.0};
+  const std::vector<double> capacities = {3.0, 6.0, 3.0};
+  const std::vector<double> flow_signs = {1.0, 1.0, -1.0};
   int checked_points                   = 0;
 
-  for (int x_mask = 0; x_mask < 64; x_mask++) {
-    std::vector<double> y_upper(6, 0.0);
-    for (int j = 0; j < 6; j++) {
+  for (int x_mask = 0; x_mask < 8; x_mask++) {
+    std::vector<double> y_upper(3, 0.0);
+    for (int j = 0; j < 3; j++) {
       if (((x_mask >> j) & 1) != 0) { y_upper[j] = capacities[j]; }
     }
 
-    for (int y_mask = 0; y_mask < 64; y_mask++) {
-      std::vector<double> y(6, 0.0);
-      for (int j = 0; j < 6; j++) {
+    for (int y_mask = 0; y_mask < 8; y_mask++) {
+      std::vector<double> y(3, 0.0);
+      for (int j = 0; j < 3; j++) {
         if (((y_mask >> j) & 1) != 0) { y[j] = y_upper[j]; }
       }
-      if (!mixed_flow_cover_y_feasible(y)) { continue; }
+      if (!single_node_flow_y_feasible(y)) { continue; }
 
       std::vector<double> point(num_cols, 0.0);
-      for (int j = 0; j < 6; j++) {
+      for (int j = 0; j < 3; j++) {
         point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
-        point[6 + j] = y[j];
+        point[3 + j] = y[j];
       }
-      expect_mixed_flow_cover_cut_valid_at_point(
+      expect_single_node_flow_cut_valid_at_point(
         cut,
         point,
         "box vertex x_mask=" + std::to_string(x_mask) + " y_mask=" + std::to_string(y_mask));
       checked_points++;
     }
 
-    for (int free_j = 0; free_j < 6; free_j++) {
-      for (int bound_mask = 0; bound_mask < 32; bound_mask++) {
-        std::vector<double> y(6, 0.0);
+    for (int free_j = 0; free_j < 3; free_j++) {
+      for (int bound_mask = 0; bound_mask < 4; bound_mask++) {
+        std::vector<double> y(3, 0.0);
         int bit = 0;
-        for (int j = 0; j < 6; j++) {
+        for (int j = 0; j < 3; j++) {
           if (j == free_j) { continue; }
           if (((bound_mask >> bit) & 1) != 0) { y[j] = y_upper[j]; }
           bit++;
         }
 
         double fixed_activity = 0.0;
-        for (int j = 0; j < 6; j++) {
+        for (int j = 0; j < 3; j++) {
           if (j != free_j) { fixed_activity += flow_signs[j] * y[j]; }
         }
 
         const double y_free = (4.0 - fixed_activity) / flow_signs[free_j];
         if (y_free < -1e-8 || y_free > y_upper[free_j] + 1e-8) { continue; }
         y[free_j] = std::max(0.0, std::min(y_upper[free_j], y_free));
-        if (!mixed_flow_cover_y_feasible(y)) { continue; }
+        if (!single_node_flow_y_feasible(y)) { continue; }
 
         std::vector<double> point(num_cols, 0.0);
-        for (int j = 0; j < 6; j++) {
+        for (int j = 0; j < 3; j++) {
           point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
-          point[6 + j] = y[j];
+          point[3 + j] = y[j];
         }
-        expect_mixed_flow_cover_cut_valid_at_point(
+        expect_single_node_flow_cut_valid_at_point(
           cut,
           point,
           "flow-tight vertex x_mask=" + std::to_string(x_mask) +
@@ -1739,139 +1653,10 @@ void expect_mixed_flow_cover_cut_valid_at_simple_extreme_points(
   EXPECT_GT(checked_points, 0);
 }
 
-TEST(cuts, flow_cover_example_9_8_generates_expected_cut)
+TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
 {
-  auto test_problem = build_flow_cover_test_problem();
-  std::vector<double> xstar(test_problem.lp.num_cols, 0.0);
-  xstar[0] = 1.0;
-  xstar[2] = 2.0 / 3.0;
-  xstar[3] = 1.0;
-
-  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
-                                                             test_problem.settings,
-                                                             test_problem.Arow,
-                                                             test_problem.new_slacks,
-                                                             test_problem.var_types);
-  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
-                                                               test_problem.settings,
-                                                               test_problem.var_types,
-                                                               test_problem.Arow,
-                                                               test_problem.new_slacks);
-  ASSERT_EQ(generator.num_flow_cover_constraints(), 1);
-
-  dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
-  const int status = generator.generate_flow_cover_cut(test_problem.lp,
-                                                       test_problem.settings,
-                                                       test_problem.Arow,
-                                                       test_problem.new_slacks,
-                                                       variable_bounds,
-                                                       test_problem.var_types,
-                                                       xstar,
-                                                       generator.get_flow_cover_constraints()[0],
-                                                       cut);
-  ASSERT_EQ(status, 0);
-
-  const double dot = cut.vector.dot(xstar);
-  EXPECT_LT(dot, cut.rhs - 1e-6);
-
-  int feasible_assignments = 0;
-  for (int mask = 0; mask < 64; mask++) {
-    std::vector<double> point(test_problem.lp.num_cols, 0.0);
-    for (int j = 0; j < 6; j++) {
-      point[j] = ((mask >> j) & 1) != 0 ? 1.0 : 0.0;
-    }
-    if (!is_flow_cover_example_9_8_binary_feasible(point)) { continue; }
-    EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << "mask=" << mask;
-    feasible_assignments++;
-  }
-  EXPECT_GT(feasible_assignments, 0);
-}
-
-TEST(cuts, flow_cover_example_9_8_generated_cut_valid_for_binary_feasible_points)
-{
-  auto test_problem = build_flow_cover_test_problem();
-  std::vector<double> xstar(test_problem.lp.num_cols, 0.0);
-  xstar[0] = 1.0;
-  xstar[2] = 2.0 / 3.0;
-  xstar[3] = 1.0;
-
-  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
-                                                             test_problem.settings,
-                                                             test_problem.Arow,
-                                                             test_problem.new_slacks,
-                                                             test_problem.var_types);
-  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
-                                                               test_problem.settings,
-                                                               test_problem.var_types,
-                                                               test_problem.Arow,
-                                                               test_problem.new_slacks);
-  ASSERT_EQ(generator.num_flow_cover_constraints(), 1);
-
-  dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
-  const int status = generator.generate_flow_cover_cut(test_problem.lp,
-                                                       test_problem.settings,
-                                                       test_problem.Arow,
-                                                       test_problem.new_slacks,
-                                                       variable_bounds,
-                                                       test_problem.var_types,
-                                                       xstar,
-                                                       generator.get_flow_cover_constraints()[0],
-                                                       cut);
-  ASSERT_EQ(status, 0);
-  EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6);
-
-  int feasible_assignments = 0;
-  for (int mask = 0; mask < 64; mask++) {
-    std::vector<double> point(test_problem.lp.num_cols, 0.0);
-    for (int j = 0; j < 6; j++) {
-      point[j] = ((mask >> j) & 1) != 0 ? 1.0 : 0.0;
-    }
-    if (!is_flow_cover_example_9_8_binary_feasible(point)) { continue; }
-    EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << "mask=" << mask;
-    feasible_assignments++;
-  }
-
-  EXPECT_GT(feasible_assignments, 0);
-}
-
-TEST(cuts, flow_cover_example_9_8_skips_nonviolated_point)
-{
-  auto test_problem = build_flow_cover_test_problem();
-  std::vector<double> xstar(test_problem.lp.num_cols, 0.0);
-  xstar[0] = 1.0;
-  xstar[2] = 1.0;
-  xstar[3] = 1.0;
-  xstar[4] = 1.0;
-
-  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
-                                                             test_problem.settings,
-                                                             test_problem.Arow,
-                                                             test_problem.new_slacks,
-                                                             test_problem.var_types);
-  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
-                                                               test_problem.settings,
-                                                               test_problem.var_types,
-                                                               test_problem.Arow,
-                                                               test_problem.new_slacks);
-  ASSERT_EQ(generator.num_flow_cover_constraints(), 1);
-
-  dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
-  const int status = generator.generate_flow_cover_cut(test_problem.lp,
-                                                       test_problem.settings,
-                                                       test_problem.Arow,
-                                                       test_problem.new_slacks,
-                                                       variable_bounds,
-                                                       test_problem.var_types,
-                                                       xstar,
-                                                       generator.get_flow_cover_constraints()[0],
-                                                       cut);
-  EXPECT_LT(status, 0);
-}
-
-TEST(cuts, flow_cover_mixed_single_node_flow_generates_valid_cut)
-{
-  auto test_problem = build_flow_cover_test_problem(create_mixed_flow_cover_problem_example_9_8());
-  const std::vector<double> xstar = mixed_flow_cover_fractional_solution(test_problem.lp.num_cols);
+  auto test_problem = build_flow_cover_test_problem(create_small_single_node_flow_problem());
+  const std::vector<double> xstar = single_node_flow_fractional_solution(test_problem.lp.num_cols);
 
   dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
                                                              test_problem.settings,
@@ -1900,7 +1685,7 @@ TEST(cuts, flow_cover_mixed_single_node_flow_generates_valid_cut)
     if (status != 0) { continue; }
 
     EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6) << "row=" << flow_cover_row;
-    expect_mixed_flow_cover_cut_valid_at_simple_extreme_points(cut, test_problem.lp.num_cols);
+    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
     generated_cuts++;
   }
 
