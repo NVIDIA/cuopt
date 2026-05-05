@@ -954,6 +954,14 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   // Implementation outline:
   //
   // 1. Pick one finite side of one MIP row and normalize it as a'x <= b.
+  //
+  //    Example:
+  //
+  //      4 z + 3 x2 - 2 x3 <= 11,
+  //      1 <= z <= 5 x1 + 1,
+  //
+  //    where x1, x2, and x3 are binary and z is continuous.
+  //
   // 2. Build an explicit 0-1 single-node-flow (SNF) relaxation for that row side:
   //
   //      sum_{j in N1} y_j - sum_{j in N2} y_j <= b_snf,
@@ -962,9 +970,32 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //    Wolter's separator starts from this SNF form. cuOpt starts from general
   //    MIP rows, so this step is a mapping layer: every synthetic SNF y_j must
   //    remember how to substitute back to the original variables.
+  //
+  //    In the example:
+  //
+  //      4 z     -> y1 = 4(z - 1),  0 <= y1 <= 20 x1,  y1 in N1
+  //      3 x2    -> y2 = 3 x2,      0 <= y2 <= 3 x2,   y2 in N1
+  //     -2 x3    -> y3 = 2 x3,      0 <= y3 <= 2 x3,   y3 in N2
+  //
+  //    The constant 4 from 4 z = 4 + y1 shifts the RHS, giving
+  //
+  //      y1 + y2 - y3 <= 7.
+  //
   // 3. Run the KPSNF cover-selection heuristic to choose C1 and C2.
+  //
+  //    For example, if KPSNF chooses C1 = {y1, y2} and C2 = {y3}, then
+  //
+  //      lambda = -7 + 20 + 3 - 2 = 14.
+  //
   // 4. Test c-MIRFCI candidates and the simpler SGFCI fallback at the current LP point.
+  //
+  //    Continuing the example, ubar candidates are capacities such as 20 or
+  //    lambda + 1; L1/L2 are chosen by comparing candidate terms at (x*, y*).
+  //
   // 5. Substitute each synthetic y_j back into original variables and emit a cuOpt cut.
+  //
+  //    In the example, any final SNF inequality is mapped back with
+  //    y1 = 4z - 4, y2 = 3x2, and y3 = 2x3.
   //
   // A row side is converted to a 0-1 single-node-flow relaxation
   //
@@ -984,7 +1015,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     //   y_const + y_coeff * original_y_col + y_x_coeff * x_col.
     //
     // This is not thesis notation; it is how we later substitute the SNF cut back
-    // into the original MIP variables.
+    // into the original MIP variables. In the running example, the flow arc stores
+    // y1 = -4 + 4z, while the direct binary arcs store y2 = 3x2 and y3 = 2x3.
     f_t y_const;
     i_t y_col;
     f_t y_coeff;
@@ -1086,6 +1118,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   // - Binary coefficients a_j x_j can directly become SNF arcs with y_j = |a_j| x_j.
   // - Continuous terms c z need a bound z <= gamma x + alpha or z >= gamma x + alpha
   //   before they can become arcs with 0 <= y <= u x.
+  //
+  // In the running example, z is the only continuous term; x2 and x3 stay in
+  // binary_coefficients until they are converted to direct arcs.
   std::vector<std::pair<i_t, f_t>> continuous_terms;
   continuous_terms.reserve(row_len);
   std::vector<i_t> binary_columns;
@@ -1136,6 +1171,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   // snf_b = b - b_shift. If the same binary controller x also has a direct row
   // coefficient a x, we try two candidates: absorb a x into this arc capacity or
   // leave a x for a later pure-binary arc.
+  //
+  // In the running example, c = 4, gamma = 5, alpha = 1, and a = 0, so the
+  // candidate is y1 = 4z - 4 with capacity u = 20 and b_shift = 4.
   auto push_candidate = [&](std::vector<snf_candidate_t>& candidates,
                             f_t u,
                             bool in_n2,
@@ -1173,6 +1211,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     //
     // With c < 0 the signs flip and the same rewrite creates an N2 arc. The guards
     // below check that y is nonnegative at the valid endpoint and that u is nonnegative.
+    // The running example uses this branch for 4z with z <= 5x1 + 1.
     auto add_variable_upper_candidates = [&]() {
       const i_t start = variable_bounds.upper_offsets[j];
       const i_t end   = variable_bounds.upper_offsets[j + 1];
@@ -1380,6 +1419,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //
   //   a > 0:  +u x contributes as an N1 arc,
   //   a < 0:  -u x contributes as an N2 arc.
+  //
+  // In the running example, 3x2 becomes y2 = 3x2 in N1 and -2x3 becomes
+  // -y3 with y3 = 2x3 in N2.
   for (i_t j : binary_columns) {
     const f_t coeff = binary_coefficients[j];
     if (std::abs(coeff) <= tol) { continue; }
@@ -1412,6 +1454,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //
   // This is the capacity surplus the KPSNF separator tries to keep positive while
   // choosing a cover that is violated by the current LP point.
+  //
+  // In the running example, N1 capacities are 20 and 3, the SNF RHS is 7, and
+  // the coarse surplus is -7 + 20 + 3 = 16 before any N2 arc is put in C2.
   auto compute_structure = [&]() {
     bool has_binary_controlled_arc = false;
     bool has_n1                    = false;
@@ -1448,6 +1493,9 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //
   // The current implementation uses the ratio-prefix approximation from the
   // rational KPSNF path instead of the exact integer DP path.
+  //
+  // In the running example, the KPSNF items have weights 20, 3, and 2. The
+  // values are 1 - x1*, 1 - x2*, and x3* because y1/y2 are in N1 and y3 is in N2.
   for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
     const auto& arc = arcs[k];
     if (arc.u <= tol) { continue; }
@@ -1492,6 +1540,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //   lambda = -b + sum_{j in C1} u_j - sum_{j in C2} u_j.
   //
   // A positive lambda is required for the flow-cover inequality to cut anything.
+  // In the running example with C1 = {y1, y2} and C2 = {y3}, lambda is
+  // -7 + 20 + 3 - 2 = 14.
   const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
   if (!c1_nonempty || lambda <= tol) { return -1; }
 
@@ -1512,6 +1562,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   // ubar controls the c-MIR scaling beta = -lambda / ubar. The rounded coefficients
   // only change at capacity-related breakpoints, so we test a small candidate set
   // derived from capacities in and around C1, C2, L1, and L2.
+  // In the running example, one natural ubar candidate is 20, the largest C1 capacity.
   std::vector<f_t> ubar_candidates;
   auto add_ubar_candidate = [&](f_t candidate) {
     if (candidate <= lambda + tol || !std::isfinite(candidate)) { return; }
@@ -1656,6 +1707,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   //
   // add_y substitutes synthetic y_j. add_x and add_one_minus_x handle the binary
   // controller terms that appear in the c-MIRFCI/SGFCI formula.
+  // In the running example, add_y(y1, m) contributes -4m to the constant and
+  // 4m to the coefficient of z; add_y(y2, m) contributes 3m to x2.
   auto add_y = [&](const snf_arc_t& arc, f_t multiplier) {
     lhs_constant += multiplier * arc.y_const;
     if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
