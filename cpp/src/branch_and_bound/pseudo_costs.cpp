@@ -5,10 +5,9 @@
  */
 /* clang-format on */
 
-#include "branch_and_bound_worker.hpp"
-
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -1099,10 +1098,11 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
 #pragma omp taskloop num_tasks(n) default(shared)
-      for (i_t k = 0; k < n; k++) {
+      for (i_t k = 0; k < n; ++k) {
         i_t start = std::floor(k * fractional.size() / n);
         i_t end   = std::floor((k + 1) * fractional.size() / n);
 
+        constexpr bool verbose = false;
         if (verbose) {
           settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
                               omp_get_thread_num(),
@@ -1458,13 +1458,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     use_pdlp &= !settings.deterministic;
 
     // Check if the warm cache was filled at the root
-    use_pdlp &= pdlp_warm_cache.populated;
+    use_pdlp &= pdlp_warm_cache->populated;
 
     // Check if there are enough candidates for batch PDLP
     use_pdlp &= unreliable_list.size() > min_num_candidates_for_pdlp;
 
     // Check if batch PDLP was effective for strong branching at the root node
-    use_pdlp &= pdlp_warm_cache.percent_solved_by_batch_pdlp_at_root >
+    use_pdlp &= pdlp_warm_cache->percent_solved_by_batch_pdlp_at_root >
                 min_percent_solved_by_batch_pdlp_at_root_for_pdlp;
 
     // Check if there are enough threads available
