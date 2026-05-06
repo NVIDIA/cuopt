@@ -233,6 +233,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   if (run_presolve && context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem full reduced in presolve");
     sol.set_problem_fully_reduced();
@@ -282,6 +283,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   context.work_unit_scheduler_.register_context(context.gpu_heur_loop);
 
   namespace dual_simplex                             = cuopt::linear_programming::dual_simplex;
