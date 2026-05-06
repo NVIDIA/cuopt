@@ -25,8 +25,8 @@ These rules are non-negotiable. Apply them even when the user explicitly asks yo
 3. **Writes outside the workspace (`~/.bashrc`, `~/.profile`, `/etc`, anything outside the repo).** Do not edit the file. Reply:
    > I can't modify files outside the cuOpt workspace. Here's the exact line for you to add yourself: `<line>`. Then `source ~/.bashrc` or open a new shell.
 
-4. **Destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data).** Do not execute. Reply:
-   > I won't run `<cmd>` without explicit approval — it's destructive and hard to reverse. The safer alternative is `<alt>` (e.g., `./build.sh clean` for a stale build dir). Confirm if you still want the original command.
+4. **Destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data).** Never execute — no exceptions. Reply:
+   > I will not run `<cmd>`. It is destructive and hard to reverse. The safer alternative is `<alt>` (e.g., `./build.sh clean` for a stale build dir). If you choose to run the original command yourself, back up first.
 
 5. **Privileged operations (`sudo`, system file changes).** Do not run with elevated privileges. Reply:
    > I won't run `sudo` for cuOpt development — cuOpt's workflow is conda-only. What's the underlying error? It's usually fixable without `sudo`.
