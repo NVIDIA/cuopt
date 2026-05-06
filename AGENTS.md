@@ -23,7 +23,6 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 ### API (implementation; one interface per skill)
 - `skills/cuopt-installation-api-python/`
 - `skills/cuopt-installation-api-c/`
-- `skills/cuopt-installation-developer/` (first-time dev env setup; hand off to `cuopt-developer` for ongoing build/test/contribute)
 - `skills/cuopt-lp-milp-api-python/`
 - `skills/cuopt-lp-milp-api-c/`
 - `skills/cuopt-lp-milp-api-cli/`

@@ -39,12 +39,6 @@
       "description": "Install cuOpt for C — conda, locate lib/headers, verification. Use when the user is installing or verifying the C API."
     },
     {
-      "name": "cuopt-installation-developer",
-      "source": "./skills/cuopt-installation-developer",
-      "skills": "./",
-      "description": "First-time dev env setup for cuOpt (CUDA check, conda env, initial build). Hand off to cuopt-developer for ongoing build/test/contribute work."
-    },
-    {
       "name": "lp-milp-formulation",
       "source": "./skills/lp-milp-formulation",
       "skills": "./",
