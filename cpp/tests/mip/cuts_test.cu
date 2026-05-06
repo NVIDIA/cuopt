@@ -32,6 +32,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -1420,25 +1421,22 @@ mps_parser::mps_data_model_t<int, double> create_small_single_node_flow_problem(
   std::vector<int> offsets         = {0, 3, 5, 7, 9};
   std::vector<int> indices         = {3, 4, 5, 0, 3, 1, 4, 2, 5};
   std::vector<double> coefficients = {1.0, 1.0, -1.0, -3.0, 1.0, -6.0, 1.0, -3.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(std::span<const double>{coefficients},
+                                    std::span<const int>{indices},
+                                    std::span<const int>{offsets});
 
   std::vector<double> lower_bounds(4, -std::numeric_limits<double>::infinity());
   std::vector<double> upper_bounds = {4.0, 0.0, 0.0, 0.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(std::span<const double>{lower_bounds});
+  problem.set_constraint_upper_bounds(std::span<const double>{upper_bounds});
 
   std::vector<double> var_lower_bounds(6, 0.0);
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 3.0, 6.0, 3.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(std::span<const double>{var_lower_bounds});
+  problem.set_variable_upper_bounds(std::span<const double>{var_upper_bounds});
 
   std::vector<double> objective_coefficients(6, 0.0);
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(std::span<const double>{objective_coefficients});
 
   std::vector<char> variable_types = {'I', 'I', 'I', 'C', 'C', 'C'};
   problem.set_variable_types(variable_types);
