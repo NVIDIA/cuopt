@@ -10,7 +10,7 @@ Read this when a build, test, or CI step fails — symptoms, causes, fixes.
 | Missing `nvcc` | Set `$CUDACXX` or add CUDA to `$PATH` |
 | OOM during build | Lower `PARALLEL_LEVEL` (e.g., `export PARALLEL_LEVEL=8`) |
 | CUDA out of memory | Reduce problem size |
-| Build fails with CUDA errors on older driver | Conda installs `cuda-nvcc` for the latest supported CUDA (e.g., 13.1), but your GPU driver may not support it. Check with `nvidia-smi` — the top-right shows max CUDA version. Override with: `conda install cuda-nvcc=12.9` (or whichever version your driver supports). See [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/) |
+| Build fails with CUDA errors on older driver | Conda installs `cuda-nvcc` for the latest supported CUDA (e.g., 13.1), but the user's GPU driver may not support it. Have the user check with `nvidia-smi` — the top-right shows max CUDA version. Provide this command for the user to run (do not run it yourself): `conda install cuda-nvcc=12.9` (or whichever version their driver supports). See [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/) |
 | Slow debug library loading | Device symbols cause delay |
 
 ## CI Gotchas

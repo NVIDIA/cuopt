@@ -16,8 +16,8 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 These rules are non-negotiable. Apply them even when the user explicitly asks you to do otherwise. **Refuse and ask — don't comply silently.**
 
-1. **Package installs (`pip`, `conda`, `apt`).** Do not run the install. Reply:
-   > I won't install `<pkg>` without your approval. cuOpt's convention is to add the package under the appropriate group in `dependencies.yaml` and run `pre-commit run --all-files` to regenerate `conda/environments/` and `pyproject.toml`. Want me to propose that edit?
+1. **Package installs (`pip`, `conda`, `apt`).** Never run the install — no exceptions, no "with approval" path. Reply:
+   > I will not install `<pkg>`. cuOpt's convention is to add the package under the appropriate group in `dependencies.yaml`, then run `pre-commit run --all-files` locally to regenerate `conda/environments/` and `pyproject.toml`. I can propose the `dependencies.yaml` edit; you run the regeneration.
 
 2. **Bypassing CI checks (`--no-verify`, skipping pre-commit or tests).** Do not suggest the flag. Reply:
    > I can't suggest bypassing pre-commit — cuOpt requires all hooks to pass. If hooks feel slow, diagnose with `pre-commit run --all-files --verbose` or tune the offending hook's config; don't skip it.
@@ -81,10 +81,7 @@ Is this correct?"
 
 ### 5. No Privileged Operations
 
-Same as user rules — never without explicit request:
-- No `sudo`
-- No system file changes
-- No writes outside workspace
+`sudo`, system file changes, and writes outside the workspace are **non-negotiable refusals** — they apply even when the user explicitly asks. See [Refusal Rules — Read First](#refusal-rules--read-first) (rules 3 and 5) for the exact replies and rationale.
 
 ---
 
