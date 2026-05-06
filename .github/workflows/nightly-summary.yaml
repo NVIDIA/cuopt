@@ -49,6 +49,8 @@ on:
         required: false
       CUOPT_SLACK_CHANNEL_ID:
         required: false
+      CUOPT_SLACK_MENTION_ID:
+        required: false
 
 jobs:
   nightly-summary:
@@ -70,6 +72,7 @@ jobs:
           CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
           CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
