@@ -41,10 +41,10 @@
 //   x_soc     : cone primal block
 //   z_soc     : cone dual block
 //   W, W^{-1} : Nesterov-Todd scaling matrix and inverse. W is symmetric for
-//               SOC, so W^{-T} = W^{-1}
-//   H         : W^{-1} W^{-T} = W^{-2}, the cone KKT block added to the
+//               SOC, so W^{T} = W
+//   H         : S^{T} S = S^{2}, the cone KKT block added to the
 //               primal-reduced system
-//   eta       : sqrt(x_J / z_J), where x_J = sqrt(det_J(x_soc))
+//   eta       : sqrt(z_J / x_J), where x_J = sqrt(det_J(x_soc))
 //   w         : NT scaling direction with det_J(w) = 1 and
 //               w[head] = sqrt(1 + ||w_tail||^2)
 //
@@ -130,12 +130,12 @@ HD f_t cone_step_length_from_scalars(
   const auto disc  = b * b - a * c;
   auto alpha       = alpha_max;
 
-  if (du0 < 0) { alpha = cuda::std::min(alpha, -u0 / du0); }
+  if (u0 >= 0 && du0 < 0) { alpha = cuda::std::min(alpha, -u0 / du0); }
 
   if ((a > 0 && b > 0) || disc < 0) { return alpha; }
 
   if (a == 0) {
-    if (b < 0) { alpha = cuda::std::min(alpha, c / (-2 * b)); }
+    return alpha;
   } else if (c == 0) {
     alpha = a >= 0 ? alpha : 0;
   } else {
@@ -198,8 +198,9 @@ struct cone_data_t {
   raft::device_span<f_t> z;  // [n_cone_entries], SOC dual block
 
   // Persistent Nesterov-Todd scaling state, recomputed from x/z each iteration.
-  rmm::device_uvector<f_t> eta;  // [n_cones], sqrt(|x|_J / |z|_J)
-  rmm::device_uvector<f_t> w;    // [n_cone_entries], unit-J-norm NT direction
+  rmm::device_uvector<f_t> eta;     // [n_cones], sqrt(|z|_J / |x|_J)
+  rmm::device_uvector<f_t> w;       // [n_cone_entries], unit-J-norm NT direction
+  rmm::device_uvector<f_t> lambda;  // [n_cone_entries], NT point lambda = W^{-T} z
 
   cone_scratch_t<i_t, f_t> scratch;
 
@@ -218,6 +219,7 @@ struct cone_data_t {
       z(z_in),
       eta(n_cones, stream),
       w(n_cone_entries, stream),
+      lambda(n_cone_entries, stream),
       scratch(n_cones, n_cone_entries, stream)
   {
     raft::copy(cone_dimensions.data(), cone_dimensions_host.data(), n_cones, stream);
@@ -263,37 +265,42 @@ __global__ void __launch_bounds__(soc_block_size)
 
   x_scale[cone] = sqrt(x_det);
   z_scale[cone] = sqrt(z_det);
-  eta[cone]     = sqrt(x_scale[cone] / z_scale[cone]);
+  eta[cone]     = sqrt(z_scale[cone] / x_scale[cone]);
 }
 
 template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
-  nt_finalize_w_scale_kernel(raft::device_span<f_t> normalized_dot, i_t n_cones)
+  nt_finalize_w_scale_kernel(raft::device_span<const f_t> w,
+                             raft::device_span<const f_t> tail_sq,
+                             raft::device_span<f_t> w_scale,
+                             raft::device_span<const std::size_t> cone_offsets,
+                             i_t n_cones)
 {
   const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
-  normalized_dot[cone] = sqrt(2 + 2 * normalized_dot[cone]);
+  const auto cone_off  = cone_offsets[cone];
+  const auto head      = w[cone_off];
+  const auto tail_norm = sqrt(tail_sq[cone]);
+  const auto residual  = (head - tail_norm) * (head + tail_norm);
+  w_scale[cone]        = sqrt(residual);
 }
 
 /**
- * Write normalized w_tail directly:
+ * Write unnormalized w:
  *
- *   w_tail = (x_tail / x_scale - z_tail / z_scale) / w_scale.
- *
- * The head is zeroed temporarily and overwritten after reducing
- * ||w_tail||^2.
+ *   w_0 = z_0 / z_scale + x_0 / x_scale
+ *   w_tail = z_tail / z_scale - x_tail / x_scale.
  */
 template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
-  nt_write_w_tail_kernel(raft::device_span<const f_t> x,
-                         raft::device_span<const f_t> z,
-                         raft::device_span<const f_t> x_scale,
-                         raft::device_span<const f_t> z_scale,
-                         raft::device_span<const f_t> w_scale,
-                         raft::device_span<f_t> w,
-                         raft::device_span<const std::size_t> cone_offsets,
-                         raft::device_span<const i_t> element_cone_ids)
+  nt_write_w_kernel(raft::device_span<const f_t> x,
+                    raft::device_span<const f_t> z,
+                    raft::device_span<const f_t> x_scale,
+                    raft::device_span<const f_t> z_scale,
+                    raft::device_span<f_t> w,
+                    raft::device_span<const std::size_t> cone_offsets,
+                    raft::device_span<const i_t> element_cone_ids)
 {
   const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= w.size()) { return; }
@@ -301,11 +308,24 @@ __global__ void __launch_bounds__(soc_block_size)
   const auto cone     = element_cone_ids[idx];
   const auto cone_off = cone_offsets[cone];
   if (idx == cone_off) {
-    w[idx] = 0;
+    w[idx] = z[idx] / z_scale[cone] + x[idx] / x_scale[cone];
     return;
   }
 
-  w[idx] = (x[idx] / x_scale[cone] - z[idx] / z_scale[cone]) / w_scale[cone];
+  w[idx] = z[idx] / z_scale[cone] - x[idx] / x_scale[cone];
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void __launch_bounds__(soc_block_size)
+  nt_normalize_w_kernel(raft::device_span<f_t> w,
+                        raft::device_span<const f_t> w_scale,
+                        raft::device_span<const i_t> element_cone_ids)
+{
+  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= w.size()) { return; }
+
+  const auto cone = element_cone_ids[idx];
+  w[idx] /= w_scale[cone];
 }
 
 template <std::integral i_t, std::floating_point f_t>
@@ -321,21 +341,62 @@ __global__ void __launch_bounds__(soc_block_size)
   w[cone_offsets[cone]] = sqrt(1 + normalized_tail_sq[cone]);
 }
 
+template <std::integral i_t, std::floating_point f_t>
+__global__ void __launch_bounds__(soc_block_size)
+  nt_write_lambda_kernel(raft::device_span<const f_t> x,
+                         raft::device_span<const f_t> z,
+                         raft::device_span<const f_t> x_scale,
+                         raft::device_span<const f_t> z_scale,
+                         raft::device_span<const f_t> w_scale,
+                         raft::device_span<f_t> lambda,
+                         raft::device_span<const std::size_t> cone_offsets,
+                         raft::device_span<const i_t> element_cone_ids)
+{
+  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= lambda.size()) { return; }
+
+  const auto cone      = element_cone_ids[idx];
+  const auto cone_off  = cone_offsets[cone];
+  const auto local_idx = idx - cone_off;
+
+  const auto x_scale_cone = x_scale[cone];
+  const auto z_scale_cone = z_scale[cone];
+  const auto gamma        = static_cast<f_t>(0.5) * w_scale[cone];
+  const auto head_scale   = sqrt(x_scale_cone * z_scale_cone);
+
+  if (local_idx == 0) {
+    lambda[idx] = gamma * head_scale;
+    return;
+  }
+
+  const auto x_head  = x[cone_off];
+  const auto z_head  = z[cone_off];
+  const auto denom   = z_head / z_scale_cone + x_head / x_scale_cone + static_cast<f_t>(2) * gamma;
+  const auto coeff_z = (gamma + x_head / x_scale_cone) / z_scale_cone;
+  const auto coeff_x = (gamma + z_head / z_scale_cone) / x_scale_cone;
+
+  const auto lambda_tail = (coeff_z * z[idx] + coeff_x * x[idx]) / denom;
+  lambda[idx]            = lambda_tail * head_scale;
+}
+
 /**
  * Build Nesterov-Todd scaling for packed SOC blocks.
  *
  * Given interior cone primal/dual blocks x and z:
  *
+ *   det_J(x) = x_0^2 - ||x_tail||^2
+ *   det_J(z) = z_0^2 - ||z_tail||^2
  *   x_scale = sqrt(det_J(x)), z_scale = sqrt(det_J(z))
- *   eta     = sqrt(x_scale / z_scale)
- *   w_scale = sqrt(2 + 2 * dot(x / x_scale, z / z_scale))
- *   w_tail  = (x_tail / x_scale - z_tail / z_scale) / w_scale
+ *   eta     = sqrt(z_scale / x_scale)
+ *   w_tmp_0 = z_0 / z_scale + x_0 / x_scale
+ *   w_tmp_tail = z_tail / z_scale - x_tail / x_scale
+ *   w_scale = sqrt(det_J(w_tmp))
+ *   w = w_tmp / w_scale
  *   w_0 = sqrt(1 + ||w_tail||^2) to re-impose det_J(w) = 1
  *
  * Scratch slots:
  *   0: ||x_tail||^2 -> x_scale
  *   1: ||z_tail||^2 -> z_scale
- *   2: dot(x / x_scale, z / z_scale) -> w_scale -> ||w_tail||^2
  */
 template <std::integral i_t, std::floating_point f_t>
 void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view stream)
@@ -373,25 +434,41 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   const auto element_grid_dim = raft::ceildiv<std::size_t>(cones.n_cone_entries, soc_block_size);
-  auto normalized_dot_terms   = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [span_x, span_z, x_scale, z_scale, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
-      return span_x[idx] * span_z[idx] / (x_scale[cone] * z_scale[cone]);
-    });
-  cones.segmented_sum(normalized_dot_terms, w_scale, stream);
-
-  nt_finalize_w_scale_kernel<i_t, f_t>
-    <<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(w_scale, cones.n_cones);
-  RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   auto w = cuopt::make_span(cones.w);
-  nt_write_w_tail_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
-    cones.x, cones.z, x_scale, z_scale, w_scale, w, cone_offsets, element_cone_ids);
+  nt_write_w_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
+    cones.x, cones.z, x_scale, z_scale, w, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  // Reduce ||w_tail||^2 per cone. The head entries are zero, so the same
-  // flat iterator can feed the segmented reduction.
+  auto unnormalized_tail_sq_terms =
+    thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
+                                    [cone_offsets, element_cone_ids, w] HD(std::size_t idx) -> f_t {
+                                      const auto cone = element_cone_ids[idx];
+                                      return idx == cone_offsets[cone] ? 0 : w[idx] * w[idx];
+                                    });
+  cones.segmented_sum(unnormalized_tail_sq_terms, w_scale, stream);
+
+  nt_finalize_w_scale_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
+    w, w_scale, w_scale, cone_offsets, cones.n_cones);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  nt_normalize_w_kernel<i_t, f_t>
+    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(w, w_scale, element_cone_ids);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  // Persist lambda while w_scale still stores sqrt(det_J(w_tmp)).
+  nt_write_lambda_kernel<i_t, f_t>
+    <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(cones.x,
+                                                              cones.z,
+                                                              x_scale,
+                                                              z_scale,
+                                                              w_scale,
+                                                              cuopt::make_span(cones.lambda),
+                                                              cone_offsets,
+                                                              element_cone_ids);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  // w_scale is overwritten from here
   auto normalized_tail_terms =
     thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
                                     [cone_offsets, element_cone_ids, w] HD(std::size_t idx) -> f_t {
@@ -403,6 +480,37 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
   nt_finalize_head_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
     cuopt::make_span(cones.w), w_scale, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void __launch_bounds__(soc_block_size)
+  apply_w_inv_write_kernel(raft::device_span<const f_t> v,
+                           raft::device_span<f_t> out,
+                           raft::device_span<const f_t> w,
+                           raft::device_span<const f_t> eta,
+                           raft::device_span<const f_t> tail_dot,
+                           raft::device_span<const std::size_t> cone_offsets,
+                           raft::device_span<const i_t> element_cone_ids)
+{
+  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= out.size()) { return; }
+
+  const auto cone      = element_cone_ids[idx];
+  const auto cone_off  = cone_offsets[cone];
+  const auto local_idx = idx - cone_off;
+
+  const auto w0      = w[cone_off];
+  const auto zeta    = tail_dot[cone];
+  const auto v0      = v[cone_off];
+  const auto inv_eta = f_t(1) / eta[cone];
+
+  if (local_idx == 0) {
+    out[idx] = inv_eta * (w0 * v0 - zeta);
+    return;
+  }
+
+  const auto coeff = -v0 + zeta / (f_t(1) + w0);
+  out[idx]         = inv_eta * (v[idx] + coeff * w[idx]);
 }
 
 template <std::integral i_t, std::floating_point f_t>
@@ -424,27 +532,30 @@ __global__ void __launch_bounds__(soc_block_size)
 
   const auto w0       = w[cone_off];
   const auto zeta     = tail_dot[cone];
-  const auto inv_1pw0 = 1 / (1 + w0);
   const auto v0       = v[cone_off];
+  const auto cone_eta = eta[cone];
 
   if (local_idx == 0) {
-    out[idx] = eta[cone] * (w0 * v0 + zeta);
+    out[idx] = cone_eta * (w0 * v0 + zeta);
     return;
   }
 
-  const auto coeff = v0 + zeta * inv_1pw0;
-  out[idx]         = eta[cone] * (v[idx] + coeff * w[idx]);
+  const auto coeff = v0 + zeta / (f_t(1) + w0);
+  out[idx]         = cone_eta * (v[idx] + coeff * w[idx]);
 }
 
 template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
-  apply_w_inv_write_kernel(raft::device_span<const f_t> v,
-                           raft::device_span<f_t> out,
-                           raft::device_span<const f_t> w,
-                           raft::device_span<const f_t> eta,
-                           raft::device_span<const f_t> tail_dot,
-                           raft::device_span<const std::size_t> cone_offsets,
-                           raft::device_span<const i_t> element_cone_ids)
+  apply_hessian_write_kernel(raft::device_span<const f_t> v,
+                             raft::device_span<f_t> out,
+                             raft::device_span<const f_t> w,
+                             raft::device_span<const f_t> eta,
+                             raft::device_span<const f_t> wv_dot,
+                             raft::device_span<const std::size_t> cone_offsets,
+                             raft::device_span<const i_t> element_cone_ids,
+                             raft::device_span<const f_t> bias,
+                             f_t output_scale,
+                             f_t bias_scale)
 {
   const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= out.size()) { return; }
@@ -453,47 +564,11 @@ __global__ void __launch_bounds__(soc_block_size)
   const auto cone_off  = cone_offsets[cone];
   const auto local_idx = idx - cone_off;
 
-  const auto w0       = w[cone_off];
-  const auto zeta     = tail_dot[cone];
-  const auto inv_1pw0 = 1 / (1 + w0);
-  const auto v0       = v[cone_off];
-  const auto inv_eta  = 1 / eta[cone];
-
-  if (local_idx == 0) {
-    out[idx] = inv_eta * (w0 * v0 - zeta);
-    return;
-  }
-
-  const auto coeff = -v0 + zeta * inv_1pw0;
-  out[idx]         = inv_eta * (v[idx] + coeff * w[idx]);
-}
-
-template <std::integral i_t, std::floating_point f_t>
-__global__ void __launch_bounds__(soc_block_size)
-  apply_hinv2_write_kernel(raft::device_span<const f_t> v,
-                           raft::device_span<f_t> out,
-                           raft::device_span<const f_t> w,
-                           raft::device_span<const f_t> eta,
-                           raft::device_span<const f_t> tail_dot,
-                           raft::device_span<const std::size_t> cone_offsets,
-                           raft::device_span<const i_t> element_cone_ids,
-                           raft::device_span<const f_t> bias,
-                           f_t output_scale,
-                           f_t bias_scale)
-{
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (idx >= out.size()) { return; }
-
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
-
-  const auto inv_eta_sq = 1 / (eta[cone] * eta[cone]);
-  const auto rho        = w[cone_off] * v[cone_off] - tail_dot[cone];
-  const auto coeff      = 2 * rho * inv_eta_sq;
-  const int sign        = (local_idx == 0) * 2 - 1;
-  const auto value      = coeff * w[idx] - inv_eta_sq * v[idx];
-  const auto h_value    = output_scale * value * sign;
+  const auto eta_sq  = (eta[cone] * eta[cone]);
+  const auto coeff   = 2 * wv_dot[cone] * eta_sq;
+  const int sign     = (local_idx == 0) * 2 - 1;
+  const auto value   = coeff * w[idx] - eta_sq * v[idx] * sign;
+  const auto h_value = output_scale * value;
 
   out[idx] = bias.empty() ? h_value : bias_scale * bias[idx] + h_value;
 }
@@ -514,9 +589,9 @@ __global__ void __launch_bounds__(soc_block_size)
 /**
  * Build the Mehrotra corrector shift:
  *
- *   d = (W^{-1} dx_aff) o (W dz_aff) - sigma_mu e.
+ *   d = (W dx_aff) o (W^{-T} dz_aff) - sigma_mu e.
  *
- * On entry, `scaled_dx` is W^{-1} dx_aff and `scaled_dz` is W dz_aff. The
+ * On entry, `scaled_dx` is W dx_aff and `scaled_dz` is W^{-T} dz_aff. The
  * cone head uses the full dot product, and tail entries use the SOC Jordan
  * product:
  *
@@ -578,6 +653,7 @@ __global__ void __launch_bounds__(soc_block_size)
   const auto lambda_tail_norm = sqrt(lambda_tail_sq[cone]);
   const auto det_lambda       = (lambda0 - lambda_tail_norm) * (lambda0 + lambda_tail_norm);
 
+  // repurpose the heads in lambda_tail_dot, lambda_tail_sq for each cone
   p0[cone]          = (lambda0 * shift[cone_off] - lambda_tail_dot[cone]) / det_lambda;
   inv_lambda0[cone] = 1 / lambda0;
 }
@@ -608,48 +684,12 @@ __global__ void __launch_bounds__(soc_block_size)
 }
 
 /**
- * Apply the Nesterov-Todd scaling matrix: out = W v.
+ * Apply the Nesterov-Todd scaling matrix: out = W^{-1} v.
  *
  * For each cone:
  *   zeta = <w_tail, v_tail>
- *   (Wv)_0 = eta * (w_0 v_0 + zeta)
- *   (Wv)_tail = eta * (v_tail + (v_0 + zeta / (1 + w_0)) w_tail)
- */
-template <std::integral i_t, std::floating_point f_t>
-void apply_w(raft::device_span<const f_t> v,
-             raft::device_span<f_t> out,
-             cone_data_t<i_t, f_t>& cones,
-             rmm::cuda_stream_view stream)
-{
-  auto w                = cuopt::make_span(cones.w);
-  auto eta              = cuopt::make_span(cones.eta);
-  auto cone_offsets     = cuopt::make_span(cones.cone_offsets);
-  auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
-  auto tail_dot         = cones.scratch.template get_slot<0>();
-
-  auto tail_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [v, w, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
-      return idx == cone_offsets[cone] ? 0 : w[idx] * v[idx];
-    });
-  cones.segmented_sum(tail_terms, tail_dot, stream);
-
-  const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
-  apply_w_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
-    v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
-  RAFT_CUDA_TRY(cudaPeekAtLastError());
-}
-
-/**
- * Apply the inverse Nesterov-Todd scaling matrix:
- * out = W^{-1} v.
- *
- * For each cone,
- *   zeta = <w_tail, v_tail>
- *   (W^{-1}v)_0 = eta^{-1} * (w_0 v_0 - zeta)
- *   (W^{-1}v)_tail =
- *     eta^{-1} * (v_tail + (-v_0 + zeta / (1 + w_0)) w_tail)
+ *   (W^{-1}v)_0 = inv_eta * (w_0 v_0 - zeta)
+ *   (W^{-1}v)_tail = inv_eta * (v_tail + (-v_0 + zeta / (1 + w_0)) w_tail)
  */
 template <std::integral i_t, std::floating_point f_t>
 void apply_w_inv(raft::device_span<const f_t> v,
@@ -678,20 +718,20 @@ void apply_w_inv(raft::device_span<const f_t> v,
 }
 
 /**
- * Apply the cone KKT block H = W^{-1} W^{-T} = W^{-2}.
+ * Apply the multiplication of Nesterov-Todd scaling matrix:
+ * out = W v.
  *
- * With zeta = <w_tail, v_tail> and rho = w_0 v_0 - zeta:
- *   (Hv)_0 = eta^{-2} (2 w_0 rho - v_0)
- *   (Hv)_tail = eta^{-2} (v_tail - 2 w_tail rho)
+ * For each cone,
+ *   zeta = <w_tail, v_tail>
+ *   (W * v)_0 = eta * (w_0 v_0 + zeta)
+ *   (W * v)_tail =
+ *     eta * (v_tail + (v_0 + zeta / (1 + w_0)) w_tail)
  */
 template <std::integral i_t, std::floating_point f_t>
-void apply_hinv2(raft::device_span<const f_t> v,
-                 raft::device_span<f_t> out,
-                 cone_data_t<i_t, f_t>& cones,
-                 rmm::cuda_stream_view stream,
-                 f_t output_scale                  = 1,
-                 raft::device_span<const f_t> bias = {},
-                 f_t bias_scale                    = 0)
+void apply_w(raft::device_span<const f_t> v,
+             raft::device_span<f_t> out,
+             cone_data_t<i_t, f_t>& cones,
+             rmm::cuda_stream_view stream)
 {
   auto w                = cuopt::make_span(cones.w);
   auto eta              = cuopt::make_span(cones.eta);
@@ -708,8 +748,41 @@ void apply_hinv2(raft::device_span<const f_t> v,
   cones.segmented_sum(tail_terms, tail_dot, stream);
 
   const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
-  apply_hinv2_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
-    v, out, w, eta, tail_dot, cone_offsets, element_cone_ids, bias, output_scale, bias_scale);
+  apply_w_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
+    v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
+
+/**
+ * Apply the cone KKT block H = S^T S = S^2.
+ *
+ * With rho = <w, v>:
+ *   (Hv)_0 = eta^{2} (2 w_0 rho - v_0)
+ *   (Hv)_tail = eta^{2} (2 w_tail rho + v_tail)
+ */
+template <std::integral i_t, std::floating_point f_t>
+void apply_hessian(raft::device_span<const f_t> v,
+                   raft::device_span<f_t> out,
+                   cone_data_t<i_t, f_t>& cones,
+                   rmm::cuda_stream_view stream,
+                   f_t output_scale                  = 1,
+                   raft::device_span<const f_t> bias = {},
+                   f_t bias_scale                    = 0)
+{
+  auto w                = cuopt::make_span(cones.w);
+  auto eta              = cuopt::make_span(cones.eta);
+  auto cone_offsets     = cuopt::make_span(cones.cone_offsets);
+  auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
+  auto wv_dot           = cones.scratch.template get_slot<0>();
+
+  auto wv_terms =
+    thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
+                                    [v, w] HD(std::size_t idx) -> f_t { return w[idx] * v[idx]; });
+  cones.segmented_sum(wv_terms, wv_dot, stream);
+
+  const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
+  apply_hessian_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
+    v, out, w, eta, wv_dot, cone_offsets, element_cone_ids, bias, output_scale, bias_scale);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -717,7 +790,7 @@ void apply_hinv2(raft::device_span<const f_t> v,
  * Recover the SOC dual direction after the reduced KKT solve.
  *
  * The reduced solve gives `dx`; the cone equation supplies the target RHS.
- * This function applies the cone block H = W^{-2} and writes:
+ * This function applies the cone block H = S^2 and writes:
  *   dz = cone_target - H dx.
  */
 template <std::integral i_t, std::floating_point f_t>
@@ -727,35 +800,36 @@ void recover_cone_dz_from_target(raft::device_span<const f_t> dx,
                                  raft::device_span<f_t> dz,
                                  rmm::cuda_stream_view stream)
 {
-  apply_hinv2<i_t, f_t>(dx, dz, cones, stream, -1, cone_target, 1);
+  apply_hessian<i_t, f_t>(dx, dz, cones, stream, -1, cone_target, 1);
 }
 
 /**
  * Accumulate the SOC cone-block matvec into an existing output vector.
  *
  * Used by matrix-free products with the primal-reduced KKT block:
- *   out += H x, where H = W^{-2}.
+ *   out += H x, where H = S^2.
  */
 template <std::integral i_t, std::floating_point f_t>
-void accumulate_cone_hinv2_matvec(raft::device_span<const f_t> x,
-                                  cone_data_t<i_t, f_t>& cones,
-                                  raft::device_span<f_t> out,
-                                  rmm::cuda_stream_view stream)
+void accumulate_cone_hessian_matvec(raft::device_span<const f_t> x,
+                                    cone_data_t<i_t, f_t>& cones,
+                                    raft::device_span<f_t> out,
+                                    rmm::cuda_stream_view stream)
 {
   auto out_input = raft::device_span<const f_t>(out.data(), out.size());
-  apply_hinv2<i_t, f_t>(x, out, cones, stream, 1, out_input, 1);
+  apply_hessian<i_t, f_t>(x, out, cones, stream, 1, out_input, 1);
 }
 
 template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
-  scatter_hinv2_into_augmented_kernel(raft::device_span<f_t> augmented_x,
-                                      raft::device_span<const i_t> csr_indices,
-                                      raft::device_span<const f_t> q_values,
-                                      raft::device_span<const f_t> w,
-                                      raft::device_span<const f_t> eta,
-                                      raft::device_span<const std::size_t> cone_offsets,
-                                      raft::device_span<const std::size_t> block_offsets,
-                                      i_t n_cones)
+  scatter_hessian_into_augmented_kernel(raft::device_span<f_t> augmented_x,
+                                        raft::device_span<const i_t> csr_indices,
+                                        raft::device_span<const f_t> q_values,
+                                        raft::device_span<const f_t> w,
+                                        raft::device_span<const f_t> eta,
+                                        raft::device_span<const std::size_t> cone_offsets,
+                                        raft::device_span<const std::size_t> block_offsets,
+                                        i_t n_cones,
+                                        f_t dual_perturb_value)
 {
   const auto e = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (e >= csr_indices.size()) { return; }
@@ -779,28 +853,32 @@ __global__ void __launch_bounds__(soc_block_size)
   const auto r       = local / q;
   const auto c       = local % q;
 
-  const auto inv_eta_sq      = 1 / (eta[cone] * eta[cone]);
+  const auto eta_sq          = eta[cone] * eta[cone];
   const auto w0              = w[off];
-  const auto u_r             = (r == 0) ? w0 : -w[off + r];
-  const auto u_c             = (c == 0) ? w0 : -w[off + c];
-  auto val                   = f_t{2} * u_r * inv_eta_sq * u_c;
-  const auto diag_correction = (r == 0) ? -inv_eta_sq : inv_eta_sq;
+  const auto u_r             = (r == 0) ? w0 : w[off + r];
+  const auto u_c             = (c == 0) ? w0 : w[off + c];
+  auto val                   = f_t{2} * u_r * eta_sq * u_c;
+  const auto diag_correction = (r == 0) ? -eta_sq : eta_sq;
   if (r == c) { val += diag_correction; }
 
   augmented_x[csr_indices[e]] = -val - q_values[e];
 }
 
 template <std::integral i_t, std::floating_point f_t>
-void scatter_hinv2_into_augmented(const cone_data_t<i_t, f_t>& cones,
-                                  rmm::device_uvector<f_t>& augmented_x,
-                                  const rmm::device_uvector<i_t>& csr_indices,
-                                  const rmm::device_uvector<f_t>& q_values,
-                                  rmm::cuda_stream_view stream)
+void scatter_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
+                                    rmm::device_uvector<f_t>& augmented_x,
+                                    const rmm::device_uvector<i_t>& csr_indices,
+                                    const rmm::device_uvector<f_t>& q_values,
+                                    rmm::cuda_stream_view stream,
+                                    f_t dual_perturb_value)
 {
   const auto count = csr_indices.size();
   if (count == 0) { return; }
   cuopt_assert(count == q_values.size(), "cone CSR index and Q-value arrays must match");
 
+  // TODO: This offset calculation should be done in the barrier layer,
+  // because it is already done in the barrier layer for the augmented system, see
+  // cone_block_offsets_host.
   rmm::device_uvector<std::size_t> block_offsets(cones.n_cones + 1, stream);
   block_offsets.set_element_to_zero_async(0, stream);
 
@@ -810,8 +888,9 @@ void scatter_hinv2_into_augmented(const cone_data_t<i_t, f_t>& cones,
   thrust::inclusive_scan(
     rmm::exec_policy(stream), block_sizes, block_sizes + cones.n_cones, block_offsets.begin() + 1);
 
+  // TODO: use dual_perturb_value for regularization
   const auto grid = raft::ceildiv<std::size_t>(count, soc_block_size);
-  scatter_hinv2_into_augmented_kernel<i_t, f_t>
+  scatter_hessian_into_augmented_kernel<i_t, f_t>
     <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
                                                   cuopt::make_span(csr_indices),
                                                   cuopt::make_span(q_values),
@@ -819,7 +898,8 @@ void scatter_hinv2_into_augmented(const cone_data_t<i_t, f_t>& cones,
                                                   cuopt::make_span(cones.eta),
                                                   cuopt::make_span(cones.cone_offsets),
                                                   cuopt::make_span(block_offsets),
-                                                  cones.n_cones);
+                                                  cones.n_cones,
+                                                  dual_perturb_value);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
@@ -913,16 +993,15 @@ std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
  *
  * Mehrotra's corrector uses affine cone directions to form
  *
- *   d = (W^{-1} dx_aff) o (W dz_aff) - sigma_mu e,
+ *   d = (W dx_aff) o (W^{-T} dz_aff) - sigma_mu e,
  *
  * where `o` is the SOC Jordan product and `e = (1, 0, ..., 0)` per cone.
  * The reduced KKT solve needs the cone target
  *
- *   q = -W^{-1} p,  where p = lambda \ d and lambda = W z.
+ *   q = -W * p,  where p = lambda \ d and lambda = W^{-T} z.
  *
- * On return, `out` holds `q`. Internally, `out` is reused for `W dz_aff` and
- * then `d`; `scratch.temp_cone` is reused for `W^{-1} dx_aff`, then `lambda`,
- * then `-p`.
+ * On return, `out` holds `q`. Internally, `out` is reused for `W^{-T} dz_aff` and
+ * then `d`; `scratch.temp_cone` is reused for `W dx_aff`, then `-p`.
  */
 template <std::integral i_t, std::floating_point f_t>
 void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
@@ -942,15 +1021,15 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
   auto slot_1       = cones.scratch.template get_slot<1>();
   auto slot_2       = cones.scratch.template get_slot<2>();
 
-  apply_w_inv(dx_aff, scratch_cone, cones, stream);
-  apply_w(dz_aff, out, cones, stream);
+  apply_w(dx_aff, scratch_cone, cones, stream);
+  apply_w_inv(dz_aff, out, cones, stream);
 
   auto full_product_terms = thrust::make_transform_iterator(
     thrust::make_zip_iterator(scaled_dx.begin(), scaled_dz.begin()),
     thrust::make_zip_function([] HD(f_t dx, f_t dz) -> f_t { return dx * dz; }));
   cones.segmented_sum(full_product_terms, slot_0, stream);
 
-  // `out` currently aliases W dz_aff and is about to be overwritten with d.
+  // `out` currently aliases W^{-T} dz_aff and is about to be overwritten with d.
   // Stage both head vectors first because every tail entry needs them.
   const auto cone_grid_dim =
     raft::ceildiv<std::size_t>(static_cast<std::size_t>(cones.n_cones), soc_block_size);
@@ -966,12 +1045,10 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
       out, scaled_dx, scaled_dz, slot_0, slot_1, slot_2, cone_offsets, element_cone_ids, sigma_mu);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  // Form lambda = W z in scratch_cone. At this point W^{-1} dx_aff is dead.
-  apply_w<i_t, f_t>(cones.z, scratch_cone, cones, stream);
-
   auto shift    = raft::device_span<const f_t>(out.data(), out.size());
-  auto nt_point = raft::device_span<const f_t>(scratch_cone.data(), scratch_cone.size());
+  auto nt_point = raft::device_span<const f_t>(cones.lambda.data(), cones.lambda.size());
 
+  // compute W *(-(\lambda inv_circ shift))
   auto lambda_tail_dot_terms = thrust::make_transform_iterator(
     thrust::make_counting_iterator<std::size_t>(0),
     [shift, nt_point, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
@@ -993,12 +1070,13 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
       shift, nt_point, slot_0, slot_1, slot_0, slot_1, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
+  // Note that we implicitly multiply by -1 here since we are writing -p.
   jordan_divide_by_lambda_write_kernel<i_t, f_t>
     <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
       shift, nt_point, slot_0, slot_1, cone_offsets, element_cone_ids, scratch_cone);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  apply_w_inv<i_t, f_t>(scratch_cone, out, cones, stream);
+  apply_w<i_t, f_t>(scratch_cone, out, cones, stream);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

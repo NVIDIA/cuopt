@@ -1383,7 +1383,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
       }
       if (op_problem.has_quadratic_constraints()) {
-        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.", static_cast<int>(op_problem.get_quadratic_constraints().size()));
+        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+                       static_cast<int>(op_problem.get_quadratic_constraints().size()));
       }
       settings.method    = method_t::Barrier;
       settings.presolver = presolver_t::None;

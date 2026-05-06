@@ -197,8 +197,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       // Verify Q as either:
       // - standard SOC diagonal Lorentz form, or
       // - canonical rotated SOC with one symmetric (-1,-1) off-diagonal pair.
-      i_t head                    = static_cast<i_t>(-1);
-      i_t n_head_m                = 0;
+      i_t head     = static_cast<i_t>(-1);
+      i_t n_head_m = 0;
       std::vector<i_t> tail_vars{};
       std::vector<std::pair<i_t, i_t>> offdiag_pairs{};
       tail_vars.reserve(static_cast<size_t>(q_nnz));
@@ -225,8 +225,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                       static_cast<int>(r),
                       static_cast<int>(p_end - p_beg));
 
-        const i_t col = qc.quadratic_indices[static_cast<size_t>(p_beg)];
-        const f_t v   = qc.quadratic_values[static_cast<size_t>(p_beg)];
+        const i_t col           = qc.quadratic_indices[static_cast<size_t>(p_beg)];
+        const f_t v             = qc.quadratic_values[static_cast<size_t>(p_beg)];
         const f_t neg_one_delta = v + f_t(1);
         const f_t pos_one_delta = v - f_t(1);
         const bool is_neg_one   = (neg_one_delta >= -tol && neg_one_delta <= tol);
@@ -338,7 +338,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       }
       cone_dims.push_back(static_cast<i_t>(cone.size()));
       cone_vars.push_back(std::move(cone));
-      cone_is_rotated.push_back(offdiag_pairs.empty() ? static_cast<char>(0) : static_cast<char>(1));
+      cone_is_rotated.push_back(offdiag_pairs.empty() ? static_cast<char>(0)
+                                                      : static_cast<char>(1));
     }
 
     i_t n_prob = static_cast<i_t>(n);
@@ -354,7 +355,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
       for (const auto& rc : rotated_cones) {
         cuopt_expects(user_problem.var_types[static_cast<size_t>(rc.head0)] ==
-                        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS &&
+                          cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS &&
                         user_problem.var_types[static_cast<size_t>(rc.head1)] ==
                           cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
@@ -406,8 +407,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       user_problem.objective.resize(static_cast<size_t>(n_prob), f_t(0));
       user_problem.lower.resize(static_cast<size_t>(n_prob), -inf);
       user_problem.upper.resize(static_cast<size_t>(n_prob), inf);
-      user_problem.var_types.resize(static_cast<size_t>(n_prob),
-                                    cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+      user_problem.var_types.resize(
+        static_cast<size_t>(n_prob),
+        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) {
         user_problem.col_names.resize(static_cast<size_t>(n_prob));
         for (i_t j = n_old; j < n_prob; ++j) {
@@ -432,14 +434,14 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       csr_A.n = n_prob;
 
       dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
-      size_t ri = 0;
+      size_t ri      = 0;
       i_t slack_base = n_old;
       i_t row_idx    = m_old;
 
       for (size_t ci = 0; ci < cone_vars.size(); ++ci) {
         if (!cone_is_rotated[ci]) { continue; }
         const auto& rc = rotated_cones[ri++];
-        const i_t dim = cone_dims[ci];
+        const i_t dim  = cone_dims[ci];
         std::vector<i_t> new_cone;
         new_cone.reserve(static_cast<size_t>(dim));
         new_cone.push_back(slack_base);
@@ -447,8 +449,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         new_cone.insert(new_cone.end(), rc.tails.begin(), rc.tails.end());
         cone_vars[ci] = std::move(new_cone);
 
-        is_cone_var[static_cast<size_t>(rc.head0)] = 0;
-        is_cone_var[static_cast<size_t>(rc.head1)] = 0;
+        is_cone_var[static_cast<size_t>(rc.head0)]       = 0;
+        is_cone_var[static_cast<size_t>(rc.head1)]       = 0;
         is_cone_var[static_cast<size_t>(slack_base)]     = 1;
         is_cone_var[static_cast<size_t>(slack_base + 1)] = 1;
 

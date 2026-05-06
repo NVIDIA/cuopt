@@ -216,7 +216,7 @@ class iteration_data_t {
       d_complementarity_wv_rhs_(0, lp.handle_ptr->get_stream()),
       d_dual_rhs_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_complementarity_target_(lp.num_cols, lp.handle_ptr->get_stream()),
-      d_cone_hinv2_dx_(0, lp.handle_ptr->get_stream()),
+      d_cone_hessian_dx_(0, lp.handle_ptr->get_stream()),
       d_Q_diag_(0, lp.handle_ptr->get_stream()),
       d_Qx_(Qin.m, lp.handle_ptr->get_stream()),
       restrict_u_(0),
@@ -505,8 +505,8 @@ class iteration_data_t {
     i_t nnzA                 = A.col_start[n];
     i_t nnzQ                 = Q.n > 0 ? Q.col_start[n] : 0;
     i_t factorization_size   = n + m;
-    const f_t dual_perturb   = 0.0;
-    const f_t primal_perturb = 1e-6;
+    const f_t dual_perturb   = 1e-8;
+    const f_t primal_perturb = 1e-8;
 
     const bool has_soc  = has_cones();
     const i_t m_c       = cone_entry_count();
@@ -514,21 +514,24 @@ class iteration_data_t {
 
     std::vector<std::size_t> cone_offsets_host;
     std::vector<std::size_t> cone_block_offsets_host;
-    if (has_soc) {
-      const i_t n_cones = cone_count();
-      cone_offsets_host.resize(n_cones + 1);
-      cone_block_offsets_host.resize(n_cones + 1);
-      raft::copy(cone_offsets_host.data(), cones().cone_offsets.data(), n_cones + 1, stream_view_);
-      handle_ptr->sync_stream();
-      for (i_t k = 0; k < n_cones; ++k) {
-        const auto q_k                 = cone_offsets_host[k + 1] - cone_offsets_host[k];
-        cone_block_offsets_host[k + 1] = cone_block_offsets_host[k] + q_k * q_k;
-      }
-      total_block_nnz = static_cast<i_t>(cone_block_offsets_host[n_cones]);
-    }
 
     if (first_call) {
-      i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;    // conservantive estimate of nnz
+      // Initialize the cone block offsets
+      if (has_soc) {
+        const i_t n_cones = cone_count();
+        cone_offsets_host.resize(n_cones + 1);
+        cone_block_offsets_host.resize(n_cones + 1);
+        raft::copy(
+          cone_offsets_host.data(), cones().cone_offsets.data(), n_cones + 1, stream_view_);
+        handle_ptr->sync_stream();
+        for (i_t k = 0; k < n_cones; ++k) {
+          const auto q_k                 = cone_offsets_host[k + 1] - cone_offsets_host[k];
+          cone_block_offsets_host[k + 1] = cone_block_offsets_host[k] + q_k * q_k;
+        }
+        total_block_nnz = static_cast<i_t>(cone_block_offsets_host[n_cones]);
+      }
+
+      i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;  // conservative estimate of nnz
       csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, new_nnz);
       std::vector<i_t> augmented_diagonal_indices(n + m, -1);
       std::vector<i_t> cone_csr_indices_host(total_block_nnz, -1);
@@ -571,7 +574,8 @@ class iteration_data_t {
           for (i_t c = 0; c < q_k; c++) {
             i_t col         = cone_col_start + c;
             f_t q_contrib   = f_t(0);
-            f_t initial_val = (c == local_r) ? f_t(-dual_perturb) : f_t(0);   // diagonal entry of the cone block column
+            f_t initial_val = (c == local_r) ? f_t(-dual_perturb)
+                                             : f_t(0);  // diagonal entry of the cone block column
 
             if (qp < q_end && Q.i[qp] == col) {
               q_contrib = Q.x[qp];
@@ -686,6 +690,7 @@ class iteration_data_t {
       cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
 #endif
     } else {
+      // Update the augmented matrix with the new diagonal values for primal and dual variables
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
                          i_t(n),
@@ -710,12 +715,15 @@ class iteration_data_t {
                          });
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
+      // Update the augmented matrix with the new diagonal blocks for soc constraints
+      // Overwrites the diagonal updates for primal variables of soc constraints
       if (has_soc) {
-        scatter_hinv2_into_augmented(cones(),
-                                     device_augmented.x,
-                                     d_cone_csr_indices_,
-                                     d_cone_Q_values_,
-                                     handle_ptr->get_stream());
+        scatter_hessian_into_augmented(cones(),
+                                       device_augmented.x,
+                                       d_cone_csr_indices_,
+                                       d_cone_Q_values_,
+                                       handle_ptr->get_stream(),
+                                       dual_perturb);
         RAFT_CHECK_CUDA(handle_ptr->get_stream());
       }
     }
@@ -1618,20 +1626,18 @@ class iteration_data_t {
     if (has_soc) {
       const i_t m_c = cone_entry_count();
       thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin() + cone_start(), m_c, f_t(0));
+      // r1 <- D * x_1 + H x_1  (cone Hessian block H = S^T S; accumulate_cone_hessian_matvec)
+      accumulate_cone_hessian_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
+                                     cones(),
+                                     raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
+                                     stream_view_);
+      RAFT_CHECK_CUDA(stream_view_);
     }
 
-    // r1 <- Q x1 + D x1
+    // r1 <- Q x1 + D x1 + H x1  (cone: same H as above)
     if (Q.n > 0) {
       // matrix_vector_multiply(Q, 1.0, x1, 1.0, r1);
       cusparse_Q_view_.spmv(1.0, d_x1, 1.0, d_r1);
-    }
-    if (has_soc) {
-      const i_t m_c = cone_entry_count();
-      accumulate_cone_hinv2_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
-                                   cones(),
-                                   raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
-                                   stream_view_);
-      RAFT_CHECK_CUDA(stream_view_);
     }
 
     // y1 <- - alpha * r1 + beta * y1
@@ -1832,7 +1838,7 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_complementarity_wv_rhs_;
   rmm::device_uvector<f_t> d_dual_rhs_;
   rmm::device_uvector<f_t> d_complementarity_target_;
-  rmm::device_uvector<f_t> d_cone_hinv2_dx_;
+  rmm::device_uvector<f_t> d_cone_hessian_dx_;
 
   rmm::device_uvector<f_t> d_Q_diag_;
   rmm::device_uvector<f_t> d_Qx_;
@@ -2082,7 +2088,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     // Primal and dual SOC blocks: (t, x_bar) <- (1, 0, ..., 0)
     i_t off = 0;
     for (i_t k = 0; k < static_cast<i_t>(lp.second_order_cone_dims.size()); ++k) {
-      i_t q_k = lp.second_order_cone_dims[k];
+      i_t q_k          = lp.second_order_cone_dims[k];
       data.x[cs + off] = 1.0;
       data.z[cs + off] = 1.0;
       for (i_t j = 1; j < q_k; ++j) {
@@ -2208,6 +2214,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   data.w.ensure_positive(epsilon_adjust);
   data.x.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
 
+  // TODO: may be used for other heuristics
   // if (has_soc) {
   //   const auto& dims = lp.second_order_cone_dims;
   //   i_t cs           = data.cone_start();
@@ -2466,6 +2473,7 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
                          cs,
                          stream_view_));
     }
+    // TODO: do we really need to do this since we have the cone in the end by default?
     i_t tail_start = cs + mc;
     i_t tail_size  = static_cast<i_t>(x.size()) - tail_start;
     if (tail_size > 0) {
@@ -2577,11 +2585,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::copy(data.d_upper_.data(), lp.upper.data(), lp.upper.size(), stream_view_);
   }
 
+  // 1) Update NT-scaling in gpu_compute_search_direction
+  // 2) Compute the complementarity part for soc constraints
   if (has_soc) {
     auto& cones = data.cones();
     cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
     cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
-    launch_nt_scaling(cones, stream_view_);
+
+    if (!data.cone_combined_step_) { launch_nt_scaling(cones, stream_view_); }
 
     cuopt_assert(cone_var_start + m_c == lp.num_cols, "barrier expects [linear | cone] layout");
     fill_linear_target(
@@ -2618,28 +2629,37 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   // Solves the linear system
   //
   //  dw dx dy dv dz
-  // [ 0 A  0   0  0 ] [ dw ] = [ rp  ]
-  // [ I E' 0   0  0 ] [ dx ]   [ rw  ]
-  // [ 0 0  A' -E  I ] [ dy ]   [ rd  ]
-  // [ 0 Z  0   0  X ] [ dv ]   [ rxz ]
-  // [ V 0  0   W  0 ] [ dz ]   [ rwv ]
+  // [ 0 A    0   0  0      ]  [ dw ]  = [ rp  ]
+  // [ I E'   0   0  0      ]  [ dx ]    [ rw  ]
+  // [ 0 0    A' -E  I      ]  [ dy ]    [ rd  ]
+  // [ 0 Z(S) 0   0  X(S^-T)]  [ dv ]    [ rxz ]
+  // [ V 0    0   W  0      ]  [ dz ]    [ rwv ]
 
+  // NT-scaling:
+  //  \lambda = Sx = S^-T z
+  //  Affine step: (\lambda + S \delta xa) \circ (\lambda + S^-T \delta za) = 0
+  //  S \delta xa + S^-T \delta za = - \lambda
+  //  \delta za = -S^T (S \delta xa + \lambda) = - S^T S \delta xa -S^T \lambda=  - S^T S \delta xa
+  //  - z
   max_residual = 0.0;
   {
     raft::common::nvtx::range fun_scope("Barrier: GPU diag, inv diag and sqrt inv diag formation");
 
-    // diag = z ./ x  (cone entries are overwritten by H^{-2} in the augmented matrix)
+    // diag = z ./ x  (only compute the linear variables)
     cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data()),
                                     data.d_diag_.data(),
-                                    data.d_diag_.size(),
+                                    linear_size,
                                     cuda::std::divides<>{},
                                     stream_view_.value());
     RAFT_CHECK_CUDA(stream_view_);
 
+    // TODO: need to double check this
+    //  Set cone diagonal part to be 1
     if (has_soc) {
       thrust::fill_n(
         rmm::exec_policy(stream_view_), data.d_diag_.begin() + cone_var_start, m_c, f_t(1));
     }
+
     // diag = z ./ x + E * (v ./ w) * E'
 
     if (data.n_upper_bounds > 0) {
@@ -2769,6 +2789,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // r1 <- dual_rhs -complementarity_xz_rhs ./ x +  E * ((complementarity_wv_rhs - v .* bound_rhs)
     // ./ w)
 
+    // TODO: d_augmented_rhs can be preallocated
     rmm::device_uvector<f_t> d_augmented_rhs(lp.num_cols + lp.num_rows, stream_view_);
     raft::copy(d_augmented_rhs.data(), data.d_r1_.data(), lp.num_cols, stream_view_);
     raft::copy(
@@ -3950,9 +3971,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     const i_t linear_xz_size = data.linear_xz_size(data.complementarity_xz_residual.size());
     auto linear_xz_span =
       raft::host_span<const f_t>(data.complementarity_xz_residual.data(), linear_xz_size);
+    // compute complementarity residual norm for nonnegativity constraints
     f_t complementarity_residual_norm =
       std::max(vector_norm_inf<i_t, f_t>(linear_xz_span, stream_view_),
                vector_norm_inf<i_t, f_t>(data.complementarity_wv_residual, stream_view_));
+    // compute complementarity residual norm for second-order cones
     if (has_soc) {
       f_t cone_complementarity_norm = f_t(0);
       i_t off                       = data.cone_start();
@@ -3994,6 +4017,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     f_t dual_objective =
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
+    f_t duality_gap_abs = std::abs(primal_objective - dual_objective);
+    f_t duality_gap_rel =
+      duality_gap_abs /
+      std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+
     i_t iter = 0;
     settings.log.printf("\n");
     settings.log.printf(
@@ -4010,10 +4038,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                         relative_complementarity_residual,
                         elapsed_time);
 
-    f_t duality_gap_abs = std::abs(primal_objective - dual_objective);
-    f_t duality_gap_rel =
-      duality_gap_abs /
-      std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+    // TODO: should polish termination condition
     bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
                      dual_residual_norm < settings.barrier_relative_optimality_tol &&
                      (duality_gap_abs < settings.barrier_relative_complementarity_tol ||
@@ -4025,6 +4050,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                                                stream_view_);
     data.d_complementarity_wv_residual_.resize(data.complementarity_wv_residual.size(),
                                                stream_view_);
+
+    // Resize the complementarity residual for x-z pairs (only nonnegativity constraints)
     data.d_complementarity_xz_rhs_.resize(linear_xz_rhs_size, stream_view_);
     data.d_complementarity_wv_rhs_.resize(data.complementarity_wv_rhs.size(), stream_view_);
     raft::copy(data.d_complementarity_xz_residual_.data(),
@@ -4068,6 +4095,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
+      // Update NT-scaling in gpu_compute_search_direction
       i_t status = gpu_compute_search_direction(
         data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {

@@ -18,6 +18,7 @@
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
+// Mirrors `cone_step_length_from_scalars` in second_order_cone_kernels.cuh (device).
 double host_cone_step_length_from_scalars(double u0,
                                           double du0,
                                           double du_tail_sq,
@@ -32,12 +33,12 @@ double host_cone_step_length_from_scalars(double u0,
   const auto disc  = b * b - a * c;
   auto alpha       = alpha_max;
 
-  if (du0 < 0.0) { alpha = std::min(alpha, -u0 / du0); }
+  if (u0 >= 0.0 && du0 < 0.0) { alpha = std::min(alpha, -u0 / du0); }
 
   if ((a > 0.0 && b > 0.0) || disc < 0.0) { return alpha; }
 
   if (a == 0.0) {
-    if (b < 0.0) { alpha = std::min(alpha, c / (-2.0 * b)); }
+    return alpha;
   } else if (c == 0.0) {
     alpha = a >= 0.0 ? alpha : 0.0;
   } else {
@@ -186,7 +187,7 @@ TEST(second_order_cone_kernels, nt_scaling_matches_host_reference)
     const auto x_scale = std::sqrt(x_det);
     const auto z_scale = std::sqrt(z_det);
 
-    expected_eta[cone] = std::sqrt(x_scale / z_scale);
+    expected_eta[cone] = std::sqrt(z_scale / x_scale);
 
     double normalized_xz_dot = 0.0;
     for (int local_idx = 0; local_idx < dim; ++local_idx) {
@@ -200,7 +201,7 @@ TEST(second_order_cone_kernels, nt_scaling_matches_host_reference)
     expected_w[offset] = 0.0;
     for (int local_idx = 1; local_idx < dim; ++local_idx) {
       const auto idx  = offset + local_idx;
-      expected_w[idx] = (x_host[idx] / x_scale - z_host[idx] / z_scale) / w_scale;
+      expected_w[idx] = (z_host[idx] / z_scale - x_host[idx] / x_scale) / w_scale;
     }
 
     double normalized_tail_sq = 0.0;
@@ -379,8 +380,9 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
   rmm::device_uvector<double> w_out(n_cone_entries, stream);
   rmm::device_uvector<double> w_inv_out(n_cone_entries, stream);
   rmm::device_uvector<double> h_out(n_cone_entries, stream);
-  rmm::device_uvector<double> w_inv_tmp(n_cone_entries, stream);
-  rmm::device_uvector<double> h_from_w_inv(n_cone_entries, stream);
+  rmm::device_uvector<double> w_tmp(n_cone_entries, stream);
+  // apply_w then apply_w on same v: should match apply_hessian (H = W^2 for symmetric NT W).
+  rmm::device_uvector<double> w_squared_v(n_cone_entries, stream);
   rmm::device_uvector<double> recovered_dz(n_cone_entries, stream);
 
   cone_data_t<int, double> cones(cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream);
@@ -389,26 +391,26 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
   auto v_span = raft::device_span<const double>(v.data(), v.size());
   apply_w(v_span, cuopt::make_span(w_out), cones, stream);
   apply_w_inv(v_span, cuopt::make_span(w_inv_out), cones, stream);
-  apply_hinv2(v_span, cuopt::make_span(h_out), cones, stream);
+  apply_hessian(v_span, cuopt::make_span(h_out), cones, stream);
   recover_cone_dz_from_target(
     v_span,
     cones,
     raft::device_span<const double>(cone_target.data(), cone_target.size()),
     cuopt::make_span(recovered_dz),
     stream);
-  accumulate_cone_hinv2_matvec(v_span, cones, cuopt::make_span(accum), stream);
-  apply_w_inv(v_span, cuopt::make_span(w_inv_tmp), cones, stream);
-  apply_w_inv(raft::device_span<const double>(w_inv_tmp.data(), w_inv_tmp.size()),
-              cuopt::make_span(h_from_w_inv),
-              cones,
-              stream);
+  accumulate_cone_hessian_matvec(v_span, cones, cuopt::make_span(accum), stream);
+  apply_w(v_span, cuopt::make_span(w_tmp), cones, stream);
+  apply_w(raft::device_span<const double>(w_tmp.data(), w_tmp.size()),
+          cuopt::make_span(w_squared_v),
+          cones,
+          stream);
 
   auto eta_host          = cuopt::host_copy(cones.eta, stream);
   auto w_host            = cuopt::host_copy(cones.w, stream);
   auto w_out_host        = cuopt::host_copy(w_out, stream);
   auto w_inv_out_host    = cuopt::host_copy(w_inv_out, stream);
   auto h_out_host        = cuopt::host_copy(h_out, stream);
-  auto h_identity_host   = cuopt::host_copy(h_from_w_inv, stream);
+  auto w_squared_v_host  = cuopt::host_copy(w_squared_v, stream);
   auto recovered_dz_host = cuopt::host_copy(recovered_dz, stream);
   auto accum_host        = cuopt::host_copy(accum, stream);
 
@@ -433,8 +435,8 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
     expected_w[offset]     = eta * (w0 * v0 + tail_dot);
     expected_w_inv[offset] = (w0 * v0 - tail_dot) / eta;
 
-    const auto rho              = w0 * v0 - tail_dot;
-    expected_h_unscaled[offset] = (2.0 * w0 * rho - v0) / (eta * eta);
+    const auto rho              = w0 * v0 + tail_dot;
+    expected_h_unscaled[offset] = (eta * eta) * (2.0 * w0 * rho - v0);
     expected_h[offset]          = expected_h_unscaled[offset];
 
     for (int local_idx = 1; local_idx < dim; ++local_idx) {
@@ -442,7 +444,7 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
 
       expected_w[idx]          = eta * (v_host[idx] + (v0 + tail_dot / (1.0 + w0)) * w_host[idx]);
       expected_w_inv[idx]      = (v_host[idx] + (-v0 + tail_dot / (1.0 + w0)) * w_host[idx]) / eta;
-      expected_h_unscaled[idx] = (v_host[idx] - 2.0 * w_host[idx] * rho) / (eta * eta);
+      expected_h_unscaled[idx] = (eta * eta) * (2.0 * w_host[idx] * rho + v_host[idx]);
       expected_h[idx]          = expected_h_unscaled[idx];
     }
 
@@ -453,7 +455,7 @@ TEST(second_order_cone_kernels, scaling_operators_match_host_reference)
     EXPECT_NEAR(w_out_host[i], expected_w[i], 1e-9) << "W entry " << i;
     EXPECT_NEAR(w_inv_out_host[i], expected_w_inv[i], 1e-9) << "W inverse entry " << i;
     EXPECT_NEAR(h_out_host[i], expected_h[i], 1e-9) << "H entry " << i;
-    EXPECT_NEAR(h_out_host[i], h_identity_host[i], 1e-9) << "H identity entry " << i;
+    EXPECT_NEAR(h_out_host[i], w_squared_v_host[i], 1e-9) << "W^2 v vs H v entry " << i;
     EXPECT_NEAR(recovered_dz_host[i], cone_target_host[i] - expected_h_unscaled[i], 1e-9)
       << "recovered dz entry " << i;
     EXPECT_NEAR(accum_host[i], accum_initial_host[i] + expected_h_unscaled[i], 1e-9)
@@ -563,9 +565,10 @@ TEST(second_order_cone_kernels, combined_cone_rhs_matches_host_reference)
     return result;
   };
 
-  auto scaled_dx = apply_w_inv_ref(dx_aff_host);
-  auto scaled_dz = apply_w_ref(dz_aff_host);
-  auto nt_point  = apply_w_ref(z_host);
+  // Same order as compute_combined_cone_rhs_term: apply_w(dx_aff), apply_w_inv(dz_aff).
+  auto scaled_dx = apply_w_ref(dx_aff_host);
+  auto scaled_dz = apply_w_inv_ref(dz_aff_host);
+  auto nt_point  = apply_w_inv_ref(z_host);
 
   std::vector<double> shift(n_cone_entries);
   offset = 0;
@@ -616,7 +619,7 @@ TEST(second_order_cone_kernels, combined_cone_rhs_matches_host_reference)
     offset += static_cast<std::size_t>(dim);
   }
 
-  auto expected = apply_w_inv_ref(minus_p);
+  auto expected = apply_w_ref(minus_p);
   for (std::size_t i = 0; i < n_cone_entries; ++i) {
     EXPECT_NEAR(out_host[i], expected[i], 1e-8) << "entry " << i;
   }
