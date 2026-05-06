@@ -183,7 +183,6 @@ pytest -v python/cuopt_server/tests     # Server tests
 
 For component-specific build commands, run-test detail, and `PARALLEL_LEVEL` configuration, see [resources/build_and_test.md](resources/build_and_test.md).
 
-<!-- skill-evolution:start — always fetch datasets before running tests -->
 #### Download test datasets before running tests
 
 cuOpt tests depend on MPS/data files that are not checked into the repo. A
@@ -197,7 +196,6 @@ Before running any C++ or Python tests, follow the dataset download and
 If a test fails with a missing-file error, run the matching download step from
 `CONTRIBUTING.md` and re-run the test. Do not report missing-dataset failures
 back to the user as the task outcome.
-<!-- skill-evolution:end -->
 
 ## Python Bindings
 
