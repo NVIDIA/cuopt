@@ -136,7 +136,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
-    {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
+    {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 576, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
     {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 2, 0},
     {CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING, &mip_settings.mip_batch_pdlp_reliability_branching, 0, 2, 0},
@@ -182,7 +182,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_USER_PROBLEM_FILE, &mip_settings.user_problem_file, ""},
     {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, ""},
     {CUOPT_PRESOLVE_FILE, &mip_settings.presolve_file, ""},
-    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""}
+    {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""},
+    {CUOPT_MULTI_GPU_PARTITION_FILE, &pdlp_settings.multi_gpu_partition_file, ""},
   };
   // clang-format on
 }
