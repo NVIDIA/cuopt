@@ -120,6 +120,18 @@ if [ "${SKIP_DEPS}" = false ]; then
                 dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
             fi
         elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+            # The default 'libssl-dev' package is OpenSSL 3.x on Ubuntu 22.04+
+            # and Debian 12+. Older releases (Ubuntu 20.04, Debian 11) ship
+            # OpenSSL 1.1.1, which we deliberately do not link against (see top
+            # of file). Refuse to proceed there rather than silently regress.
+            DISTRO_MAJOR="${VERSION_ID%%.*}"
+            if [[ "$ID" == "ubuntu" && "${DISTRO_MAJOR}" -lt 22 ]] || \
+               [[ "$ID" == "debian" && "${DISTRO_MAJOR}" -lt 12 ]]; then
+                echo "ERROR: ${PRETTY_NAME:-$ID $VERSION_ID} ships OpenSSL 1.1; cuopt requires OpenSSL 3." >&2
+                echo "Upgrade to Ubuntu 22.04+ / Debian 12+, or install OpenSSL 3 manually" >&2
+                echo "(e.g. via PPA or backport) and re-run this script with --skip-deps." >&2
+                exit 1
+            fi
             apt-get update
             apt-get install -y git cmake ninja-build g++ libssl-dev zlib1g-dev libc-ares-dev
         else
