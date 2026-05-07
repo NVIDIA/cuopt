@@ -75,7 +75,7 @@ jobs:
     steps:
       - name: Check lean-ci status
         env:
-          LEAN_CI: ${{ steps.check-lean-ci.outputs.lean_ci_enabled }}
+          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
           if [ "$LEAN_CI" == "true" ]; then
             echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
@@ -103,7 +103,7 @@ jobs:
       - name: Set matrix filters
         id: set-filters
         env:
-          LEAN_CI: ${{ steps.check-lean-ci.outputs.lean_ci_enabled }}
+          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
           if [ "$LEAN_CI" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.11\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
