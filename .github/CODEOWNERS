@@ -3,6 +3,7 @@
 
 #cpp code owners
 cpp/               @nvidia/cuopt-engine-codeowners
+benchmarks/        @nvidia/cuopt-engine-codeowners
 
 #python code owners
 python/            @nvidia/cuopt-infra-codeowners

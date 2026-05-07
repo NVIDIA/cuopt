@@ -8,9 +8,9 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/node_queue.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <utilities/work_limit_context.hpp>
 
@@ -58,7 +58,7 @@ struct deterministic_snapshot_t {
   f_t upper_bound;
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
   std::vector<f_t> incumbent;
-  i_t total_lp_iters;
+  int64_t total_lp_iters;
 };
 
 template <typename i_t, typename f_t, typename Derived>
@@ -74,7 +74,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   // Diving-specific snapshots (ignored by BFS workers)
   std::vector<f_t> incumbent_snapshot;
-  i_t total_lp_iters_snapshot{0};
+  int64_t total_lp_iters_snapshot{0};
 
   std::vector<queued_integer_solution_t<i_t, f_t>> integer_solutions;
   int next_solution_seq{0};
@@ -90,7 +90,9 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
                               const std::vector<variable_type_t>& var_types,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::string& context_name)
-    : base_t(id, original_lp, Arow, var_types, settings), work_context(context_name)
+    : base_t(id, original_lp, Arow, var_types, settings),
+      work_context(context_name),
+      pc_snapshot(1, settings)
   {
     work_context.deterministic = true;
   }
@@ -156,7 +158,7 @@ class deterministic_bfs_worker_t
 
   mip_node_t<i_t, f_t>* enqueue_children_for_plunge(mip_node_t<i_t, f_t>* down_child,
                                                     mip_node_t<i_t, f_t>* up_child,
-                                                    rounding_direction_t preferred_direction)
+                                                    branch_direction_t preferred_direction)
   {
     if (!plunge_stack.empty()) {
       backlog.push(plunge_stack.back());
@@ -169,7 +171,7 @@ class deterministic_bfs_worker_t
     up_child->creation_seq       = next_creation_seq++;
 
     mip_node_t<i_t, f_t>* first_child;
-    if (preferred_direction == rounding_direction_t::UP) {
+    if (preferred_direction == branch_direction_t::UP) {
       plunge_stack.push_front(down_child);
       plunge_stack.push_front(up_child);
       first_child = up_child;
@@ -341,22 +343,6 @@ class deterministic_diving_worker_t
     this->integer_solutions.push_back(
       {objective, solution, depth, this->worker_id, this->next_solution_seq++});
     ++this->total_integer_solutions;
-  }
-
-  branch_variable_t<i_t> variable_selection_from_snapshot(const std::vector<i_t>& fractional,
-                                                          const std::vector<f_t>& solution) const
-  {
-    assert(root_solution != nullptr);
-    return this->pc_snapshot.pseudocost_diving(fractional, solution, *root_solution);
-  }
-
-  branch_variable_t<i_t> guided_variable_selection(const std::vector<i_t>& fractional,
-                                                   const std::vector<f_t>& solution) const
-  {
-    if (this->incumbent_snapshot.empty()) {
-      return variable_selection_from_snapshot(fractional, solution);
-    }
-    return this->pc_snapshot.guided_diving(fractional, solution, this->incumbent_snapshot);
   }
 };
 

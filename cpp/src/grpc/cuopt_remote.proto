@@ -19,6 +19,7 @@ enum ProblemCategory {
 enum VariableType {
   CONTINUOUS = 0;
   INTEGER = 1;
+  SEMI_CONTINUOUS = 2;
 }
 
 // Optimization problem representation (field names match cpu_optimization_problem_t)
@@ -50,7 +51,7 @@ message OptimizationProblem {
   repeated double constraint_upper_bounds = 17;
   bytes row_types = 18;  // char array: 'E' (=), 'L' (<=), 'G' (>=), 'N' (objective)
 
-  // Variable types (enum-based: CONTINUOUS or INTEGER)
+  // Variable types (enum-based: CONTINUOUS, INTEGER, or SEMI_CONTINUOUS)
   repeated VariableType variable_types = 19;
 
   // Initial solutions

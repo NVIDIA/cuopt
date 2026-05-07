@@ -8,12 +8,12 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/deterministic_workers.hpp>
-#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/worker.hpp>
+#include <branch_and_bound/worker_pool.hpp>
 
 #include <cuts/cuts.hpp>
 
@@ -318,7 +318,7 @@ class branch_and_bound_t {
 
   // Policy-based tree update shared between opportunistic and deterministic codepaths.
   template <typename WorkerT, typename Policy>
-  std::pair<node_status_t, rounding_direction_t> update_tree_impl(
+  std::pair<node_status_t, branch_direction_t> update_tree_impl(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
@@ -326,7 +326,7 @@ class branch_and_bound_t {
     Policy& policy);
 
   // Opportunistic tree update wrapper.
-  std::pair<node_status_t, rounding_direction_t> update_tree(
+  std::pair<node_status_t, branch_direction_t> update_tree(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,
