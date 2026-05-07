@@ -515,9 +515,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 
     for (i_t row = 0; row < num_rows; ++row) {
       for (const auto& [col, val] : csr_data[row]) {
-        // While the mps format expects to optimize for 0.5 xT Q x, cuopt optimizes for xT Q xExpand
-        // commentComment on line L488 so we have to multiply the value by value_scale=0.5 to get
-        // the correct value.
+        // MPS uses ½ xᵀQx in the file; cuOpt stores Q for xᵀQx, so scale by value_scale (0.5 for
+        // QUADOBJ/QMATRIX, 1.0 for QCMATRIX).
         result.values.push_back(val * value_scale);
         result.indices.push_back(col);
       }
