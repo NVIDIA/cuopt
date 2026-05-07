@@ -1,10 +1,12 @@
 ---
-name: cuopt-lp-milp-api-c
+name: cuopt-numerical-optimization-api-c
 version: "26.06.00"
-description: LP and MILP with cuOpt — C API only. Use when the user is embedding LP/MILP in C/C++.
+description: LP, MILP, and QP (beta) with cuOpt — C API only. Use when the user is embedding LP, MILP, or QP in C/C++.
 ---
 
-# cuOpt LP/MILP — C API
+# cuOpt Numerical Optimization — C API
+
+Solve LP, MILP, and QP problems via the cuOpt C API. The same library, headers, build pattern, and core calls (`cuOptCreate*Problem`, `cuOptSolve`, `cuOptGetObjectiveValue`) apply across all three; QP extends the API with quadratic-objective creation calls.
 
 Confirm problem type and formulation (variables, objective, constraints, variable types) before coding.
 
@@ -33,6 +35,15 @@ cuOptSolve(problem, settings, &solution);
 cuOptGetObjectiveValue(solution, &obj_value);
 ```
 
+## QP via C API (beta)
+
+QP uses the same library, include/lib paths, and build pattern as LP/MILP — only the problem-creation call differs (it accepts a quadratic objective). See the cuOpt C headers (`cpp/include/cuopt/linear_programming/`) for the QP-specific creation/solve calls and the repo docs at `docs/cuopt/source/cuopt-c/lp-qp-milp/` for end-to-end QP examples.
+
+**QP rules:**
+- **MINIMIZE only** (`CUOPT_MINIMIZE`). To maximize `f(x)`, negate objective coefficients and Q entries.
+- **Continuous variables only** — set `CUOPT_CONTINUOUS` for every variable; integer QP is not supported.
+- **Q should be PSD** for a convex problem.
+
 ## Debugging (MPS / C)
 
 **MPS parsing:** Required sections in order: NAME, ROWS, COLUMNS, RHS, (optional) BOUNDS, ENDATA. Integer markers: `'MARKER'`, `'INTORG'`, `'INTEND'`.
@@ -54,4 +65,4 @@ For **CLI** (MPS files), use `cuopt_cli` and product docs.
 
 ## Escalate
 
-If the problem is quadratic (squared or cross terms in the objective), use QP. For contribution or build-from-source, use product or repo documentation.
+For contribution or build-from-source, use product or repo documentation.
