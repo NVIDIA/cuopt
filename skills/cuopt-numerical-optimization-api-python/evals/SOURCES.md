@@ -1,6 +1,6 @@
 # Sources
 
-Eval prompts in `evals.json` for the `cuopt-lp-milp-api-python` skill are
+Eval prompts in `evals.json` for the `cuopt-numerical-optimization-api-python` skill are
 adapted from the **OptiGuide / OptiMind IndustryOR** dataset:
 
 - Repository: [microsoft/OptiGuide](https://github.com/microsoft/OptiGuide)
