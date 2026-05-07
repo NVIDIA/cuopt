@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <branch_and_bound/constants.hpp>
+
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
@@ -29,9 +31,11 @@ enum class node_status_t : int {
   NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
 
-enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
-
-bool inactive_status(node_status_t status);
+inline bool inactive_status(node_status_t status)
+{
+  return (status == node_status_t::FATHOMED || status == node_status_t::INTEGER_FEASIBLE ||
+          status == node_status_t::INFEASIBLE || status == node_status_t::NUMERICAL);
+}
 
 template <typename i_t, typename f_t>
 class mip_node_t {
@@ -64,7 +68,7 @@ class mip_node_t {
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(rounding_direction_t::NONE),
+      branch_dir(branch_direction_t::NONE),
       branch_var_lower(-std::numeric_limits<f_t>::infinity()),
       branch_var_upper(std::numeric_limits<f_t>::infinity()),
       fractional_val(std::numeric_limits<f_t>::infinity()),
@@ -82,7 +86,7 @@ class mip_node_t {
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(rounding_direction_t::NONE),
+      branch_dir(branch_direction_t::NONE),
       integer_infeasible(-1),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
       vstatus(basis)
@@ -95,7 +99,7 @@ class mip_node_t {
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
-             rounding_direction_t branch_direction,
+             branch_direction_t branch_direction,
              f_t branch_var_value,
              i_t integer_inf,
              const std::vector<variable_status_t>& basis)
@@ -111,10 +115,10 @@ class mip_node_t {
       objective_estimate(parent_node->objective_estimate),
       vstatus(basis)
   {
-    branch_var_lower = branch_direction == rounding_direction_t::DOWN ? problem.lower[branch_var]
-                                                                      : std::ceil(branch_var_value);
-    branch_var_upper = branch_direction == rounding_direction_t::DOWN ? std::floor(branch_var_value)
-                                                                      : problem.upper[branch_var];
+    branch_var_lower = branch_direction == branch_direction_t::DOWN ? problem.lower[branch_var]
+                                                                    : std::ceil(branch_var_value);
+    branch_var_upper = branch_direction == branch_direction_t::DOWN ? std::floor(branch_var_value)
+                                                                    : problem.upper[branch_var];
     children[0]      = nullptr;
     children[1]      = nullptr;
   }
@@ -282,7 +286,7 @@ class mip_node_t {
   i_t depth;
   i_t node_id;
   i_t branch_var;
-  rounding_direction_t branch_dir;
+  branch_direction_t branch_dir;
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
@@ -312,7 +316,7 @@ class mip_node_t {
     const mip_node_t* node = this;
     while (node != nullptr && node->branch_var >= 0) {
       uint64_t step = static_cast<uint64_t>(node->branch_var) << 1;
-      step |= (node->branch_dir == rounding_direction_t::UP) ? 1 : 0;
+      step |= (node->branch_dir == branch_direction_t::UP) ? 1 : 0;
       path_steps.push_back(step);
       node = node->parent;
     }
@@ -359,7 +363,7 @@ class search_tree_t {
                                                              parent_node,
                                                              ++id,
                                                              branch_var,
-                                                             rounding_direction_t::DOWN,
+                                                             branch_direction_t::DOWN,
                                                              fractional_val,
                                                              integer_infeasible,
                                                              parent_vstatus);
@@ -367,14 +371,14 @@ class search_tree_t {
                   parent_node,
                   down_child.get(),
                   branch_var,
-                  rounding_direction_t::DOWN,
+                  branch_direction_t::DOWN,
                   std::floor(fractional_val));
 
     auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                            parent_node,
                                                            ++id,
                                                            branch_var,
-                                                           rounding_direction_t::UP,
+                                                           branch_direction_t::UP,
                                                            fractional_val,
                                                            integer_infeasible,
                                                            parent_vstatus);
@@ -383,7 +387,7 @@ class search_tree_t {
                   parent_node,
                   up_child.get(),
                   branch_var,
-                  rounding_direction_t::UP,
+                  branch_direction_t::UP,
                   std::ceil(fractional_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
@@ -405,7 +409,7 @@ class search_tree_t {
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
-                     rounding_direction_t branch_dir,
+                     branch_direction_t branch_dir,
                      const f_t bound)
   {
     if (write_graphviz) {
@@ -413,7 +417,7 @@ class search_tree_t {
                  origin_ptr->node_id,
                  dest_ptr->node_id,
                  branch_var,
-                 branch_dir == rounding_direction_t::DOWN ? "<=" : ">=",
+                 branch_dir == branch_direction_t::DOWN ? "<=" : ">=",
                  bound);
     }
   }
