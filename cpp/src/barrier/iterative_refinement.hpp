@@ -364,7 +364,7 @@ f_t iterative_refinement_gmres(T& op,
 
     f_t improvement_ratio = best_residual / residual;
     // Track best solution
-    if (improvement_ratio > stop_ratio) {
+    if (improvement_ratio >= stop_ratio) {
       best_residual = residual;
       raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
     } else if (improvement_ratio < stop_ratio && improvement_ratio > 1.0) {
