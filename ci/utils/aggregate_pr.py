@@ -40,9 +40,7 @@ from aggregate_common import (  # noqa: E402
     download_summaries,
     load_local_summaries,
 )
-
-# Hidden marker — must match the value used by ci/pr_summary.sh.
-COMMENT_MARKER = "<!-- pr-test-classification -->"
+from pr_comment_helper import COMMENT_MARKER  # noqa: E402
 
 # Maximum total comment body size we are willing to post.  GitHub allows
 # ~65k characters per comment, but we cap earlier and truncate the failure

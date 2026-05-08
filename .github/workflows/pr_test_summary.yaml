@@ -54,13 +54,9 @@ jobs:
           fi
           export PR_NUMBER
 
-          # Look up the PR's target branch via the API (the push event
-          # doesn't expose it directly).
-          GITHUB_BASE_REF=$(curl -s -L --max-time 30 \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
-              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('base',{}).get('ref','main'))")
+          # Push events don't expose the PR target branch; ask the API.
+          GITHUB_BASE_REF=$(python3 ci/utils/pr_comment_helper.py base-ref \
+              --repo "${GITHUB_REPOSITORY}" --pr "${PR_NUMBER}")
           export GITHUB_BASE_REF
           echo "PR #${PR_NUMBER} → target branch: ${GITHUB_BASE_REF}"
 
