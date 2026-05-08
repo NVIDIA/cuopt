@@ -34,7 +34,9 @@ case "${ID:-}" in
         # libcrypto.so.3 into /usr/lib64 and ldconfig picks them up
         # automatically. ('openssl3-devel' is what the build host uses.)
         dnf install -y -q openssl3
-        if ! ldconfig -p | grep -qE "libssl\.so\.3|libcrypto\.so\.3"; then
+        ldconfig_out="$(ldconfig -p)"
+        if ! grep -q "libssl\.so\.3" <<<"${ldconfig_out}" || \
+           ! grep -q "libcrypto\.so\.3" <<<"${ldconfig_out}"; then
             echo "ERROR: libssl.so.3 / libcrypto.so.3 still not on linker path" >&2
             exit 1
         fi
