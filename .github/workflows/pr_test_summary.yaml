@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reusable workflow: aggregate per-matrix PR test summaries from S3,
+# classify every failure as NEW (introduced by this PR) vs. KNOWN
+# (recurring on nightly, known flaky on nightly, or flaked in this run),
+# and post (or update) a single sticky comment on the PR.
+#
+# Called from pr.yaml after the PR test jobs finish.  Purely informational
+# — never gates the PR.
+
+name: pr-test-summary
+
+on:
+  workflow_call:
+    secrets:
+      CUOPT_AWS_ACCESS_KEY_ID:
+        required: true
+      CUOPT_AWS_SECRET_ACCESS_KEY:
+        required: true
+      CUOPT_S3_URI:
+        required: true
+
+jobs:
+  pr-test-summary:
+    runs-on: linux-amd64-cpu4
+    container:
+      image: python:3.14-slim
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl
+          pip install awscli
+      - name: Aggregate per-matrix summaries and post sticky comment
+        env:
+          CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+          CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+          CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Resolve PR number from the pull-request/{N} branch ref.
+          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          if ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "ERROR: could not parse PR number from ${{ github.ref }}" >&2
+              exit 1
+          fi
+          export PR_NUMBER
+
+          # Look up the PR's target branch via the API (the push event
+          # doesn't expose it directly).
+          GITHUB_BASE_REF=$(curl -s -L --max-time 30 \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('base',{}).get('ref','main'))")
+          export GITHUB_BASE_REF
+          echo "PR #${PR_NUMBER} → target branch: ${GITHUB_BASE_REF}"
+
+          bash ci/pr_summary.sh
