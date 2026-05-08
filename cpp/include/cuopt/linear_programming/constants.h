@@ -74,13 +74,15 @@
 #define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
-#define CUOPT_SOLUTION_FILE     "solution_file"
-#define CUOPT_NUM_CPU_THREADS   "num_cpu_threads"
-#define CUOPT_NUM_GPUS          "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE "user_problem_file"
-#define CUOPT_PRESOLVE_FILE     "presolve_file"
-#define CUOPT_RANDOM_SEED       "random_seed"
-#define CUOPT_PDLP_PRECISION    "pdlp_precision"
+#define CUOPT_SOLUTION_FILE                "solution_file"
+#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
+#define CUOPT_NUM_GPUS                     "num_gpus"
+#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
+#define CUOPT_PRESOLVE_FILE                "presolve_file"
+#define CUOPT_RANDOM_SEED                  "random_seed"
+#define CUOPT_PDLP_PRECISION               "pdlp_precision"
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT "barrier_iterative_refinement"
+#define CUOPT_BARRIER_STEP_SCALE           "barrier_step_scale"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -184,5 +186,8 @@
 #define CUOPT_MIP_SCALING_OFF          0
 #define CUOPT_MIP_SCALING_ON           1
 #define CUOPT_MIP_SCALING_NO_OBJECTIVE 2
+
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
 
 #endif  // CUOPT_CONSTANTS_H

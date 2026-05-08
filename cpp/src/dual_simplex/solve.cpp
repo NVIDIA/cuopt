@@ -374,9 +374,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
   barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
-  barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
-  lp_status_t barrier_status =
-    barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
+  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;

@@ -20,13 +20,6 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-struct barrier_solver_settings_t {
-  i_t iteration_limit           = 1000;
-  f_t step_scale                = 0.99;
-  bool use_iterative_refinement = false;
-};
-
-template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
 
 template <typename i_t, typename f_t>
@@ -35,16 +28,12 @@ class barrier_solver_t {
   barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                    const presolve_info_t<i_t, f_t>& presolve,
                    const simplex_solver_settings_t<i_t, f_t>& settings);
-  lp_status_t solve(f_t start_time,
-                    const barrier_solver_settings_t<i_t, f_t>& options,
-                    lp_solution_t<i_t, f_t>& solution);
+  lp_status_t solve(f_t start_time, lp_solution_t<i_t, f_t>& solution);
 
  private:
   void my_pop_range(bool debug) const;
   void create_Q(const lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
-  int initial_point(iteration_data_t<i_t, f_t>& data,
-                    const barrier_solver_settings_t<i_t, f_t>& options);
-
+  int initial_point(iteration_data_t<i_t, f_t>& data);
   void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
                               const dense_vector_t<i_t, f_t>& x,
                               const dense_vector_t<i_t, f_t>& y,
@@ -112,12 +101,10 @@ class barrier_solver_t {
                                    pinned_dense_vector_t<i_t, f_t>& dy,
                                    pinned_dense_vector_t<i_t, f_t>& dv,
                                    pinned_dense_vector_t<i_t, f_t>& dz,
-                                   f_t& max_residual,
-                                   const barrier_solver_settings_t<i_t, f_t>& options);
+                                   f_t& max_residual);
 
  private:
-  lp_status_t check_for_suboptimal_solution(const barrier_solver_settings_t<i_t, f_t>& options,
-                                            iteration_data_t<i_t, f_t>& data,
+  lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,
                                             f_t start_time,
                                             i_t iter,
                                             f_t& primal_objective,

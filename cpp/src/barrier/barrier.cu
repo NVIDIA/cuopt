@@ -1760,8 +1760,7 @@ void barrier_solver_t<i_t, f_t>::create_Q(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data,
-                                              const barrier_solver_settings_t<i_t, f_t>& options)
+int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
@@ -1823,7 +1822,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data,
       }
     } op(data);
 
-    if (options.use_iterative_refinement) { iterative_refinement<i_t, f_t, op_t>(op, rhs, soln); }
+    if (settings.barrier_iterative_refinement) {
+      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln);
+    }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.x[k] = soln[k];
@@ -2258,15 +2259,13 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
 }
 
 template <typename i_t, typename f_t>
-i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(
-  iteration_data_t<i_t, f_t>& data,
-  pinned_dense_vector_t<i_t, f_t>& dw,
-  pinned_dense_vector_t<i_t, f_t>& dx,
-  pinned_dense_vector_t<i_t, f_t>& dy,
-  pinned_dense_vector_t<i_t, f_t>& dv,
-  pinned_dense_vector_t<i_t, f_t>& dz,
-  f_t& max_residual,
-  const barrier_solver_settings_t<i_t, f_t>& options)
+i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
+                                                             pinned_dense_vector_t<i_t, f_t>& dw,
+                                                             pinned_dense_vector_t<i_t, f_t>& dx,
+                                                             pinned_dense_vector_t<i_t, f_t>& dy,
+                                                             pinned_dense_vector_t<i_t, f_t>& dv,
+                                                             pinned_dense_vector_t<i_t, f_t>& dz,
+                                                             f_t& max_residual)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_search_direction");
 
@@ -2532,7 +2531,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(
         data_.chol->solve(b, x);
       }
     } op(data);
-    if (options.use_iterative_refinement) {
+    if (settings.barrier_iterative_refinement) {
       auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
       if (solve_err > 1e-1) {
         settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
@@ -3486,7 +3485,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
 
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
-  const barrier_solver_settings_t<i_t, f_t>& options,
   iteration_data_t<i_t, f_t>& data,
   f_t start_time,
   i_t iter,
@@ -3578,9 +3576,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 }
 
 template <typename i_t, typename f_t>
-lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
-                                              const barrier_solver_settings_t<i_t, f_t>& options,
-                                              lp_solution_t<i_t, f_t>& solution)
+lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
 {
   settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
@@ -3653,7 +3649,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       return lp_status_t::TIME_LIMIT;
     }
 
-    i_t initial_status = initial_point(data, options);
+    i_t initial_status = initial_point(data);
     settings.log.printf("Initial point computed at %.2f seconds\n", toc(start_time));
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
@@ -3769,14 +3765,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
-      i_t status = gpu_compute_search_direction(data,
-                                                data.dw_aff,
-                                                data.dx_aff,
-                                                data.dy_aff,
-                                                data.dv_aff,
-                                                data.dz_aff,
-                                                max_affine_residual,
-                                                options);
+      i_t status = gpu_compute_search_direction(
+        data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -3785,8 +3775,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
       if (status < 0) {
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -3815,7 +3804,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       f_t max_corrector_residual = 0.0;
 
       status = gpu_compute_search_direction(
-        data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual, options);
+        data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -3823,8 +3812,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       if (status < 0) {
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -3849,9 +3837,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       compute_final_direction(data);
       f_t step_primal, step_dual;
-      compute_primal_dual_step_length(data, options.step_scale, step_primal, step_dual);
+      compute_primal_dual_step_length(data, settings.barrier_step_scale, step_primal, step_dual);
 
-      compute_next_iterate(data, options.step_scale, step_primal, step_dual);
+      compute_next_iterate(data, settings.barrier_step_scale, step_primal, step_dual);
 
       compute_residual_norms(
         data, primal_residual_norm, dual_residual_norm, complementarity_residual_norm);
@@ -3902,8 +3890,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       if (primal_objective != primal_objective || dual_objective != dual_objective) {
         settings.log.printf("Numerical error in objective\n");
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -3969,8 +3956,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
             data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
             data.relative_complementarity_residual_save <
               settings.barrier_relaxed_complementarity_tol) {
-          return check_for_suboptimal_solution(options,
-                                               data,
+          return check_for_suboptimal_solution(data,
                                                start_time,
                                                iter,
                                                primal_objective,
@@ -4007,7 +3993,6 @@ template class barrier_solver_t<int, double>;
 template class sparse_cholesky_base_t<int, double>;
 template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
-template class barrier_solver_settings_t<int, double>;
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex
