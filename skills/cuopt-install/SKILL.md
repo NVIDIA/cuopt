@@ -118,7 +118,7 @@ curl -s http://localhost:8000/cuopt/health | jq .
 
 ## Common Issues
 
-- `No module 'cuopt'` → check `pip list | grep cuopt`, `which python`, reinstall with the correct extra-index-url.
+- `No module named 'cuopt'` → check `pip list | grep cuopt`, `which python`, reinstall with the correct extra-index-url.
 - CUDA not available → run `nvidia-smi` and `nvcc --version`; ensure the package CUDA suffix (`cu12` vs `cu13`) matches the installed CUDA.
 - Mixing Python and C → these are separate packages; installing `cuopt-cuXX` does **not** install `libcuopt-cuXX`, and vice versa.
 
