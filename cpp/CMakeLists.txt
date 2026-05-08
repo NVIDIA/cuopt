@@ -159,6 +159,15 @@ if (DEFINE_PDLP_VERBOSE_MODE)
     add_definitions(-DPDLP_VERBOSE_MODE)
 endif (DEFINE_PDLP_VERBOSE_MODE)
 
+# This fix a crash on RTX PRO 6000 caused by Warp MMU Fault in cub::detail::scan::DeviceScanKernel.
+# CCCL 3.4.0 introduced an SM90+ "warpspeed" scan kernel that uses Hopper/Blackwell TMA (cp_async_bulk), however,
+# on cuda 13.1, this can produce a non-contiguous byte mask which is not allowed in Hopper/Blackwell.
+# This is fixed only NVCC ≥ 13.2.
+
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS_EQUAL 13.2)
+    add_definitions(-DCCCL_DISABLE_WARPSPEED_SCAN)
+endif ()
+
 # Set logging level
 set(LIBCUOPT_LOGGING_LEVEL
         "INFO"
