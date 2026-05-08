@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Shared helper for generating nightly test reports with matrix-aware S3 paths.
+# Shared helper for generating nightly and PR test reports with
+# matrix-aware S3 paths.
 #
 # Usage (source from any test script):
 #
@@ -15,6 +16,16 @@
 #   # For wheel tests:
 #   generate_nightly_report "wheel-python" --with-python-version
 #
+# Behavior depends on RAPIDS_BUILD_TYPE:
+#   - "nightly":     update and upload the long-term failure history,
+#                    upload a per-matrix summary under summaries/, plus HTML.
+#   - "pull-request" (PR mode): read the target branch's nightly history
+#                    (no writes), classify each PR failure as new vs. known
+#                    (recurring or flaky), and upload only a run-scoped
+#                    per-matrix summary under ci_test_reports/pr/run-${GITHUB_RUN_ID}/
+#                    for the PR comment aggregator to consume.
+#   - other:         local report only; no S3 reads or writes.
+#
 # Prerequisites (set before calling):
 #   RAPIDS_TESTS_DIR   - directory containing JUnit XML test results
 #
@@ -22,10 +33,11 @@
 #   RAPIDS_CUDA_VERSION   - CUDA version (e.g., "12.9")
 #   RAPIDS_PY_VERSION     - Python version (e.g., "3.12"), used with --with-python-version
 #   RAPIDS_BRANCH         - branch name (e.g., "main")
-#   RAPIDS_BUILD_TYPE     - build type; S3 history/summary/HTML uploads are
-#                           only enabled when this equals "nightly"
-#   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/);
-#                           only consulted when RAPIDS_BUILD_TYPE=nightly
+#   RAPIDS_BUILD_TYPE     - build type ("nightly", "pull-request", ...)
+#   GITHUB_BASE_REF       - PR target branch; in PR mode the helper reads
+#                           the nightly history from this branch.  Falls
+#                           back to RAPIDS_BRANCH or "main".
+#   CUOPT_S3_URI          - S3 bucket root (e.g., s3://cuopt-datasets/)
 #   GITHUB_SHA            - commit SHA
 #   GITHUB_RUN_ID         - GitHub Actions run ID (scopes summaries to this run)
 #   GITHUB_STEP_SUMMARY   - path for GitHub Actions step summary
@@ -78,10 +90,8 @@ generate_nightly_report() {
     local s3_summary_uri=""
     local s3_summary_branch_uri=""
     local s3_html_uri=""
+    local mode="nightly"
 
-    # Only upload to S3 for nightly runs. For PRs and other build types we
-    # still generate the local report and GitHub Step Summary, but skip S3
-    # so PR runs don't pollute the nightly history/summary/report buckets.
     if [ "${RAPIDS_BUILD_TYPE:-}" = "nightly" ] && [ -n "${CUOPT_S3_URI:-}" ]; then
         local s3_base="${CUOPT_S3_URI}ci_test_reports/nightly"
         s3_history_uri="${s3_base}/history/${branch_slug}/${test_type}-${matrix_label}.json"
@@ -102,10 +112,38 @@ generate_nightly_report() {
         fi
         s3_summary_branch_uri="${s3_base}/summaries/${run_date}/${branch_slug}/${summary_filename}"
         s3_html_uri="${s3_base}/reports/${run_date}/${branch_slug}/${test_type}-${matrix_label}.html"
+    elif [ "${RAPIDS_BUILD_TYPE:-}" = "pull-request" ] && [ -n "${CUOPT_S3_URI:-}" ]; then
+        # PR mode: read the target branch's nightly history (never write
+        # back), and write a run-scoped per-matrix summary that the PR
+        # comment aggregator picks up.
+        mode="pr"
+
+        local target_branch="${GITHUB_BASE_REF:-${RAPIDS_BRANCH:-main}}"
+        local target_branch_slug
+        target_branch_slug=$(echo "${target_branch}" | tr '/' '-')
+
+        local s3_nightly_base="${CUOPT_S3_URI}ci_test_reports/nightly"
+        s3_history_uri="${s3_nightly_base}/history/${target_branch_slug}/${test_type}-${matrix_label}.json"
+        # Fall back to main's history when the target branch has no history yet
+        # (e.g. PRs into a fresh release branch).
+        if [ "${target_branch_slug}" != "main" ]; then
+            s3_history_seed_uri="${s3_nightly_base}/history/main/${test_type}-${matrix_label}.json"
+        fi
+
+        # PR summaries live under a separate prefix so they never mix with
+        # nightly data.  Scoped by GITHUB_RUN_ID so each workflow run is
+        # isolated; cleaned up via bucket lifecycle policy.
+        local pr_base="${CUOPT_S3_URI}ci_test_reports/pr"
+        if [ -n "${GITHUB_RUN_ID:-}" ]; then
+            s3_summary_uri="${pr_base}/run-${GITHUB_RUN_ID}/${test_type}-${matrix_label}.json"
+        else
+            echo "WARNING: GITHUB_RUN_ID unset; skipping PR summary upload" >&2
+        fi
     fi
 
     # --- Run nightly report ---
     python3 "${_HELPER_DIR}/nightly_report.py" \
+        --mode "${mode}" \
         --results-dir "${RAPIDS_TESTS_DIR}" \
         --output-dir "${report_output_dir}" \
         --sha "${GITHUB_SHA:-unknown}" \

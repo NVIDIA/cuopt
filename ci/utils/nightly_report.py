@@ -368,6 +368,89 @@ def update_history(history, classified, sha, date_str):
     )
 
 
+# ---------------------------------------------------------------------------
+# PR-mode classification (read-only against nightly history)
+# ---------------------------------------------------------------------------
+
+
+def classify_pr_against_history(classified, history):
+    """Classify PR run results by comparing against the nightly history.
+
+    Read-only: never mutates ``history``.  Each failure is annotated with a
+    ``pr_classification`` field used by the PR comment renderer.
+
+    Routing into the existing summary lists so ``aggregate_summaries``
+    consumes PR summaries without changes:
+
+      - ``new_failures``: hard failures the PR introduced.  ``pr_classification=new``.
+      - ``recurring_failures``: hard failures known to nightly.
+        ``pr_classification`` is ``known_recurring`` (active on nightly) or
+        ``known_flaky_nightly`` (history flagged the test flaky).
+      - ``flaky_tests``: tests that passed on retry within the PR run.
+        ``pr_classification`` is ``known_flaky_nightly`` (already known
+        flaky), ``known_recurring`` (hard-failing on nightly but flaked
+        here), or ``known_flaky_pr`` (only flaked in this PR run).
+
+    Returns ``(new_failures, recurring_failures, flaky_tests)``.
+    """
+    tests_history = history.get("tests", {})
+
+    new_failures = []
+    recurring_failures = []
+    flaky_tests = []
+
+    def _key(entry):
+        return f"{entry['suite']}::{entry['classname']}::{entry['name']}"
+
+    # Hard failures: failed/errored in PR run, did NOT pass on retry.
+    for entry in classified["failed"] + classified["error"]:
+        rec = tests_history.get(_key(entry))
+        if rec and rec.get("status") == "active":
+            recurring_failures.append(
+                {
+                    **entry,
+                    "first_seen": rec.get("first_seen_date", "unknown"),
+                    "failure_count": rec.get("failure_count", 0),
+                    "pr_classification": "known_recurring",
+                }
+            )
+        elif rec and rec.get("is_flaky"):
+            recurring_failures.append(
+                {
+                    **entry,
+                    "first_seen": rec.get("first_seen_date", "unknown"),
+                    "failure_count": rec.get("failure_count", 0),
+                    "pr_classification": "known_flaky_nightly",
+                }
+            )
+        else:
+            # Not in history, or history says resolved-and-not-flaky:
+            # this PR is the cause.
+            new_failures.append({**entry, "pr_classification": "new"})
+
+    # Flaky in PR run: passed on retry within the same run.
+    for entry in classified["flaky"]:
+        rec = tests_history.get(_key(entry))
+        if rec and rec.get("is_flaky"):
+            classification = "known_flaky_nightly"
+            first_seen = rec.get("first_seen_date", "unknown")
+        elif rec and rec.get("status") == "active":
+            classification = "known_recurring"
+            first_seen = rec.get("first_seen_date", "unknown")
+        else:
+            classification = "known_flaky_pr"
+            first_seen = "unknown"
+        flaky_tests.append(
+            {
+                **entry,
+                "first_seen": first_seen,
+                "pr_classification": classification,
+            }
+        )
+
+    return new_failures, recurring_failures, flaky_tests
+
+
 def save_history(history, history_path):
     """Write history to a local JSON file."""
     with open(history_path, "w") as f:
@@ -542,19 +625,35 @@ def generate_json_summary(
     recurring_failures,
     resolved_tests,
     new_flaky_tests=None,
+    flaky_tests=None,
     test_type="",
     matrix_label="",
     sha="",
     date_str="",
+    mode="nightly",
 ):
-    """Generate a JSON summary for downstream tools (Slack notifier, dashboard)."""
+    """Generate a JSON summary for downstream tools (Slack notifier, dashboard, PR comment).
+
+    ``flaky_tests`` lets PR mode pass its own annotated list (with
+    ``pr_classification`` and ``first_seen``).  In nightly mode it defaults
+    to ``classified["flaky"]`` to preserve existing behavior.
+    """
     if new_flaky_tests is None:
         new_flaky_tests = []
+    if flaky_tests is None:
+        flaky_tests = classified["flaky"]
     new_flaky_keys = {
         f"{e['classname']}::{e['name']}" for e in new_flaky_tests
     }
+
+    def _opt(d, key):
+        if key in d:
+            return {key: d[key]}
+        return {}
+
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "mode": mode,
         "test_type": test_type,
         "matrix_label": matrix_label,
         "sha": sha,
@@ -575,6 +674,7 @@ def generate_json_summary(
                 "name": e["name"],
                 "classname": e["classname"],
                 "message": e.get("message", ""),
+                **_opt(e, "pr_classification"),
             }
             for e in new_failures
         ],
@@ -585,6 +685,8 @@ def generate_json_summary(
                 "classname": e["classname"],
                 "first_seen": e.get("first_seen", "unknown"),
                 "message": e.get("message", ""),
+                **_opt(e, "pr_classification"),
+                **_opt(e, "failure_count"),
             }
             for e in recurring_failures
         ],
@@ -596,8 +698,10 @@ def generate_json_summary(
                 "retry_count": e.get("retry_count", 0),
                 "message": e.get("message", ""),
                 "is_new": f"{e['classname']}::{e['name']}" in new_flaky_keys,
+                **_opt(e, "pr_classification"),
+                **_opt(e, "first_seen"),
             }
-            for e in classified["flaky"]
+            for e in flaky_tests
         ],
         "resolved_tests": [
             {
@@ -945,12 +1049,24 @@ def main():
         default=os.environ.get("GITHUB_STEP_SUMMARY", ""),
         help="Path to write GitHub Actions step summary",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["nightly", "pr"],
+        default="nightly",
+        help=(
+            "nightly: update and upload history; classify against and "
+            "evolve the long-term failure state. "
+            "pr: read history but never write it; classify each PR failure "
+            "as new vs. known (recurring or flaky) for the PR comment."
+        ),
+    )
 
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     local_history_path = str(output_dir / "test_failure_history.json")
+    pr_mode = args.mode == "pr"
 
     # ---- Step 1: Download history from S3 ----
     if args.s3_history_uri:
@@ -982,31 +1098,45 @@ def main():
         f"{len(classified['skipped'])} skipped"
     )
 
-    # ---- Step 3: Update history ----
+    # ---- Step 3: Classify against history ----
     history = load_history(local_history_path)
-    (
-        history,
-        new_failures,
-        recurring_failures,
-        resolved_tests,
-        new_flaky_tests,
-    ) = update_history(history, classified, args.sha, args.date)
+    pr_flaky_tests = None  # populated only in PR mode
 
-    if new_flaky_tests:
-        print(
-            f"NEW FLAKY: {len(new_flaky_tests)} test(s) flaky for the first time"
+    if pr_mode:
+        new_failures, recurring_failures, pr_flaky_tests = (
+            classify_pr_against_history(classified, history)
         )
-    if resolved_tests:
+        resolved_tests = []
+        new_flaky_tests = []
         print(
-            f"Stabilized: {len(resolved_tests)} previously-failing test(s) now pass"
+            f"PR classification: {len(new_failures)} new, "
+            f"{len(recurring_failures)} known recurring/flaky-on-nightly, "
+            f"{len(pr_flaky_tests)} flaky in run"
         )
+    else:
+        (
+            history,
+            new_failures,
+            recurring_failures,
+            resolved_tests,
+            new_flaky_tests,
+        ) = update_history(history, classified, args.sha, args.date)
 
-    save_history(history, local_history_path)
-    print(f"Updated local history at {local_history_path}")
+        if new_flaky_tests:
+            print(
+                f"NEW FLAKY: {len(new_flaky_tests)} test(s) flaky for the first time"
+            )
+        if resolved_tests:
+            print(
+                f"Stabilized: {len(resolved_tests)} previously-failing test(s) now pass"
+            )
 
-    # ---- Step 4: Upload history back to S3 ----
-    if args.s3_history_uri:
-        s3_upload(local_history_path, args.s3_history_uri)
+        save_history(history, local_history_path)
+        print(f"Updated local history at {local_history_path}")
+
+        # ---- Step 4: Upload history back to S3 ----
+        if args.s3_history_uri:
+            s3_upload(local_history_path, args.s3_history_uri)
 
     # ---- Step 5: Generate reports ----
     report_kwargs = dict(
@@ -1046,6 +1176,8 @@ def main():
         recurring_failures,
         resolved_tests,
         new_flaky_tests,
+        flaky_tests=pr_flaky_tests,
+        mode=args.mode,
         **report_kwargs,
     )
     json_path = output_dir / "nightly_summary.json"
@@ -1097,7 +1229,10 @@ def main():
         print(
             f"\nFAILED: {genuine_failures} genuine test failure(s) detected."
         )
-        return 1
+        # PR mode is reporting-only; the underlying test job already conveys
+        # pass/fail.  Returning 0 keeps post-test summary jobs uncoupled from
+        # this script's exit code.
+        return 0 if pr_mode else 1
     if classified["flaky"]:
         print(
             f"\nWARNING: All tests passed but {len(classified['flaky'])} flaky test(s) detected."
