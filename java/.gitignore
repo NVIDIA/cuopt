@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Maven build output
+target/
+*.class
+.mvn/
+
+# IDE
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.factorypath
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NOTE: panama bindings under
+# cuopt-java/src/main/java22/com/nvidia/cuopt/internal/panama/
+# ARE committed (cuvs convention) — the drift gate in build.sh enforces this.

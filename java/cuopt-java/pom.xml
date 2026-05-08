@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+
+  Build setup notes:
+
+    - Java 21 base API (src/main/java/) + Java 22 multi-release JAR for FFM
+      implementation (src/main/java22/). Public API loads on Java 21
+      classpaths; runtime requires Java 22+. (cuvs Issue #1066.)
+
+    - maven-compiler-plugin 3.11.0+ with explicit phase bindings: the two
+      compile executions are bound to 'compile' and 'process-classes'
+      respectively to force serial execution. Without this, the java22
+      compile starts before the default compile finishes about half the
+      time, producing phantom 'cannot find symbol' errors. (cuvs Issue #1293.)
+
+    - Spotless (when added in a follow-up PR) goes ONLY under
+      <build><plugins>, never under <dependencies>. Listing it as a
+      dependency packs spotless into a fat JAR with multiple
+      module-info.class files. (cuvs Issue #1090.)
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.nvidia.cuopt</groupId>
+    <artifactId>cuopt-java</artifactId>
+    <version>26.6.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>cuopt-java</name>
+    <description>Java interface to NVIDIA cuOpt for LP, MILP, and QP.</description>
+    <url>https://github.com/NVIDIA/cuopt</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Default release is Java 22 (the runtime requirement); per-execution
+             release overrides on maven-compiler-plugin pin Java 21 for the
+             public API source set. -->
+        <maven.compiler.source>22</maven.compiler.source>
+        <maven.compiler.target>22</maven.compiler.target>
+
+        <junit.jupiter.version>5.11.4</junit.jupiter.version>
+    </properties>
+
+    <dependencies>
+        <!-- NO runtime dependencies. NO build-only deps in this section
+             (e.g., spotless, when added later, lives in <build><plugins>). -->
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Compiler: Java 21 release for src/main/java, Java 22 release for src/main/java22.
+                 Phase binding to 'compile' and 'process-classes' forces serial execution. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <executions>
+                    <execution>
+                        <id>default-compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <release>21</release>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.basedir}/src/main/java</compileSourceRoot>
+                            </compileSourceRoots>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>compile-java-22</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <release>22</release>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.basedir}/src/main/java22</compileSourceRoot>
+                            </compileSourceRoots>
+                            <multiReleaseOutput>true</multiReleaseOutput>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- JAR: Multi-Release manifest entry. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Multi-Release>true</Multi-Release>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire: enables JUnit 5 + native access for tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
