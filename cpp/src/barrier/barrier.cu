@@ -3094,9 +3094,10 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   complementarity_aff_sum = complementarity_xz_aff_sum + complementarity_wv_aff_sum;
   f_t mu_denom            = static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds);
   mu_denom -= static_cast<f_t>(data.n_free_vars);
-  mu_aff = complementarity_aff_sum / mu_denom;
-  sigma  = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
-  new_mu = sigma * mu_aff;
+  mu_denom = std::max(mu_denom, f_t(1.0));
+  mu_aff   = complementarity_aff_sum / mu_denom;
+  sigma    = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
+  new_mu   = sigma * mu_aff;
 }
 
 template <typename i_t, typename f_t>
@@ -3318,6 +3319,7 @@ void barrier_solver_t<i_t, f_t>::compute_mu(iteration_data_t<i_t, f_t>& data, f_
 
   f_t mu_denom = static_cast<f_t>(data.x.size()) + static_cast<f_t>(data.n_upper_bounds);
   mu_denom -= static_cast<f_t>(data.n_free_vars);  // free vars don't contribute to mu
+  mu_denom = std::max(mu_denom, f_t(1.0));
 
   mu = (data.sum_reduce_helper_.sum(data.d_complementarity_xz_residual_.begin(),
                                     data.d_complementarity_xz_residual_.size(),
