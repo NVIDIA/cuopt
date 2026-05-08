@@ -21,8 +21,8 @@
       "description": "Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture."
     },
     {
-      "name": "cuopt-installation",
-      "source": "./skills/cuopt-installation",
+      "name": "cuopt-install",
+      "source": "./skills/cuopt-install",
       "skills": "./",
       "description": "Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. Use when the user wants to install or verify cuOpt for any user-facing interface."
     },
