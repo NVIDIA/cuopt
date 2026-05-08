@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "optimal_eax_cycles.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 namespace cuopt::routing::detail {
 
@@ -94,9 +95,11 @@ __global__ void insert_optimal_rotation_kernel(
   typename solution_t<i_t, f_t, request_t::VRP>::view_t sol,
   const cub::KeyValuePair<i_t, double>* index_delta_pair,
   const typename dimensions_route_t<i_t, f_t, request_t::VRP>::view_t eax_fragment,
-  i_t n_rotations)
+  i_t n_rotations,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem         = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   i_t index          = index_delta_pair->key;
   i_t insertion_node = index / n_rotations;
   i_t rotation       = index % n_rotations;
@@ -174,13 +177,12 @@ bool optimal_cycles_t<i_t, f_t, REQUEST>::insert_cycle_to_found_position(
   size_t sh_size    = solution.check_routes_can_insert_and_get_sh_size(n_rotations);
   constexpr i_t TPB = 128;
 
-  if (!set_shmem_of_kernel(insert_optimal_rotation_kernel<i_t, f_t>, sh_size)) {
-    cuopt_assert(false, "Not enough shared memory in insert_cycle_to_found_position");
-    return false;
-  }
+  block_workspace_t eax_ws(
+    insert_optimal_rotation_kernel<i_t, f_t>, sh_size, 1, solution.sol_handle->get_stream());
   // prepare the rotations once and copy them to respective device arrays
-  insert_optimal_rotation_kernel<i_t, f_t><<<1, TPB, sh_size, solution.sol_handle->get_stream()>>>(
-    solution.view(), index_delta_pair.data(), eax_fragment.view(), n_rotations);
+  insert_optimal_rotation_kernel<i_t, f_t>
+    <<<1, TPB, eax_ws.shmem_size(), solution.sol_handle->get_stream()>>>(
+      solution.view(), index_delta_pair.data(), eax_fragment.view(), n_rotations, eax_ws.view());
   solution.compute_route_id_per_node();
   solution.compute_cost();
   return true;

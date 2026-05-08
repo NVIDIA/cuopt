@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include "cycle_finder_kernels.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <raft/core/nvtx.hpp>
 
@@ -30,11 +31,12 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_init(graph_t<i_t, f_t>& graph)
   auto n_blocks   = n_vertices;
   int level       = 0;
   size_t sh_size  = max_graph_nodes_per_row * (sizeof(double) + sizeof(i_t));
-  bool is_set     = set_shmem_of_kernel(init_kernel<i_t, f_t, max_routes>, sh_size);
-  if (!is_set) { return false; }
+  // NTTP kernel: cannot set shmem attribute in a dependent template context.
+  block_workspace_t init_ws(false, sh_size, n_blocks, handle_ptr->get_stream());
 
-  init_kernel<i_t, f_t, max_routes><<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
-    graph.view(), d_valid_paths.subspan(level));
+  init_kernel<i_t, f_t, max_routes>
+    <<<n_blocks, n_threads, init_ws.shmem_size(), handle_ptr->get_stream()>>>(
+      graph.view(), d_valid_paths.subspan(level), init_ws.view());
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   // we have a safe-guard in the kernel for the global array stores
   // do the safe guard here for the occupied size
@@ -110,25 +112,29 @@ bool ExactCycleFinder<i_t, f_t, max_routes>::call_find(graph_t<i_t, f_t>& graph,
   // cycle_candidates.reset(n_blocks, handle_ptr);
   bool last_level = level == (max_level - 1);
   if (last_level) {
-    if (!set_shmem_of_kernel(find_kernel<i_t, f_t, max_routes, true>, sh_size)) { return false; }
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t find_ws(false, sh_size, n_blocks, handle_ptr->get_stream());
     find_kernel<i_t, f_t, max_routes, true>
-      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
+      <<<n_blocks, n_threads, find_ws.shmem_size(), handle_ptr->get_stream()>>>(
         level,
         graph.view(),
         d_valid_paths.subspan(level - 1),
         d_valid_paths.subspan(level),
         cycle_candidates.level_view(level),
-        depot_included);
+        depot_included,
+        find_ws.view());
   } else {
-    if (!set_shmem_of_kernel(find_kernel<i_t, f_t, max_routes, false>, sh_size)) { return false; }
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t find_ws(false, sh_size, n_blocks, handle_ptr->get_stream());
     find_kernel<i_t, f_t, max_routes, false>
-      <<<n_blocks, n_threads, sh_size, handle_ptr->get_stream()>>>(
+      <<<n_blocks, n_threads, find_ws.shmem_size(), handle_ptr->get_stream()>>>(
         level,
         graph.view(),
         d_valid_paths.subspan(level - 1),
         d_valid_paths.subspan(level),
         cycle_candidates.level_view(level),
-        depot_included);
+        depot_included,
+        find_ws.view());
   }
 
   RAFT_CHECK_CUDA(handle_ptr->get_stream());

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 #include "compute_ejections.cuh"
 #include "local_search.cuh"
 #include "permutation_helper.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 namespace cuopt {
 namespace routing {
@@ -60,9 +61,11 @@ DI auto create_request_node(typename solution_t<i_t, f_t, REQUEST>::view_t solut
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void insert_graph_nodes_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,
-  typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+  typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+  block_workspace_t::view_t block_workspace)
 {
-  __shared__ extern i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem             = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   const auto& order_info = solution.problem.order_info;
   auto& route_node_map   = solution.route_node_map;
 
@@ -247,9 +250,12 @@ __global__ void populate_intra_candidates(
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void populate_cross_list_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
-  typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+  typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ cross_cand_t best_values_per_route[];
+  extern __shared__ char shmem_buf[];
+  cross_cand_t* best_values_per_route =
+    reinterpret_cast<cross_cand_t*>(block_workspace.get_workspace(shmem_buf));
   auto scross_cands    = move_candidates.scross_move_candidates;
   i_t* locks_per_route = (i_t*)&best_values_per_route[sol.n_routes];
   init_block_shmem(best_values_per_route,
@@ -316,12 +322,14 @@ __global__ void populate_cross_list_kernel(
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void populate_cross_moves_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
-  typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+  typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+  block_workspace_t::view_t block_workspace)
 {
   auto scross_cands         = move_candidates.scross_move_candidates;
   const i_t matrix_size     = sol.n_routes * sol.n_routes;
   const i_t special_node_id = sol.n_routes + sol.get_num_orders();
-  extern __shared__ i_t changed_routes[];
+  extern __shared__ char shmem_buf[];
+  i_t* changed_routes     = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   i_t* route_pair_indices = &changed_routes[sol.n_routes];
   init_block_shmem(changed_routes, 0, sol.n_routes);
   block_sequence(route_pair_indices, sol.n_routes * sol.n_routes);
@@ -413,23 +421,24 @@ bool local_search_t<i_t, f_t, REQUEST>::populate_cross_moves(
 {
   raft::common::nvtx::range fun_scope("populate_cross_moves");
   reset_cross_vectors(solution);
-  const i_t TPB  = 256;
-  size_t sh_size = solution.n_routes * (sizeof(i_t) + sizeof(cross_cand_t));
-  if (!set_shmem_of_kernel(populate_cross_list_kernel<i_t, f_t, REQUEST>, sh_size)) {
-    return false;
-  }
+  const i_t TPB                 = 256;
+  size_t sh_size                = solution.n_routes * (sizeof(i_t) + sizeof(cross_cand_t));
+  const i_t cross_list_n_blocks = solution.get_num_orders() - 1;
+  block_workspace_t cross_list_ws(populate_cross_list_kernel<i_t, f_t, REQUEST>,
+                                  sh_size,
+                                  cross_list_n_blocks,
+                                  solution.sol_handle->get_stream());
   populate_cross_list_kernel<i_t, f_t, REQUEST>
-    <<<solution.get_num_orders() - 1, TPB, sh_size, solution.sol_handle->get_stream()>>>(
-      solution.view(), move_candidates.view());
+    <<<cross_list_n_blocks, TPB, cross_list_ws.shmem_size(), solution.sol_handle->get_stream()>>>(
+      solution.view(), move_candidates.view(), cross_list_ws.view());
 
   sh_size = sizeof(i_t) * (solution.n_routes + 1) * solution.n_routes;
 
-  if (!set_shmem_of_kernel(populate_cross_moves_kernel<i_t, f_t, REQUEST>, sh_size)) {
-    return false;
-  }
+  block_workspace_t cross_moves_ws(
+    populate_cross_moves_kernel<i_t, f_t, REQUEST>, sh_size, 1, solution.sol_handle->get_stream());
   populate_cross_moves_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, sh_size, solution.sol_handle->get_stream()>>>(solution.view(),
-                                                             move_candidates.view());
+    <<<1, TPB, cross_moves_ws.shmem_size(), solution.sol_handle->get_stream()>>>(
+      solution.view(), move_candidates.view(), cross_moves_ws.view());
   solution.sol_handle->sync_stream();
   return true;
 }
@@ -460,11 +469,10 @@ void local_search_t<i_t, f_t, REQUEST>::perform_moves(solution_t<i_t, f_t, REQUE
   const i_t n_blocks = move_candidates.move_path.n_insertions.value(stream);
   size_t shared_size = solution.check_routes_can_insert_and_get_sh_size(
     n_insertions_per_move * request_info_t<i_t, REQUEST>::size());
-  bool is_set = set_shmem_of_kernel(insert_graph_nodes_kernel<i_t, f_t, REQUEST>, shared_size);
-  cuopt_assert(is_set, "Not enough shared memory on device for performing the local search move!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
-  insert_graph_nodes_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, shared_size, stream>>>(solution.view(), move_candidates.view());
+  block_workspace_t insert_ws(
+    insert_graph_nodes_kernel<i_t, f_t, REQUEST>, shared_size, n_blocks, stream);
+  insert_graph_nodes_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, insert_ws.shmem_size(), stream>>>(
+    solution.view(), move_candidates.view(), insert_ws.view());
   solution.compute_route_id_per_node();
   solution.compute_cost();
   solution.global_runtime_checks(false, false, "perform_moves_end");

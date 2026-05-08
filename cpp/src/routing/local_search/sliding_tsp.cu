@@ -9,6 +9,7 @@
 #include "../solution/solution.cuh"
 #include "../utilities/cuopt_utils.cuh"
 #include "local_search.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <thrust/pair.h>
 #include <cub/cub.cuh>
@@ -97,9 +98,11 @@ __global__ void find_sliding_moves_tsp(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
   typename move_candidates_t<i_t, f_t>::view_t move_candidates,
   raft::device_span<sliding_tsp_cand_t<i_t>> sampled_nodes_data,
-  raft::device_span<i_t> locks)
+  raft::device_span<i_t> locks,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem_buf[];
+  char* mem = block_workspace.get_workspace(shmem_buf);
 
   const i_t node_idx   = blockIdx.x;
   const auto node_info = move_candidates.nodes_to_search.sampled_nodes_to_search[node_idx];
@@ -125,7 +128,7 @@ __global__ void find_sliding_moves_tsp(
   auto route_max_window_size = min(route.get_num_nodes() - intra_idx, max_window_size);
 
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes(), true);
+    (i_t*)mem, route, route.get_num_nodes(), true);
   auto sh_reverse_dist = raft::device_span<double>(
     reinterpret_cast<double*>(raft::alignTo(s_route.shared_end_address(), sizeof(double))),
     route_max_window_size);
@@ -251,9 +254,11 @@ __global__ void execute_sliding_moves_tsp(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
   typename move_candidates_t<i_t, f_t>::view_t move_candidates,
   raft::device_span<sliding_tsp_cand_t<i_t>> sampled_nodes_data,
-  raft::device_span<i_t> moved_regions)
+  raft::device_span<i_t> moved_regions,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem_buf[];
+  char* mem     = block_workspace.get_workspace(shmem_buf);
   auto route_id = blockIdx.x;
 
   auto cand = sampled_nodes_data[0];
@@ -262,7 +267,7 @@ __global__ void execute_sliding_moves_tsp(
   auto max_active = sol.get_max_active_nodes_for_all_routes();
   auto route      = sol.routes[route_id];
   auto s_route    = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes(), true);
+    (i_t*)mem, route, route.get_num_nodes(), true);
   s_route.copy_from(route);
   __syncthreads();
 
@@ -510,14 +515,15 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   auto sh_size =
     raft::alignTo(shared_route_size, sizeof(double)) + max_window_size * sizeof(double);
 
-  if (!set_shmem_of_kernel(find_sliding_moves_tsp<i_t, f_t, REQUEST>, sh_size)) { return false; }
-
+  block_workspace_t find_ws(
+    find_sliding_moves_tsp<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
   find_sliding_moves_tsp<i_t, f_t, REQUEST>
-    <<<n_blocks, n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, n_threads, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
       sol.view(),
       move_candidates.view(),
       cuopt::make_span(sampled_tsp_data_),
-      cuopt::make_span(locks_));
+      cuopt::make_span(locks_),
+      find_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   n_moves_found = thrust::count_if(rmm::exec_policy(sol.sol_handle->get_stream()),
@@ -541,8 +547,10 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
 
   sh_size = shared_route_size;
 
-  if (!set_shmem_of_kernel(execute_sliding_moves_tsp<i_t, f_t, REQUEST>, sh_size)) { return false; }
-
+  block_workspace_t exec_ws(execute_sliding_moves_tsp<i_t, f_t, REQUEST>,
+                            sh_size,
+                            sol.get_n_routes(),
+                            sol.sol_handle->get_stream());
   thrust::sort(rmm::exec_policy(sol.sol_handle->get_stream()),
                sampled_tsp_data_.begin(),
                sampled_tsp_data_.end(),
@@ -551,11 +559,12 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
                });
 
   execute_sliding_moves_tsp<i_t, f_t, REQUEST>
-    <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<sol.get_n_routes(), n_threads, exec_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
       sol.view(),
       move_candidates.view(),
       cuopt::make_span(sampled_tsp_data_),
-      cuopt::make_span(moved_regions_));
+      cuopt::make_span(moved_regions_),
+      exec_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   compute_cumulative_distances<i_t, f_t, REQUEST, false>(

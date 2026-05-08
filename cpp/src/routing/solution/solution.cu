@@ -7,6 +7,7 @@
 
 #include <thrust/count.h>
 #include <utilities/copy_helpers.hpp>
+#include "routing/utilities/block_workspace.cuh"
 #include "solution.cuh"
 #include "solution_kernels.cuh"
 namespace cuopt {
@@ -165,11 +166,12 @@ void solution_t<i_t, f_t, REQUEST>::add_nodes_to_route(
   raft::copy(
     temp_nodes.data(), nodes_to_insert.data(), n_nodes_to_insert, sol_handle->get_stream());
   size_t sh_size = check_routes_can_insert_and_get_sh_size(n_nodes_to_insert);
-  bool is_set    = set_shmem_of_kernel(insert_nodes_to_route_kernel<i_t, f_t, REQUEST>, sh_size);
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+  block_workspace_t insert_ws(
+    insert_nodes_to_route_kernel<i_t, f_t, REQUEST>, sh_size, 1, sol_handle->get_stream());
   i_t TPB = 256;
-  insert_nodes_to_route_kernel<i_t, f_t, REQUEST><<<1, TPB, sh_size, sol_handle->get_stream()>>>(
-    view(), route_id, intra_idx, n_nodes_to_insert, temp_nodes.data());
+  insert_nodes_to_route_kernel<i_t, f_t, REQUEST>
+    <<<1, TPB, insert_ws.shmem_size(), sol_handle->get_stream()>>>(
+      view(), route_id, intra_idx, n_nodes_to_insert, temp_nodes.data(), insert_ws.view());
   thrust::fill(sol_handle->get_thrust_policy(),
                routes_to_search.data() + route_id,
                routes_to_search.data() + route_id + 1,
@@ -187,10 +189,11 @@ void solution_t<i_t, f_t, REQUEST>::add_nodes_to_best(
   // TODO check perf and implement parallel insertion
   for (auto node : nodes_to_insert) {
     size_t sh_size = check_routes_can_insert_and_get_sh_size(1);
-    bool is_set    = set_shmem_of_kernel(insert_node_to_best_kernel<i_t, f_t, REQUEST>, sh_size);
-    cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+    block_workspace_t best_ws(
+      insert_node_to_best_kernel<i_t, f_t, REQUEST>, sh_size, 1, sol_handle->get_stream());
     insert_node_to_best_kernel<i_t, f_t, REQUEST>
-      <<<1, TPB, sh_size, sol_handle->get_stream()>>>(view(), node, include_objective, weights);
+      <<<1, TPB, best_ws.shmem_size(), sol_handle->get_stream()>>>(
+        view(), node, include_objective, weights, best_ws.view());
     sol_handle->sync_stream();
   }
   this->global_runtime_checks(false, false, "add_nodes_to_best");
@@ -207,12 +210,12 @@ bool solution_t<i_t, f_t, REQUEST>::remove_nodes(const std::vector<NodeInfo<>>& 
   raft::copy(temp_nodes.data(), nodes_to_eject.data(), n_nodes_to_eject, sol_handle->get_stream());
   compute_max_active();
   size_t sh_size = std::max(get_temp_route_shared_size(), n_routes * sizeof(i_t));
-  bool is_set    = set_shmem_of_kernel(remove_nodes_kernel<i_t, f_t, REQUEST>, sh_size);
-  cuopt_assert(is_set, "Not enough shared memory on device for remove_nodes!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+  block_workspace_t remove_ws(
+    remove_nodes_kernel<i_t, f_t, REQUEST>, sh_size, 1, sol_handle->get_stream());
   i_t TPB = 256;
-  remove_nodes_kernel<i_t, f_t, REQUEST><<<1, TPB, sh_size, sol_handle->get_stream()>>>(
-    view(), n_nodes_to_eject, temp_nodes.data(), empty_route_produced.data());
+  remove_nodes_kernel<i_t, f_t, REQUEST>
+    <<<1, TPB, remove_ws.shmem_size(), sol_handle->get_stream()>>>(
+      view(), n_nodes_to_eject, temp_nodes.data(), empty_route_produced.data(), remove_ws.view());
   sol_handle->sync_stream();
   return !empty_route_produced.value(sol_handle->get_stream());
 }

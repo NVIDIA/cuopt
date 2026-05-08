@@ -1,12 +1,13 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include "../solution/solution.cuh"
 #include "local_search.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <cuda/std/atomic>
 
@@ -134,11 +135,13 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void select_random_route_pairs_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
   typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-  i_t seed)
+  i_t seed,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
   __shared__ i_t found_moves;
-  auto changed_routes = raft::device_span<i_t>{(i_t*)shmem, (size_t)sol.n_routes};
+  auto changed_routes = raft::device_span<i_t>{
+    reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf)), (size_t)sol.n_routes};
   // size can be routes/2, but n_routes will never exceed shared memory, keep it like this
   auto executed_move_indices = raft::device_span<i_t>{changed_routes.end(), (size_t)sol.n_routes};
   init_block_shmem(changed_routes, 0);
@@ -198,13 +201,13 @@ void select_random_route_pairs(solution_t<i_t, f_t, REQUEST>& sol,
   auto nblocks           = 1;
   size_t sh_size         = 2 * sol.n_routes * sizeof(i_t);
 
-  if (!set_shmem_of_kernel(select_random_route_pairs_kernel<i_t, f_t, REQUEST>, sh_size)) {
-    cuopt_assert(false, "Not enough shared memory in select_random_route_pairs");
-    return;
-  }
+  block_workspace_t ws(select_random_route_pairs_kernel<i_t, f_t, REQUEST>,
+                       sh_size,
+                       nblocks,
+                       sol.sol_handle->get_stream());
   select_random_route_pairs_kernel<i_t, f_t, REQUEST>
-    <<<nblocks, nthreads, sh_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+    <<<nblocks, nthreads, ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), seed_generator::get_seed(), ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 }
 

@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include "routing/utilities/block_workspace.cuh"
 #include "squeeze.cuh"
 
 namespace cuopt {
@@ -32,12 +33,20 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::repair_empty_routes()
       128, raft::alignTo(solution_ptr->get_max_active_nodes_for_all_routes(), raft::WarpSize));
     auto const sh_find = sh_route + sizeof(cand_t);
 
-    if (!set_shmem_of_kernel(find_best_empty_route_move<i_t, f_t, REQUEST>, sh_find)) { break; }
+    block_workspace_t find_empty_ws(find_best_empty_route_move<i_t, f_t, REQUEST>,
+                                    sh_find,
+                                    n_blocks,
+                                    solution_ptr->sol_handle->get_stream());
     // reset the best move stored
     best_move.set_value_async(uninit_cand, solution_ptr->sol_handle->get_stream());
     find_best_empty_route_move<i_t, f_t, REQUEST>
-      <<<n_blocks, TPB, sh_find, solution_ptr->sol_handle->get_stream()>>>(
-        solution_ptr->view(), best_move.data(), include_objective, default_weights, excess_limit);
+      <<<n_blocks, TPB, find_empty_ws.shmem_size(), solution_ptr->sol_handle->get_stream()>>>(
+        solution_ptr->view(),
+        best_move.data(),
+        include_objective,
+        default_weights,
+        excess_limit,
+        find_empty_ws.view());
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
 
     // If unable to find feasible moves, switch to least excess moves
@@ -48,10 +57,13 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::repair_empty_routes()
       continue;
     }
 
-    if (!set_shmem_of_kernel(execute_best_empty_route_move<i_t, f_t, REQUEST>, sh_route)) { break; }
+    block_workspace_t exec_empty_ws(execute_best_empty_route_move<i_t, f_t, REQUEST>,
+                                    sh_route,
+                                    1,
+                                    solution_ptr->sol_handle->get_stream());
     execute_best_empty_route_move<i_t, f_t, REQUEST>
-      <<<1, TPB, sh_route, solution_ptr->sol_handle->get_stream()>>>(solution_ptr->view(),
-                                                                     best_move.data());
+      <<<1, TPB, exec_empty_ws.shmem_size(), solution_ptr->sol_handle->get_stream()>>>(
+        solution_ptr->view(), best_move.data(), exec_empty_ws.view());
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
     ++counter;
   }
@@ -89,20 +101,21 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_insert(i_t n_inser
     async_fill(best_squeeze_per_cand, cand_t{0, 0, std::numeric_limits<double>::max()}, stream);
     async_fill(best_squeeze_per_route, cand_t{0, 0, std::numeric_limits<double>::max()}, stream);
 
-    bool is_set =
-      set_shmem_of_kernel(find_all_squeeze_pos<i_t, f_t, REQUEST, squeeze_mode>, sh_size);
-    cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t find_all_ws(false, sh_size, n_blocks, stream);
     // insert the request greedily to a position that will generate the least excess
     find_all_squeeze_pos<i_t, f_t, REQUEST, squeeze_mode>
-      <<<n_blocks, TPB, sh_size, stream>>>(solution_ptr->view(),
-                                           EP.view(),
-                                           cuopt::make_span(best_squeeze_per_cand),
-                                           cuopt::make_span(best_squeeze_per_route),
-                                           include_objective,
-                                           weights,
-                                           excess_limit,
-                                           n_insertions,
-                                           inserted_requests.data());
+      <<<n_blocks, TPB, find_all_ws.shmem_size(), stream>>>(
+        solution_ptr->view(),
+        EP.view(),
+        cuopt::make_span(best_squeeze_per_cand),
+        cuopt::make_span(best_squeeze_per_route),
+        include_objective,
+        weights,
+        excess_limit,
+        n_insertions,
+        inserted_requests.data(),
+        find_all_ws.view());
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
 
     if constexpr (squeeze_mode) {
@@ -115,16 +128,17 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_insert(i_t n_inser
     }
 
     size_t move_blocks = solution_ptr->get_n_routes();
-    is_set =
-      set_shmem_of_kernel(execute_all_move<i_t, f_t, REQUEST, squeeze_mode>, shmem_for_route);
-    cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t exec_all_ws(false, shmem_for_route, move_blocks, stream);
     // execute squeeze moves
     execute_all_move<i_t, f_t, REQUEST, squeeze_mode>
-      <<<move_blocks, TPB, shmem_for_route, stream>>>(solution_ptr->view(),
-                                                      cuopt::make_span(best_squeeze_per_cand),
-                                                      cuopt::make_span(best_squeeze_per_route),
-                                                      inserted_requests.data(),
-                                                      number_of_inserted.data());
+      <<<move_blocks, TPB, exec_all_ws.shmem_size(), stream>>>(
+        solution_ptr->view(),
+        cuopt::make_span(best_squeeze_per_cand),
+        cuopt::make_span(best_squeeze_per_route),
+        inserted_requests.data(),
+        number_of_inserted.data(),
+        exec_all_ws.view());
     RAFT_CHECK_CUDA(stream);
     auto n_inserted = number_of_inserted.value(stream);
 
@@ -291,27 +305,30 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze(
   rmm::device_scalar<cand_t> best_move({0, 0, std::numeric_limits<double>::max()}, stream);
 
   solution_ptr->d_lock.set_value_to_zero_async(stream);
-  bool is_set = set_shmem_of_kernel(find_best_squeeze_pos<i_t, f_t, REQUEST>, sh_size);
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
   constexpr bool include_objective = false;
   if (random_route) {
     i_t route_id = dist_candidate(gen_candidate) % solution_ptr->get_n_routes();
+    block_workspace_t find_sq_ws(find_best_squeeze_pos<i_t, f_t, REQUEST>, sh_size, 1, stream);
     // insert the request greedily to a position that will generate the least excess
     find_best_squeeze_pos<i_t, f_t, REQUEST>
-      <<<1, TPB, sh_size, stream>>>(solution_ptr->view(),
-                                    request,
-                                    best_move.data(),
-                                    include_objective,
-                                    local_search_ptr_->move_candidates.weights,
-                                    route_id);
+      <<<1, TPB, find_sq_ws.shmem_size(), stream>>>(solution_ptr->view(),
+                                                    request,
+                                                    best_move.data(),
+                                                    include_objective,
+                                                    local_search_ptr_->move_candidates.weights,
+                                                    find_sq_ws.view(),
+                                                    route_id);
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   } else {
-    find_best_squeeze_pos<i_t, f_t, REQUEST>
-      <<<n_blocks, TPB, sh_size, stream>>>(solution_ptr->view(),
-                                           request,
-                                           best_move.data(),
-                                           include_objective,
-                                           local_search_ptr_->move_candidates.weights);
+    block_workspace_t find_sq_ws(
+      find_best_squeeze_pos<i_t, f_t, REQUEST>, sh_size, n_blocks, stream);
+    find_best_squeeze_pos<i_t, f_t, REQUEST><<<n_blocks, TPB, find_sq_ws.shmem_size(), stream>>>(
+      solution_ptr->view(),
+      request,
+      best_move.data(),
+      include_objective,
+      local_search_ptr_->move_candidates.weights,
+      find_sq_ws.view());
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   }
   cuopt_assert(best_move.value(stream).cost_counter.cost != std::numeric_limits<double>::max(),
@@ -372,13 +389,10 @@ void guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_breaks()
                    sizeof(i_t) * n_break_dims;
   size_t TPB = 128;
 
-  if (!set_shmem_of_kernel(squeeze_breaks_kernel<i_t, f_t, REQUEST>, sh_size)) {
-    cuopt_assert(false, "Not enough shared memory in squeeze_breaks_kernel");
-    return;
-  }
+  block_workspace_t breaks_ws(squeeze_breaks_kernel<i_t, f_t, REQUEST>, sh_size, n_blocks, stream);
 
-  squeeze_breaks_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, sh_size, stream>>>(
-    solution_ptr->view(), false, local_search_ptr_->move_candidates.weights);
+  squeeze_breaks_kernel<i_t, f_t, REQUEST><<<n_blocks, TPB, breaks_ws.shmem_size(), stream>>>(
+    solution_ptr->view(), false, local_search_ptr_->move_candidates.weights, breaks_ws.view());
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   solution_ptr->compute_cost();
   solution_ptr->global_runtime_checks(false, false, "squeeze_breaks_end");

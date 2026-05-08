@@ -1,11 +1,12 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <raft/core/device_span.hpp>
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 #include "solution.cuh"
 
@@ -127,9 +128,11 @@ __global__ void insert_nodes_to_route_kernel(typename solution_t<i_t, f_t, REQUE
                                              i_t route_id,
                                              i_t intra_idx,
                                              i_t n_nodes_to_insert,
-                                             NodeInfo<>* d_nodes_to_insert)
+                                             NodeInfo<>* d_nodes_to_insert,
+                                             block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cuopt_assert(gridDim.x == 1, "Kernel should only have one block");
   const auto& order_info = sol.problem.order_info;
   auto& global_route     = sol.routes[route_id];
@@ -175,13 +178,15 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void insert_node_to_best_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol,
                                            NodeInfo<> node,
                                            const bool include_objective,
-                                           const infeasible_cost_t weights)
+                                           const infeasible_cost_t weights,
+                                           block_workspace_t::view_t block_workspace)
 {
   // This is only called for PDP use case to handle cluster infeasibility caused by
   // assymetric and symmetric EAX
   cuopt_assert(REQUEST == request_t::PDP,
                "insert_node_to_best_kernel should only be called for PDP use cases!");
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   __shared__ double reduction_buf[2 * raft::WarpSize];
   __shared__ i_t reduction_idx;
   const auto& order_info     = sol.problem.order_info;
@@ -268,9 +273,11 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void remove_nodes_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol,
                                     i_t n_nodes_to_eject,
                                     NodeInfo<>* d_nodes_to_eject,
-                                    i_t* empty_route_produced)
+                                    i_t* empty_route_produced,
+                                    block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   auto& route_node_map = sol.route_node_map;
   cuopt_assert(gridDim.x == 1, "Kernel should only have one block");

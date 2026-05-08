@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 #include "../solution/solution.cuh"
 
 #include <routing/utilities/cuopt_utils.cuh>
+#include "routing/utilities/block_workspace.cuh"
 
 #include <thrust/random.h>
 #include <thrust/shuffle.h>
@@ -60,9 +61,11 @@ DI void sorted_insert_intra(T* array, T item, int curr_size)
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void eject_until_feasible_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                             bool add_slack_to_sol,
-                                            int64_t seed)
+                                            int64_t seed,
+                                            block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   __shared__ i_t ejection_counter;
   // keep the currenlty ejected node ids here sorted
   __shared__ i_t ejected_intra_indices[10];
@@ -362,11 +365,10 @@ void solution_t<i_t, f_t, REQUEST>::eject_until_feasible(bool add_slack_to_sol)
   const i_t TPB = 32;
   compute_max_active();
   size_t sh_size = get_temp_route_shared_size();
-  bool is_set    = set_shmem_of_kernel(eject_until_feasible_kernel<i_t, f_t, REQUEST>, sh_size);
-  cuopt_assert(is_set, "Not enough shared memory on device for get_all_feasible_insertion!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
-  eject_until_feasible_kernel<i_t, f_t, REQUEST>
-    <<<n_routes, TPB, sh_size, stream>>>(view(), add_slack_to_sol, seed_generator::get_seed());
+  block_workspace_t eject_ws(
+    eject_until_feasible_kernel<i_t, f_t, REQUEST>, sh_size, n_routes, stream);
+  eject_until_feasible_kernel<i_t, f_t, REQUEST><<<n_routes, TPB, eject_ws.shmem_size(), stream>>>(
+    view(), add_slack_to_sol, seed_generator::get_seed(), eject_ws.view());
   compute_cost();
   global_runtime_checks(false, true, "eject_until_feasible");
 }

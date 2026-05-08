@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,6 +11,7 @@
 #include "guided_ejection_search.cuh"
 
 #include <routing/utilities/cuopt_utils.cuh>
+#include "routing/utilities/block_workspace.cuh"
 
 namespace cuopt {
 namespace routing {
@@ -71,9 +72,11 @@ __global__ void find_best_empty_route_move(typename solution_t<i_t, f_t, REQUEST
                                            cand_t* global_best,
                                            bool include_objective,
                                            infeasible_cost_t weights,
-                                           double excess_limit)
+                                           double excess_limit,
+                                           block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shbuf[];
+  extern __shared__ char shmem_buf[];
+  i_t* shbuf   = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cand_t* cand = (cand_t*)shbuf;
   i_t* shmem   = (i_t*)&cand[1];
 
@@ -114,11 +117,14 @@ __global__ void find_best_empty_route_move(typename solution_t<i_t, f_t, REQUEST
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void execute_best_empty_route_move(
-  typename solution_t<i_t, f_t, REQUEST>::view_t solution, cand_t* global_best)
+  typename solution_t<i_t, f_t, REQUEST>::view_t solution,
+  cand_t* global_best,
+  block_workspace_t::view_t block_workspace)
 {
   if (global_best->cost_counter.cost == std::numeric_limits<double>::max()) { return; }
 
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   // Eject request from it's original route and insert it to the best empty route
 
@@ -179,9 +185,11 @@ __global__ void find_best_squeeze_pos(typename solution_t<i_t, f_t, REQUEST>::vi
                                       cand_t* global_best,
                                       bool include_objective,
                                       infeasible_cost_t weights,
+                                      block_workspace_t::view_t block_workspace,
                                       i_t route_id = -1)
 {
-  extern __shared__ i_t shbuf[];
+  extern __shared__ char shmem_buf[];
+  i_t* shbuf   = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cand_t* cand = (cand_t*)shbuf;
   i_t* shmem   = (i_t*)&cand[1];
 
@@ -212,9 +220,11 @@ __global__ void find_all_squeeze_pos(
   infeasible_cost_t weights,
   double excess_limit,
   i_t n_insertions,
-  i_t* inserted_requests)
+  i_t* inserted_requests,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shbuf[];
+  extern __shared__ char shmem_buf[];
+  i_t* shbuf   = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cand_t* cand = (cand_t*)shbuf;
   i_t* shmem   = (i_t*)&cand[1];
 
@@ -321,9 +331,11 @@ __global__ void execute_all_move(typename solution_t<i_t, f_t, REQUEST>::view_t 
                                  raft::device_span<cand_t> best_per_request,
                                  raft::device_span<cand_t> best_per_route,
                                  i_t* inserted_requests,
-                                 i_t* number_of_inserted)
+                                 i_t* number_of_inserted,
+                                 block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem  = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cand_t cand = best_per_route[blockIdx.x];
 
   i_t insertion_1, insertion_2, route_id;
@@ -405,9 +417,11 @@ __global__ void eject_inserted_requests(
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       const bool include_objective,
-                                      infeasible_cost_t weights)
+                                      infeasible_cost_t weights,
+                                      block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   i_t route_id = blockIdx.x;
 

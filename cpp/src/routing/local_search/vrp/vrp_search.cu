@@ -1,10 +1,11 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
+#include "routing/utilities/block_workspace.cuh"
 #include "vrp_execute.cuh"
 #include "vrp_search.cuh"
 
@@ -564,9 +565,11 @@ DI bool get_work_config(typename solution_t<i_t, f_t, REQUEST>::view_t& solution
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void find_vrp_moves_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                       typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-                                      bool recycle)
+                                      bool recycle,
+                                      block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem_buf[];
+  char* shmem = block_workspace.get_workspace(shmem_buf);
   search_data_t<i_t> search_data;
   bool early_exit =
     get_work_config<i_t, f_t, REQUEST>(solution, move_candidates, search_data, recycle);
@@ -591,7 +594,7 @@ __global__ void find_vrp_moves_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
   }
   size_t size_of_frag = dimensions_route_t<i_t, f_t, REQUEST>::get_shared_size(
     max_fragment_size, solution.problem.dimensions_info);
-  auto frag_ptr = (i_t*)(((uint8_t*)shmem) + size_of_frag * threadIdx.x);
+  auto frag_ptr = (i_t*)(((uint8_t*)shmem) + size_of_frag * (size_t)threadIdx.x);
   typename dimensions_route_t<i_t, f_t, REQUEST>::view_t fragment;
   // max_fragment_size-1, because the create shared route adds one more already
   thrust::tie(fragment, frag_ptr) =
@@ -668,14 +671,16 @@ bool find_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
   }
   cuopt_assert(n_blocks > 0, "n_blocks should be positive");
   cuopt_expects(n_blocks > 0, error_type_t::RuntimeError, "A runtime error occurred!");
-  if (!set_shmem_of_kernel(find_vrp_moves_kernel<i_t, f_t, REQUEST>, sh_size)) { return false; }
-  move_candidates.vrp_move_candidates.find_kernel_graph.start_capture(sol.sol_handle->get_stream());
+  block_workspace_t find_ws(
+    find_vrp_moves_kernel<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
+  // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
+  // move_candidates.vrp_move_candidates.find_kernel_graph.start_capture(sol.sol_handle->get_stream());
   move_candidates.vrp_move_candidates.reset(sol.sol_handle);
   find_vrp_moves_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, sh_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), recycle);
-  move_candidates.vrp_move_candidates.find_kernel_graph.end_capture(sol.sol_handle->get_stream());
-  move_candidates.vrp_move_candidates.find_kernel_graph.launch_graph(sol.sol_handle->get_stream());
+    <<<n_blocks, TPB, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), recycle, find_ws.view());
+  // move_candidates.vrp_move_candidates.find_kernel_graph.end_capture(sol.sol_handle->get_stream());
+  // move_candidates.vrp_move_candidates.find_kernel_graph.launch_graph(sol.sol_handle->get_stream());
   sol.sol_handle->sync_stream();
   return true;
 }

@@ -10,6 +10,7 @@
 #include "../util_kernels/top_k.cuh"
 #include "../utilities/cuopt_utils.cuh"
 #include "local_search.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "vrp/fragment_kernels.cuh"
 
 namespace cuopt {
@@ -73,9 +74,11 @@ __global__ void find_two_opt_moves(typename solution_t<i_t, f_t, REQUEST>::view_
                                    typename move_candidates_t<i_t, f_t>::view_t move_candidates,
                                    raft::device_span<two_opt_cand_t<i_t>> best_candidates,
                                    raft::device_span<two_opt_cand_t<i_t>> sampled_nodes_data,
-                                   raft::device_span<i_t> locks)
+                                   raft::device_span<i_t> locks,
+                                   block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem[];
+  char* mem = block_workspace.get_workspace(shmem);
 
   const auto node_info = move_candidates.nodes_to_search.sampled_nodes_to_search[blockIdx.x];
   cuopt_assert(
@@ -106,7 +109,7 @@ __global__ void find_two_opt_moves(typename solution_t<i_t, f_t, REQUEST>::view_
     route.get_weighted_excess(move_candidates.weights) * ls_excess_multiplier_route;
 
   auto sh_reverse_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (int*)shmem, route, route.get_num_nodes());
+    (int*)mem, route, route.get_num_nodes());
   __syncthreads();
   for (auto i = threadIdx.x; i <= route.get_num_nodes(); i += blockDim.x) {
     auto node      = route.get_node(i);
@@ -197,9 +200,11 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void execute_two_opt_moves(typename solution_t<i_t, f_t, REQUEST>::view_t sol,
                                       typename move_candidates_t<i_t, f_t>::view_t move_candidates,
                                       raft::device_span<two_opt_cand_t<i_t>> best_candidates,
-                                      raft::device_span<i_t> moved_regions)
+                                      raft::device_span<i_t> moved_regions,
+                                      block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem[];
+  char* mem       = block_workspace.get_workspace(shmem);
   auto route_id   = blockIdx.x;
   auto route      = sol.routes[route_id];
   auto max_active = sol.get_max_active_nodes_for_all_routes();
@@ -211,7 +216,7 @@ __global__ void execute_two_opt_moves(typename solution_t<i_t, f_t, REQUEST>::vi
     if (threadIdx.x == 0) { atomicAdd(move_candidates.debug_delta, cand.selection_delta); });
 
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes());
+    (i_t*)mem, route, route.get_num_nodes());
   __syncthreads();
   s_route.copy_from(route);
   __syncthreads();
@@ -258,9 +263,11 @@ template <typename i_t, typename f_t, request_t REQUEST, int BLOCK_SIZE>
 __global__ void execute_recycle(typename solution_t<i_t, f_t, REQUEST>::view_t sol,
                                 typename move_candidates_t<i_t, f_t>::view_t move_candidates,
                                 raft::device_span<two_opt_cand_t<i_t>> sampled_nodes_data,
-                                raft::device_span<i_t> moved_regions)
+                                raft::device_span<i_t> moved_regions,
+                                block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ double shmem[];
+  extern __shared__ char shmem[];
+  char* mem = block_workspace.get_workspace(shmem);
   __shared__ i_t sh_overlaps;
 
   auto route_id = blockIdx.x;
@@ -288,7 +295,7 @@ __global__ void execute_recycle(typename solution_t<i_t, f_t, REQUEST>::view_t s
   auto route      = sol.routes[route_id];
   auto frag_size  = cand.second - (cand.first);
   auto s_route    = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)shmem, route, route.get_num_nodes());
+    (i_t*)mem, route, route.get_num_nodes());
   __syncthreads();
   s_route.copy_from(route);
   __syncthreads();
@@ -390,15 +397,16 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
 
   auto sh_size = sol.check_routes_can_insert_and_get_sh_size(0);
 
-  if (!set_shmem_of_kernel(find_two_opt_moves<i_t, f_t, REQUEST>, sh_size)) { return false; }
-
+  block_workspace_t find_ws(
+    find_two_opt_moves<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
   find_two_opt_moves<i_t, f_t, REQUEST>
-    <<<n_blocks, n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+    <<<n_blocks, n_threads, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
       sol.view(),
       move_candidates.view(),
       cuopt::make_span(two_opt_cand_data_),
       cuopt::make_span(sampled_nodes_data_),
-      cuopt::make_span(locks_));
+      cuopt::make_span(locks_),
+      find_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   n_moves_found = thrust::count_if(sol.sol_handle->get_thrust_policy(),
@@ -426,27 +434,31 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
   sh_size = shared_route_size + size_of_frag;
 
   if (sol.problem_ptr->is_cvrp_intra()) {
-    if (!set_shmem_of_kernel(execute_recycle<i_t, f_t, REQUEST, n_threads>, sh_size)) {
-      return false;
-    }
     // Dynamic resizing due to breaks
     moved_regions_.resize(sol.get_n_routes() * sol.get_max_active_nodes_for_all_routes(),
                           sol.sol_handle->get_stream());
     async_fill(moved_regions_, 0, sol.sol_handle->get_stream());
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t recycle_ws(false, sh_size, sol.get_n_routes(), sol.sol_handle->get_stream());
     execute_recycle<i_t, f_t, REQUEST, n_threads>
-      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+      <<<sol.get_n_routes(), n_threads, recycle_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
         sol.view(),
         move_candidates.view(),
         cuopt::make_span(sampled_nodes_data_),
-        cuopt::make_span(moved_regions_));
+        cuopt::make_span(moved_regions_),
+        recycle_ws.view());
   } else {
-    if (!set_shmem_of_kernel(execute_two_opt_moves<i_t, f_t, REQUEST>, sh_size)) { return false; }
+    block_workspace_t exec_ws(execute_two_opt_moves<i_t, f_t, REQUEST>,
+                              sh_size,
+                              sol.get_n_routes(),
+                              sol.sol_handle->get_stream());
     execute_two_opt_moves<i_t, f_t, REQUEST>
-      <<<sol.get_n_routes(), n_threads, sh_size, sol.sol_handle->get_stream()>>>(
+      <<<sol.get_n_routes(), n_threads, exec_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
         sol.view(),
         move_candidates.view(),
         cuopt::make_span(two_opt_cand_data_),
-        cuopt::make_span(moved_regions_));
+        cuopt::make_span(moved_regions_),
+        exec_ws.view());
   }
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 

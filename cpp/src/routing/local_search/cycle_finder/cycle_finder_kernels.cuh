@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 
 #include "../../routing_helpers.cuh"
 #include "cycle_finder.hpp"
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/constants.hpp"
 #include "routing/utilities/cuopt_utils.cuh"
 
@@ -16,8 +17,7 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-// since we have many kernels declare the shmem here
-extern __shared__ double sh_buf[];
+// shmem is declared per-kernel using block_workspace_t
 
 template <size_t max_routes>
 __global__ void clamp_occupied(typename device_map_t<key_t<max_routes>, double>::view_t curr_path)
@@ -112,10 +112,13 @@ __global__ void extend_cycle(
 
 template <typename i_t, typename f_t, size_t max_routes>
 __global__ void init_kernel(typename graph_t<i_t, f_t>::view_t const graph_view,
-                            typename device_map_t<key_t<max_routes>, double>::view_t curr_map)
+                            typename device_map_t<key_t<max_routes>, double>::view_t curr_map,
+                            block_workspace_t::view_t block_workspace)
 {
-  int tail      = blockIdx.x;
-  auto row_size = graph_view.row_sizes[tail];
+  extern __shared__ char shmem_buf[];
+  double* sh_buf = reinterpret_cast<double*>(block_workspace.get_workspace(shmem_buf));
+  int tail       = blockIdx.x;
+  auto row_size  = graph_view.row_sizes[tail];
   if (row_size == 0) return;
   int src_route = graph_view.route_ids[tail];
   int offset    = tail * max_graph_nodes_per_row;
@@ -189,8 +192,11 @@ __global__ void find_kernel(
   typename device_map_t<key_t<max_routes>, double>::view_t const prev_map,
   typename device_map_t<key_t<max_routes>, double>::view_t curr_map,
   typename cycle_candidates_t<i_t, f_t, max_routes>::view_t cycle_candidates,
-  bool depot_included)
+  bool depot_included,
+  block_workspace_t::view_t block_workspace)
 {
+  extern __shared__ char shmem_buf[];
+  double* sh_buf = reinterpret_cast<double*>(block_workspace.get_workspace(shmem_buf));
   __shared__ int reduction_index;
 
   int head = blockIdx.x;

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -865,12 +865,14 @@ struct solve {
           auto time_limit = timer.clamp_remaining_time(sol_gen_time);
           g.generate_solution(
             temp_pair.first, target_vehicle_ids_, time_limit, final_weights, timer);
+          std::cout << "Time after generating solution: " << timer.elapsed_time() << std::endl;
           first_gen = false;
         }
-        
+
         bool is_feasible_before_improve = temp_pair.first.is_feasible();
 
         lm.improve(temp_pair.first, final_weights, timer.remaining_time());
+        std::cout << "Time after improving solution: " << timer.elapsed_time() << std::endl;
 
         // If LS is making the initial feasible solutions infeasible,
         // it means that the infeasible weights are not sufficient

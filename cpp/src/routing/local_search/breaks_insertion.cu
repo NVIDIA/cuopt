@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 
 #include "../solution/solution.cuh"
 #include "move_candidates/move_candidates.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 
 namespace cuopt {
@@ -20,9 +21,11 @@ __global__ void find_break_insertions_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,
   const bool include_objective,
   infeasible_cost_t weights,
-  typename breaks_move_candidates_t<i_t, f_t>::view_t breaks_move_candidates)
+  typename breaks_move_candidates_t<i_t, f_t>::view_t breaks_move_candidates,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem                 = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   const int n_max_break_dims = solution.problem.get_max_break_dimensions();
 
   i_t ejected_intra_idx = -1;
@@ -161,24 +164,25 @@ void find_break_insertions(solution_t<i_t, f_t, REQUEST>& sol,
     // We are only exchanging and not inserting new ones, so we don't need additional memory
     size_t sh_size = sol.get_temp_route_shared_size(0);
 
-    if (!set_shmem_of_kernel(find_break_insertions_kernel<i_t, f_t, REQUEST>, sh_size)) {
-      cuopt_assert(false, "Not enough shared memory in find_break_insertions_kernel");
-      return;
-    }
-
+    block_workspace_t find_ws(find_break_insertions_kernel<i_t, f_t, REQUEST>,
+                              sh_size,
+                              n_blocks,
+                              sol.sol_handle->get_stream());
     find_break_insertions_kernel<i_t, f_t, REQUEST>
-      <<<n_blocks, TPB, sh_size, sol.sol_handle->get_stream()>>>(
+      <<<n_blocks, TPB, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
         sol.view(),
         move_candidates.include_objective,
         move_candidates.weights,
-        move_candidates.breaks_move_candidates.view());
+        move_candidates.breaks_move_candidates.view(),
+        find_ws.view());
     RAFT_CUDA_TRY(cudaStreamSynchronize(sol.sol_handle->get_stream()));
   }
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void execute_break_moves(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
-                                    typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+                                    typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+                                    block_workspace_t::view_t block_workspace)
 {
   auto& best_cand_per_route = move_candidates.breaks_move_candidates.best_cand_per_route;
 
@@ -187,7 +191,8 @@ __global__ void execute_break_moves(typename solution_t<i_t, f_t, REQUEST>::view
 
   if (curr_route_cand.cost > 0.) { return; }
 
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   cuopt_assert(route_id < solution.n_routes, "route id should be less than num routes!");
   auto original_route = solution.routes[route_id];
@@ -252,10 +257,11 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_break_moves(solution_t<i_t, f_t,
 
   // We are only exchanging breaks and not inserting any new ones, so we don't need extra memory
   size_t shared_size = sol.check_routes_can_insert_and_get_sh_size(0);
-  if (!set_shmem_of_kernel(execute_break_moves<i_t, f_t, REQUEST>, shared_size)) { return false; }
+  block_workspace_t exec_ws(
+    execute_break_moves<i_t, f_t, REQUEST>, shared_size, n_blocks, sol.sol_handle->get_stream());
   execute_break_moves<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(sol.view(),
-                                                                   move_candidates.view());
+    <<<n_blocks, TPB, exec_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), exec_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   sol.compute_cost();

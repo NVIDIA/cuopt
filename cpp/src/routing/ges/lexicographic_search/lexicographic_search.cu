@@ -14,6 +14,7 @@
 
 #include <routing/utilities/cuopt_utils.cuh>
 #include <utilities/seed_generator.cuh>
+#include "routing/utilities/block_workspace.cuh"
 
 #include "raft/core/span.hpp"
 #include "raft/random/device/sample.cuh"
@@ -118,7 +119,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
                                      const i_t* __restrict__ p_scores,
                                      uint32_t* __restrict__ global_min_p,
                                      i_t* __restrict__ global_sequence,
-                                     i_t* global_random_counter)
+                                     i_t* global_random_counter,
+                                     block_workspace_t::view_t block_workspace)
 {
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(solution.problem.order_info.depot_included),
@@ -144,7 +146,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
   cuopt_assert(pickup_insert_idx < route_length,
                "Intra pickup id must be inferior to route length");
 
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem                  = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   const auto& dimensions_info = solution.problem.dimensions_info;
   auto request_node           = solution.get_request(request_id);
   auto pickup_node            = request_node.node();
@@ -574,10 +577,12 @@ __global__ void execute_lexico_move(
   uint32_t* __restrict__ global_min_p,
   i_t* __restrict__ global_sequence,
   typename ejection_pool_t<request_info_t<i_t, REQUEST>>::view_t EP,
-  const i_t* __restrict__ p_scores)
+  const i_t* __restrict__ p_scores,
+  block_workspace_t::view_t block_workspace)
 
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(solution.problem.order_info.depot_included),
                "Request id should be positive");
@@ -691,7 +696,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
   while (k_max > 1) {
     sh_size = node_stack_t<i_t, f_t, REQUEST>::get_shared_size(
       solution_ptr, 1, k_max, threads_per_block_lexico);
-    if (set_shmem_of_kernel(lexicographic_search<i_t, f_t, REQUEST>, sh_size)) {
+    // probe with n_blocks=1 since shmem mode doesn't allocate global memory
+    block_workspace_t probe_ws(lexicographic_search<i_t, f_t, REQUEST>, sh_size, 1, stream);
+    if (!probe_ws.uses_global_memory()) {
       is_set = true;
       break;
     }
@@ -707,6 +714,9 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
     n_blocks_lexico *= max_neighbors<i_t, REQUEST>(k_max);
   }
 
+  block_workspace_t lexico_ws(
+    lexicographic_search<i_t, f_t, REQUEST>, sh_size, n_blocks_lexico, stream);
+
   // Init global min before call to lexicographic
   const auto max = std::numeric_limits<typename decltype(global_min_p_)::value_type>::max();
   const i_t zero = 0;
@@ -714,13 +724,15 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
   solution_ptr->d_lock.set_value_async(zero, stream);
   global_random_counter_.set_value_async(zero, stream);
   lexicographic_search<i_t, f_t>
-    <<<n_blocks_lexico, threads_per_block_lexico, sh_size, stream>>>(solution_ptr->view(),
-                                                                     k_max,
-                                                                     request_id,
-                                                                     p_scores_.data(),
-                                                                     global_min_p_.data(),
-                                                                     global_sequence_.data(),
-                                                                     global_random_counter_.data());
+    <<<n_blocks_lexico, threads_per_block_lexico, lexico_ws.shmem_size(), stream>>>(
+      solution_ptr->view(),
+      k_max,
+      request_id,
+      p_scores_.data(),
+      global_min_p_.data(),
+      global_sequence_.data(),
+      global_random_counter_.data(),
+      lexico_ws.view());
   solution_ptr->sol_handle->sync_stream();
   RAFT_CHECK_CUDA(stream);
   // If global_min_p_ != max do the move
@@ -728,16 +740,17 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
     // cuopt_assert(compare_lexico_results(*this, solution, request_id, EP, k_max), "");
     const auto shared_for_tmp_route =
       solution_ptr->get_temp_route_shared_size(max_neighbors<i_t, REQUEST>(k_max) + 1);
-    if (!set_shmem_of_kernel(execute_lexico_move<i_t, f_t, REQUEST>, shared_for_tmp_route)) {
-      return false;
-    }
+    block_workspace_t exec_lexico_ws(
+      execute_lexico_move<i_t, f_t, REQUEST>, shared_for_tmp_route, 1, stream);
     execute_lexico_move<i_t, f_t, REQUEST>
-      <<<1, threads_per_block_lexico, shared_for_tmp_route, stream>>>(solution_ptr->view(),
-                                                                      request_id,
-                                                                      global_min_p_.data(),
-                                                                      global_sequence_.data(),
-                                                                      EP.view(),
-                                                                      p_scores_.data());
+      <<<1, threads_per_block_lexico, exec_lexico_ws.shmem_size(), stream>>>(
+        solution_ptr->view(),
+        request_id,
+        global_min_p_.data(),
+        global_sequence_.data(),
+        EP.view(),
+        p_scores_.data(),
+        exec_lexico_ws.view());
     RAFT_CHECK_CUDA(stream);
     i_t removed_size = global_sequence_.element(1, stream);
     if constexpr (REQUEST == request_t::PDP) { removed_size = (removed_size - 1) / 2; }

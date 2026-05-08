@@ -23,6 +23,20 @@
 
 namespace cuopt {
 
+#if !defined(__CUDA_ARCH__)
+/** Host-only: runtime kernel symbol name for logging (CUDA 12+); otherwise nullptr. */
+inline const char* kernel_host_pointer_symbol_name(const void* kernel_host_ptr)
+{
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 12000)
+  const char* name = nullptr;
+  if (cudaFuncGetName(&name, kernel_host_ptr) == cudaSuccess && name != nullptr) { return name; }
+#else
+  (void)kernel_host_ptr;
+#endif
+  return nullptr;
+}
+#endif  // !defined(__CUDA_ARCH__)
+
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 700)
 #error "cuOpt is only supported on Volta and newer architectures"
 #endif
@@ -229,6 +243,25 @@ inline bool set_shmem_of_kernel(Function* function, size_t dynamic_request_size)
         shmem_sizes[function] = dynamic_request_size;
         return true;
       } else {
+#if 0
+#if !defined(__CUDA_ARCH__)
+        const void* const entry = reinterpret_cast<const void*>(function);
+        const char* const sym  = kernel_host_pointer_symbol_name(entry);
+        fprintf(stderr,
+                "Could not set shared memory size for kernel %s (%p) to %zu: %s\n",
+                sym != nullptr ? sym : "(unknown)",
+                entry,
+                dynamic_request_size,
+                cudaGetErrorString(err));
+#else
+        fprintf(stderr,
+                "Could not set shared memory size for kernel (%p) to %zu: %s\n",
+                reinterpret_cast<const void*>(function),
+                dynamic_request_size,
+                cudaGetErrorString(err));
+#endif
+        exit(1);
+#endif
         cudaGetLastError();  // clear sticky error so later RAFT_CHECK_CUDA doesn't catch it
         return false;
       }

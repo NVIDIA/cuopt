@@ -357,14 +357,15 @@ class move_candidates_t {
   inline void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
     raft::common::nvtx::range fun_scope("move_candidates reset");
-    move_candidate_reset_graph.start_capture(sol_handle->get_stream());
+    // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
+    // move_candidate_reset_graph.start_capture(sol_handle->get_stream());
     cycles.reset(sol_handle);
     graph.reset(sol_handle);
     move_path.reset(sol_handle);
     cand_matrix.reset(sol_handle);
     cuopt_func_call(debug_delta.set_value_to_zero_async(sol_handle->get_stream()));
-    move_candidate_reset_graph.end_capture(sol_handle->get_stream());
-    move_candidate_reset_graph.launch_graph(sol_handle->get_stream());
+    // move_candidate_reset_graph.end_capture(sol_handle->get_stream());
+    // move_candidate_reset_graph.launch_graph(sol_handle->get_stream());
     sol_handle->sync_stream();
   }
 

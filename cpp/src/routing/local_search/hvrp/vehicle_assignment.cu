@@ -1,11 +1,12 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include "regret_kernels.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "vehicle_assignment.cuh"
 
 namespace cuopt {
@@ -19,13 +20,13 @@ auto compute_route_costs(solution_t<i_t, f_t, REQUEST>& sol,
 {
   auto n_blocks      = sol.get_n_routes() * sol.problem_ptr->get_num_buckets();
   auto constexpr TPB = 128;
-  auto shmem         = sol.check_routes_can_insert_and_get_sh_size(0);
-  bool is_set        = set_shmem_of_kernel(compute_route_costs_kernel<i_t, f_t, REQUEST>, shmem);
-  if (!is_set) { return false; }
+  auto sh_size       = sol.check_routes_can_insert_and_get_sh_size(0);
+  block_workspace_t costs_ws(
+    compute_route_costs_kernel<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
 
   compute_route_costs_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, shmem, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), vehicle_assignment.view());
+    <<<n_blocks, TPB, costs_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), vehicle_assignment.view(), costs_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   return true;
 }
@@ -36,15 +37,16 @@ auto compute_route_cost_differences(solution_t<i_t, f_t, REQUEST>& sol,
 {
   auto n_blocks      = sol.get_n_routes() * (vehicle_assignment.get_k_regrets() - 1);
   auto constexpr TPB = min_bucket_entries;
-  auto shmem = sizeof(double) * (std::max(sol.problem_ptr->get_num_buckets(), min_bucket_entries) +
-                                 min_bucket_entries) +
-               sizeof(i_t) * min_bucket_entries;
-  bool is_set =
-    set_shmem_of_kernel(compute_route_cost_differences_kernel<i_t, f_t, REQUEST, TPB>, shmem);
-  if (!is_set) { return false; }
+  auto sh_size =
+    sizeof(double) *
+      (std::max(sol.problem_ptr->get_num_buckets(), min_bucket_entries) + min_bucket_entries) +
+    sizeof(i_t) * min_bucket_entries;
+  // NTTP kernel: cannot set shmem attribute in a dependent template context.
+  block_workspace_t diff_ws(false, sh_size, n_blocks, sol.sol_handle->get_stream());
 
   compute_route_cost_differences_kernel<i_t, f_t, REQUEST, TPB>
-    <<<n_blocks, TPB, shmem, sol.sol_handle->get_stream()>>>(sol.view(), vehicle_assignment.view());
+    <<<n_blocks, TPB, diff_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), vehicle_assignment.view(), diff_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   return true;
 }
@@ -55,13 +57,15 @@ auto compute_route_vehicle_assignments(solution_t<i_t, f_t, REQUEST>& sol,
 {
   auto n_blocks      = sol.get_n_routes() * (vehicle_assignment.get_k_regrets() - 1);
   auto constexpr TPB = 128;
-  auto shmem         = sizeof(double) * (TPB / warp_size);
-  bool is_set =
-    set_shmem_of_kernel(compute_route_vehicle_assignments_kernel<i_t, f_t, REQUEST>, shmem);
-  if (!is_set) { return false; }
+  auto sh_size       = sizeof(double) * (TPB / warp_size);
+  block_workspace_t assign_ws(compute_route_vehicle_assignments_kernel<i_t, f_t, REQUEST>,
+                              sh_size,
+                              n_blocks,
+                              sol.sol_handle->get_stream());
 
   compute_route_vehicle_assignments_kernel<i_t, f_t, REQUEST>
-    <<<n_blocks, TPB, shmem, sol.sol_handle->get_stream()>>>(sol.view(), vehicle_assignment.view());
+    <<<n_blocks, TPB, assign_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), vehicle_assignment.view(), assign_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   return true;
 }
@@ -72,13 +76,14 @@ auto update_assignment(solution_t<i_t, f_t, REQUEST>& sol,
                        vehicle_assignment_t<i_t, f_t, REQUEST>& vehicle_assignment)
 {
   auto constexpr TPB = 128;
-  auto shmem         = sol.check_routes_can_insert_and_get_sh_size(0);
-  bool is_set        = set_shmem_of_kernel(update_assignment_kernel<i_t, f_t, REQUEST>, shmem);
-  if (!is_set) { return false; }
+  auto sh_size       = sol.check_routes_can_insert_and_get_sh_size(0);
+  auto k_iter        = vehicle_assignment.get_k_regrets() - 1;
+  block_workspace_t update_ws(
+    update_assignment_kernel<i_t, f_t, REQUEST>, sh_size, k_iter, sol.sol_handle->get_stream());
 
-  auto k_iter = vehicle_assignment.get_k_regrets() - 1;
-  update_assignment_kernel<i_t, f_t, REQUEST><<<k_iter, TPB, shmem, sol.sol_handle->get_stream()>>>(
-    sol.view(), move_candidates.view(), vehicle_assignment.view());
+  update_assignment_kernel<i_t, f_t, REQUEST>
+    <<<k_iter, TPB, update_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), vehicle_assignment.view(), update_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   return true;
 }
@@ -137,12 +142,9 @@ template <typename i_t, typename f_t, request_t REQUEST>
 auto find_best_assignment(solution_t<i_t, f_t, REQUEST>& sol,
                           vehicle_assignment_t<i_t, f_t, REQUEST>& vehicle_assignment)
 {
-  auto constexpr TPB   = 32;
-  auto constexpr shmem = 0;
-  bool is_set          = set_shmem_of_kernel(find_best_assignment_kernel<i_t, f_t, REQUEST>, shmem);
-  if (!is_set) { return false; }
+  auto constexpr TPB = 32;
   find_best_assignment_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, shmem, sol.sol_handle->get_stream()>>>(sol.view(), vehicle_assignment.view());
+    <<<1, TPB, 0, sol.sol_handle->get_stream()>>>(sol.view(), vehicle_assignment.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   return true;
 }
@@ -155,12 +157,14 @@ auto update_solution(solution_t<i_t, f_t, REQUEST>& sol,
   reset_vehicle_availability(sol, vehicle_assignment);
 
   auto constexpr TPB = 128;
-  auto shmem         = sol.check_routes_can_insert_and_get_sh_size(0);
-  bool is_set        = set_shmem_of_kernel(update_solution_kernel<i_t, f_t, REQUEST>, shmem);
-  if (!is_set) { return false; }
+  auto sh_size       = sol.check_routes_can_insert_and_get_sh_size(0);
+  block_workspace_t solution_ws(update_solution_kernel<i_t, f_t, REQUEST>,
+                                sh_size,
+                                sol.get_n_routes(),
+                                sol.sol_handle->get_stream());
   update_solution_kernel<i_t, f_t, REQUEST>
-    <<<sol.get_n_routes(), TPB, shmem, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), vehicle_assignment.view());
+    <<<sol.get_n_routes(), TPB, solution_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), vehicle_assignment.view(), solution_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   sol.compute_cost();

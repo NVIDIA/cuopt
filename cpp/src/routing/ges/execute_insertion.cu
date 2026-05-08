@@ -15,6 +15,7 @@
 #include "execute_insertion.cuh"
 #include "found_solution.cuh"
 #include "guided_ejection_search.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <utilities/cuda_helpers.cuh>
 #include "../node/node.cuh"
@@ -31,7 +32,8 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void __launch_bounds__(1024, 1)
   execute_feasible_insert(typename solution_t<i_t, f_t, REQUEST>::view_t view,
                           const request_info_t<i_t, REQUEST>* request_id,
-                          found_sol_t selected_candidate)
+                          found_sol_t selected_candidate,
+                          block_workspace_t::view_t block_workspace)
 {
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(view.problem.order_info.depot_included),
@@ -40,7 +42,8 @@ __global__ void __launch_bounds__(1024, 1)
                               view.routes[selected_candidate.route_id].get_num_nodes());
 
   auto& orginal_route = view.routes[selected_candidate.route_id];
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
     shmem, orginal_route, orginal_route.get_num_nodes() + request_info_t<i_t, REQUEST>::size());
@@ -65,7 +68,8 @@ template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
 __global__ void get_all_feasible_insertion(typename solution_t<i_t, f_t, REQUEST>::view_t view,
                                            const request_info_t<i_t, REQUEST>* request_id,
                                            feasible_move_t feasible_candidates,
-                                           int64_t seed)
+                                           int64_t seed,
+                                           block_workspace_t::view_t block_workspace)
 {
   cuopt_assert(request_id != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_id->is_valid(view.problem.order_info.depot_included),
@@ -73,7 +77,8 @@ __global__ void get_all_feasible_insertion(typename solution_t<i_t, f_t, REQUEST
   cuopt_assert(request_id->is_valid(view.get_num_orders()),
                "Request id should be inferior to number of orders");
 
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem         = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   const i_t route_id = blockIdx.x;
   cuopt_assert(route_id < view.n_routes,
                "Number of blocks (route_id) should be inferior to total number of routes");
@@ -130,7 +135,8 @@ __global__ void __launch_bounds__(1024, 1)
                                 uint64_t* __restrict__ feasible_candidates,
                                 typename ejection_pool_t<request_info_t<i_t, REQUEST>>::view_t EP,
                                 i_t fragment_step,
-                                i_t fragment_size)
+                                i_t fragment_size,
+                                block_workspace_t::view_t block_workspace)
 {
   cuopt_assert(*feasible_candidates != static_cast<uint64_t>(-1),
                "Execute insert from tmp route should only happen if there is a feasible candidate");
@@ -162,7 +168,8 @@ __global__ void __launch_bounds__(1024, 1)
   cuopt_assert(orginal_route_length > 0, "Route length should be strictly positive");
 
   // Load orignal route to shared to first fill ejection pool
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem     = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   i_t* to_delete = shmem;
   auto aligned_sz =
     raft::alignTo((size_t)(fragment_size * request_info_t<i_t, REQUEST>::size() * sizeof(i_t)),
@@ -267,15 +274,16 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
     shared_for_delete_array =
       raft::alignTo(fragment_size * request_info_t<i_t, REQUEST>::size() * sizeof(i_t),
                     sizeof(infeasible_cost_t));
-    if (!set_shmem_of_kernel(
-          kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>,
-          shared_for_delete_array + shared_for_tmp_route)) {
-      return false;
-    }
+    i_t n_frag_blocks = solution_ptr->get_num_requests() * fragment_step;
+    block_workspace_t frag_ws(
+      kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>,
+      shared_for_delete_array + shared_for_tmp_route,
+      n_frag_blocks,
+      solution_ptr->sol_handle->get_stream());
     kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>
-      <<<solution_ptr->get_num_requests() * fragment_step,
+      <<<n_frag_blocks,
          threads_per_block,
-         shared_for_delete_array + shared_for_tmp_route,
+         frag_ws.shmem_size(),
          solution_ptr->sol_handle->get_stream()>>>(
         solution_ptr->view(),
         d_request,
@@ -287,27 +295,27 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
                         solution_ptr->get_num_orders(),
                         solution_ptr->problem_ptr->get_max_break_dimensions(),
                         solution_ptr->get_n_routes()),
-        seed_generator::get_seed());
+        seed_generator::get_seed(),
+        frag_ws.view());
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   }
 
   // Didn't manage to insert even with deleting
   if (fragment_size >= max_fragment_size || time_stop_condition_reached()) { return false; }
-  if (!set_shmem_of_kernel(select_tmp_and_execute_insert<1024, i_t, f_t, REQUEST>,
-                           shared_for_delete_array + shared_for_tmp_route)) {
-    return false;
-  }
+  // NTTP kernel (__launch_bounds__ + int literal): cannot call set_shmem_of_kernel or
+  // cudaFuncSetAttribute in a dependent template context. Use global memory fallback.
+  auto select_sh = shared_for_delete_array + shared_for_tmp_route;
+  block_workspace_t select_ws(false, select_sh, 1, solution_ptr->sol_handle->get_stream());
   // Kernel almost single threaded, more threads just helps to copy route faster
   select_tmp_and_execute_insert<1024, i_t, f_t, REQUEST>
-    <<<1,
-       1024,
-       shared_for_delete_array + shared_for_tmp_route,
-       solution_ptr->sol_handle->get_stream()>>>(solution_ptr->view(),
-                                                 d_request,
-                                                 (uint64_t*)feasible_candidates_data_.data(),
-                                                 EP.view(),
-                                                 fragment_step,
-                                                 fragment_size);
+    <<<1, 1024, select_ws.shmem_size(), solution_ptr->sol_handle->get_stream()>>>(
+      solution_ptr->view(),
+      d_request,
+      (uint64_t*)feasible_candidates_data_.data(),
+      EP.view(),
+      fragment_step,
+      fragment_size,
+      select_ws.view());
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   // Update EP index, route_id contains the amount we deleted
   found_sol_t selected_move =
@@ -354,13 +362,12 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::perform_insertion(
 
   size_t shared_for_tmp_route =
     solution_ptr->check_routes_can_insert_and_get_sh_size(request_info_t<i_t, REQUEST>::size());
-  if (!set_shmem_of_kernel(execute_feasible_insert<i_t, f_t, REQUEST>, shared_for_tmp_route)) {
-    return false;
-  }
+  // __launch_bounds__ kernel: NVCC cannot deduce Function* in template context.
+  block_workspace_t exec_ws(false, shared_for_tmp_route, 1, solution_ptr->sol_handle->get_stream());
 
   execute_feasible_insert<i_t, f_t, REQUEST>
-    <<<1, 1024, shared_for_tmp_route, solution_ptr->sol_handle->get_stream()>>>(
-      solution_ptr->view(), request, selected_candidate);
+    <<<1, 1024, exec_ws.shmem_size(), solution_ptr->sol_handle->get_stream()>>>(
+      solution_ptr->view(), request, selected_candidate, exec_ws.view());
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   return true;
 }
@@ -384,15 +391,11 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
     found_sol_t::uninitialized);
 
   size_t shared_for_tmp_route = solution_ptr->check_routes_can_insert_and_get_sh_size();
-  if (!set_shmem_of_kernel(get_all_feasible_insertion<threads_per_block, i_t, f_t, REQUEST>,
-                           shared_for_tmp_route)) {
-    return {};
-  }
+  // NTTP kernel: cannot set shmem attribute in a dependent template context.
+  block_workspace_t all_ws(
+    false, shared_for_tmp_route, grid_size, solution_ptr->sol_handle->get_stream());
   get_all_feasible_insertion<threads_per_block, i_t, f_t, REQUEST>
-    <<<grid_size,
-       threads_per_block,
-       shared_for_tmp_route,
-       solution_ptr->sol_handle->get_stream()>>>(
+    <<<grid_size, threads_per_block, all_ws.shmem_size(), solution_ptr->sol_handle->get_stream()>>>(
       solution_ptr->view(),
       request,
       feasible_move_t(cuopt::make_span(feasible_candidates_data_),
@@ -400,7 +403,8 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::find_single_insertion(
                       solution_ptr->get_num_orders(),
                       solution_ptr->problem_ptr->get_max_break_dimensions(),
                       solution_ptr->get_n_routes()),
-      seed_generator::get_seed());
+      seed_generator::get_seed(),
+      all_ws.view());
 
   RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
 

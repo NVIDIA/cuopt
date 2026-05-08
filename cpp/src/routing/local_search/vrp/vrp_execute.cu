@@ -7,6 +7,7 @@
 
 #include "../../util_kernels/set_nodes_data.cuh"
 #include "../permutation_helper.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "vrp_execute.cuh"
 #include "vrp_search.cuh"
 
@@ -17,7 +18,6 @@ namespace routing {
 namespace detail {
 
 namespace cg = cooperative_groups;
-extern __shared__ double shmem[];
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void compact_best_route_pair_moves(
@@ -36,8 +36,11 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void extract_non_overlapping_moves_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,
   typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-  uint64_t seed)
+  uint64_t seed,
+  block_workspace_t::view_t block_workspace)
 {
+  extern __shared__ char shmem_buf[];
+  auto* shmem          = block_workspace.get_workspace(shmem_buf);
   auto& vrp_candidates = move_candidates.vrp_move_candidates;
   i_t n_best_route_pair_moves =
     min(*vrp_candidates.n_best_route_pair_moves, max_n_best_route_pair_moves);
@@ -104,7 +107,8 @@ DI void prepare_fragment(typename solution_t<i_t, f_t, REQUEST>::view_t& solutio
                          typename dimensions_route_t<i_t, f_t, REQUEST>::view_t& fragment,
                          search_data_t<i_t>& search_data,
                          i_t& start_idx,
-                         i_t& frag_size)
+                         i_t& frag_size,
+                         char* shmem)
 {
   i_t move_id                = blockIdx.x / 2;
   i_t is_first_route         = blockIdx.x % 2;
@@ -251,8 +255,11 @@ DI void mark_impacted_nodes(const typename route_t<i_t, f_t, REQUEST>::view_t& r
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void execute_vrp_moves_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t solution,
-  typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+  typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+  block_workspace_t::view_t block_workspace)
 {
+  extern __shared__ char shmem_buf[];
+  auto* shmem = block_workspace.get_workspace(shmem_buf);
   typename route_t<i_t, f_t, REQUEST>::view_t route_1;
   typename route_t<i_t, f_t, REQUEST>::view_t s_route;
   typename route_t<i_t, f_t, REQUEST>::view_t route_eject_buffer;
@@ -269,7 +276,8 @@ __global__ void execute_vrp_moves_kernel(
                                       fragment,
                                       search_data,
                                       start_idx,
-                                      frag_size);
+                                      frag_size,
+                                      shmem);
   // After loading the fragments, do a grid sync
   cg::this_grid().sync();
 
@@ -387,14 +395,13 @@ i_t extract_non_overlapping_moves(solution_t<i_t, f_t, REQUEST>& sol,
   n_best_route_pair_moves = std::min(n_best_route_pair_moves, max_n_best_route_pair_moves);
   if (n_best_route_pair_moves == 0) { return 0; }
   size_t sh_size = sizeof(i_t) * (sol.get_n_routes() + n_best_route_pair_moves * 2);
-  bool is_set =
-    set_shmem_of_kernel(extract_non_overlapping_moves_kernel<i_t, f_t, REQUEST>, sh_size);
-  cuopt_assert(is_set,
-               "Not enough shared memory on device for extract_non_overlapping_moves_kernel!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+  block_workspace_t extract_ws(extract_non_overlapping_moves_kernel<i_t, f_t, REQUEST>,
+                               sh_size,
+                               1,
+                               sol.sol_handle->get_stream());
   extract_non_overlapping_moves_kernel<i_t, f_t, REQUEST>
-    <<<1, TPB, sh_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+    <<<1, TPB, extract_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), seed_generator::get_seed(), extract_ws.view());
   return move_candidates.vrp_move_candidates.n_of_selected_moves.value(
     sol.sol_handle->get_stream());
 }
@@ -438,22 +445,20 @@ bool execute_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
                       sol.sol_handle->get_device_properties().multiProcessorCount * numBlocksPerSm);
   auto sol_view       = sol.view();
   auto move_cand_view = move_candidates.view();
-  // launch
-  void* kernelArgs[] = {&sol_view, &move_cand_view};
   dim3 dimBlock(TPB, 1, 1);
   dim3 dimGrid(n_blocks, 1, 1);
-  bool is_set = set_shmem_of_kernel(execute_vrp_moves_kernel<i_t, f_t, REQUEST>, sh_size);
-  if (!is_set) { return false; }
-
-  cuopt_assert(is_set, "Not enough shared memory on device for execute_vrp_moves_kernel!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+  block_workspace_t exec_ws(
+    execute_vrp_moves_kernel<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
+  auto ws_view = exec_ws.view();
+  // launch
+  void* kernelArgs[] = {&sol_view, &move_cand_view, &ws_view};
   // FIXME:: Cuda graph is turned off for now because of the assertions triggering in CUDA 12 builds
   // running on V100 move_candidates.vrp_execute_graph.start_capture(sol.sol_handle->get_stream());
   cudaLaunchCooperativeKernel((void*)execute_vrp_moves_kernel<i_t, f_t, REQUEST>,
                               dimGrid,
                               dimBlock,
                               kernelArgs,
-                              sh_size,
+                              exec_ws.shmem_size(),
                               sol.sol_handle->get_stream());
   sol.compute_route_id_per_node();
   sol.compute_cost();

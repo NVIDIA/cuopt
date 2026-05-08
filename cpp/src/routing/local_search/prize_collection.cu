@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -12,6 +12,7 @@
 #include "compute_ejections.cuh"
 #include "compute_insertions.cuh"
 #include "local_search.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 
 #include <thrust/fill.h>
@@ -120,7 +121,8 @@ DI bool is_candidate_valid(typename solution_t<i_t, f_t, REQUEST>::view_t soluti
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void execute_moves(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
-                              typename move_candidates_t<i_t, f_t>::view_t move_candidates)
+                              typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+                              block_workspace_t::view_t block_workspace)
 {
   auto& best_cand_per_route = move_candidates.prize_move_candidates.best_cand_per_route;
 
@@ -131,7 +133,8 @@ __global__ void execute_moves(typename solution_t<i_t, f_t, REQUEST>::view_t sol
 
   if (!is_candidate_valid<i_t, f_t, REQUEST>(solution, best_cand_per_route, route_id)) { return; }
 
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   auto original_route = solution.routes[route_id];
 
@@ -236,9 +239,11 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_prize_collection(solution_t<i_t,
 
   n_blocks    = sol.get_n_routes();
   shared_size = sol.check_routes_can_insert_and_get_sh_size(request_info_t<i_t, REQUEST>::size());
-  if (!set_shmem_of_kernel(execute_moves<i_t, f_t, REQUEST>, shared_size)) { return false; }
-  execute_moves<i_t, f_t, REQUEST><<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
-    sol.view(), move_candidates.view());
+  block_workspace_t exec_ws(
+    execute_moves<i_t, f_t, REQUEST>, shared_size, n_blocks, sol.sol_handle->get_stream());
+  execute_moves<i_t, f_t, REQUEST>
+    <<<n_blocks, TPB, exec_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), exec_ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
   sol.compute_cost();

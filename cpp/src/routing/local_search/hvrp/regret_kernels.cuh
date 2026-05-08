@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,6 +11,7 @@
 #include "../../util_kernels/set_nodes_data.cuh"
 #include "../../util_kernels/top_k.cuh"
 #include "../move_candidates/move_candidates.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 #include "vehicle_assignment.cuh"
 
@@ -43,9 +44,11 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void compute_route_costs_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t const sol,
   typename move_candidates_t<i_t, f_t>::view_t const move_candidates,
-  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment)
+  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem               = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   auto const n_buckets     = sol.problem.get_num_buckets();
   auto route_id            = blockIdx.x / n_buckets;
   auto inserting_bucket_id = blockIdx.x % n_buckets;
@@ -81,9 +84,11 @@ __global__ void compute_route_costs_kernel(
 template <typename i_t, typename f_t, request_t REQUEST, int TPB>
 __global__ void compute_route_cost_differences_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t const sol,
-  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment)
+  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   auto sh_route_costs_per_bucket = raft::device_span<double>(
     (double*)shmem, max(sol.problem.get_num_buckets(), min_bucket_entries));
@@ -148,9 +153,11 @@ __global__ void compute_route_cost_differences_kernel(
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void compute_route_vehicle_assignments_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t const sol,
-  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment)
+  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   auto k_regrets = vehicle_assignment.get_k_regrets();
   auto k_iter    = k_regrets - 1;
@@ -181,9 +188,12 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void update_assignment_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t const sol,
   typename move_candidates_t<i_t, f_t>::view_t const move_candidates,
-  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment)
+  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  (void)block_workspace;
+  (void)shmem_buf;
   __shared__ i_t reduction_index;
   __shared__ double reduction_buf[2 * warp_size];
   __shared__ i_t sh_max_availability;
@@ -293,9 +303,11 @@ template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void update_solution_kernel(
   typename solution_t<i_t, f_t, REQUEST>::view_t sol,
   typename move_candidates_t<i_t, f_t>::view_t const move_candidates,
-  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment)
+  typename vehicle_assignment_t<i_t, f_t, REQUEST>::view_t vehicle_assignment,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   __shared__ i_t sh_vehicle_id;
 
   // Load best_k solution and update the new solution

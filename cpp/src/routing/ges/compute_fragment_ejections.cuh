@@ -10,6 +10,7 @@
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
 #include "found_solution.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 namespace cuopt {
 namespace routing {
@@ -33,7 +34,8 @@ __global__ void kernel_get_best_insertion_ejection_solution(
   i_t fragment_size,
   i_t fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 
 template <int BLOCK_SIZE,
           typename i_t,

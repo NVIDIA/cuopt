@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -146,14 +146,15 @@ bool nodes_to_search_t<i_t, f_t>::sample_nodes_to_search(
     h_sampled_nodes.push_back(node_info);
     h_nodes_to_search.erase(h_nodes_to_search.begin() + node_idx);
   }
-  sample_nodes_graph.start_capture(sol.sol_handle->get_stream());
+  // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
+  // sample_nodes_graph.start_capture(sol.sol_handle->get_stream());
   raft::copy(sampled_nodes_to_search.data(),
              h_sampled_nodes.data(),
              n_sampled_nodes,
              sol.sol_handle->get_stream());
   reset_active_nodes(sol.sol_handle);
-  sample_nodes_graph.end_capture(sol.sol_handle->get_stream());
-  sample_nodes_graph.launch_graph(sol.sol_handle->get_stream());
+  // sample_nodes_graph.end_capture(sol.sol_handle->get_stream());
+  // sample_nodes_graph.launch_graph(sol.sol_handle->get_stream());
   return true;
 }
 
@@ -163,12 +164,13 @@ void extract_nodes_to_search(solution_t<i_t, f_t, REQUEST>& sol,
 {
   raft::common::nvtx::range fun_scope("extract_nodes_to_search");
   auto& nodes_to_search = move_candidates.nodes_to_search;
-  nodes_to_search.extract_nodes_graph.start_capture(sol.sol_handle->get_stream());
+  // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
+  // nodes_to_search.extract_nodes_graph.start_capture(sol.sol_handle->get_stream());
   nodes_to_search.reset(sol.sol_handle);
   constexpr bool restore_phase = false;
   run_extract_kernel(sol, nodes_to_search, restore_phase);
-  nodes_to_search.extract_nodes_graph.end_capture(sol.sol_handle->get_stream());
-  nodes_to_search.extract_nodes_graph.launch_graph(sol.sol_handle->get_stream());
+  // nodes_to_search.extract_nodes_graph.end_capture(sol.sol_handle->get_stream());
+  // nodes_to_search.extract_nodes_graph.launch_graph(sol.sol_handle->get_stream());
   i_t n_nodes_extracted = nodes_to_search.n_nodes_to_search.value(sol.sol_handle->get_stream());
   nodes_to_search.h_nodes_to_search.resize(n_nodes_extracted);
   raft::copy(nodes_to_search.h_nodes_to_search.data(),

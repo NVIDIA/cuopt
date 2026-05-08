@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,6 +9,7 @@
 
 #include "../local_search/cycle_finder/cycle_graph.hpp"
 #include "../solution/solution.cuh"
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 
 namespace cuopt {
@@ -141,7 +142,8 @@ __global__ void calculate_edge_costs_kernel(
   raft::device_span<i_t> offspring,
   raft::device_span<i_t> vehicle_id_per_bucket,
   i_t max_route_len,
-  const infeasible_cost_t weights)
+  const infeasible_cost_t weights,
+  block_workspace_t::view_t block_workspace)
 {
   auto bucket = blockIdx.x / (offspring.size() - 1);
   auto i      = blockIdx.x % (offspring.size() - 1);
@@ -153,7 +155,8 @@ __global__ void calculate_edge_costs_kernel(
 
   // FIXME: get_vehicle_info(bucket)
   auto vehicle_info = solution.problem.fleet_info.get_vehicle_info(vehicle_id);
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   raft::device_span<double> row_value((double*)shmem, max_route_len);
   raft::device_span<i_t> row_edge((i_t*)&row_value.data()[row_value.size()], max_route_len);
 

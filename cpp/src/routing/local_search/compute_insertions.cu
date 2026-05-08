@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,6 +10,7 @@
 #include "delivery_insertion.cuh"
 
 #include <utilities/seed_generator.cuh>
+#include "routing/utilities/block_workspace.cuh"
 #include "routing/utilities/cuopt_utils.cuh"
 
 #include "../routing_helpers.cuh"
@@ -640,9 +641,11 @@ template <typename i_t,
           bool insert_unserviced>
 __global__ void find_insertions_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
                                        typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-                                       int64_t seed)
+                                       int64_t seed,
+                                       block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
 
   i_t route_idx;
   request_id_t<REQUEST> ejected_id;
@@ -823,15 +826,11 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
   size_t shared_size = get_sh_size_for_compute_insertions(sol);
 
   if (search_type == search_type_t::IMPROVE) {
-    bool is_set = set_shmem_of_kernel(
-      find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>,
-      shared_size);
-    cuopt_assert(is_set,
-                 "Not enough shared memory on device for computing local search insertions!");
-    cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t ws(false, shared_size, n_blocks, sol.sol_handle->get_stream());
     find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>
-      <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
-        sol.view(), move_candidates.view(), seed_generator::get_seed());
+      <<<n_blocks, TPB, ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+        sol.view(), move_candidates.view(), seed_generator::get_seed(), ws.view());
   } else {
     // for cross the load-balance factor is always 4
     move_candidates.number_of_blocks_per_ls_route =
@@ -839,27 +838,19 @@ void find_insertions(solution_t<i_t, f_t, REQUEST>& sol,
     if (search_type == search_type_t::CROSS) {
       n_blocks =
         move_candidates.number_of_blocks_per_ls_route * sol.get_n_routes() + sol.get_num_requests();
-      bool is_set = set_shmem_of_kernel(
-        find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::CROSS, insert_unserviced>,
-        shared_size);
-      cuopt_assert(is_set,
-                   "Not enough shared memory on device for computing local search insertions!");
-      cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+      // NTTP kernel: cannot set shmem attribute in a dependent template context.
+      block_workspace_t ws(false, shared_size, n_blocks, sol.sol_handle->get_stream());
       find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::CROSS, insert_unserviced>
-        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
-          sol.view(), move_candidates.view(), seed_generator::get_seed());
+        <<<n_blocks, TPB, ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+          sol.view(), move_candidates.view(), seed_generator::get_seed(), ws.view());
     } else if (search_type == search_type_t::RANDOM) {
       // we don't search for relocates in random.
-      n_blocks    = sol.get_num_requests();
-      bool is_set = set_shmem_of_kernel(
-        find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::RANDOM, insert_unserviced>,
-        shared_size);
-      cuopt_assert(is_set,
-                   "Not enough shared memory on device for computing local search insertions!");
-      cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+      n_blocks = sol.get_num_requests();
+      // NTTP kernel: cannot set shmem attribute in a dependent template context.
+      block_workspace_t ws(false, shared_size, n_blocks, sol.sol_handle->get_stream());
       find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::RANDOM, insert_unserviced>
-        <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
-          sol.view(), move_candidates.view(), seed_generator::get_seed());
+        <<<n_blocks, TPB, ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+          sol.view(), move_candidates.view(), seed_generator::get_seed(), ws.view());
     }
   }
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
@@ -885,14 +876,11 @@ void find_unserviced_insertions(solution_t<i_t, f_t, REQUEST>& sol,
 
   size_t shared_size = get_sh_size_for_compute_insertions(sol);
 
-  bool is_set = set_shmem_of_kernel(
-    find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>,
-    shared_size);
-  cuopt_assert(is_set, "Not enough shared memory on device for computing local search insertions!");
-  cuopt_expects(is_set, error_type_t::OutOfMemoryError, "Not enough shared memory on device");
+  // NTTP kernel: cannot set shmem attribute in a dependent template context.
+  block_workspace_t ws(false, shared_size, n_blocks, sol.sol_handle->get_stream());
   find_insertions_kernel<i_t, f_t, REQUEST, search_type_t::IMPROVE, insert_unserviced>
-    <<<n_blocks, TPB, shared_size, sol.sol_handle->get_stream()>>>(
-      sol.view(), move_candidates.view(), seed_generator::get_seed());
+    <<<n_blocks, TPB, ws.shmem_size(), sol.sol_handle->get_stream()>>>(
+      sol.view(), move_candidates.view(), seed_generator::get_seed(), ws.view());
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   sol.sol_handle->sync_stream();
 }

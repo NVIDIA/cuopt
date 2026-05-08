@@ -10,6 +10,7 @@
 #include "compute_delivery_insertions.cuh"
 #include "compute_fragment_ejections.cuh"
 #include "found_solution.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 namespace cuopt {
 namespace routing {
@@ -23,12 +24,14 @@ __global__ void kernel_get_best_insertion_ejection_solution(
   i_t fragment_size,
   i_t fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed)
+  int64_t seed,
+  block_workspace_t::view_t block_workspace)
 {
   // TODO @hugo: this might cause misaligned access with VRP, as shmem is i_t and it will might end
   // at 4 bytes alignment for PDP it is always multiples of 2, that's why it ends at 8 byte
   // alignment
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   cuopt_assert(fragment_size > 0, "There should be at least one node for ejection");
   cuopt_assert(request_info != nullptr, "Request id should not be nullptr");
   cuopt_assert(request_info->is_valid(solution.problem.order_info.depot_included),
@@ -121,7 +124,8 @@ kernel_get_best_insertion_ejection_solution<32, int, float, request_t::PDP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<64, int, float, request_t::PDP>(
   typename solution_t<int, float, request_t::PDP>::view_t solution,
@@ -130,7 +134,8 @@ kernel_get_best_insertion_ejection_solution<64, int, float, request_t::PDP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<128, int, float, request_t::PDP>(
   typename solution_t<int, float, request_t::PDP>::view_t solution,
@@ -139,7 +144,8 @@ kernel_get_best_insertion_ejection_solution<128, int, float, request_t::PDP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<512, int, float, request_t::PDP>(
   typename solution_t<int, float, request_t::PDP>::view_t solution,
@@ -148,7 +154,8 @@ kernel_get_best_insertion_ejection_solution<512, int, float, request_t::PDP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 
 template __global__ void
 kernel_get_best_insertion_ejection_solution<32, int, float, request_t::VRP>(
@@ -158,7 +165,8 @@ kernel_get_best_insertion_ejection_solution<32, int, float, request_t::VRP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<64, int, float, request_t::VRP>(
   typename solution_t<int, float, request_t::VRP>::view_t solution,
@@ -167,7 +175,8 @@ kernel_get_best_insertion_ejection_solution<64, int, float, request_t::VRP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<128, int, float, request_t::VRP>(
   typename solution_t<int, float, request_t::VRP>::view_t solution,
@@ -176,7 +185,8 @@ kernel_get_best_insertion_ejection_solution<128, int, float, request_t::VRP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 template __global__ void
 kernel_get_best_insertion_ejection_solution<512, int, float, request_t::VRP>(
   typename solution_t<int, float, request_t::VRP>::view_t solution,
@@ -185,7 +195,8 @@ kernel_get_best_insertion_ejection_solution<512, int, float, request_t::VRP>(
   int fragment_size,
   int fragment_step,
   feasible_move_t feasible_candidates,
-  int64_t seed);
+  int64_t seed,
+  block_workspace_t::view_t block_workspace);
 }  // namespace detail
 }  // namespace routing
 }  // namespace cuopt

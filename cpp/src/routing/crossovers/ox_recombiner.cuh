@@ -13,6 +13,7 @@
 #include "../diversity/helpers.hpp"
 #include "ox_graph.hpp"
 #include "ox_kernels.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <random>
 #include <vector>
@@ -910,19 +911,17 @@ struct OX {
 
     auto const n_blocks = n_buckets * (d_offspring.size() - 1);
 
-    if (!set_shmem_of_kernel(calculate_edge_costs_kernel<int, float, Solution::request_type>,
-                             shmem)) {
-      cuopt_assert(false, "Not enough shared memory in recombiner");
-      return;
-    }
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t calc_ws(false, shmem, n_blocks, A.sol.sol_handle->get_stream());
     calculate_edge_costs_kernel<int, float, Solution::request_type>
-      <<<n_blocks, 128, shmem, A.sol.sol_handle->get_stream()>>>(
+      <<<n_blocks, 128, calc_ws.shmem_size(), A.sol.sol_handle->get_stream()>>>(
         A.sol.view(),
         d_graph.view(),
         raft::device_span<int>(d_offspring.data(), d_offspring.size()),
         raft::device_span<int>(d_vehicle_id_per_bucket.data(), d_vehicle_id_per_bucket.size()),
         max_route_len,
-        gpu_weight);
+        gpu_weight,
+        calc_ws.view());
     RAFT_CHECK_CUDA(A.sol.sol_handle->get_stream());
     A.sol.sol_handle->sync_stream();
 

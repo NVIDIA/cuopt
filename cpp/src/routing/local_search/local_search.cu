@@ -5,6 +5,9 @@
  */
 /* clang-format on */
 
+// 1 = std::cout timing/cost logs in run_fast_search; 0 = off. Uses #if (not #ifdef).
+#define CUOPT_PROFILE_FAST_SEARCH 1
+
 #include "local_search.cuh"
 
 #include <utilities/cuda_helpers.cuh>
@@ -19,11 +22,38 @@
 #include <thrust/fill.h>
 
 #include <chrono>
+#include <iomanip>
+#include <iostream>
 #include <unordered_set>
+#include <utility>
 
 namespace cuopt {
 namespace routing {
 namespace detail {
+
+#if CUOPT_PROFILE_FAST_SEARCH
+namespace {
+inline const char* fast_operator_label(fast_operators_t op)
+{
+  switch (op) {
+    case fast_operators_t::SLIDING: return "SLIDING";
+    case fast_operators_t::VRP: return "VRP";
+    case fast_operators_t::CROSS: return "CROSS";
+    case fast_operators_t::REGRET: return "REGRET";
+    case fast_operators_t::TWO_OPT: return "TWO_OPT";
+    default: return "?";
+  }
+}
+
+template <typename Sol, typename MC>
+double cuopt_fast_search_sync_and_cost(Sol& sol, MC& move_candidates)
+{
+  sol.sol_handle->sync_stream();
+  cuopt_func_call(sol.compute_cost());
+  return sol.get_cost(move_candidates.include_objective, move_candidates.weights);
+}
+}  // namespace
+#endif
 
 template <typename i_t, typename f_t, request_t REQUEST>
 local_search_t<i_t, f_t, REQUEST>::local_search_t(const solution_handle_t<i_t, f_t>* sol_handle_,
@@ -140,6 +170,10 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
                                                         bool full_set)
 {
   raft::common::nvtx::range fun_scope("run_fast_search");
+#if CUOPT_PROFILE_FAST_SEARCH
+  const auto t_entry      = std::chrono::steady_clock::now();
+  const double cost_entry = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+#endif
 
   std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING, fast_operators_t::CROSS};
   if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
@@ -152,27 +186,124 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
   for (auto const& op : fast_operators) {
     switch (op) {
       case fast_operators_t::SLIDING: {
-        if (run_sliding_search(sol)) { return true; }
+#if CUOPT_PROFILE_FAST_SEARCH
+        const auto t0 = std::chrono::steady_clock::now();
+#endif
+        if (run_sliding_search(sol)) {
+#if CUOPT_PROFILE_FAST_SEARCH
+          const auto t1           = std::chrono::steady_clock::now();
+          const double cost_after = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms cost_entry=" << std::setprecision(12) << cost_entry
+                    << " cost_after=" << cost_after << " delta=" << (cost_after - cost_entry)
+                    << std::defaultfloat << '\n';
+          std::cout << "[run_fast_search PDP] total wall=" << std::fixed << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t_entry).count()
+                    << " ms (improved)\n"
+                    << std::defaultfloat;
+#endif
+          return true;
+        }
+#if CUOPT_PROFILE_FAST_SEARCH
+        {
+          const auto t1 = std::chrono::steady_clock::now();
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms (no move)\n"
+                    << std::defaultfloat;
+        }
+#endif
         break;
       }
       case fast_operators_t::VRP: {
         break;
       }
       case fast_operators_t::REGRET: {
+#if CUOPT_PROFILE_FAST_SEARCH
+        const auto t0 = std::chrono::steady_clock::now();
+#endif
         if (run_vehicle_assignment<i_t, f_t, REQUEST>(sol, move_candidates, vehicle_assignment)) {
+#if CUOPT_PROFILE_FAST_SEARCH
+          const auto t1           = std::chrono::steady_clock::now();
+          const double cost_after = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms cost_entry=" << std::setprecision(12) << cost_entry
+                    << " cost_after=" << cost_after << " delta=" << (cost_after - cost_entry)
+                    << std::defaultfloat << '\n';
+          std::cout << "[run_fast_search PDP] total wall=" << std::fixed << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t_entry).count()
+                    << " ms (improved)\n"
+                    << std::defaultfloat;
+#endif
           return true;
         }
+#if CUOPT_PROFILE_FAST_SEARCH
+        {
+          const auto t1 = std::chrono::steady_clock::now();
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms (no move)\n"
+                    << std::defaultfloat;
+        }
+#endif
         break;
       }
       case fast_operators_t::TWO_OPT: {
         break;
       }
       case fast_operators_t::CROSS: {
-        if (run_cross_search(sol)) { return true; }
+#if CUOPT_PROFILE_FAST_SEARCH
+        const auto t0 = std::chrono::steady_clock::now();
+#endif
+        if (run_cross_search(sol)) {
+#if CUOPT_PROFILE_FAST_SEARCH
+          const auto t1           = std::chrono::steady_clock::now();
+          const double cost_after = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms cost_entry=" << std::setprecision(12) << cost_entry
+                    << " cost_after=" << cost_after << " delta=" << (cost_after - cost_entry)
+                    << std::defaultfloat << '\n';
+          std::cout << "[run_fast_search PDP] total wall=" << std::fixed << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t_entry).count()
+                    << " ms (improved)\n"
+                    << std::defaultfloat;
+#endif
+          return true;
+        }
+#if CUOPT_PROFILE_FAST_SEARCH
+        {
+          const auto t1 = std::chrono::steady_clock::now();
+          std::cout << "[run_fast_search PDP] " << fast_operator_label(op) << " wall=" << std::fixed
+                    << std::setprecision(3)
+                    << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                    << " ms (no move)\n"
+                    << std::defaultfloat;
+        }
+#endif
         break;
       }
     }
   }
+#if CUOPT_PROFILE_FAST_SEARCH
+  {
+    const auto t_exit      = std::chrono::steady_clock::now();
+    const double cost_exit = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+    std::cout << "[run_fast_search PDP] exit (no improvement) total_wall=" << std::fixed
+              << std::setprecision(3)
+              << std::chrono::duration<double, std::milli>(t_exit - t_entry).count()
+              << " ms cost_entry=" << std::setprecision(12) << cost_entry
+              << " cost_exit=" << cost_exit << " delta=" << (cost_exit - cost_entry)
+              << std::defaultfloat << '\n';
+  }
+#endif
   return false;
 }
 
@@ -191,7 +322,7 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
   }
 
   if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
-    fast_operators.push_back(fast_operators_t::REGRET);
+    // fast_operators.push_back(fast_operators_t::REGRET);
   }
 
   std::shuffle(fast_operators.begin(), fast_operators.end(), rng);
@@ -204,9 +335,17 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
   }
   if (!nodes_to_search.sample_nodes_to_search(sol, rng, full_set)) { return false; }
 
+#if CUOPT_PROFILE_FAST_SEARCH
+  const auto t_entry      = std::chrono::steady_clock::now();
+  const double cost_entry = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+#endif
+
   bool move_found = false;
 
   for (auto const& op : fast_operators) {
+#if CUOPT_PROFILE_FAST_SEARCH
+    const auto t_op0 = std::chrono::steady_clock::now();
+#endif
     switch (op) {
       case fast_operators_t::SLIDING: {
         move_found = run_sliding_search(sol) || move_found;
@@ -230,9 +369,35 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
         break;
       }
     }
+#if CUOPT_PROFILE_FAST_SEARCH
+    {
+      const auto t_op1           = std::chrono::steady_clock::now();
+      const double cost_after_op = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+      std::cout << "[run_fast_search VRP] op=" << fast_operator_label(op)
+                << " wall_op=" << std::fixed << std::setprecision(3)
+                << std::chrono::duration<double, std::milli>(t_op1 - t_op0).count()
+                << " ms cost=" << std::setprecision(12) << cost_after_op
+                << " (vs_entry_delta=" << (cost_after_op - cost_entry)
+                << ") move_found_accum=" << static_cast<int>(move_found) << std::defaultfloat
+                << '\n';
+    }
+#endif
   }
 
   move_candidates.nodes_to_search.restore_found_nodes(sol);
+#if CUOPT_PROFILE_FAST_SEARCH
+  {
+    const auto t_exit      = std::chrono::steady_clock::now();
+    const double cost_exit = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+    std::cout << "[run_fast_search VRP] exit full_set=" << static_cast<int>(full_set)
+              << " move_found_accum=" << static_cast<int>(move_found)
+              << " cost_entry=" << std::fixed << std::setprecision(12) << cost_entry
+              << " cost_exit=" << cost_exit << " delta=" << (cost_exit - cost_entry)
+              << " total_wall=" << std::setprecision(3)
+              << std::chrono::duration<double, std::milli>(t_exit - t_entry).count() << " ms\n"
+              << std::defaultfloat;
+  }
+#endif
   if (full_set) { return move_found; }
   return true;
 }
@@ -255,7 +420,8 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     run_vehicle_assignment(sol, move_candidates, vehicle_assignment);
   }
 
-  i_t iter = 0;
+  i_t outer_iter = 0;
+  i_t iter       = 0;
   sol.sol_handle->sync_stream();
   sol.compute_cost();
   const i_t iter_limit = max_iterations;
@@ -279,9 +445,11 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
       break;
     }
 
+    std::cout << "Number of fast search iterations: " << iter << std::endl;
     sol.global_runtime_checks(
       should_all_nodes_be_served, false, "run_best_local_search_after_fast_search");
 
+    outer_iter++;
     if (!run_cycle_finder || (sol.n_routes > 1023)) { break; }
     // cycle finder is needed even for single route in PDP cases
     if (REQUEST == request_t::VRP && sol.n_routes < 2) { break; }
@@ -327,6 +495,7 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
   }
   // reset it, so that next time all routes will be searched unless otherwise is specified
   sol.set_routes_to_search();
+  std::cout << "      Number of outer iterations: " << outer_iter << std::endl;
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>

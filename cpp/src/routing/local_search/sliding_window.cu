@@ -10,6 +10,7 @@
 #include "../utilities/cuopt_utils.cuh"
 #include "local_search.cuh"
 #include "permutation_helper.cuh"
+#include "routing/utilities/block_workspace.cuh"
 
 #include <thrust/fill.h>
 #include <thrust/remove.h>
@@ -692,9 +693,11 @@ __global__ void kernel_perform_sliding_window(
   found_sliding_solution_t<i_t>* best_candidates,
   typename move_candidates_t<i_t, f_t>::view_t move_candidates,
   int* locks,
-  int blocks_per_node)
+  int blocks_per_node,
+  block_workspace_t::view_t block_workspace)
 {
-  extern __shared__ i_t shmem[];
+  extern __shared__ char shmem_buf[];
+  i_t* shmem = reinterpret_cast<i_t*>(block_workspace.get_workspace(shmem_buf));
   // Each block handles a different starting point for the window
   // +1 to skip depot
   const bool depot_included = solution.problem.order_info.depot_included;
@@ -889,7 +892,8 @@ __global__ void execute_sliding_move(typename solution_t<i_t, f_t, REQUEST>::vie
                                      found_sliding_solution_t<i_t>* best_candidates,
                                      typename move_candidates_t<i_t, f_t>::view_t move_candidates,
                                      // For debug pruposes only
-                                     [[maybe_unused]] double* total_delta)
+                                     [[maybe_unused]] double* total_delta,
+                                     block_workspace_t::view_t block_workspace)
 {
   const i_t route_id                                 = blockIdx.x;
   const found_sliding_solution_t<i_t> best_candidate = best_candidates[route_id];
@@ -905,14 +909,15 @@ __global__ void execute_sliding_move(typename solution_t<i_t, f_t, REQUEST>::vie
       orginal_route, move_candidates, best_candidate, solution.get_num_orders());
   }
 
-  extern __shared__ i_t shmem[];
-  node_t<i_t, f_t, REQUEST>* nodes = (node_t<i_t, f_t, REQUEST>*)shmem;
+  extern __shared__ char shmem_buf[];
+  char* mem                        = block_workspace.get_workspace(shmem_buf);
+  node_t<i_t, f_t, REQUEST>* nodes = (node_t<i_t, f_t, REQUEST>*)mem;
 
   const i_t aligned_bytes = raft::alignTo(
     sizeof(node_t<i_t, f_t, REQUEST>) * (max_permutation_intra + 1), sizeof(infeasible_cost_t));
 
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
-    (i_t*)(((uint8_t*)shmem) + aligned_bytes), orginal_route, orginal_route.get_num_nodes());
+    (i_t*)(((uint8_t*)mem) + aligned_bytes), orginal_route, orginal_route.get_num_nodes());
   __syncthreads();
 
   s_route.copy_from(orginal_route);
@@ -1039,7 +1044,8 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
   // this case, need to replicate what we do in the two opt here
   auto is_cvrp = solution.problem_ptr->is_cvrp();
 
-  sliding_cuda_graph.start_capture(solution.sol_handle->get_stream());
+  // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
+  // sliding_cuda_graph.start_capture(solution.sol_handle->get_stream());
   async_fill(found_sliding_solution_data_,
              is_sliding_uinitialized_t<i_t>::init_data(),
              solution.sol_handle->get_stream());
@@ -1050,42 +1056,43 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
 
   constexpr i_t thread_per_block = 64;
   shared_for_tmp_route           = solution.get_temp_route_shared_size();
-  if ((is_cvrp && !set_shmem_of_kernel(kernel_perform_sliding_window<i_t, f_t, REQUEST, true>,
-                                       shared_for_tmp_route)) ||
-      (!is_cvrp && !set_shmem_of_kernel(kernel_perform_sliding_window<i_t, f_t, REQUEST, false>,
-                                        shared_for_tmp_route))) {
-    sliding_cuda_graph.end_capture(solution.sol_handle->get_stream());
-    return false;
-  }
-  int ideal_blocks    = 4 * solution.sol_handle->get_num_sms();
+  int ideal_blocks               = 4 * solution.sol_handle->get_num_sms();
   int blocks_per_node = std::max(ideal_blocks / move_candidates.nodes_to_search.n_sampled_nodes, 1);
 
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes * blocks_per_node;
   cuopt_assert(n_blocks > 0, "n_blocks should be positive");
   cuopt_expects(n_blocks > 0, error_type_t::RuntimeError, "A runtime error occurred!");
   if (is_cvrp) {
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t sw_ws(
+      false, shared_for_tmp_route, n_blocks, solution.sol_handle->get_stream());
     kernel_perform_sliding_window<i_t, f_t, REQUEST, true>
       <<<n_blocks,  // One block for each node
          thread_per_block,
-         shared_for_tmp_route,
+         sw_ws.shmem_size(),
          solution.sol_handle->get_stream()>>>(solution.view(),
                                               found_sliding_solution_data_.data(),
                                               move_candidates.view(),
                                               locks_.data(),
-                                              blocks_per_node);
+                                              blocks_per_node,
+                                              sw_ws.view());
   } else {
+    // NTTP kernel: cannot set shmem attribute in a dependent template context.
+    block_workspace_t sw_ws(
+      false, shared_for_tmp_route, n_blocks, solution.sol_handle->get_stream());
     kernel_perform_sliding_window<i_t, f_t, REQUEST, false>
       <<<n_blocks,  // One block for each node
          thread_per_block,
-         shared_for_tmp_route,
+         sw_ws.shmem_size(),
          solution.sol_handle->get_stream()>>>(solution.view(),
                                               found_sliding_solution_data_.data(),
                                               move_candidates.view(),
                                               locks_.data(),
-                                              blocks_per_node);
+                                              blocks_per_node,
+                                              sw_ws.view());
   }
-  sliding_cuda_graph.end_capture(solution.sol_handle->get_stream());
-  sliding_cuda_graph.launch_graph(solution.sol_handle->get_stream());
+  // sliding_cuda_graph.end_capture(solution.sol_handle->get_stream());
+  // sliding_cuda_graph.launch_graph(solution.sol_handle->get_stream());
   RAFT_CHECK_CUDA(solution.sol_handle->get_stream());
   n_moves_found = thrust::count_if(solution.sol_handle->get_thrust_policy(),
                                    found_sliding_solution_data_.begin(),
@@ -1096,22 +1103,24 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_window(
 
   const i_t aligned_bytes = raft::alignTo(
     sizeof(node_t<i_t, f_t, REQUEST>) * (max_permutation_intra + 1), sizeof(infeasible_cost_t));
-  const size_t aligned_shared_size = aligned_bytes + shared_for_tmp_route;
-  if (!set_shmem_of_kernel(execute_sliding_move<i_t, f_t, REQUEST>, aligned_shared_size)) {
-    return false;
-  }
+  const size_t aligned_shared_size    = aligned_bytes + shared_for_tmp_route;
   [[maybe_unused]] double cost_before = 0., cost_after = 0.;
   cuopt_func_call(solution.compute_cost());
   cuopt_func_call(cost_before =
                     solution.get_cost(move_candidates.include_objective, move_candidates.weights));
 
   // One block for each found route
+  block_workspace_t exec_ws(execute_sliding_move<i_t, f_t, REQUEST>,
+                            aligned_shared_size,
+                            solution.n_routes,
+                            solution.sol_handle->get_stream());
   execute_sliding_move<i_t, f_t, REQUEST>
-    <<<solution.n_routes, 256, aligned_shared_size, solution.sol_handle->get_stream()>>>(
+    <<<solution.n_routes, 256, exec_ws.shmem_size(), solution.sol_handle->get_stream()>>>(
       solution.view(),
       found_sliding_solution_data_.data(),
       move_candidates.view(),
-      move_candidates.debug_delta.data());
+      move_candidates.debug_delta.data(),
+      exec_ws.view());
   RAFT_CHECK_CUDA(solution.sol_handle->get_stream());
   cuopt_func_call(solution.compute_cost());
   cuopt_func_call(cost_after =
