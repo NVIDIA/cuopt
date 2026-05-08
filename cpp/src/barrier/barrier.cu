@@ -319,7 +319,8 @@ class iteration_data_t {
     f_t estimated_nz_AAT = 0.0;
     std::vector<i_t> dense_columns_unordered;
 
-    if (has_Q || has_cones()) {
+    const bool has_soc = has_cones();
+    if (has_Q || has_soc) {
       // QP and SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
       use_augmented   = true;
       n_dense_columns = 0;
@@ -487,10 +488,11 @@ class iteration_data_t {
 
   f_t complementarity_degree(std::size_t num_primal_variables, i_t num_upper_bounds) const
   {
+    const bool has_soc = has_cones();
     f_t degree = static_cast<f_t>(num_primal_variables) + static_cast<f_t>(num_upper_bounds);
     // Native QP free variables (linear only): no x·z complementarity in the barrier degree.
     degree -= static_cast<f_t>(n_free_vars);
-    if (has_cones()) {
+    if (has_soc) {
       degree -= static_cast<f_t>(cone_entry_count());
       degree += static_cast<f_t>(cone_count());
     }
@@ -1951,6 +1953,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
   const bool has_soc       = data.has_cones();
+  const bool has_free      = data.n_free_vars > 0;
 
   // Perform a numerical factorization
   i_t status;
@@ -2088,7 +2091,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     }
     // Native free variables: no finite lower barrier — dual slack z_j stays at 0 (matches non-SOC
     // branch and barrier algebra).
-    if (data.n_free_vars > 0) {
+    if (has_free) {
       for (i_t j : presolve_info.free_variable_indices) {
         if (j < cs) { data.z[j] = 0.0; }
       }
@@ -2158,7 +2161,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     }
     // Free variables have z = 0 (no complementarity condition)
-    if (data.n_free_vars > 0) {
+    if (has_free) {
       for (i_t j : presolve_info.free_variable_indices) {
         data.z[j] = 0.0;
       }
@@ -2227,22 +2230,22 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Make sure (w, x, v, z) > 0. Cone blocks are not nonnegative orthant variables — skip them for
   // box positivity; NT scaling keeps cone iterates feasible separately.
   std::vector<f_t> free_x_save;
-  if (data.n_free_vars > 0) {
+  if (has_free) {
     free_x_save.resize(data.n_free_vars);
     for (i_t k = 0; k < data.n_free_vars; ++k) {
       free_x_save[k] = data.x[presolve_info.free_variable_indices[k]];
     }
   }
   data.w.ensure_positive(epsilon_adjust);
-  if (data.has_cones()) {
+  if (has_soc) {
     data.x.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
   } else {
     data.x.ensure_positive(epsilon_adjust);
   }
   // Native free variables (QP/SOCP): restore possibly negative x and set z = 0
-  if (data.n_free_vars > 0) {
+  if (has_free) {
     for (i_t k = 0; k < data.n_free_vars; ++k) {
-      i_t j = presolve_info.free_variable_indices[k];
+      i_t j     = presolve_info.free_variable_indices[k];
       data.x[j] = free_x_save[k];
       data.z[j] = 0.0;
     }
@@ -2458,22 +2461,14 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
                                                          const rmm::device_uvector<f_t>& x,
                                                          const rmm::device_uvector<f_t>& dx)
 {
-  const bool has_soc         = data.has_cones();
-  const bool skip_cone_range = has_soc && static_cast<i_t>(x.size()) >= data.cone_end();
-  const bool has_free =
-    data.n_free_vars > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
-
-  auto ratio_test = [] HD(const thrust::tuple<f_t, f_t> t) {
-    const f_t dx_val = thrust::get<0>(t);
-    const f_t x_val  = thrust::get<1>(t);
-    if (dx_val < f_t(0.0)) return -x_val / dx_val;
-    return f_t(1.0);
-  };
+  const bool has_soc  = data.has_cones() && static_cast<i_t>(x.size()) >= data.cone_end();
+  const bool has_free = data.n_free_vars > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
 
   auto reduce_segment = [&](i_t start, i_t len) -> f_t {
     if (len <= 0) { return f_t(1); }
     if (has_free) {
       auto is_free_ptr = data.d_is_free_.data() + start;
+      // step size computation for nonnegative variables with free variables
       auto ratio_test_free = [is_free_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
         const f_t dx_val  = thrust::get<0>(t);
         const f_t x_val   = thrust::get<1>(t);
@@ -2490,6 +2485,13 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
         len,
         stream_view_);
     }
+    // step size computation for nonnegative variables without free variables
+    auto ratio_test = [] HD(const thrust::tuple<f_t, f_t> t) {
+      const f_t dx = thrust::get<0>(t);
+      const f_t x  = thrust::get<1>(t);
+      if (dx < f_t(0.0)) return -x / dx;
+      return f_t(1.0);
+    };
     return data.transform_reduce_helper_.transform_reduce(
       thrust::make_zip_iterator(dx.data() + start, x.data() + start),
       thrust::minimum<f_t>(),
@@ -2499,7 +2501,8 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
       stream_view_);
   };
 
-  if (skip_cone_range) {
+  // step size computation for when there are soc constraints
+  if (has_soc) {
     const i_t cs         = data.cone_start();
     const i_t mc         = data.cone_entry_count();
     f_t alpha            = reduce_segment(0, cs);
@@ -2526,6 +2529,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   const bool debug         = false;
   const bool use_augmented = data.use_augmented;
   const bool has_soc       = data.has_cones();
+  const bool has_free      = data.n_free_vars > 0;
   const i_t m_c            = data.cone_entry_count();
   const i_t cone_var_start = data.cone_start();
   const i_t linear_size    = data.linear_xz_size(lp.num_cols);
@@ -2660,18 +2664,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::common::nvtx::range fun_scope("Barrier: GPU diag, inv diag and sqrt inv diag formation");
 
     // diag = z ./ x on the linear (non-cone) coordinates; cone block is overwritten below.
-    const i_t diag_linear_len =
-      has_soc ? linear_size : static_cast<i_t>(data.d_diag_.size());
-    if (data.n_free_vars > 0) {
+    if (has_free) {
       constexpr f_t free_var_reg = 1e-7;
       if (data.Q.n > 0 && data.Q_diagonal) {
         cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(data.d_z_.data(),
-                                data.d_x_.data(),
-                                data.d_is_free_.data(),
-                                data.d_Q_diag_.data()),
+          cuda::std::make_tuple(
+            data.d_z_.data(), data.d_x_.data(), data.d_is_free_.data(), data.d_Q_diag_.data()),
           data.d_diag_.data(),
-          diag_linear_len,
+          linear_size,
           [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_free, f_t q_jj) {
             if (!is_free) return z_j / x_j;
             return (q_jj > f_t(0)) ? f_t(0) : free_var_reg;
@@ -2681,7 +2681,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         cub::DeviceTransform::Transform(
           cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(), data.d_is_free_.data()),
           data.d_diag_.data(),
-          diag_linear_len,
+          linear_size,
           [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_free) {
             return is_free ? free_var_reg : (z_j / x_j);
           },
@@ -2690,7 +2690,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     } else {
       cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data()),
                                       data.d_diag_.data(),
-                                      diag_linear_len,
+                                      linear_size,
                                       cuda::std::divides<>{},
                                       stream_view_.value());
     }
@@ -2809,7 +2809,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // tmp3 <- tmp3 .+ dual_rhs - complementarity_target (linear: target = xz_rhs/x; free: no xz
     // term). Cone coordinates use NT target from d_complementarity_target_.
     // tmp4 <- inv_diag .* tmp3
-    if (data.n_free_vars > 0) {
+    if (has_free) {
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_inv_diag.data(),
                               data.d_tmp3_.data(),
@@ -3123,6 +3123,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   {
     raft::common::nvtx::range fun_scope("Barrier: dz formation GPU");
 
+    const i_t linear_dz_size = has_soc ? cone_var_start : static_cast<i_t>(data.d_dz_.size());
+
     if (has_soc) {
       recover_cone_dz_from_target(
         raft::device_span<const f_t>(data.d_dx_.data() + cone_var_start, m_c),
@@ -3130,49 +3132,30 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         raft::device_span<const f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c),
         raft::device_span<f_t>(data.d_dz_.data() + cone_var_start, m_c),
         stream_view_);
+    }
 
-      if (cone_var_start > 0) {
-        if (data.n_free_vars > 0) {
-          cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(data.d_complementarity_target_.data(),
-                                  data.d_z_.data(),
-                                  data.d_dx_.data(),
-                                  data.d_x_.data(),
-                                  data.d_is_free_.data()),
-            data.d_dz_.data(),
-            cone_var_start,
-            [] HD(f_t target, f_t z, f_t dx, f_t x, i_t is_free) {
-              return is_free ? f_t(0) : (target - (z * dx) / x);
-            },
-            stream_view_.value());
-        } else {
-          recover_linear_dz(
-            raft::device_span<const f_t>(data.d_complementarity_target_.data(), cone_var_start),
-            raft::device_span<const f_t>(data.d_z_.data(), cone_var_start),
-            raft::device_span<const f_t>(data.d_dx_.data(), cone_var_start),
-            raft::device_span<const f_t>(data.d_x_.data(), cone_var_start),
-            raft::device_span<f_t>(data.d_dz_.data(), cone_var_start));
-        }
+    if (linear_dz_size > 0) {
+      if (has_free) {
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(data.d_complementarity_target_.data(),
+                                data.d_z_.data(),
+                                data.d_dx_.data(),
+                                data.d_x_.data(),
+                                data.d_is_free_.data()),
+          data.d_dz_.data(),
+          linear_dz_size,
+          [] HD(f_t target, f_t z, f_t dx, f_t x, i_t is_free) {
+            return is_free ? f_t(0) : (target - (z * dx) / x);
+          },
+          stream_view_.value());
+      } else {
+        recover_linear_dz(
+          raft::device_span<const f_t>(data.d_complementarity_target_.data(), linear_dz_size),
+          raft::device_span<const f_t>(data.d_z_.data(), linear_dz_size),
+          raft::device_span<const f_t>(data.d_dx_.data(), linear_dz_size),
+          raft::device_span<const f_t>(data.d_x_.data(), linear_dz_size),
+          raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size));
       }
-    } else if (data.n_free_vars > 0) {
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(data.d_complementarity_xz_rhs_.data(),
-                              data.d_z_.data(),
-                              data.d_dx_.data(),
-                              data.d_x_.data(),
-                              data.d_is_free_.data()),
-        data.d_dz_.data(),
-        data.d_dz_.size(),
-        [] HD(f_t complementarity_xz_rhs, f_t z, f_t dx, f_t x, i_t is_free) {
-          return is_free ? f_t(0) : ((complementarity_xz_rhs - z * dx) / x);
-        },
-        stream_view_.value());
-    } else {
-      recover_linear_dz(cuopt::make_span(data.d_complementarity_target_),
-                        cuopt::make_span(data.d_z_),
-                        cuopt::make_span(data.d_dx_),
-                        cuopt::make_span(data.d_x_),
-                        cuopt::make_span(data.d_dz_));
     }
     RAFT_CHECK_CUDA(stream_view_);
     raft::copy(dz.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
@@ -3507,13 +3490,14 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
   const bool has_soc    = data.has_cones();
+  const bool has_free   = data.n_free_vars > 0;
   const i_t linear_size = data.linear_xz_size(lp.num_cols);
 
   auto fill_linear_cc_rhs = [&](raft::device_span<f_t> out,
                                 raft::device_span<const f_t> dx_aff,
                                 raft::device_span<const f_t> dz_aff) {
     if (out.empty()) return;
-    if (data.n_free_vars > 0) {
+    if (has_free) {
       auto is_free_ptr = data.d_is_free_.data();
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), is_free_ptr),
@@ -3528,9 +3512,7 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
         cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
         out.data(),
         out.size(),
-        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
-          return -(dx_aff_val * dz_aff_val) + new_mu;
-        },
+        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) { return -(dx_aff_val * dz_aff_val) + new_mu; },
         stream_view_.value());
     }
   };
@@ -3741,8 +3723,8 @@ void barrier_solver_t<i_t, f_t>::compute_mu(iteration_data_t<i_t, f_t>& data, f_
 
   const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu                 = (data.sum_reduce_helper_.sum(data.d_complementarity_xz_residual_.begin(),
-                                     data.d_complementarity_xz_residual_.size(),
-                                     stream_view_) +
+                                    data.d_complementarity_xz_residual_.size(),
+                                    stream_view_) +
         data.sum_reduce_helper_.sum(data.d_complementarity_wv_residual_.begin(),
                                     data.d_complementarity_wv_residual_.size(),
                                     stream_view_)) /
@@ -4154,9 +4136,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                         relative_complementarity_residual,
                         elapsed_time);
 
-    // TODO: should polish termination condition
+    // TODO: should polish termination condition,
     bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
-                     dual_residual_norm < settings.barrier_relative_optimality_tol &&
+                     dual_residual_norm < settings.barrier_relative_feasibility_tol &&
                      (duality_gap_abs < settings.barrier_relative_complementarity_tol ||
                       duality_gap_rel < settings.barrier_relative_complementarity_tol);
 
@@ -4363,7 +4345,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
                           elapsed_time);
 
       bool primal_feasible = relative_primal_residual < settings.barrier_relative_feasibility_tol;
-      bool dual_feasible   = relative_dual_residual < settings.barrier_relative_optimality_tol;
+      bool dual_feasible   = relative_dual_residual < settings.barrier_relative_feasibility_tol;
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
 

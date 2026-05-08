@@ -219,7 +219,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                     error_type_t::ValidationError,
                     "Quadratic constraint '%s' Q CSR offsets[0] must be 0",
                     qc.constraint_row_name.c_str());
-      // This is the index of the auxiliary variable for the linear part of the quadratic constraint.
+      // This is the index of the auxiliary variable for the linear part of the quadratic
+      // constraint.
       const i_t affine_head      = qc_affine_heads[qc_i];
       const bool has_linear_part = affine_head >= 0;
       if (has_linear_part) {
@@ -236,11 +237,12 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
           if (v > -tol && v < tol) { continue; }
           ++nonzero_terms;
         }
-        cuopt_expects(nonzero_terms > 0,
-                      error_type_t::ValidationError,
-                      "Quadratic constraint '%s' has linear section but all linear coefficients are "
-                      "zero",
-                      qc.constraint_row_name.c_str());
+        cuopt_expects(
+          nonzero_terms > 0,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s' has linear section but all linear coefficients are "
+          "zero",
+          qc.constraint_row_name.c_str());
       }
 
       // Verify Q as either:
@@ -323,8 +325,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         tail_vars.push_back(pr.first);
       }
 
-      f_t uniform_s       = f_t(0);
-      bool have_uniform_s = false;
+      f_t uniform_s        = f_t(0);
+      bool have_uniform_s  = false;
       auto note_positive_s = [&](f_t v) {
         cuopt_expects(v > tol,
                       error_type_t::ValidationError,
@@ -333,7 +335,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                       qc.constraint_row_name.c_str(),
                       static_cast<double>(v));
         if (!have_uniform_s) {
-          uniform_s       = v;
+          uniform_s      = v;
           have_uniform_s = true;
         } else {
           cuopt_expects(
@@ -355,11 +357,12 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       if (offdiag_entries.empty()) {
         if (!has_linear_part) {
           if (pos_diag_rows.empty()) {
-            cuopt_expects(neg_diag_rows.size() == 1 && q_nnz == 1,
-                          error_type_t::ValidationError,
-                          "Quadratic constraint '%s' SOC Q: expected tail diagonals +s with head -s, "
-                          "or a single head row with q_nnz=1",
-                          qc.constraint_row_name.c_str());
+            cuopt_expects(
+              neg_diag_rows.size() == 1 && q_nnz == 1,
+              error_type_t::ValidationError,
+              "Quadratic constraint '%s' SOC Q: expected tail diagonals +s with head -s, "
+              "or a single head row with q_nnz=1",
+              qc.constraint_row_name.c_str());
             const f_t neg_v = neg_diag_rows[0].second;
             cuopt_expects(neg_v < -tol,
                           error_type_t::ValidationError,
@@ -367,7 +370,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
                           "(%.17g)",
                           qc.constraint_row_name.c_str(),
                           static_cast<double>(neg_v));
-            uniform_s       = -neg_v;
+            uniform_s      = -neg_v;
             have_uniform_s = true;
             head           = neg_diag_rows[0].first;
             cuopt_expects(
@@ -385,10 +388,11 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
             for (const auto& pr : pos_diag_rows) {
               note_positive_s(pr.second);
             }
-            cuopt_expects(have_uniform_s,
-                          error_type_t::ValidationError,
-                          "Quadratic constraint '%s' SOC Q: could not infer uniform positive scale s",
-                          qc.constraint_row_name.c_str());
+            cuopt_expects(
+              have_uniform_s,
+              error_type_t::ValidationError,
+              "Quadratic constraint '%s' SOC Q: could not infer uniform positive scale s",
+              qc.constraint_row_name.c_str());
             cuopt_expects(
               neg_diag_rows.size() == 1,
               error_type_t::ValidationError,
@@ -421,11 +425,12 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
             is_rotated = static_cast<char>(0);
           }
         } else {
-          cuopt_expects(neg_diag_rows.empty(),
-                        error_type_t::ValidationError,
-                        "Quadratic constraint '%s' with linear terms cannot contain negative diagonal "
-                        "Q entries",
-                        qc.constraint_row_name.c_str());
+          cuopt_expects(
+            neg_diag_rows.empty(),
+            error_type_t::ValidationError,
+            "Quadratic constraint '%s' with linear terms cannot contain negative diagonal "
+            "Q entries",
+            qc.constraint_row_name.c_str());
           cuopt_expects(affine_head >= 0,
                         error_type_t::ValidationError,
                         "Quadratic constraint '%s' internal error: affine SOC head index invalid",
@@ -556,12 +561,11 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         rotated_cones.push_back(rotated_soc_t{a, b, tail_vars, false, head_lift_sqrt_ratio});
       }
 
-      cuopt_expects(
-        have_uniform_s && uniform_s > tol,
-        error_type_t::ValidationError,
-        "Quadratic constraint '%s' SOC Q: uniform scale s must be positive (got %.17g)",
-        qc.constraint_row_name.c_str(),
-        static_cast<double>(uniform_s));
+      cuopt_expects(have_uniform_s && uniform_s > tol,
+                    error_type_t::ValidationError,
+                    "Quadratic constraint '%s' SOC Q: uniform scale s must be positive (got %.17g)",
+                    qc.constraint_row_name.c_str(),
+                    static_cast<double>(uniform_s));
       qc_soc_uniform_scale[qc_i] = uniform_s;
 
       for (const i_t var : cone) {
@@ -607,7 +611,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
       user_problem.rhs.resize(static_cast<size_t>(m_aug));
       user_problem.row_sense.resize(static_cast<size_t>(m_aug));
-      if (!user_problem.row_names.empty()) { user_problem.row_names.resize(static_cast<size_t>(m_aug)); }
+      if (!user_problem.row_names.empty()) {
+        user_problem.row_names.resize(static_cast<size_t>(m_aug));
+      }
 
       csr_A.n = n_aug;
       dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
@@ -682,8 +688,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
       // Lift each rotated cone into standard SOC coordinates with two slacks:
       //   With x_i' = sqrt(d/s)*x_hi, canonical s0 = (x_0'+x_1')/sqrt(2), s1 = (x_0'-x_1')/sqrt(2)
-      // so 2*d*x_h0*x_h1 >= s*sum tail^2  <=>  2*x_0'*x_1' >= sum (x_tail)^2  =>  s0^2 >= s1^2 + ...
-      // Only the rotated heads are replaced by slacks; tails stay as original variables.
+      // so 2*d*x_h0*x_h1 >= s*sum tail^2  <=>  2*x_0'*x_1' >= sum (x_tail)^2  =>  s0^2 >= s1^2 +
+      // ... Only the rotated heads are replaced by slacks; tails stay as original variables.
       i_t n_slack_total = 0;
       for (size_t ci = 0; ci < cone_is_rotated.size(); ++ci) {
         if (cone_is_rotated[ci]) { n_slack_total += 2; }
@@ -802,7 +808,6 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
       cuopt_expects(csr_A.m == m_old + n_slack_total,
                     error_type_t::RuntimeError,
                     "Internal error: CSR row count after rotated SOC lift");
-
     }
 
     // If a variable appears in multiple cones, create per-cone aliases and add linking rows
@@ -839,19 +844,25 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
         const i_t m_new = static_cast<i_t>(m_old + cone_alias_pairs.size());
 
         user_problem.objective.resize(static_cast<size_t>(n_new), f_t(0));
-        user_problem.lower.resize(static_cast<size_t>(n_new), -std::numeric_limits<f_t>::infinity());
+        user_problem.lower.resize(static_cast<size_t>(n_new),
+                                  -std::numeric_limits<f_t>::infinity());
         user_problem.upper.resize(static_cast<size_t>(n_new), std::numeric_limits<f_t>::infinity());
         user_problem.var_types.resize(
           static_cast<size_t>(n_new),
           cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
-        if (!user_problem.col_names.empty()) { user_problem.col_names.resize(static_cast<size_t>(n_new)); }
+        if (!user_problem.col_names.empty()) {
+          user_problem.col_names.resize(static_cast<size_t>(n_new));
+        }
 
         for (const auto& [alias, original] : cone_alias_pairs) {
-          user_problem.lower[static_cast<size_t>(alias)] = user_problem.lower[static_cast<size_t>(original)];
-          user_problem.upper[static_cast<size_t>(alias)] = user_problem.upper[static_cast<size_t>(original)];
+          user_problem.lower[static_cast<size_t>(alias)] =
+            user_problem.lower[static_cast<size_t>(original)];
+          user_problem.upper[static_cast<size_t>(alias)] =
+            user_problem.upper[static_cast<size_t>(original)];
           user_problem.var_types[static_cast<size_t>(alias)] =
             user_problem.var_types[static_cast<size_t>(original)];
-          // Keep objective unchanged: alias coefficient stays zero and alias==original links values.
+          // Keep objective unchanged: alias coefficient stays zero and alias==original links
+          // values.
           if (!user_problem.col_names.empty()) {
             user_problem.col_names[static_cast<size_t>(alias)] =
               "_CUOPT_cone_alias_" + std::to_string(static_cast<int>(alias - n_old));
@@ -860,11 +871,13 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 
         user_problem.rhs.resize(static_cast<size_t>(m_new));
         user_problem.row_sense.resize(static_cast<size_t>(m_new));
-        if (!user_problem.row_names.empty()) { user_problem.row_names.resize(static_cast<size_t>(m_new)); }
+        if (!user_problem.row_names.empty()) {
+          user_problem.row_names.resize(static_cast<size_t>(m_new));
+        }
 
         csr_A.n = n_new;
         dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
-        eq_row.n = n_new;
+        eq_row.n    = n_new;
         i_t row_idx = m_old;
         for (const auto& [alias, original] : cone_alias_pairs) {
           eq_row.i = {alias, original};

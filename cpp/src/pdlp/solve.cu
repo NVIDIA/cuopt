@@ -438,19 +438,24 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   f_t norm_rhs            = dual_simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
 
   dual_simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
-  barrier_settings.num_gpus                        = settings.num_gpus;
-  barrier_settings.time_limit                      = settings.time_limit;
-  barrier_settings.iteration_limit                 = settings.iteration_limit;
-  barrier_settings.concurrent_halt                 = settings.concurrent_halt;
-  barrier_settings.folding                         = settings.folding;
-  barrier_settings.augmented                       = settings.augmented;
-  barrier_settings.dualize                         = settings.dualize;
-  barrier_settings.ordering                        = settings.ordering;
-  barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
-  barrier_settings.barrier                         = true;
-  barrier_settings.crossover                       = settings.crossover;
-  barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.num_gpus                   = settings.num_gpus;
+  barrier_settings.time_limit                 = settings.time_limit;
+  barrier_settings.iteration_limit            = settings.iteration_limit;
+  barrier_settings.concurrent_halt            = settings.concurrent_halt;
+  barrier_settings.folding                    = settings.folding;
+  barrier_settings.augmented                  = settings.augmented;
+  barrier_settings.dualize                    = settings.dualize;
+  barrier_settings.ordering                   = settings.ordering;
+  barrier_settings.barrier_dual_initial_point = settings.barrier_dual_initial_point;
+  barrier_settings.barrier                    = true;
+  barrier_settings.crossover                  = settings.crossover;
+  barrier_settings.eliminate_dense_columns    = settings.eliminate_dense_columns;
+  barrier_settings.cudss_deterministic        = settings.cudss_deterministic;
+  barrier_settings.barrier_relative_feasibility_tol =
+    settings.barrier_relative_feasibility_tolerance;
+  barrier_settings.barrier_relative_optimality_tol = settings.barrier_relative_optimality_tolerance;
+  barrier_settings.barrier_relative_complementarity_tol =
+    settings.barrier_relative_complementarity_tolerance;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
