@@ -9,9 +9,9 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/linear_programming/parsers/parser.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>

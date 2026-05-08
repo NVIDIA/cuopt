@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/parsers/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -89,9 +89,10 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
   int n_variables;
 };
 
-void check_solutions(const test_get_solution_callback_t& get_solution_callback,
-                     const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
-                     const cuopt::linear_programming::mip_solver_settings_t<int, double>& settings)
+void check_solutions(
+  const test_get_solution_callback_t& get_solution_callback,
+  const cuopt::linear_programming::parsers::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::mip_solver_settings_t<int, double>& settings)
 {
   for (const auto& solution : get_solution_callback.solutions) {
     EXPECT_EQ(solution.first.size(), op_problem.get_variable_lower_bounds().size());
@@ -112,8 +113,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::parsers::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::parsers::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -164,8 +165,8 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::parsers::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::parsers::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 

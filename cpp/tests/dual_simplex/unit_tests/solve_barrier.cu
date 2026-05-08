@@ -19,7 +19,7 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
 
-#include <mps_parser/parser.hpp>
+#include <cuopt/linear_programming/parsers/parser.hpp>
 
 namespace cuopt::linear_programming::dual_simplex::test {
 

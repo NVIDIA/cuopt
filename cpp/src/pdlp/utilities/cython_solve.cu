@@ -12,13 +12,13 @@
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
+#include <cuopt/linear_programming/parsers/data_model_view.hpp>
+#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/parsers/writer.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip_heuristics/logger.hpp>
-#include <mps_parser/data_model_view.hpp>
-#include <mps_parser/mps_data_model.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <raft/core/handle.hpp>
@@ -90,7 +90,7 @@ cuopt::linear_programming::mip_solution_interface_t<int, double>* call_solve_mip
 }
 
 std::unique_ptr<solver_ret_t> call_solve(
-  cuopt::mps_parser::data_model_view_t<int, double>* data_model,
+  cuopt::linear_programming::parsers::data_model_view_t<int, double>* data_model,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
   unsigned int flags,
   bool is_batch_mode)
@@ -201,7 +201,8 @@ std::unique_ptr<solver_ret_t> call_solve(
 }
 
 static int compute_max_thread(
-  const std::vector<cuopt::mps_parser::data_model_view_t<int, double>*>& data_models)
+  const std::vector<cuopt::linear_programming::parsers::data_model_view_t<int, double>*>&
+    data_models)
 {
   constexpr std::size_t max_total = 4;
 
@@ -237,7 +238,7 @@ static int compute_max_thread(
 }
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
-  std::vector<cuopt::mps_parser::data_model_view_t<int, double>*> data_models,
+  std::vector<cuopt::linear_programming::parsers::data_model_view_t<int, double>*> data_models,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
 {
   cuopt_expects(
@@ -249,7 +250,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote
 }
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
-  std::vector<cuopt::mps_parser::data_model_view_t<int, double>*> data_models,
+  std::vector<cuopt::linear_programming::parsers::data_model_view_t<int, double>*> data_models,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call batch solve");
