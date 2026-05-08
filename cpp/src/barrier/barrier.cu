@@ -292,48 +292,42 @@ class iteration_data_t {
     f_t estimated_nz_AAT = 0.0;
     std::vector<i_t> dense_columns_unordered;
 
-    if (has_Q) {
-      // QPs always use the augmented system; skip dense column detection
+    f_t start_column_density = tic();
+
+    // Do not look for dense columns if Q is not diagonal
+    if (!has_Q || Q_diagonal) {
+      find_dense_columns(
+        lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+    }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+#ifdef PRINT_INFO
+    for (i_t j : dense_columns_unordered) {
+      settings.log.printf("Dense column %6d\n", j);
+    }
+#endif
+    float64_t column_density_time = toc(start_column_density);
+    if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
+    n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
+    if (n_dense_columns > 0) {
+      settings.log.printf("Dense columns               : %d\n", n_dense_columns);
+    }
+    if (n_dense_rows > 0) {
+      settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
+    }
+    settings.log.printf("Density estimator time      : %.3fs\n", column_density_time);
+    if ((settings.augmented != 0) &&
+        (n_dense_columns > 50 || n_dense_rows > 10 ||
+         lp.A.m == 0 /* handle case with no constraints */ ||
+         (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
       use_augmented   = true;
       n_dense_columns = 0;
-    } else {
-      f_t start_column_density = tic();
+    }
 
-      // Do not look for dense columns if Q is not diagonal
-      if (!has_Q || Q_diagonal) {
-        find_dense_columns(
-          lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-      }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-#ifdef PRINT_INFO
-      for (i_t j : dense_columns_unordered) {
-        settings.log.printf("Dense column %6d\n", j);
-      }
-#endif
-      float64_t column_density_time = toc(start_column_density);
-      if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
-      n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
-      if (n_dense_columns > 0) {
-        settings.log.printf("Dense columns               : %d\n", n_dense_columns);
-      }
-      if (n_dense_rows > 0) {
-        settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
-      }
-      settings.log.printf("Density estimator time      : %.3fs\n", column_density_time);
-      if ((settings.augmented != 0) &&
-          (n_dense_columns > 50 || n_dense_rows > 10 ||
-           lp.A.m == 0 /* handle case with no constraints */ ||
-           (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
-        use_augmented   = true;
-        n_dense_columns = 0;
-      }
-
-      if (has_Q && !use_augmented) {
-        // For now let's not deal with dense columns
-        n_dense_columns = 0;
-        use_augmented   = !Q_diagonal;
-      }
-    }  // end !has_Q
+    if (has_Q && !use_augmented) {
+      // For now let's not deal with dense columns
+      n_dense_columns = 0;
+      use_augmented   = !Q_diagonal;
+    }
 
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");

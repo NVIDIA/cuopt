@@ -253,7 +253,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssSetDeviceMemHandler(handle, &mem_handler), status, "cudssSetDeviceMemHandler");
 
-#if 0
     const char* cudss_mt_lib_file = nullptr;
     char* env_value               = std::getenv("CUDSS_THREADING_LIB");
     if (env_value != nullptr) {
@@ -267,7 +266,6 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssSetThreadingLayer(handle, cudss_mt_lib_file), status, "cudssSetThreadingLayer");
     }
-#endif
 
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigCreate(&solverConfig), status, "cudssConfigCreate");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDataCreate(handle, &solverData), status, "cudssDataCreate");
