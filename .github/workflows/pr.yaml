@@ -22,6 +22,7 @@ jobs:
       - checks
       - conda-cpp-build
       - conda-cpp-tests
+      - conda-java-build-and-tests
       - conda-python-build
       - conda-python-tests
       - docs-build
@@ -354,6 +355,21 @@ jobs:
           - '!sonarqube/**'
           - '!ucf/**'
           - '!utilities/**'
+        test_java:
+          # Path-positive list — easier to reason about than the inverse
+          # pattern used for test_cpp / test_python.
+          - 'java/**'
+          - 'ci/build_java.sh'
+          - 'ci/test_java.sh'
+          - 'dependencies.yaml'
+          - 'conda/environments/**'
+          # Java bindings are jextract-generated from these C headers,
+          # so any C API change should re-trigger Java tests.
+          - 'cpp/include/cuopt/linear_programming/cuopt_c.h'
+          - 'cpp/include/cuopt/linear_programming/constants.h'
+          # Workflow files themselves
+          - '.github/workflows/pr.yaml'
+          - '.github/workflows/build.yaml'
   checks:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
@@ -387,6 +403,32 @@ jobs:
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+  conda-java-build-and-tests-matrix:
+    # Derives the matrix from conda-cpp-build, filtered to amd64 (matches
+    # cuvs pattern). arm64 build support is planned but blocked on jextract
+    # availability in the arm64 CI image.
+    needs: [conda-cpp-build, changed-files]
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
+    with:
+      build_type: pull-request
+      matrix_name: conda-cpp-build
+      matrix_filter: 'map(select(.ARCH == "amd64"))'
+  conda-java-build-and-tests:
+    # Combined build+test in one job (matches cuvs pattern). Splitting
+    # this is a follow-up: requires shared-workflow surface for cross-job
+    # artifact passing. cuvs Issue #868 tracks the same split.
+    needs: conda-java-build-and-tests-matrix
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: pull-request
+      node_type: "gpu-l4-latest-1"
+      arch: "amd64"
+      script: "ci/test_java.sh"
+      file_to_upload: "java/cuopt-java/target/"
+      artifact-name: "cuopt-java-cuda${{ needs.conda-java-build-and-tests-matrix.outputs.CUDA_VER }}"
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters, changed-files]
     # Consumed by conda-python-tests and docs-build.

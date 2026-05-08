@@ -183,6 +183,24 @@ jobs:
       artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: "ci/build_docs.sh"
+  java-build:
+    # Build cuopt-java JAR for main / release-branch / tag pushes.
+    # amd64-only initially; arm64 build planned once jextract is in the
+    # arm64 CI image.
+    needs: [cpp-build]
+    secrets: inherit
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      node_type: "linux-amd64-cpu16"
+      sha: ${{ inputs.sha }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      arch: "amd64"
+      file_to_upload: "java/cuopt-java/target/"
+      artifact-name: "cuopt-java"
+      container_image: "rapidsai/ci-conda:26.06-latest"
+      script: "ci/build_java.sh"
   wheel-build-cuopt-sh-client:
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main

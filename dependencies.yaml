@@ -37,6 +37,7 @@ files:
       - depends_on_rapids_logger
       - depends_on_rmm
       - rapids_build_backend
+      - java
   test_cpp:
     output: none
     includes:
@@ -49,7 +50,7 @@ files:
     output: none
     includes:
       - cuda_version
-      - build_java
+      - java
       - depends_on_libcuopt
   test_python:
     output: none
@@ -319,14 +320,14 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
-  build_java:
+  java:
     common:
       - output_types: [conda]
         packages:
           # Java 22 is the minimum for FFM final (no preview flag).
           # Public API compiles to Java 21 release; runtime requires Java 22+.
           # See java/README.md for the full multi-release-JAR rationale.
-          - openjdk=22
+          - openjdk=22.*
           - maven>=3.9.6
           # jextract is not available on conda-forge; java/build.sh expects
           # it to be installed manually. See java/README.md.

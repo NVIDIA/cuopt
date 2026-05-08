@@ -39,6 +39,7 @@ dependencies:
 - libraft-headers==26.6.*,>=0.0.0a0
 - librmm==26.6.*,>=0.0.0a0
 - make
+- maven>=3.9.6
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.2
 - myst-parser
@@ -48,6 +49,7 @@ dependencies:
 - numba>=0.60.0,<0.65.0
 - numpy>=1.23.5,<3.0
 - numpydoc
+- openjdk=22.*
 - openssl
 - pandas>=2.0
 - pexpect
