@@ -212,6 +212,8 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
+#define SHOW_DIVING_TYPE
+
 #ifdef SHOW_DIVING_TYPE
 inline char feasible_solution_symbol(search_strategy_t strategy)
 {
@@ -221,6 +223,7 @@ inline char feasible_solution_symbol(search_strategy_t strategy)
     case search_strategy_t::LINE_SEARCH_DIVING: return 'L';
     case search_strategy_t::PSEUDOCOST_DIVING: return 'P';
     case search_strategy_t::GUIDED_DIVING: return 'G';
+    case search_strategy_t::FARKAS_DIVING: return 'F';
     default: return 'U';
   }
 }
@@ -233,6 +236,7 @@ inline char feasible_solution_symbol(search_strategy_t strategy)
     case search_strategy_t::LINE_SEARCH_DIVING: return 'D';
     case search_strategy_t::PSEUDOCOST_DIVING: return 'D';
     case search_strategy_t::GUIDED_DIVING: return 'D';
+    case search_strategy_t::FARKAS_DIVING: return 'D';
     default: return 'U';
   }
 }
@@ -873,6 +877,9 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
       current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
       return guided_diving(pc_, fractional, solution, current_incumbent, log);
+
+    case FARKAS_DIVING:
+      return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
 
     default:
       log.debug("Unknown variable selection method: %d\n", worker->search_strategy);

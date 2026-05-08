@@ -51,4 +51,11 @@ branch_variable_t<i_t> coefficient_diving(const lp_problem_t<i_t, f_t>& lp_probl
                                           const std::vector<i_t>& down_locks,
                                           logger_t& log);
 
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> farkas_diving(const lp_problem_t<i_t, f_t>& lp,
+                                     const std::vector<i_t>& fractional,
+                                     const std::vector<f_t>& solution,
+                                     f_t zero_tol,
+                                     logger_t& log);
+
 }  // namespace cuopt::linear_programming::dual_simplex

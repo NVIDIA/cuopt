@@ -27,6 +27,7 @@ struct diving_heuristics_settings_t {
   i_t pseudocost_diving  = -1;
   i_t guided_diving      = -1;
   i_t coefficient_diving = -1;
+  i_t farkas_diving      = -1;
 
   // The minimum depth to start diving from.
   i_t min_node_depth = 10;
