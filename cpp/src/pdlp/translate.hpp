@@ -129,6 +129,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_simp
   csr_A.x         = model.get_constraint_matrix_values_host();
   csr_A.j         = model.get_constraint_matrix_indices_host();
   csr_A.row_start = model.get_constraint_matrix_offsets_host();
+  if (m == 0) {
+    csr_A.row_start.resize(1);
+    csr_A.row_start[0] = 0;
+  }
   csr_A.to_compressed_col(user_problem.A);
 
   user_problem.rhs.resize(m);
