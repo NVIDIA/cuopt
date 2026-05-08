@@ -9,8 +9,6 @@
 
 #include <cuopt/linear_programming/parsers/data_model_view.hpp>
 
-// TODO: we might want to eventually rename libmps_parser to libmps_io
-// (or libcuopt_io if we want to support other hypothetical formats)
 namespace cuopt::linear_programming::parsers {
 
 /**

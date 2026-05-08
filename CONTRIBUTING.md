@@ -167,7 +167,7 @@ conda activate ./.cuopt_env
   pinnings are changed.
 
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
-  will install the `libmps_parser`, `libcuopt`, `cuopt_mps_parser`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
+  will install the `libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
   installed to the `$CONDA_PREFIX` directory. To install into a different location, set the location
   in `$INSTALL_PREFIX`. Finally, note that the script depends on the `nvcc` executable being on your
   path, or defined in `$CUDACXX`.
@@ -177,11 +177,10 @@ cd $CUOPT_HOME
 
 # Choose one of the following commands, depending on whether
 # you want to build and install the libcuopt C++ library only,
-# or include the libcuopt and/or cuopt Python libraries:
+# or include the cuopt Python libraries:
 
-./build.sh  # All the libraries
-./build.sh libmps_parser  # libmps_parser only
-./build.sh libmps_parser libcuopt  # libmps_parser and libcuopt only
+./build.sh           # All the libraries
+./build.sh libcuopt  # libcuopt C++ only
 ```
 
 - For the complete list of libraries as well as details about the script usage, run the `help` command:
@@ -198,7 +197,7 @@ cd $CUOPT_HOME
 This is only available to be built through source code and libcuopt is not being released as deb package in any official space.
 
 ```bash
-./build.sh libmps_parser libcuopt deb
+./build.sh libcuopt deb
 ```
 
 #### Building for development
