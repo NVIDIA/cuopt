@@ -60,6 +60,32 @@ ${detail}
 XMLEOF
 }
 
+# Synthesize a JUnit XML crash record for a pytest invocation that died
+# from a signal mid-run. Without this marker, nightly_report.py — which
+# classifies tests purely from XML files — sees no failure and reports
+# "All tests passed." even though the runner exited non-zero.
+#
+# Written to <junitxml>-crash.xml so any partial XML pytest may have
+# emitted is preserved alongside it.
+#
+# Usage: write_pytest_crash_marker <junitxml_path> <suite_name> <rc>
+write_pytest_crash_marker() {
+    local junitxml_path="$1"
+    local suite_name="$2"
+    local rc="$3"
+
+    if [ -z "${junitxml_path}" ]; then
+        return
+    fi
+
+    local sig
+    sig=$(signal_name "${rc}")
+    local crash_xml="${junitxml_path%.xml}-crash.xml"
+    write_crash_xml "${crash_xml}" "${suite_name}" "PROCESS_CRASH" \
+        "${suite_name} crashed with ${sig} (exit code ${rc})" \
+        "pytest process terminated by ${sig} mid-run. The JUnit XML was not finalized; the test that triggered the crash is unknown — inspect the run log for the last test invoked."
+}
+
 # Isolate crashing pytest tests by retrying individually.
 # Called after pytest exits with a signal (exit code > 128) on nightly builds.
 #

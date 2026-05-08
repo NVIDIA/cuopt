@@ -43,18 +43,27 @@ RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
 mkdir -p "${RAPIDS_TESTS_DIR}"
 
 EXITCODE=0
+FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
 timeout 30m ./ci/run_cuopt_server_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
-  --verbose --capture=no
+  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt-server (wheel)")
 
 # Run documentation tests
-./ci/test_doc_examples.sh
+./ci/test_doc_examples.sh || FAILED_STEPS+=("doc examples")
 
 # Generate nightly test report
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
 generate_nightly_report "wheel-server" --with-python-version
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
 
 exit ${EXITCODE}

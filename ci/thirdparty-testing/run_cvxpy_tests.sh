@@ -4,6 +4,9 @@
 
 set -e -u -o pipefail
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../utils/crash_helpers.sh"
+
 echo "building 'cvxpy' from source"
 
 PYTHON_VERSION=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -36,10 +39,19 @@ RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
 mkdir -p "${RAPIDS_TESTS_DIR}"
 
 echo "running 'cvxpy' tests"
+pytest_rc=0
 timeout 3m python -m pytest \
     --verbose \
     --capture=no \
     --error-for-skips \
     --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-cvxpy.xml" \
     -k "TestCUOPT" \
-    ./cvxpy/tests/test_conic_solvers.py
+    ./cvxpy/tests/test_conic_solvers.py || pytest_rc=$?
+
+# On signal death, pytest didn't finalize JUnit; synthesize a crash XML so
+# nightly_report.py reports the failure instead of "All tests passed."
+if [ "${pytest_rc}" -gt 128 ]; then
+    write_pytest_crash_marker "${RAPIDS_TESTS_DIR}/junit-thirdparty-cvxpy.xml" "thirdparty-cvxpy" "${pytest_rc}"
+fi
+
+exit "${pytest_rc}"

@@ -4,6 +4,9 @@
 
 set -e -u -o pipefail
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../utils/crash_helpers.sh"
+
 rapids-logger "building 'pyomo' from source and running cuOpt tests"
 
 if [ -z "${PIP_CONSTRAINT:-}" ]; then
@@ -28,11 +31,19 @@ mkdir -p "${RAPIDS_TESTS_DIR}"
 
 rapids-logger "running Pyomo tests (cuopt_direct / cuOpt-related)"
 # Run only tests that reference cuopt (cuopt_direct solver)
+pytest_rc=0
 timeout 5m python -m pytest \
     --verbose \
     --capture=no \
     --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-pyomo.xml" \
     -k "cuopt or CUOPT" \
-    pyomo/solvers/tests/
+    pyomo/solvers/tests/ || pytest_rc=$?
+
+# On signal death, pytest didn't finalize JUnit; synthesize a crash XML so
+# nightly_report.py reports the failure instead of "All tests passed."
+if [ "${pytest_rc}" -gt 128 ]; then
+    write_pytest_crash_marker "${RAPIDS_TESTS_DIR}/junit-thirdparty-pyomo.xml" "thirdparty-pyomo" "${pytest_rc}"
+fi
 
 popd || exit 1
+exit "${pytest_rc}"
