@@ -416,7 +416,14 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     // Set the primal heuristics -> branch and bound callback
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
-      branch_and_bound->set_concurrent_lp_root_solve(true);
+      // Force single-threaded dual simplex at root so the root LP
+      // value (and therefore the cut-pass starting point) is
+      // deterministic across reruns. The concurrent racer would
+      // otherwise pick PDLP or DS as the winner non-deterministically
+      // and the post-cut gap-closed metric would drift. This branch
+      // is for gap measurement only, so we make it deterministic by
+      // default rather than gating on an env var.
+      branch_and_bound->set_concurrent_lp_root_solve(false);
 
       context.problem_ptr->branch_and_bound_callback =
         std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
@@ -463,31 +470,29 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                                                 std::ref(branch_and_bound_solution));
   }
 
-  // Start the primal heuristics
+  // The diversity-manager primal heuristics and the post-BB
+  // feasibility checks are dead-coded out on this branch. The only
+  // thing we want from a run on main_baselin is the per-instance
+  // post-cut gap, which dual_simplex BB has already published into
+  // benchmark_info_t before returning. Skipping `dm.run_solver()`
+  // (which would otherwise consume the full time budget after BB
+  // exits early) and the feasibility checks that depend on a real
+  // incumbent makes the run exit quickly with a default-constructed
+  // empty solution. This mirrors the early-return at the top of this
+  // function used when the solve hits the time limit before B&B even
+  // starts, and matches the cut_scoring branch so timing comparisons
+  // are valid.
   context.diversity_manager_ptr = &dm;
-  auto sol                      = dm.run_solver();
+  solution_t<i_t, f_t> sol(*context.problem_ptr);
   if (run_bb) {
-    // Wait for the branch and bound to finish
     auto bb_status = branch_and_bound_status_future.get();
+    static_cast<void>(bb_status);
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {
       context.stats.set_solution_bound(
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound));
     }
-    if (bb_status == dual_simplex::mip_status_t::INFEASIBLE) { sol.set_problem_fully_reduced(); }
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
-  }
-  sol.compute_feasibility();
-
-  rmm::device_scalar<i_t> is_feasible(sol.handle_ptr->get_stream());
-  sol.test_variable_bounds(true, is_feasible.data());
-  // test_variable_bounds clears is_feasible if the test is failed
-  if (!is_feasible.value(sol.handle_ptr->get_stream())) {
-    CUOPT_LOG_ERROR(
-      "Solution is not feasible due to variable bounds, returning infeasible solution!");
-    context.stats.total_solve_time = timer_.elapsed_time();
-    context.problem_ptr->post_process_solution(sol);
-    return sol;
   }
   context.stats.total_solve_time = timer_.elapsed_time();
   context.problem_ptr->post_process_solution(sol);

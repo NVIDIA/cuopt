@@ -2367,18 +2367,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         return mip_status_t::NUMERICAL;
       }
 
-      if (settings_.reduced_cost_strengthening >= 1 && upper_bound_.load() < last_upper_bound) {
-        mutex_upper_.lock();
-        last_upper_bound = upper_bound_.load();
-        std::vector<f_t> lower_bounds;
-        std::vector<f_t> upper_bounds;
-        find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
-        mutex_upper_.unlock();
-        mutex_original_lp_.lock();
-        original_lp_.lower = lower_bounds;
-        original_lp_.upper = upper_bounds;
-        mutex_original_lp_.unlock();
-      }
+      // In-cut-pass reduced-cost strengthening is disabled on this
+      // branch: the branch exists only to produce a deterministic
+      // gap-closed-by-cuts baseline, and primal-driven bound
+      // tightening makes the per-pass cut yield depend on the timing
+      // of heuristic-found incumbents (non-deterministic across
+      // reruns).
+      // Original block intentionally left out.
 
       // Try to do bound strengthening
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
@@ -2556,6 +2551,30 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.A.col_start[original_lp_.A.n]);
   }
 
+  // Stop here. The cut loop has finished, the post-cut root LP value
+  // has been published to benchmark_info_t (just above), and the
+  // cut-info summary has been printed. This branch exists only to
+  // measure gap-closed-by-cuts, so we return before strong branching
+  // / B&B exploration. The early-exit point matches the cut_scoring
+  // branch so MIPLIBGapStat numbers from both branches line up
+  // exactly.
+  settings_.log.printf(
+    "CutBench: cut generation complete (max_passes=%d, pool=%d), "
+    "exiting before strong branching / B&B exploration\n",
+    static_cast<int>(settings_.max_cut_passes),
+    static_cast<int>(cut_pool_size));
+  finish_clique_thread();
+  solver_status_ = mip_status_t::TIME_LIMIT;
+  set_final_solution(solution, root_objective_);
+  return solver_status_;
+
+  // The B&B exploration that normally follows cut generation is
+  // intentionally dead-coded out on this branch. Kept under #if 0 so
+  // the original control-flow stays visible to anyone diffing against
+  // upstream main, and so reverting the branch back to a normal
+  // solver only requires deleting the early-return above and the
+  // matching #if 0 / #endif markers.
+#if 0
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
@@ -2714,6 +2733,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
   set_final_solution(solution, lower_bound);
   return solver_status_;
+#endif  // dead-coded B&B exploration; see #if 0 marker above
 }
 
 // ============================================================================
