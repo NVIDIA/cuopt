@@ -1456,27 +1456,51 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> solve_qp_with_barrier(
-  optimization_problem_t<i_t, f_t>& op_problem,
-  pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer)
+optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f_t>& op_problem,
+                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                                   bool problem_checking)
 {
-  CUOPT_LOG_INFO("Conversion to dual simplex problem started at %.2f seconds\n",
-                 timer.elapsed_time());
-  // Convert data structures to dual simplex format and back
-  dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_optimization_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(),
-                                                            op_problem);
-  CUOPT_LOG_INFO("Conversion to dual simplex problem completed at %.2f seconds\n",
-                 timer.elapsed_time());
-  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
-  return convert_dual_simplex_sol(op_problem,
-                                  std::get<0>(sol_dual_simplex),
-                                  std::get<1>(sol_dual_simplex),
-                                  std::get<2>(sol_dual_simplex),
-                                  std::get<3>(sol_dual_simplex),
-                                  std::get<4>(sol_dual_simplex),
-                                  method_t::Barrier);
+  try {
+    print_version_info();
+    // Create log stream for file logging and add it to default logger
+    init_logger_t log(settings.log_file, settings.log_to_console);
+
+    // Init libraries before to not include it in solve time
+    init_handler(op_problem.get_handle_ptr());
+
+    auto qp_timer = cuopt::timer_t(settings.time_limit);
+
+    raft::common::nvtx::range fun_scope("Running QP solver");
+    if (settings.user_problem_file != "") {
+      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
+      op_problem.write_to_mps(settings.user_problem_file);
+    }
+    // Convert data structures to dual simplex format and back
+    dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
+      cuopt_optimization_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(),
+                                                              op_problem);
+    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qp_timer);
+    auto solution         = convert_dual_simplex_sol(op_problem,
+                                             std::get<0>(sol_dual_simplex),
+                                             std::get<1>(sol_dual_simplex),
+                                             std::get<2>(sol_dual_simplex),
+                                             std::get<3>(sol_dual_simplex),
+                                             std::get<4>(sol_dual_simplex),
+                                             method_t::Barrier);
+    if (settings.sol_file != "") {
+      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+      solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+    return solution;
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    return optimization_problem_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    return optimization_problem_solution_t<i_t, f_t>{
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1487,6 +1511,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
+  if (op_problem.has_quadratic_objective()) {
+    return solve_qp(op_problem, settings_const, problem_checking);
+  }
+
   try {
     if (!settings_const.inside_mip) print_version_info();
 
@@ -1494,24 +1522,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
-    // Init libraies before to not include it in solve time
+    // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
-
-    if (op_problem.has_quadratic_objective()) {
-      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
-      settings.method    = method_t::Barrier;
-      settings.presolver = presolver_t::None;
-      // check for sense of the problem
-      if (op_problem.get_sense()) {
-        CUOPT_LOG_ERROR("Quadratic problems must be minimized");
-        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
-                                                         op_problem.get_handle_ptr()->get_stream());
-      }
-
-      auto qp_timer = cuopt::timer_t(settings.time_limit);
-      return solve_qp_with_barrier(op_problem, settings, qp_timer);
-    }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
@@ -1664,9 +1677,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Set the hyper-parameters based on the solver_settings
     if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings); }
 
-    CUOPT_LOG_INFO("Solving LP with method started at %.2f seconds\n", lp_timer.elapsed_time());
     auto solution = solve_lp_with_method(problem, settings, lp_timer, is_batch_mode);
-    CUOPT_LOG_INFO("Solving LP with method completed at %.2f seconds\n", lp_timer.elapsed_time());
 
     if (run_presolve) {
       auto primal_solution = cuopt::device_copy(solution.get_primal_solution(),
