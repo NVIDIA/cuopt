@@ -29,6 +29,11 @@ project(
         LANGUAGES CXX CUDA C
 )
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
 # Disable C++20 module scanning as the codebase doesn't use modules
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
 
@@ -153,6 +158,15 @@ endif (DEFINE_BENCHMARK)
 if (DEFINE_PDLP_VERBOSE_MODE)
     add_definitions(-DPDLP_VERBOSE_MODE)
 endif (DEFINE_PDLP_VERBOSE_MODE)
+
+# This fix a crash on RTX PRO 6000 caused by Warp MMU Fault in cub::detail::scan::DeviceScanKernel.
+# CCCL 3.4.0 introduced an SM90+ "warpspeed" scan kernel that uses Hopper/Blackwell TMA (cp_async_bulk), however,
+# on cuda 13.1, this can produce a non-contiguous byte mask which is not allowed in Hopper/Blackwell.
+# This is fixed only NVCC ≥ 13.2.
+
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS_EQUAL 13.2)
+    add_definitions(-DCCCL_DISABLE_WARPSPEED_SCAN)
+endif ()
 
 # Set logging level
 set(LIBCUOPT_LOGGING_LEVEL
@@ -430,12 +444,6 @@ add_library(cuopt SHARED
 set_target_properties(cuopt
         PROPERTIES BUILD_RPATH "\$ORIGIN"
         INSTALL_RPATH "\$ORIGIN"
-
-        # set target compile options
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
@@ -667,8 +675,6 @@ if (NOT BUILD_LP_ONLY)
     # (ET_EXEC) binaries are prone to corrupt segment layout. PIE (ET_DYN) survives RPATH edits.
     set_target_properties(cuopt_cli
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
@@ -725,8 +731,6 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
 
     set_target_properties(solve_MIP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -757,10 +761,6 @@ if (BUILD_LP_BENCHMARKS)
 
     set_target_properties(solve_LP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
-            CUDA_STANDARD 20
-            CUDA_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -796,14 +796,15 @@ if (NOT SKIP_GRPC_BUILD)
 
     set_target_properties(cuopt_grpc_server
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
+            POSITION_INDEPENDENT_CODE ON
     )
 
     target_compile_options(cuopt_grpc_server
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     )
+
+    target_link_options(cuopt_grpc_server PRIVATE -pie)
 
     target_include_directories(cuopt_grpc_server
             PRIVATE

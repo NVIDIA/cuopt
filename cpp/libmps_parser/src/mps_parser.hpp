@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <limits>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -41,7 +42,7 @@ enum BoundType {
   BinaryVariable,
   LowerBoundIntegerVariable,
   UpperBoundIntegerVariable,
-  SemiContiniousVariable,
+  SemiContinuousVariable,
 };  // enum BoundType
 
 /**
@@ -74,6 +75,18 @@ class mps_parser_t {
    */
   mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
                const std::string& file,
+               bool fixed_mps_format = true);
+
+  /**
+   * @brief Ctor. Parses the MPS text and generates the internal representation.
+   *
+   * @param[out] problem Problem representation that will be filled after parsing the MPS text
+   * @param[in] input MPS text to be parsed
+   * @param[in] fixed_mps_format Bool which describes whether the MPS file is in fixed format or
+   * not. Default is true.
+   */
+  mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+               std::string_view input,
                bool fixed_mps_format = true);
 
   /** path to the mps file being parsed */
@@ -130,11 +143,24 @@ class mps_parser_t {
   // QPS-specific parsing states
   bool inside_quadobj_{false};
   bool inside_qmatrix_{false};
+  bool inside_qcmatrix_{false};
+
+  /** (free-format) QCMATRIX: finalized blocks (row id + triples) */
+  struct qcmatrix_raw_block_t {
+    i_t constraint_row_id{};
+    std::vector<std::tuple<i_t, i_t, f_t>> entries{};
+  };
+  std::vector<qcmatrix_raw_block_t> qcmatrix_blocks_{};
+  /** Triples for the QCMATRIX block currently being read (-1 row id means none) */
+  i_t qcmatrix_active_row_id_{-1};
+  std::vector<std::tuple<i_t, i_t, f_t>> qcmatrix_current_entries_{};
+
   std::unordered_set<std::string> encountered_sections{};
   std::unordered_map<std::string, i_t> row_names_map{};
   std::unordered_map<std::string, i_t> var_names_map{};
   std::unordered_set<std::string> ignored_objective_names{};
   std::unordered_set<i_t> bounds_defined_for_var_id{};
+  std::unordered_set<i_t> lower_bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
   /* Reads an MPS input file into a buffer.
@@ -169,6 +195,11 @@ class mps_parser_t {
 
   // QPS-specific parsing methods
   void parse_quad(std::string_view line, bool is_quadobj);
+
+  // QCMATRIX-specific parsing methods
+  void flush_qcmatrix_block();
+  void parse_qcmatrix_header(std::string_view line);
+  void parse_qcmatrix_data(std::string_view line);
 
 };  // class mps_parser_t
 

@@ -247,7 +247,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
   constexpr bool verbose = false;
   i_t nz_max             = std::min(m, n);
   while (nz <= nz_max) {
-    i_t markowitz_lower_bound = (nz - 1) * (nz - 1);
+    int64_t markowitz_lower_bound = static_cast<int64_t>(nz - 1) * static_cast<int64_t>(nz - 1);
     // Search columns of length nz
     for (const i_t j : col_count[nz]) {
       assert(Cdegree[j] == nz);
@@ -272,7 +272,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         }
 #endif
         assert(Rdegree[i] >= 0);
-        const i_t Mij = (Rdegree[i] - 1) * (nz - 1);
+        const int64_t Mij = static_cast<int64_t>(Rdegree[i] - 1) * static_cast<int64_t>(nz - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
 #ifdef THRESHOLD_ROOK_PIVOTING
             std::abs(entry->x) >= threshold_tol * max_in_row[i] &&
@@ -291,7 +291,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
 
     if (markowitz <= markowitz_lower_bound) { break; }
 
-    markowitz_lower_bound = (nz - 1) * nz;
+    markowitz_lower_bound = static_cast<int64_t>(nz - 1) * static_cast<int64_t>(nz);
 
     // Search rows of length nz
     assert(row_count[nz].size() >= 0);
@@ -307,7 +307,7 @@ i_t markowitz_search(const std::vector<i_t>& Cdegree,
         assert(entry->i == i);
         const f_t max_in_col = max_in_column[j];
         assert(Cdegree[j] >= 0);
-        const i_t Mij = (nz - 1) * (Cdegree[j] - 1);
+        const int64_t Mij = static_cast<int64_t>(nz - 1) * static_cast<int64_t>(Cdegree[j] - 1);
         if (Mij < markowitz && std::abs(entry->x) >= threshold_tol * max_in_col &&
 #ifdef THRESHOLD_ROOK_PIVOTING
             std::abs(entry->x) >= threshold_tol * max_in_row_i &&

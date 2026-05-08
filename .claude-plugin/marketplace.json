@@ -45,28 +45,28 @@
       "description": "Developer installation — build cuOpt from source, run tests. Use when the user wants to set up a dev environment to contribute or modify cuOpt."
     },
     {
-      "name": "lp-milp-formulation",
-      "source": "./skills/lp-milp-formulation",
+      "name": "numerical-optimization-formulation",
+      "source": "./skills/numerical-optimization-formulation",
       "skills": "./",
-      "description": "LP/MILP concepts and going from problem text to formulation. What LP/MILP are, required formulation questions, typical modeling elements, and how to parse problem statements."
+      "description": "Numerical optimization (LP, MILP, QP) — concepts, problem-text parsing, and formulation patterns. What LP, MILP, and QP are, required formulation questions, modeling elements, common patterns, and how to parse problem statements (parameters, constraints, decisions, objective). Domain concepts; no API or interface."
     },
     {
-      "name": "cuopt-lp-milp-api-python",
-      "source": "./skills/cuopt-lp-milp-api-python",
+      "name": "cuopt-numerical-optimization-api-python",
+      "source": "./skills/cuopt-numerical-optimization-api-python",
       "skills": "./",
-      "description": "Solve LP and MILP with the Python API. Use when the user asks about optimization with linear constraints, integer variables, scheduling, resource allocation, facility location, or production planning."
+      "description": "Solve LP, MILP, and QP (beta) with the Python API. Use when the user asks about optimization with linear or quadratic objectives, linear constraints, integer variables, scheduling, resource allocation, facility location, production planning, portfolio optimization, or least squares."
     },
     {
-      "name": "cuopt-lp-milp-api-c",
-      "source": "./skills/cuopt-lp-milp-api-c",
+      "name": "cuopt-numerical-optimization-api-c",
+      "source": "./skills/cuopt-numerical-optimization-api-c",
       "skills": "./",
-      "description": "LP and MILP with cuOpt — C API only. Use when the user is embedding LP/MILP in C/C++."
+      "description": "LP, MILP, and QP (beta) with cuOpt — C API only. Use when the user is embedding LP, MILP, or QP in C/C++."
     },
     {
-      "name": "cuopt-lp-milp-api-cli",
-      "source": "./skills/cuopt-lp-milp-api-cli",
+      "name": "cuopt-numerical-optimization-api-cli",
+      "source": "./skills/cuopt-numerical-optimization-api-cli",
       "skills": "./",
-      "description": "LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving from MPS via command line."
+      "description": "LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line."
     },
     {
       "name": "routing-formulation",
@@ -79,30 +79,6 @@
       "source": "./skills/cuopt-routing-api-python",
       "skills": "./",
       "description": "Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python."
-    },
-    {
-      "name": "qp-formulation",
-      "source": "./skills/qp-formulation",
-      "skills": "./",
-      "description": "Quadratic Programming (QP) — problem form and constraints. Domain concepts; no API or interface. QP is beta."
-    },
-    {
-      "name": "cuopt-qp-api-python",
-      "source": "./skills/cuopt-qp-api-python",
-      "skills": "./",
-      "description": "Quadratic Programming (QP) with cuOpt — Python API only (beta). Use when the user is building or solving QP in Python."
-    },
-    {
-      "name": "cuopt-qp-api-c",
-      "source": "./skills/cuopt-qp-api-c",
-      "skills": "./",
-      "description": "Quadratic Programming (QP) with cuOpt — C API. Use when the user is embedding QP in C/C++."
-    },
-    {
-      "name": "cuopt-qp-api-cli",
-      "source": "./skills/cuopt-qp-api-cli",
-      "skills": "./",
-      "description": "QP with cuOpt — CLI (e.g. cuopt_cli with QP-capable input). Use when the user is solving QP from the command line."
     },
     {
       "name": "cuopt-server-common",

@@ -74,13 +74,15 @@
 #define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
-#define CUOPT_SOLUTION_FILE                "solution_file"
-#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
-#define CUOPT_NUM_GPUS                     "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
-#define CUOPT_PRESOLVE_FILE                "presolve_file"
-#define CUOPT_RANDOM_SEED                  "random_seed"
-#define CUOPT_PDLP_PRECISION               "pdlp_precision"
+
+#define CUOPT_SOLUTION_FILE            "solution_file"
+#define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
+#define CUOPT_NUM_GPUS                 "num_gpus"
+#define CUOPT_USER_PROBLEM_FILE        "user_problem_file"
+#define CUOPT_PRESOLVE_FILE            "presolve_file"
+#define CUOPT_RANDOM_SEED              "random_seed"
+#define CUOPT_PDLP_PRECISION           "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M "mip_semi_continuous_big_m"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT "barrier_iterative_refinement"
 #define CUOPT_BARRIER_STEP_SCALE           "barrier_step_scale"
 

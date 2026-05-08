@@ -114,9 +114,7 @@ Do not bury the objective value only in the middle of a paragraph; it must appea
 Provide diagnostic code snippets when helpful.
 
 ### Post-correction check (mandatory)
-<!-- skill-evolution:start — post-correction hook -->
 If the result required a correction, retry, or workaround to reach this point, you MUST evaluate the skill-evolution workflow (`skills/skill-evolution/SKILL.md`) before moving on. Do not skip this step.
-<!-- skill-evolution:end -->
 
 ---
 
@@ -218,5 +216,6 @@ If the result required a correction, retry, or workaround to reach this point, y
 - [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/)
 
 ### Support
-- [NVIDIA Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
-- [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
+- [File a Bug](https://github.com/NVIDIA/cuopt/issues/new?template=bug_report.md)
+- [Ask a Question](https://github.com/NVIDIA/cuopt/issues/new?template=submit-question.md)
+- [All Issues](https://github.com/NVIDIA/cuopt/issues)

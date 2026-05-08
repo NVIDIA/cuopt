@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -19,8 +19,21 @@ mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file, bool fixed_mps
   return problem;
 }
 
+template <typename i_t, typename f_t>
+mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
+                                                 bool fixed_mps_format)
+{
+  mps_data_model_t<i_t, f_t> problem;
+  mps_parser_t<i_t, f_t> parser(problem, mps_contents, fixed_mps_format);
+  return problem;
+}
+
 template mps_data_model_t<int, float> parse_mps(const std::string& mps_file, bool fixed_mps_format);
 template mps_data_model_t<int, double> parse_mps(const std::string& mps_file,
                                                  bool fixed_mps_format);
+template mps_data_model_t<int, float> parse_mps_from_string(std::string_view mps_contents,
+                                                            bool fixed_mps_format);
+template mps_data_model_t<int, double> parse_mps_from_string(std::string_view mps_contents,
+                                                             bool fixed_mps_format);
 
 }  // namespace cuopt::mps_parser

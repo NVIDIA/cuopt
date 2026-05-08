@@ -165,7 +165,7 @@ TEST(pdlp_class, run_double_initial_solution)
 
   std::vector<double> inital_primal_sol(op_problem.get_n_variables());
   std::fill(inital_primal_sol.begin(), inital_primal_sol.end(), 1.0);
-  op_problem.set_initial_primal_solution(inital_primal_sol.data(), inital_primal_sol.size());
+  op_problem.set_initial_primal_solution(inital_primal_sol);
 
   auto solver_settings   = pdlp_solver_settings_t<int, double>{};
   solver_settings.method = cuopt::linear_programming::method_t::PDLP;
