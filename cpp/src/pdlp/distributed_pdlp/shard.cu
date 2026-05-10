@@ -17,7 +17,7 @@ void pre_SpMV_communication(bool is_A_x){
         }
     }
     // Will merge them if it works
-    ncclgroupstart()
+    ncclgroupstart();
     // Send all the data current shard has to send
     for (auto& shard: shards){
         comm_planner_t<i_t, f_t>& plan = is_A_x ? shard.x_plan : shard.y_plan;
