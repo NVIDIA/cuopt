@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -78,8 +78,8 @@ class break_node_t {
                     [[maybe_unused]] objective_cost_t& obj_cost,
                     infeasible_cost_t& inf_cost) const noexcept
   {
-    double total_breaks    = ((double)breaks_forward + (double)breaks_backward);
-    inf_cost[dim_t::BREAK] = max(0., (double)(total_breaks - vehicle_info.num_breaks()));
+    double total_breaks = ((double)breaks_forward + (double)breaks_backward);
+    inf_cost[dim_t::BREAK] += max(0., (double)(total_breaks - vehicle_info.num_breaks()));
   }
 };
 

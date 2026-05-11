@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -91,22 +91,26 @@ DI void time_filter_of_request(const typename solution_t<i_t, f_t, REQUEST>::vie
     double excess_limit = get_excess_limit<i_t, f_t, REQUEST, search_type>(
       solution, move_candidates, route_id, excess_curr_route, route_id_of_inserted);
 
+    // Drop candidates that already exceed time/distance window slack or whose join with the
+    // neighbour fails to combine for either windowed dimension.
     if constexpr (is_pickup) {
       prev_node.calculate_forward_all(node_to_insert, route.vehicle_info());
-      // checks whether there is an excess or combination fails
       bool pickup_filtration =
-        node_to_insert.time_dim.forward_feasible(
-          route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit) &&
+        node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+          node_to_insert, route.vehicle_info(), move_candidates.weights, excess_limit) &&
         node_t<i_t, f_t, REQUEST>::time_combine(
+          node_to_insert, next_node, route.vehicle_info(), move_candidates.weights, excess_limit) &&
+        node_t<i_t, f_t, REQUEST>::dist_combine(
           node_to_insert, next_node, route.vehicle_info(), move_candidates.weights, excess_limit);
       if (pickup_filtration) { compacted_requests[request_idx] = 1; }
     } else {
       next_node.calculate_backward_all(node_to_insert, route.vehicle_info());
-      // checks whether there is an excess or combination fails
       bool delivery_filtration =
-        node_to_insert.time_dim.backward_feasible(
-          route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit) &&
+        node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+          node_to_insert, route.vehicle_info(), move_candidates.weights, excess_limit) &&
         node_t<i_t, f_t, REQUEST>::time_combine(
+          prev_node, node_to_insert, route.vehicle_info(), move_candidates.weights, excess_limit) &&
+        node_t<i_t, f_t, REQUEST>::dist_combine(
           prev_node, node_to_insert, route.vehicle_info(), move_candidates.weights, excess_limit);
       if (delivery_filtration) { compacted_requests[request_idx] = 1; }
     }

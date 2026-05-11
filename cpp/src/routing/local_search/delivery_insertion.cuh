@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -103,9 +103,8 @@ DI void find_delivery_insertion(typename solution_t<i_t, f_t, REQUEST>::view_t& 
 
   // Insert delivery after pickup
   last.calculate_forward_all(delivery_node, route.vehicle_info());
-  // Forward time filtration
-  if (!delivery_node.time_dim.forward_feasible(
-        route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+        delivery_node, route.vehicle_info(), weights, excess_limit)) {
     return;
   }
 
@@ -139,9 +138,10 @@ DI void find_delivery_insertion(typename solution_t<i_t, f_t, REQUEST>::view_t& 
 
     // Insert delivery_node after current
     current.calculate_forward_all(delivery_node, route.vehicle_info());
-    if (!delivery_node.time_dim.forward_feasible(
-          route.vehicle_info(), weights[dim_t::TIME], excess_limit) ||
-        delivery_node.time_dim.excess_forward > current.time_dim.excess_forward) {
+    if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+          delivery_node, route.vehicle_info(), weights, excess_limit) ||
+        delivery_node.time_dim.excess_forward > current.time_dim.excess_forward ||
+        delivery_node.distance_dim.excess_forward > current.distance_dim.excess_forward) {
       return;
     }
 
@@ -198,9 +198,8 @@ DI void find_pickup_insertion(typename solution_t<i_t, f_t, REQUEST>::view_t& so
 
   // Insert delivery after pickup
   last.calculate_backward_all(pickup_node, route.vehicle_info());
-  // Forward time filtration
-  if (!pickup_node.time_dim.backward_feasible(
-        route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+        pickup_node, route.vehicle_info(), weights, excess_limit)) {
     return;
   }
 
@@ -233,9 +232,10 @@ DI void find_pickup_insertion(typename solution_t<i_t, f_t, REQUEST>::view_t& so
     // Insert pickup_node before current
     current.calculate_backward_all(pickup_node, route.vehicle_info());
 
-    if (!pickup_node.time_dim.backward_feasible(
-          route.vehicle_info(), weights[dim_t::TIME], excess_limit) ||
-        pickup_node.time_dim.excess_backward > current.time_dim.excess_backward) {
+    if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+          pickup_node, route.vehicle_info(), weights, excess_limit) ||
+        pickup_node.time_dim.excess_backward > current.time_dim.excess_backward ||
+        pickup_node.distance_dim.excess_backward > current.distance_dim.excess_backward) {
       return;
     }
 

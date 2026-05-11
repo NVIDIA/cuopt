@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -121,15 +121,22 @@ DI bool find_node_insertion(const typename route_t<i_t, f_t, REQUEST>::view_t& c
     if constexpr (insert_mode == insert_mode_t::GES) {
       if (node.forward_feasible(curr_route.vehicle_info()) &&
           node_t<i_t, f_t, REQUEST>::feasible_time_combine(
+            node, curr_route.get_node(node_insertion_idx + 1), curr_route.vehicle_info()) &&
+          node_t<i_t, f_t, REQUEST>::feasible_dist_combine(
             node, curr_route.get_node(node_insertion_idx + 1), curr_route.vehicle_info())) {
         return true;
       }
     }
 
     if constexpr (insert_mode == insert_mode_t::LOCAL_SEARCH) {
-      if (node.time_dim.forward_feasible(
-            curr_route.vehicle_info(), weights[dim_t::TIME], excess_limit) &&
+      if (node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+            node, curr_route.vehicle_info(), weights, excess_limit) &&
           node_t<i_t, f_t, REQUEST>::time_combine(node,
+                                                  curr_route.get_node(node_insertion_idx + 1),
+                                                  curr_route.vehicle_info(),
+                                                  weights,
+                                                  excess_limit) &&
+          node_t<i_t, f_t, REQUEST>::dist_combine(node,
                                                   curr_route.get_node(node_insertion_idx + 1),
                                                   curr_route.vehicle_info(),
                                                   weights,

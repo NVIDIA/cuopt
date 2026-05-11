@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -299,6 +299,11 @@ DI node_t<i_t, f_t, REQUEST> create_break_node(
 
   node.time_dim.window_start = special_nodes.earliest_time[index];
   node.time_dim.window_end   = special_nodes.latest_time[index];
+
+  if (!special_nodes.distance_min.empty()) {
+    node.distance_dim.window_start = static_cast<double>(special_nodes.distance_min[index]);
+    node.distance_dim.window_end   = static_cast<double>(special_nodes.distance_max[index]);
+  }
 
   // FIXME:: setting the prize to zero for now.
   // When we support breaks through prize collection mechanism, this will change

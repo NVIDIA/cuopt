@@ -416,6 +416,73 @@ class DataModel(_DeferredDataModel):
         )
 
     @catch_cuopt_exception
+    def add_distance_break(
+        self,
+        vehicle_ids,
+        max_range,
+        charge_duration,
+        charging_stations=None,
+        min_range=0.0,
+        n_cycles=None,
+    ):
+        """
+        Add distance-based charging breaks for a set of vehicles.
+
+        Each call adds ``n_cycles`` consecutive cycles of length ``max_range``.
+        One mandatory charge is inserted per cycle, within the cumulative-distance
+        window ``[k * max_range + min_range, (k+1) * max_range]`` for
+        ``k = 0, ..., n_cycles - 1``.
+
+        Parameters
+        ----------
+        vehicle_ids : list[int] or int
+            Vehicle IDs to apply the distance break schedule to.
+        max_range : float
+            Length of each charge cycle.
+        charge_duration : int
+            Service time at the charging station.
+        charging_stations : cudf.Series dtype int32, optional
+            Location IDs eligible for charging. Defaults to all locations.
+        min_range : float, optional
+            Minimum cumulative distance into each cycle before a charge may
+            occur. Defaults to 0.
+        n_cycles : int, optional
+            Number of charge cycles per route. Defaults to 1.
+        """
+        if charging_stations is None:
+            charging_stations = cudf.Series(dtype="int32")
+        if isinstance(vehicle_ids, int):
+            vehicle_ids = [vehicle_ids]
+
+        if n_cycles is not None:
+            if not isinstance(n_cycles, (int, np.integer)) or n_cycles <= 0:
+                raise ValueError("n_cycles must be a positive integer")
+        else:
+            n_cycles = 1
+
+        validate_positive(max_range, "max range")
+        validate_non_negative(min_range, "min range")
+        validate_non_negative(charge_duration, "charge duration")
+        if min_range >= max_range:
+            raise ValueError("min_range must be smaller than max_range")
+        if len(charging_stations) > 0:
+            validate_range(
+                charging_stations,
+                "charging stations",
+                0,
+                self.get_num_locations(),
+            )
+
+        for vid in vehicle_ids:
+            validate_range(vid, "vehicle id", 0, self.get_fleet_size())
+            for k in range(n_cycles):
+                d_min = k * max_range + min_range
+                d_max = (k + 1) * max_range
+                super().add_distance_break(
+                    vid, d_min, d_max, charge_duration, charging_stations
+                )
+
+    @catch_cuopt_exception
     def set_objective_function(self, objectives, objective_weights):
         """
         The objective function can be defined as a linear combination of

@@ -148,8 +148,7 @@ __device__ void try_permutations(
     return;
   }
 
-  // Just for time filtration
-  if (dimensions_info.has_dimension(dim_t::TIME)) {
+  if (dimensions_info.has_window_dimension()) {
     auto next_node = s_route.get_node(window_start_idx + window_size);
 
     loop_over_constrained_dimensions(dimensions_info, [&] __device__(auto I) {
@@ -208,9 +207,8 @@ __device__ void try_permutations(
   s_route.get_node(window_start_idx + window_size)
     .calculate_backward_all(curr_node, s_route.vehicle_info());
 
-  if (dimensions_info.has_dimension(dim_t::TIME) &&
-      !curr_node.time_dim.backward_feasible(
-        s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+        curr_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
     return;
   }
 
@@ -223,7 +221,6 @@ __device__ void try_permutations(
       break;
     }
 
-    // Just for time filtration
     if (dimensions_info.has_dimension(dim_t::TIME)) {
       auto previous_node = s_route.get_node(i - 1);
 
@@ -233,6 +230,19 @@ __device__ void try_permutations(
           previous_node.request.info, nodes[0].request.info, s_route.vehicle_info(), true));
       if (!previous_node.time_dim.backward_feasible(
             s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+        break;
+      }
+    }
+    if (dimensions_info.has_dimension(dim_t::DIST) &&
+        dimensions_info.distance_dim.has_distance_window) {
+      auto previous_node = s_route.get_node(i - 1);
+
+      nodes[0].distance_dim.calculate_backward(
+        previous_node.distance_dim,
+        get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+          previous_node.request.info, nodes[0].request.info, s_route.vehicle_info()));
+      if (!previous_node.distance_dim.backward_feasible(
+            s_route.vehicle_info(), move_candidates.weights[dim_t::DIST], excess_limit)) {
         break;
       }
     }
@@ -274,9 +284,8 @@ __device__ void try_permutations(
     if (i - 1 > start_idx) {
       curr_node.calculate_backward_all(previous_node, s_route.vehicle_info());
 
-      if (dimensions_info.has_dimension(dim_t::TIME) &&
-          !previous_node.time_dim.backward_feasible(
-            s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+      if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+            previous_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
         break;
       }
 
@@ -293,9 +302,8 @@ __device__ void try_permutations(
   // previous node before the window
   s_route.get_node(window_start_idx - 1).calculate_forward_all(curr_node, s_route.vehicle_info());
 
-  if (dimensions_info.has_dimension(dim_t::TIME) &&
-      !curr_node.time_dim.forward_feasible(
-        s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+        curr_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
     return;
   }
 
@@ -306,8 +314,7 @@ __device__ void try_permutations(
       return;
     }
 
-    // Just for time filtration
-    if (dimensions_info.has_dimension(dim_t::TIME)) {
+    if (dimensions_info.has_window_dimension()) {
       auto next_node = s_route.get_node(i + 1);
 
       loop_over_constrained_dimensions(dimensions_info, [&] __device__(auto I) {
@@ -363,9 +370,8 @@ __device__ void try_permutations(
     if (i + 1 < end_idx) {
       curr_node.calculate_forward_all(next_node, s_route.vehicle_info());
 
-      if (dimensions_info.has_dimension(dim_t::TIME) &&
-          !next_node.time_dim.forward_feasible(
-            s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+      if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+            next_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
         return;
       }
 
@@ -546,9 +552,8 @@ __device__ void try_permutations_cvrp(
     if (i - 1 > start_idx) {
       curr_node.calculate_backward_all(previous_node, s_route.vehicle_info());
 
-      if (dimensions_info.has_dimension(dim_t::TIME) &&
-          !previous_node.time_dim.backward_feasible(
-            s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+      if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+            previous_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
         break;
       }
 
@@ -617,9 +622,8 @@ __device__ void try_permutations_cvrp(
     if (i + 1 < end_idx) {
       curr_node.calculate_forward_all(next_node, s_route.vehicle_info());
 
-      if (dimensions_info.has_dimension(dim_t::TIME) &&
-          !next_node.time_dim.forward_feasible(
-            s_route.vehicle_info(), move_candidates.weights[dim_t::TIME], excess_limit)) {
+      if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+            next_node, s_route.vehicle_info(), move_candidates.weights, excess_limit)) {
         return;
       }
 

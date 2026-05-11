@@ -60,6 +60,17 @@ There are two types of breaks,
 
 Only one of the type of breaks can be used at a time.
 
+Distance-Based Charging Breaks
+------------------------------
+
+``add_distance_break`` configures mandatory charging stops triggered by
+cumulative route distance. Each call adds ``n_cycles`` consecutive distance
+windows of length ``max_range``; the solver must insert one charging stop
+in each window ``[k * max_range + min_range, (k+1) * max_range]`` for
+``k = 0, ..., n_cycles - 1``.
+
+Pass ``charging_stations`` to restrict the eligible charging locations; if
+omitted, any location is eligible.
 
 Prize Collection
 ------------------------

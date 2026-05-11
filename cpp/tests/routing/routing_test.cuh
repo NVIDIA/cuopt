@@ -588,6 +588,42 @@ class base_test_t {
     }
   }
 
+  /**
+   * @brief Verifies that every Break node in the assignment lies within its configured
+   * cumulative-distance window [min_range, max_range], reset at the depot of each route.
+   */
+  void check_distance_break_windows(host_assignment_t<i_t> const& h_routing_solution,
+                                    f_t min_range,
+                                    f_t max_range)
+  {
+    auto const& truck_id   = h_routing_solution.truck_id;
+    auto const& locations  = h_routing_solution.locations;
+    auto const& node_types = h_routing_solution.node_types;
+
+    auto cost_matrix_h = matrices_h.get_cost_matrix(0);
+    i_t prev_loc       = -1;
+    i_t curr_truck     = -1;
+    f_t cumulative     = 0.f;
+
+    for (size_t i = 0; i < truck_id.size(); ++i) {
+      if (truck_id[i] != curr_truck) {
+        curr_truck = truck_id[i];
+        cumulative = 0.f;
+        prev_loc   = locations[i];
+        continue;
+      }
+      i_t loc = locations[i];
+      cumulative += cost_matrix_h[prev_loc * n_locations + loc];
+      prev_loc = loc;
+      if (static_cast<node_type_t>(node_types[i]) == node_type_t::BREAK) {
+        ASSERT_GE(cumulative, min_range - 1e-3f)
+          << "break at cumulative distance " << cumulative << " is below min_range " << min_range;
+        ASSERT_LE(cumulative, max_range + 1e-3f)
+          << "break at cumulative distance " << cumulative << " exceeds max_range " << max_range;
+      }
+    }
+  }
+
   void check_vehicle_breaks(host_assignment_t<i_t> const& h_routing_solution)
   {
     auto truck_id     = h_routing_solution.truck_id;
@@ -992,6 +1028,40 @@ class routing_test_t : public base_test_t<i_t, f_t> {
     }
   }
 
+  /**
+   * @brief Regression test for the distance-break feature on a CVRPTW benchmark.
+   *
+   * Builds the standard CVRPTW data model and additionally attaches one distance
+   * break per vehicle with a cumulative-distance window of [min_range, max_range].
+   * Validates routes, capacities, and that every Break node falls within its window.
+   */
+  void test_cvrptw_distance_breaks(f_t min_range, f_t max_range, i_t charge_duration = 0)
+  {
+    auto start_vehicle = this->n_vehicles;
+    cuopt::routing::data_model_view_t<i_t, f_t> data_model(
+      &this->handle_, this->n_locations, start_vehicle, this->n_orders);
+
+    data_model.add_cost_matrix(this->cost_matrix_d.data());
+    data_model.add_capacity_dimension("weight", this->demand_d.data(), this->capacity_d.data());
+    data_model.set_order_time_windows(this->earliest_time_d.data(), this->latest_time_d.data());
+    data_model.set_order_service_times(this->service_time_d.data());
+
+    for (i_t vid = 0; vid < start_vehicle; ++vid) {
+      data_model.add_distance_break(vid, min_range, max_range, charge_duration, nullptr, 0);
+    }
+
+    cuopt::routing::solver_settings_t<i_t, f_t> settings;
+    settings.set_time_limit(this->n_orders / 5);
+
+    auto routing_solution = this->solve(data_model, settings);
+    ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+
+    host_assignment_t<i_t> h_routing_solution(routing_solution);
+    check_route(data_model, h_routing_solution);
+    this->check_capacity(h_routing_solution, this->demand_h, this->capacity_h, this->demand_d);
+    this->check_distance_break_windows(h_routing_solution, min_range, max_range);
+  }
+
  protected:
   std::string input_file_;
 };
@@ -1068,6 +1138,13 @@ class regression_routing_test_pickup_t : public float_regression_test_t {
  public:
   // for now we keep the error margin very big since there are no improvement kernels
   regression_routing_test_pickup_t() : float_regression_test_t(110E-2, 23) {}
+};
+
+/// Regression fixture for the distance-break feature: CVRPTW + a single distance break
+/// per vehicle. Inherits the 25-customer Solomon limit; ref cost/vn unused.
+class regression_routing_test_distance_breaks_t : public float_regression_test_t {
+ public:
+  regression_routing_test_distance_breaks_t() : float_regression_test_t(1E-2, 2, 26) {}
 };
 
 class regression_routing_test_dummy : public float_regression_test_t {

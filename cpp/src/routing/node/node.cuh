@@ -233,6 +233,75 @@ class node_t {
     return time_combine(prev, next, vehicle_info, d_default_weights, 0.);
   }
 
+  // Returns true if joining @p prev and @p next produces a distance-window excess that is
+  // within the given limit (or trivially true when distance windows are not enabled).
+  static bool DI dist_combine(const node_t& prev,
+                              const node_t& next,
+                              VehicleInfo<f_t> const& vehicle_info,
+                              infeasible_cost_t const& weights,
+                              double excess_limit = 0.)
+  {
+    if (!prev.dimensions_info.has_dimension(dim_t::DIST) ||
+        !prev.dimensions_info.distance_dim.has_distance_window) {
+      return true;
+    }
+    auto distance_between = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+      prev.request.info, next.request.info, vehicle_info);
+    return distance_node_t<i_t, f_t>::combine(
+             prev.distance_dim, next.distance_dim, vehicle_info, distance_between) *
+             weights[dim_t::DIST] <=
+           excess_limit;
+  }
+
+  static bool DI feasible_dist_combine(const node_t& prev,
+                                       const node_t& next,
+                                       const VehicleInfo<f_t>& vehicle_info)
+  {
+    if (!prev.dimensions_info.has_dimension(dim_t::DIST) ||
+        !prev.dimensions_info.distance_dim.has_distance_window) {
+      return true;
+    }
+    return dist_combine(prev, next, vehicle_info, d_default_weights, 0.);
+  }
+
+  /// Forward feasibility filter for both TIME and DIST window-bearing dimensions.
+  template <bool is_device>
+  static bool HDI window_forward_feasible(const node_t& node,
+                                          const VehicleInfo<f_t, is_device>& vehicle_info,
+                                          const infeasible_cost_t& weights = d_default_weights,
+                                          double excess_limit              = 0.)
+  {
+    if (node.dimensions_info.has_dimension(dim_t::TIME) &&
+        !node.time_dim.forward_feasible(vehicle_info, weights[dim_t::TIME], excess_limit)) {
+      return false;
+    }
+    if (node.dimensions_info.has_dimension(dim_t::DIST) &&
+        node.dimensions_info.distance_dim.has_distance_window &&
+        !node.distance_dim.forward_feasible(vehicle_info, weights[dim_t::DIST], excess_limit)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Backward feasibility filter for both TIME and DIST window-bearing dimensions.
+  template <bool is_device>
+  static bool HDI window_backward_feasible(const node_t& node,
+                                           const VehicleInfo<f_t, is_device>& vehicle_info,
+                                           const infeasible_cost_t& weights = d_default_weights,
+                                           double excess_limit              = 0.)
+  {
+    if (node.dimensions_info.has_dimension(dim_t::TIME) &&
+        !node.time_dim.backward_feasible(vehicle_info, weights[dim_t::TIME], excess_limit)) {
+      return false;
+    }
+    if (node.dimensions_info.has_dimension(dim_t::DIST) &&
+        node.dimensions_info.distance_dim.has_distance_window &&
+        !node.distance_dim.backward_feasible(vehicle_info, weights[dim_t::DIST], excess_limit)) {
+      return false;
+    }
+    return true;
+  }
+
   DI double forward_excess(const VehicleInfo<f_t>& vehicle_info,
                            infeasible_cost_t weights = d_default_weights) const
   {

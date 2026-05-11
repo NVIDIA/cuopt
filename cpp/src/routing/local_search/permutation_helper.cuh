@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -210,9 +210,8 @@ DI bool forward_fragment_update(const node_t<i_t, f_t, REQUEST>& curr_node,
 {
   cuopt_assert(fragment_size != 0, "Fragment size cannot be zero!");
   curr_node.calculate_forward_all(fragment[0], s_route.vehicle_info());
-  if (s_route.dimensions_info().has_dimension(dim_t::TIME) &&
-      !fragment[0].time_dim.forward_feasible(
-        s_route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+        fragment[0], s_route.vehicle_info(), weights, excess_limit)) {
     return false;
   }
 
@@ -221,9 +220,8 @@ DI bool forward_fragment_update(const node_t<i_t, f_t, REQUEST>& curr_node,
     auto& _curr_node = fragment[j];
     auto& _next_node = fragment[j + 1];
     _curr_node.calculate_forward_all(_next_node, s_route.vehicle_info());
-    if (s_route.dimensions_info().has_dimension(dim_t::TIME) &&
-        !_next_node.time_dim.forward_feasible(
-          s_route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+    if (!node_t<i_t, f_t, REQUEST>::window_forward_feasible(
+          _next_node, s_route.vehicle_info(), weights, excess_limit)) {
       return false;
     }
   }
@@ -263,21 +261,18 @@ DI bool backward_fragment_update(const node_t<i_t, f_t, REQUEST>& curr_node,
 {
   curr_node.calculate_backward_all(fragment[fragment_size - 1], s_route.vehicle_info());
 
-  if (s_route.dimensions_info().has_dimension(dim_t::TIME) &&
-      !fragment[fragment_size - 1].time_dim.backward_feasible(
-        s_route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+  if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+        fragment[fragment_size - 1], s_route.vehicle_info(), weights, excess_limit)) {
     return false;
   }
 
   // Update window backward info
-
   for (int j = fragment_size - 1; j > 0; --j) {
     auto& _curr_node = fragment[j];
     auto& _prev_node = fragment[j - 1];
     _curr_node.calculate_backward_all(_prev_node, s_route.vehicle_info());
-    if (s_route.dimensions_info().has_dimension(dim_t::TIME) &&
-        !_prev_node.time_dim.backward_feasible(
-          s_route.vehicle_info(), weights[dim_t::TIME], excess_limit)) {
+    if (!node_t<i_t, f_t, REQUEST>::window_backward_feasible(
+          _prev_node, s_route.vehicle_info(), weights, excess_limit)) {
       return false;
     }
   }

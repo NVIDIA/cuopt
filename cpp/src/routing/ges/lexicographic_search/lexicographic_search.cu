@@ -310,10 +310,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
           is_forward_feasible = node_stack.advance_insertion(temp_node);
           if (is_forward_feasible) {
             bool is_delivery_time_dist_feasible =
-              node_stack.delivery_node.time_dim.forward_feasible(
-                node_stack.s_route.vehicle_info()) &&
-              node_stack.delivery_node.distance_dim.forward_feasible(
-                node_stack.s_route.vehicle_info());
+              node_t<i_t, f_t, REQUEST>::window_forward_feasible(node_stack.delivery_node,
+                                                                 node_stack.s_route.vehicle_info());
             if (!is_delivery_time_dist_feasible) {
               if (--node_stack.stack_top <= 1) { break; }
               cuopt_assert(node_stack.template k_max_ejection_check<REQUEST>(), "");
@@ -391,10 +389,8 @@ __global__ void lexicographic_search(typename solution_t<i_t, f_t, REQUEST>::vie
           node_stack.top() = temp_node;
           if (forward_feasible) {
             bool is_delivery_time_dist_feasible =
-              node_stack.delivery_node.time_dim.forward_feasible(
-                node_stack.s_route.vehicle_info()) &&
-              node_stack.delivery_node.distance_dim.forward_feasible(
-                node_stack.s_route.vehicle_info());
+              node_t<i_t, f_t, REQUEST>::window_forward_feasible(node_stack.delivery_node,
+                                                                 node_stack.s_route.vehicle_info());
             if (!is_delivery_time_dist_feasible) {
               if (--node_stack.stack_top <= 1) { break; }
               advance = true;

@@ -47,6 +47,7 @@ def validate_fleet_data(
     vehicle_fixed_costs,
     updating=False,
     comparison_locations=None,
+    vehicle_distance_breaks=None,
 ):
     if vehicle_locations is not None:
         for loc in vehicle_locations:
@@ -180,6 +181,49 @@ def validate_fleet_data(
                 False,
                 "Vehicle break location must be greater than or equal to 0",
             )
+
+    if vehicle_distance_breaks is not None:
+        for entry in vehicle_distance_breaks:
+            if entry.vehicle_id < 0 or entry.vehicle_id >= n_vehicles:
+                return (
+                    False,
+                    "vehicle_distance_breaks: vehicle_id must be within"
+                    " [0, n_vehicles)",
+                )
+            if entry.max_range <= 0:
+                return (
+                    False,
+                    "vehicle_distance_breaks: max_range must be > 0",
+                )
+            if entry.charge_duration < 0:
+                return (
+                    False,
+                    "vehicle_distance_breaks: charge_duration must be >= 0",
+                )
+            min_range = entry.min_range if entry.min_range is not None else 0.0
+            if min_range < 0:
+                return (
+                    False,
+                    "vehicle_distance_breaks: min_range must be >= 0",
+                )
+            if min_range >= entry.max_range:
+                return (
+                    False,
+                    "vehicle_distance_breaks: min_range must be < max_range",
+                )
+            n_cycles = entry.n_cycles if entry.n_cycles is not None else 1
+            if n_cycles <= 0:
+                return (
+                    False,
+                    "vehicle_distance_breaks: n_cycles must be > 0",
+                )
+            if entry.charging_stations is not None:
+                if any(loc < 0 for loc in entry.charging_stations):
+                    return (
+                        False,
+                        "vehicle_distance_breaks: charging_stations must be"
+                        " >= 0",
+                    )
 
     if vehicle_types is not None:
         unique_vehicle_types = set(vehicle_types)

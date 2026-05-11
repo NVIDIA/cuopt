@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import time
@@ -224,6 +224,22 @@ def create_data_model(
                 data["latest"],
                 data["duration"],
                 cudf.Series(data["locations"]),
+            )
+
+    if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+        for data in optimization_data.fleet_data["vehicle_distance_breaks"]:
+            charging_stations = (
+                cudf.Series(data["charging_stations"], dtype="int32")
+                if data["charging_stations"] is not None
+                else None
+            )
+            data_model.add_distance_break(
+                vehicle_ids=data["vehicle_id"],
+                max_range=data["max_range"],
+                charge_duration=data["charge_duration"],
+                charging_stations=charging_stations,
+                min_range=data["min_range"],
+                n_cycles=data["n_cycles"],
             )
 
     if optimization_data.fleet_data["vehicle_order_match"] is not None:
