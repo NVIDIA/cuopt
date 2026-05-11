@@ -741,8 +741,6 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
   // Bundle row metadata, row-linear coefficients (from COLUMNS), rhs, and quadratic part together.
   constexpr f_t k_qcmatrix_value_scale = f_t(1);
-  const i_t linear_row_count = static_cast<i_t>(row_types.size() - quadratic_row_ids.size());
-  i_t quadratic_row_id = 0;
   std::vector<f_t> qc_csr_values{};
   std::vector<i_t> qc_csr_indices{};
   std::vector<i_t> qc_csr_offsets{};
@@ -761,7 +759,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                        error_type_t::ValidationError,
                        "QCMATRIX row index %d is out of range for constraints",
                        static_cast<int>(row_id));
-    problem.append_quadratic_constraint(linear_row_count + quadratic_row_id,
+    problem.append_quadratic_constraint(row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
                                         A_values[row_id].data(),
@@ -775,7 +773,6 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                         static_cast<i_t>(qc_csr_indices.size()),
                                         qc_csr_offsets.data(),
                                         static_cast<i_t>(qc_csr_offsets.size()));
-    ++quadratic_row_id;
   }
 
   if (!quadratic_row_ids.empty()) {
