@@ -8,14 +8,12 @@
 #pragma once
 
 #include <mip_heuristics/early_heuristic.cuh>
+#include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 
 #include <atomic>
 #include <memory>
 
 namespace cuopt::linear_programming::detail {
-
-template <typename i_t, typename f_t>
-struct cpu_fj_thread_t;
 
 template <typename i_t, typename f_t>
 class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>> {
@@ -32,7 +30,7 @@ class early_cpufj_t : public early_heuristic_t<i_t, f_t, early_cpufj_t<i_t, f_t>
   void stop();
 
  private:
-  std::unique_ptr<cpu_fj_thread_t<i_t, f_t>> cpu_fj_thread_;
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu_;
   std::atomic<bool> preemption_flag_{false};
 };
 
