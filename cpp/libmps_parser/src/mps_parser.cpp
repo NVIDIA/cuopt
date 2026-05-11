@@ -16,8 +16,10 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 
 #ifdef MPS_PARSER_WITH_BZIP2
@@ -202,6 +204,231 @@ std::vector<char> zlib_file_to_string(const std::string& file)
 }
 }  // end namespace
 #endif  // MPS_PARSER_WITH_ZLIB
+
+namespace {
+
+/** @brief ceil(log2(x)) for x >= 1; used for sparse-vs-dense CSR heuristic only. */
+inline size_t ceil_log2_size_t(size_t x)
+{
+  size_t b = 0;
+  size_t y = (x <= 1) ? 0 : (x - 1);
+  while (y > 0) {
+    y >>= 1;
+    ++b;
+  }
+  return (b == 0) ? 1 : b;
+}
+
+/**
+ * @brief Reusable scratch for converting (row,col,value) triples to CSR via CSC (double transpose).
+ *
+ * Avoids `std::vector<std::vector<...>>` per column/row, which is allocation-heavy for large Q
+ * blocks (e.g. many QCMATRIX sections in portfolio models).
+ */
+template <typename i_t, typename f_t>
+struct double_transpose_scratch_t {
+  std::vector<i_t> col_nnz{};
+  std::vector<i_t> col_off{};
+  std::vector<i_t> col_wr{};
+  std::vector<i_t> csc_rows{};
+  std::vector<f_t> csc_vals{};
+  std::vector<i_t> row_nnz{};
+  std::vector<i_t> row_off{};
+  std::vector<i_t> row_wr{};
+  /** Indices 0..nnz-1 for sort-by-(row,col) sparse CSR path (no symmetrization). */
+  std::vector<size_t> sort_perm{};
+};
+
+/**
+ * @brief CSR from triples without full O(num_cols) column sweeps: count per row, sort by (row,col),
+ * scatter. Same numeric result ordering as the dense double-transpose path for non-symmetrized
+ * inputs when column order within a row is the stable sort order for equal keys (see std::sort).
+ *
+ * Used for QCMATRIX / QMATRIX when nnz is small enough vs matrix dimension that sorting beats
+ * scanning every column index twice.
+ */
+template <typename i_t, typename f_t>
+void triples_to_csr_sparse_sorted_flat(
+  const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
+  i_t num_rows,
+  i_t num_cols,
+  f_t value_scale,
+  double_transpose_scratch_t<i_t, f_t>& scratch,
+  std::vector<f_t>& out_values,
+  std::vector<i_t>& out_indices,
+  std::vector<i_t>& out_offsets)
+{
+  static_cast<void>(num_cols);  // square Q paths pass num_cols == num_rows
+  const size_t nnz = entries.size();
+  const size_t nr  = static_cast<size_t>(num_rows);
+
+  scratch.row_nnz.assign(nr, 0);
+  for (const auto& e : entries) {
+    ++scratch.row_nnz[static_cast<size_t>(std::get<0>(e))];
+  }
+
+  scratch.row_off.resize(nr + 1);
+  scratch.row_off[0] = 0;
+  for (size_t r = 0; r < nr; ++r) {
+    scratch.row_off[r + 1] = scratch.row_off[r] + scratch.row_nnz[r];
+  }
+  const size_t csr_nnz = static_cast<size_t>(scratch.row_off[nr]);
+
+  out_values.resize(csr_nnz);
+  out_indices.resize(csr_nnz);
+
+  scratch.sort_perm.resize(nnz);
+  std::iota(scratch.sort_perm.begin(), scratch.sort_perm.end(), size_t{0});
+  std::stable_sort(scratch.sort_perm.begin(), scratch.sort_perm.end(), [&](size_t a, size_t b) {
+    const auto& ta = entries[a];
+    const auto& tb = entries[b];
+    const i_t ra = std::get<0>(ta);
+    const i_t rb = std::get<0>(tb);
+    if (ra != rb) { return ra < rb; }
+    return std::get<1>(ta) < std::get<1>(tb);
+  });
+
+  scratch.row_wr.resize(nr);
+  std::copy(scratch.row_off.begin(), scratch.row_off.begin() + nr, scratch.row_wr.begin());
+
+  for (size_t k = 0; k < nnz; ++k) {
+    const size_t ix = scratch.sort_perm[k];
+    const auto& e   = entries[ix];
+    const i_t row   = std::get<0>(e);
+    const i_t col   = std::get<1>(e);
+    const f_t val   = std::get<2>(e);
+    const size_t sr = static_cast<size_t>(row);
+    const i_t w     = scratch.row_wr[sr]++;
+    out_indices[static_cast<size_t>(w)] = col;
+    out_values[static_cast<size_t>(w)] = val * value_scale;
+  }
+
+  out_offsets = std::move(scratch.row_off);
+}
+
+/**
+ * @brief Build CSR from coordinate triples using the same double-transpose semantics as the
+ * previous nested-vector implementation: CSC column-major buckets, then CSR with columns sorted
+ * within each row (column index ascending).
+ *
+ * @param symmetrize_upper_triangular If true (QUADOBJ), each off-diagonal (r,c) also adds (c,r).
+ */
+template <typename i_t, typename f_t>
+void triples_to_csr_double_transpose_flat(
+  const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
+  i_t num_rows,
+  i_t num_cols,
+  bool symmetrize_upper_triangular,
+  f_t value_scale,
+  double_transpose_scratch_t<i_t, f_t>& scratch,
+  std::vector<f_t>& out_values,
+  std::vector<i_t>& out_indices,
+  std::vector<i_t>& out_offsets)
+{
+  if (entries.empty()) {
+    out_values.clear();
+    out_indices.clear();
+    out_offsets.assign(static_cast<size_t>(num_rows) + 1, 0);
+    return;
+  }
+
+  const size_t nc   = static_cast<size_t>(num_cols);
+  const size_t nr   = static_cast<size_t>(num_rows);
+  const size_t nnz  = entries.size();
+  const size_t n_dim = std::max(nr, nc);
+
+  // Without symmetrization (QCMATRIX, QMATRIX), avoid O(n) full-column sweeps when blocks are
+  // sparse: sort triples by (row,col) and scatter in one pass. QUADOBJ keeps the dense transpose
+  // path because symmetrization duplicates off-diagonal entries.
+  if (!symmetrize_upper_triangular) {
+    const size_t lg = ceil_log2_size_t(nnz);
+    // Roughly: sort cost ~ nnz·lg vs ~O(n) column iterations in dense path; 48 is a tunable fudge.
+    constexpr size_t k_sparse_vs_dense_heuristic = 48;
+    if (nnz * lg < k_sparse_vs_dense_heuristic * n_dim) {
+      triples_to_csr_sparse_sorted_flat(
+        entries, num_rows, num_cols, value_scale, scratch, out_values, out_indices, out_offsets);
+      return;
+    }
+  }
+
+  scratch.col_nnz.assign(nc, 0);
+  for (const auto& entry : entries) {
+    const i_t r = std::get<0>(entry);
+    const i_t c = std::get<1>(entry);
+    scratch.col_nnz[static_cast<size_t>(c)]++;
+    if (symmetrize_upper_triangular && r != c) { scratch.col_nnz[static_cast<size_t>(r)]++; }
+  }
+
+  scratch.col_off.resize(nc + 1);
+  scratch.col_off[0] = 0;
+  for (size_t c = 0; c < nc; ++c) {
+    scratch.col_off[c + 1] = scratch.col_off[c] + scratch.col_nnz[c];
+  }
+  const i_t csc_nnz = scratch.col_off[nc];
+  scratch.csc_rows.resize(static_cast<size_t>(csc_nnz));
+  scratch.csc_vals.resize(static_cast<size_t>(csc_nnz));
+  scratch.col_wr.resize(nc);
+  std::copy(scratch.col_off.begin(), scratch.col_off.begin() + nc, scratch.col_wr.begin());
+
+  for (const auto& entry : entries) {
+    const i_t r = std::get<0>(entry);
+    const i_t c = std::get<1>(entry);
+    const f_t v = std::get<2>(entry);
+    {
+      const size_t sc = static_cast<size_t>(c);
+      const i_t p = scratch.col_wr[sc]++;
+      scratch.csc_rows[static_cast<size_t>(p)] = r;
+      scratch.csc_vals[static_cast<size_t>(p)] = v;
+    }
+    if (symmetrize_upper_triangular && r != c) {
+      const size_t sr = static_cast<size_t>(r);
+      const i_t p = scratch.col_wr[sr]++;
+      scratch.csc_rows[static_cast<size_t>(p)] = c;
+      scratch.csc_vals[static_cast<size_t>(p)] = v;
+    }
+  }
+
+  scratch.row_nnz.assign(nr, 0);
+  for (i_t cc = 0; cc < num_cols; ++cc) {
+    const size_t col_z = static_cast<size_t>(cc);
+    const i_t lo = scratch.col_off[col_z];
+    const i_t hi = scratch.col_off[col_z + 1];
+    for (i_t t = lo; t < hi; ++t) {
+      const i_t row = scratch.csc_rows[static_cast<size_t>(t)];
+      scratch.row_nnz[static_cast<size_t>(row)]++;
+    }
+  }
+
+  scratch.row_off.resize(nr + 1);
+  scratch.row_off[0] = 0;
+  for (size_t r = 0; r < nr; ++r) {
+    scratch.row_off[r + 1] = scratch.row_off[r] + scratch.row_nnz[r];
+  }
+  const size_t csr_nnz = static_cast<size_t>(scratch.row_off[nr]);
+
+  out_values.resize(csr_nnz);
+  out_indices.resize(csr_nnz);
+  scratch.row_wr.resize(nr);
+  std::copy(scratch.row_off.begin(), scratch.row_off.begin() + nr, scratch.row_wr.begin());
+
+  for (i_t cc = 0; cc < num_cols; ++cc) {
+    const size_t col_z = static_cast<size_t>(cc);
+    const i_t lo = scratch.col_off[col_z];
+    const i_t hi = scratch.col_off[col_z + 1];
+    for (i_t t = lo; t < hi; ++t) {
+      const i_t row = scratch.csc_rows[static_cast<size_t>(t)];
+      const f_t val = scratch.csc_vals[static_cast<size_t>(t)];
+      const size_t sr = static_cast<size_t>(row);
+      const i_t w = scratch.row_wr[sr]++;
+      out_indices[static_cast<size_t>(w)] = cc;
+      out_values[static_cast<size_t>(w)] = val * value_scale;
+    }
+  }
+
+  out_offsets = std::move(scratch.row_off);
+}
+
+}  // namespace
 
 namespace cuopt::mps_parser {
 
@@ -464,107 +691,71 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   problem.set_variable_types(std::move(var_types));
   problem.set_maximize(maximize);
 
-  // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of
-  // O(nnz*log(nnz))) For QUADOBJ: handles upper triangular input by expanding to full symmetric
-  // matrix.
+  // Build CSR from (row,col,value) triples via double transpose (CSC then CSR). Uses flat buffers
+  // plus reusable scratch to avoid per-column/per-row `std::vector` allocations — important for
+  // large Q blocks and many QCMATRIX sections.
   //
-  // @p value_scale:
-  // QUADOBJ/QMATRIX use 0.5 (MPS ½ xᵀQx vs internal xᵀQx);
-  // QCMATRIX uses 1.0 (symmetric Q defines xᵀQx directly in the constraint).
-  auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
-                                    i_t num_rows,
-                                    i_t num_cols,
-                                    bool symmetrize_upper_triangular,
-                                    f_t value_scale) {
-    struct CSRResult {
-      std::vector<f_t> values;
-      std::vector<i_t> indices;
-      std::vector<i_t> offsets;
-    };
-
-    if (entries.empty()) {
-      CSRResult result;
-      result.offsets.resize(num_rows + 1, 0);
-      return result;
-    }
-
-    // First transpose: build CSC format (entries sorted by column)
-    std::vector<std::vector<std::pair<i_t, f_t>>> csc_data(num_cols);
-    for (const auto& entry : entries) {
-      i_t row = std::get<0>(entry);
-      i_t col = std::get<1>(entry);
-      f_t val = std::get<2>(entry);
-
-      // For QUADOBJ (upper triangular), add both (row,col) and (col,row) if off-diagonal
-      csc_data[col].emplace_back(row, val);
-      if (symmetrize_upper_triangular && row != col) { csc_data[row].emplace_back(col, val); }
-    }
-
-    // Second transpose: convert CSC to CSR (entries sorted by row, columns within rows sorted)
-    std::vector<std::vector<std::pair<i_t, f_t>>> csr_data(num_rows);
-    for (i_t col = 0; col < num_cols; ++col) {
-      for (const auto& [row, val] : csc_data[col]) {
-        csr_data[row].emplace_back(col, val);
-      }
-    }
-
-    // Build final CSR format
-    CSRResult result;
-    result.offsets.reserve(num_rows + 1);
-    result.offsets.push_back(0);
-
-    for (i_t row = 0; row < num_rows; ++row) {
-      for (const auto& [col, val] : csr_data[row]) {
-        // MPS uses ½ xᵀQx in the file; cuOpt stores Q for xᵀQx, so scale by value_scale (0.5 for
-        // QUADOBJ/QMATRIX, 1.0 for QCMATRIX).
-        result.values.push_back(val * value_scale);
-        result.indices.push_back(col);
-      }
-      result.offsets.push_back(result.values.size());
-    }
-
-    return result;
-  };
+  // value_scale: QUADOBJ/QMATRIX use 0.5 (MPS ½ xᵀQx vs internal xᵀQx); QCMATRIX uses 1.0.
+  double_transpose_scratch_t<i_t, f_t> triple_csr_scratch{};
+  std::vector<f_t> quad_csr_values{};
+  std::vector<i_t> quad_csr_indices{};
+  std::vector<i_t> quad_csr_offsets{};
 
   // Process QUADOBJ data if present (upper triangular format)
   if (!quadobj_entries.empty()) {
-    // Convert quadratic objective entries to CSR format using double transpose
-    // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
     constexpr f_t k_mps_quad_half_scale = f_t(0.5);  // MPS ½ xᵀQx vs internal xᵀQx
-    auto csr_result                     = build_csr_via_transpose(
-      quadobj_entries, num_vars_for_quad, num_vars_for_quad, true, k_mps_quad_half_scale);
-
-    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(csr_result.values.data(),
-                                           csr_result.values.size(),
-                                           csr_result.indices.data(),
-                                           csr_result.indices.size(),
-                                           csr_result.offsets.data(),
-                                           csr_result.offsets.size());
+    triples_to_csr_double_transpose_flat(quadobj_entries,
+                                         num_vars_for_quad,
+                                         num_vars_for_quad,
+                                         true,
+                                         k_mps_quad_half_scale,
+                                         triple_csr_scratch,
+                                         quad_csr_values,
+                                         quad_csr_indices,
+                                         quad_csr_offsets);
+    problem.set_quadratic_objective_matrix(quad_csr_values.data(),
+                                           static_cast<i_t>(quad_csr_values.size()),
+                                           quad_csr_indices.data(),
+                                           static_cast<i_t>(quad_csr_indices.size()),
+                                           quad_csr_offsets.data(),
+                                           static_cast<i_t>(quad_csr_offsets.size()));
   } else if (!qmatrix_entries.empty()) {
-    // Convert quadratic objective entries to CSR format using double transpose
-    // QMATRIX stores full symmetric matrix
     constexpr f_t k_mps_quad_half_scale = f_t(0.5);
-    auto csr_result                     = build_csr_via_transpose(
-      qmatrix_entries, num_vars_for_quad, num_vars_for_quad, false, k_mps_quad_half_scale);
-
-    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(csr_result.values.data(),
-                                           csr_result.values.size(),
-                                           csr_result.indices.data(),
-                                           csr_result.indices.size(),
-                                           csr_result.offsets.data(),
-                                           csr_result.offsets.size());
+    triples_to_csr_double_transpose_flat(qmatrix_entries,
+                                         num_vars_for_quad,
+                                         num_vars_for_quad,
+                                         false,
+                                         k_mps_quad_half_scale,
+                                         triple_csr_scratch,
+                                         quad_csr_values,
+                                         quad_csr_indices,
+                                         quad_csr_offsets);
+    problem.set_quadratic_objective_matrix(quad_csr_values.data(),
+                                           static_cast<i_t>(quad_csr_values.size()),
+                                           quad_csr_indices.data(),
+                                           static_cast<i_t>(quad_csr_indices.size()),
+                                           quad_csr_offsets.data(),
+                                           static_cast<i_t>(quad_csr_offsets.size()));
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
   // Bundle row metadata, row-linear coefficients (from COLUMNS), rhs, and quadratic part together.
   constexpr f_t k_qcmatrix_value_scale = f_t(1);
   const i_t linear_row_count = static_cast<i_t>(row_types.size() - quadratic_row_ids.size());
-  i_t quadratic_row_id       = 0;
+  i_t quadratic_row_id = 0;
+  std::vector<f_t> qc_csr_values{};
+  std::vector<i_t> qc_csr_indices{};
+  std::vector<i_t> qc_csr_offsets{};
   for (const auto& block : qcmatrix_blocks_) {
-    auto csr_result = build_csr_via_transpose(
-      block.entries, num_vars_for_quad, num_vars_for_quad, false, k_qcmatrix_value_scale);
+    triples_to_csr_double_transpose_flat(block.entries,
+                                         num_vars_for_quad,
+                                         num_vars_for_quad,
+                                         false,
+                                         k_qcmatrix_value_scale,
+                                         triple_csr_scratch,
+                                         qc_csr_values,
+                                         qc_csr_indices,
+                                         qc_csr_offsets);
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
                        error_type_t::ValidationError,
@@ -578,12 +769,12 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                         A_indices[row_id].data(),
                                         static_cast<i_t>(A_indices[row_id].size()),
                                         b_values[row_id],
-                                        csr_result.values.data(),
-                                        static_cast<i_t>(csr_result.values.size()),
-                                        csr_result.indices.data(),
-                                        static_cast<i_t>(csr_result.indices.size()),
-                                        csr_result.offsets.data(),
-                                        static_cast<i_t>(csr_result.offsets.size()));
+                                        qc_csr_values.data(),
+                                        static_cast<i_t>(qc_csr_values.size()),
+                                        qc_csr_indices.data(),
+                                        static_cast<i_t>(qc_csr_indices.size()),
+                                        qc_csr_offsets.data(),
+                                        static_cast<i_t>(qc_csr_offsets.size()));
     ++quadratic_row_id;
   }
 
@@ -931,9 +1122,7 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
   // raft::common::nvtx::range fun_scope("mps parser");
 
   std::vector<char> buf = file_to_string(file);
-
   parse_string(buf.data());
-
   fill_problem(problem);
 }
 
