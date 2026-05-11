@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-class LpSolverTest {
+class LpSolverIT {
 
     /**
      * Minimal LP that mirrors the cuOpt Python LP solver test in

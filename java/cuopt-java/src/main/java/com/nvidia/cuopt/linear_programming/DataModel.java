@@ -258,25 +258,27 @@ public final class DataModel implements AutoCloseable {
         this.solved = true;
     }
 
-    // ── package-private accessors used by ProblemImpl ────────────
+    // ── internal accessors used by the FFM implementation
+    //    (public for cross-package access from internal/; not part of
+    //    the stable user-facing API — do not rely on these in user code) ─
 
-    boolean maximize() { return maximize; }
-    double objectiveOffset() { return objectiveOffset; }
-    double[] objectiveCoefficients() { return objectiveCoefficients; }
-    double[] constraintMatrixValues() { return constraintMatrixValues; }
-    int[] constraintMatrixIndices() { return constraintMatrixIndices; }
-    int[] constraintMatrixOffsets() { return constraintMatrixOffsets; }
-    double[] quadraticObjectiveValues() { return quadraticObjectiveValues; }
-    int[] quadraticObjectiveIndices() { return quadraticObjectiveIndices; }
-    int[] quadraticObjectiveOffsets() { return quadraticObjectiveOffsets; }
-    double[] variableLowerBounds() { return variableLowerBounds; }
-    double[] variableUpperBounds() { return variableUpperBounds; }
-    double[] constraintLowerBounds() { return constraintLowerBounds; }
-    double[] constraintUpperBounds() { return constraintUpperBounds; }
-    double[] constraintBoundsArray() { return constraintBounds; }
-    CType[] rowTypes() { return rowTypes; }
-    VType[] variableTypes() { return variableTypes; }
-    String problemName() { return problemName; }
+    public boolean maximize() { return maximize; }
+    public double objectiveOffset() { return objectiveOffset; }
+    public double[] objectiveCoefficients() { return objectiveCoefficients; }
+    public double[] constraintMatrixValues() { return constraintMatrixValues; }
+    public int[] constraintMatrixIndices() { return constraintMatrixIndices; }
+    public int[] constraintMatrixOffsets() { return constraintMatrixOffsets; }
+    public double[] quadraticObjectiveValues() { return quadraticObjectiveValues; }
+    public int[] quadraticObjectiveIndices() { return quadraticObjectiveIndices; }
+    public int[] quadraticObjectiveOffsets() { return quadraticObjectiveOffsets; }
+    public double[] variableLowerBounds() { return variableLowerBounds; }
+    public double[] variableUpperBounds() { return variableUpperBounds; }
+    public double[] constraintLowerBounds() { return constraintLowerBounds; }
+    public double[] constraintUpperBounds() { return constraintUpperBounds; }
+    public double[] constraintBoundsArray() { return constraintBounds; }
+    public CType[] rowTypes() { return rowTypes; }
+    public VType[] variableTypes() { return variableTypes; }
+    public String problemName() { return problemName; }
 
     @Override
     public void close() {

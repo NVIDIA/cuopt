@@ -124,7 +124,10 @@
                 </configuration>
             </plugin>
 
-            <!-- Surefire: enables JUnit 5 + native access for tests. -->
+            <!-- Surefire: runs *Test.java (pure-Java unit tests).
+                 Tests that exercise the FFM impl live in *IT.java and
+                 are run by Failsafe against the packaged JAR — see note
+                 on Multi-Release JAR semantics below. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -132,6 +135,32 @@
                 <configuration>
                     <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
+            </plugin>
+
+            <!-- Failsafe: runs *IT.java integration tests.
+                 Multi-Release JAR semantics (META-INF/versions/22/) are
+                 only honored when classes are loaded from an actual JAR
+                 file, NOT from exploded target/classes/. So integration
+                 tests that exercise the Java 22 FFM impl must run
+                 against the packaged JAR. We achieve this by setting
+                 classesDirectory to the JAR path; Failsafe runs in the
+                 integration-test phase, after package, so the JAR exists. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                    <classesDirectory>${project.build.directory}/${project.build.finalName}.jar</classesDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

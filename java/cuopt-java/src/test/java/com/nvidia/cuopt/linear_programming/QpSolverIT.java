@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-class QpSolverTest {
+class QpSolverIT {
 
     /**
      * Mirrors cuOpt Python {@code test_qp.py::test_solver}:

@@ -165,9 +165,10 @@ public final class SolverSettings implements AutoCloseable {
         return parameters.get(name);
     }
 
-    // ── package-private accessors for ProblemImpl ────────────────
+    // ── internal accessor used by the FFM implementation
+    //    (public for cross-package access; not for user code) ────
 
-    long nativeHandle() {
+    public long nativeHandle() {
         checkOpen();
         return nativeHandle;
     }

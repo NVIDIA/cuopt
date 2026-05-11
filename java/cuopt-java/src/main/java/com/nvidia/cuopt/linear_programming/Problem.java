@@ -350,26 +350,27 @@ public final class Problem implements AutoCloseable {
         // inside ProblemImpl). Closing happens there.
     }
 
-    // ── package-private accessors used by ProblemImpl when building
-    //    native problem ────────────────────────────────────────────
+    // ── internal accessors used by the FFM implementation
+    //    (public for cross-package access from internal/; not part of
+    //    the stable user-facing API — do not rely on these in user code) ─
 
-    LinearExpr linearObjective() {
+    public LinearExpr linearObjective() {
         return linearObjective;
     }
 
-    QuadraticExpr quadraticObjective() {
+    public QuadraticExpr quadraticObjective() {
         return quadraticObjective;
     }
 
-    Sense objectiveSense() {
+    public Sense objectiveSense() {
         return objectiveSense;
     }
 
-    double objectiveOffset() {
+    public double objectiveOffset() {
         return objectiveOffset;
     }
 
-    List<LinearExpr> constraintExpressions() {
+    public List<LinearExpr> constraintExpressions() {
         return java.util.Collections.unmodifiableList(constraintExpressions);
     }
 

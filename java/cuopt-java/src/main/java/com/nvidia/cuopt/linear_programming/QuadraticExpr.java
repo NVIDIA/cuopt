@@ -114,17 +114,19 @@ public final class QuadraticExpr {
         return owner != null ? owner : linearPart.owner();
     }
 
-    // ── package-private accessors for ProblemImpl ────────────────
+    // ── internal accessors used by the FFM implementation
+    //    (public for cross-package access from internal/; not part of
+    //    the stable user-facing API — do not rely on these in user code) ─
 
-    Variable quadVar1(int i) {
+    public Variable quadVar1(int i) {
         return qVar1.get(i);
     }
 
-    Variable quadVar2(int i) {
+    public Variable quadVar2(int i) {
         return qVar2.get(i);
     }
 
-    double quadCoeff(int i) {
+    public double quadCoeff(int i) {
         return qCoeff.get(i);
     }
 

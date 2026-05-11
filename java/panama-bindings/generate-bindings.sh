@@ -72,6 +72,8 @@ jextract \
     --include-dir "${CUDA_INCLUDE_DIR}" \
     --output "${OUTPUT_DIR}" \
     --target-package "${TARGET_PACKAGE}" \
+    --header-class-name cuopt_c_h \
+    --use-system-load-library \
     --library cuopt \
     "${CURDIR}/headers.h"
 

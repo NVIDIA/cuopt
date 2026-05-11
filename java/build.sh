@@ -16,8 +16,8 @@
 #   JEXTRACT          Path to jextract binary. Default: search PATH.
 #   CUOPT_INCLUDE     Path to cuopt include dir. Default: ../cpp/include.
 #   CUDA_INCLUDE      Path to CUDA include dir. Default: /usr/local/cuda/include.
-#   CMAKE_PREFIX_PATH Prepended to LD_LIBRARY_PATH so libcuopt.so is found.
-#                     Default: ../cpp/build.
+#   CUOPT_LIB_DIR     Directory containing libcuopt.so. Default: ../cpp/build,
+#                     or $CONDA_PREFIX/lib if libcuopt.so is installed there.
 #   SKIP_DRIFT_CHECK  If set to 'true', skips the panama drift gate.
 #                     Useful in initial-bootstrap commits before the
 #                     bindings are first committed.
@@ -31,13 +31,25 @@ REPODIR="$(cd "${CURDIR}/.." && pwd)"
 
 JEXTRACT="${JEXTRACT:-jextract}"
 CUOPT_INCLUDE="${CUOPT_INCLUDE:-${REPODIR}/cpp/include}"
-CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:-${REPODIR}/cpp/build}"
+
+# Find libcuopt.so. Prefer explicit CUOPT_LIB_DIR; otherwise look in the
+# local cpp/build/ (developer build) and the active conda env's lib/
+# (conda-installed libcuopt).
+if [[ -z "${CUOPT_LIB_DIR:-}" ]]; then
+    if [[ -f "${REPODIR}/cpp/build/libcuopt.so" ]]; then
+        CUOPT_LIB_DIR="${REPODIR}/cpp/build"
+    elif [[ -n "${CONDA_PREFIX:-}" ]] && [[ -f "${CONDA_PREFIX}/lib/libcuopt.so" ]]; then
+        CUOPT_LIB_DIR="${CONDA_PREFIX}/lib"
+    else
+        CUOPT_LIB_DIR="${REPODIR}/cpp/build"
+    fi
+fi
 
 echo "==> cuopt-java build"
 echo "    REPODIR=${REPODIR}"
 echo "    JEXTRACT=${JEXTRACT}"
 echo "    CUOPT_INCLUDE=${CUOPT_INCLUDE}"
-echo "    CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
+echo "    CUOPT_LIB_DIR=${CUOPT_LIB_DIR}"
 
 # 1. Toolchain checks
 if ! command -v java >/dev/null 2>&1; then
@@ -61,11 +73,11 @@ fi
 # on first run (cuvs pattern). No need to require it on PATH here.
 
 # 2. libcuopt.so check
-if [[ ! -f "${CMAKE_PREFIX_PATH}/libcuopt.so" ]]; then
-    echo "WARNING: libcuopt.so not found at ${CMAKE_PREFIX_PATH}/libcuopt.so" >&2
+if [[ ! -f "${CUOPT_LIB_DIR}/libcuopt.so" ]]; then
+    echo "WARNING: libcuopt.so not found at ${CUOPT_LIB_DIR}/libcuopt.so" >&2
     echo "         Tests will fail unless libcuopt is on java.library.path." >&2
 fi
-export LD_LIBRARY_PATH="${CMAKE_PREFIX_PATH}:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${CUOPT_LIB_DIR}:${LD_LIBRARY_PATH:-}"
 
 # 3. Regenerate panama bindings
 echo "==> Regenerating panama bindings"
@@ -91,7 +103,7 @@ cd "${CURDIR}/cuopt-java"
 if [[ "${SKIP_TESTS:-false}" == "true" ]]; then
     mvn clean package -DskipTests
 else
-    mvn clean verify -Djava.library.path="${CMAKE_PREFIX_PATH}"
+    mvn clean verify -Djava.library.path="${CUOPT_LIB_DIR}"
 fi
 
 echo "==> cuopt-java build complete"
