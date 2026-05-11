@@ -6,8 +6,9 @@
 /* clang-format on */
 
 #include <mps_parser/data_model_view.hpp>
-#include <mps_parser/utilities/span.hpp>
 #include <utilities/error.hpp>
+
+#include <span>
 
 namespace cuopt::mps_parser {
 
@@ -29,19 +30,19 @@ void data_model_view_t<i_t, f_t>::set_csr_constraint_matrix(const f_t* A_values,
     mps_parser_expects(
       A_values != nullptr, error_type_t::ValidationError, "A_values cannot be null");
   }
-  A_ = span<f_t const>(A_values, size_values);
+  A_ = std::span<f_t const>(A_values, size_values);
 
   if (size_indices != 0) {
     mps_parser_expects(
       A_indices != nullptr, error_type_t::ValidationError, "A_indices cannot be null");
   }
-  A_indices_ = span<i_t const>(A_indices, size_indices);
+  A_indices_ = std::span<i_t const>(A_indices, size_indices);
 
   mps_parser_expects(
     A_offsets != nullptr, error_type_t::ValidationError, "A_offsets cannot be null");
   mps_parser_expects(
     size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
-  A_offsets_ = span<i_t const>(A_offsets, size_offsets);
+  A_offsets_ = std::span<i_t const>(A_offsets, size_offsets);
 }
 
 template <typename i_t, typename f_t>
@@ -50,7 +51,7 @@ void data_model_view_t<i_t, f_t>::set_constraint_bounds(const f_t* b, i_t size)
   if (size != 0) {
     mps_parser_expects(b != nullptr, error_type_t::ValidationError, "b cannot be null");
   }
-  b_ = span<f_t const>(b, size);
+  b_ = std::span<f_t const>(b, size);
 }
 
 template <typename i_t, typename f_t>
@@ -59,7 +60,7 @@ void data_model_view_t<i_t, f_t>::set_objective_coefficients(const f_t* c, i_t s
   if (size != 0) {
     mps_parser_expects(c != nullptr, error_type_t::ValidationError, "c cannot be null");
   }
-  c_ = span<f_t const>(c, size);
+  c_ = std::span<f_t const>(c, size);
 }
 
 template <typename i_t, typename f_t>
@@ -81,7 +82,7 @@ void data_model_view_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_
   mps_parser_expects(variable_lower_bounds != nullptr,
                      error_type_t::ValidationError,
                      "data model variable_lower_bounds cannot be null");
-  variable_lower_bounds_ = span<f_t const>(variable_lower_bounds, size);
+  variable_lower_bounds_ = std::span<f_t const>(variable_lower_bounds, size);
 }
 
 template <typename i_t, typename f_t>
@@ -91,7 +92,7 @@ void data_model_view_t<i_t, f_t>::set_variable_upper_bounds(const f_t* variable_
   mps_parser_expects(variable_upper_bounds != nullptr,
                      error_type_t::ValidationError,
                      "variable_upper_bounds cannot be null");
-  variable_upper_bounds_ = span<f_t const>(variable_upper_bounds, size);
+  variable_upper_bounds_ = std::span<f_t const>(variable_upper_bounds, size);
 }
 
 template <typename i_t, typename f_t>
@@ -99,7 +100,7 @@ void data_model_view_t<i_t, f_t>::set_variable_types(const char* variable_types,
 {
   mps_parser_expects(
     variable_types != nullptr, error_type_t::ValidationError, "variable_types cannot be null");
-  variable_types_ = span<char const>(variable_types, size);
+  variable_types_ = std::span<char const>(variable_types, size);
 }
 
 template <typename i_t, typename f_t>
@@ -109,7 +110,7 @@ void data_model_view_t<i_t, f_t>::set_constraint_lower_bounds(const f_t* constra
   mps_parser_expects(constraint_lower_bounds != nullptr,
                      error_type_t::ValidationError,
                      "constraint_lower_bounds cannot be null");
-  constraint_lower_bounds_ = span<f_t const>(constraint_lower_bounds, size);
+  constraint_lower_bounds_ = std::span<f_t const>(constraint_lower_bounds, size);
 }
 
 template <typename i_t, typename f_t>
@@ -119,7 +120,7 @@ void data_model_view_t<i_t, f_t>::set_constraint_upper_bounds(const f_t* constra
   mps_parser_expects(constraint_upper_bounds != nullptr,
                      error_type_t::ValidationError,
                      "constraint_upper_bounds cannot be null");
-  constraint_upper_bounds_ = span<f_t const>(constraint_upper_bounds, size);
+  constraint_upper_bounds_ = std::span<f_t const>(constraint_upper_bounds, size);
 }
 
 template <typename i_t, typename f_t>
@@ -129,7 +130,7 @@ void data_model_view_t<i_t, f_t>::set_initial_primal_solution(const f_t* initial
   mps_parser_expects(initial_primal_solution != nullptr,
                      error_type_t::ValidationError,
                      "initial_primal_solution cannot be null");
-  initial_primal_solution_ = span<f_t const>(initial_primal_solution, size);
+  initial_primal_solution_ = std::span<f_t const>(initial_primal_solution, size);
 }
 
 template <typename i_t, typename f_t>
@@ -139,7 +140,7 @@ void data_model_view_t<i_t, f_t>::set_initial_dual_solution(const f_t* initial_d
   mps_parser_expects(initial_dual_solution != nullptr,
                      error_type_t::ValidationError,
                      "initial_dual_solution cannot be null");
-  initial_dual_solution_ = span<f_t const>(initial_dual_solution, size);
+  initial_dual_solution_ = std::span<f_t const>(initial_dual_solution, size);
 }
 
 template <typename i_t, typename f_t>
@@ -155,19 +156,19 @@ void data_model_view_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_va
     mps_parser_expects(
       Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
   }
-  Q_objective_ = span<f_t const>(Q_values, size_values);
+  Q_objective_ = std::span<f_t const>(Q_values, size_values);
 
   if (size_indices != 0) {
     mps_parser_expects(
       Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
   }
-  Q_objective_indices_ = span<i_t const>(Q_indices, size_indices);
+  Q_objective_indices_ = std::span<i_t const>(Q_indices, size_indices);
 
   mps_parser_expects(
     Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
   mps_parser_expects(
     size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
-  Q_objective_offsets_ = span<i_t const>(Q_offsets, size_offsets);
+  Q_objective_offsets_ = std::span<i_t const>(Q_offsets, size_offsets);
 
   is_Q_symmetrized_ = is_symmetrized;
 }
@@ -177,7 +178,7 @@ void data_model_view_t<i_t, f_t>::set_row_types(const char* row_types, i_t size)
 {
   mps_parser_expects(
     row_types != nullptr, error_type_t::ValidationError, "row_types cannot be null");
-  row_types_ = span<char const>(row_types, size);
+  row_types_ = std::span<char const>(row_types, size);
 }
 
 template <typename i_t, typename f_t>
@@ -205,31 +206,31 @@ void data_model_view_t<i_t, f_t>::set_row_names(const std::vector<std::string>& 
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_values() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_values() const noexcept
 {
   return A_;
 }
 
 template <typename i_t, typename f_t>
-span<const i_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_indices() const noexcept
+std::span<const i_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_indices() const noexcept
 {
   return A_indices_;
 }
 
 template <typename i_t, typename f_t>
-span<const i_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_offsets() const noexcept
+std::span<const i_t> data_model_view_t<i_t, f_t>::get_constraint_matrix_offsets() const noexcept
 {
   return A_offsets_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_bounds() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_bounds() const noexcept
 {
   return b_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_objective_coefficients() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_objective_coefficients() const noexcept
 {
   return c_;
 }
@@ -247,49 +248,49 @@ f_t data_model_view_t<i_t, f_t>::get_objective_offset() const noexcept
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_variable_lower_bounds() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_variable_lower_bounds() const noexcept
 {
   return variable_lower_bounds_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_variable_upper_bounds() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_variable_upper_bounds() const noexcept
 {
   return variable_upper_bounds_;
 }
 
 template <typename i_t, typename f_t>
-span<const char> data_model_view_t<i_t, f_t>::get_variable_types() const noexcept
+std::span<const char> data_model_view_t<i_t, f_t>::get_variable_types() const noexcept
 {
   return variable_types_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_lower_bounds() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_lower_bounds() const noexcept
 {
   return constraint_lower_bounds_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_upper_bounds() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_constraint_upper_bounds() const noexcept
 {
   return constraint_upper_bounds_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_initial_primal_solution() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_initial_primal_solution() const noexcept
 {
   return initial_primal_solution_;
 }
 
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_initial_dual_solution() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_initial_dual_solution() const noexcept
 {
   return initial_dual_solution_;
 }
 
 template <typename i_t, typename f_t>
-span<const char> data_model_view_t<i_t, f_t>::get_row_types() const noexcept
+std::span<const char> data_model_view_t<i_t, f_t>::get_row_types() const noexcept
 {
   return row_types_;
 }
@@ -326,19 +327,19 @@ const std::vector<std::string>& data_model_view_t<i_t, f_t>::get_row_names() con
 
 // QPS-specific getter implementations
 template <typename i_t, typename f_t>
-span<const f_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_values() const noexcept
+std::span<const f_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_values() const noexcept
 {
   return Q_objective_;
 }
 
 template <typename i_t, typename f_t>
-span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_indices() const noexcept
+std::span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_indices() const noexcept
 {
   return Q_objective_indices_;
 }
 
 template <typename i_t, typename f_t>
-span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_offsets() const noexcept
+std::span<const i_t> data_model_view_t<i_t, f_t>::get_quadratic_objective_offsets() const noexcept
 {
   return Q_objective_offsets_;
 }

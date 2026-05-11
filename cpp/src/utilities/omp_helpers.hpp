@@ -54,6 +54,15 @@ class omp_mutex_t {
   std::unique_ptr<omp_lock_t> mutex;
 };
 
+// Empty class with the same methods as `omp_mutex_t`. This is mainly used for cleanly disabling
+// the `omp_mutex_t` via type alias (`lock` and `unlock` are replaced by NOOPs).
+class fake_omp_mutex_t {
+ public:
+  static void lock() {}
+  static void unlock() {}
+  static bool try_lock() { return true; }
+};
+
 // Wrapper for omp atomic operations. See
 // https://www.openmp.org/spec-html/5.1/openmpsu105.html.
 template <typename T>
@@ -116,6 +125,10 @@ class omp_atomic_t {
   }
 
   T fetch_sub(T inc) { return fetch_add(-inc); }
+
+  // Get the underlying value without atomics
+  T& underlying() { return val; }
+  T underlying() const { return val; }
 
  private:
   T val;

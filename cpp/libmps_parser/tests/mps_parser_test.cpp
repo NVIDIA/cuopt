@@ -904,12 +904,7 @@ TEST(qps_parser, quadratic_objective_basic)
   std::vector<int> Q_indices   = {0, 1, 0, 1};
   std::vector<int> Q_offsets   = {0, 2, 4};  // CSR offsets
 
-  model.set_quadratic_objective_matrix(Q_values.data(),
-                                       Q_values.size(),
-                                       Q_indices.data(),
-                                       Q_indices.size(),
-                                       Q_offsets.data(),
-                                       Q_offsets.size());
+  model.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets);
 
   // Verify the data was stored correctly
   EXPECT_TRUE(model.has_quadratic_objective());
@@ -946,17 +941,12 @@ TEST(qps_parser, qcmatrix_append_api)
   model.append_quadratic_constraint(0,
                                     "QC0",
                                     'L',
-                                    qc0_linear_values.data(),
-                                    qc0_linear_values.size(),
-                                    qc0_linear_indices.data(),
-                                    qc0_linear_indices.size(),
+                                    qc0_linear_values,
+                                    qc0_linear_indices,
                                     5.0,
-                                    qc0_values.data(),
-                                    qc0_values.size(),
-                                    qc0_indices.data(),
-                                    qc0_indices.size(),
-                                    qc0_offsets.data(),
-                                    qc0_offsets.size());
+                                    qc0_values,
+                                    qc0_indices,
+                                    qc0_offsets);
 
   // QC1: [[4, 1], [1, 6]]
   const std::vector<double> qc1_values        = {4.0, 1.0, 1.0, 6.0};
@@ -967,17 +957,12 @@ TEST(qps_parser, qcmatrix_append_api)
   model.append_quadratic_constraint(1,
                                     "QC1",
                                     'L',
-                                    qc1_linear_values.data(),
-                                    qc1_linear_values.size(),
-                                    qc1_linear_indices.data(),
-                                    qc1_linear_indices.size(),
+                                    qc1_linear_values,
+                                    qc1_linear_indices,
                                     10.0,
-                                    qc1_values.data(),
-                                    qc1_values.size(),
-                                    qc1_indices.data(),
-                                    qc1_indices.size(),
-                                    qc1_offsets.data(),
-                                    qc1_offsets.size());
+                                    qc1_values,
+                                    qc1_indices,
+                                    qc1_offsets);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qcs = model.get_quadratic_constraints();
