@@ -212,36 +212,6 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
-#define SHOW_DIVING_TYPE
-
-#ifdef SHOW_DIVING_TYPE
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'C';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'L';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'P';
-    case search_strategy_t::GUIDED_DIVING: return 'G';
-    case search_strategy_t::FARKAS_DIVING: return 'F';
-    default: return 'U';
-  }
-}
-#else
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'D';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'D';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'D';
-    case search_strategy_t::GUIDED_DIVING: return 'D';
-    case search_strategy_t::FARKAS_DIVING: return 'D';
-    default: return 'U';
-  }
-}
-#endif
-
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -880,6 +850,9 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
     case FARKAS_DIVING:
       return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
+
+    case VECTOR_LENGTH_DIVING:
+      return vector_length_diving(worker->leaf_problem, fractional, solution, log);
 
     default:
       log.debug("Unknown variable selection method: %d\n", worker->search_strategy);
@@ -1657,10 +1630,18 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
 
-  worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
-                                       diving_worker_pool_.num_workers(),
-                                       has_solver_space_incumbent(),
-                                       settings_.diving_settings);
+  diving_heuristics_settings_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
+    diving_settings.guided_diving = 0;
+  }
+
+  if (diving_settings.farkas_diving != 0) {
+    f_t obj_dyn = std::log10(original_lp_.max_abs_obj_coeff / original_lp_.min_abs_obj_coeff);
+    if (obj_dyn < diving_settings.farkas_obj_dynamism_tol) { diving_settings.farkas_diving = 0; }
+  }
+
+  worker->calculate_num_diving_workers(
+    bfs_worker_pool_.num_workers(), diving_worker_pool_.num_workers(), settings_.diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol &&
@@ -1668,11 +1649,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.num_workers() > 0 && settings_.diving_settings.guided_diving != 0 &&
-        worker->max_diving_workers[GUIDED_DIVING] == 0) {
+        diving_settings.guided_diving == 0) {
       if (has_solver_space_incumbent()) {
+        std::cout << "Re-enabling guided diving" << std::endl;
+        diving_settings.guided_diving = 1;
         worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
                                              diving_worker_pool_.num_workers(),
-                                             has_solver_space_incumbent(),
                                              settings_.diving_settings);
       }
     }
@@ -2338,6 +2320,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_unexplored = 0;
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
+  original_lp_.max_abs_obj_coeff = 0;
+  original_lp_.min_abs_obj_coeff = std::numeric_limits<f_t>::infinity();
+
+  // Compute the maximum and minimum coefficient of the objective function.
+  // This is used in the Farkas diving.
+  for (auto c : original_lp_.objective) {
+    f_t c_abs = std::abs(c);
+    if (c_abs == 0) continue;
+    if (c_abs < original_lp_.min_abs_obj_coeff) { original_lp_.min_abs_obj_coeff = c_abs; }
+    if (c_abs > original_lp_.max_abs_obj_coeff) { original_lp_.max_abs_obj_coeff = c_abs; }
+  }
 
   settings_.log.printf("Reduced cost strengthening enabled: %d\n",
                        settings_.reduced_cost_strengthening);

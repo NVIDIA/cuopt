@@ -50,6 +50,11 @@ struct lp_problem_t {
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   bool objective_is_integral{false};
 
+  // Maximum and minimum value of the coefficients in the objective function. This is used
+  // for determine the "objective dynamism" in Farkas diving.
+  f_t max_abs_obj_coeff = 0;
+  f_t min_abs_obj_coeff = 0;
+
   void write_mps(const std::string& path) const
   {
     std::ofstream mps_file(path);

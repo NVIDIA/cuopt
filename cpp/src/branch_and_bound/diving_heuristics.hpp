@@ -16,6 +16,38 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+#define SHOW_DIVING_TYPE
+
+#ifdef SHOW_DIVING_TYPE
+inline char feasible_solution_symbol(search_strategy_t strategy)
+{
+  switch (strategy) {
+    case BEST_FIRST: return 'B';
+    case COEFFICIENT_DIVING: return 'C';
+    case LINE_SEARCH_DIVING: return 'L';
+    case PSEUDOCOST_DIVING: return 'P';
+    case GUIDED_DIVING: return 'G';
+    case FARKAS_DIVING: return 'F';
+    case VECTOR_LENGTH_DIVING: return 'V';
+    default: return 'U';
+  }
+}
+#else
+inline char feasible_solution_symbol(search_strategy_t strategy)
+{
+  switch (strategy) {
+    case BEST_FIRST: return 'B';
+    case COEFFICIENT_DIVING: return 'D';
+    case LINE_SEARCH_DIVING: return 'D';
+    case PSEUDOCOST_DIVING: return 'D';
+    case GUIDED_DIVING: return 'D';
+    case FARKAS_DIVING: return 'D';
+    case VECTOR_LENGTH_DIVING: return 'D';
+    default: return 'U';
+  }
+}
+#endif
+
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& solution,
@@ -57,5 +89,11 @@ branch_variable_t<i_t> farkas_diving(const lp_problem_t<i_t, f_t>& lp,
                                      const std::vector<f_t>& solution,
                                      f_t zero_tol,
                                      logger_t& log);
+
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> vector_length_diving(const lp_problem_t<i_t, f_t>& lp,
+                                            const std::vector<i_t>& fractional,
+                                            const std::vector<f_t>& solution,
+                                            logger_t& log);
 
 }  // namespace cuopt::linear_programming::dual_simplex

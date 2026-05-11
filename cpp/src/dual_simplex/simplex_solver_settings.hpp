@@ -23,11 +23,12 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 struct diving_heuristics_settings_t {
   // -1 automatic, 0 disabled, 1 enabled
-  i_t line_search_diving = -1;
-  i_t pseudocost_diving  = -1;
-  i_t guided_diving      = -1;
-  i_t coefficient_diving = -1;
-  i_t farkas_diving      = -1;
+  i_t line_search_diving   = -1;
+  i_t pseudocost_diving    = -1;
+  i_t guided_diving        = -1;
+  i_t coefficient_diving   = -1;
+  i_t farkas_diving        = -1;
+  i_t vector_length_diving = -1;
 
   // The minimum depth to start diving from.
   i_t min_node_depth = 10;
@@ -42,6 +43,11 @@ struct diving_heuristics_settings_t {
 
   // The maximum backtracking allowed.
   i_t backtrack_limit = 5;
+
+  // For the Farkas diving to be effective, the coefficients in the objective function
+  // must have distinct values. The low tolerance here disables Farkas diving for
+  // set covering/partitioning, where all coefficients have the same value.
+  f_t farkas_obj_dynamism_tol = 1E-4;
 };
 
 template <typename i_t, typename f_t>
