@@ -15,17 +15,12 @@
  * limitations under the License.
  */
 
-#include "work_unit_scheduler.hpp"
-
-#include "work_limit_context.hpp"
+#include <utilities/work_limit_context.hpp>
+#include <utilities/work_unit_scheduler.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <limits>
-
-#include <omp.h>
-
-#include <mip_heuristics/logger.hpp>
 
 namespace cuopt {
 

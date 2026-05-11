@@ -49,6 +49,7 @@
 #include <rmm/cuda_stream.hpp>
 
 #include <cuda_profiler_api.h>
+#include <omp.h>
 
 #include <cmath>
 #include <sstream>
@@ -91,11 +92,11 @@ static void invoke_solution_callbacks(
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
-                                 mip_solver_settings_t<i_t, f_t> const& settings,
-                                 timer_t& timer,
-                                 f_t& initial_upper_bound,
-                                 std::vector<f_t>& initial_incumbent_assignment)
+mip_solution_t<i_t, f_t> run_mip_solver(detail::problem_t<i_t, f_t>& problem,
+                                        mip_solver_settings_t<i_t, f_t> const& settings,
+                                        timer_t& timer,
+                                        f_t& initial_upper_bound,
+                                        std::vector<f_t>& initial_incumbent_assignment)
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
@@ -286,8 +287,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
-                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_problem,
+                                          mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
@@ -548,10 +549,10 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
-
     // early_best_user_obj is in user-space.
     // run_mip stores it in context.initial_upper_bound and converts to target spaces as needed.
-    auto sol = run_mip(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
+    auto sol =
+      run_mip_solver(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
 
     if (run_presolve) {
@@ -689,6 +690,49 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     CUOPT_LOG_ERROR("Unexpected error in solve_mip: %s", e.what());
     throw;
   }
+}
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
+                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+{
+  std::exception_ptr exception;
+  i_t num_threads = 0;
+  if (settings_const.num_cpu_threads < 0) {
+    num_threads = omp_get_max_threads();
+  } else {
+    num_threads = settings_const.num_cpu_threads;
+  }
+
+  if (num_threads < 2) {
+    CUOPT_LOG_ERROR("The MIP solver requires at least 2 CPU threads!");
+    return mip_solution_t<i_t, f_t>{
+      cuopt::logic_error("The number of CPU threads is less than the expected minimum (2).",
+                         cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
+  }
+
+  mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
+                               solver_stats_t<i_t, f_t>{},
+                               op_problem.get_handle_ptr()->get_stream());
+
+  // Creates the OpenMP thread pool. It will be shared across the entire MIP solver.
+#pragma omp parallel num_threads(num_threads) default(none) \
+  shared(sol, op_problem, settings_const, exception)
+  {
+#pragma omp masked
+    {
+      try {
+        sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);
+      } catch (...) {
+        // We cannot throw inside an OpenMP parallel region. So we need to catch and then
+        // re-throw later.
+        exception = std::current_exception();
+      }
+    }
+  }  // Implicit barrier
+
+  if (exception) { std::rethrow_exception(exception); }
+  return sol;
 }
 
 template <typename i_t, typename f_t>

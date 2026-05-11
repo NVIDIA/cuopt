@@ -25,6 +25,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
@@ -215,66 +216,87 @@ static inline auto problem_wrap_container(const rmm::device_uvector<f_t>& in)
                                          problem_wrapped_iterator<f_t>(in.data(), in.size()));
 }
 
+// Used when one scalar applies to each contiguous problem block in a batched vector:
+// [problem_0 block][problem_1 block]...
+template <typename f_t>
+struct batch_wrapped_iterator {
+  batch_wrapped_iterator(const f_t* problem_input, int problem_size)
+    : problem_input_(problem_input), problem_size_(problem_size)
+  {
+  }
+  HDI f_t operator()(int id) { return problem_input_[id / problem_size_]; }
+
+  const f_t* problem_input_;
+  // TODO use i_t
+  int problem_size_;
+};
+
+template <typename f_t>
+static inline auto batch_wrapped_container(const rmm::device_uvector<f_t>& in, int problem_size)
+{
+  return thrust::make_transform_iterator(thrust::make_counting_iterator(0),
+                                         batch_wrapped_iterator<f_t>(in.data(), problem_size));
+}
+
 template <typename f_t>
 struct power_two_func_t {
   HDI f_t operator()(f_t val) { return val * val; }
 };
 
-template <typename i_t, typename f_t>
-void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
-                                      rmm::device_uvector<f_t>& combined_bounds,
-                                      bool batch_mode = false)
-{
-  if (!batch_mode) {
-    combined_bounds.resize(op_problem.n_constraints, op_problem.handle_ptr->get_stream());
-    if (combined_bounds.size() > 0) {
-      raft::linalg::binaryOp(combined_bounds.data(),
-                             op_problem.constraint_lower_bounds.data(),
-                             op_problem.constraint_upper_bounds.data(),
-                             op_problem.n_constraints,
-                             combine_finite_abs_bounds<f_t>(),
-                             op_problem.handle_ptr->get_stream());
-    }
-  } else {
-    // In batch mode we use combined_constraint_bounds in convergeance_information to fill the
-    // primal residual which will be bigger
-    cuopt_assert(combined_bounds.size() % op_problem.n_constraints == 0,
-                 "combined_bounds size must be a multiple of op_problem.n_constraints");
-    // TODO later batch mode: different constraint bounds
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(problem_wrap_container(op_problem.constraint_lower_bounds),
-                            problem_wrap_container(op_problem.constraint_upper_bounds)),
-      combined_bounds.data(),
-      combined_bounds.size(),
-      combine_finite_abs_bounds<f_t>(),
-      op_problem.handle_ptr->get_stream());
-  }
-}
-
 template <typename f_t>
-void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
-                               const rmm::device_uvector<f_t>& constraint_upper_bounds,
-                               rmm::device_scalar<f_t>& out,
-                               rmm::cuda_stream_view stream_view)
-{
-  rmm::device_buffer d_temp_storage;
-  size_t bytes = 0;
-  auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
+struct sqrt_func_t {
+  HDI f_t operator()(f_t val) { return raft::sqrt(val); }
+};
+
+// Per-element contribution to the sum-of-squares used to form the L2 norm of the RHS.
+// Mirrors compute_sum_bounds' main_op: add lower^2 only when finite and lower != upper,
+// and add upper^2 when finite.
+template <typename f_t>
+struct rhs_sum_of_squares_t {
+  HDI f_t operator()(const thrust::tuple<f_t, f_t>& t) const
+  {
     const f_t lower = thrust::get<0>(t);
     const f_t upper = thrust::get<1>(t);
     f_t sum         = f_t(0);
     if (isfinite(lower) && (lower != upper)) sum += lower * lower;
     if (isfinite(upper)) sum += upper * upper;
     return sum;
-  };
+  }
+};
+
+template <typename i_t, typename f_t>
+void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
+                                      rmm::device_uvector<f_t>& combined_bounds)
+{
+  cuopt_assert(
+    op_problem.constraint_lower_bounds.size() == op_problem.constraint_upper_bounds.size(),
+    "constraint_lower_bounds and constraint_upper_bounds must have the same size");
+  combined_bounds.resize(op_problem.constraint_lower_bounds.size(),
+                         op_problem.handle_ptr->get_stream());
+  cub::DeviceTransform::Transform(cuda::std::make_tuple(op_problem.constraint_lower_bounds.data(),
+                                                        op_problem.constraint_upper_bounds.data()),
+                                  combined_bounds.data(),
+                                  combined_bounds.size(),
+                                  combine_finite_abs_bounds<f_t>(),
+                                  op_problem.handle_ptr->get_stream());
+}
+
+template <typename f_t>
+void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
+                               const rmm::device_uvector<f_t>& constraint_upper_bounds,
+                               f_t* out,
+                               rmm::cuda_stream_view stream_view)
+{
+  rmm::device_buffer d_temp_storage;
+  size_t bytes = 0;
   cub::DeviceReduce::TransformReduce(
     nullptr,
     bytes,
     thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
-    out.data(),
+    thrust::make_transform_output_iterator(out, sqrt_func_t<f_t>{}),
     constraint_lower_bounds.size(),
     cuda::std::plus<>{},
-    main_op,
+    rhs_sum_of_squares_t<f_t>{},
     f_t(0),
     stream_view);
 
@@ -284,18 +306,22 @@ void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_
     d_temp_storage.data(),
     bytes,
     thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
-    out.data(),
+    thrust::make_transform_output_iterator(out, sqrt_func_t<f_t>{}),
     constraint_lower_bounds.size(),
     cuda::std::plus<>{},
-    main_op,
+    rhs_sum_of_squares_t<f_t>{},
     f_t(0),
     stream_view);
-
-  const f_t res = std::sqrt(out.value(stream_view));
-  out.set_value_async(res, stream_view);
-
-  // Sync since we are using local variable
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+}
+
+template <typename f_t>
+void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
+                               const rmm::device_uvector<f_t>& constraint_upper_bounds,
+                               rmm::device_scalar<f_t>& out,
+                               rmm::cuda_stream_view stream_view)
+{
+  compute_sum_bounds(constraint_lower_bounds, constraint_upper_bounds, out.data(), stream_view);
 }
 
 template <typename f_t>
@@ -552,7 +578,8 @@ void inline my_l2_norm(const rmm::device_uvector<f_t>& input_vector,
 }
 
 template <typename i_t, typename f_t>
-void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
+void inline my_l2_weighted_norm(const f_t* input_vector,
+                                size_t size,
                                 f_t weight,
                                 rmm::device_scalar<f_t>& result,
                                 rmm::cuda_stream_view stream)
@@ -560,8 +587,8 @@ void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
   auto fin_op  = [] __device__(f_t in) { return raft::sqrt(in); };
   auto main_op = [weight] __device__(f_t in, i_t _) { return in * in * weight; };
   raft::linalg::reduce<true, true, f_t, f_t, i_t>(result.data(),
-                                                  input_vector.data(),
-                                                  (i_t)input_vector.size(),
+                                                  input_vector,
+                                                  (i_t)size,
                                                   1,
                                                   f_t(0.0),
                                                   stream,
@@ -569,6 +596,15 @@ void inline my_l2_weighted_norm(const rmm::device_uvector<f_t>& input_vector,
                                                   main_op,
                                                   raft::Sum<f_t>(),
                                                   fin_op);
+}
+
+template <typename i_t, typename f_t>
+void inline my_l2_weighted_norm(rmm::device_uvector<f_t>& input_vector,
+                                f_t weight,
+                                rmm::device_scalar<f_t>& result,
+                                rmm::cuda_stream_view stream)
+{
+  my_l2_weighted_norm<i_t, f_t>(input_vector.data(), input_vector.size(), weight, result, stream);
 }
 
 template <typename f_t>
@@ -581,9 +617,9 @@ template <typename i_t, typename f_t>
 struct relative_residual_t {
   __device__ f_t operator()(const thrust::tuple<f_t, f_t>& t) const
   {
-    const f_t residual = thrust::get<0>(t);
+    const f_t residual = raft::abs(thrust::get<0>(t));
     // Rhs for either primal (b) and dual (c)
-    const f_t rhs = thrust::get<1>(t);
+    const f_t rhs = raft::abs(thrust::get<1>(t));
 
     // Used for best primal so far, count how many constraints are violated
     if (abs_.has_value() && nb_violated_constraints_.has_value()) {
@@ -616,6 +652,7 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
   cub::DeviceReduce::Max(d_temp, temp_bytes, abs_iter, result, n, stream);
   rmm::device_buffer temp_buf(temp_bytes, stream);
   cub::DeviceReduce::Max(temp_buf.data(), temp_bytes, abs_iter, result, n, stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 }
 
 template <typename f_t>
