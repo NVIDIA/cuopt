@@ -32,10 +32,14 @@ python -m pip install \
 # ensure that environment is still consistent (i.e. cvxpy requirements do not conflict with cuopt's)
 pip check
 
+RAPIDS_TESTS_DIR="${RAPIDS_TESTS_DIR:-${PWD}/test-results}"
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
 echo "running 'cvxpy' tests"
 timeout 3m python -m pytest \
     --verbose \
     --capture=no \
     --error-for-skips \
+    --junitxml="${RAPIDS_TESTS_DIR}/junit-thirdparty-cvxpy.xml" \
     -k "TestCUOPT" \
     ./cvxpy/tests/test_conic_solvers.py

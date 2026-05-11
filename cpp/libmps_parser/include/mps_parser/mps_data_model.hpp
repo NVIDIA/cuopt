@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -63,44 +64,31 @@ class mps_data_model_t {
    * @note Setting before calling the solver is mandatory.
    *
    * @throws std::logic_error when an error occurs.
-   * @param[in] A_values Values of the CSR representation of the constraint matrix as a host memory
-   pointer to a floating point array of size size_values.
-   * MPS Parser copies this data.
-   * @param size_values Size of the A_values array.
-   * @param[in] A_indices Indices of the CSR representation of the constraint matrix as a host
-   memory pointer to an integer array of size size_indices.
-   * MPS Parser copies this data.
-   * @param size_indices Size of the A_indices array.
-   * @param[in] A_offsets Offsets of the CSR representation of the constraint matrix as a host
-   memory pointer to a integer array of size size_offsets.
-   * MPS Parser copies this data.
-   * @param size_offsets Size of the A_offsets array.
+   * @param[in] A_values Values of the CSR representation of the constraint matrix; host memory.
+   * The model copies this data.
+   * @param[in] A_indices Indices of the CSR representation of the constraint matrix; host memory.
+   * The model copies this data.
+   * @param[in] A_offsets Offsets of the CSR representation of the constraint matrix; host memory.
+   * The model copies this data.
    */
-  void set_csr_constraint_matrix(const f_t* A_values,
-                                 i_t size_values,
-                                 const i_t* A_indices,
-                                 i_t size_indices,
-                                 const i_t* A_offsets,
-                                 i_t size_offsets);
+  void set_csr_constraint_matrix(std::span<const f_t> A_values,
+                                 std::span<const i_t> A_indices,
+                                 std::span<const i_t> A_offsets);
 
   /**
    * @brief Set the constraint bounds (b / right-hand side) array.
    * @note Setting before calling the solver is mandatory.
    *
-   * @param[in] b Host memory pointer to a floating point array of size size.
-   * MPS Parser copies this data.
-   * @param size Size of the b array.
+   * @param[in] b Constraint bounds; host memory. The model copies this data.
    */
-  void set_constraint_bounds(const f_t* b, i_t size);
+  void set_constraint_bounds(std::span<const f_t> b);
   /**
    * @brief Set the objective coefficients (c) array.
    * @note Setting before calling the solver is mandatory.
    *
-   * @param[in] c Host memory pointer to a floating point array of size size.
-   * MPS Parser copies this data.
-   * @param size Size of the c array.
+   * @param[in] c Objective coefficients; host memory. The model copies this data.
    */
-  void set_objective_coefficients(const f_t* c, i_t size);
+  void set_objective_coefficients(std::span<const f_t> c);
   /**
    * @brief Set the scaling factor of the objective function (scaling_factor * objective_value).
    * @note Setting before calling the solver is optional, default value if 1.
@@ -120,45 +108,37 @@ class mps_data_model_t {
    * @brief Set the variables (x) lower bounds.
    * @note Setting before calling the solver is optional, default value for all is 0.
    *
-   * @param[in] variable_lower_bounds Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the variable_lower_bounds array
+   * @param[in] variable_lower_bounds Variable lower bounds; host memory. The model copies
+   * this data.
    */
-  void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size);
+  void set_variable_lower_bounds(std::span<const f_t> variable_lower_bounds);
   /**
    * @brief Set the variables (x) upper bounds.
    * @note Setting before calling the solver is optional, default value for all is +infinity.
    *
-   * @param[in] variable_upper_bounds Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the variable_upper_bounds array.
+   * @param[in] variable_upper_bounds Variable upper bounds; host memory. The model copies
+   * this data.
    */
-  void set_variable_upper_bounds(const f_t* variable_upper_bounds, i_t size);
+  void set_variable_upper_bounds(std::span<const f_t> variable_upper_bounds);
   /**
    * @brief Set the constraints lower bounds.
    * @note Setting before calling the solver is optional if you set the row type, else it's
    * mandatory along with the upper bounds.
    *
-   * @param[in] constraint_lower_bounds Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the constraint_lower_bounds array
+   * @param[in] constraint_lower_bounds Constraint lower bounds; host memory. The model copies
+   * this data.
    */
-  void set_constraint_lower_bounds(const f_t* constraint_lower_bounds, i_t size);
+  void set_constraint_lower_bounds(std::span<const f_t> constraint_lower_bounds);
   /**
    * @brief Set the constraints upper bounds.
    * @note Setting before calling the solver is optional if you set the row type, else it's
    * mandatory along with the lower bounds.
    * If both are set, priority goes to set_constraints.
    *
-   * @param[in] constraint_upper_bounds Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the constraint_upper_bounds array
+   * @param[in] constraint_upper_bounds Constraint upper bounds; host memory. The model copies
+   * this data.
    */
-  void set_constraint_upper_bounds(const f_t* constraint_upper_bounds, i_t size);
+  void set_constraint_upper_bounds(std::span<const f_t> constraint_upper_bounds);
 
   /**
    * @brief Set the type of each row (constraint). Possible values are:
@@ -171,12 +151,9 @@ class mps_data_model_t {
    * bounds, else it's mandatory
    * If both are set, priority goes to set_constraints.
    *
-   * @param[in] row_types Host memory pointer to a character array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the row_types array
+   * @param[in] row_types Row types; host memory. The model copies this data.
    */
-  void set_row_types(const char* row_types, i_t size);
+  void set_row_types(std::span<const char> row_types);
 
   /**
    * @brief Set the name of the objective function.
@@ -223,24 +200,20 @@ class mps_data_model_t {
    *
    * @note Default value is all 0.
    *
-   * @param[in] initial_primal_solution Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the initial_primal_solution array.
+   * @param[in] initial_primal_solution Initial primal solution; host memory. The model copies
+   * this data.
    */
-  void set_initial_primal_solution(const f_t* initial_primal_solution, i_t size);
+  void set_initial_primal_solution(std::span<const f_t> initial_primal_solution);
 
   /**
    * @brief Set an initial dual solution.
    *
    * @note Default value is all 0.
    *
-   * @param[in] initial_dual_solution Host memory pointer to a floating point array of
-   * size size.
-   * MPS Parser copies this data.
-   * @param size Size of the initial_dual_solution array.
+   * @param[in] initial_dual_solution Initial dual solution; host memory. The model copies
+   * this data.
    */
-  void set_initial_dual_solution(const f_t* initial_dual_solution, i_t size);
+  void set_initial_dual_solution(std::span<const f_t> initial_dual_solution);
 
   /**
    * @brief Set the quadratic objective matrix (Q) in CSR format for QPS files.
@@ -248,19 +221,16 @@ class mps_data_model_t {
    * @note This is used for quadratic programming problems where the objective
    * function contains quadratic terms: (1/2) * x^T * Q * x + c^T * x
    *
-   * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix
-   * @param size_values Size of the Q_values array
-   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix
-   * @param size_indices Size of the Q_indices array
-   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix
-   * @param size_offsets Size of the Q_offsets array
+   * @param[in] Q_values Values of the CSR representation of the quadratic objective matrix; host
+   * memory. The model copies this data.
+   * @param[in] Q_indices Indices of the CSR representation of the quadratic objective matrix; host
+   * memory. The model copies this data.
+   * @param[in] Q_offsets Offsets of the CSR representation of the quadratic objective matrix; host
+   * memory. The model copies this data.
    */
-  void set_quadratic_objective_matrix(const f_t* Q_values,
-                                      i_t size_values,
-                                      const i_t* Q_indices,
-                                      i_t size_indices,
-                                      const i_t* Q_offsets,
-                                      i_t size_offsets);
+  void set_quadratic_objective_matrix(std::span<const f_t> Q_values,
+                                      std::span<const i_t> Q_indices,
+                                      std::span<const i_t> Q_offsets);
 
   /**
    * @brief One quadratic constraint as parsed from MPS sections (ROWS, COLUMNS, RHS, QCMATRIX).
@@ -288,8 +258,7 @@ class mps_data_model_t {
 
   /**
    * @brief Append one complete quadratic constraint (row + linear + rhs + quadratic Q).
-   * @note Pointer+size signature is kept for current CI/toolchain compatibility; `std::span`
-   *       can be revisited later when compatibility constraints are lifted.
+   * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param quadratic_values, quadratic_indices CSR nnz; may be empty if Q is empty.
    * @param quadratic_offsets CSR row starts; must be non-empty.
@@ -299,17 +268,12 @@ class mps_data_model_t {
   void append_quadratic_constraint(i_t constraint_row_index,
                                    const std::string& constraint_row_name,
                                    char constraint_row_type,
-                                   const f_t* linear_values,
-                                   i_t linear_nnz,
-                                   const i_t* linear_indices,
-                                   i_t linear_indices_nnz,
+                                   std::span<const f_t> linear_values,
+                                   std::span<const i_t> linear_indices,
                                    f_t rhs_value,
-                                   const f_t* quadratic_values,
-                                   i_t quadratic_size_values,
-                                   const i_t* quadratic_indices,
-                                   i_t quadratic_size_indices,
-                                   const i_t* quadratic_offsets,
-                                   i_t quadratic_size_offsets);
+                                   std::span<const f_t> quadratic_values,
+                                   std::span<const i_t> quadratic_indices,
+                                   std::span<const i_t> quadratic_offsets);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 
