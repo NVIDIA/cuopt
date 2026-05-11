@@ -5,13 +5,19 @@
 # Shared helpers for crash detection and JUnit XML crash markers.
 # Source this from test runner scripts (run_ctests.sh, run_cuopt_pytests.sh, etc.)
 
-# Convert exit code > 128 to a human-readable signal name.
+# Convert an abnormal exit code to a human-readable description.
+# Handles GNU coreutils 'timeout' (124) and signal deaths (> 128).
 signal_name() {
-    local sig=$(($1 - 128))
-    case "${sig}" in
-        6)  echo "SIGABRT" ;;
-        11) echo "SIGSEGV (segfault)" ;;
-        *)  echo "signal ${sig}" ;;
+    case "$1" in
+        124) echo "timeout (killed by 'timeout' command)" ;;
+        *)
+            local sig=$(($1 - 128))
+            case "${sig}" in
+                6)  echo "SIGABRT" ;;
+                11) echo "SIGSEGV (segfault)" ;;
+                *)  echo "signal ${sig}" ;;
+            esac
+            ;;
     esac
 }
 

@@ -46,9 +46,12 @@ if [ "$pytest_rc" -eq 5 ]; then
     pytest_rc=$?
 fi
 
-# On signal death, pytest didn't finalize JUnit; synthesize a crash XML so
-# nightly_report.py reports the failure instead of "All tests passed."
-if [ "${pytest_rc}" -gt 128 ]; then
+# pytest's normal exit codes are 0-5 (passed / failed / interrupted /
+# internal error / usage / no tests collected). Anything beyond that
+# (timeout=124, signal deaths >128, etc.) means pytest did not finalize
+# its JUnit XML, so synthesize a crash marker — otherwise nightly_report.py
+# would see no failure and report "All tests passed."
+if [ "${pytest_rc}" -gt 5 ]; then
     write_pytest_crash_marker "${RAPIDS_TESTS_DIR}/junit-thirdparty-pulp.xml" "thirdparty-pulp" "${pytest_rc}"
 fi
 
