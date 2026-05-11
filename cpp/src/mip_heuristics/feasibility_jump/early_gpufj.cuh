@@ -10,7 +10,6 @@
 #include <mip_heuristics/early_heuristic.cuh>
 
 #include <memory>
-#include <thread>
 
 namespace cuopt::linear_programming::detail {
 
@@ -35,11 +34,8 @@ class early_gpufj_t : public early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>
   void stop();
 
  private:
-  void run_worker();
-
   std::unique_ptr<mip_solver_context_t<i_t, f_t>> context_ptr_;
   std::unique_ptr<fj_t<i_t, f_t>> fj_ptr_;
-  std::unique_ptr<std::thread> worker_thread_;
 };
 
 }  // namespace cuopt::linear_programming::detail

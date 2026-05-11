@@ -7,13 +7,14 @@
 
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-#include <pdlp/pdlp_constants.hpp>
+#include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/linear_programming/solve.hpp>
 
@@ -764,14 +765,15 @@ static void batch_pdlp_strong_branching_task(
     ws_settings.inside_mip                           = true;
     if (effective_batch_pdlp == 1) { ws_settings.concurrent_halt = &concurrent_halt; }
 
-    auto lp_start_time = std::chrono::high_resolution_clock::now();
+    auto pdlp_start_time = std::chrono::high_resolution_clock::now();
 
     auto ws_solution = solve_lp(&pc.pdlp_warm_cache->batch_pdlp_handle, mps_model, ws_settings);
 
     if (verbose) {
-      auto end_time = std::chrono::high_resolution_clock::now();
+      auto pdlp_end_time = std::chrono::high_resolution_clock::now();
       auto duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - lp_start_time).count();
+        std::chrono::duration_cast<std::chrono::milliseconds>(pdlp_end_time - pdlp_start_time)
+          .count();
       settings.log.printf(
         "Original problem solved in %d milliseconds"
         " and iterations: %d\n",
@@ -1009,7 +1011,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       basis_update_mpf_t<i_t, f_t>& basis_factors,
                       pseudo_costs_t<i_t, f_t>& pc)
 {
-  constexpr bool verbose = false;
+  raft::common::nvtx::range scope("BB::strong_branching");
 
   pc.resize(original_lp.num_cols);
   std::vector<f_t> strong_branch_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
@@ -1020,10 +1022,20 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   if (elapsed_time > settings.time_limit) { return; }
 
   // 0: no batch PDLP, 1: cooperative batch PDLP and DS, 2: batch PDLP only
-  const i_t effective_batch_pdlp =
-    (settings.sub_mip || (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1))
-      ? 0
-      : settings.mip_batch_pdlp_strong_branching;
+  i_t effective_batch_pdlp = settings.mip_batch_pdlp_strong_branching;
+
+  // Disable for sub MIP
+  if (settings.sub_mip) { effective_batch_pdlp = 0; }
+
+  // Disable if running in deterministic mode
+  if (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) {
+    effective_batch_pdlp = 0;
+  }
+
+  // Disable if the number of threads available is too low.
+  if (omp_get_num_threads() < CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT) {
+    effective_batch_pdlp = 0;
+  }
 
   if (settings.mip_batch_pdlp_strong_branching != 0 &&
       (settings.sub_mip || settings.deterministic)) {
@@ -1064,76 +1076,76 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           strong_branch_down,
                                           strong_branch_up);
   } else {
-#pragma omp parallel num_threads(settings.num_threads)
-    {
-#pragma omp single nowait
-      {
-        if (effective_batch_pdlp != 0) {
-#pragma omp task
-          batch_pdlp_strong_branching_task(settings,
-                                           effective_batch_pdlp,
-                                           start_time,
-                                           concurrent_halt,
-                                           original_lp,
-                                           new_slacks,
-                                           root_solution.x,
-                                           fractional,
-                                           root_obj,
-                                           pc,
-                                           sb_view,
-                                           pdlp_obj_down,
-                                           pdlp_obj_up);
-        }
+    if (effective_batch_pdlp != 0) {
+#pragma omp task default(shared)
+      batch_pdlp_strong_branching_task(settings,
+                                       effective_batch_pdlp,
+                                       start_time,
+                                       concurrent_halt,
+                                       original_lp,
+                                       new_slacks,
+                                       root_solution.x,
+                                       fractional,
+                                       root_obj,
+                                       pc,
+                                       sb_view,
+                                       pdlp_obj_down,
+                                       pdlp_obj_up);
+    }
 
-        if (effective_batch_pdlp != 2) {
-          i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
+    if (effective_batch_pdlp != 2) {
+      i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
-#pragma omp taskloop num_tasks(n)
-          for (i_t k = 0; k < n; k++) {
-            i_t start = std::floor(k * fractional.size() / n);
-            i_t end   = std::floor((k + 1) * fractional.size() / n);
+#pragma omp taskloop num_tasks(n) default(shared)
+      for (i_t k = 0; k < n; ++k) {
+        i_t start = std::floor(k * fractional.size() / n);
+        i_t end   = std::floor((k + 1) * fractional.size() / n);
 
-            if (verbose) {
-              settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
-                                  omp_get_thread_num(),
-                                  k,
-                                  start,
-                                  end,
-                                  end - start);
-            }
-
-            strong_branch_helper(start,
-                                 end,
-                                 start_time,
-                                 original_lp,
-                                 settings,
-                                 var_types,
-                                 fractional,
-                                 root_solution.x,
-                                 root_vstatus,
-                                 edge_norms,
-                                 root_obj,
-                                 upper_bound,
-                                 simplex_iteration_limit,
-                                 strong_branch_down,
-                                 strong_branch_up,
-                                 dual_simplex_obj_down,
-                                 dual_simplex_obj_up,
-                                 dual_simplex_status_down,
-                                 dual_simplex_status_up,
-                                 sb_view,
-                                 num_strong_branches_completed);
-          }
-          // DS done: signal PDLP to stop (time-limit or all work done) and wait
-          if (effective_batch_pdlp == 1) { concurrent_halt.store(1); }
+        constexpr bool verbose = false;
+        if (verbose) {
+          settings.log.printf("Thread id %d task id %d start %d end %d. size %d\n",
+                              omp_get_thread_num(),
+                              k,
+                              start,
+                              end,
+                              end - start);
         }
+
+        strong_branch_helper(start,
+                             end,
+                             start_time,
+                             original_lp,
+                             settings,
+                             var_types,
+                             fractional,
+                             root_solution.x,
+                             root_vstatus,
+                             edge_norms,
+                             root_obj,
+                             upper_bound,
+                             simplex_iteration_limit,
+                             strong_branch_down,
+                             strong_branch_up,
+                             dual_simplex_obj_down,
+                             dual_simplex_obj_up,
+                             dual_simplex_status_down,
+                             dual_simplex_status_up,
+                             sb_view,
+                             num_strong_branches_completed);
       }
+      // DS done: signal PDLP to stop (time-limit or all work done) and wait
+      if (effective_batch_pdlp == 1) { concurrent_halt.store(1); }
+    }
+
+    if (effective_batch_pdlp != 0) {
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
     }
   }
 
   settings.log.printf("Strong branching completed in %.2fs\n", toc(strong_branching_start_time));
 
+  constexpr bool verbose = false;
   if (verbose) {
     // Collect Dual Simplex statistics
     i_t dual_simplex_optimal = 0, dual_simplex_infeasible = 0, dual_simplex_iter_limit = 0;
@@ -1315,6 +1327,8 @@ template <typename i_t, typename f_t>
 i_t pseudo_costs_t<i_t, f_t>::variable_selection(const std::vector<i_t>& fractional,
                                                  const std::vector<f_t>& solution)
 {
+  raft::common::nvtx::range scope("BB::pseudocost_branching");
+
   i_t branch_var = fractional[0];
   f_t max_score  = -1;
   f_t avg_down   = compute_pseudocost_average_down();
@@ -1351,6 +1365,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   const std::vector<i_t>& new_slacks,
   const lp_problem_t<i_t, f_t>& original_lp)
 {
+  raft::common::nvtx::range scope("BB::reliability_branching");
+
   constexpr f_t eps = 1e-6;
   f_t start_time    = bnb_stats.start_time;
   i_t branch_var    = fractional[0];
@@ -1431,9 +1447,29 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // using batch PDLP
   constexpr i_t min_num_candidates_for_pdlp                       = 5;
   constexpr f_t min_percent_solved_by_batch_pdlp_at_root_for_pdlp = 5.0;
-
+  // Batch PDLP is either forced or we use the heuristic to decide if it should be used
   // Check if batch PDLP was forced to be on
   bool use_pdlp = rb_mode == 2;
+
+  // Use the heuristic to decide if it should be used (in case it is set to automatic)
+  if (!use_pdlp && rb_mode != 0) {
+    // Check if it is a sub MIP or the determinism mode is on.
+    use_pdlp = !settings.sub_mip;
+    use_pdlp &= !settings.deterministic;
+
+    // Check if the warm cache was filled at the root
+    use_pdlp &= pdlp_warm_cache->populated;
+
+    // Check if there are enough candidates for batch PDLP
+    use_pdlp &= unreliable_list.size() > min_num_candidates_for_pdlp;
+
+    // Check if batch PDLP was effective for strong branching at the root node
+    use_pdlp &= pdlp_warm_cache->percent_solved_by_batch_pdlp_at_root >
+                min_percent_solved_by_batch_pdlp_at_root_for_pdlp;
+
+    // Check if there are enough threads available
+    use_pdlp &= omp_get_num_threads() >= CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT;
+  }
 
   // Use the heuristic to decide if it should be used (in case it is set to automatic)
   if (!use_pdlp && rb_mode != 0) {
@@ -1473,7 +1509,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
-  const int num_tasks     = std::max(max_num_tasks, 10);
+  const int num_tasks     = std::max(max_num_tasks, 1);
   const int task_priority = reliability_branching_settings.task_priority;
   // If both batch PDLP and DS are used we double the max number of candidates
   const i_t max_num_candidates = use_pdlp ? 2 * reliability_branching_settings.max_num_candidates
@@ -1593,7 +1629,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
     settings.log.debug("Time limit reached\n");
     if (use_pdlp) {
       concurrent_halt.store(1);
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
     }
     return branch_var;
   }
@@ -1606,14 +1642,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t dual_simplex_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) \
-  shared(score_mutex,                                                                \
-           sb_view,                                                                  \
-           dual_simplex_obj_down,                                                    \
-           dual_simplex_obj_up,                                                      \
-           dual_simplex_status_down,                                                 \
-           dual_simplex_status_up,                                                   \
-           unreliable_list)
+#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) default(shared)
     for (i_t i = 0; i < num_candidates; ++i) {
       auto [score, j] = unreliable_list[i];
 
@@ -1722,7 +1751,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t dual_simplex_elapsed = toc(dual_simplex_start_time);
 
   if (use_pdlp) {
-#pragma omp taskwait
+#pragma omp taskwait  // Wait for the batch PDLP task to finish
 
     i_t pdlp_applied = 0;
     i_t pdlp_optimal = 0;
