@@ -7,8 +7,8 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
@@ -34,7 +34,7 @@ TEST(problem, find_implied_integers)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("mip/fiball.mps");
-  auto mps_data_model = cuopt::linear_programming::parsers::parse_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
   auto presolver      = std::make_unique<detail::third_party_presolve_t<int, double>>();
   auto result         = presolver->apply(op_problem,

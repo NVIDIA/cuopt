@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 
 #include <mps_parser_internal.hpp>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file, bool fixed_mps_format)
@@ -36,4 +36,4 @@ template mps_data_model_t<int, float> parse_mps_from_string(std::string_view mps
 template mps_data_model_t<int, double> parse_mps_from_string(std::string_view mps_contents,
                                                              bool fixed_mps_format);
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

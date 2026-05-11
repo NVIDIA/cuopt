@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <cstdint>
 #include <span>
@@ -15,7 +15,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief A representation of a linear programming (LP) optimization problem
@@ -478,4 +478,4 @@ class data_model_view_t {
   std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> quadratic_constraints_;
 };  // class data_model_view_t
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

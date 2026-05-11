@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/parsers/data_model_view.hpp>
+#include <cuopt/linear_programming/io/data_model_view.hpp>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief Writes the problem to an MPS formatted file
@@ -23,4 +23,4 @@ namespace cuopt::linear_programming::parsers {
 template <typename i_t, typename f_t>
 void write_mps(const data_model_view_t<i_t, f_t>& problem, const std::string& mps_file_path);
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

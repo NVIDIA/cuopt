@@ -7,10 +7,10 @@
 
 #include <cuopt/linear_programming/backend_selection.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
@@ -99,14 +99,14 @@ int run_single_file(const std::string& file_path,
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
   constexpr bool input_mps_strict = false;
-  cuopt::linear_programming::parsers::mps_data_model_t<int, double> mps_data_model;
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
       mps_data_model =
-        cuopt::linear_programming::parsers::parse_mps<int, double>(file_path, input_mps_strict);
+        cuopt::linear_programming::io::parse_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
       parsing_failed = true;

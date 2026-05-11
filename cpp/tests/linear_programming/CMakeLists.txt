@@ -48,7 +48,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     target_include_directories(C_API_TEST
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../src/parsers"
+        "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )

@@ -8,7 +8,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
@@ -29,9 +29,9 @@
 namespace cuopt::linear_programming::test {
 
 // Create standard LP test problem matching Python test
-parsers::mps_data_model_t<int, double> create_std_lp_problem()
+io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 2};
@@ -59,9 +59,9 @@ parsers::mps_data_model_t<int, double> create_std_lp_problem()
   return problem;
 }
 
-parsers::mps_data_model_t<int, double> create_single_var_lp_problem()
+io::mps_data_model_t<int, double> create_single_var_lp_problem()
 {
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 1};
@@ -90,7 +90,7 @@ parsers::mps_data_model_t<int, double> create_single_var_lp_problem()
 }
 
 // Create standard MILP test problem matching Python test
-parsers::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
 
@@ -103,7 +103,7 @@ parsers::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 }
 
 // Create standard MILP test problem matching Python test
-parsers::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
 {
   auto problem = create_single_var_lp_problem();
 
@@ -139,7 +139,7 @@ TEST(LPTest, TestSampleLP2)
   std::vector<char> row_types = {'L', 'L'};  // Both constraints are <=
 
   // Build the problem
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   problem.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
   problem.set_constraint_upper_bounds(b);
   problem.set_constraint_lower_bounds(b_lower);
@@ -282,9 +282,9 @@ INSTANTIATE_TEST_SUITE_P(
 // Scaling integrality preservation test
 // ---------------------------------------------------------------------------
 
-static parsers::mps_data_model_t<int, double> create_wide_spread_milp()
+static io::mps_data_model_t<int, double> create_wide_spread_milp()
 {
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // 6 rows, 4 variables (x0=INT, x1=INT, x2=INT, x3=CONT)
   // Coefficient spread: ~log2(100000/1) ≈ 17, well above the 12-threshold.

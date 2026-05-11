@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <string>
 #include <string_view>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief Reads the equation from an MPS or QPS file.
@@ -55,4 +55,4 @@ template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
                                                  bool fixed_mps_format = false);
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

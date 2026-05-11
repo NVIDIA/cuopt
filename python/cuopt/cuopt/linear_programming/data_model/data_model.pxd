@@ -12,7 +12,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 
-cdef extern from "cuopt/linear_programming/parsers/data_model_view.hpp" namespace "cuopt::linear_programming::parsers" nogil: # noqa
+cdef extern from "cuopt/linear_programming/io/data_model_view.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
 
     cdef cppclass data_model_view_t[i_t, f_t]:
         void set_maximize(bool maximize) except +
@@ -56,7 +56,7 @@ cdef extern from "cuopt/linear_programming/parsers/data_model_view.hpp" namespac
         void set_objective_name(const string objective_name) except +
 
 
-cdef extern from "cuopt/linear_programming/parsers/writer.hpp" namespace "cuopt::linear_programming::parsers" nogil: # noqa
+cdef extern from "cuopt/linear_programming/io/writer.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
 
     cdef void write_mps(
         const data_model_view_t[int, double] data_model,

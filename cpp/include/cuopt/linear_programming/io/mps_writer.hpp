@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/parsers/data_model_view.hpp>
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/data_model_view.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <stdarg.h>
 #include <limits>
@@ -18,7 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief Main writer class for MPS files
@@ -60,4 +60,4 @@ class mps_writer_t {
   static data_model_view_t<i_t, f_t> create_view(const mps_data_model_t<i_t, f_t>& model);
 };  // class mps_writer_t
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

@@ -35,11 +35,11 @@
 #include <sstream>
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include "grpc_client.hpp"
 
@@ -379,7 +379,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
   cpu_optimization_problem_t<int32_t, double> load_problem_from_mps(const std::string& mps_path)
   {
-    auto mps_data = cuopt::linear_programming::parsers::parse_mps<int32_t, double>(mps_path);
+    auto mps_data = cuopt::linear_programming::io::parse_mps<int32_t, double>(mps_path);
     cpu_optimization_problem_t<int32_t, double> problem;
     populate_from_mps_data_model(&problem, mps_data);
     return problem;

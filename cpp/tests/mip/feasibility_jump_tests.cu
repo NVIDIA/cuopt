@@ -9,7 +9,7 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
@@ -68,8 +68,8 @@ static fj_state_t run_fj(std::string test_instance,
   std::cout << "Running: " << test_instance << std::endl;
 
   auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
-  cuopt::linear_programming::parsers::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::parsers::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);

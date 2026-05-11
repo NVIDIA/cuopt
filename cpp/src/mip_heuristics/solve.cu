@@ -39,7 +39,7 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -738,7 +738,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::parsers::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
@@ -826,20 +826,20 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   }
 }
 
-#define INSTANTIATE(F_TYPE)                                                                  \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                            \
-    optimization_problem_t<int, F_TYPE>& op_problem,                                         \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                     \
-                                                                                             \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                            \
-    raft::handle_t const* handle_ptr,                                                        \
-    const cuopt::linear_programming::parsers::mps_data_model_t<int, F_TYPE>& mps_data_model, \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                     \
-                                                                                             \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                 \
-    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);    \
-                                                                                             \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                 \
+#define INSTANTIATE(F_TYPE)                                                               \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
+    optimization_problem_t<int, F_TYPE>& op_problem,                                      \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
+                                                                                          \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
+    raft::handle_t const* handle_ptr,                                                     \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
+                                                                                          \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
+    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&); \
+                                                                                          \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
     optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
 
 #if MIP_INSTANTIATE_FLOAT

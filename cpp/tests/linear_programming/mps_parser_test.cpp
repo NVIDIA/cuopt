@@ -8,8 +8,8 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/inline_mps_test_utils.hpp>
 
-#include <cuopt/linear_programming/parsers/mps_writer.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/mps_writer.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <mps_parser_internal.hpp>
 
 #include <gtest/gtest.h>
@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 constexpr double tolerance = 1e-6;
 
@@ -1398,4 +1398,4 @@ TEST(mps_roundtrip, qcqp_p0033_qc1)
   std::filesystem::remove(temp_file_2);
 }
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

@@ -529,11 +529,11 @@ std::pair<f_t, dual::status_t> trial_branching(const lp_problem_t<i_t, f_t>& ori
 }  // namespace
 
 template <typename i_t, typename f_t>
-static cuopt::linear_programming::parsers::mps_data_model_t<i_t, f_t>
-simplex_problem_to_mps_data_model(const dual_simplex::lp_problem_t<i_t, f_t>& lp,
-                                  const std::vector<i_t>& new_slacks,
-                                  const std::vector<f_t>& root_soln,
-                                  std::vector<f_t>& original_root_soln_x)
+static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
+  const dual_simplex::lp_problem_t<i_t, f_t>& lp,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<f_t>& root_soln,
+  std::vector<f_t>& original_root_soln_x)
 {
   // Branch and bound has a problem of the form:
   // minimize c^T x
@@ -548,7 +548,7 @@ simplex_problem_to_mps_data_model(const dual_simplex::lp_problem_t<i_t, f_t>& lp
   // subject to  lb <= A*x <= ub
   //             l <= x <= u
 
-  cuopt::linear_programming::parsers::mps_data_model_t<i_t, f_t> mps_model;
+  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> mps_model;
   int m = lp.num_rows;
   int n = lp.num_cols - new_slacks.size();
   original_root_soln_x.resize(n);

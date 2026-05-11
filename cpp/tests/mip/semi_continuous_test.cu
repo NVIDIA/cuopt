@@ -9,7 +9,7 @@
 
 #include "../utilities/inline_mps_test_utils.hpp"
 
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>

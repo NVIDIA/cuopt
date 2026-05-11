@@ -12,7 +12,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 
-cdef extern from "cuopt/linear_programming/parsers/mps_data_model.hpp" namespace "cuopt::linear_programming::parsers": # noqa
+cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuopt::linear_programming::io": # noqa
 
     cdef cppclass mps_data_model_t[i_t, f_t]:
         bool maximize_
@@ -37,7 +37,7 @@ cdef extern from "cuopt/linear_programming/parsers/mps_data_model.hpp" namespace
         string objective_name_
         string problem_name_
 
-cdef extern from "cuopt/linear_programming/parsers/utilities/cython_mps_parser.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/linear_programming/io/utilities/cython_mps_parser.hpp" namespace "cuopt::cython": # noqa
 
     cdef unique_ptr[mps_data_model_t[int, double]] call_parse_mps(
         const string& mps_file_path,

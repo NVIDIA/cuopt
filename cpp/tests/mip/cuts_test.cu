@@ -8,7 +8,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
@@ -43,14 +43,14 @@ namespace {
 
 constexpr double kCliqueTestTol = 1e-6;
 
-parsers::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
+io::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
 {
   // Maximize x0 + x1 + x2 via minimizing -x0 - x1 - x2.
   // Pairwise conflicts:
   //   x0 + x1 <= 1
   //   x1 + x2 <= 1
   //   x0 + x2 <= 1
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   std::vector<int> offsets         = {0, 2, 4, 6};
   std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
@@ -73,11 +73,11 @@ parsers::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_prob
   return problem;
 }
 
-parsers::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
+io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
   // Same triangle conflicts as create_pairwise_triangle_set_packing_problem(),
   // plus an isolated binary variable x3 with no conflict rows.
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   std::vector<int> offsets         = {0, 2, 4, 6};
   std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
@@ -100,11 +100,11 @@ parsers::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_va
   return problem;
 }
 
-parsers::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
+io::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
 {
   // x0 + y1 <= 1  (must be ignored for clique graph because y1 is continuous)
   // x0 + x2 <= 1  (must generate a conflict edge)
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   std::vector<int> offsets         = {0, 2, 4};
   std::vector<int> indices         = {0, 1, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0};
@@ -126,11 +126,11 @@ parsers::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_p
   return problem;
 }
 
-parsers::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
+io::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
 {
   // x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
   // treated as a binary conflict row.
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   std::vector<int> offsets         = {0, 2};
   std::vector<int> indices         = {0, 1};
   std::vector<double> coefficients = {1.0, 1.0};
@@ -151,12 +151,12 @@ parsers::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem
   return problem;
 }
 
-parsers::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
+io::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 {
   // One weighted binary knapsack row:
   //   1*x0 + 2*x1 + 3*x2 + 4*x3 <= 5
   // This creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
   std::vector<int> offsets         = {0, 4};
   std::vector<int> indices         = {0, 1, 2, 3};
   std::vector<double> coefficients = {1.0, 2.0, 3.0, 4.0};
@@ -178,9 +178,7 @@ parsers::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 }
 
 detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
-  const raft::handle_t& handle,
-  const parsers::mps_data_model_t<int, double>& model,
-  int min_clique_size)
+  const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model, int min_clique_size)
 {
   auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
   detail::problem_t<int, double> mip_problem(op_problem);
@@ -200,20 +198,19 @@ detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
 }
 
 detail::clique_table_t<int, double> build_clique_table_for_model(
-  const raft::handle_t& handle, const parsers::mps_data_model_t<int, double>& model)
+  const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model)
 {
   return build_clique_table_for_model_with_min_size(handle, model, 1);
 }
 
-parsers::mps_data_model_t<int, double>& get_neos8_model_cached()
+io::mps_data_model_t<int, double>& get_neos8_model_cached()
 {
   static std::once_flag init_flag;
-  static std::unique_ptr<parsers::mps_data_model_t<int, double>> model_ptr;
+  static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     const auto neos8_path = make_path_absolute("mip/neos8.mps");
-    auto neos8_model =
-      cuopt::linear_programming::parsers::parse_mps<int, double>(neos8_path, false);
-    model_ptr = std::make_unique<parsers::mps_data_model_t<int, double>>(std::move(neos8_model));
+    auto neos8_model = cuopt::linear_programming::io::parse_mps<int, double>(neos8_path, false);
+    model_ptr        = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 model");
   return *model_ptr;
@@ -337,7 +334,7 @@ double original_clique_sum(const std::vector<int>& clique_vars,
   return lhs;
 }
 
-std::string format_phase2_panic_dump(const parsers::mps_data_model_t<int, double>& problem,
+std::string format_phase2_panic_dump(const io::mps_data_model_t<int, double>& problem,
                                      const std::vector<int>& clique_vars,
                                      const std::vector<double>& x_star)
 {
@@ -495,7 +492,7 @@ neos8_lp_solution_cache_t& get_neos8_lp_relaxation_solution_cached()
   return *solution_ptr;
 }
 
-bool is_binary_var_for_clique_literals(const parsers::mps_data_model_t<int, double>& problem,
+bool is_binary_var_for_clique_literals(const io::mps_data_model_t<int, double>& problem,
                                        int var_idx,
                                        double bound_tol)
 {
@@ -507,7 +504,7 @@ bool is_binary_var_for_clique_literals(const parsers::mps_data_model_t<int, doub
 }
 
 std::vector<std::vector<int>> build_fractional_literal_cliques_for_assignment(
-  const parsers::mps_data_model_t<int, double>& problem,
+  const io::mps_data_model_t<int, double>& problem,
   detail::clique_table_t<int, double>& clique_table,
   const std::vector<double>& assignment,
   double integer_tol,
@@ -670,22 +667,22 @@ std::optional<size_t> isolate_first_invalid_literal_cut_by_bisection(
   return lo;
 }
 
-parsers::mps_data_model_t<int, double>& get_neos8_lp_relaxation_model_cached()
+io::mps_data_model_t<int, double>& get_neos8_lp_relaxation_model_cached()
 {
   static std::once_flag init_flag;
-  static std::unique_ptr<parsers::mps_data_model_t<int, double>> model_ptr;
+  static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     auto lp_relaxation = get_neos8_model_cached();
     std::vector<char> all_continuous(lp_relaxation.get_n_variables(), 'C');
     lp_relaxation.set_variable_types(all_continuous);
-    model_ptr = std::make_unique<parsers::mps_data_model_t<int, double>>(std::move(lp_relaxation));
+    model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(lp_relaxation));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 LP relaxation model");
   return *model_ptr;
 }
 
-parsers::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
-  const parsers::mps_data_model_t<int, double>& base_lp_model,
+io::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
+  const io::mps_data_model_t<int, double>& base_lp_model,
   const std::vector<std::vector<int>>& dumped_cuts,
   size_t prefix_end_exclusive,
   int num_vars)
@@ -812,10 +809,10 @@ std::optional<size_t> isolate_first_lp_infeasible_literal_cut_by_bisection(
 }  // namespace
 
 // Problem data for the mixed integer linear programming problem
-parsers::mps_data_model_t<int, double> create_cuts_problem_1()
+io::mps_data_model_t<int, double> create_cuts_problem_1()
 {
   // Create problem instance
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Solve the problem
   // minimize -7*x1 -2*x2
@@ -876,10 +873,10 @@ TEST(cuts, test_cuts_1)
 }
 
 // Problem data for the mixed integer linear programming problem
-parsers::mps_data_model_t<int, double> create_cuts_problem_2()
+io::mps_data_model_t<int, double> create_cuts_problem_2()
 {
   // Create problem instance
-  parsers::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Solve the problem
   // minimize -86*y1 -4*y2 -40*y3

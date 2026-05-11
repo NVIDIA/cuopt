@@ -33,9 +33,9 @@
 #endif  // MPS_PARSER_WITH_BZIP2 || MPS_PARSER_WITH_ZLIB
 
 namespace {
-using cuopt::linear_programming::parsers::error_type_t;
-using cuopt::linear_programming::parsers::mps_parser_expects;
-using cuopt::linear_programming::parsers::mps_parser_expects_fatal;
+using cuopt::linear_programming::io::error_type_t;
+using cuopt::linear_programming::io::mps_parser_expects;
+using cuopt::linear_programming::io::mps_parser_expects_fatal;
 
 struct FcloseDeleter {
   void operator()(FILE* fp)
@@ -210,7 +210,7 @@ std::vector<char> zlib_file_to_string(const std::string& file)
 }  // end namespace
 #endif  // MPS_PARSER_WITH_ZLIB
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 template <typename i_t>
 std::string_view get_next_string(std::string_view line, i_t& pos, i_t& end)
@@ -1696,4 +1696,4 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

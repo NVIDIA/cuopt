@@ -43,7 +43,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../src/parsers"
+        "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"

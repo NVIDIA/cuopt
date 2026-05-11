@@ -12,7 +12,7 @@
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_types.hpp>
 
-#include <cuopt/linear_programming/parsers/data_model_view.hpp>
+#include <cuopt/linear_programming/io/data_model_view.hpp>
 #include <memory>
 #include <raft/core/handle.hpp>
 #include <string>
@@ -52,17 +52,17 @@ linear_programming::mip_solution_interface_t<int, double>* call_solve_mip(
 
 // Main solve entry point from Python
 std::unique_ptr<solver_ret_t> call_solve(
-  cuopt::linear_programming::parsers::data_model_view_t<int, double>*,
+  cuopt::linear_programming::io::data_model_view_t<int, double>*,
   linear_programming::solver_settings_t<int, double>*,
   unsigned int flags = cudaStreamNonBlocking,
   bool is_batch_mode = false);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
-  std::vector<cuopt::linear_programming::parsers::data_model_view_t<int, double>*>,
+  std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*>,
   linear_programming::solver_settings_t<int, double>*);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
-  std::vector<cuopt::linear_programming::parsers::data_model_view_t<int, double>*>,
+  std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*>,
   linear_programming::solver_settings_t<int, double>*);
 
 }  // namespace cython

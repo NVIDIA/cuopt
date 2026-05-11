@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief A representation of a linear programming (LP) optimization problem
@@ -383,4 +383,4 @@ class mps_data_model_t {
 
 };  // class mps_data_model_t
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

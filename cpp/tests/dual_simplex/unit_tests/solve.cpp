@@ -16,7 +16,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 
 namespace cuopt::linear_programming::dual_simplex::test {
 

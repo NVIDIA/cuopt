@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <stdarg.h>
 #include <limits>
@@ -17,7 +17,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::parsers {
+namespace cuopt::linear_programming::io {
 
 /**
  * @brief Different possible types of 'ROWS'
@@ -203,4 +203,4 @@ class mps_parser_t {
 
 };  // class mps_parser_t
 
-}  // namespace cuopt::linear_programming::parsers
+}  // namespace cuopt::linear_programming::io

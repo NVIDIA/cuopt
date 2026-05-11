@@ -11,7 +11,7 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
-#include <cuopt/linear_programming/parsers/writer.hpp>
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -763,7 +763,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::linear_programming::parsers::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -869,7 +869,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::linear_programming::parsers::write_mps(data_model_view, mps_file_path);
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>

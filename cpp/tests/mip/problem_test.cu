@@ -7,8 +7,8 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/linear_programming/parsers/mps_data_model.hpp>
-#include <cuopt/linear_programming/parsers/parser.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
