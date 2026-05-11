@@ -575,13 +575,9 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
-  CUOPT_LOG_INFO("Conversion to dual simplex problem started at %.2f seconds\n",
-                 timer.elapsed_time());
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
-  CUOPT_LOG_INFO("Conversion to dual simplex problem completed at %.2f seconds\n",
-                 timer.elapsed_time());
   auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -1557,9 +1553,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     }
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
-    CUOPT_LOG_INFO("LP timer created at %.3f seconds\n", lp_timer.elapsed_time());
     detail::problem_t<i_t, f_t> problem(op_problem);
-    CUOPT_LOG_INFO("Problem created at %.3f seconds\n", lp_timer.elapsed_time());
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
       settings.presolver = presolver_t::PSLP;

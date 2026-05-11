@@ -829,7 +829,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   if (settings.barrier_presolve) {
-    double const free_var_presolve_start = tic();
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
     std::vector<i_t> row_marked(problem.num_rows, 0);
@@ -981,10 +980,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       settings.log.printf("Bounded %d free variable row(s) in presolve\n",
                           static_cast<int>(removed_free_variables));
     }
-    settings.log.printf(
-      "Free variable presolve took %.2fs (fully free variable(s) remaining: %d)\n",
-      toc(free_var_presolve_start),
-      static_cast<int>(free_variables));
   }
 
   // The original problem may have a variable without a lower bound

@@ -223,7 +223,6 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
-    settings_.log.printf("Iteration data creation started at %.2f seconds\n", toc(start_time));
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
@@ -262,7 +261,6 @@ class iteration_data_t {
       raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
     }
 
-    settings_.log.printf("Forming ADAT started at %.2f seconds\n", toc(start_time));
     // Allocating GPU flag data for Form ADAT
     RAFT_CUDA_TRY(cub::DeviceSelect::Flagged(
       nullptr,
@@ -314,7 +312,7 @@ class iteration_data_t {
     if (n_dense_rows > 0) {
       settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
     }
-    settings.log.printf("Density estimator time      : %.3fs\n", column_density_time);
+    settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
     if ((settings.augmented != 0) &&
         (n_dense_columns > 50 || n_dense_rows > 10 ||
          lp.A.m == 0 /* handle case with no constraints */ ||
@@ -335,7 +333,6 @@ class iteration_data_t {
       settings.log.printf("Linear system               : ADAT\n");
     }
 
-    settings_.log.printf("Forming diag started at %.2f seconds\n", toc(start_time));
     // D = I + EET
     diag.set_scalar(1.0);
     if (n_upper_bounds > 0) {
@@ -363,7 +360,6 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
-    settings_.log.printf("Copying A into AD started at %.2f seconds\n", toc(start_time));
     // Copy A into AD
     AD = lp.A;
     if (!use_augmented && n_dense_columns > 0) {
@@ -408,13 +404,10 @@ class iteration_data_t {
       device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
       raft::copy(
         device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
-      settings_.log.printf("Convert to csr matrix  from csc matrix started at %.2f seconds\n",
-                           toc(start_time));
       device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
     }
 
-    settings_.log.printf("Forming cholesky started at %.2f seconds\n", toc(start_time));
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
     chol =
@@ -619,7 +612,7 @@ class iteration_data_t {
     float64_t adat_time = toc(start_form_adat);
 
     if (num_factorizations == 0) {
-      settings_.log.printf("ADAT time                   : %.3fs\n", adat_time);
+      settings_.log.printf("ADAT time                   : %.2fs\n", adat_time);
       settings_.log.printf("ADAT nonzeros               : %.2e\n",
                            static_cast<float64_t>(adat_nnz));
       settings_.log.printf(
@@ -1759,7 +1752,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
 
-  auto initial_factorization_start_time = tic();
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
@@ -1776,11 +1768,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     settings.log.printf("Initial factorization failed\n");
     return -1;
   }
-  settings.log.printf("Initial factorization took %.3fs\n", toc(initial_factorization_start_time));
   data.num_factorizations++;
   data.has_solve_info = false;
 
-  auto initial_solve_start_time = tic();
   // rhs_x <- b
   dense_vector_t<i_t, f_t> rhs_x(lp.rhs);
 
@@ -1826,7 +1816,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     for (i_t k = 0; k < lp.num_rows; k++) {
       q[k] = -soln[lp.num_cols + k];
     }
-    settings.log.printf("Initial solve took %.3fs\n", toc(initial_solve_start_time));
   } else {
     // rhs_x <-  A * Dinv * F * u  - b
     data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
@@ -3601,15 +3590,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       if (lp.upper[j] < inf) { num_upper_bounds++; }
     }
 
-    settings.log.printf("Creating Q at %.2f seconds\n", toc(start_time));
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
-    settings.log.printf("Q created at %.2f seconds\n", toc(start_time));
-
-    settings.log.printf("Iteration data creation started at %.2f seconds\n", toc(start_time));
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings, start_time);
 
-    settings.log.printf("Iteration data created at %.2f seconds\n", toc(start_time));
     // Set up native free variable tracking for QPs
     if (!presolve_info.free_variable_indices.empty()) {
       data.n_free_vars = presolve_info.free_variable_indices.size();
@@ -3646,7 +3630,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     }
 
     i_t initial_status = initial_point(data);
-    settings.log.printf("Initial point computed at %.2f seconds\n", toc(start_time));
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
       return lp_status_t::TIME_LIMIT;
@@ -3701,7 +3684,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     settings.log.printf(
       "Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed\n");
     float64_t elapsed_time = toc(start_time);
-    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.2f\n",
+    settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                         iter,
                         compute_user_objective(lp, primal_objective),
                         compute_user_objective(lp, dual_objective),
@@ -3899,7 +3882,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                              solution);
       }
 
-      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.2f\n",
+      settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
                           iter,
                           compute_user_objective(lp, primal_objective),
                           compute_user_objective(lp, dual_objective),

@@ -151,11 +151,7 @@ problem_t<i_t, f_t>::problem_t(
     Q_indices(problem_.get_quadratic_objective_indices()),
     Q_values(problem_.get_quadratic_objective_values())
 {
-  auto start_time = std::chrono::high_resolution_clock::now();
   op_problem_cstr_body(problem_);
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
-  CUOPT_LOG_INFO("op_problem_cstr_body time: %.3f seconds\n", duration.count());
   branch_and_bound_callback             = nullptr;
   set_root_relaxation_solution_callback = nullptr;
 }
