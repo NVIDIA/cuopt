@@ -21,6 +21,13 @@ on:
       CUOPT_S3_URI:
         required: true
 
+# The python:3.14-slim container's default /bin/sh is dash, which doesn't
+# understand `[[ ... ]]` or `set -o pipefail`.  Force bash for all run
+# steps in this workflow (matches self_hosted_service_test.yaml convention).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   pr-test-summary:
     runs-on: linux-amd64-cpu4
