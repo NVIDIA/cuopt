@@ -359,6 +359,10 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
+      # pr-test-summary is informational (posts the failure-classification
+      # comment) and intentionally not in pr-builder's needs, so the
+      # dependency checker must skip it.
+      ignored_pr_jobs: pr-test-summary
   conda-cpp-build:
     needs: [checks, compute-matrix-filters, changed-files]
     # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
