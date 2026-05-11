@@ -828,7 +828,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve && false) {
+  if (settings.barrier_presolve) {
     double const free_var_presolve_start = tic();
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
