@@ -77,5 +77,15 @@ jextract \
     --library cuopt \
     "${CURDIR}/headers.h"
 
+# Normalize each generated file to end with exactly one trailing newline,
+# matching pre-commit's end-of-file-fixer. jextract output is inconsistent
+# (sometimes 0, sometimes 2 trailing newlines); without this the drift gate
+# fails after pre-commit rewrites the committed files.
+for f in "${PANAMA_DIR}"/*.java; do
+    [[ -f "$f" ]] || continue
+    content="$(cat "$f")"
+    printf '%s\n' "$content" > "$f"
+done
+
 echo "Panama bindings regenerated at:"
 echo "  ${PANAMA_DIR}"
