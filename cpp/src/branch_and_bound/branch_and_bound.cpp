@@ -703,9 +703,11 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   if (solver_status_ == mip_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
   }
+
   if (solver_status_ == mip_status_t::WORK_LIMIT) {
     settings_.log.printf("Work limit reached. Stopping the solver...\n");
   }
+
   if (solver_status_ == mip_status_t::NODE_LIMIT) {
     settings_.log.printf("Node limit reached. Stopping the solver...\n");
   }
@@ -1634,7 +1636,7 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   idle_worker->init(start_nodes);
   idle_worker->set_active();
 
-#pragma omp task affinity(*idle_worker) priority(99)
+#pragma omp task affinity(*idle_worker) priority(99) default(none) firstprivate(idle_worker)
   best_first_search_with(idle_worker);
 
   return idle_worker;
@@ -1683,6 +1685,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       // current upper bound
       search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
       search_tree_.update(start_node, node_status_t::FATHOMED);
+      --exploration_stats_.nodes_unexplored;
       continue;
     }
 
