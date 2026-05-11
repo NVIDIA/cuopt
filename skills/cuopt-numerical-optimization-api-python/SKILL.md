@@ -1,25 +1,34 @@
 ---
-name: cuopt-lp-milp-api-python
+name: cuopt-numerical-optimization-api-python
 version: "26.06.00"
-description: Solve Linear Programming (LP) and Mixed-Integer Linear Programming (MILP) with the Python API. Use when the user asks about optimization with linear constraints, integer variables, scheduling, resource allocation, facility location, or production planning.
+description: Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. Use when the user asks about optimization with linear or quadratic objectives, linear constraints, integer variables, scheduling, resource allocation, facility location, production planning, portfolio optimization, or least squares.
 ---
 
-# cuOpt LP/MILP Skill
+# cuOpt Numerical Optimization Skill (Python)
 
-Model and solve linear and mixed-integer linear programs using NVIDIA cuOpt's GPU-accelerated solver.
+Model and solve LP, MILP, and QP problems using NVIDIA cuOpt's GPU-accelerated solver. The Python API surface (`Problem`, `SolverSettings`, `solve`) is shared across all three problem classes — only the objective form and a few rules change.
 
 ## Before You Start
 
-Use a formulation summary (parameters, constraints, decisions, objective) if available; otherwise ask for decision variables, objective, and constraints. Then confirm **variable types** (see below) and **interface** (Python API recommended).
+Use a formulation summary (parameters, constraints, decisions, objective) if available; otherwise ask for decision variables, objective, and constraints. Then confirm **problem type** (LP / MILP / QP — see below) and **variable types**.
 
-## Choosing LP vs MILP
+## Choosing LP vs MILP vs QP
 
-**Prefer LP (all continuous variables) when the problem allows it.** LP solves faster and has stronger optimality guarantees. Use **MILP** only when the problem logically requires whole numbers or yes/no decisions.
+**Decide from the objective and variables:**
+
+| If the objective is... | And variables are... | Use |
+|---|---|---|
+| Linear (sum of `c_i * x_i`) | All continuous | **LP** |
+| Linear | Some integer or binary | **MILP** |
+| Has squared (`x*x`) or cross (`x*y`) terms | Continuous (integer QP not supported) | **QP** (beta) |
+
+**Prefer LP when the problem allows it.** LP solves faster and has stronger optimality guarantees. Use MILP only when the problem logically requires whole numbers or yes/no decisions. Use QP only when the objective is genuinely quadratic (variance, squared error, kinetic energy).
 
 **Problem types that need extra care:** Multi-period planning and goal programming are easy to misinterpret. Double-check that rates and constraints apply to the right time period or priority level (AGENTS.md: verify understanding before code).
 
 - **Use LP** when every quantity can meaningfully be fractional: flows, proportions, rates, dollars, hours, tonnes of material, etc.
 - **Use MILP** when the problem mentions **counts** of discrete entities, **yes/no** choices, or **either/or** decisions (e.g. open a facility or not, assign a person to a shift, number of trucks).
+- **Use QP** when the objective minimizes variance, squared error, or any expression with `x*x` or `x*y` terms (portfolio optimization, least squares, regularized regression).
 
 ## Integer vs continuous from wording
 
@@ -101,6 +110,42 @@ if problem.Status.name in ["Optimal", "FeasibleFound"]:
     print(f"Production: {production.getValue()}")
 ```
 
+### QP Example (beta — MINIMIZE only)
+
+```python
+from cuopt.linear_programming.problem import Problem, CONTINUOUS, MINIMIZE
+from cuopt.linear_programming.solver_settings import SolverSettings
+
+# Portfolio variance minimization
+problem = Problem("Portfolio")
+x1 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_a")
+x2 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_b")
+x3 = problem.addVariable(lb=0, ub=1, vtype=CONTINUOUS, name="stock_c")
+
+# Quadratic objective (variance) — MUST be MINIMIZE
+problem.setObjective(
+    0.04*x1*x1 + 0.02*x2*x2 + 0.01*x3*x3
+    + 0.02*x1*x2 + 0.01*x1*x3 + 0.016*x2*x3,
+    sense=MINIMIZE,
+)
+
+# Linear constraints
+problem.addConstraint(x1 + x2 + x3 == 1, name="budget")
+problem.addConstraint(0.12*x1 + 0.08*x2 + 0.05*x3 >= 0.08, name="min_return")
+
+problem.solve(SolverSettings())
+if problem.Status.name in ["Optimal", "PrimalFeasible"]:
+    print(f"Variance: {problem.ObjValue}")
+```
+
+**QP rules:**
+- **MINIMIZE only** — solver rejects MAXIMIZE for quadratic objectives. To maximize `f(x)`, minimize `-f(x)`.
+- **Continuous variables only** — integer QP is not supported.
+- **Q should be PSD** (positive semi-definite) for a convex problem; otherwise the solver may return a non-optimal stationary point.
+- **Beta** — API may evolve; treat as production-capable for typical convex QP but expect occasional changes.
+
+See `resources/qp_examples.md` for least-squares, maximization-workaround, and matrix-form examples.
+
 ## CRITICAL: Status Checking
 
 **Status values use PascalCase, NOT ALL_CAPS:**
@@ -118,6 +163,8 @@ if problem.Status.name == "OPTIMAL":  # Never matches!
 **LP Status Values:** `Optimal`, `NoTermination`, `NumericalError`, `PrimalInfeasible`, `DualInfeasible`, `IterationLimit`, `TimeLimit`, `PrimalFeasible`
 
 **MILP Status Values:** `Optimal`, `FeasibleFound`, `Infeasible`, `Unbounded`, `TimeLimit`, `NoTermination`
+
+**QP Status Values:** Same set as LP. For QP debugging, print `f"Actual status: '{problem.Status.name}'"` and check that `Q` is PSD and variables are reasonably scaled.
 
 ## Common Modeling Patterns
 
@@ -189,6 +236,8 @@ settings.set_parameter("log_to_console", 1)
 | Unbounded | Missing bounds | Add variable bounds |
 | Slow solve | Large problem | Set time limit, increase gap tolerance |
 | Maximum recursion depth | Building big expr with chained `+` | Use `LinearExpression(vars_list, coeffs_list, constant)` |
+| QP rejected with MAXIMIZE | QP only supports MINIMIZE | Negate the objective: minimize `-f(x)` |
+| QP returns non-optimal | Q not PSD or variables badly scaled | Check Q is PSD; rescale variables to similar magnitudes |
 
 ## Getting Dual Values (LP only)
 
@@ -203,7 +252,7 @@ if problem.Status.name == "Optimal":
 
 All reference models live in this skill's **`assets/`** directory. Use them as reference when building new applications; do not edit them in place.
 
-### Minimal / canonical examples (LP & MILP)
+### Minimal / canonical examples (LP, MILP, QP)
 | Model | Type | Description |
 |-------|------|-------------|
 | [lp_basic](assets/lp_basic/) | LP | Minimal LP: variables, constraints, objective, solve |
@@ -211,6 +260,9 @@ All reference models live in this skill's **`assets/`** directory. Use them as r
 | [lp_warmstart](assets/lp_warmstart/) | LP | PDLP warmstart for similar problems |
 | [milp_basic](assets/milp_basic/) | MILP | Minimal MIP; includes incumbent callback example |
 | [milp_production_planning](assets/milp_production_planning/) | MILP | Production planning with resource constraints |
+| [portfolio](assets/portfolio/) | QP | Minimize portfolio variance; budget and min-return constraints |
+| [least_squares](assets/least_squares/) | QP | Minimize (x-3)² + (y-4)² (closest point) |
+| [maximization_workaround](assets/maximization_workaround/) | QP | Maximize quadratic via minimize -f(x) |
 
 ### Other reference
 | Model | Type | Description |

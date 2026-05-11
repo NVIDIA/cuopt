@@ -850,9 +850,9 @@ __global__ void kernel_compute_next_cupdlpx_primal_weight(
   if (index >= batch_size) { return; }
 
   const f_t relative_l2_dual_residual_value =
-    view.l2_dual_residual[index] / (f_t(1.0) + view.l2_norm_primal_linear_objective);
+    view.l2_dual_residual[index] / (f_t(1.0) + view.l2_norm_primal_linear_objective[index]);
   const f_t relative_l2_primal_residual_value =
-    view.l2_primal_residual[index] / (f_t(1.0) + view.l2_norm_primal_right_hand_side);
+    view.l2_primal_residual[index] / (f_t(1.0) + view.l2_norm_primal_right_hand_side[index]);
 
   cupdlpx_new_primal_weight_computation<f_t>(view.primal_distance[index],
                                              view.dual_distance[index],
@@ -2444,9 +2444,9 @@ pdlp_restart_strategy_t<i_t, f_t>::make_cupdlpx_restart_view(
   v.l2_dual_residual   = make_span(current_convergence_information.get_l2_dual_residual());
   v.l2_primal_residual = make_span(current_convergence_information.get_l2_primal_residual());
   v.l2_norm_primal_linear_objective =
-    current_convergence_information.get_relative_dual_tolerance_factor();
+    make_span(current_convergence_information.get_l2_norm_primal_linear_objective());
   v.l2_norm_primal_right_hand_side =
-    current_convergence_information.get_relative_primal_tolerance_factor();
+    make_span(current_convergence_information.get_l2_norm_primal_right_hand_side());
   v.step_size                     = make_span(step_size);
   v.primal_weight                 = make_span(primal_weight);
   v.primal_weight_error_sum       = make_span(primal_weight_error_sum_);

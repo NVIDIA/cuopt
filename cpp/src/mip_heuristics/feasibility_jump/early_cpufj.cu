@@ -7,9 +7,7 @@
 
 #include "early_cpufj.cuh"
 
-#include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 #include <mip_heuristics/mip_constants.hpp>
-#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -32,40 +30,40 @@ early_cpufj_t<i_t, f_t>::~early_cpufj_t()
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::start()
 {
-  if (cpu_fj_thread_) { return; }
+  // 1: presolve, 1: early GPU FJ, 1: early CPU FJ
+  if (fj_cpu_ || omp_get_num_threads() < CUOPT_MIP_EARLY_CPUFJ_REQUIRED_THREAD_COUNT) { return; }
 
   this->preemption_flag_.store(false);
   this->start_time_ = std::chrono::steady_clock::now();
 
-  cpu_fj_thread_ = std::make_unique<cpu_fj_thread_t<i_t, f_t>>();
-  cpu_fj_thread_->fj_cpu =
-    init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_);
-  cpu_fj_thread_->time_limit = std::numeric_limits<f_t>::infinity();
+  fj_cpu_ = init_fj_cpu_standalone(*this->problem_ptr_, *this->solution_ptr_, preemption_flag_);
 
-  cpu_fj_thread_->fj_cpu->log_prefix = "[Early CPUFJ] ";
+  fj_cpu_->log_prefix = "[Early CPUFJ] ";
 
-  cpu_fj_thread_->fj_cpu->improvement_callback =
-    [this](f_t solver_obj, const std::vector<f_t>& assignment, double) {
-      this->try_update_best(solver_obj, assignment);
-    };
+  fj_cpu_->improvement_callback = [this](f_t solver_obj,
+                                         const std::vector<f_t>& assignment,
+                                         double) { this->try_update_best(solver_obj, assignment); };
 
-  cpu_fj_thread_->start_cpu_solver();
+  CUOPT_LOG_DEBUG("Launching early CPUFJ task");
+#pragma omp task shared(fj_cpu_) depend(out : *fj_cpu_) default(none)
+  cpufj_solve(fj_cpu_.get());
 }
 
 template <typename i_t, typename f_t>
 void early_cpufj_t<i_t, f_t>::stop()
 {
-  if (!cpu_fj_thread_) { return; }
+  if (!fj_cpu_) { return; }
 
   preemption_flag_.store(true);
-  cpu_fj_thread_->stop_cpu_solver();
-  cpu_fj_thread_->wait_for_cpu_solver();
+
+  fj_cpu_->halted = true;
+#pragma omp taskwait depend(in : *fj_cpu_)  // Wait for the early CPUFJ task to finish
 
   CUOPT_LOG_DEBUG("[Early CPUFJ] Stopped after %d iterations, solution_found=%d",
-                  cpu_fj_thread_->fj_cpu ? cpu_fj_thread_->fj_cpu->iterations : 0,
+                  fj_cpu_ ? fj_cpu_->iterations : 0,
                   this->solution_found_);
 
-  cpu_fj_thread_.reset();
+  fj_cpu_.reset();
 }
 
 #if MIP_INSTANTIATE_FLOAT
