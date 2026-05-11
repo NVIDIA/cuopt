@@ -74,7 +74,7 @@ TEST(mip_solve, run_small_tests)
 TEST(mip_solve, low_thread_count_test)
 {
   mip_solver_settings_t<int, double> settings;
-  settings.num_cpu_threads = 1;
+  settings.num_cpu_threads = 2;
   settings.time_limit      = 30;
 
   const raft::handle_t handle_{};
