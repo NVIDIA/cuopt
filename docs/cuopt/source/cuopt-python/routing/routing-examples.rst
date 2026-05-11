@@ -67,17 +67,21 @@ Sample output:
 - Callbacks are not supported in batch mode.
 - For best practices when batching many instances, see the *Add best practices for batch solving* note in the release documentation.
 
-Distance-Based Charging Breaks
-------------------------------
+Distance-Based Breaks
+---------------------
 
-:meth:`cuopt.routing.DataModel.add_distance_break` configures a charging stop
+:meth:`cuopt.routing.DataModel.add_distance_break` configures a break stop
 that the solver must insert within a cumulative-distance window along the
-route. With ``n_cycles=k``, the call adds ``k`` consecutive windows of
-length ``max_range``, requiring one stop per window.
+route. With ``n_cycles=k``, the call adds ``k`` consecutive windows
+``[i * max_range + min_range, (i + 1) * max_range]`` for ``i = 0, ..., k - 1``
+(each of width ``max_range - min_range``), requiring one stop per window.
+A break before the window's lower bound (``min_range``) is not strictly
+forbidden — it is penalised as a window-violation excess rather than blocked,
+because the distance dimension has no "wait" analogue.
 
-The example below sets up one electric van, two customers, and a single
-charging station. With ``max_range=75``, the solver must insert one charge
-within the first 75 km of the route.
+The example below sets up one vehicle, two customers, and a single break
+location. With ``max_range=75``, the solver must insert one break within the
+first 75 km of the route.
 
 :download:`distance_break_example.py <examples/distance_break_example.py>`
 
@@ -93,6 +97,6 @@ Sample output:
 
      Depot       depot
      Delivery    customer 1
-     Break       charger
+     Break       break
      Delivery    customer 2
      Depot       depot

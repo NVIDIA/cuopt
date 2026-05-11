@@ -622,8 +622,8 @@ class OptimizationDataModel:
                     {
                         "vehicle_id": data.vehicle_id,
                         "max_range": data.max_range,
-                        "charge_duration": data.charge_duration,
-                        "charging_stations": data.charging_stations,
+                        "duration": data.duration,
+                        "locations": data.locations,
                         "min_range": (
                             data.min_range
                             if data.min_range is not None
@@ -674,6 +674,7 @@ class OptimizationDataModel:
         vehicle_max_costs,
         vehicle_max_times,
         vehicle_fixed_costs,
+        vehicle_distance_breaks=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -712,6 +713,9 @@ class OptimizationDataModel:
         vehicle_order_match = get_none_for_empty_list(vehicle_order_match)
         skip_first_trips = get_none_for_empty_list(skip_first_trips)
         drop_return_trips = get_none_for_empty_list(drop_return_trips)
+        vehicle_distance_breaks = get_none_for_empty_list(
+            vehicle_distance_breaks
+        )
 
         is_valid = validate_fleet_data(
             vehicle_ids,
@@ -730,8 +734,10 @@ class OptimizationDataModel:
             min_vehicles,
             vehicle_max_costs,
             vehicle_max_times,
+            vehicle_fixed_costs,
             updating=True,
             comparison_locations=self.fleet_data["vehicle_locations"],
+            vehicle_distance_breaks=vehicle_distance_breaks,
         )
 
         if is_valid[0]:
@@ -792,6 +798,24 @@ class OptimizationDataModel:
                         "order_ids": data.order_ids,
                     }
                     for data in vehicle_order_match
+                ]
+            if vehicle_distance_breaks is not None:
+                self.fleet_data["vehicle_distance_breaks"] = [
+                    {
+                        "vehicle_id": data.vehicle_id,
+                        "max_range": data.max_range,
+                        "duration": data.duration,
+                        "locations": data.locations,
+                        "min_range": (
+                            data.min_range
+                            if data.min_range is not None
+                            else 0.0
+                        ),
+                        "n_cycles": (
+                            data.n_cycles if data.n_cycles is not None else 1
+                        ),
+                    }
+                    for data in vehicle_distance_breaks
                 ]
             if skip_first_trips:
                 self.fleet_data["skip_first_trips"] = cudf.Series(

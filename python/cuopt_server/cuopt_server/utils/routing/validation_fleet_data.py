@@ -195,10 +195,10 @@ def validate_fleet_data(
                     False,
                     "vehicle_distance_breaks: max_range must be > 0",
                 )
-            if entry.charge_duration < 0:
+            if entry.duration < 0:
                 return (
                     False,
-                    "vehicle_distance_breaks: charge_duration must be >= 0",
+                    "vehicle_distance_breaks: duration must be >= 0",
                 )
             min_range = entry.min_range if entry.min_range is not None else 0.0
             if min_range < 0:
@@ -217,12 +217,11 @@ def validate_fleet_data(
                     False,
                     "vehicle_distance_breaks: n_cycles must be > 0",
                 )
-            if entry.charging_stations is not None:
-                if any(loc < 0 for loc in entry.charging_stations):
+            if entry.locations is not None:
+                if any(loc < 0 for loc in entry.locations):
                     return (
                         False,
-                        "vehicle_distance_breaks: charging_stations must be"
-                        " >= 0",
+                        "vehicle_distance_breaks: locations must be >= 0",
                     )
 
     if vehicle_types is not None:

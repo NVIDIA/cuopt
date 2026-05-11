@@ -111,6 +111,7 @@ class special_nodes_t {
 
   i_t num_vehicles{0};
   i_t num_max_break_dimensions{0};
+  bool has_distance_break{false};
   // FIXME:: Use mdarray
 
   rmm::device_uvector<i_t> num_breaks_offset;

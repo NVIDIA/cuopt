@@ -15,6 +15,7 @@
 #include <routing/utilities/check_input.hpp>
 #include <unordered_set>
 
+#include <thrust/sort.h>
 #include <thrust/unique.h>
 
 namespace {
@@ -29,13 +30,19 @@ void validate_break_locations(i_t const* locations,
                               i_t num_locations,
                               raft::handle_t const* handle)
 {
-  if (n <= 0) { return; }
+  cuopt::cuopt_expects(
+    n >= 0, cuopt::error_type_t::ValidationError, "Number of break locations must be non-negative");
+  if (n == 0) { return; }
+  cuopt::cuopt_expects(locations != nullptr,
+                       cuopt::error_type_t::ValidationError,
+                       "Break locations cannot be null when num_break_locations > 0");
   cuopt::cuopt_expects(cuopt::routing::detail::check_min_max_values(
                          locations, n, i_t{0}, num_locations - 1, handle->get_stream()),
                        cuopt::error_type_t::ValidationError,
                        "Break locations should be in [0, num_locations) range");
   rmm::device_uvector<i_t> tmp(n, handle->get_stream());
   raft::copy(tmp.begin(), locations, n, handle->get_stream());
+  thrust::sort(handle->get_thrust_policy(), tmp.begin(), tmp.end());
   auto end         = thrust::unique(handle->get_thrust_policy(), tmp.begin(), tmp.end());
   i_t unique_items = end - tmp.begin();
   cuopt::cuopt_expects(n == unique_items,
@@ -207,7 +214,7 @@ template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
                                                      f_t distance_min,
                                                      f_t distance_max,
-                                                     i_t charge_duration,
+                                                     i_t duration,
                                                      i_t const* break_locations,
                                                      i_t num_break_locations,
                                                      bool validate_input)
@@ -220,8 +227,7 @@ void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
   cuopt_expects(distance_max > distance_min,
                 error_type_t::ValidationError,
                 "distance break distance_max must be greater than distance_min!");
-  cuopt_expects(
-    charge_duration >= 0, error_type_t::ValidationError, "charge_duration must be non-negative!");
+  cuopt_expects(duration >= 0, error_type_t::ValidationError, "duration must be non-negative!");
 
   if (validate_input) {
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
@@ -230,7 +236,7 @@ void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
   vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t>(
     static_cast<float>(distance_min),
     static_cast<float>(distance_max),
-    charge_duration,
+    duration,
     raft::device_span<const i_t>(break_locations, num_break_locations)));
 }
 

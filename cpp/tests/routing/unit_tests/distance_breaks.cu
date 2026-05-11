@@ -62,9 +62,9 @@ test_route make_route(std::vector<float> arcs,
 
 }  // namespace
 
+// Forward sweep clamps cumulative distance at break windows and accumulates excess.
 TEST(distance_node, forward_propagation)
 {
-  // depot -> break(window [0, 60]) -> A -> end. Arcs 80, 600, 400. Overshoots break by 20.
   auto r = make_route({80.f, 600.f, 400.f}, {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}});
   r.run_passes();
 
@@ -84,9 +84,9 @@ TEST(distance_node, forward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[3].excess_forward, 20.);
 }
 
+// Backward sweep encodes max_cost via distance_window_backward and accumulates excess.
 TEST(distance_node, backward_propagation)
 {
-  // Same route as forward_propagation, max_cost = 800 (route total 1080 overshoots by 280).
   auto r = make_route({80.f, 600.f, 400.f},
                       {{0., 1e18}, {0., 60.}, {0., 1e18}, {0., 1e18}},
                       /*max_cost=*/800.f);
@@ -105,7 +105,7 @@ TEST(distance_node, backward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[0].excess_backward, 280.);
 }
 
-// combine(node[k], node[k+1]) must return the same value at every split point of a fixed route.
+// combine() returns 0 at every split point of a window-feasible route.
 TEST(distance_node, combine_invariant_feasible)
 {
   auto r = make_route({50.f, 55.f, 100.f},
@@ -119,6 +119,7 @@ TEST(distance_node, combine_invariant_feasible)
   }
 }
 
+// combine() reports the same window-violation excess at every split point.
 TEST(distance_node, combine_invariant_window_violation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -135,6 +136,7 @@ TEST(distance_node, combine_invariant_window_violation)
   }
 }
 
+// combine() reports the max_cost overage at every split point of a window-free route.
 TEST(distance_node, combine_invariant_max_cost_only)
 {
   auto r = make_route({400.f, 300.f, 400.f},
@@ -150,6 +152,7 @@ TEST(distance_node, combine_invariant_max_cost_only)
   }
 }
 
+// End-of-route boundary excess matches combine() at the first split.
 TEST(distance_node, compute_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -168,6 +171,7 @@ TEST(distance_node, compute_cost_combine_consistency)
   EXPECT_DOUBLE_EQ(total, combine_at_first);
 }
 
+// get_cost() agrees with combine() at every split point of a route.
 TEST(distance_node, get_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -197,7 +201,7 @@ TEST(distance_node, get_cost_combine_consistency)
   }
 }
 
-// depot=0, orders=1-2, optional charging stations=3-4 (used in 5x5 tests)
+// depot=0, orders=1-2, optional break locations=3-4 (used in 5x5 tests)
 // clang-format off
 static std::vector<float> cost_matrix_3x3 = {
   0, 1, 1,
@@ -213,6 +217,7 @@ static std::vector<float> cost_matrix_5x5 = {
 };
 // clang-format on
 
+// End-to-end smoke test: distance breaks solve on a trivial 3x3 matrix without break locations.
 TEST(distance_breaks, default_case)
 {
   raft::handle_t handle;
@@ -233,25 +238,26 @@ TEST(distance_breaks, default_case)
   check_route(data_model, h_routing_solution);
 }
 
-TEST(distance_breaks, with_charging_stations)
+// Break locations restrict where the break can be inserted.
+TEST(distance_breaks, with_break_locations)
 {
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  std::vector<int> order_locations   = {1, 2};
-  std::vector<int> charging_stations = {3, 4};
+  std::vector<int> order_locations = {1, 2};
+  std::vector<int> break_locations = {3, 4};
 
-  auto v_cost_matrix       = cuopt::device_copy(cost_matrix_5x5, stream);
-  auto v_order_locations   = cuopt::device_copy(order_locations, stream);
-  auto v_charging_stations = cuopt::device_copy(charging_stations, stream);
+  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_5x5, stream);
+  auto v_order_locations = cuopt::device_copy(order_locations, stream);
+  auto v_break_locations = cuopt::device_copy(break_locations, stream);
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 5, 2, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
   data_model.add_distance_break(
-    0, 0.f, 2.f, 1, v_charging_stations.data(), (int)v_charging_stations.size());
+    0, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
   data_model.add_distance_break(
-    1, 0.f, 2.f, 1, v_charging_stations.data(), (int)v_charging_stations.size());
+    1, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
   data_model.set_min_vehicles(2);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};
@@ -272,6 +278,7 @@ TEST(distance_breaks, with_charging_stations)
   }
 }
 
+// Stacking add_distance_break calls produces one break per cycle per vehicle.
 TEST(distance_breaks, multi_cycle)
 {
   raft::handle_t handle;
@@ -315,9 +322,7 @@ TEST(distance_breaks, multi_cycle)
   }
 }
 
-// The cheap customer-first route 0→1→2→0 (cost 106) would put the charger at cumulative
-// 105 > d_max=60 — infeasible. The solver must choose the more expensive charger-first
-// ordering 0→2→1→0 (cost 205) where the charger lands at 50 ≤ 60.
+// Solver chooses the longer route so the break lands inside [0, d_max].
 TEST(distance_breaks, break_distance_window_enforced)
 {
   raft::handle_t handle;
@@ -330,17 +335,17 @@ TEST(distance_breaks, break_distance_window_enforced)
     1,   55,  0,
   };
   // clang-format on
-  std::vector<int> order_locations   = {1};
-  std::vector<int> charging_stations = {2};
+  std::vector<int> order_locations = {1};
+  std::vector<int> break_locations = {2};
 
-  auto v_cost_matrix       = cuopt::device_copy(cost_matrix_3, stream);
-  auto v_order_locations   = cuopt::device_copy(order_locations, stream);
-  auto v_charging_stations = cuopt::device_copy(charging_stations, stream);
+  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_3, stream);
+  auto v_order_locations = cuopt::device_copy(order_locations, stream);
+  auto v_break_locations = cuopt::device_copy(break_locations, stream);
 
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_distance_break(0, 0.f, 60.f, 0, v_charging_stations.data(), 1);
+  data_model.add_distance_break(0, 0.f, 60.f, 0, v_break_locations.data(), 1);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};
   settings.set_time_limit(10);
@@ -367,6 +372,60 @@ TEST(distance_breaks, break_distance_window_enforced)
   EXPECT_TRUE(found_break) << "no break found in solution";
 }
 
+// Solver must push a break location reachable before min_range into the window.
+TEST(distance_breaks, break_distance_window_min_enforced)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+
+  // clang-format off
+  std::vector<float> cost_matrix_4 = {
+    0,   50,  50,  1,
+    50,  0,   10,  60,
+    50,  10,  0,   60,
+    1,   60,  60,  0,
+  };
+  // clang-format on
+  std::vector<int> order_locations = {1, 2};
+  std::vector<int> break_locations = {3};
+
+  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_4, stream);
+  auto v_order_locations = cuopt::device_copy(order_locations, stream);
+  auto v_break_locations = cuopt::device_copy(break_locations, stream);
+
+  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
+  data_model.add_cost_matrix(v_cost_matrix.data());
+  data_model.set_order_locations(v_order_locations.data());
+  data_model.add_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
+
+  auto settings = cuopt::routing::solver_settings_t<int, float>{};
+  settings.set_time_limit(10);
+
+  auto routing_solution = cuopt::routing::solve(data_model, settings);
+  handle.sync_stream();
+
+  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
+  host_assignment_t<int> h(routing_solution);
+
+  float cumulative = 0.f;
+  int prev_loc     = 0;
+  bool found_break = false;
+  for (size_t i = 0; i < h.locations.size(); ++i) {
+    int loc = h.locations[i];
+    cumulative += cost_matrix_4[prev_loc * 4 + loc];
+    if (static_cast<node_type_t>(h.node_types[i]) == node_type_t::BREAK) {
+      found_break = true;
+      EXPECT_GE(cumulative, 40.f - 1e-3f)
+        << "break at cumulative distance " << cumulative << " is below min_range=40";
+      EXPECT_LE(cumulative, 200.f + 1e-3f)
+        << "break at cumulative distance " << cumulative << " exceeds max_range=200";
+    }
+    prev_loc = loc;
+  }
+  EXPECT_TRUE(found_break) << "no break found in solution";
+}
+
+// Only vehicles configured with a distance break receive break nodes.
 TEST(distance_breaks, mixed_fleet)
 {
   raft::handle_t handle;

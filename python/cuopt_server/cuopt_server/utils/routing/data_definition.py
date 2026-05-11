@@ -120,7 +120,7 @@ class VehicleBreak(StrictModel):
 
 
 class VehicleDistanceBreak(StrictModel):
-    """Per-vehicle distance-based charging break schedule."""
+    """Per-vehicle distance-based break schedule."""
 
     vehicle_id: int = Field(
         ...,
@@ -136,24 +136,24 @@ class VehicleDistanceBreak(StrictModel):
         description=(
             "dtype: float32, max_range > 0."
             " \n\n "
-            "Length of each charge cycle. A break must be taken at most every"
+            "Length of each cycle. A break must be taken at most every"
             " max_range cumulative distance units."
         ),
     )
-    charge_duration: int = Field(
+    duration: int = Field(
         ...,
         description=(
-            "dtype: int32, charge_duration >= 0."
+            "dtype: int32, duration >= 0."
             " \n\n "
-            "Service time spent at the charging station."
+            "Service time spent at the break location."
         ),
     )
-    charging_stations: Optional[List[int]] = Field(
+    locations: Optional[List[int]] = Field(
         default=None,
         description=(
             "dtype: int32, location_id >= 0."
             " \n\n "
-            "Location ids eligible for charging. If omitted, any location"
+            "Location ids eligible for the break. If omitted, any location"
             " can be used."
         ),
     )
@@ -162,7 +162,7 @@ class VehicleDistanceBreak(StrictModel):
         description=(
             "dtype: float32, 0 <= min_range < max_range."
             " \n\n "
-            "Minimum cumulative distance into each cycle before a charge may"
+            "Minimum cumulative distance into each cycle before a break may"
             " be taken. Defaults to 0."
         ),
     )
@@ -171,7 +171,7 @@ class VehicleDistanceBreak(StrictModel):
         description=(
             "dtype: int32, n_cycles > 0."
             " \n\n "
-            "Number of charge cycles per route. Defaults to 1."
+            "Number of cycles per route. Defaults to 1."
         ),
     )
 
@@ -428,17 +428,17 @@ class FleetData(StrictModel):
                 {
                     "vehicle_id": 0,
                     "max_range": 100.0,
-                    "charge_duration": 15,
-                    "charging_stations": [3, 4],
+                    "duration": 15,
+                    "locations": [3, 4],
                     "min_range": 0.0,
                     "n_cycles": 1,
                 },
             ]
         ],
         description=(
-            "Per-vehicle distance-based charging breaks. Each entry adds"
-            " n_cycles charge cycles of length max_range; one mandatory"
-            " charge is inserted per cycle within the cumulative-distance"
+            "Per-vehicle distance-based breaks. Each entry adds"
+            " n_cycles cycles of length max_range; one mandatory"
+            " break is inserted per cycle within the cumulative-distance"
             " window [k * max_range + min_range, (k+1) * max_range] for"
             " k = 0, ..., n_cycles - 1."
         ),

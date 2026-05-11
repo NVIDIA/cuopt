@@ -98,6 +98,8 @@ class distance_node_t {
                             [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,
                             f_t distance_between) noexcept
   {
+    // max_cost is encoded into the end node's distance_window_backward (see set_nodes_data),
+    // so the upper_excess term below already captures any max_cost overflow.
     double arrival_window_f = prev.distance_window_forward + distance_between;
     double upper_excess     = max(0., arrival_window_f - next.distance_window_backward);
     double lower_excess     = max(0., next.distance_window_backward_min - arrival_window_f);
@@ -121,6 +123,8 @@ class distance_node_t {
     double total_distance       = distance_forward + distance_backward;
     obj_cost[objective_t::COST] = total_distance;
     if (dim_info.has_distance_window) {
+      // max_cost is folded into distance_window_backward at the route end, so the upper
+      // boundary term below subsumes the max_cost overage when both are configured.
       double upper_boundary = max(0., distance_window_forward - distance_window_backward);
       double lower_boundary = max(0., distance_window_backward_min - distance_window_forward);
       inf_cost[dim_t::DIST] = excess_forward + excess_backward + upper_boundary + lower_boundary;

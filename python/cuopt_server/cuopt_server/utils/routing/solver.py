@@ -228,16 +228,22 @@ def create_data_model(
 
     if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
         for data in optimization_data.fleet_data["vehicle_distance_breaks"]:
-            charging_stations = (
-                cudf.Series(data["charging_stations"], dtype="int32")
-                if data["charging_stations"] is not None
-                else None
-            )
+            if data["locations"] is not None:
+                if len(optimization_data.locations) > 0:
+                    break_locations = locations.loc[data["locations"]].astype(
+                        "int32"
+                    )
+                else:
+                    break_locations = cudf.Series(
+                        data["locations"], dtype="int32"
+                    )
+            else:
+                break_locations = None
             data_model.add_distance_break(
                 vehicle_ids=data["vehicle_id"],
                 max_range=data["max_range"],
-                charge_duration=data["charge_duration"],
-                charging_stations=charging_stations,
+                duration=data["duration"],
+                locations=break_locations,
                 min_range=data["min_range"],
                 n_cycles=data["n_cycles"],
             )
@@ -416,6 +422,14 @@ def prep_optimization_data(optimization_data):
                     "vehicle_break_locations"
                 ].to_numpy(),
             )
+        if optimization_data.fleet_data["vehicle_distance_breaks"] is not None:
+            for d in optimization_data.fleet_data["vehicle_distance_breaks"]:
+                break_locs = d.get("locations")
+                if break_locs is not None and len(break_locs) > 0:
+                    optimization_data.locations = np.append(
+                        optimization_data.locations,
+                        np.asarray(break_locs),
+                    )
         optimization_data.locations = np.unique(optimization_data.locations)
 
         for v_type, graph in optimization_data.waypoint_graph.items():

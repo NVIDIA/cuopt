@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import Optional, Sequence, Union
+
 import numpy as np
 
 import cudf
@@ -418,41 +420,64 @@ class DataModel(_DeferredDataModel):
     @catch_cuopt_exception
     def add_distance_break(
         self,
-        vehicle_ids,
-        max_range,
-        charge_duration,
-        charging_stations=None,
-        min_range=0.0,
-        n_cycles=None,
-    ):
+        vehicle_ids: Union[int, Sequence[int]],
+        max_range: float,
+        duration: int,
+        locations: Optional[cudf.Series] = None,
+        min_range: float = 0.0,
+        n_cycles: Optional[int] = None,
+    ) -> None:
         """
-        Add distance-based charging breaks for a set of vehicles.
+        Add distance-based breaks for a set of vehicles.
 
-        Each call adds ``n_cycles`` consecutive cycles of length ``max_range``.
-        One mandatory charge is inserted per cycle, within the cumulative-distance
-        window ``[k * max_range + min_range, (k+1) * max_range]`` for
-        ``k = 0, ..., n_cycles - 1``.
+        Each call adds ``n_cycles`` consecutive cycles. One mandatory break is
+        inserted per cycle within the cumulative-distance window
+        ``[k * max_range + min_range, (k + 1) * max_range]`` for
+        ``k = 0, ..., n_cycles - 1`` (window width ``max_range - min_range``).
+
+        Unlike time-based breaks, the distance dimension has no "wait"
+        analogue: a break before ``min_range`` is not strictly forbidden and is
+        instead penalised as a window-violation excess that the solver
+        minimises like any other infeasibility.
+
+        ``max_range`` and ``min_range`` are expressed in the same units as the
+        primary cost matrix. The method mutates the data model in place.
 
         Parameters
         ----------
-        vehicle_ids : list[int] or int
+        vehicle_ids : int or sequence of int
             Vehicle IDs to apply the distance break schedule to.
         max_range : float
-            Length of each charge cycle.
-        charge_duration : int
-            Service time at the charging station.
-        charging_stations : cudf.Series dtype int32, optional
-            Location IDs eligible for charging. Defaults to all locations.
+            Length of each cycle. Must be strictly positive and strictly
+            greater than ``min_range``.
+        duration : int
+            Service time at the break location. Must be non-negative.
+        locations : cudf.Series dtype int32, optional
+            Location IDs eligible for the break. Defaults to all locations.
         min_range : float, optional
-            Minimum cumulative distance into each cycle before a charge may
-            occur. Defaults to 0.
+            Minimum cumulative distance into each cycle before a break may
+            occur. Must be non-negative and strictly less than ``max_range``.
+            Defaults to ``0.0``.
         n_cycles : int, optional
-            Number of charge cycles per route. Defaults to 1.
+            Number of cycles per route. Must be a positive integer.
+            Defaults to ``1``.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If ``max_range`` is not positive, ``min_range`` is negative,
+            ``min_range >= max_range``, ``duration`` is negative,
+            ``n_cycles`` is not a positive integer, or any value in
+            ``vehicle_ids`` / ``locations`` is out of range.
         """
-        if charging_stations is None:
-            charging_stations = cudf.Series(dtype="int32")
-        if isinstance(vehicle_ids, int):
-            vehicle_ids = [vehicle_ids]
+        if locations is None:
+            locations = cudf.Series(dtype="int32")
+        if isinstance(vehicle_ids, (int, np.integer)):
+            vehicle_ids = [int(vehicle_ids)]
 
         if n_cycles is not None:
             if not isinstance(n_cycles, (int, np.integer)) or n_cycles <= 0:
@@ -462,13 +487,13 @@ class DataModel(_DeferredDataModel):
 
         validate_positive(max_range, "max range")
         validate_non_negative(min_range, "min range")
-        validate_non_negative(charge_duration, "charge duration")
+        validate_non_negative(duration, "duration")
         if min_range >= max_range:
             raise ValueError("min_range must be smaller than max_range")
-        if len(charging_stations) > 0:
+        if len(locations) > 0:
             validate_range(
-                charging_stations,
-                "charging stations",
+                locations,
+                "break locations",
                 0,
                 self.get_num_locations(),
             )
@@ -479,7 +504,7 @@ class DataModel(_DeferredDataModel):
                 d_min = k * max_range + min_range
                 d_max = (k + 1) * max_range
                 super().add_distance_break(
-                    vid, d_min, d_max, charge_duration, charging_stations
+                    vid, d_min, d_max, duration, locations
                 )
 
     @catch_cuopt_exception

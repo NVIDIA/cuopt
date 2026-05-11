@@ -185,6 +185,8 @@ class distance_route_t {
       obj_cost[objective_t::COST] = distance_forward[n_nodes_route];
 
       if (dim_info.has_distance_window) {
+        // max_cost is encoded into distance_window_backward at the route end (see
+        // set_nodes_data), so the upper_bound term already captures any max_cost overflow.
         double end_dwf        = distance_window_forward[n_nodes_route];
         double end_dwb        = distance_window_backward[n_nodes_route];
         double end_dwb_min    = distance_window_backward_min[n_nodes_route];

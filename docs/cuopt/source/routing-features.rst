@@ -60,17 +60,23 @@ There are two types of breaks,
 
 Only one of the type of breaks can be used at a time.
 
-Distance-Based Charging Breaks
-------------------------------
+Distance-Based Breaks
+---------------------
 
-``add_distance_break`` configures mandatory charging stops triggered by
+``add_distance_break`` configures mandatory break stops triggered by
 cumulative route distance. Each call adds ``n_cycles`` consecutive distance
-windows of length ``max_range``; the solver must insert one charging stop
-in each window ``[k * max_range + min_range, (k+1) * max_range]`` for
-``k = 0, ..., n_cycles - 1``.
+windows; the solver must insert one break stop in each window
+``[k * max_range + min_range, (k + 1) * max_range]`` for
+``k = 0, ..., n_cycles - 1``. Each window therefore has width
+``max_range - min_range`` (equal to ``max_range`` when ``min_range = 0``).
 
-Pass ``charging_stations`` to restrict the eligible charging locations; if
-omitted, any location is eligible.
+``min_range`` is **not** a hard feasibility cutoff: unlike time-based breaks,
+the distance dimension has no "wait" analogue, so a break before the lower
+bound is allowed and instead incurs a window-violation excess that the solver
+minimises like any other infeasibility.
+
+Pass ``locations`` to restrict the eligible break locations; if omitted, any
+location is eligible.
 
 Prize Collection
 ------------------------

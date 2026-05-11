@@ -604,6 +604,7 @@ class base_test_t {
     i_t prev_loc       = -1;
     i_t curr_truck     = -1;
     f_t cumulative     = 0.f;
+    size_t break_count = 0;
 
     for (size_t i = 0; i < truck_id.size(); ++i) {
       if (truck_id[i] != curr_truck) {
@@ -616,12 +617,15 @@ class base_test_t {
       cumulative += cost_matrix_h[prev_loc * n_locations + loc];
       prev_loc = loc;
       if (static_cast<node_type_t>(node_types[i]) == node_type_t::BREAK) {
+        ++break_count;
         ASSERT_GE(cumulative, min_range - 1e-3f)
           << "break at cumulative distance " << cumulative << " is below min_range " << min_range;
         ASSERT_LE(cumulative, max_range + 1e-3f)
           << "break at cumulative distance " << cumulative << " exceeds max_range " << max_range;
       }
     }
+    ASSERT_GT(break_count, 0u)
+      << "expected at least one BREAK node in the solution, none were emitted";
   }
 
   void check_vehicle_breaks(host_assignment_t<i_t> const& h_routing_solution)
@@ -1035,7 +1039,7 @@ class routing_test_t : public base_test_t<i_t, f_t> {
    * break per vehicle with a cumulative-distance window of [min_range, max_range].
    * Validates routes, capacities, and that every Break node falls within its window.
    */
-  void test_cvrptw_distance_breaks(f_t min_range, f_t max_range, i_t charge_duration = 0)
+  void test_cvrptw_distance_breaks(f_t min_range, f_t max_range, i_t duration = 0)
   {
     auto start_vehicle = this->n_vehicles;
     cuopt::routing::data_model_view_t<i_t, f_t> data_model(
@@ -1047,7 +1051,7 @@ class routing_test_t : public base_test_t<i_t, f_t> {
     data_model.set_order_service_times(this->service_time_d.data());
 
     for (i_t vid = 0; vid < start_vehicle; ++vid) {
-      data_model.add_distance_break(vid, min_range, max_range, charge_duration, nullptr, 0);
+      data_model.add_distance_break(vid, min_range, max_range, duration, nullptr, 0);
     }
 
     cuopt::routing::solver_settings_t<i_t, f_t> settings;

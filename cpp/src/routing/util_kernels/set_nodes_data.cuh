@@ -8,6 +8,8 @@
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
 
+#include <limits>
+
 namespace cuopt {
 namespace routing {
 namespace detail {
