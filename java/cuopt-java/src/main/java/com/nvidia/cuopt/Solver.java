@@ -4,15 +4,20 @@
  */
 package com.nvidia.cuopt;
 
+import com.nvidia.cuopt.linear_programming.DataModel;
+import com.nvidia.cuopt.linear_programming.Problem;
+import com.nvidia.cuopt.linear_programming.SolverSettings;
 import com.nvidia.cuopt.spi.CuOptProvider;
+import java.lang.reflect.Method;
 
 /**
- * Entry point for cuopt-java.
+ * Static utility entry points for cuopt-java.
  *
- * <p>This class currently exposes only {@link #getVersion()} as a
- * minimal end-to-end demonstration of the FFM bridge. The full LP /
- * MILP / QP API ({@code Problem}, {@code Variable}, {@code LinearExpr},
- * etc.) lands in subsequent PRs.
+ * <p>Most users call {@link Problem#solve()} or
+ * {@link Problem#solve(SolverSettings)} on a Problem directly. The
+ * static {@code Solver.solve(...)} overloads here are convenience
+ * wrappers that match cuOpt Python's {@code Solver.Solve(dm, settings)}
+ * call shape.
  */
 public final class Solver {
 
@@ -20,13 +25,39 @@ public final class Solver {
 
     /**
      * Returns the cuOpt library version (from {@code libcuopt.so}) as a
-     * human-readable string.
+     * human-readable {@code major.minor.patch} string.
      *
-     * @throws CuOptException if the native library cannot be loaded or
-     *                        the FFM implementation is missing (e.g.,
-     *                        running on Java 21).
+     * @throws CuOptException if the native library cannot be loaded.
      */
     public static String getVersion() {
         return CuOptProvider.instance().getVersion();
+    }
+
+    // ── solve overloads ──────────────────────────────────────────
+
+    public static void solve(Problem problem) {
+        problem.solve();
+    }
+
+    public static void solve(Problem problem, SolverSettings settings) {
+        problem.solve(settings);
+    }
+
+    public static void solve(DataModel dm) {
+        solve(dm, null);
+    }
+
+    public static void solve(DataModel dm, SolverSettings settings) {
+        // Package-private call on DataModel — Solver lives in com.nvidia.cuopt,
+        // DataModel lives in com.nvidia.cuopt.linear_programming, so we go
+        // through reflection to access solveInternal. Replace with a public
+        // SPI entry point or move Solver into the same package later.
+        try {
+            Method m = DataModel.class.getDeclaredMethod("solveInternal", SolverSettings.class);
+            m.setAccessible(true);
+            m.invoke(dm, settings);
+        } catch (ReflectiveOperationException e) {
+            throw new CuOptException("Internal: failed to dispatch DataModel.solveInternal", e);
+        }
     }
 }
