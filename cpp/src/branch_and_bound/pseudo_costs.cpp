@@ -755,7 +755,7 @@ static void batch_pdlp_strong_branching_task(
     constexpr int warm_start_iteration_limit         = 500000;
     ws_settings.iteration_limit                      = warm_start_iteration_limit;
     ws_settings.time_limit                           = warm_start_remaining_time;
-    constexpr f_t pdlp_tolerance                     = 1e-5;
+    constexpr f_t pdlp_tolerance                     = 1e-4;
     ws_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
     ws_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
     ws_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;

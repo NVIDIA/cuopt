@@ -123,6 +123,10 @@ message PDLPSolverSettings {
   bool save_best_primal_so_far = 28;
   bool first_primal_feasible = 29;
   int32 pdlp_precision = 30;
+  // Batch-only PDLP settings (e.g. all_primal_feasible, new_bounds,
+  // fixed_batch_size, generate_batch_primal_dual_solution) are intentionally
+  // not exposed on the wire: the gRPC SolveLPRequest is single-problem only,
+  // and these knobs only have meaning under a batch entry point.
 
   // Warm start data (if provided)
   PDLPWarmStartData warm_start_data = 50;
