@@ -17,6 +17,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <tuple>
 
 #include <cuda/std/span>
 
@@ -282,7 +283,25 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool save_best_primal_so_far{false};
+  /**
+   * @brief Stop the solver as soon as a primal feasible iterate is encountered.
+   *
+   * In non-batch mode the solver returns the first primal feasible iterate (without waiting for
+   * optimality / dual feasibility). In batch mode the whole batch stops the moment any climber
+   * reaches primal feasibility; every climber returns its current iterate with its current
+   * termination status. Can be composed with `per_constraint_residual`.
+   * Mutually exclusive with `all_primal_feasible`.
+   */
   bool first_primal_feasible{false};
+  /**
+   * @brief Batch-only: stop only once every climber has reached (at least) primal feasibility.
+   *
+   * Each climber is individually ejected from the batch the first time it becomes primal
+   * feasible and its per-climber solution is captured. The solver returns when all climbers
+   * have been captured. Setting this in non-batch mode is a validation error. Setting it
+   * together with `first_primal_feasible` is a validation error.
+   */
+  bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
@@ -294,18 +313,17 @@ class pdlp_solver_settings_t {
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
-  // Holds the information of new variable lower and upper bounds for each climber in the format:
-  // (variable index, new lower bound, new upper bound)
-  // For each entry in the vector, a new version of the problem (climber) will be solved
-  // concurrently i.e. if new_bounds.size() == 2, then 2 versions of the problem with updated bounds
-  // will be solved concurrently
-  std::vector<std::tuple<i_t, f_t, f_t>> new_bounds;
+  // Holds per-climber variable-bound overrides in the format:
+  // (climber id, variable index, new lower bound, new upper bound).
+  // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly
+  // on the optimization_problem_t instead.
+  std::vector<std::tuple<i_t, i_t, f_t, f_t>> new_bounds;
   // By default to save memory and speed we don't store and copy each climber's primal and dual
   // solutions We only retrieve termination statistics and the objective values
   bool generate_batch_primal_dual_solution{false};
   // Used to force batch PDLP to solve a subbatch of the problems at a time
   // The 0 default value will make the solver use its heuristic to determine the subbatch size
-  i_t sub_batch_size{0};
+  i_t fixed_batch_size{0};
 
  private:
   /** Initial primal solution */

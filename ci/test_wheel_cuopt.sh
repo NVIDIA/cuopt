@@ -75,10 +75,6 @@ set +e
 timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
 
 # Run Python tests
-
-# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
-export OMP_NUM_THREADS=1
-
 timeout 30m ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
   --verbose --capture=no

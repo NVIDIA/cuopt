@@ -56,7 +56,30 @@ class pdlp_termination_strategy_t {
       objective_coefficients  // Only useful if per_constraint_residual
   );
 
-  // Only useful in batch mode to store information of removed climber faster
+  // Pinned-memory mirror of `optimization_problem_solution_t::additional_termination_information_t`
+  // for the whole batch. Used only in batch mode.
+  //
+  // Why we need this:
+  //   The convergence stats (primal/dual residuals, objectives, gap, ...) live on the device for
+  //   every climber. When a climber terminates, we need those stats on the host. Doing one
+  //   device->host copy per field per climber would be too slow, especially since climbers may
+  //   terminate at different iterations and their device-side arrays get permuted/shrunk by
+  //   `swap_context` / `resize_context` as the batch evolves.
+  //   Instead, `fill_gpu_terms_stats_kernel` writes every field of every just-terminated climber
+  //   into these pinned vectors at a single, stable slot: the climber's *original* batch index
+  //   (see `original_index_` below). The host eventually bulk-copies the pinned vectors into the
+  //   user- facing `std::vector<additional_termination_information_t>` in
+  //   `convert_gpu_terms_stats_to_host` without having to know anything about the current
+  //   device-side ordering.
+  //
+  // Sizing / indexing invariants:
+  //   - Allocated once with `batch_size == original_batch_size_` and never resized; slot `k`
+  //     always corresponds to original climber `k`, regardless of how many climbers have been
+  //     removed or how device-side arrays have been swapped.
+  //   - `fill_gpu_terms_stats_kernel` must be called every time we want to capture the latest
+  //     numbers for any climber that just became `is_done`, because the underlying device-side
+  //     residual/objective arrays are reshuffled by `swap_context` / `resize_context` and would
+  //     otherwise be lost on the next batch resize.
   struct gpu_batch_additional_termination_information_t {
     gpu_batch_additional_termination_information_t(size_t batch_size)
       : number_of_steps_taken(batch_size),
@@ -128,23 +151,37 @@ class pdlp_termination_strategy_t {
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
 
-  void fill_gpu_terms_stats(i_t number_of_iterations);
+  // Snapshot the device-side convergence stats for every climber that just became `is_done` into
+  // the pinned `gpu_batch_additional_termination_information_` mirror, indexed by the climber's
+  // original batch index. Must be called before any subsequent `swap_context` /
+  // `resize_context`, otherwise the underlying device-side stats arrays get permuted/truncated
+  // and the corresponding climber's numbers are lost.
+  void fill_gpu_terms_stats(i_t number_of_iterations, bool force_all = false);
+
+  // Bulk-copy the pinned `gpu_batch_additional_termination_information_` mirror into the user-
+  // facing host vector `additional_termination_informations`, slot-by-slot.
+  //
+  // Both `additional_termination_informations` and the pinned mirror are sized to
+  // `original_batch_size_` and indexed by *original* climber id, so this is a straight 1:1 copy.
+  // No remapping via `original_index_` is needed here -- the kernel already wrote into
+  // original-index space when filling the pinned mirror.
+  //
+  // Must be called before doing the final return.
   void convert_gpu_terms_stats_to_host(
     std::vector<
       typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>&
       additional_termination_informations);
 
-  void set_relative_dual_tolerance_factor(f_t dual_tolerance_factor);
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
-  f_t get_relative_dual_tolerance_factor() const;
-  f_t get_relative_primal_tolerance_factor() const;
 
   pdlp_termination_status_t get_termination_status(i_t id) const;
   void set_termination_status(i_t id, pdlp_termination_status_t status);
   std::vector<pdlp_termination_status_t> get_terminations_status();
   bool all_optimal_status() const;
-  bool all_done() const;
-  static __host__ __device__ bool is_done(pdlp_termination_status_t term);
+  bool all_done(bool accept_primal_feasible = false) const;
+  bool any_primal_feasible_or_optimal() const;
+  static __host__ __device__ bool is_done(pdlp_termination_status_t term,
+                                          bool accept_primal_feasible = false);
   bool has_optimal_status() const;
   i_t nb_optimal_solutions() const;
   i_t get_optimal_solution_id() const;
@@ -186,7 +223,14 @@ class pdlp_termination_strategy_t {
   thrust::universal_host_pinned_vector<i_t> termination_status_;
   const pdlp_solver_settings_t<i_t, f_t>& settings_;
 
+  // Pinned-memory mirror of the per-climber stats. See the docs on
+  // `gpu_batch_additional_termination_information_t` above. Sized to `original_batch_size_` and
+  // never resized; slot `k` always corresponds to original climber `k`.
   gpu_batch_additional_termination_information_t gpu_batch_additional_termination_information_;
+  // Maps a *current* (post-removal) climber slot `i` to its *original* batch index.
+  // Refreshed before each `fill_gpu_terms_stats` from `climber_strategies_[i].original_index`.
+  // The kernel uses it as a destination remap so that the pinned mirror stays in original-index
+  // space across resizes/swaps.
   thrust::universal_host_pinned_vector<i_t> original_index_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;

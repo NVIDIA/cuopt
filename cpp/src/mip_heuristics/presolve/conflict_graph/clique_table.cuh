@@ -105,7 +105,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
                           bool modify_problem,
-                          std::atomic<bool>* signal_extend = nullptr);
+                          omp_atomic_t<bool>* signal_extend = nullptr);
 
 template <typename i_t, typename f_t>
 void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,

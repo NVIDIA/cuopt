@@ -6,10 +6,13 @@
 /* clang-format on */
 #pragma once
 
+#include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/linear_programming/solve.hpp>
 
 #include <mps_parser.hpp>
+#include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -29,6 +32,82 @@ static std::string make_path_absolute(const std::string& file)
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
   return rel_file;
+}
+
+// Wrapper for the batch PDLP flow: convert and potentially expand the problem and call
+// run_batch_pdlp.
+template <typename i_t, typename f_t>
+static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t>& settings)
+{
+  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+    handle_ptr, mps_data_model);
+  auto batch_settings                                = settings;
+  batch_settings.generate_batch_primal_dual_solution = true;
+  return cuopt::linear_programming::run_batch_pdlp(gpu_op, batch_settings);
+}
+
+// Overwrites the device_uvector with the host-side contents, resizing as needed.
+template <typename f_t>
+static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
+                                            const std::vector<f_t>& src,
+                                            rmm::cuda_stream_view stream)
+{
+  target.resize(src.size(), stream);
+  raft::copy(target.data(), src.data(), src.size(), stream);
+}
+
+// Convenience wrapper for the fixed-path batch PDLP flow:
+// parse → convert MPS to optimization_problem_t → pre-expand any per-climber problem fields
+// (objective coefficients, constraint lower/upper bounds, objective offsets) on the
+// optimization_problem_t → dispatch to `run_batch_pdlp` with fixed_batch_size set (fixed path).
+//
+// Any of the per_climber_* vectors may be empty to skip that expansion. The vectors use the
+// same flat COL-major layout the solver expects internally:
+//   - per_climber_objective_coefficients: size (batch_size * n_variables), block per climber.
+//   - per_climber_constraint_lower_bounds / upper_bounds: size (batch_size * n_constraints).
+//   - per_climber_objective_offsets: size (batch_size).
+template <typename i_t, typename f_t>
+static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch_fixed(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t> settings,
+  i_t batch_size,
+  const std::vector<f_t>& per_climber_objective_coefficients  = {},
+  const std::vector<f_t>& per_climber_constraint_lower_bounds = {},
+  const std::vector<f_t>& per_climber_constraint_upper_bounds = {},
+  const std::vector<f_t>& per_climber_objective_offsets       = {},
+  bool use_direct_api                                         = false)
+{
+  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+    handle_ptr, mps_data_model);
+  auto stream = handle_ptr->get_stream();
+
+  if (!per_climber_objective_coefficients.empty()) {
+    assign_device_uvector_from_host(
+      gpu_op.get_objective_coefficients(), per_climber_objective_coefficients, stream);
+  }
+
+  if (!per_climber_constraint_lower_bounds.empty()) {
+    assign_device_uvector_from_host(
+      gpu_op.get_constraint_lower_bounds(), per_climber_constraint_lower_bounds, stream);
+  }
+
+  if (!per_climber_constraint_upper_bounds.empty()) {
+    assign_device_uvector_from_host(
+      gpu_op.get_constraint_upper_bounds(), per_climber_constraint_upper_bounds, stream);
+  }
+
+  if (!per_climber_objective_offsets.empty()) {
+    gpu_op.set_batch_objective_offsets(per_climber_objective_offsets);
+  }
+
+  settings.generate_batch_primal_dual_solution = true;
+  settings.fixed_batch_size                    = batch_size;
+  if (use_direct_api) { return cuopt::linear_programming::solve_lp(gpu_op, settings, false); }
+  return cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
 }
 
 // Compute on the CPU x * c to check that the returned objective value is correct
@@ -130,6 +209,7 @@ static void test_constraint_sanity(
 
     // Check if primal residual is indeed respecting the default tolerance
     pdlp_solver_settings_t solver_settings = pdlp_solver_settings_t<int, double>{};
+    solver_settings.set_optimality_tolerance(epsilon);
 
     std::vector<double> combined_bounds(constraint_lower_bounds.size());
 
