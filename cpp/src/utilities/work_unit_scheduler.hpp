@@ -16,7 +16,8 @@
  */
 #pragma once
 
-#include <atomic>
+#include <utilities/omp_helpers.hpp>
+
 #include <functional>
 #include <vector>
 
@@ -56,14 +57,14 @@ class work_unit_scheduler_t {
   double sync_interval_;
   std::vector<std::reference_wrapper<work_limit_context_t>> contexts_;
 
-  size_t barrier_generation_{0};
+  omp_atomic_t<int> barrier_generation_{0};
   double current_sync_target_{0};
 
   // Sync callback - executed when all contexts reach sync point
   sync_callback_t sync_callback_;
 
   // Shutdown flag - prevents threads from entering barriers after termination is signaled
-  std::atomic<bool> shutdown_{false};
+  omp_atomic_t<bool> shutdown_{false};
 };
 
 // RAII helper for registering multiple contexts with automatic cleanup

@@ -1,10 +1,12 @@
 ---
-name: cuopt-lp-milp-api-cli
+name: cuopt-numerical-optimization-api-cli
 version: "26.06.00"
-description: LP and MILP with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving from MPS via command line.
+description: LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line.
 ---
 
-# cuOpt LP/MILP — CLI
+# cuOpt Numerical Optimization — CLI
+
+Solve LP, MILP, and QP problems from MPS files via `cuopt_cli`. The same command, options, and MPS workflow apply across all three; QP uses the standard MPS quadratic-objective extension.
 
 Confirm problem type and formulation (variables, objective, constraints, variable types) before coding.
 
@@ -48,6 +50,14 @@ cuopt_cli problem.mps --presolve --iteration-limit 10000 --method 1
 6. **ENDATA**
 
 Integer variables: use `'MARKER' 'INTORG'` before and `'MARKER' 'INTEND'` after the integer columns.
+
+## QP via CLI (beta)
+
+Quadratic objectives extend the standard MPS workflow — same `cuopt_cli` command, same options. Check `cuopt_cli --help` for QP-specific flags and the repo docs at `docs/cuopt/source/cuopt-cli/` for the quadratic-objective MPS format.
+
+**QP rules:**
+- **MINIMIZE only.** For maximization, negate the objective coefficients (and Q entries) in the MPS file.
+- **Continuous variables only** — do not mix integer markers with quadratic objectives.
 
 ## Troubleshooting
 

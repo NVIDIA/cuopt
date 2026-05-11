@@ -9,28 +9,23 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 ## Skills directory (flat)
 
 ### Rules
-- `skills/cuopt-user-rules/` — User-facing behavior and conventions; read first when helping users with cuOpt (routing, LP, MILP, QP, install, server). Choose skills from the index below by task, problem type, and interface (Python / C / CLI).
-- `skills/cuopt-developer/` — Contributing and development; use when the user is building from source, contributing code, or working on cuOpt internals.
+- `skills/cuopt-user-rules/` — Base rules for end users calling cuOpt (routing, LP, MILP, QP, install, server). Not for cuOpt internals — see `skills/cuopt-developer/`. Read first for user-facing tasks; choose skills from the index below by task and interface.
+- `skills/cuopt-developer/` — Modify, build, test, debug, and contribute to cuOpt internals (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 - `skills/skill-evolution/` — Skill evolution: after solving a non-trivial problem, propose skill updates to capture generalizable learnings.
 
 ### Common (concepts only; no API code)
 - `skills/cuopt-installation-common/` — Install: system and environment requirements (concepts only; no install commands or interface)
-- `skills/lp-milp-formulation/` — LP/MILP: concepts + problem parsing (parameters, constraints, decisions, objective)
+- `skills/numerical-optimization-formulation/` — LP / MILP / QP: concepts + problem parsing + common formulation patterns
 - `skills/routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
-- `skills/qp-formulation/` — QP: minimize-only, escalate (beta)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
 ### API (implementation; one interface per skill)
 - `skills/cuopt-installation-api-python/`
 - `skills/cuopt-installation-api-c/`
-- `skills/cuopt-installation-developer/` (build from source)
-- `skills/cuopt-lp-milp-api-python/`
-- `skills/cuopt-lp-milp-api-c/`
-- `skills/cuopt-lp-milp-api-cli/`
+- `skills/cuopt-numerical-optimization-api-python/` (LP, MILP, QP)
+- `skills/cuopt-numerical-optimization-api-c/` (LP, MILP, QP)
+- `skills/cuopt-numerical-optimization-api-cli/` (LP, MILP, QP)
 - `skills/cuopt-routing-api-python/`
-- `skills/cuopt-qp-api-python/`
-- `skills/cuopt-qp-api-c/`
-- `skills/cuopt-qp-api-cli/`
 - `skills/cuopt-server-api-python/` (deploy + client)
 
 ## Skill evolution
