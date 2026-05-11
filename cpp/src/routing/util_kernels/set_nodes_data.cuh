@@ -8,8 +8,6 @@
 #include <utilities/cuda_helpers.cuh>
 #include "../solution/solution.cuh"
 
-#include <limits>
-
 namespace cuopt {
 namespace routing {
 namespace detail {
@@ -60,10 +58,8 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
     dist_route.distance_forward[0]              = 0.f;
     dist_route.distance_backward[n_nodes_route] = 0.f;
     if (dist_route.dim_info.has_distance_window) {
-      f_t vehicle_max_cost = (!fleet_info.max_costs.empty()) ? fleet_info.max_costs[vehicle_id]
-                                                             : std::numeric_limits<f_t>::max();
       dist_route.distance_window_forward[0]                  = 0.;
-      dist_route.distance_window_backward[n_nodes_route]     = (double)vehicle_max_cost;
+      dist_route.distance_window_backward[n_nodes_route]     = 1e18;
       dist_route.distance_window_backward_min[n_nodes_route] = 0.;
       dist_route.excess_forward[0]                           = 0.;
       dist_route.excess_backward[n_nodes_route]              = 0.;

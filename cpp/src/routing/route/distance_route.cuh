@@ -185,14 +185,14 @@ class distance_route_t {
       obj_cost[objective_t::COST] = distance_forward[n_nodes_route];
 
       if (dim_info.has_distance_window) {
-        // max_cost is encoded into distance_window_backward at the route end (see
-        // set_nodes_data), so the upper_bound term already captures any max_cost overflow.
-        double end_dwf        = distance_window_forward[n_nodes_route];
-        double end_dwb        = distance_window_backward[n_nodes_route];
-        double end_dwb_min    = distance_window_backward_min[n_nodes_route];
-        double upper_bound    = max(0., end_dwf - end_dwb);
-        double lower_bound    = max(0., end_dwb_min - end_dwf);
-        inf_cost[dim_t::DIST] = excess_forward[n_nodes_route] + upper_bound + lower_bound;
+        double end_dwf         = distance_window_forward[n_nodes_route];
+        double end_dwb         = distance_window_backward[n_nodes_route];
+        double end_dwb_min     = distance_window_backward_min[n_nodes_route];
+        double upper_bound     = max(0., end_dwf - end_dwb);
+        double lower_bound     = max(0., end_dwb_min - end_dwf);
+        double max_cost_excess = max(0., distance_forward[n_nodes_route] - vehicle_info.max_cost);
+        inf_cost[dim_t::DIST] =
+          excess_forward[n_nodes_route] + upper_bound + lower_bound + max_cost_excess;
       } else if (dim_info.has_max_constraint) {
         inf_cost[dim_t::DIST] = max(0., distance_forward[n_nodes_route] - vehicle_info.max_cost);
       }

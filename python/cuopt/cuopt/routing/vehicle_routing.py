@@ -279,7 +279,7 @@ class DataModel(_DeferredDataModel):
         >>> data_model.set_break_locations(cudf.Series([1, 3]))
         """
         validate_range(
-            break_locations, "break_locations", 0, self.get_num_locations()
+            break_locations, "break_locations", 0, self.get_num_locations() - 1
         )
         super().set_break_locations(break_locations)
 
@@ -407,10 +407,10 @@ class DataModel(_DeferredDataModel):
         """
         if locations is None:
             locations = cudf.Series()
-        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size())
+        validate_range(vehicle_id, "vehicle id", 0, self.get_fleet_size() - 1)
         if len(locations) > 0:
             validate_range(
-                locations, "break locations", 0, self.get_num_locations()
+                locations, "break locations", 0, self.get_num_locations() - 1
             )
 
         super().add_vehicle_break(
@@ -435,10 +435,11 @@ class DataModel(_DeferredDataModel):
         ``[k * max_range + min_range, (k + 1) * max_range]`` for
         ``k = 0, ..., n_cycles - 1`` (window width ``max_range - min_range``).
 
-        Unlike time-based breaks, the distance dimension has no "wait"
-        analogue: a break before ``min_range`` is not strictly forbidden and is
-        instead penalised as a window-violation excess that the solver
-        minimises like any other infeasibility.
+        Both window endpoints are hard feasibility constraints. Unlike
+        time-based breaks the distance dimension has no "wait" analogue, so a
+        break that lands before ``min_range`` or after ``max_range`` is
+        infeasible — the solver cannot stall the vehicle to shift the
+        cumulative distance.
 
         ``max_range`` and ``min_range`` are expressed in the same units as the
         primary cost matrix. The method mutates the data model in place.
@@ -495,11 +496,11 @@ class DataModel(_DeferredDataModel):
                 locations,
                 "break locations",
                 0,
-                self.get_num_locations(),
+                self.get_num_locations() - 1,
             )
 
         for vid in vehicle_ids:
-            validate_range(vid, "vehicle id", 0, self.get_fleet_size())
+            validate_range(vid, "vehicle id", 0, self.get_fleet_size() - 1)
             for k in range(n_cycles):
                 d_min = k * max_range + min_range
                 d_max = (k + 1) * max_range
@@ -583,7 +584,7 @@ class DataModel(_DeferredDataModel):
             "number of orders",
         )
         validate_range(
-            order_locations, "order locations", 0, self.get_num_locations()
+            order_locations, "order locations", 0, self.get_num_locations() - 1
         )
         super().set_order_locations(order_locations)
 
@@ -995,7 +996,7 @@ class DataModel(_DeferredDataModel):
         >>> d.add_vehicle_order_match(2, cudf.Series([3]))
         >>> cuopt_solution = routing.Solve(d)
         """
-        validate_range(orders, "orders served", 0, self.get_num_orders())
+        validate_range(orders, "orders served", 0, self.get_num_orders() - 1)
         validate_range(
             len(orders), "number of orders served", 0, self.get_num_orders()
         )
@@ -1040,13 +1041,13 @@ class DataModel(_DeferredDataModel):
         >>> cuopt_solution = routing.Solve(d)
         """
         validate_range(
-            len(vehicles), "Number of vehicles", 0, self.get_fleet_size() + 1
+            len(vehicles), "Number of vehicles", 0, self.get_fleet_size()
         )
         validate_range(
             vehicles,
             "vehicles that can fulfill the order",
             0,
-            self.get_fleet_size(),
+            self.get_fleet_size() - 1,
         )
         super().add_order_vehicle_match(order_id, vehicles)
 

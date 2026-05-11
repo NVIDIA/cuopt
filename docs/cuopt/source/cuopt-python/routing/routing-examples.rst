@@ -75,9 +75,10 @@ that the solver must insert within a cumulative-distance window along the
 route. With ``n_cycles=k``, the call adds ``k`` consecutive windows
 ``[i * max_range + min_range, (i + 1) * max_range]`` for ``i = 0, ..., k - 1``
 (each of width ``max_range - min_range``), requiring one stop per window.
-A break before the window's lower bound (``min_range``) is not strictly
-forbidden — it is penalised as a window-violation excess rather than blocked,
-because the distance dimension has no "wait" analogue.
+Both endpoints are hard feasibility constraints: a feasible solution places
+every break inside its window. Unlike time-based breaks, the distance
+dimension has no "wait" analogue, so a break that lands before ``min_range``
+or after ``max_range`` is infeasible.
 
 The example below sets up one vehicle, two customers, and a single break
 location. With ``max_range=75``, the solver must insert one break within the

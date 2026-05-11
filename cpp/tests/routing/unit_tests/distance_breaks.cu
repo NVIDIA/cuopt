@@ -56,7 +56,7 @@ test_route make_route(std::vector<float> arcs,
     r.nodes[i].window_start = windows[i].first;
     r.nodes[i].window_end   = windows[i].second;
   }
-  r.nodes.back().distance_window_backward = max_cost;
+  r.nodes.back().distance_window_backward = 1e18;
   return r;
 }
 
@@ -84,7 +84,7 @@ TEST(distance_node, forward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[3].excess_forward, 20.);
 }
 
-// Backward sweep encodes max_cost via distance_window_backward and accumulates excess.
+// Backward sweep clamps distance_window_backward at break windows and accumulates excess.
 TEST(distance_node, backward_propagation)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -97,12 +97,10 @@ TEST(distance_node, backward_propagation)
   EXPECT_DOUBLE_EQ(r.nodes[1].distance_backward, 1000.);
   EXPECT_DOUBLE_EQ(r.nodes[0].distance_backward, 1080.);
 
-  EXPECT_DOUBLE_EQ(r.nodes[3].distance_window_backward, 800.);
-  EXPECT_DOUBLE_EQ(r.nodes[2].distance_window_backward, 400.);
-  EXPECT_DOUBLE_EQ(r.nodes[1].distance_window_backward, 0.);
-  EXPECT_DOUBLE_EQ(r.nodes[1].excess_backward, 200.);
+  EXPECT_DOUBLE_EQ(r.nodes[1].distance_window_backward, 60.);
+  EXPECT_DOUBLE_EQ(r.nodes[1].excess_backward, 0.);
   EXPECT_DOUBLE_EQ(r.nodes[0].distance_window_backward, 0.);
-  EXPECT_DOUBLE_EQ(r.nodes[0].excess_backward, 280.);
+  EXPECT_DOUBLE_EQ(r.nodes[0].excess_backward, 20.);
 }
 
 // combine() returns 0 at every split point of a window-feasible route.
@@ -152,7 +150,7 @@ TEST(distance_node, combine_invariant_max_cost_only)
   }
 }
 
-// End-of-route boundary excess matches combine() at the first split.
+// End-of-route boundary plus max_cost overage matches combine() at the first split.
 TEST(distance_node, compute_cost_combine_consistency)
 {
   auto r = make_route({80.f, 600.f, 400.f},
@@ -163,7 +161,10 @@ TEST(distance_node, compute_cost_combine_consistency)
   auto const& end_node = r.nodes.back();
   double boundary =
     std::max(0., end_node.distance_window_forward - end_node.distance_window_backward);
-  double total = end_node.excess_forward + boundary;
+  double total_distance = end_node.distance_forward;
+  double max_cost_excess =
+    std::max(0., total_distance - static_cast<double>(r.vehicle_info.max_cost));
+  double total = end_node.excess_forward + boundary + max_cost_excess;
 
   double combine_at_first =
     distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
@@ -198,6 +199,25 @@ TEST(distance_node, get_cost_combine_consistency)
     EXPECT_DOUBLE_EQ(get_cost_total, combine_value)
       << "split (" << k << ", " << (k + 1) << "): get_cost = " << get_cost_total
       << ", combine = " << combine_value;
+  }
+}
+
+// combine() = break-window excess + max_cost overage (additive accounting).
+TEST(distance_node, combine_additive_break_and_max_cost)
+{
+  // Arc 100 to break B with window [0, 50] (cumulative 100 → excess 50), then arcs 20 and 10.
+  // Route total = 130, max_cost = 120, so max_cost overage = 10.
+  // Expected combine value at every split = 50 (break) + 10 (max_cost) = 60.
+  auto r = make_route({100.f, 20.f, 10.f},
+                      {{0., 1e18}, {0., 50.}, {0., 1e18}, {0., 1e18}},
+                      /*max_cost=*/120.f);
+  r.run_passes();
+
+  double reference = distance_node::combine(r.nodes[0], r.nodes[1], r.vehicle_info, r.arcs[0]);
+  EXPECT_DOUBLE_EQ(reference, 60.);
+  for (size_t k = 1; k + 1 < r.nodes.size(); ++k) {
+    double c = distance_node::combine(r.nodes[k], r.nodes[k + 1], r.vehicle_info, r.arcs[k]);
+    EXPECT_DOUBLE_EQ(c, reference) << "split (" << k << ", " << (k + 1) << ") = " << c;
   }
 }
 

@@ -139,8 +139,8 @@ def model():
     return _small_data_model(n_vehicles=3)
 
 
-# fleet_size=3 → validate_range(vid, "vehicle id", 0, 3): fails for vid < 0 or vid > 3
-@pytest.mark.parametrize("vid", [-1, 4, 100])
+# fleet_size=3 → validate_range(vid, "vehicle id", 0, 3): fails for vid < 0 or vid > 2
+@pytest.mark.parametrize("vid", [-1, 3, 100])
 def test_distance_break_invalid_vehicle_id(model, vid):
     """Out-of-range vehicle id raises ValueError."""
     with pytest.raises(ValueError, match="vehicle id"):
@@ -304,9 +304,14 @@ def test_solve_break_at_break_location():
 
     routes = sol.get_route().to_pandas()
     break_loc_set = {3, 4}
+    vehicles_with_breaks = set()
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
+            vehicles_with_breaks.add(int(routes["truck_id"][i]))
             assert routes["location"][i] in break_loc_set
+    assert vehicles_with_breaks == {0, 1}, (
+        f"expected breaks on vehicles {{0, 1}}, got {vehicles_with_breaks}"
+    )
 
 
 def test_solve_multi_cycle_break_count():
@@ -328,9 +333,12 @@ def test_solve_multi_cycle_break_count():
     breaks_per_vehicle = {}
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
-            vid = routes["truck_id"][i]
+            vid = int(routes["truck_id"][i])
             breaks_per_vehicle[vid] = breaks_per_vehicle.get(vid, 0) + 1
 
+    assert set(breaks_per_vehicle) == {0, 1}, (
+        f"expected breaks on vehicles {{0, 1}}, got {set(breaks_per_vehicle)}"
+    )
     for vid, cnt in breaks_per_vehicle.items():
         assert cnt == 2
 
@@ -441,7 +449,9 @@ def test_solve_full_feature_api():
                 f"{break_loc_set}"
             )
 
-    assert breaks_per_vehicle, "no vehicle received a break"
+    assert set(breaks_per_vehicle) == {0, 1}, (
+        f"expected breaks on vehicles {{0, 1}}, got {set(breaks_per_vehicle)}"
+    )
     for vid, break_distances in breaks_per_vehicle.items():
         assert len(break_distances) == n_cycles, (
             f"vehicle {vid} has {len(break_distances)} breaks, expected {n_cycles}"
@@ -465,8 +475,13 @@ def test_solve_mixed_fleet_break_assignment():
     assert sol.get_status() == 0
 
     routes = sol.get_route().to_pandas()
+    found_break_v0 = False
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
             assert routes["truck_id"][i] == 0, (
                 f"vehicle {routes['truck_id'][i]} should not have a distance break"
             )
+            found_break_v0 = True
+    assert found_break_v0, (
+        "vehicle 0 has a distance break configured but received none"
+    )

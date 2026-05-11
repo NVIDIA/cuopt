@@ -95,15 +95,16 @@ class distance_node_t {
       \return { Distance excess of route represented by nodes prev and next } */
   static HDI double combine(const distance_node_t& prev,
                             const distance_node_t& next,
-                            [[maybe_unused]] const VehicleInfo<f_t>& vehicle_info,
+                            const VehicleInfo<f_t>& vehicle_info,
                             f_t distance_between) noexcept
   {
-    // max_cost is encoded into the end node's distance_window_backward (see set_nodes_data),
-    // so the upper_excess term below already captures any max_cost overflow.
     double arrival_window_f = prev.distance_window_forward + distance_between;
     double upper_excess     = max(0., arrival_window_f - next.distance_window_backward);
     double lower_excess     = max(0., next.distance_window_backward_min - arrival_window_f);
-    return prev.excess_forward + next.excess_backward + upper_excess + lower_excess;
+    double total_distance   = prev.distance_forward + distance_between + next.distance_backward;
+    double max_cost_excess  = max(0., total_distance - vehicle_info.max_cost);
+    return prev.excess_forward + next.excess_backward + upper_excess + lower_excess +
+           max_cost_excess;
   }
 
   HDI bool backward_feasible(const VehicleInfo<f_t>& vehicle_info,
@@ -123,11 +124,11 @@ class distance_node_t {
     double total_distance       = distance_forward + distance_backward;
     obj_cost[objective_t::COST] = total_distance;
     if (dim_info.has_distance_window) {
-      // max_cost is folded into distance_window_backward at the route end, so the upper
-      // boundary term below subsumes the max_cost overage when both are configured.
-      double upper_boundary = max(0., distance_window_forward - distance_window_backward);
-      double lower_boundary = max(0., distance_window_backward_min - distance_window_forward);
-      inf_cost[dim_t::DIST] = excess_forward + excess_backward + upper_boundary + lower_boundary;
+      double upper_boundary  = max(0., distance_window_forward - distance_window_backward);
+      double lower_boundary  = max(0., distance_window_backward_min - distance_window_forward);
+      double max_cost_excess = max(0., total_distance - vehicle_info.max_cost);
+      inf_cost[dim_t::DIST] =
+        excess_forward + excess_backward + upper_boundary + lower_boundary + max_cost_excess;
     } else if (dim_info.has_max_constraint) {
       inf_cost[dim_t::DIST] = max(0., total_distance - vehicle_info.max_cost);
     }

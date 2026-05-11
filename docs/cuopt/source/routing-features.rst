@@ -70,10 +70,11 @@ windows; the solver must insert one break stop in each window
 ``k = 0, ..., n_cycles - 1``. Each window therefore has width
 ``max_range - min_range`` (equal to ``max_range`` when ``min_range = 0``).
 
-``min_range`` is **not** a hard feasibility cutoff: unlike time-based breaks,
-the distance dimension has no "wait" analogue, so a break before the lower
-bound is allowed and instead incurs a window-violation excess that the solver
-minimises like any other infeasibility.
+Both window endpoints are hard feasibility constraints: a feasible solution
+places every break inside its window. Unlike time-based breaks the distance
+dimension has no "wait" analogue, so a break that lands before ``min_range``
+or after ``max_range`` is infeasible — the solver cannot stall the vehicle to
+shift the cumulative distance.
 
 Pass ``locations`` to restrict the eligible break locations; if omitted, any
 location is eligible.

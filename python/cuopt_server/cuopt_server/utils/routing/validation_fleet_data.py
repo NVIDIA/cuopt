@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+# Upper bound on distance-break cycles per entry. n_cycles is a multiplier that
+# expands one request entry into N break stops on the backend, so an unbounded
+# value is an amplification vector even when the request payload is small.
+MAX_DISTANCE_BREAK_CYCLES = 1000
+
+
 def test_time_window(time_windows, tw_type):
     # All time windows earliest times must be less than latest times
     for time_window in time_windows:
@@ -216,6 +222,12 @@ def validate_fleet_data(
                 return (
                     False,
                     "vehicle_distance_breaks: n_cycles must be > 0",
+                )
+            if n_cycles > MAX_DISTANCE_BREAK_CYCLES:
+                return (
+                    False,
+                    "vehicle_distance_breaks: n_cycles must be <= "
+                    f"{MAX_DISTANCE_BREAK_CYCLES}",
                 )
             if entry.locations is not None:
                 if any(loc < 0 for loc in entry.locations):
