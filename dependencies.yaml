@@ -329,8 +329,10 @@ dependencies:
           # See java/README.md for the full multi-release-JAR rationale.
           - openjdk=22.*
           - maven>=3.9.6
-          # jextract is not available on conda-forge; java/build.sh expects
-          # it to be installed manually. See java/README.md.
+          # jextract is not on conda-forge. java/panama-bindings/
+          # generate-bindings.sh auto-downloads it (cuvs pattern). For
+          # CI to be hermetic, consider preinstalling jextract in the
+          # ci-conda image; for now, the build pulls it on first run.
   test_cpp_cuopt:
     common:
       - output_types: [conda]

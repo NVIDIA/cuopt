@@ -68,6 +68,11 @@ Prerequisites:
 - Maven 3.9.6+ (`conda install -c conda-forge maven`)
 - A built `libcuopt.so` (from `../cpp/build/`)
 
+**jextract** is not available on conda-forge — `panama-bindings/generate-bindings.sh`
+auto-downloads `openjdk-22-jextract+6-47` from `download.java.net` on first
+run and extracts it to `panama-bindings/jextract-22/` (gitignored). Subsequent
+builds reuse the local copy. Set `JEXTRACT=/path/to/jextract` to override.
+
 ```bash
 # Build libcuopt.so first if not already built
 cd /path/to/cuopt

@@ -57,13 +57,8 @@ if ! command -v mvn >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! command -v "${JEXTRACT}" >/dev/null 2>&1; then
-    echo "ERROR: jextract not found at '${JEXTRACT}'." >&2
-    echo "       Download jextract for JDK 22 from:" >&2
-    echo "         https://jdk.java.net/jextract/" >&2
-    echo "       Then set JEXTRACT to the binary path, or add it to PATH." >&2
-    exit 1
-fi
+# jextract is auto-downloaded by panama-bindings/generate-bindings.sh
+# on first run (cuvs pattern). No need to require it on PATH here.
 
 # 2. libcuopt.so check
 if [[ ! -f "${CMAKE_PREFIX_PATH}/libcuopt.so" ]]; then
