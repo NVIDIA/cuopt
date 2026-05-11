@@ -96,4 +96,15 @@ jobs:
       - name: Run tests
         env:
           SCRIPT: ${{ inputs.script }}
-        run: bash "$SCRIPT"
+        run: |
+          script_path="$(realpath "$SCRIPT")"
+          ci_dir="$(realpath ci)"
+
+          # Use `realpath` to expand out both the script path and the ci path and compare to make sure
+          # that user isn't giving a relative path to a file outside of `ci/`
+          if [[ "$script_path" != "$ci_dir"/*.sh ]]; then
+            echo "::error::Invalid script path '$SCRIPT'. Expected an existing ci/*.sh script inside the checkout"
+            exit 1
+          fi
+
+          bash "$script_path"
