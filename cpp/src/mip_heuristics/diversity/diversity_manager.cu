@@ -599,22 +599,20 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-  rins.enable();
+
+  if (omp_get_num_threads() > CUOPT_MIP_RINS_REQUIRED_THREAD_COUNT) { rins.enable(); }
 
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
-    rins.stop_rins();
     population.add_external_solutions_to_population();
     return population.best_feasible();
   }
   if (check_b_b_preemption()) {
-    rins.stop_rins();
     population.add_external_solutions_to_population();
     return population.best_feasible();
   }
 
   run_fp_alone();
-  rins.stop_rins();
   population.add_external_solutions_to_population();
   return population.best_feasible();
 };

@@ -22,6 +22,7 @@
 #include <utilities/timer.hpp>
 
 #include <unordered_set>
+#include <utilities/omp_helpers.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -860,18 +861,16 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   bound_presolve.settings.iteration_limit = 50;
   bound_presolve.settings.time_limit      = timer.remaining_time();
 
-  size_t num_threads = bound_presolve.settings.num_threads < 0
-                         ? 0.2 * omp_get_max_threads()
-                         : bound_presolve.settings.num_threads;
-  num_threads        = std::clamp<size_t>(num_threads, 1, 8);
+  size_t num_tasks = bound_presolve.settings.num_tasks < 0 ? omp_get_num_threads() - 1
+                                                           : bound_presolve.settings.num_tasks;
 
   // Create a vector of multi_probe_t objects
   std::vector<multi_probe_t<i_t, f_t>> multi_probe_presolve_pool;
-  std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(num_threads);
-  std::vector<std::vector<substitution_t<i_t, f_t>>> substitution_vector_pool(num_threads);
+  std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(num_tasks);
+  std::vector<std::vector<substitution_t<i_t, f_t>>> substitution_vector_pool(num_tasks);
 
   // Initialize multi_probe_presolve_pool
-  for (size_t i = 0; i < num_threads; i++) {
+  for (size_t i = 0; i < num_tasks; i++) {
     multi_probe_presolve_pool.emplace_back(bound_presolve.context);
     multi_probe_presolve_pool[i].resize(problem);
     multi_probe_presolve_pool[i].compute_stats = true;
@@ -890,23 +889,28 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // are visible before any per-thread kernel can reference that memory.
   problem.handle_ptr->sync_stream();
 
-// Main parallel loop
-#pragma omp parallel num_threads(num_threads)
-  {
-    for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
-      if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
-      size_t step_end = std::min(step_start + step_size, priority_indices.size());
+  CUOPT_LOG_INFO("Running probing cache with %zu tasks", num_tasks);
 
-#pragma omp for
-      for (size_t i = step_start; i < step_end; ++i) {
+  // Main parallel loop
+  for (size_t step_start = 0; step_start < priority_indices.size(); step_start += step_size) {
+    if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
+    size_t step_end = std::min(step_start + step_size, priority_indices.size());
+
+#pragma omp taskloop num_tasks(num_tasks) default(shared)
+    for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
+      size_t n     = step_end - step_start;
+      size_t begin = step_start + std::floor(static_cast<f_t>(n) * task_id / num_tasks);
+      size_t end   = step_start + std::floor(static_cast<f_t>(n) * (task_id + 1) / num_tasks);
+      auto& multi_probe_presolve = multi_probe_presolve_pool[task_id];
+      auto& modification_vector  = modification_vector_pool[task_id];
+      auto& substitution_vector  = substitution_vector_pool[task_id];
+      if (timer.check_time_limit()) { continue; }
+
+      for (size_t i = begin; i < end; ++i) {
         auto var_idx = priority_indices[i];
         if (timer.check_time_limit()) { continue; }
 
-        int thread_idx = omp_get_thread_num();
-        CUOPT_LOG_TRACE("Computing probing cache for var %d on thread %d", var_idx, thread_idx);
-
-        auto& multi_probe_presolve = multi_probe_presolve_pool[thread_idx];
-
+        CUOPT_LOG_TRACE("Computing probing cache for var %d on task %zu", var_idx, task_id);
         compute_cache_for_var<i_t, f_t>(var_idx,
                                         bound_presolve,
                                         problem,
@@ -916,30 +920,29 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                                         n_of_implied_singletons,
                                         n_of_cached_probings,
                                         problem_is_infeasible,
-                                        modification_vector_pool[thread_idx],
-                                        substitution_vector_pool[thread_idx],
+                                        modification_vector,
+                                        substitution_vector,
                                         timer,
                                         problem.handle_ptr->get_device());
       }
+    }  // implicit barrier that waits for all iterations to finish before proceeding
+
+    // TODO when we have determinism, check current threads work/time counter and filter queue
+    // items that are smaller or equal to that
+    apply_modification_queue_to_problem(modification_vector_pool, problem);
+    // copy host bounds again, because we changed some problem bounds
+    raft::copy(h_var_bounds.data(),
+               problem.variable_bounds.data(),
+               h_var_bounds.size(),
+               problem.handle_ptr->get_stream());
+    problem.handle_ptr->sync_stream();
+    if (n_of_implied_singletons - last_it_implied_singletons <
+        (size_t)std::max(2, (min(100, problem.n_variables / 50)))) {
+      early_exit = true;
     }
-#pragma omp single
-    {
-      // TODO when we have determinism, check current threads work/time counter and filter queue
-      // items that are smaller or equal to that
-      apply_modification_queue_to_problem(modification_vector_pool, problem);
-      // copy host bounds again, because we changed some problem bounds
-      raft::copy(h_var_bounds.data(),
-                 problem.variable_bounds.data(),
-                 h_var_bounds.size(),
-                 problem.handle_ptr->get_stream());
-      problem.handle_ptr->sync_stream();
-      if (n_of_implied_singletons - last_it_implied_singletons <
-          (size_t)std::max(2, (min(100, problem.n_variables / 50)))) {
-        early_exit = true;
-      }
-      last_it_implied_singletons = n_of_implied_singletons;
-    }
+    last_it_implied_singletons = n_of_implied_singletons;
   }  // end of step
+
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
   CUOPT_LOG_DEBUG("Total number of cached probings %lu number of implied singletons %lu",
                   n_of_cached_probings.load(),

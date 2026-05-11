@@ -162,8 +162,7 @@ class branch_and_bound_t {
   const simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
-  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
-  std::atomic<bool> signal_extend_cliques_{false};
+  omp_atomic_t<bool> signal_extend_cliques_{false};
 
   work_limit_context_t work_unit_context_{"B&B"};
 
