@@ -1115,10 +1115,8 @@ TEST(pdlp_class, batch_per_constraint_residual_different_rhs_stable3)
   // per-row sanity check evaluates each solution against its own constraint bounds.
   auto climber0_problem = cuopt::mps_parser::parse_mps<int, double>(path);
   auto climber1_problem = cuopt::mps_parser::parse_mps<int, double>(path);
-  climber1_problem.set_constraint_lower_bounds(climber1_lb.data(),
-                                               static_cast<int>(climber1_lb.size()));
-  climber1_problem.set_constraint_upper_bounds(climber1_ub.data(),
-                                               static_cast<int>(climber1_ub.size()));
+  climber1_problem.set_constraint_lower_bounds({climber1_lb.data(), climber1_lb.size()});
+  climber1_problem.set_constraint_upper_bounds({climber1_ub.data(), climber1_ub.size()});
 
   const auto primal_0 =
     extract_subvector(batch_sol.get_primal_solution(), 0 * primal_size, primal_size);
@@ -1583,10 +1581,10 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
 
-  const auto& original_lb = op_problem.get_constraint_lower_bounds();
-  const auto& original_ub = op_problem.get_constraint_upper_bounds();
-  const int n_constraints = op_problem.get_n_constraints();
-  const int n_variables   = op_problem.get_n_variables();
+  const auto& original_lb    = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub    = op_problem.get_constraint_upper_bounds();
+  const size_t n_constraints = op_problem.get_n_constraints();
+  const size_t n_variables   = op_problem.get_n_variables();
 
   const std::vector<double> rhs_relaxations = {
     1000.0, 0.0, 2500.0, 1.0, 500.0, 250.0, 100.0, 10.0, 10000.0, 5000.0, 50.0};
@@ -1612,14 +1610,14 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
     std::vector<double> climber_lb = original_lb;
     std::vector<double> climber_ub = original_ub;
     const double relaxation        = rhs_relaxations[i];
-    for (int c = 0; c < n_constraints; ++c) {
+    for (size_t c = 0; c < n_constraints; ++c) {
       if (std::isfinite(climber_lb[c])) { climber_lb[c] -= relaxation; }
       if (std::isfinite(climber_ub[c])) { climber_ub[c] += relaxation; }
     }
 
     auto ref_problem = op_problem;
-    ref_problem.set_constraint_lower_bounds(climber_lb.data(), n_constraints);
-    ref_problem.set_constraint_upper_bounds(climber_ub.data(), n_constraints);
+    ref_problem.set_constraint_lower_bounds({climber_lb.data(), n_constraints});
+    ref_problem.set_constraint_upper_bounds({climber_ub.data(), n_constraints});
     ref_problems.push_back(ref_problem);
 
     per_climber_lb.insert(per_climber_lb.end(), climber_lb.begin(), climber_lb.end());
@@ -1694,10 +1692,10 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
   solver_settings.set_optimality_tolerance(kOptimalityTolerance);
   solver_settings.presolver = presolver_t::None;
 
-  const auto& original_lb = op_problem.get_constraint_lower_bounds();
-  const auto& original_ub = op_problem.get_constraint_upper_bounds();
-  const int n_constraints = op_problem.get_n_constraints();
-  const int n_variables   = op_problem.get_n_variables();
+  const auto& original_lb    = op_problem.get_constraint_lower_bounds();
+  const auto& original_ub    = op_problem.get_constraint_upper_bounds();
+  const size_t n_constraints = op_problem.get_n_constraints();
+  const size_t n_variables   = op_problem.get_n_variables();
 
   const std::vector<double> rhs_relaxations = {
     0.0, 1.0, 10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
@@ -1723,14 +1721,14 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
     std::vector<double> climber_lb = original_lb;
     std::vector<double> climber_ub = original_ub;
     const double relaxation        = rhs_relaxations[i];
-    for (int c = 0; c < n_constraints; ++c) {
+    for (size_t c = 0; c < n_constraints; ++c) {
       if (std::isfinite(climber_lb[c])) { climber_lb[c] -= relaxation; }
       if (std::isfinite(climber_ub[c])) { climber_ub[c] += relaxation; }
     }
 
     auto ref_problem = op_problem;
-    ref_problem.set_constraint_lower_bounds(climber_lb.data(), n_constraints);
-    ref_problem.set_constraint_upper_bounds(climber_ub.data(), n_constraints);
+    ref_problem.set_constraint_lower_bounds({climber_lb.data(), n_constraints});
+    ref_problem.set_constraint_upper_bounds({climber_ub.data(), n_constraints});
     ref_problems.push_back(ref_problem);
 
     per_climber_lb.insert(per_climber_lb.end(), climber_lb.begin(), climber_lb.end());
