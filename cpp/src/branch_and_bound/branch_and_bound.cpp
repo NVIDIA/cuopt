@@ -1711,8 +1711,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
-#pragma omp taskwait
-
   worker->set_inactive();
   bfs_worker_pool_.return_worker_to_pool(worker);
 }
