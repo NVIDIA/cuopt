@@ -34,9 +34,12 @@ jobs:
     container:
       image: python:3.14-slim
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install dependencies
         run: |
           apt-get update && apt-get install -y --no-install-recommends curl
@@ -54,9 +57,12 @@ jobs:
         run: |
           set -euo pipefail
           # Resolve PR number from the pull-request/{N} branch ref.
-          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          # Read $GITHUB_REF via env, not a workflow expression — zizmor
+          # flags inlining github.ref into a shell as a code-injection
+          # vector.
+          PR_NUMBER=$(echo "$GITHUB_REF" | sed 's|refs/heads/pull-request/||')
           if ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
-              echo "ERROR: could not parse PR number from ${{ github.ref }}" >&2
+              echo "ERROR: could not parse PR number from $GITHUB_REF" >&2
               exit 1
           fi
           export PR_NUMBER
