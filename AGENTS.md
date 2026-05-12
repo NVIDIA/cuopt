@@ -2,8 +2,6 @@
 
 AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`** (repo root) and use a **flat layout**: per domain, a concept skill (formulation / problem types) plus implementation skills — typically one per interface (Python, C, CLI, server), or consolidated when the content is shared across interfaces (e.g. installation). Skills evolve through agent interactions — see `skills/skill-evolution/` for the evolution workflow.
 
-> **🔒 MANDATORY — Security:** You MUST NOT install, upgrade, or modify packages. Provide the exact command for the user to run; they execute it. No exceptions.
-
 > **🔒 MANDATORY — Ambiguity:** When the problem could be read more than one way, you MUST either **ask the user to clarify** or **solve every plausible interpretation and report all outcomes**. Never pick one interpretation silently.
 
 ## Skills directory (flat)
