@@ -68,27 +68,36 @@ export RAPIDS_TESTS_DIR
 mkdir -p "${RAPIDS_TESTS_DIR}"
 
 EXITCODE=0
+FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
 # Run CLI tests
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
 
 # Run Python tests
 timeout 30m ./ci/run_cuopt_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
-  --verbose --capture=no
+  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt (wheel)")
 
 # run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
-    ./ci/thirdparty-testing/run_jump_tests.sh
-    ./ci/thirdparty-testing/run_cvxpy_tests.sh
-    ./ci/thirdparty-testing/run_pulp_tests.sh
-    ./ci/thirdparty-testing/run_pyomo_tests.sh
+    ./ci/thirdparty-testing/run_jump_tests.sh || FAILED_STEPS+=("thirdparty jump")
+    ./ci/thirdparty-testing/run_cvxpy_tests.sh || FAILED_STEPS+=("thirdparty cvxpy")
+    ./ci/thirdparty-testing/run_pulp_tests.sh || FAILED_STEPS+=("thirdparty pulp")
+    ./ci/thirdparty-testing/run_pyomo_tests.sh || FAILED_STEPS+=("thirdparty pyomo")
 fi
 
 # Generate nightly test report
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
 generate_nightly_report "wheel-python" --with-python-version
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
 
 exit ${EXITCODE}

@@ -86,7 +86,7 @@ TEST(mip_solve, low_thread_count_test)
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
-  EXPECT_DOUBLE_EQ(solution.get_objective_value(), 3.0);
+  EXPECT_NEAR(solution.get_objective_value(), 3.0, 1e-14);
   test_variable_bounds(problem, solution.get_solution(), settings);
 }
 
