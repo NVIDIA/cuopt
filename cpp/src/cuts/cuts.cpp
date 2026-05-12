@@ -1031,7 +1031,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     bool absorbs_binary_coeff;  // True if a direct x coefficient was folded into this arc.
   };
 
-  auto is_binary_variable = [&](i_t j) {
+  auto is_zero_one_integer_variable = [&](i_t j) {
     return var_types[j] == variable_type_t::INTEGER && std::abs(lp.lower[j]) <= bound_tol &&
            std::abs(lp.upper[j] - 1.0) <= bound_tol;
   };
@@ -1147,7 +1147,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     if (is_slack_[j]) { continue; }
     const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
     if (std::abs(coeff) <= tol) { continue; }
-    if (is_binary_variable(j)) {
+    if (is_zero_one_integer_variable(j)) {
       if (binary_coefficients.emplace(j, coeff).second) {
         binary_columns.push_back(j);
       } else {
@@ -1217,7 +1217,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
       const i_t end   = variable_bounds.upper_offsets[j + 1];
       for (i_t p = start; p < end; p++) {
         const i_t x_col = variable_bounds.upper_variables[p];
-        if (!is_binary_variable(x_col)) { continue; }
+        if (!is_zero_one_integer_variable(x_col)) { continue; }
         const f_t gamma = variable_bounds.upper_weights[p];
         const f_t alpha = variable_bounds.upper_biases[p];
         if (!std::isfinite(gamma) || !std::isfinite(alpha) || lower_j <= -inf) { continue; }
@@ -1277,7 +1277,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
       const i_t end   = variable_bounds.lower_offsets[j + 1];
       for (i_t p = start; p < end; p++) {
         const i_t x_col = variable_bounds.lower_variables[p];
-        if (!is_binary_variable(x_col)) { continue; }
+        if (!is_zero_one_integer_variable(x_col)) { continue; }
         const f_t gamma = variable_bounds.lower_weights[p];
         const f_t alpha = variable_bounds.lower_biases[p];
         if (!std::isfinite(gamma) || !std::isfinite(alpha) || upper_j >= inf) { continue; }
@@ -3877,8 +3877,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       if (row_len < 2) { continue; }
       if (num_integer_in_row[i] < 1) { continue; }
       const f_t a_ij          = lp.A.x[p];
-      const f_t slack_lower   = lp.lower[slack_map_[i]];
-      const f_t slack_upper   = lp.upper[slack_map_[i]];
+      const i_t slack_index   = slack_map_[i];
+      const f_t slack_lower   = slack_index >= 0 ? lp.lower[slack_index] : 0.0;
+      const f_t slack_upper   = slack_index >= 0 ? lp.upper[slack_index] : 0.0;
       const f_t slack_coeff_i = slack_coeff[i];
       const f_t sigma_slack_lower =
         slack_coeff_i > 0.0 ? slack_coeff_i * slack_lower : slack_coeff_i * slack_upper;
@@ -3977,8 +3978,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       if (row_len < 2) { continue; }
       if (num_integer_in_row[i] < 1) { continue; }
       const f_t a_ij          = lp.A.x[p];
-      const f_t slack_lower   = lp.lower[slack_map_[i]];
-      const f_t slack_upper   = lp.upper[slack_map_[i]];
+      const i_t slack_index   = slack_map_[i];
+      const f_t slack_lower   = slack_index >= 0 ? lp.lower[slack_index] : 0.0;
+      const f_t slack_upper   = slack_index >= 0 ? lp.upper[slack_index] : 0.0;
       const f_t slack_coeff_i = slack_coeff[i];
       const f_t sigma_slack_lower =
         slack_coeff_i > 0.0 ? slack_coeff_i * slack_lower : slack_coeff_i * slack_upper;
