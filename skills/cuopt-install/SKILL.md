@@ -13,7 +13,7 @@ Install cuOpt to *use* it from Python, C, or as a REST server. For building cuOp
 - **GPU**: NVIDIA Compute Capability ≥ 7.0 (Volta or newer). Examples: V100, A100, H100, RTX 20xx/30xx/40xx. Not supported: GTX 10xx (Pascal).
 - **CUDA**: 12.x or 13.x. The package CUDA suffix must match the runtime CUDA (e.g. `cuopt-cu12` / `libcuopt-cu12` with CUDA 12).
 - **Driver**: NVIDIA driver compatible with the CUDA version.
-- Python API and C API are separate installables; having one does not provide the other.
+- `cuopt-cuXX` (Python) depends on `libcuopt-cuXX` (C), so installing the Python package also installs the C library and headers. Installing `libcuopt-cuXX` on its own does **not** install the Python API.
 
 ## Required questions
 
@@ -56,7 +56,7 @@ dm = routing.DataModel(n_locations=3, n_fleet=1, n_orders=2)
 
 ## C API
 
-The C API ships as a separate package from Python. **Choose one** — do not run both.
+The C API ships in `libcuopt-cuXX`, which is also pulled in as a dependency of `cuopt-cuXX` — so if you already installed the Python package, the C library and headers are already present. Install `libcuopt` standalone only when you want the C API without Python. **Choose one** of pip or conda — do not run both.
 
 ### pip
 
@@ -120,7 +120,7 @@ curl -s http://localhost:8000/cuopt/health | jq .
 
 - `No module named 'cuopt'` → check `pip list | grep cuopt`, `which python`, reinstall with the correct extra-index-url.
 - CUDA not available → run `nvidia-smi` and `nvcc --version`; ensure the package CUDA suffix (`cu12` vs `cu13`) matches the installed CUDA.
-- Mixing Python and C → these are separate packages; installing `cuopt-cuXX` does **not** install `libcuopt-cuXX`, and vice versa.
+- Python vs C → `cuopt-cuXX` pulls in `libcuopt-cuXX` as a transitive dependency, so the C library (`libcuopt.so`) and headers (`cuopt_c.h`) are already available after installing the Python package. The reverse is **not** true: `libcuopt-cuXX` alone does not install the Python bindings.
 
 ## See also
 
