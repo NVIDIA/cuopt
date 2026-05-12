@@ -424,7 +424,7 @@ int main(int argc, char* argv[])
     //   smt_file >> smt_active;
     //   if (smt_active) { num_cpu_threads /= 2; }
     // }
-    num_cpu_threads = std::max(num_cpu_threads, 1);
+    num_cpu_threads = std::max(num_cpu_threads, 2);
   }
 
   if (program.is_used("--out-dir")) {

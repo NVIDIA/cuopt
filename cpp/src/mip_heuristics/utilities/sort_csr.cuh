@@ -50,6 +50,7 @@ void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
                                       op_problem.get_constraint_matrix_offsets().data() + 1,
                                       stream_view);
   RAFT_CHECK_CUDA(stream_view);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
 }
 
 }  // namespace linear_programming::detail
