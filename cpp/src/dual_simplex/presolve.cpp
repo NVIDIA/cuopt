@@ -828,7 +828,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
-  if (settings.barrier_presolve) {
+  if (settings.barrier_presolve && free_variables > 0) {
     std::vector<i_t> constraints_to_check;
     std::vector<i_t> current_free_variables;
     std::vector<i_t> row_marked(problem.num_rows, 0);
@@ -1137,7 +1137,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
   problem.Q.check_matrix("Before free variable expansion");
 
-  // For QPs using the augmented system, keep free variables as-is rather than
+  // For QPs, keep free variables as-is rather than
   // splitting x = v - w. The barrier solver handles them natively with a
   // static regularizer on the diagonal instead of z/x complementarity terms.
   if (settings.barrier_presolve && free_variables > 0 && problem.Q.n > 0) {
