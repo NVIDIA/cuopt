@@ -30,6 +30,7 @@ file and the poster skips commenting.
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,9 +49,33 @@ from pr_comment_helper import COMMENT_MARKER  # noqa: E402
 MAX_BODY_CHARS = 60000
 MAX_ROWS_PER_BUCKET = 80
 MAX_ERROR_SNIPPET = 600
+# Crash entries get their full message in a code block, capped only at a
+# generous limit since the diagnostic line is the whole point of the entry.
+MAX_CRASH_MESSAGE_CHARS = 2000
+
+# Crashes write a JUnit case named "PROCESS_CRASH" with a message
+# containing "crashed with SIG..." (see ci/utils/crash_helpers.sh from
+# PR #1191).  Match either fingerprint defensively.
+_CRASH_NAME = "PROCESS_CRASH"
+_CRASH_MESSAGE_RE = re.compile(r"crashed with SIG[A-Z]+", re.IGNORECASE)
 
 
-def _short_msg(msg, limit=140):
+def _is_crash(entry):
+    if entry.get("name") == _CRASH_NAME:
+        return True
+    return bool(_CRASH_MESSAGE_RE.search(entry.get("message", "") or ""))
+
+
+def _split_crashes(failures):
+    """Partition a failures list into ``(crashes, non_crash)``."""
+    crashes = []
+    non_crash = []
+    for entry in failures:
+        (crashes if _is_crash(entry) else non_crash).append(entry)
+    return crashes, non_crash
+
+
+def _short_msg(msg, limit=300):
     """Single-line summary of an error message for table cells."""
     if not msg:
         return ""
@@ -155,6 +180,13 @@ def build_comment_body(
     if not new_failures and not recurring and not flaky:
         return ""
 
+    # Pull crashes out so they render in a dedicated CAUTION block above
+    # the normal NEW/KNOWN tables and don't get drowned out by ordinary
+    # assertion failures.
+    new_crashes, new_failures = _split_crashes(new_failures)
+    recurring_crashes, recurring = _split_crashes(recurring)
+    all_crashes = new_crashes + recurring_crashes
+
     broken_on_nightly, known_flaky_nightly, flaked_in_pr_run = (
         _classify_known_subgroups(recurring, flaky)
     )
@@ -164,6 +196,8 @@ def build_comment_body(
     parts.append("")
 
     headline = []
+    if all_crashes:
+        headline.append(f"**{len(all_crashes)} CRASH(es)**")
     if new_failures:
         headline.append(f"**{len(new_failures)} NEW** failure(s)")
     known_total = (
@@ -196,6 +230,39 @@ def build_comment_body(
         parts.append(grid_md)
         parts.append("\n</details>")
         parts.append("")
+
+    # --- CRASHES (top of comment, GitHub red-alert callout) ---
+    if all_crashes:
+        parts.append("> [!CAUTION]")
+        parts.append(
+            "> **CRASHES detected — a test process was terminated by a signal mid-run.**"
+        )
+        parts.append(
+            "> These need urgent investigation.  The JUnit XML was not "
+            "finalized, so the specific test that triggered the crash "
+            "may not be identified; check the workflow run log for the "
+            "last test invoked before the signal."
+        )
+        parts.append("")
+        for entry in all_crashes:
+            heading_tag = (
+                "NEW" if entry.get("pr_classification") == "new" else "KNOWN"
+            )
+            parts.append(
+                f"#### `{entry.get('suite', '?')}` — "
+                f"`{entry.get('name', 'PROCESS_CRASH')}` "
+                f"_[{entry['test_type']} / {entry['matrix_label']}]_ "
+                f"— {heading_tag}"
+            )
+            msg = (entry.get("message") or "").strip()
+            if msg:
+                if len(msg) > MAX_CRASH_MESSAGE_CHARS:
+                    msg = msg[:MAX_CRASH_MESSAGE_CHARS] + "\n…[truncated]"
+                parts.append("")
+                parts.append("```")
+                parts.append(msg)
+                parts.append("```")
+            parts.append("")
 
     # --- NEW failures ---
     if new_failures:
