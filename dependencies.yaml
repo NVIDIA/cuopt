@@ -202,6 +202,7 @@ files:
     extras:
       table: project
     includes:
+      - depends_on_cuopt
       - run_cuopt_sh_client
 channels:
   - rapidsai-nightly
