@@ -12,6 +12,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   pr-builder:
     needs:
@@ -32,12 +34,16 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
-    secrets: inherit
+    permissions:
+      contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
     if: always()
     with:
       needs: ${{ toJSON(needs) }}
   check-lean-ci:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     outputs:
       lean_ci_enabled: ${{ steps.check-label.outputs.lean_ci_enabled }}
@@ -48,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Extract PR number from branch name (pull-request/123 -> 123)
-          PR_NUMBER=$(echo "${{ github.ref }}" | sed 's|refs/heads/pull-request/||')
+          PR_NUMBER=$(echo "$GITHUB_REF" | sed 's|refs/heads/pull-request/||')
           echo "Checking PR #$PR_NUMBER for lean-ci label..."
 
           # Check if the PR has the 'lean-ci' label
@@ -61,12 +67,16 @@ jobs:
           fi
 
   prevent-merge-with-lean-ci:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     needs: check-lean-ci
     steps:
       - name: Check lean-ci status
+        env:
+          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
-          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+          if [ "$LEAN_CI" == "true" ]; then
             echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
             echo "Lean CI is only for testing purposes and should not be merged."
             echo "Please remove the 'lean-ci' label and run full CI before merging."
@@ -77,6 +87,8 @@ jobs:
           fi
   compute-matrix-filters:
     needs: check-lean-ci
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
@@ -88,8 +100,10 @@ jobs:
     steps:
       - name: Set matrix filters
         id: set-filters
+        env:
+          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
-          if [ "${{ needs.check-lean-ci.outputs.lean_ci_enabled }}" == "true" ]; then
+          if [ "$LEAN_CI" == "true" ]; then
             echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.11\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
@@ -106,7 +120,11 @@ jobs:
           fi
 
   changed-files:
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/changed-files.yaml@main
     with:
       files_yaml: |
@@ -351,7 +369,8 @@ jobs:
           - '!ucf/**'
           - '!utilities/**'
   checks:
-    secrets: inherit
+    permissions:
+      contents: read
     uses: rapidsai/shared-workflows/.github/workflows/checks.yaml@main
     with:
       enable_check_generated_files: false
@@ -362,7 +381,13 @@ jobs:
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: pull-request
@@ -370,6 +395,12 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files, compute-matrix-filters]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
@@ -389,7 +420,13 @@ jobs:
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
       fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: pull-request
@@ -397,6 +434,12 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
     with:
@@ -413,7 +456,13 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   docs-build:
     needs: [conda-python-build, changed-files]
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     with:
@@ -427,7 +476,13 @@ jobs:
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
@@ -439,7 +494,13 @@ jobs:
   wheel-build-cuopt:
     needs: [wheel-build-libcuopt, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -449,6 +510,12 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
@@ -465,7 +532,13 @@ jobs:
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -478,7 +551,13 @@ jobs:
   wheel-build-cuopt-sh-client:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: pull-request
@@ -491,6 +570,12 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_sh_client_filter }}
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
@@ -506,7 +591,13 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   test-self-hosted-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: ./.github/workflows/self_hosted_service_test.yaml
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
