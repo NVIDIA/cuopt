@@ -181,6 +181,8 @@ void extract_probing_implied_bounds(
 template <typename i_t, typename f_t>
 solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 {
+  solution_t<i_t, f_t> sol(*context.problem_ptr);
+
   //  we need to keep original problem const
   cuopt_assert(context.problem_ptr != nullptr, "invalid problem pointer");
   context.problem_ptr->tolerances = context.settings.get_tolerances();
@@ -191,7 +193,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   diversity_manager_t<i_t, f_t> dm(context);
   if (context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem fully reduced in presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     for (auto callback : context.settings.get_mip_callbacks()) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
@@ -202,6 +203,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   dm.timer                   = timer_;
   const bool run_presolve    = context.settings.presolver != presolver_t::None;
   f_t time_limit             = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
@@ -227,14 +229,13 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   if (!presolve_success) {
     CUOPT_LOG_INFO("Problem proven infeasible in presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   if (run_presolve && context.problem_ptr->empty) {
     CUOPT_LOG_INFO("Problem full reduced in presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.set_problem_fully_reduced();
     for (auto callback : context.settings.get_mip_callbacks()) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
@@ -248,7 +249,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   if (timer_.check_time_limit()) {
     CUOPT_LOG_INFO("Time limit reached after presolve");
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     context.stats.total_solve_time = timer_.elapsed_time();
     context.problem_ptr->post_process_solution(sol);
     return sol;
@@ -265,7 +265,6 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     auto opt_sol = solve_lp_with_method<i_t, f_t>(*context.problem_ptr, settings, lp_timer);
 
-    solution_t<i_t, f_t> sol(*context.problem_ptr);
     sol.copy_new_assignment(
       host_copy(opt_sol.get_primal_solution(), context.problem_ptr->handle_ptr->get_stream()));
     if (opt_sol.get_termination_status() == pdlp_termination_status_t::Optimal ||
@@ -284,10 +283,11 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.problem_ptr->post_process_solution(sol);
     return sol;
   }
+
   context.work_unit_scheduler_.register_context(context.gpu_heur_loop);
 
-  namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  std::future<dual_simplex::mip_status_t> branch_and_bound_status_future;
+  namespace dual_simplex                             = cuopt::linear_programming::dual_simplex;
+  dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
   if (context.problem_ptr->is_objective_integral()) {
@@ -302,8 +302,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   dual_simplex::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
 
-  bool run_bb = !context.settings.heuristics_only;
-  if (run_bb) {
+  i_t num_threads = omp_get_num_threads();
+
+  if (!context.settings.heuristics_only) {
     // Convert the presolved problem to dual_simplex::user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
     // Resize the solution now that we know the number of columns/variables
@@ -317,6 +318,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // Fill in the settings for branch and bound
     branch_and_bound_settings.time_limit           = timer_.get_time_limit();
     branch_and_bound_settings.node_limit           = context.settings.node_limit;
+    branch_and_bound_settings.num_threads          = std::max(num_threads - 1, 1);
     branch_and_bound_settings.print_presolve_stats = false;
     branch_and_bound_settings.absolute_mip_gap_tol = context.settings.tolerances.absolute_mip_gap;
     branch_and_bound_settings.relative_mip_gap_tol = context.settings.tolerances.relative_mip_gap;
@@ -356,21 +358,18 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         ? 2
         : context.settings.reduced_cost_strengthening;
 
-    if (context.settings.num_cpu_threads < 0) {
-      branch_and_bound_settings.num_threads = std::max(1, omp_get_max_threads() - 1);
-    } else {
-      branch_and_bound_settings.num_threads = std::max(1, context.settings.num_cpu_threads);
-    }
-
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
       std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::solution_callback,
                 &solution_helper,
                 std::placeholders::_1,
                 std::placeholders::_2);
-    // heuristic_preemption_callback is needed in both modes to properly stop the heuristic thread
+
+    // heuristic_preemption_callback is needed in both modes to properly stop the heuristic
+    // thread
     branch_and_bound_settings.heuristic_preemption_callback = std::bind(
       &branch_and_bound_solution_helper_t<i_t, f_t>::preempt_heuristic_solver, &solution_helper);
+
     if (context.settings.determinism_mode == CUOPT_MODE_OPPORTUNISTIC) {
       branch_and_bound_settings.set_simplex_solution_callback =
         std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::set_simplex_solution,
@@ -444,33 +443,34 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
     if (timer_.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached during B&B setup");
-      solution_t<i_t, f_t> sol(*context.problem_ptr);
       context.stats.total_solve_time = timer_.elapsed_time();
       context.problem_ptr->post_process_solution(sol);
       return sol;
     }
-
-    // Fork a thread for branch and bound
-    // std::async and std::future allow us to get the return value of bb::solve()
-    // without having to manually manage the thread
-    // std::future.get() performs a join() operation to wait until the return status is available
-    branch_and_bound_status_future = std::async(std::launch::async,
-                                                &dual_simplex::branch_and_bound_t<i_t, f_t>::solve,
-                                                branch_and_bound.get(),
-                                                std::ref(branch_and_bound_solution));
   }
 
-  // Start the primal heuristics
-  context.diversity_manager_ptr = &dm;
-  auto sol                      = dm.run_solver();
-  if (run_bb) {
-    // Wait for the branch and bound to finish
-    auto bb_status = branch_and_bound_status_future.get();
+#pragma omp taskgroup
+  {
+    if (!context.settings.heuristics_only) {
+#pragma omp task default(shared)
+      {
+        branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
+      }
+    }
+
+    // Start the primal heuristics
+    context.diversity_manager_ptr = &dm;
+    sol                           = dm.run_solver();
+  }  // implicit barrier for all tasks created in B&B and heuristics
+
+  if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {
       context.stats.set_solution_bound(
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound));
     }
-    if (bb_status == dual_simplex::mip_status_t::INFEASIBLE) { sol.set_problem_fully_reduced(); }
+    if (branch_and_bound_status == dual_simplex::mip_status_t::INFEASIBLE) {
+      sol.set_problem_fully_reduced();
+    }
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
     context.stats.num_simplex_iterations = branch_and_bound_solution.simplex_iterations;
   }

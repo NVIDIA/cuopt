@@ -1417,45 +1417,45 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_t<i_t, f_t>::create_cpu_climber(
 }
 
 template <typename i_t, typename f_t>
-static bool cpufj_solve_loop(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
+void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu, f_t in_time_limit)
 {
-  i_t local_mins       = 0;
-  auto loop_start      = std::chrono::high_resolution_clock::now();
-  auto time_limit      = std::chrono::milliseconds((int)(in_time_limit * 1000));
+  i_t local_mins  = 0;
+  auto loop_start = std::chrono::high_resolution_clock::now();
+  auto time_limit = std::chrono::milliseconds(static_cast<i_t>(std::floor(in_time_limit * 1000.0)));
   auto loop_time_start = std::chrono::high_resolution_clock::now();
 
   // Initialize feature tracking
-  fj_cpu.last_feature_log_time = loop_start;
-  fj_cpu.prev_best_objective   = fj_cpu.h_best_objective;
-  fj_cpu.iterations_since_best = 0;
+  fj_cpu->last_feature_log_time = loop_start;
+  fj_cpu->prev_best_objective   = fj_cpu->h_best_objective;
+  fj_cpu->iterations_since_best = 0;
 
-  while (!fj_cpu.halted && !fj_cpu.preemption_flag.load()) {
+  while (!fj_cpu->halted && !fj_cpu->preemption_flag.load()) {
     // Check if 5 seconds have passed
     auto now = std::chrono::high_resolution_clock::now();
     if (in_time_limit < std::numeric_limits<f_t>::infinity() &&
         now - loop_time_start > time_limit) {
       CUOPT_LOG_TRACE("%sTime limit of %.4f seconds reached, breaking loop at iteration %d",
-                      fj_cpu.log_prefix.c_str(),
+                      fj_cpu->log_prefix.c_str(),
                       time_limit.count() / 1000.f,
-                      fj_cpu.iterations);
+                      fj_cpu->iterations);
       break;
     }
-    if (fj_cpu.iterations >= fj_cpu.settings.iteration_limit) {
+    if (fj_cpu->iterations >= fj_cpu->settings.iteration_limit) {
       CUOPT_LOG_TRACE("%sIteration limit of %d reached, breaking loop at iteration %d",
-                      fj_cpu.log_prefix.c_str(),
-                      fj_cpu.settings.iteration_limit,
-                      fj_cpu.iterations);
+                      fj_cpu->log_prefix.c_str(),
+                      fj_cpu->settings.iteration_limit,
+                      fj_cpu->iterations);
       break;
     }
 
     // periodically recompute the LHS and violation scores
     // to correct any accumulated numerical errors
-    cuopt_assert(fj_cpu.settings.parameters.lhs_refresh_period > 0,
+    cuopt_assert(fj_cpu->settings.parameters.lhs_refresh_period > 0,
                  "lhs_refresh_period should be positive");
-    if (fj_cpu.iterations % fj_cpu.settings.parameters.lhs_refresh_period == 0 ||
-        fj_cpu.trigger_early_lhs_recomputation) {
-      recompute_lhs(fj_cpu);
-      fj_cpu.trigger_early_lhs_recomputation = false;
+    if (fj_cpu->iterations % fj_cpu->settings.parameters.lhs_refresh_period == 0 ||
+        fj_cpu->trigger_early_lhs_recomputation) {
+      recompute_lhs(*fj_cpu);
+      fj_cpu->trigger_early_lhs_recomputation = false;
     }
 
     fj_move_t move          = fj_move_t{-1, 0};
@@ -1465,153 +1465,113 @@ static bool cpufj_solve_loop(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_lim
     bool is_mtm_sat         = false;
 
     // Perform lift moves
-    if (fj_cpu.violated_constraints.empty()) {
-      thrust::tie(move, score) = find_lift_move(fj_cpu);
+    if (fj_cpu->violated_constraints.empty()) {
+      thrust::tie(move, score) = find_lift_move(*fj_cpu);
       if (score > fj_staged_score_t::zero()) is_lift = true;
     }
     // Regular MTM
     if (!(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_viol(fj_cpu, fj_cpu.mtm_viol_samples);
+      thrust::tie(move, score) = find_mtm_move_viol(*fj_cpu, fj_cpu->mtm_viol_samples);
       if (score > fj_staged_score_t::zero()) is_mtm_viol = true;
     }
     // try with MTM in satisfied constraints
-    if (fj_cpu.feasible_found && !(score > fj_staged_score_t::zero())) {
-      thrust::tie(move, score) = find_mtm_move_sat(fj_cpu, fj_cpu.mtm_sat_samples);
+    if (fj_cpu->feasible_found && !(score > fj_staged_score_t::zero())) {
+      thrust::tie(move, score) = find_mtm_move_sat(*fj_cpu, fj_cpu->mtm_sat_samples);
       if (score > fj_staged_score_t::zero()) is_mtm_sat = true;
     }
     // if we're in the feasible region but haven't found improvements in the last n iterations,
     // perturb
     bool should_perturb = false;
-    if (fj_cpu.violated_constraints.empty() &&
-        fj_cpu.iterations - fj_cpu.last_feasible_entrance_iter > fj_cpu.perturb_interval) {
-      should_perturb                     = true;
-      fj_cpu.last_feasible_entrance_iter = fj_cpu.iterations;
+    if (fj_cpu->violated_constraints.empty() &&
+        fj_cpu->iterations - fj_cpu->last_feasible_entrance_iter > fj_cpu->perturb_interval) {
+      should_perturb                      = true;
+      fj_cpu->last_feasible_entrance_iter = fj_cpu->iterations;
     }
 
     if (score > fj_staged_score_t::zero() && !should_perturb) {
-      apply_move(fj_cpu, move.var_idx, move.value, false);
+      apply_move(*fj_cpu, move.var_idx, move.value, false);
       // Track move types
-      if (is_lift) fj_cpu.n_lift_moves_window++;
-      if (is_mtm_viol) fj_cpu.n_mtm_viol_moves_window++;
-      if (is_mtm_sat) fj_cpu.n_mtm_sat_moves_window++;
+      if (is_lift) fj_cpu->n_lift_moves_window++;
+      if (is_mtm_viol) fj_cpu->n_mtm_viol_moves_window++;
+      if (is_mtm_sat) fj_cpu->n_mtm_sat_moves_window++;
     } else {
       // Local Min
-      update_weights(fj_cpu);
+      update_weights(*fj_cpu);
       if (should_perturb) {
-        perturb(fj_cpu);
-        for (size_t i = 0; i < fj_cpu.cached_mtm_moves.size(); i++)
-          fj_cpu.cached_mtm_moves[i].first = 0;
+        perturb(*fj_cpu);
+        for (size_t i = 0; i < fj_cpu->cached_mtm_moves.size(); i++)
+          fj_cpu->cached_mtm_moves[i].first = 0;
       }
       thrust::tie(move, score) =
-        find_mtm_move_viol(fj_cpu, 1, true);  // pick a single random violated constraint
+        find_mtm_move_viol(*fj_cpu, 1, true);  // pick a single random violated constraint
       i_t var_idx = move.var_idx >= 0 ? move.var_idx : 0;
       f_t delta   = move.var_idx >= 0 ? move.value : 0;
-      apply_move(fj_cpu, var_idx, delta, true);
+      apply_move(*fj_cpu, var_idx, delta, true);
       ++local_mins;
-      ++fj_cpu.n_local_minima_window;
+      ++fj_cpu->n_local_minima_window;
     }
 
     // number of violated constraints is usually small (<100). recomputing from all LHSs is cheap
     // and more numerically precise than just adding to the accumulator in apply_move
-    fj_cpu.total_violations = 0;
-    for (auto cstr_idx : fj_cpu.violated_constraints) {
-      fj_cpu.total_violations += fj_cpu.view.excess_score(cstr_idx, fj_cpu.h_lhs[cstr_idx]);
+    fj_cpu->total_violations = 0;
+    for (auto cstr_idx : fj_cpu->violated_constraints) {
+      fj_cpu->total_violations += fj_cpu->view.excess_score(cstr_idx, fj_cpu->h_lhs[cstr_idx]);
     }
-    if (fj_cpu.iterations % fj_cpu.log_interval == 0) {
+    if (fj_cpu->iterations % fj_cpu->log_interval == 0) {
       CUOPT_LOG_TRACE(
         "%sCPUFJ iteration: %d/%d, local mins: %d, best_objective: %g, viol: %zu, obj weight %g, "
         "maxw %g",
-        fj_cpu.log_prefix.c_str(),
-        fj_cpu.iterations,
-        fj_cpu.settings.iteration_limit != std::numeric_limits<i_t>::max()
-          ? fj_cpu.settings.iteration_limit
+        fj_cpu->log_prefix.c_str(),
+        fj_cpu->iterations,
+        fj_cpu->settings.iteration_limit != std::numeric_limits<i_t>::max()
+          ? fj_cpu->settings.iteration_limit
           : -1,
         local_mins,
-        fj_cpu.pb_ptr->get_user_obj_from_solver_obj(fj_cpu.h_best_objective),
-        fj_cpu.violated_constraints.size(),
-        fj_cpu.h_objective_weight,
-        fj_cpu.max_weight);
+        fj_cpu->pb_ptr->get_user_obj_from_solver_obj(fj_cpu->h_best_objective),
+        fj_cpu->violated_constraints.size(),
+        fj_cpu->h_objective_weight,
+        fj_cpu->max_weight);
     }
     // send current solution to callback every 3000 steps for diversity
-    if (fj_cpu.iterations % fj_cpu.diversity_callback_interval == 0) {
-      if (fj_cpu.diversity_callback) {
-        fj_cpu.diversity_callback(fj_cpu.h_incumbent_objective, fj_cpu.h_assignment);
+    if (fj_cpu->iterations % fj_cpu->diversity_callback_interval == 0) {
+      if (fj_cpu->diversity_callback) {
+        fj_cpu->diversity_callback(fj_cpu->h_incumbent_objective, fj_cpu->h_assignment);
       }
     }
 
     // Print timing statistics every N iterations
 #if CPUFJ_TIMING_TRACE
-    if (fj_cpu.iterations % fj_cpu.timing_stats_interval == 0 && fj_cpu.iterations > 0) {
-      print_timing_stats(fj_cpu);
+    if (fj_cpu->iterations % fj_cpu->timing_stats_interval == 0 && fj_cpu->iterations > 0) {
+      print_timing_stats(*fj_cpu);
     }
 #endif
 
-    if (fj_cpu.iterations % 100 == 0 && fj_cpu.iterations > 0) {
+    if (fj_cpu->iterations % 100 == 0 && fj_cpu->iterations > 0) {
       // Collect memory statistics
-      auto [loads, stores] = fj_cpu.memory_aggregator.collect();
-      double biased_work   = (loads + stores) * fj_cpu.work_unit_bias / 1e10;
-      fj_cpu.work_units_elapsed += biased_work;
+      auto [loads, stores] = fj_cpu->memory_aggregator.collect();
+      double biased_work   = (loads + stores) * fj_cpu->work_unit_bias / 1e10;
+      fj_cpu->work_units_elapsed += biased_work;
 
-      if (fj_cpu.producer_sync != nullptr) { fj_cpu.producer_sync->notify_progress(); }
+      if (fj_cpu->producer_sync != nullptr) { fj_cpu->producer_sync->notify_progress(); }
     }
 
-    cuopt_func_call(sanity_checks(fj_cpu));
-    fj_cpu.iterations++;
-    fj_cpu.iterations_since_best++;
+    cuopt_func_call(sanity_checks(*fj_cpu));
+    fj_cpu->iterations++;
+    fj_cpu->iterations_since_best++;
   }
   auto loop_end = std::chrono::high_resolution_clock::now();
   double total_time =
     std::chrono::duration_cast<std::chrono::duration<double>>(loop_end - loop_start).count();
-  double avg_time_per_iter = total_time / fj_cpu.iterations;
+  double avg_time_per_iter = fj_cpu->iterations > 0 ? total_time / fj_cpu->iterations : 0;
   CUOPT_LOG_TRACE("%sCPUFJ Average time per iteration: %.8fms",
-                  fj_cpu.log_prefix.c_str(),
+                  fj_cpu->log_prefix.c_str(),
                   avg_time_per_iter * 1000.0);
 
 #if CPUFJ_TIMING_TRACE
   // Print final timing statistics
   CUOPT_LOG_TRACE("=== Final Timing Statistics ===");
-  print_timing_stats(fj_cpu);
+  print_timing_stats(*fj_cpu);
 #endif
-
-  return fj_cpu.feasible_found;
-}
-
-template <typename i_t, typename f_t>
-bool fj_t<i_t, f_t>::cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu, f_t in_time_limit)
-{
-  raft::common::nvtx::range scope("fj_cpu");
-  return cpufj_solve_loop(fj_cpu, in_time_limit);
-}
-
-template <typename i_t, typename f_t>
-cpu_fj_thread_t<i_t, f_t>::~cpu_fj_thread_t()
-{
-  this->request_termination();
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::run_worker()
-{
-  cpu_fj_solution_found = cpufj_solve_loop(*fj_cpu, time_limit);
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::on_terminate()
-{
-  if (fj_cpu) fj_cpu->halted = true;
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::on_start()
-{
-  cuopt_assert(fj_cpu != nullptr, "fj_cpu must not be null");
-  fj_cpu->halted = false;
-}
-
-template <typename i_t, typename f_t>
-void cpu_fj_thread_t<i_t, f_t>::stop_cpu_solver()
-{
-  fj_cpu->halted = true;
 }
 
 template <typename i_t, typename f_t>
@@ -1635,7 +1595,7 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
 
 #if MIP_INSTANTIATE_FLOAT
 template class fj_t<int, float>;
-template class cpu_fj_thread_t<int, float>;
+template void cpufj_solve(fj_cpu_climber_t<int, float>* fj_cpu, float in_time_limit);
 template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   problem_t<int, float>& problem,
   solution_t<int, float>& solution,
@@ -1645,7 +1605,7 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
 
 #if MIP_INSTANTIATE_DOUBLE
 template class fj_t<int, double>;
-template class cpu_fj_thread_t<int, double>;
+template void cpufj_solve(fj_cpu_climber_t<int, double>* fj_cpu, double in_time_limit);
 template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   problem_t<int, double>& problem,
   solution_t<int, double>& solution,
