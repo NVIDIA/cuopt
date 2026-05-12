@@ -22,7 +22,9 @@ jobs:
       - checks
       - conda-cpp-build
       - conda-cpp-tests
+      - conda-java-build-and-tests-matrix
       - conda-java-build-and-tests
+      - conda-java-build-and-tests-arm64-matrix
       - conda-java-build-and-tests-arm64
       - conda-python-build
       - conda-python-tests
