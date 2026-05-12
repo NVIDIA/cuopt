@@ -34,5 +34,6 @@ def test_pr_comment_smoke_always_fails():
 def test_zz_pr_comment_smoke_segfault():
     """Intentionally crashes the pytest process to exercise the
     crash-marker path added in PR #1191.  Should produce a
-    PROCESS_CRASH entry in the PR comment with a SIGSEGV message."""
+    PROCESS_CRASH entry in the PR comment with a SIGSEGV message.
+    """
     os.kill(os.getpid(), signal.SIGSEGV)
