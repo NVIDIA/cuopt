@@ -45,7 +45,7 @@ rapids-logger "Generate Java conda environment"
 rapids-dependency-file-generator \
     --output conda \
     --file-key test_java \
-    --matrix "cuda=${RAPIDS_CUDA_VERSION%%.*};arch=$(arch)" \
+    --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch)" \
     --prepend-channel "${CPP_CHANNEL}" \
     | tee env.yaml
 
