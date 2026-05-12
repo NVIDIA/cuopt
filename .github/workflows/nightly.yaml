@@ -9,8 +9,13 @@ on:
     - cron: "0 5 * * *" # 5am UTC / 1am EST
 
 
+permissions: {}
+
 jobs:
   trigger-nightly-builds-and-tests:
+    permissions:
+      actions: write
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -20,7 +25,9 @@ jobs:
           - "main"
           - "release/26.06"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Trigger Pipeline
         env:
           GH_TOKEN: ${{ github.token }}
