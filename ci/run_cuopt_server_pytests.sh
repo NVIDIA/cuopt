@@ -45,6 +45,7 @@ fi
 echo "CRASH: pytest process died from $(signal_name ${rc}) (exit code ${rc})"
 
 if [ "${IS_NIGHTLY}" != "nightly" ]; then
+    write_pytest_crash_marker "${xml_file}" "pytest-cuopt-server" "${rc}"
     exit ${rc}
 fi
 

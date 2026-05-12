@@ -49,11 +49,12 @@ rapids-logger "Check GPU usage"
 nvidia-smi
 
 EXITCODE=0
+FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
 rapids-logger "Test cuopt_cli"
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
 
 rapids-logger "pytest cuopt"
 timeout 30m ./ci/run_cuopt_pytests.sh \
@@ -62,7 +63,7 @@ timeout 30m ./ci/run_cuopt_pytests.sh \
   --cov=cuopt \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-coverage.xml" \
   --cov-report=term \
-  --ignore=raft
+  --ignore=raft || FAILED_STEPS+=("pytest cuopt")
 
 rapids-logger "pytest cuopt-server"
 timeout 20m ./ci/run_cuopt_server_pytests.sh \
@@ -70,14 +71,22 @@ timeout 20m ./ci/run_cuopt_server_pytests.sh \
   --cov-config=.coveragerc \
   --cov=cuopt_server \
   --cov-report=xml:"${RAPIDS_COVERAGE_DIR}/cuopt-server-coverage.xml" \
-  --cov-report=term
+  --cov-report=term || FAILED_STEPS+=("pytest cuopt-server")
 
 rapids-logger "Test skills/ assets (Python, C, CLI)"
-timeout 10m ./ci/test_skills_assets.sh
+timeout 10m ./ci/test_skills_assets.sh || FAILED_STEPS+=("skills assets")
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
 generate_nightly_report "python" --with-python-version
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}
