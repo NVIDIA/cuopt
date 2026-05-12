@@ -14,10 +14,12 @@ concurrency:
 
 jobs:
   # TEMPORARY: while iterating on cuopt-java (PR #1192), the non-Java CI
-  # lanes are gated off to speed up feedback. Each disabled job below has
-  # its `if:` replaced with `if: false`. **Revert this block and the
-  # `if: false` markers before merge.** Lanes kept on: conda-cpp-build,
-  # conda-java-build-and-tests (amd64 + arm64).
+  # lanes are gated off with `if: false` to speed up feedback. They
+  # remain listed in pr-builder.needs because `rapids-check-pr-job-
+  # dependencies` requires every top-level job to be listed there;
+  # pr-builder.yaml treats skipped jobs as success, so this is safe.
+  # **Revert the `if: false` markers below before merge.** Lanes kept
+  # running: conda-cpp-build, conda-java-build-and-tests (amd64 + arm64).
   pr-builder:
     needs:
       - check-lean-ci
@@ -26,8 +28,22 @@ jobs:
       - changed-files
       - checks
       - conda-cpp-build
+      - conda-cpp-tests
+      - conda-java-build-and-tests-matrix
       - conda-java-build-and-tests
+      - conda-java-build-and-tests-arm64-matrix
       - conda-java-build-and-tests-arm64
+      - conda-python-build
+      - conda-python-tests
+      - docs-build
+      - wheel-build-libcuopt
+      - wheel-build-cuopt
+      - wheel-tests-cuopt
+      - wheel-build-cuopt-server
+      - wheel-tests-cuopt-server
+      - wheel-build-cuopt-mps-parser
+      - wheel-build-cuopt-sh-client
+      - test-self-hosted-server
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
     if: always()
