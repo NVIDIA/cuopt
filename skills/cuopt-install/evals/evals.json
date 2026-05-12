@@ -55,16 +55,18 @@
     ]
   },
   {
-    "id": "install-005-c-api-separate-from-python",
-    "question": "I installed 'cuopt-cu12' via pip. Now I want to use the C API. Do I have it already?",
+    "id": "install-005-c-api-comes-with-python",
+    "question": "I installed 'cuopt-cu12' via pip. Now I want to use the C API. Do I need to install anything else?",
     "expected_skill": "cuopt-install",
     "expected_script": null,
-    "ground_truth": "No. The agent explains that the cuOpt Python API and C API ship as separate packages. Installing cuopt-cu12 (or cuopt-cu13) provides only the Python API; the C API requires installing libcuopt-cu12 (or libcuopt-cu13) via pip, or libcuopt via conda. Having one does not provide the other. The agent provides the appropriate libcuopt install command for the user to run themselves.",
+    "ground_truth": "No additional install is needed. cuopt-cu12 (and cuopt-cu13) declare libcuopt-cuXX as a runtime dependency, so pip installs libcuopt-cuXX transitively. That package provides both the shared library (libcuopt.so) and the C headers (cuopt_c.h). The agent points the user to 'find \"$(python -c 'import sys; print(sys.prefix)')\" -name cuopt_c.h' (or libcuopt.so) to locate them. If the user wants only the C API without Python, libcuopt-cuXX can also be installed standalone via pip, or libcuopt via conda.",
     "expected_behavior": [
-      "States the Python and C APIs are separate packages",
-      "Names libcuopt-cuXX (pip) or libcuopt (conda) as the C API package",
-      "Mentions installing one does not install the other",
-      "Provides the install command for the user to run, does not execute it"
+      "States the C API is already available after installing cuopt-cuXX (no separate install needed)",
+      "Mentions libcuopt-cuXX is a transitive dependency of cuopt-cuXX",
+      "Names cuopt_c.h and libcuopt.so as the C headers / shared library",
+      "Provides a 'find' command (or equivalent) to locate the headers and .so in the active env",
+      "Mentions libcuopt-cuXX (pip) or libcuopt (conda) as the standalone C-only option",
+      "Does not run any install commands on the user's behalf"
     ]
   },
   {
