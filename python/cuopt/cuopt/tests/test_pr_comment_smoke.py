@@ -3,10 +3,24 @@
 
 # TEMPORARY — DO NOT MERGE.
 #
-# This file exists solely to verify the PR test-classification comment
-# end to end: it forces one always-failing test so the PR-mode classifier
-# emits a `pr_classification=new` entry that lands under "NEW failures"
-# in the sticky PR comment.  Remove this file before merging PR #1194.
+# This file verifies the PR test-classification comment end to end:
+#
+#   1. `test_pr_comment_smoke_always_fails` — a plain assertion failure.
+#      Confirms the classifier emits a normal `pr_classification=new`
+#      entry under "NEW failures".
+#
+#   2. `test_zz_pr_comment_smoke_segfault` — sends SIGSEGV to the pytest
+#      process to confirm PR #1191's crash-marker path: pytest dies
+#      mid-run, `write_pytest_crash_marker` writes <xml>-crash.xml, and
+#      the classifier surfaces a PROCESS_CRASH entry under NEW failures
+#      with a message containing "SIGSEGV".  Named with a `zz_` prefix
+#      so it runs after the assert test in pytest's definition order
+#      and the assert failure still makes it into the partial JUnit XML.
+#
+# Remove this file before merging PR #1194.
+
+import os
+import signal
 
 
 def test_pr_comment_smoke_always_fails():
@@ -15,3 +29,10 @@ def test_pr_comment_smoke_always_fails():
         "intentional failure to verify the PR comment classifier — "
         "this test should not exist on main; remove with PR #1194"
     )
+
+
+def test_zz_pr_comment_smoke_segfault():
+    """Intentionally crashes the pytest process to exercise the
+    crash-marker path added in PR #1191.  Should produce a
+    PROCESS_CRASH entry in the PR comment with a SIGSEGV message."""
+    os.kill(os.getpid(), signal.SIGSEGV)
