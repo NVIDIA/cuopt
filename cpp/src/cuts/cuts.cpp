@@ -3783,6 +3783,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
   // This is shared variable-bound preprocessing used by multiple cut separators.
   // Flow-cover applies its own 0-1 controller filter when it consumes these bounds.
+  auto is_variable_bound_controller = [&](i_t j) {
+    return var_types[j] != variable_type_t::CONTINUOUS;
+  };
   std::vector<i_t> num_noncontinuous_in_row(lp.num_rows, 0);
 
   // Construct the slack map
@@ -3810,7 +3813,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = row_start; p < row_end; p++) {
       const i_t j = Arow.j[p];
       if (j == slack_index) { continue; }
-      if (var_types[j] != variable_type_t::CONTINUOUS) { num_noncontinuous_in_row[i]++; }
+      if (is_variable_bound_controller(j)) { num_noncontinuous_in_row[i]++; }
       const f_t aj = Arow.x[p];
       const f_t uj = lp.upper[j];
       const f_t lj = lp.lower[j];
@@ -3897,7 +3900,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (l == j || l == slack_map_[i]) { continue; }
+            if (!is_variable_bound_controller(l)) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3929,7 +3932,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (l == j || l == slack_map_[i]) { continue; }
+            if (!is_variable_bound_controller(l)) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3989,7 +3992,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (l == j || l == slack_map_[i]) { continue; }
+            if (!is_variable_bound_controller(l)) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik * bound(x_k)
@@ -4022,7 +4025,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (l == j || l == slack_map_[i]) { continue; }
+            if (!is_variable_bound_controller(l)) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -4436,8 +4439,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
     const i_t lower_variable_start = variable_bounds.lower_offsets[j];
     const i_t lower_variable_end   = variable_bounds.lower_offsets[j + 1];
     for (i_t p = lower_variable_start; p < lower_variable_end; p++) {
-      const i_t i = variable_bounds.lower_variables[p];
-      if (var_types[i] == variable_type_t::CONTINUOUS) { continue; }
+      const i_t i     = variable_bounds.lower_variables[p];
       const f_t gamma = variable_bounds.lower_weights[p];
       const f_t alpha = variable_bounds.lower_biases[p];
       // x_j >= gamma * x_i + alpha
@@ -4455,8 +4457,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
     const i_t upper_variable_start = variable_bounds.upper_offsets[j];
     const i_t upper_variable_end   = variable_bounds.upper_offsets[j + 1];
     for (i_t p = upper_variable_start; p < upper_variable_end; p++) {
-      const i_t i = variable_bounds.upper_variables[p];
-      if (var_types[i] == variable_type_t::CONTINUOUS) { continue; }
+      const i_t i     = variable_bounds.upper_variables[p];
       const f_t gamma = variable_bounds.upper_weights[p];
       const f_t alpha = variable_bounds.upper_biases[p];
       // x_j <= gamma * x_i + alpha
