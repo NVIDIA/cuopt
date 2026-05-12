@@ -24,8 +24,8 @@
 #   SKIP_TESTS        If set to 'true', runs 'mvn package' instead of
 #                     'mvn verify'.
 #   UNIT_TESTS_ONLY   If set to 'true', runs 'mvn test' (unit tests only,
-#                     skips integration tests). Used by the arm64 CI job
-#                     which has no GPU runner.
+#                     skips integration tests). Useful for fast local
+#                     feedback when no GPU is available.
 
 set -euo pipefail
 

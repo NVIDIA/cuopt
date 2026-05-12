@@ -7,7 +7,7 @@
 # Usage:
 #   ci/build_java.sh                      # build only, skip tests
 #   ci/build_java.sh --run-java-tests     # build + unit + integration tests (GPU required)
-#   ci/build_java.sh --unit-tests-only    # build + unit tests, skip IT (arm64 CPU runner)
+#   ci/build_java.sh --unit-tests-only    # build + unit tests, skip IT (no GPU available)
 #
 # Inputs (set by RAPIDS shared workflow):
 #   RAPIDS_CUDA_VERSION

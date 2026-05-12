@@ -202,8 +202,9 @@ jobs:
       script: "ci/build_java.sh"
   java-build-arm64:
     # Build cuopt-java JAR (arm64) for main / release-branch / tag pushes.
-    # CPU-only runner; integration tests stay on amd64 (no arm64 GPU
-    # runner wired in yet).
+    # Build-only (no IT) — matches the amd64 java-build sibling. PR
+    # integration tests run on the conda-java-build-and-tests-arm64
+    # GPU job in pr.yaml.
     needs: [cpp-build]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
