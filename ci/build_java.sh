@@ -69,12 +69,18 @@ export CMAKE_PREFIX_PATH="${CONDA_PREFIX}/lib"
 # minor formatting differences between the two sources would falsely
 # trip the drift gate. The dev-workstation gate (./java/build.sh
 # without this flag) is the authoritative one.
+# SKIP_BINDINGS_REGEN=true because the conda env used in CI does not
+# install CUDA development headers (only libcuopt + openjdk + maven),
+# so jextract cannot regenerate the panama bindings from cuopt_c.h.
+# The committed bindings are trusted; the dev-workstation drift gate
+# in ./java/build.sh (run without SKIP_DRIFT_CHECK locally) is the
+# authoritative check that they stay in sync.
 if [[ "${RUN_JAVA_TESTS}" == "true" ]]; then
-    SKIP_DRIFT_CHECK=true ./java/build.sh
+    SKIP_DRIFT_CHECK=true SKIP_BINDINGS_REGEN=true ./java/build.sh
 elif [[ "${UNIT_TESTS_ONLY}" == "true" ]]; then
-    SKIP_DRIFT_CHECK=true UNIT_TESTS_ONLY=true ./java/build.sh
+    SKIP_DRIFT_CHECK=true SKIP_BINDINGS_REGEN=true UNIT_TESTS_ONLY=true ./java/build.sh
 else
-    SKIP_DRIFT_CHECK=true SKIP_TESTS=true ./java/build.sh
+    SKIP_DRIFT_CHECK=true SKIP_BINDINGS_REGEN=true SKIP_TESTS=true ./java/build.sh
 fi
 
 rapids-logger "Show sccache stats"

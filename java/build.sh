@@ -21,6 +21,12 @@
 #   SKIP_DRIFT_CHECK  If set to 'true', skips the panama drift gate.
 #                     Useful in initial-bootstrap commits before the
 #                     bindings are first committed.
+#   SKIP_BINDINGS_REGEN
+#                     If set to 'true', skips the panama bindings
+#                     regeneration step (jextract invocation). Useful
+#                     in CI where the committed bindings are trusted
+#                     and the build env lacks CUDA headers needed by
+#                     jextract.
 #   SKIP_TESTS        If set to 'true', runs 'mvn package' instead of
 #                     'mvn verify'.
 #   UNIT_TESTS_ONLY   If set to 'true', runs 'mvn test' (unit tests only,
@@ -87,9 +93,13 @@ if [[ ! -f "${CUOPT_LIB_DIR}/libcuopt.so" ]]; then
 fi
 export LD_LIBRARY_PATH="${CUOPT_LIB_DIR}:${LD_LIBRARY_PATH:-}"
 
-# 3. Regenerate panama bindings
-echo "==> Regenerating panama bindings"
-"${CURDIR}/panama-bindings/generate-bindings.sh"
+# 3. Regenerate panama bindings (skipped in CI; bindings are committed
+#    and the dev-workstation gate is authoritative, see SKIP_BINDINGS_REGEN
+#    in the env block above).
+if [[ "${SKIP_BINDINGS_REGEN:-false}" != "true" ]]; then
+    echo "==> Regenerating panama bindings"
+    "${CURDIR}/panama-bindings/generate-bindings.sh"
+fi
 
 # 4. Drift gate
 if [[ "${SKIP_DRIFT_CHECK:-false}" != "true" ]]; then
