@@ -413,6 +413,12 @@ jobs:
     # sibling job conda-java-build-and-tests-arm64 handles arm64.
     needs: [conda-cpp-build, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
     with:
       build_type: pull-request
@@ -424,6 +430,12 @@ jobs:
     # artifact passing. cuvs Issue #868 tracks the same split.
     needs: conda-java-build-and-tests-matrix
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
@@ -439,6 +451,12 @@ jobs:
     # which handles amd64.
     needs: [conda-cpp-build, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
     with:
       build_type: pull-request
@@ -451,6 +469,12 @@ jobs:
     # suffix only (same as the amd64 sibling above).
     needs: conda-java-build-and-tests-arm64-matrix
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_java
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
