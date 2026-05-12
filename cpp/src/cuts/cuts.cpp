@@ -941,14 +941,12 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
-  const std::vector<i_t>& new_slacks,
   const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   i_t flow_cover_row,
   inequality_t<i_t, f_t>& cut)
 {
-  static_cast<void>(new_slacks);
   // Flow-cover uses the solver's numerical policy: zero_tol for structural-zero
   // coefficient decisions and primal_tol for feasibility and violation checks.
   const f_t coefficient_tol = settings.zero_tol;
@@ -2741,8 +2739,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // Generate Flow Cover cuts
   if (settings.flow_cover_cuts != 0) {
     f_t cut_start_time = tic();
-    generate_flow_cover_cuts(
-      lp, settings, Arow, new_slacks, var_types, xstar, variable_bounds, start_time);
+    generate_flow_cover_cuts(lp, settings, Arow, var_types, xstar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Flow cover cut generation time %.2f seconds\n", cut_generation_time);
@@ -2811,7 +2808,6 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
-  const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   variable_bounds_t<i_t, f_t>& variable_bounds,
@@ -2822,7 +2818,7 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = knapsack_generation_.generate_flow_cover_cut(
-        lp, settings, Arow, new_slacks, variable_bounds, var_types, xstar, flow_cover_row, cut);
+        lp, settings, Arow, variable_bounds, var_types, xstar, flow_cover_row, cut);
       if (status == 0) { cut_pool_.add_cut(cut_type_t::FLOW_COVER, cut); }
     }
   }

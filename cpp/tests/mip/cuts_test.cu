@@ -1595,7 +1595,6 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
     const int status = generator.generate_flow_cover_cut(test_problem.lp,
                                                          test_problem.settings,
                                                          test_problem.Arow,
-                                                         test_problem.new_slacks,
                                                          variable_bounds,
                                                          test_problem.var_types,
                                                          xstar,
