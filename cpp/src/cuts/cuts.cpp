@@ -1507,7 +1507,8 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   if (values.empty()) { return -1; }
 
   std::vector<f_t> solution;
-  const f_t objective = prefix_ratio_knapsack_problem(values, weights, cover_capacity, solution);
+  const f_t objective = greedy_knapsack_problem(
+    values, weights, cover_capacity, solution, greedy_knapsack_mode_t::STRICT_RATIO_PREFIX);
   if (std::isnan(objective)) { return -1; }
   static_cast<void>(objective);
 
@@ -2315,7 +2316,8 @@ template <typename i_t, typename f_t>
 f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f_t>& values,
                                                              const std::vector<f_t>& weights,
                                                              f_t rhs,
-                                                             std::vector<f_t>& solution)
+                                                             std::vector<f_t>& solution,
+                                                             greedy_knapsack_mode_t mode)
 {
   i_t n = weights.size();
   solution.assign(n, 0.0);
@@ -2332,6 +2334,24 @@ f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f
 
   // Sort by value / weight ratio
   std::sort(perm.begin(), perm.end(), [&](i_t i, i_t j) { return ratios[i] > ratios[j]; });
+
+  if (mode == greedy_knapsack_mode_t::STRICT_RATIO_PREFIX) {
+    // Wolter Algorithm 5.1 for KPSNF^rat: take the ratio-sorted prefix while
+    // the strict capacity remains satisfied and stop at the first item that
+    // does not fit.
+    f_t total_weight = 0.0;
+    f_t total_value  = 0.0;
+    for (i_t item : perm) {
+      if (total_weight + weights[item] < rhs) {
+        solution[item] = 1.0;
+        total_weight += weights[item];
+        total_value += values[item];
+      } else {
+        break;
+      }
+    }
+    return total_value;
+  }
 
   // Greedy select items with the best value / weight ratio until the remaining capacity is
   // exhausted
@@ -2363,42 +2383,6 @@ f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f
     return best_single_value;
   }
 
-  return total_value;
-}
-
-template <typename i_t, typename f_t>
-f_t knapsack_generation_t<i_t, f_t>::prefix_ratio_knapsack_problem(const std::vector<f_t>& values,
-                                                                   const std::vector<f_t>& weights,
-                                                                   f_t strict_rhs,
-                                                                   std::vector<f_t>& solution)
-{
-  const i_t n = static_cast<i_t>(weights.size());
-  solution.assign(n, 0.0);
-  if (n == 0) { return static_cast<f_t>(0.0); }
-
-  // Wolter Algorithm 5.1 for KPSNF^rat: sort by p_j / u_j, add items while
-  // the strict capacity remains satisfied, and stop at the first item that
-  // does not fit. This is intentionally not the generic greedy knapsack
-  // heuristic, which keeps scanning for smaller later items.
-  std::vector<i_t> permutation(n);
-  std::iota(permutation.begin(), permutation.end(), 0);
-  std::stable_sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
-    const f_t ratio_a = values[a] / weights[a];
-    const f_t ratio_b = values[b] / weights[b];
-    return ratio_a > ratio_b;
-  });
-
-  f_t total_weight = 0.0;
-  f_t total_value  = 0.0;
-  for (i_t item : permutation) {
-    if (total_weight + weights[item] < strict_rhs) {
-      solution[item] = 1.0;
-      total_weight += weights[item];
-      total_value += values[item];
-    } else {
-      break;
-    }
-  }
   return total_value;
 }
 
