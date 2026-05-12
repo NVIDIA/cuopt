@@ -1590,7 +1590,7 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   ASSERT_GT(generator.num_flow_cover_constraints(), 0);
 
   int generated_cuts = 0;
-  for (const int flow_cover_row : generator.get_flow_cover_constraints()) {
+  for (const auto& flow_cover_row : generator.get_flow_cover_constraints()) {
     dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
     const int status = generator.generate_flow_cover_cut(test_problem.lp,
                                                          test_problem.settings,
@@ -1602,7 +1602,8 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
                                                          cut);
     if (status != 0) { continue; }
 
-    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6) << "row=" << flow_cover_row;
+    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
     expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
     generated_cuts++;
   }

@@ -20,6 +20,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <cmath>
@@ -332,6 +333,139 @@ class cut_pool_t {
 template <typename i_t, typename f_t>
 class variable_bounds_t;
 
+template <typename i_t>
+struct flow_cover_row_t {
+  i_t row;
+  bool reverse;
+};
+
+template <typename i_t, typename f_t>
+struct snf_arc_t {
+  f_t u;        // Capacity u_j in 0 <= y_j <= u_j x_j.
+  bool in_n2;   // false: y_j appears with + sign (N1), true: with - sign (N2).
+  i_t x_col;    // Binary controller column, or -1 for a fixed-control simple-bound arc.
+  f_t x_value;  // Current LP value of x_col, or the fixed-control value.
+  f_t y_const;
+  i_t y_col;
+  f_t y_coeff;
+  f_t y_x_coeff;
+  f_t y_value;  // Current LP value of the synthetic y_j.
+};
+
+template <typename i_t, typename f_t>
+struct snf_candidate_t {
+  snf_arc_t<i_t, f_t> arc;
+  f_t b_shift;
+  f_t distance;
+  bool absorbs_binary_coeff;
+};
+
+template <typename i_t, typename f_t>
+struct flow_cover_arc_spec_t {
+  f_t u;
+  bool in_n2;
+  i_t x_col;
+  f_t fixed_x;
+  f_t y_const;
+  i_t y_col;
+  f_t y_coeff;
+  f_t y_x_coeff;
+  f_t b_shift;
+  f_t active_bound;
+  bool absorbs_binary_coeff;
+};
+
+template <typename i_t, typename f_t>
+struct flow_cover_context_t {
+  const lp_problem_t<i_t, f_t>& lp;
+  const simplex_solver_settings_t<i_t, f_t>& settings;
+  csr_matrix_t<i_t, f_t>& Arow;
+  const variable_bounds_t<i_t, f_t>& variable_bounds;
+  const std::vector<variable_type_t>& var_types;
+  const std::vector<f_t>& xstar;
+};
+
+template <typename i_t, typename f_t>
+struct flow_cover_scratch_t {
+  std::vector<std::pair<i_t, f_t>> continuous_terms;
+  std::vector<i_t> binary_columns;
+  std::vector<f_t> binary_coefficients;
+  std::vector<uint8_t> binary_coefficients_touched;
+  std::vector<i_t> touched_binary_coefficients;
+  std::vector<snf_arc_t<i_t, f_t>> arcs;
+  std::vector<snf_candidate_t<i_t, f_t>> candidates;
+  std::vector<f_t> values;
+  std::vector<f_t> weights;
+  std::vector<i_t> item_to_arc;
+  std::vector<f_t> solution;
+  std::vector<uint8_t> in_c1;
+  std::vector<uint8_t> in_c2;
+  std::vector<f_t> ubar_candidates;
+  std::vector<uint8_t> in_l1;
+  std::vector<uint8_t> in_l2;
+  std::vector<uint8_t> best_in_l1;
+  std::vector<uint8_t> best_in_l2;
+  std::vector<uint8_t> sgfci_in_l2;
+  std::vector<i_t> lhs_indices;
+  std::vector<f_t> lhs_coefficients;
+  std::vector<uint8_t> lhs_coefficients_touched;
+  std::vector<i_t> touched_lhs_coefficients;
+
+  void clear(i_t num_cols)
+  {
+    continuous_terms.clear();
+    binary_columns.clear();
+    arcs.clear();
+    candidates.clear();
+    values.clear();
+    weights.clear();
+    item_to_arc.clear();
+    solution.clear();
+    in_c1.clear();
+    in_c2.clear();
+    ubar_candidates.clear();
+    in_l1.clear();
+    in_l2.clear();
+    best_in_l1.clear();
+    best_in_l2.clear();
+    sgfci_in_l2.clear();
+    lhs_indices.clear();
+
+    if (static_cast<i_t>(binary_coefficients.size()) < num_cols) {
+      binary_coefficients.assign(num_cols, 0.0);
+      binary_coefficients_touched.assign(num_cols, 0);
+    } else {
+      for (i_t j : touched_binary_coefficients) {
+        binary_coefficients[j]         = 0.0;
+        binary_coefficients_touched[j] = 0;
+      }
+    }
+    touched_binary_coefficients.clear();
+
+    if (static_cast<i_t>(lhs_coefficients.size()) < num_cols) {
+      lhs_coefficients.assign(num_cols, 0.0);
+      lhs_coefficients_touched.assign(num_cols, 0);
+    } else {
+      for (i_t j : touched_lhs_coefficients) {
+        lhs_coefficients[j]         = 0.0;
+        lhs_coefficients_touched[j] = 0;
+      }
+    }
+    touched_lhs_coefficients.clear();
+  }
+};
+
+template <typename f_t>
+struct flow_cover_selection_t {
+  f_t lambda;
+};
+
+template <typename f_t>
+struct flow_cover_evaluation_t {
+  f_t violation;
+  f_t ubar;
+};
+
 template <typename i_t, typename f_t>
 class knapsack_generation_t {
  public:
@@ -356,14 +490,17 @@ class knapsack_generation_t {
                               const variable_bounds_t<i_t, f_t>& variable_bounds,
                               const std::vector<variable_type_t>& var_types,
                               const std::vector<f_t>& xstar,
-                              i_t flow_cover_row,
+                              const flow_cover_row_t<i_t>& flow_cover_row,
                               inequality_t<i_t, f_t>& cut);
 
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
 
   i_t num_flow_cover_constraints() const { return flow_cover_constraints_.size(); }
-  const std::vector<i_t>& get_flow_cover_constraints() const { return flow_cover_constraints_; }
+  const std::vector<flow_cover_row_t<i_t>>& get_flow_cover_constraints() const
+  {
+    return flow_cover_constraints_;
+  }
 
  private:
   void restore_complemented(const std::vector<i_t>& complemented_variables)
@@ -408,13 +545,41 @@ class knapsack_generation_t {
                                                             f_t rhs,
                                                             std::vector<f_t>& solution);
 
+  bool normalize_row_side(const flow_cover_context_t<i_t, f_t>& context,
+                          const flow_cover_row_t<i_t>& flow_cover_row,
+                          inequality_t<i_t, f_t>& row,
+                          f_t& b,
+                          bool& negate_row);
+
+  bool build_snf_relaxation(const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& snf_b);
+
+  bool select_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
+                         f_t snf_b,
+                         flow_cover_selection_t<f_t>& selection);
+
+  flow_cover_evaluation_t<f_t> evaluate_cmirfci(const flow_cover_context_t<i_t, f_t>& context,
+                                                f_t snf_b,
+                                                f_t lambda);
+
+  flow_cover_evaluation_t<f_t> evaluate_sgfci(const flow_cover_context_t<i_t, f_t>& context,
+                                              f_t snf_b,
+                                              f_t lambda);
+
+  bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
+                           f_t snf_b,
+                           f_t lambda,
+                           const flow_cover_evaluation_t<f_t>& cmirfci,
+                           const flow_cover_evaluation_t<f_t>& sgfci,
+                           inequality_t<i_t, f_t>& cut);
+
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
-  std::vector<i_t> flow_cover_constraints_;
+  std::vector<flow_cover_row_t<i_t>> flow_cover_constraints_;
   std::vector<i_t> is_complemented_;
   std::vector<i_t> is_marked_;
   std::vector<f_t> workspace_;
   std::vector<f_t> complemented_xstar_;
+  flow_cover_scratch_t<i_t, f_t> flow_cover_scratch_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 

@@ -17,7 +17,6 @@
 #include <cstdio>
 #include <limits>
 #include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 
 #include <barrier/dense_matrix.hpp>
@@ -824,6 +823,89 @@ void cut_pool_t<i_t, f_t>::drop_cuts()
   // TODO: Implement this
 }
 
+enum class flow_cover_bound_side_t : int8_t { UPPER, LOWER };
+
+template <typename i_t, typename f_t>
+f_t flow_cover_scaled_primal_tol(const flow_cover_context_t<i_t, f_t>& context, f_t scale)
+{
+  return context.settings.primal_tol * std::max<f_t>(1.0, std::abs(scale));
+}
+
+template <typename i_t, typename f_t>
+bool flow_cover_is_zero_one_integer_variable(const flow_cover_context_t<i_t, f_t>& context, i_t j)
+{
+  const f_t bound_tol = context.settings.primal_tol;
+  return context.var_types[j] == variable_type_t::INTEGER &&
+         std::abs(context.lp.lower[j]) <= bound_tol &&
+         std::abs(context.lp.upper[j] - 1.0) <= bound_tol;
+}
+
+template <typename i_t, typename f_t>
+f_t flow_cover_arc_tol(const flow_cover_context_t<i_t, f_t>& context,
+                       const snf_arc_t<i_t, f_t>& arc)
+{
+  return flow_cover_scaled_primal_tol(context, arc.u);
+}
+
+template <typename i_t, typename f_t>
+snf_arc_t<i_t, f_t> flow_cover_build_arc(const flow_cover_context_t<i_t, f_t>& context,
+                                         f_t u,
+                                         bool in_n2,
+                                         i_t x_col,
+                                         f_t fixed_x,
+                                         f_t y_const,
+                                         i_t y_col,
+                                         f_t y_coeff,
+                                         f_t y_x_coeff)
+{
+  auto clamp01      = [](f_t x) { return std::min<f_t>(1.0, std::max<f_t>(0.0, x)); };
+  const f_t x_value = x_col >= 0 ? clamp01(context.xstar[x_col]) : fixed_x;
+  f_t y_value       = y_const;
+  if (y_col >= 0) { y_value += y_coeff * context.xstar[y_col]; }
+  if (x_col >= 0) {
+    y_value += y_x_coeff * context.xstar[x_col];
+  } else {
+    y_value += y_x_coeff * fixed_x;
+  }
+  return snf_arc_t<i_t, f_t>{u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
+}
+
+template <typename i_t, typename f_t>
+void flow_cover_try_add_candidate(const flow_cover_context_t<i_t, f_t>& context,
+                                  const flow_cover_arc_spec_t<i_t, f_t>& spec,
+                                  f_t y_star,
+                                  std::vector<snf_candidate_t<i_t, f_t>>& candidates)
+{
+  const f_t bound_tol       = context.settings.primal_tol;
+  const f_t feasibility_tol = context.settings.primal_tol;
+  if (spec.u < -bound_tol) { return; }
+  const f_t capacity = std::max<f_t>(0.0, spec.u);
+  if (capacity <= feasibility_tol) { return; }
+
+  snf_candidate_t<i_t, f_t> candidate;
+  candidate.arc                  = flow_cover_build_arc(context,
+                                       capacity,
+                                       spec.in_n2,
+                                       spec.x_col,
+                                       spec.fixed_x,
+                                       spec.y_const,
+                                       spec.y_col,
+                                       spec.y_coeff,
+                                       spec.y_x_coeff);
+  candidate.b_shift              = spec.b_shift;
+  candidate.distance             = std::abs(spec.active_bound - y_star);
+  candidate.absorbs_binary_coeff = spec.absorbs_binary_coeff;
+  candidates.push_back(candidate);
+}
+
+template <typename f_t>
+f_t flow_cover_mir_f(f_t alpha, f_t value)
+{
+  const f_t floor_value = std::floor(value);
+  const f_t frac_value  = value - floor_value;
+  return floor_value + std::max<f_t>(0.0, frac_value - alpha) / (1.0 - alpha);
+}
+
 template <typename i_t, typename f_t>
 knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   const lp_problem_t<i_t, f_t>& lp,
@@ -922,8 +1004,8 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
       continue;
     }
     if (slack_count == 0) {
-      flow_cover_constraints_.push_back(i);
-      flow_cover_constraints_.push_back(-(i + 1));
+      flow_cover_constraints_.push_back({i, false});
+      flow_cover_constraints_.push_back({i, true});
       continue;
     }
 
@@ -931,155 +1013,24 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
       slack_coeff > 0.0 ? slack_coeff * lp.lower[slack_col] : slack_coeff * lp.upper[slack_col];
     const f_t sigma_slack_upper =
       slack_coeff > 0.0 ? slack_coeff * lp.upper[slack_col] : slack_coeff * lp.lower[slack_col];
-    if (sigma_slack_lower > -inf) { flow_cover_constraints_.push_back(i); }
-    if (sigma_slack_upper < inf) { flow_cover_constraints_.push_back(-(i + 1)); }
+    if (sigma_slack_lower > -inf) { flow_cover_constraints_.push_back({i, false}); }
+    if (sigma_slack_upper < inf) { flow_cover_constraints_.push_back({i, true}); }
   }
 }
 
 template <typename i_t, typename f_t>
-i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
-  const lp_problem_t<i_t, f_t>& lp,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
-  csr_matrix_t<i_t, f_t>& Arow,
-  const variable_bounds_t<i_t, f_t>& variable_bounds,
-  const std::vector<variable_type_t>& var_types,
-  const std::vector<f_t>& xstar,
-  i_t flow_cover_row,
-  inequality_t<i_t, f_t>& cut)
+bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
+  const flow_cover_context_t<i_t, f_t>& context,
+  const flow_cover_row_t<i_t>& flow_cover_row,
+  inequality_t<i_t, f_t>& row,
+  f_t& b,
+  bool& negate_row)
 {
-  // Flow-cover uses the solver's numerical policy: zero_tol for structural-zero
-  // coefficient decisions and primal_tol for feasibility and violation checks.
-  const f_t coefficient_tol = settings.zero_tol;
-  const f_t feasibility_tol = settings.primal_tol;
-  const f_t bound_tol       = settings.primal_tol;
-  // Algorithmic c-MIR screen: beta fractional parts too close to 0 or 1 produce
-  // weak or numerically unstable rounded coefficients, so skip those candidates.
-  const f_t min_mir_beta_fraction = 0.01;
-  const f_t max_mir_beta_fraction = 0.95;
-  auto scaled_primal_tol          = [&](f_t scale) {
-    return settings.primal_tol * std::max<f_t>(1.0, std::abs(scale));
-  };
+  const f_t coefficient_tol = context.settings.zero_tol;
+  auto& scratch             = flow_cover_scratch_;
+  row =
+    inequality_t<i_t, f_t>(context.Arow, flow_cover_row.row, context.lp.rhs[flow_cover_row.row]);
 
-  // Implementation outline:
-  //
-  // 1. Pick one finite side of one MIP row and normalize it as a'x <= b.
-  //
-  //    Example:
-  //
-  //      4 z + 3 x2 - 2 x3 <= 11,
-  //      1 <= z <= 5 x1 + 1,
-  //
-  //    where x1, x2, and x3 are binary and z is continuous.
-  //
-  // 2. Build an explicit 0-1 single-node-flow (SNF) relaxation for that row side:
-  //
-  //      sum_{j in N1} y_j - sum_{j in N2} y_j <= b_snf,
-  //      0 <= y_j <= u_j x_j.
-  //
-  //    Wolter's separator starts from this SNF form. cuOpt starts from general
-  //    MIP rows, so this step is a mapping layer: every synthetic SNF y_j must
-  //    remember how to substitute back to the original variables.
-  //
-  //    In the example:
-  //
-  //      4 z     -> y1 = 4(z - 1),  0 <= y1 <= 20 x1,  y1 in N1
-  //      3 x2    -> y2 = 3 x2,      0 <= y2 <= 3 x2,   y2 in N1
-  //     -2 x3    -> y3 = 2 x3,      0 <= y3 <= 2 x3,   y3 in N2
-  //
-  //    The constant 4 from 4 z = 4 + y1 shifts the RHS, giving
-  //
-  //      y1 + y2 - y3 <= 7.
-  //
-  // 3. Run the KPSNF cover-selection heuristic to choose C1 and C2.
-  //
-  //    For example, if KPSNF chooses C1 = {y1, y2} and C2 = {y3}, then
-  //
-  //      lambda = -7 + 20 + 3 - 2 = 14.
-  //
-  // 4. Test c-MIRFCI candidates and the simpler SGFCI fallback at the current LP point.
-  //
-  //    Continuing the example, ubar candidates are capacities such as 20 or
-  //    lambda + 1; L1/L2 are chosen by comparing candidate terms at (x*, y*).
-  //
-  // 5. Substitute each synthetic y_j back into original variables and emit a cuOpt cut.
-  //
-  //    In the example, any final SNF inequality is mapped back with
-  //    y1 = 4z - 4, y2 = 3x2, and y3 = 2x3.
-  //
-  // A row side is converted to a 0-1 single-node-flow relaxation
-  //
-  //   sum_{j in N1} y_j - sum_{j in N2} y_j <= b,
-  //   0 <= y_j <= u_j x_j, x_j in {0, 1}.
-  //
-  // Each arc stores both the SNF data (u, N1/N2 membership, binary controller x_j)
-  // and the affine expression used to map y_j back to the original row variables.
-  struct snf_arc_t {
-    f_t u;        // Capacity u_j in 0 <= y_j <= u_j x_j.
-    bool in_n2;   // false: y_j appears with + sign (N1), true: with - sign (N2).
-    i_t x_col;    // Binary controller column, or -1 for a fixed-control simple-bound arc.
-    f_t x_value;  // Current LP value of x_col, or the fixed-control value.
-
-    // cuOpt mapping layer: synthetic y_j equals
-    //
-    //   y_const + y_coeff * original_y_col + y_x_coeff * x_col.
-    //
-    // This is not thesis notation; it is how we later substitute the SNF cut back
-    // into the original MIP variables. In the running example, the flow arc stores
-    // y1 = -4 + 4z, while the direct binary arcs store y2 = 3x2 and y3 = 2x3.
-    f_t y_const;
-    i_t y_col;
-    f_t y_coeff;
-    f_t y_x_coeff;
-    f_t y_value;  // Current LP value of the synthetic y_j.
-  };
-
-  struct snf_candidate_t {
-    snf_arc_t arc;              // One possible SNF rewrite of an original row term.
-    f_t b_shift;                // Constant moved from the row activity into the SNF RHS.
-    f_t distance;               // How close the active bound used by this rewrite is to z*.
-    bool absorbs_binary_coeff;  // True if a direct x coefficient was folded into this arc.
-  };
-
-  // Use the LP primal feasibility tolerance consistently for candidate admission and
-  // final SNF validation; scale by capacity because y <= u*x has magnitude u.
-  auto snf_arc_tol = [&](const snf_arc_t& arc) { return scaled_primal_tol(arc.u); };
-
-  auto is_zero_one_integer_variable = [&](i_t j) {
-    return var_types[j] == variable_type_t::INTEGER && std::abs(lp.lower[j]) <= bound_tol &&
-           std::abs(lp.upper[j] - 1.0) <= bound_tol;
-  };
-
-  auto clamp01 = [&](f_t x) { return std::min<f_t>(1.0, std::max<f_t>(0.0, x)); };
-
-  auto arc_x_value = [&](i_t x_col, f_t fixed_value) {
-    return x_col >= 0 ? clamp01(xstar[x_col]) : fixed_value;
-  };
-
-  // Materialize the synthetic y_j mapping and evaluate it at the current LP point.
-  // Pure simple-bound arcs have no binary controller, so x_col = -1 and fixed_x is
-  // used only to evaluate constants like u * 1.
-  auto build_arc = [&](f_t u,
-                       bool in_n2,
-                       i_t x_col,
-                       f_t fixed_x,
-                       f_t y_const,
-                       i_t y_col,
-                       f_t y_coeff,
-                       f_t y_x_coeff) {
-    const f_t x_value = arc_x_value(x_col, fixed_x);
-    f_t y_value       = y_const;
-    if (y_col >= 0) { y_value += y_coeff * xstar[y_col]; }
-    if (x_col >= 0) {
-      y_value += y_x_coeff * xstar[x_col];
-    } else {
-      y_value += y_x_coeff * fixed_x;
-    }
-    return snf_arc_t{u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
-  };
-
-  const bool reverse_row_requested = flow_cover_row < 0;
-  const i_t actual_flow_cover_row  = reverse_row_requested ? -flow_cover_row - 1 : flow_cover_row;
-  inequality_t<i_t, f_t> row(Arow, actual_flow_cover_row, lp.rhs[actual_flow_cover_row]);
   i_t slack_count   = 0;
   i_t slack_col     = -1;
   f_t slack_coeff   = 0.0;
@@ -1091,54 +1042,27 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     slack_col   = j;
     slack_coeff = row.coeff(k);
   }
-  if (slack_count > 1) { return -1; }
-  // A row can contribute either finite side. Internally the row is equality-like:
-  //
-  //   a x + sigma * slack = rhs.
-  //
-  // A finite lower slack activity gives:
-  //
-  //   a x <= rhs - sigma_slack_lower.
-  //
-  // A finite upper slack activity gives:
-  //
-  //   a x >= rhs - sigma_slack_upper,
-  //
-  // which we negate to keep the normalized form a'x <= b.
-  //
-  // b is the RHS after moving the selected finite slack activity into the constant.
-  bool negate_row = reverse_row_requested;
-  f_t b           = negate_row ? -row.rhs : row.rhs;
+  if (slack_count > 1) { return false; }
+
+  negate_row = flow_cover_row.reverse;
+  b          = negate_row ? -row.rhs : row.rhs;
   if (slack_count == 1) {
-    if (std::abs(slack_coeff) <= coefficient_tol) { return -1; }
-    const f_t sigma_slack_lower =
-      slack_coeff > 0.0 ? slack_coeff * lp.lower[slack_col] : slack_coeff * lp.upper[slack_col];
-    const f_t sigma_slack_upper =
-      slack_coeff > 0.0 ? slack_coeff * lp.upper[slack_col] : slack_coeff * lp.lower[slack_col];
-    if (!reverse_row_requested) {
-      if (sigma_slack_lower <= -inf) { return -1; }
+    if (std::abs(slack_coeff) <= coefficient_tol) { return false; }
+    const f_t sigma_slack_lower = slack_coeff > 0.0 ? slack_coeff * context.lp.lower[slack_col]
+                                                    : slack_coeff * context.lp.upper[slack_col];
+    const f_t sigma_slack_upper = slack_coeff > 0.0 ? slack_coeff * context.lp.upper[slack_col]
+                                                    : slack_coeff * context.lp.lower[slack_col];
+    if (!flow_cover_row.reverse) {
+      if (sigma_slack_lower <= -inf) { return false; }
       negate_row = false;
       b          = row.rhs - sigma_slack_lower;
     } else {
-      if (sigma_slack_upper >= inf) { return -1; }
+      if (sigma_slack_upper >= inf) { return false; }
       negate_row = true;
       b          = -row.rhs + sigma_slack_upper;
     }
   }
-
-  // Split the normalized row a'x <= b into two groups:
-  //
-  // - Binary coefficients a_j x_j can directly become SNF arcs with y_j = |a_j| x_j.
-  // - Continuous terms c z need a bound z <= gamma x + alpha or z >= gamma x + alpha
-  //   before they can become arcs with 0 <= y <= u x.
-  //
-  // In the running example, z is the only continuous term; x2 and x3 stay in
-  // binary_coefficients until they are converted to direct arcs.
-  std::vector<std::pair<i_t, f_t>> continuous_terms;
-  continuous_terms.reserve(row_len);
-  std::vector<i_t> binary_columns;
-  std::unordered_map<i_t, f_t> binary_coefficients;
-  if (!std::isfinite(b)) { return -1; }
+  if (!std::isfinite(b)) { return false; }
 
   cuopt_assert(
     [&]() {
@@ -1148,459 +1072,293 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
         const i_t j = row.index(k);
         if (is_slack_[j]) { continue; }
         const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
-        row_side_activity += coeff * xstar[j];
-        row_side_scale += std::abs(coeff * xstar[j]);
+        row_side_activity += coeff * context.xstar[j];
+        row_side_scale += std::abs(coeff * context.xstar[j]);
       }
-      return row_side_activity <= b + scaled_primal_tol(row_side_scale);
+      return row_side_activity <= b + flow_cover_scaled_primal_tol(context, row_side_scale);
     }(),
     "Flow cover normalized row side excludes LP solution");
+
+  scratch.continuous_terms.reserve(row_len);
+  scratch.binary_columns.reserve(row_len);
+  auto add_binary_coeff = [&](i_t j, f_t coeff) {
+    if (!scratch.binary_coefficients_touched[j]) {
+      scratch.binary_coefficients_touched[j] = 1;
+      scratch.touched_binary_coefficients.push_back(j);
+      scratch.binary_columns.push_back(j);
+    }
+    scratch.binary_coefficients[j] += coeff;
+  };
 
   for (i_t k = 0; k < row_len; k++) {
     const i_t j = row.index(k);
     if (is_slack_[j]) { continue; }
     const f_t coeff = negate_row ? -row.coeff(k) : row.coeff(k);
     if (std::abs(coeff) <= coefficient_tol) { continue; }
-    if (is_zero_one_integer_variable(j)) {
-      if (binary_coefficients.emplace(j, coeff).second) {
-        binary_columns.push_back(j);
-      } else {
-        binary_coefficients[j] += coeff;
-      }
+    if (flow_cover_is_zero_one_integer_variable(context, j)) {
+      add_binary_coeff(j, coeff);
     } else {
-      continuous_terms.push_back({j, coeff});
+      scratch.continuous_terms.push_back({j, coeff});
     }
   }
 
-  std::vector<snf_arc_t> arcs;
-  arcs.reserve(row_len);
-  f_t b_shift = 0.0;
+  return true;
+}
 
-  // Candidate arcs are alternative algebraic rewrites of one original row term c z.
-  // For example, with z <= gamma x + alpha and a positive row coefficient c:
-  //
-  //   c z = c alpha + y,    y = c (z - alpha),    0 <= y <= c gamma x.
-  //
-  // The c alpha constant is accumulated in b_shift, so the final SNF RHS is
-  // snf_b = b - b_shift. If the same binary controller x also has a direct row
-  // coefficient a x, we try two candidates: absorb a x into this arc capacity or
-  // leave a x for a later pure-binary arc.
-  //
-  // In the running example, c = 4, gamma = 5, alpha = 1, and a = 0, so the
-  // candidate is y1 = 4z - 4 with capacity u = 20 and b_shift = 4.
-  auto push_candidate = [&](std::vector<snf_candidate_t>& candidates,
-                            f_t u,
-                            bool in_n2,
-                            i_t x_col,
-                            f_t fixed_x,
-                            f_t y_const,
-                            i_t y_col,
-                            f_t y_coeff,
-                            f_t y_x_coeff,
-                            f_t shift,
-                            f_t bound_value,
-                            f_t y_star,
-                            bool absorbs_binary_coeff) {
-    if (u < -bound_tol) { return; }
-    const f_t capacity = std::max<f_t>(0.0, u);
-    if (capacity <= feasibility_tol) { return; }
-    const f_t distance = std::abs(bound_value - y_star);
-    candidates.push_back(
-      {build_arc(capacity, in_n2, x_col, fixed_x, y_const, y_col, y_coeff, y_x_coeff),
-       shift,
-       distance,
-       absorbs_binary_coeff});
+template <typename i_t, typename f_t>
+bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
+  const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& snf_b)
+{
+  auto& scratch             = flow_cover_scratch_;
+  const f_t coefficient_tol = context.settings.zero_tol;
+  const f_t feasibility_tol = context.settings.primal_tol;
+  const f_t bound_tol       = context.settings.primal_tol;
+  f_t b_shift               = 0.0;
+
+  scratch.arcs.reserve(scratch.continuous_terms.size() + scratch.binary_columns.size());
+
+  auto add_variable_bound_candidates = [&](i_t j, f_t c, flow_cover_bound_side_t side) {
+    const bool use_upper_bound = side == flow_cover_bound_side_t::UPPER;
+    const f_t lower_j          = context.lp.lower[j];
+    const f_t upper_j          = context.lp.upper[j];
+    if (use_upper_bound && lower_j <= -inf) { return; }
+    if (!use_upper_bound && upper_j >= inf) { return; }
+
+    const i_t start    = use_upper_bound ? context.variable_bounds.upper_offsets[j]
+                                         : context.variable_bounds.lower_offsets[j];
+    const i_t end      = use_upper_bound ? context.variable_bounds.upper_offsets[j + 1]
+                                         : context.variable_bounds.lower_offsets[j + 1];
+    const f_t endpoint = use_upper_bound ? lower_j : upper_j;
+
+    for (i_t p = start; p < end; p++) {
+      const i_t x_col = use_upper_bound ? context.variable_bounds.upper_variables[p]
+                                        : context.variable_bounds.lower_variables[p];
+      if (!flow_cover_is_zero_one_integer_variable(context, x_col)) { continue; }
+      const f_t gamma = use_upper_bound ? context.variable_bounds.upper_weights[p]
+                                        : context.variable_bounds.lower_weights[p];
+      const f_t alpha = use_upper_bound ? context.variable_bounds.upper_biases[p]
+                                        : context.variable_bounds.lower_biases[p];
+      if (!std::isfinite(gamma) || !std::isfinite(alpha)) { continue; }
+
+      const f_t direct_coeff            = scratch.binary_coefficients_touched[x_col]
+                                            ? scratch.binary_coefficients[x_col]
+                                            : static_cast<f_t>(0.0);
+      const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
+      const i_t num_a_values            = std::abs(direct_coeff) > coefficient_tol ? 2 : 1;
+      for (i_t h = 0; h < num_a_values; h++) {
+        const f_t a               = a_values[h];
+        const bool in_n2          = use_upper_bound ? c < 0.0 : c > 0.0;
+        const f_t signed_capacity = c * gamma + a;
+        const f_t endpoint_term   = c * (endpoint - alpha);
+        const bool valid_endpoint =
+          in_n2 ? (endpoint_term <= bound_tol && endpoint_term + a <= bound_tol &&
+                   signed_capacity <= bound_tol)
+                : (endpoint_term >= -bound_tol && endpoint_term + a >= -bound_tol &&
+                   signed_capacity >= -bound_tol);
+        if (!valid_endpoint) { continue; }
+
+        flow_cover_arc_spec_t<i_t, f_t> spec;
+        spec.u                    = in_n2 ? -signed_capacity : signed_capacity;
+        spec.in_n2                = in_n2;
+        spec.x_col                = x_col;
+        spec.fixed_x              = 0.0;
+        spec.y_const              = in_n2 ? c * alpha : -c * alpha;
+        spec.y_col                = j;
+        spec.y_coeff              = in_n2 ? -c : c;
+        spec.y_x_coeff            = in_n2 ? -a : a;
+        spec.b_shift              = c * alpha;
+        spec.active_bound         = gamma * context.xstar[x_col] + alpha;
+        spec.absorbs_binary_coeff = std::abs(a) > coefficient_tol;
+        flow_cover_try_add_candidate(context, spec, context.xstar[j], scratch.candidates);
+      }
+    }
   };
 
-  for (const auto& [j, c] : continuous_terms) {
-    const f_t lower_j = lp.lower[j];
-    const f_t upper_j = lp.upper[j];
-    const f_t y_star  = xstar[j];
-    std::vector<snf_candidate_t> candidates;
+  auto add_simple_bound_candidates = [&](i_t j, f_t c) {
+    const f_t lower_j = context.lp.lower[j];
+    const f_t upper_j = context.lp.upper[j];
+    if (lower_j <= -inf || upper_j >= inf) { return; }
+    const f_t capacity = std::abs(c) * (upper_j - lower_j);
+    if (capacity <= feasibility_tol) { return; }
 
-    // Use upper variable bounds z <= gamma x + alpha. With c > 0 this naturally
-    // creates an N1 arc:
-    //
-    //   c z = c alpha + y,  y = c(z - alpha) + a x,  u = c gamma + a.
-    //
-    // With c < 0 the signs flip and the same rewrite creates an N2 arc. The guards
-    // below check that y is nonnegative at the valid endpoint and that u is nonnegative.
-    // The running example uses this branch for 4z with z <= 5x1 + 1.
-    auto add_variable_upper_candidates = [&]() {
-      const i_t start = variable_bounds.upper_offsets[j];
-      const i_t end   = variable_bounds.upper_offsets[j + 1];
-      for (i_t p = start; p < end; p++) {
-        const i_t x_col = variable_bounds.upper_variables[p];
-        if (!is_zero_one_integer_variable(x_col)) { continue; }
-        const f_t gamma = variable_bounds.upper_weights[p];
-        const f_t alpha = variable_bounds.upper_biases[p];
-        if (!std::isfinite(gamma) || !std::isfinite(alpha) || lower_j <= -inf) { continue; }
-        const f_t direct_coeff =
-          binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
-        // First try folding the direct x coefficient into this arc, then try the
-        // pure variable-bound arc. If there is no direct coefficient, only the pure
-        // candidate is generated.
-        const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
-        const i_t num_a_values            = std::abs(direct_coeff) > coefficient_tol ? 2 : 1;
-        for (i_t h = 0; h < num_a_values; h++) {
-          const f_t a = a_values[h];
-          if (c > 0.0) {
-            if (c * (lower_j - alpha) >= -bound_tol && c * (lower_j - alpha) + a >= -bound_tol &&
-                c * gamma + a >= -bound_tol) {
-              push_candidate(candidates,
-                             c * gamma + a,
-                             false,
-                             x_col,
-                             0.0,
-                             -c * alpha,
-                             j,
-                             c,
-                             a,
-                             c * alpha,
-                             gamma * xstar[x_col] + alpha,
-                             y_star,
-                             std::abs(a) > coefficient_tol);
-            }
-          } else {
-            if (c * (lower_j - alpha) <= bound_tol && c * (lower_j - alpha) + a <= bound_tol &&
-                c * gamma + a <= bound_tol) {
-              push_candidate(candidates,
-                             -(c * gamma + a),
-                             true,
-                             x_col,
-                             0.0,
-                             c * alpha,
-                             j,
-                             -c,
-                             -a,
-                             c * alpha,
-                             gamma * xstar[x_col] + alpha,
-                             y_star,
-                             std::abs(a) > coefficient_tol);
-            }
-          }
-        }
-      }
-    };
+    auto add_simple_candidate =
+      [&](bool in_n2, f_t y_const, f_t y_coeff, f_t shift, f_t active_bound) {
+        flow_cover_arc_spec_t<i_t, f_t> spec;
+        spec.u                    = capacity;
+        spec.in_n2                = in_n2;
+        spec.x_col                = -1;
+        spec.fixed_x              = 1.0;
+        spec.y_const              = y_const;
+        spec.y_col                = j;
+        spec.y_coeff              = y_coeff;
+        spec.y_x_coeff            = 0.0;
+        spec.b_shift              = shift;
+        spec.active_bound         = active_bound;
+        spec.absorbs_binary_coeff = false;
+        flow_cover_try_add_candidate(context, spec, context.xstar[j], scratch.candidates);
+      };
 
-    // Use lower variable bounds z >= gamma x + alpha. This is the symmetric case:
-    // with c > 0 we represent the term through an N2 arc, and with c < 0 through
-    // an N1 arc. The endpoint checks mirror the upper-bound case.
-    auto add_variable_lower_candidates = [&]() {
-      const i_t start = variable_bounds.lower_offsets[j];
-      const i_t end   = variable_bounds.lower_offsets[j + 1];
-      for (i_t p = start; p < end; p++) {
-        const i_t x_col = variable_bounds.lower_variables[p];
-        if (!is_zero_one_integer_variable(x_col)) { continue; }
-        const f_t gamma = variable_bounds.lower_weights[p];
-        const f_t alpha = variable_bounds.lower_biases[p];
-        if (!std::isfinite(gamma) || !std::isfinite(alpha) || upper_j >= inf) { continue; }
-        const f_t direct_coeff =
-          binary_coefficients.count(x_col) != 0 ? binary_coefficients[x_col] : 0.0;
-        // As above, test both variants: absorb a direct x coefficient into the
-        // arc or keep it as a separate pure-binary arc.
-        const std::array<f_t, 2> a_values = {direct_coeff, 0.0};
-        const i_t num_a_values            = std::abs(direct_coeff) > coefficient_tol ? 2 : 1;
-        for (i_t h = 0; h < num_a_values; h++) {
-          const f_t a = a_values[h];
-          if (c > 0.0) {
-            if (c * (upper_j - alpha) <= bound_tol && c * (upper_j - alpha) + a <= bound_tol &&
-                c * gamma + a <= bound_tol) {
-              push_candidate(candidates,
-                             -(c * gamma + a),
-                             true,
-                             x_col,
-                             0.0,
-                             c * alpha,
-                             j,
-                             -c,
-                             -a,
-                             c * alpha,
-                             gamma * xstar[x_col] + alpha,
-                             y_star,
-                             std::abs(a) > coefficient_tol);
-            }
-          } else {
-            if (c * (upper_j - alpha) >= -bound_tol && c * (upper_j - alpha) + a >= -bound_tol &&
-                c * gamma + a >= -bound_tol) {
-              push_candidate(candidates,
-                             c * gamma + a,
-                             false,
-                             x_col,
-                             0.0,
-                             -c * alpha,
-                             j,
-                             c,
-                             a,
-                             c * alpha,
-                             gamma * xstar[x_col] + alpha,
-                             y_star,
-                             std::abs(a) > coefficient_tol);
-            }
-          }
-        }
-      }
-    };
+    if (c > 0.0) {
+      add_simple_candidate(false, -c * lower_j, c, c * lower_j, lower_j);
+      add_simple_candidate(true, c * upper_j, -c, c * upper_j, upper_j);
+    } else {
+      add_simple_candidate(true, c * lower_j, -c, c * lower_j, lower_j);
+      add_simple_candidate(false, -c * upper_j, c, c * upper_j, upper_j);
+    }
+  };
 
-    // If no binary-controlled variable bound is available, finite simple bounds
-    // l <= z <= u still give a valid fixed-control arc. These arcs can preserve
-    // the SNF row algebra, but they do not create useful binary cover structure.
-    auto add_simple_bound_candidates = [&]() {
-      if (lower_j <= -inf || upper_j >= inf) { return; }
-      const f_t capacity = std::abs(c) * (upper_j - lower_j);
-      if (capacity <= feasibility_tol) { return; }
-      if (c > 0.0) {
-        push_candidate(candidates,
-                       capacity,
-                       false,
-                       -1,
-                       1.0,
-                       -c * lower_j,
-                       j,
-                       c,
-                       0.0,
-                       c * lower_j,
-                       upper_j,
-                       y_star,
-                       false);
-        push_candidate(candidates,
-                       capacity,
-                       true,
-                       -1,
-                       1.0,
-                       c * upper_j,
-                       j,
-                       -c,
-                       0.0,
-                       c * upper_j,
-                       lower_j,
-                       y_star,
-                       false);
-      } else {
-        push_candidate(candidates,
-                       capacity,
-                       true,
-                       -1,
-                       1.0,
-                       c * lower_j,
-                       j,
-                       -c,
-                       0.0,
-                       c * lower_j,
-                       upper_j,
-                       y_star,
-                       false);
-        push_candidate(candidates,
-                       capacity,
-                       false,
-                       -1,
-                       1.0,
-                       -c * upper_j,
-                       j,
-                       c,
-                       0.0,
-                       c * upper_j,
-                       lower_j,
-                       y_star,
-                       false);
-      }
-    };
+  for (const auto& [j, c] : scratch.continuous_terms) {
+    scratch.candidates.clear();
+    add_variable_bound_candidates(j, c, flow_cover_bound_side_t::UPPER);
+    add_variable_bound_candidates(j, c, flow_cover_bound_side_t::LOWER);
+    add_simple_bound_candidates(j, c);
 
-    add_variable_upper_candidates();
-    add_variable_lower_candidates();
-    add_simple_bound_candidates();
-
-    if (candidates.empty()) { return -1; }
-    // Pick the rewrite whose active bound is closest to z*. Several rewrites can
-    // be algebraically valid for the integer set, but the separator evaluates cuts
-    // at the current LP point. We therefore keep the rewrite that is least likely
-    // to exclude (x*, y*) from the constructed SNF relaxation.
-    auto best = std::min_element(
-      candidates.begin(), candidates.end(), [](const snf_candidate_t& a, const snf_candidate_t& b) {
-        return a.distance < b.distance;
-      });
-    const f_t arc_tol = snf_arc_tol(best->arc);
+    if (scratch.candidates.empty()) { return false; }
+    auto best =
+      std::min_element(scratch.candidates.begin(),
+                       scratch.candidates.end(),
+                       [](const snf_candidate_t<i_t, f_t>& a, const snf_candidate_t<i_t, f_t>& b) {
+                         return a.distance < b.distance;
+                       });
+    const f_t arc_tol = flow_cover_arc_tol(context, best->arc);
     if (best->arc.y_value < -arc_tol ||
         best->arc.y_value > best->arc.u * best->arc.x_value + arc_tol) {
-      return -1;
+      return false;
     }
     if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
-    arcs.push_back(best->arc);
+    scratch.arcs.push_back(best->arc);
     b_shift += best->b_shift;
-    if (best->absorbs_binary_coeff) { binary_coefficients[best->arc.x_col] = 0.0; }
+    if (best->absorbs_binary_coeff && best->arc.x_col >= 0) {
+      scratch.binary_coefficients[best->arc.x_col] = 0.0;
+    }
   }
 
-  // Remaining pure binary coefficients a x become arcs with y = u x and u = |a|:
-  //
-  //   a > 0:  +u x contributes as an N1 arc,
-  //   a < 0:  -u x contributes as an N2 arc.
-  //
-  // In the running example, 3x2 becomes y2 = 3x2 in N1 and -2x3 becomes
-  // -y3 with y3 = 2x3 in N2.
-  for (i_t j : binary_columns) {
-    const f_t coeff = binary_coefficients[j];
+  for (i_t j : scratch.binary_columns) {
+    const f_t coeff = scratch.binary_coefficients[j];
     if (std::abs(coeff) <= coefficient_tol) { continue; }
     const f_t u = std::abs(coeff);
-    arcs.push_back(build_arc(u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
+    scratch.arcs.push_back(flow_cover_build_arc(context, u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
   }
 
-  if (arcs.empty()) { return -1; }
-  f_t snf_b = b - b_shift;
+  if (scratch.arcs.empty()) { return false; }
+  snf_b = b - b_shift;
   cuopt_assert(
     [&]() {
       f_t snf_activity = 0.0;
       f_t snf_scale    = std::max<f_t>(1.0, std::abs(snf_b));
-      for (const auto& arc : arcs) {
-        const f_t arc_tol = snf_arc_tol(arc);
+      for (const auto& arc : scratch.arcs) {
+        const f_t arc_tol = flow_cover_arc_tol(context, arc);
         if (arc.y_value < -arc_tol) { return false; }
         if (arc.y_value > arc.u * arc.x_value + arc_tol) { return false; }
         const f_t signed_y = arc.in_n2 ? -arc.y_value : arc.y_value;
         snf_activity += signed_y;
         snf_scale += std::abs(signed_y);
       }
-      return snf_activity <= snf_b + settings.primal_tol * snf_scale;
+      return snf_activity <= snf_b + context.settings.primal_tol * snf_scale;
     }(),
     "Flow cover SNF relaxation excludes LP solution");
 
-  // Coarse structural test before separation. A flow cover exists only if the N1
-  // capacities can exceed the RHS:
-  //
-  //   lambda(C = N1, empty C2) = -b + sum_{j in N1} u_j > 0.
-  //
-  // This is the capacity surplus the KPSNF separator tries to keep positive while
-  // choosing a cover that is violated by the current LP point.
-  //
-  // In the running example, N1 capacities are 20 and 3, the SNF RHS is 7, and
-  // the coarse surplus is -7 + 20 + 3 = 16 before any N2 arc is put in C2.
-  auto compute_structure = [&]() {
-    bool has_binary_controlled_arc = false;
-    bool has_n1                    = false;
-    f_t sum_n1_u                   = 0.0;
-    for (const auto& arc : arcs) {
-      if (arc.x_col >= 0) { has_binary_controlled_arc = true; }
-      if (!arc.in_n2) {
-        has_n1 = true;
-        sum_n1_u += arc.u;
-      }
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
+  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, flow_cover_selection_t<f_t>& selection)
+{
+  auto& scratch             = flow_cover_scratch_;
+  const f_t feasibility_tol = context.settings.primal_tol;
+
+  bool has_binary_controlled_arc = false;
+  bool has_n1                    = false;
+  f_t sum_n1_u                   = 0.0;
+  for (const auto& arc : scratch.arcs) {
+    if (arc.x_col >= 0) { has_binary_controlled_arc = true; }
+    if (!arc.in_n2) {
+      has_n1 = true;
+      sum_n1_u += arc.u;
     }
-    const f_t cover_capacity = -snf_b + sum_n1_u;
-    return std::make_tuple(has_binary_controlled_arc, has_n1, cover_capacity);
-  };
+  }
+  const f_t cover_capacity = -snf_b + sum_n1_u;
+  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= feasibility_tol) { return false; }
 
-  auto [has_binary_controlled_arc, has_n1, cover_capacity] = compute_structure();
-  if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= feasibility_tol) { return -1; }
-
-  std::vector<f_t> values;
-  std::vector<f_t> weights;
-  std::vector<i_t> item_to_arc;
-  values.reserve(arcs.size());
-  weights.reserve(arcs.size());
-  item_to_arc.reserve(arcs.size());
-  // KPSNF separation chooses which arcs to keep out of the cover by solving:
-  //
-  //   max sum_{N1} (1 - x*_j) zbar_j + sum_{N2} x*_j z_j
-  //   s.t. sum u_j z_j < -b + sum_{N1} u_j.
-  //
-  // Interpretation after solving:
-  //
-  //   N1: zbar_j = 0 means j enters C1.
-  //   N2: z_j    = 1 means j enters C2.
-  //
-  // The current implementation uses the ratio-prefix approximation from the
-  // rational KPSNF path instead of the exact integer DP path.
-  //
-  // In the running example, the KPSNF items have weights 20, 3, and 2. The
-  // values are 1 - x1*, 1 - x2*, and x3* because y1/y2 are in N1 and y3 is in N2.
-  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-    const auto& arc = arcs[k];
+  scratch.values.reserve(scratch.arcs.size());
+  scratch.weights.reserve(scratch.arcs.size());
+  scratch.item_to_arc.reserve(scratch.arcs.size());
+  for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+    const auto& arc = scratch.arcs[k];
     if (arc.u <= feasibility_tol) { continue; }
     const f_t value = arc.in_n2 ? arc.x_value : 1.0 - arc.x_value;
-    values.push_back(std::max<f_t>(0.0, value));
-    weights.push_back(arc.u);
-    item_to_arc.push_back(k);
+    scratch.values.push_back(std::max<f_t>(0.0, value));
+    scratch.weights.push_back(arc.u);
+    scratch.item_to_arc.push_back(k);
   }
-  if (values.empty()) { return -1; }
+  if (scratch.values.empty()) { return false; }
 
-  std::vector<f_t> solution;
-  const f_t objective = greedy_knapsack_problem(
-    values, weights, cover_capacity, solution, greedy_knapsack_mode_t::STRICT_RATIO_PREFIX);
-  if (std::isnan(objective)) { return -1; }
-  static_cast<void>(objective);
+  const f_t objective = greedy_knapsack_problem(scratch.values,
+                                                scratch.weights,
+                                                cover_capacity,
+                                                scratch.solution,
+                                                greedy_knapsack_mode_t::STRICT_RATIO_PREFIX);
+  if (std::isnan(objective)) { return false; }
 
-  // Convert the KPSNF solution into the flow-cover sets:
-  //
-  //   C1 = {j in N1 : zbar_j = 0},   C2 = {j in N2 : z_j = 1}.
-  std::vector<uint8_t> in_c1(arcs.size(), 0);
-  std::vector<uint8_t> in_c2(arcs.size(), 0);
-  for (i_t item = 0; item < static_cast<i_t>(solution.size()); item++) {
-    const i_t arc_index = item_to_arc[item];
-    if (arcs[arc_index].in_n2) {
-      if (solution[item] > 0.5) { in_c2[arc_index] = 1; }
+  scratch.in_c1.assign(scratch.arcs.size(), 0);
+  scratch.in_c2.assign(scratch.arcs.size(), 0);
+  for (i_t item = 0; item < static_cast<i_t>(scratch.solution.size()); item++) {
+    const i_t arc_index = scratch.item_to_arc[item];
+    if (scratch.arcs[arc_index].in_n2) {
+      if (scratch.solution[item] > 0.5) { scratch.in_c2[arc_index] = 1; }
     } else {
-      if (solution[item] <= 0.5) { in_c1[arc_index] = 1; }
+      if (scratch.solution[item] <= 0.5) { scratch.in_c1[arc_index] = 1; }
     }
   }
 
   f_t sum_c1_u     = 0.0;
   f_t sum_c2_u     = 0.0;
   bool c1_nonempty = false;
-  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-    if (in_c1[k]) {
-      sum_c1_u += arcs[k].u;
+  for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+    if (scratch.in_c1[k]) {
+      sum_c1_u += scratch.arcs[k].u;
       c1_nonempty = true;
     }
-    if (in_c2[k]) { sum_c2_u += arcs[k].u; }
+    if (scratch.in_c2[k]) { sum_c2_u += scratch.arcs[k].u; }
   }
-  // lambda is the cover excess:
-  //
-  //   lambda = -b + sum_{j in C1} u_j - sum_{j in C2} u_j.
-  //
-  // A positive lambda is required for the flow-cover inequality to cut anything.
-  // In the running example with C1 = {y1, y2} and C2 = {y3}, lambda is
-  // -7 + 20 + 3 - 2 = 14.
-  const f_t lambda = -snf_b + sum_c1_u - sum_c2_u;
-  if (!c1_nonempty || lambda <= feasibility_tol) { return -1; }
 
-  auto fractional_part_local = [](f_t value) {
-    const f_t floor_value = std::floor(value);
-    return value - floor_value;
-  };
+  selection.lambda = -snf_b + sum_c1_u - sum_c2_u;
+  return c1_nonempty && selection.lambda > feasibility_tol;
+}
 
-  // MIR rounding function used by the c-MIR flow-cover inequality:
-  //
-  //   F_alpha(t) = floor(t) + max(0, frac(t) - alpha) / (1 - alpha).
-  auto mir_F = [&](f_t alpha, f_t value) {
-    const f_t floor_value = std::floor(value);
-    const f_t frac_value  = value - floor_value;
-    return floor_value + std::max<f_t>(0.0, frac_value - alpha) / (1.0 - alpha);
-  };
+template <typename i_t, typename f_t>
+flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
+  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, f_t lambda)
+{
+  auto& scratch                       = flow_cover_scratch_;
+  constexpr f_t min_mir_beta_fraction = 0.01;
+  constexpr f_t max_mir_beta_fraction = 0.95;
+  const f_t lambda_tol                = flow_cover_scaled_primal_tol(context, lambda);
+  f_t max_c1_ltilde2                  = -inf;
+  f_t max_c1                          = -inf;
+  f_t max_u_ge_lambda                 = -inf;
 
-  // ubar controls the c-MIR scaling beta = -lambda / ubar. The rounded coefficients
-  // only change at capacity-related breakpoints, so we test a small candidate set
-  // derived from capacities in and around C1, C2, L1, and L2.
-  // In the running example, one natural ubar candidate is 20, the largest C1 capacity.
-  std::vector<f_t> ubar_candidates;
   auto add_ubar_candidate = [&](f_t candidate) {
-    if (candidate <= lambda + scaled_primal_tol(lambda) || !std::isfinite(candidate)) { return; }
-    for (f_t existing : ubar_candidates) {
-      if (std::abs(existing - candidate) <= scaled_primal_tol(candidate)) { return; }
+    if (candidate <= lambda + lambda_tol || !std::isfinite(candidate)) { return; }
+    for (f_t existing : scratch.ubar_candidates) {
+      if (std::abs(existing - candidate) <= flow_cover_scaled_primal_tol(context, candidate)) {
+        return;
+      }
     }
-    ubar_candidates.push_back(candidate);
+    scratch.ubar_candidates.push_back(candidate);
   };
 
-  f_t max_c1_ltilde2   = -inf;
-  f_t max_c1           = -inf;
-  f_t max_u_ge_lambda  = -inf;
-  const f_t lambda_tol = scaled_primal_tol(lambda);
-  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-    const auto& arc = arcs[k];
+  for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+    const auto& arc = scratch.arcs[k];
     if (arc.u > lambda + lambda_tol) { add_ubar_candidate(arc.u); }
     if (arc.u >= lambda - lambda_tol) { max_u_ge_lambda = std::max(max_u_ge_lambda, arc.u); }
-    if (!arc.in_n2 && in_c1[k] && arc.u > lambda + lambda_tol) {
+    if (!arc.in_n2 && scratch.in_c1[k] && arc.u > lambda + lambda_tol) {
       max_c1         = std::max(max_c1, arc.u);
       max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
     }
-    if (arc.in_n2 && !in_c2[k] && arc.u > lambda + lambda_tol &&
-        std::min(arc.u, lambda) * arc.x_value <= arc.y_value + snf_arc_tol(arc)) {
+    if (arc.in_n2 && !scratch.in_c2[k] && arc.u > lambda + lambda_tol &&
+        std::min(arc.u, lambda) * arc.x_value <= arc.y_value + flow_cover_arc_tol(context, arc)) {
       max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
     }
   }
@@ -1608,24 +1366,22 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   add_ubar_candidate(max_c1);
   add_ubar_candidate(max_u_ge_lambda + 1.0);
   add_ubar_candidate(lambda + 1.0);
-  if (ubar_candidates.empty()) { return -1; }
 
-  f_t best_violation = 0.0;
-  f_t best_ubar      = 0.0;
-  std::vector<uint8_t> best_in_l1(arcs.size(), 0);
-  std::vector<uint8_t> best_in_l2(arcs.size(), 0);
+  flow_cover_evaluation_t<f_t> best{0.0, 0.0};
+  if (scratch.ubar_candidates.empty()) { return best; }
 
-  // Evaluate one candidate c-MIRFCI at the current LP point. This mirrors the
-  // inequality terms but does not write the cut yet; it is only used to choose the
-  // best ubar and the L1/L2 sets.
-  auto contribution = [&](const snf_arc_t& arc,
+  scratch.best_in_l1.assign(scratch.arcs.size(), 0);
+  scratch.best_in_l2.assign(scratch.arcs.size(), 0);
+
+  auto contribution = [&](const snf_arc_t<i_t, f_t>& arc,
                           bool arc_in_c1,
                           bool arc_in_c2,
                           bool arc_in_l1,
                           bool arc_in_l2,
                           f_t ubar) {
-    const f_t f_pos = mir_F(fractional_part_local(-lambda / ubar), arc.u / ubar);
-    const f_t f_neg = mir_F(fractional_part_local(-lambda / ubar), -arc.u / ubar);
+    const f_t f_beta = fractional_part(-lambda / ubar);
+    const f_t f_pos  = flow_cover_mir_f(f_beta, arc.u / ubar);
+    const f_t f_neg  = flow_cover_mir_f(f_beta, -arc.u / ubar);
     if (arc_in_c1) { return arc.y_value + (arc.u + lambda * f_neg) * (1.0 - arc.x_value); }
     if (!arc.in_n2) {
       return arc_in_l1 ? arc.y_value - (arc.u - lambda * f_pos) * arc.x_value
@@ -1635,99 +1391,104 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     return arc_in_l2 ? lambda * f_neg * arc.x_value : -arc.y_value;
   };
 
-  for (f_t ubar : ubar_candidates) {
+  for (f_t ubar : scratch.ubar_candidates) {
     const f_t beta   = -lambda / ubar;
-    const f_t f_beta = fractional_part_local(beta);
+    const f_t f_beta = fractional_part(beta);
     if (f_beta < min_mir_beta_fraction || f_beta > max_mir_beta_fraction) { continue; }
 
-    // L1 and L2 are chosen by local comparison at (x*, y*):
-    //
-    // - For N1 \ C1, use the strengthened expression only if it contributes at
-    //   least as much violation as dropping the term.
-    // - For N2 \ C2, use the x-term only if it contributes at least as much
-    //   violation as the baseline -y term.
-    std::vector<uint8_t> in_l1(arcs.size(), 0);
-    std::vector<uint8_t> in_l2(arcs.size(), 0);
-    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-      const auto& arc = arcs[k];
-      const f_t f_pos = mir_F(f_beta, arc.u / ubar);
-      const f_t f_neg = mir_F(f_beta, -arc.u / ubar);
-      if (!arc.in_n2 && !in_c1[k] &&
-          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -snf_arc_tol(arc)) {
-        in_l1[k] = 1;
+    scratch.in_l1.assign(scratch.arcs.size(), 0);
+    scratch.in_l2.assign(scratch.arcs.size(), 0);
+    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+      const auto& arc = scratch.arcs[k];
+      const f_t f_pos = flow_cover_mir_f(f_beta, arc.u / ubar);
+      const f_t f_neg = flow_cover_mir_f(f_beta, -arc.u / ubar);
+      if (!arc.in_n2 && !scratch.in_c1[k] &&
+          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >=
+            -flow_cover_arc_tol(context, arc)) {
+        scratch.in_l1[k] = 1;
       }
-      if (arc.in_n2 && !in_c2[k] &&
-          lambda * f_neg * arc.x_value >= -arc.y_value - snf_arc_tol(arc)) {
-        in_l2[k] = 1;
+      if (arc.in_n2 && !scratch.in_c2[k] &&
+          lambda * f_neg * arc.x_value >= -arc.y_value - flow_cover_arc_tol(context, arc)) {
+        scratch.in_l2[k] = 1;
       }
     }
 
     f_t lhs_value = 0.0;
-    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-      lhs_value += contribution(arcs[k], in_c1[k], in_c2[k], in_l1[k], in_l2[k], ubar);
+    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+      lhs_value += contribution(scratch.arcs[k],
+                                scratch.in_c1[k],
+                                scratch.in_c2[k],
+                                scratch.in_l1[k],
+                                scratch.in_l2[k],
+                                ubar);
     }
     const f_t violation   = lhs_value - snf_b;
-    const f_t snf_rhs_tol = scaled_primal_tol(snf_b);
-    if (violation > best_violation + snf_rhs_tol) {
-      best_violation = violation;
-      best_ubar      = ubar;
-      best_in_l1     = std::move(in_l1);
-      best_in_l2     = std::move(in_l2);
+    const f_t snf_rhs_tol = flow_cover_scaled_primal_tol(context, snf_b);
+    if (violation > best.violation + snf_rhs_tol) {
+      best.violation     = violation;
+      best.ubar          = ubar;
+      scratch.best_in_l1 = scratch.in_l1;
+      scratch.best_in_l2 = scratch.in_l2;
     }
   }
 
-  // SGFCI fallback: this is the non-c-MIR strengthened flow-cover inequality. We
-  // evaluate it too because it can be violated when no tested ubar gives a useful
-  // c-MIRFCI, and we keep whichever of the two cuts is more violated.
-  std::vector<uint8_t> sgfci_in_l2(arcs.size(), 0);
-  f_t sgfci_lhs_value = 0.0;
-  for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-    const auto& arc = arcs[k];
-    if (in_c1[k]) {
-      sgfci_lhs_value += arc.y_value + std::max<f_t>(0.0, arc.u - lambda) * (1.0 - arc.x_value);
+  return best;
+}
+
+template <typename i_t, typename f_t>
+flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
+  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, f_t lambda)
+{
+  auto& scratch = flow_cover_scratch_;
+  scratch.sgfci_in_l2.assign(scratch.arcs.size(), 0);
+
+  f_t lhs_value = 0.0;
+  for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+    const auto& arc = scratch.arcs[k];
+    if (scratch.in_c1[k]) {
+      lhs_value += arc.y_value + std::max<f_t>(0.0, arc.u - lambda) * (1.0 - arc.x_value);
     } else if (!arc.in_n2) {
       continue;
-    } else if (in_c2[k]) {
-      sgfci_lhs_value -= arc.u;
-    } else if (std::min(arc.u, lambda) * arc.x_value <= arc.y_value + snf_arc_tol(arc)) {
-      sgfci_in_l2[k] = 1;
-      sgfci_lhs_value -= std::min(arc.u, lambda) * arc.x_value;
+    } else if (scratch.in_c2[k]) {
+      lhs_value -= arc.u;
+    } else if (std::min(arc.u, lambda) * arc.x_value <=
+               arc.y_value + flow_cover_arc_tol(context, arc)) {
+      scratch.sgfci_in_l2[k] = 1;
+      lhs_value -= std::min(arc.u, lambda) * arc.x_value;
     } else {
-      sgfci_lhs_value -= arc.y_value;
+      lhs_value -= arc.y_value;
     }
   }
-  const f_t sgfci_violation = sgfci_lhs_value - snf_b;
-  const f_t snf_rhs_tol     = scaled_primal_tol(snf_b);
-  if (best_violation <= snf_rhs_tol && sgfci_violation <= snf_rhs_tol) { return -1; }
-  const bool use_cmirfci = best_violation >= sgfci_violation;
 
-  f_t lhs_constant = 0.0;
-  std::vector<i_t> lhs_indices;
-  std::unordered_map<i_t, f_t> lhs_coefficients;
-  lhs_indices.reserve(arcs.size() * 2);
+  return {lhs_value - snf_b, 0.0};
+}
 
+template <typename i_t, typename f_t>
+bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
+  const flow_cover_context_t<i_t, f_t>& context,
+  f_t snf_b,
+  f_t lambda,
+  const flow_cover_evaluation_t<f_t>& cmirfci,
+  const flow_cover_evaluation_t<f_t>& sgfci,
+  inequality_t<i_t, f_t>& cut)
+{
+  auto& scratch             = flow_cover_scratch_;
+  const f_t coefficient_tol = context.settings.zero_tol;
+  const bool use_cmirfci    = cmirfci.violation >= sgfci.violation;
+  f_t lhs_constant          = 0.0;
+
+  scratch.lhs_indices.reserve(scratch.arcs.size() * 2);
   auto add_lhs_coeff = [&](i_t j, f_t value) {
     if (j < 0 || std::abs(value) <= coefficient_tol) { return; }
-    if (lhs_coefficients.emplace(j, value).second) {
-      lhs_indices.push_back(j);
-    } else {
-      lhs_coefficients[j] += value;
+    if (!scratch.lhs_coefficients_touched[j]) {
+      scratch.lhs_coefficients_touched[j] = 1;
+      scratch.touched_lhs_coefficients.push_back(j);
+      scratch.lhs_indices.push_back(j);
     }
+    scratch.lhs_coefficients[j] += value;
   };
 
-  // Map the selected SNF inequality
-  //
-  //   lhs_snf(x, y) <= b
-  //
-  // back through each arc's affine y-expression, accumulating
-  //
-  //   lhs_constant + sum_j lhs_coefficients[j] * original_x_j <= snf_b.
-  //
-  // add_y substitutes synthetic y_j. add_x and add_one_minus_x handle the binary
-  // controller terms that appear in the c-MIRFCI/SGFCI formula.
-  // In the running example, add_y(y1, m) contributes -4m to the constant and
-  // 4m to the coefficient of z; add_y(y2, m) contributes 3m to x2.
-  auto add_y = [&](const snf_arc_t& arc, f_t multiplier) {
+  auto add_y = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
     lhs_constant += multiplier * arc.y_const;
     if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
     if (arc.x_col >= 0) {
@@ -1737,7 +1498,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   };
 
-  auto add_x = [&](const snf_arc_t& arc, f_t multiplier) {
+  auto add_x = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
     if (arc.x_col >= 0) {
       add_lhs_coeff(arc.x_col, multiplier);
     } else {
@@ -1745,45 +1506,45 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   };
 
-  auto add_one_minus_x = [&](const snf_arc_t& arc, f_t multiplier) {
+  auto add_one_minus_x = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
     lhs_constant += multiplier;
     add_x(arc, -multiplier);
   };
 
   if (use_cmirfci) {
-    const f_t f_beta_best = fractional_part_local(-lambda / best_ubar);
-    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-      const auto& arc = arcs[k];
-      const f_t f_pos = mir_F(f_beta_best, arc.u / best_ubar);
-      const f_t f_neg = mir_F(f_beta_best, -arc.u / best_ubar);
-      if (in_c1[k]) {
+    const f_t f_beta_best = fractional_part(-lambda / cmirfci.ubar);
+    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+      const auto& arc = scratch.arcs[k];
+      const f_t f_pos = flow_cover_mir_f(f_beta_best, arc.u / cmirfci.ubar);
+      const f_t f_neg = flow_cover_mir_f(f_beta_best, -arc.u / cmirfci.ubar);
+      if (scratch.in_c1[k]) {
         add_y(arc, 1.0);
         add_one_minus_x(arc, arc.u + lambda * f_neg);
       } else if (!arc.in_n2) {
-        if (best_in_l1[k]) {
+        if (scratch.best_in_l1[k]) {
           add_y(arc, 1.0);
           add_x(arc, -(arc.u - lambda * f_pos));
         }
-      } else if (in_c2[k]) {
+      } else if (scratch.in_c2[k]) {
         lhs_constant -= arc.u;
         add_one_minus_x(arc, lambda * f_pos);
-      } else if (best_in_l2[k]) {
+      } else if (scratch.best_in_l2[k]) {
         add_x(arc, lambda * f_neg);
       } else {
         add_y(arc, -1.0);
       }
     }
   } else {
-    for (i_t k = 0; k < static_cast<i_t>(arcs.size()); k++) {
-      const auto& arc = arcs[k];
-      if (in_c1[k]) {
+    for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
+      const auto& arc = scratch.arcs[k];
+      if (scratch.in_c1[k]) {
         add_y(arc, 1.0);
         add_one_minus_x(arc, std::max<f_t>(0.0, arc.u - lambda));
       } else if (!arc.in_n2) {
         continue;
-      } else if (in_c2[k]) {
+      } else if (scratch.in_c2[k]) {
         lhs_constant -= arc.u;
-      } else if (sgfci_in_l2[k]) {
+      } else if (scratch.sgfci_in_l2[k]) {
         add_x(arc, -std::min(arc.u, lambda));
       } else {
         add_y(arc, -1.0);
@@ -1791,26 +1552,53 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
     }
   }
 
-  // cuOpt stores cuts in the opposite >= form. Therefore
-  //
-  //   lhs_constant + lhs_coefficients * x <= snf_b
-  //
-  // becomes
-  //
-  //   -lhs_coefficients * x >= lhs_constant - snf_b.
   cut.clear();
-  cut.reserve(lhs_indices.size());
-  for (i_t j : lhs_indices) {
-    const f_t coeff = lhs_coefficients[j];
+  cut.reserve(scratch.lhs_indices.size());
+  for (i_t j : scratch.lhs_indices) {
+    const f_t coeff = scratch.lhs_coefficients[j];
     if (std::abs(coeff) > coefficient_tol) { cut.push_back(j, -coeff); }
   }
-  if (cut.size() == 0) { return -1; }
+  if (cut.size() == 0) { return false; }
   cut.rhs = lhs_constant - snf_b;
   cut.sort();
 
-  const f_t dot = cut.vector.dot(xstar);
-  if (dot >= cut.rhs - scaled_primal_tol(std::max(std::abs(cut.rhs), std::abs(dot)))) { return -1; }
+  const f_t dot = cut.vector.dot(context.xstar);
+  const f_t violation_tol =
+    flow_cover_scaled_primal_tol(context, std::max(std::abs(cut.rhs), std::abs(dot)));
+  return dot < cut.rhs - violation_tol;
+}
 
+template <typename i_t, typename f_t>
+i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const variable_bounds_t<i_t, f_t>& variable_bounds,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& xstar,
+  const flow_cover_row_t<i_t>& flow_cover_row,
+  inequality_t<i_t, f_t>& cut)
+{
+  flow_cover_context_t<i_t, f_t> context{lp, settings, Arow, variable_bounds, var_types, xstar};
+  flow_cover_scratch_.clear(lp.num_cols);
+
+  inequality_t<i_t, f_t> row;
+  f_t b           = 0.0;
+  bool negate_row = false;
+  if (!normalize_row_side(context, flow_cover_row, row, b, negate_row)) { return -1; }
+
+  f_t snf_b = 0.0;
+  if (!build_snf_relaxation(context, b, snf_b)) { return -1; }
+
+  flow_cover_selection_t<f_t> selection{0.0};
+  if (!select_flow_cover(context, snf_b, selection)) { return -1; }
+
+  const auto cmirfci    = evaluate_cmirfci(context, snf_b, selection.lambda);
+  const auto sgfci      = evaluate_sgfci(context, snf_b, selection.lambda);
+  const f_t snf_rhs_tol = flow_cover_scaled_primal_tol(context, snf_b);
+  if (cmirfci.violation <= snf_rhs_tol && sgfci.violation <= snf_rhs_tol) { return -1; }
+
+  if (!emit_flow_cover_cut(context, snf_b, selection.lambda, cmirfci, sgfci, cut)) { return -1; }
   return 0;
 }
 
@@ -2814,7 +2602,7 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   f_t start_time)
 {
   if (knapsack_generation_.num_flow_cover_constraints() > 0) {
-    for (i_t flow_cover_row : knapsack_generation_.get_flow_cover_constraints()) {
+    for (const auto& flow_cover_row : knapsack_generation_.get_flow_cover_constraints()) {
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
       i_t status = knapsack_generation_.generate_flow_cover_cut(
