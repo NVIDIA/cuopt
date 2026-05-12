@@ -37,6 +37,11 @@ public final class SolverSettings implements AutoCloseable {
     private long nativeHandle;     // address of the native cuOptSolverSettings
     private boolean closed = false;
 
+    // MIP user callbacks. The Java 22 FFM impl reads these at solve time
+    // and binds them to per-solve Arena-scoped upcall stubs.
+    private MIPGetSolutionCallback mipGetCallback;
+    private MIPSetSolutionCallback mipSetCallback;
+
     public SolverSettings() {
         this.nativeHandle = CuOptProvider.instance().createSolverSettings();
     }
@@ -82,6 +87,51 @@ public final class SolverSettings implements AutoCloseable {
 
     public SolverSettings setRandomSeed(long seed) {
         return setIntegerParameter(CuOpt.RANDOM_SEED, seed);
+    }
+
+    // ── MIP user callbacks ───────────────────────────────────────
+
+    /**
+     * Registers a callback to receive incumbent MIP solutions. The
+     * callback is invoked by the solver each time a new incumbent is
+     * found. Note: only meaningful for MIP solves.
+     *
+     * <p>Pass {@code null} to clear a previously-set callback.
+     *
+     * @see MIPGetSolutionCallback
+     */
+    public SolverSettings setMIPGetSolutionCallback(MIPGetSolutionCallback cb) {
+        checkOpen();
+        this.mipGetCallback = cb;
+        return this;
+    }
+
+    /**
+     * Registers a callback to inject candidate MIP solutions.
+     * <b>Registering this callback disables presolve.</b>
+     *
+     * <p>Pass {@code null} to clear a previously-set callback. Note: once
+     * a non-null callback has been registered and used in a solve,
+     * clearing it on the same {@code SolverSettings} and reusing for
+     * another solve is not supported (the previous native registration
+     * persists). Create a fresh {@link SolverSettings} instead.
+     *
+     * @see MIPSetSolutionCallback
+     */
+    public SolverSettings setMIPSetSolutionCallback(MIPSetSolutionCallback cb) {
+        checkOpen();
+        this.mipSetCallback = cb;
+        return this;
+    }
+
+    /** Returns the registered MIP get-solution callback, or {@code null}. */
+    public MIPGetSolutionCallback getMIPGetSolutionCallback() {
+        return mipGetCallback;
+    }
+
+    /** Returns the registered MIP set-solution callback, or {@code null}. */
+    public MIPSetSolutionCallback getMIPSetSolutionCallback() {
+        return mipSetCallback;
     }
 
     // ── generic escape hatch ─────────────────────────────────────

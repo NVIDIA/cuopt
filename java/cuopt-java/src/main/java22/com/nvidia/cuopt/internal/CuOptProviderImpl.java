@@ -5,6 +5,8 @@
 package com.nvidia.cuopt.internal;
 
 import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.internal.panama.cuOptMIPGetSolutionCallback;
+import com.nvidia.cuopt.internal.panama.cuOptMIPSetSolutionCallback;
 import com.nvidia.cuopt.internal.panama.cuopt_c_h;
 import com.nvidia.cuopt.linear_programming.CType;
 import com.nvidia.cuopt.linear_programming.Constraint;
@@ -12,6 +14,8 @@ import com.nvidia.cuopt.linear_programming.DataModel;
 import com.nvidia.cuopt.linear_programming.ErrorStatus;
 import com.nvidia.cuopt.linear_programming.LinearExpr;
 import com.nvidia.cuopt.linear_programming.LpStats;
+import com.nvidia.cuopt.linear_programming.MIPGetSolutionCallback;
+import com.nvidia.cuopt.linear_programming.MIPSetSolutionCallback;
 import com.nvidia.cuopt.linear_programming.MilpStats;
 import com.nvidia.cuopt.linear_programming.Problem;
 import com.nvidia.cuopt.linear_programming.QuadraticExpr;
@@ -345,6 +349,8 @@ public final class CuOptProviderImpl implements CuOptProvider {
         long settingsHandle = settings != null ? settings.nativeHandle() : createSolverSettings();
         boolean ownSettingsHandle = (settings == null);
         try {
+            registerMipCallbacks(settings, settingsHandle, numV, arena);
+
             MemorySegment solPtr = arena.allocate(ValueLayout.ADDRESS);
             int rc = cuopt_c_h.cuOptSolve(
                 MemorySegment.ofAddress(build.problemHandle),
@@ -456,6 +462,77 @@ public final class CuOptProviderImpl implements CuOptProvider {
     }
 
     // ── helpers ──────────────────────────────────────────────────
+
+    /**
+     * Wires MIP user callbacks from {@code settings} (if any) to the native
+     * solver via FFM upcall stubs allocated in {@code arena}.
+     *
+     * <p>The Get callback is always registered when {@code settings} is non-null —
+     * the trampoline reads {@code settings.getMIPGetSolutionCallback()} at
+     * invocation time and no-ops if it's null. This is safe: registering a
+     * Get callback has no solver side effects.
+     *
+     * <p>The Set callback is registered only when the user has provided one,
+     * because registering it disables presolve (per the C API contract). If
+     * the user clears the Set callback after a previous solve registered one,
+     * the stale native registration persists; users should construct a new
+     * {@link SolverSettings} instead.
+     */
+    private static void registerMipCallbacks(
+            SolverSettings settings, long settingsHandle, int numV, Arena arena) {
+        if (settings == null) return;
+        final int finalNumV = numV;
+        final SolverSettings finalSettings = settings;
+
+        cuOptMIPGetSolutionCallback.Function getTrampoline = (solPtr, objPtr, boundPtr, userData) -> {
+            MIPGetSolutionCallback cb = finalSettings.getMIPGetSolutionCallback();
+            if (cb == null) return;
+            try {
+                double[] solution = (finalNumV > 0)
+                    ? solPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize() * finalNumV)
+                          .toArray(ValueLayout.JAVA_DOUBLE)
+                    : new double[0];
+                double objVal = objPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize())
+                                      .get(ValueLayout.JAVA_DOUBLE, 0);
+                double boundVal = boundPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize())
+                                          .get(ValueLayout.JAVA_DOUBLE, 0);
+                cb.onSolution(solution, objVal, boundVal);
+            } catch (Throwable ignore) {
+                // Never propagate exceptions across the FFM upcall boundary.
+            }
+        };
+        MemorySegment getStub = cuOptMIPGetSolutionCallback.allocate(getTrampoline, arena);
+        int rcGet = cuopt_c_h.cuOptSetMIPGetSolutionCallback(
+            MemorySegment.ofAddress(settingsHandle), getStub, MemorySegment.NULL);
+        checkRc(rcGet, "cuOptSetMIPGetSolutionCallback");
+
+        MIPSetSolutionCallback setCb = settings.getMIPSetSolutionCallback();
+        if (setCb != null) {
+            final MIPSetSolutionCallback finalSetCb = setCb;
+            cuOptMIPSetSolutionCallback.Function setTrampoline = (solPtr, objPtr, boundPtr, userData) -> {
+                try {
+                    double[] outSolution = new double[finalNumV];
+                    double[] outObjective = new double[1];
+                    double boundVal = boundPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize())
+                                              .get(ValueLayout.JAVA_DOUBLE, 0);
+                    finalSetCb.provideSolution(outSolution, outObjective, boundVal);
+                    if (finalNumV > 0) {
+                        MemorySegment.copy(outSolution, 0,
+                            solPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize() * finalNumV),
+                            ValueLayout.JAVA_DOUBLE, 0, finalNumV);
+                    }
+                    objPtr.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize())
+                          .set(ValueLayout.JAVA_DOUBLE, 0, outObjective[0]);
+                } catch (Throwable ignore) {
+                    // Never propagate exceptions across the FFM upcall boundary.
+                }
+            };
+            MemorySegment setStub = cuOptMIPSetSolutionCallback.allocate(setTrampoline, arena);
+            int rcSet = cuopt_c_h.cuOptSetMIPSetSolutionCallback(
+                MemorySegment.ofAddress(settingsHandle), setStub, MemorySegment.NULL);
+            checkRc(rcSet, "cuOptSetMIPSetSolutionCallback");
+        }
+    }
 
     private static double[] computeSlackFromExpressions(Problem p, double[] primal) {
         List<LinearExpr> rows = p.constraintExpressions();
