@@ -164,4 +164,154 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+      Profiles for the per-(arch, cuda) classifier JAR (mirrors cuvs's
+      pattern). The base JAR (no classifier) is always produced and uses
+      System.loadLibrary at runtime ("BYO libcuopt" mode). The classifier
+      JAR additionally bundles libcuopt + sibling RAPIDS deps and carries
+      the manifest entry Embedded-Libraries-Cuda-Version so the loader
+      can detect it.
+
+      Activation:
+        mvn package -Dcuda.version=13           # builds base + classifier
+        mvn package                             # builds base only
+
+      Native lib sources:
+        libcuopt.so       — ${native.cpp.build.path}/libcuopt.so
+        libmps_parser.so  — ${native.cpp.build.path}/libmps_parser/libmps_parser.so
+        librmm.so         — ${env.CONDA_PREFIX}/lib/librmm.so
+        librapids_logger  — ${env.CONDA_PREFIX}/lib/librapids_logger.so
+
+      CONDA_PREFIX must be set during the classifier build (active conda
+      env). CI does this via ci/build_java.sh which activates the conda
+      environment before running mvn.
+
+      Excluded bundled libs (see issue #1203 — static-linking follow-up):
+        - CUDA toolkit libs (size + license)
+        - gRPC, protobuf, abseil (ABI-unstable, global-state risk)
+        - TBB, libgomp (global runtimes)
+        - libstdc++, libgcc_s (system ABI)
+    -->
+    <profiles>
+
+        <profile>
+            <id>arch-amd64</id>
+            <activation>
+                <os>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <native.arch>x86_64</native.arch>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>arch-aarch64</id>
+            <activation>
+                <os>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <native.arch>aarch64</native.arch>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>classifier-jar</id>
+            <activation>
+                <property>
+                    <name>cuda.version</name>
+                </property>
+            </activation>
+            <properties>
+                <native.classifier>${native.arch}-cuda${cuda.version}</native.classifier>
+                <native.cpp.build.path>${project.basedir}/../../cpp/build</native.cpp.build.path>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>copy-cuopt-libs</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <overwrite>true</overwrite>
+                                    <outputDirectory>${project.build.directory}/native-libs/${os.arch}/${os.name}</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${native.cpp.build.path}</directory>
+                                            <includes>
+                                                <include>libcuopt.so</include>
+                                            </includes>
+                                        </resource>
+                                        <resource>
+                                            <directory>${native.cpp.build.path}/libmps_parser</directory>
+                                            <includes>
+                                                <include>libmps_parser.so</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-rapids-libs</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <overwrite>true</overwrite>
+                                    <outputDirectory>${project.build.directory}/native-libs/${os.arch}/${os.name}</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${env.CONDA_PREFIX}/lib</directory>
+                                            <includes>
+                                                <include>librmm.so</include>
+                                                <include>librapids_logger.so</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <version>3.7.1</version>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/native-with-deps.xml</descriptor>
+                            </descriptors>
+                            <archive>
+                                <manifestEntries>
+                                    <Multi-Release>true</Multi-Release>
+                                    <Embedded-Libraries-Cuda-Version>${cuda.version}</Embedded-Libraries-Cuda-Version>
+                                </manifestEntries>
+                            </archive>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>assemble-native</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>single</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+    </profiles>
 </project>

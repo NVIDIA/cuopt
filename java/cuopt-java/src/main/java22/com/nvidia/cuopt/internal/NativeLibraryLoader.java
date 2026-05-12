@@ -7,60 +7,149 @@ package com.nvidia.cuopt.internal;
 import com.nvidia.cuopt.CuOptException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.CodeSource;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 
 /**
- * Loads {@code libcuopt.so} (or the platform equivalent) on first use.
+ * Loads {@code libcuopt.so} (and its bundled RAPIDS dependencies, when
+ * present) on first use.
  *
- * <p>Resolution order:
+ * <p>Two modes, chosen automatically by inspecting the JAR manifest:
+ *
  * <ol>
- *   <li>If {@code libcuopt} is on {@code java.library.path}, use it
- *       (typical conda / system install).</li>
- *   <li>Otherwise, look for an embedded copy at
- *       {@code META-INF/native/<os-arch>/libcuopt.so} inside the JAR
- *       (classifier-JAR install path; not yet implemented in this
- *       skeleton).</li>
+ *   <li><b>Embedded mode</b> — the JAR carries the manifest entry
+ *       {@code Embedded-Libraries-Cuda-Version}. Native libs are
+ *       extracted from {@code <arch>/<os>/} entries in the JAR to a
+ *       temporary directory and {@code System.load}-ed in dependency
+ *       order. Used by classifier JARs
+ *       (e.g. {@code cuopt-java-<version>-x86_64-cuda13.jar}) which bundle
+ *       {@code libcuopt.so}, {@code libmps_parser.so}, {@code librmm.so},
+ *       and {@code librapids_logger.so}.</li>
+ *   <li><b>System (BYO) mode</b> — the JAR has no
+ *       {@code Embedded-Libraries-Cuda-Version} entry. Falls back to
+ *       {@code System.loadLibrary("cuopt")}, requiring the user to have
+ *       {@code libcuopt.so} on {@code java.library.path} (typical conda
+ *       install).</li>
  * </ol>
  *
  * <p>The platform table at
  * {@code META-INF/cuopt/supported-platforms.properties} controls which
- * OS+arch combinations are accepted — adding arm64 support is a
- * properties-file edit, not a code change.
+ * OS+arch combinations are accepted.
  */
-final class NativeLibraryLoader {
+public final class NativeLibraryLoader {
 
     private static final String PLATFORM_PROPS =
         "/META-INF/cuopt/supported-platforms.properties";
+
+    private static final String EMBEDDED_MARKER = "Embedded-Libraries-Cuda-Version";
+
+    /**
+     * Libraries bundled in classifier JARs, in load order. {@code libcuopt}
+     * dlopen-resolves symbols from {@code librmm} and {@code librapids_logger}
+     * at load time, so those must be present in memory before
+     * {@code libcuopt} is loaded.
+     */
+    private static final String[] EMBEDDED_LIBS = {
+        "rapids_logger", "rmm", "mps_parser", "cuopt",
+    };
 
     private static volatile boolean loaded = false;
 
     private NativeLibraryLoader() {}
 
     /**
-     * Idempotent load of {@code libcuopt}. Safe to call from multiple threads.
+     * Idempotent load of {@code libcuopt} and its bundled deps (if any).
+     * Safe to call from multiple threads.
      */
-    static synchronized void ensureLoaded() {
+    public static synchronized void ensureLoaded() {
         if (loaded) {
             return;
         }
         verifyPlatformSupported();
-        try {
-            // Prefer java.library.path (conda / system install).
-            System.loadLibrary("cuopt");
-        } catch (UnsatisfiedLinkError e) {
-            // TODO: extract from META-INF/native/<os-arch>/libcuopt.so once
-            // classifier JARs are wired up. For now, surface a clear error.
-            throw new CuOptException(
-                "Failed to load libcuopt. Either add the directory containing "
-                + "libcuopt.so (or .dll/.dylib) to java.library.path, or rely "
-                + "on a future classifier JAR that bundles the native library.",
-                e);
+        if (jarHasEmbeddedLibraries()) {
+            loadEmbedded();
+        } else {
+            loadSystem();
         }
         loaded = true;
+    }
+
+    private static void loadSystem() {
+        try {
+            System.loadLibrary("cuopt");
+        } catch (UnsatisfiedLinkError e) {
+            throw new CuOptException(
+                "Failed to load libcuopt. Either add the directory containing "
+                + "libcuopt.so to java.library.path (typical conda install), "
+                + "or use a classifier JAR that bundles the native library "
+                + "(e.g. cuopt-java-<version>-x86_64-cuda13.jar).",
+                e);
+        }
+    }
+
+    private static void loadEmbedded() {
+        String os = System.getProperty("os.name", "");
+        String arch = System.getProperty("os.arch", "");
+        for (String name : EMBEDDED_LIBS) {
+            String libFile = System.mapLibraryName(name);
+            String resourcePath = "/" + arch + "/" + os + "/" + libFile;
+            try {
+                Path extracted = extractResource(resourcePath, libFile);
+                System.load(extracted.toAbsolutePath().toString());
+            } catch (Throwable t) {
+                throw new CuOptException(
+                    "Failed to load embedded native dependency: " + libFile
+                    + " from resource path " + resourcePath, t);
+            }
+        }
+    }
+
+    private static Path extractResource(String resourcePath, String libFile)
+            throws IOException {
+        URL url = NativeLibraryLoader.class.getResource(resourcePath);
+        if (url == null) {
+            throw new IOException(
+                "Embedded native library not found at " + resourcePath);
+        }
+        Path tmp = Files.createTempFile("cuopt-native-", "-" + libFile);
+        tmp.toFile().deleteOnExit();
+        try (InputStream in = url.openStream()) {
+            Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return tmp;
+    }
+
+    private static boolean jarHasEmbeddedLibraries() {
+        // Locate the JAR that this class was loaded from, not any other
+        // META-INF/MANIFEST.MF that happens to be on the classpath.
+        CodeSource codeSource = NativeLibraryLoader.class.getProtectionDomain().getCodeSource();
+        if (codeSource == null || codeSource.getLocation() == null) {
+            return false;
+        }
+        String path = codeSource.getLocation().getPath();
+        if (path == null || !path.endsWith(".jar")) {
+            // Running from exploded classes (e.g. surefire on target/classes/);
+            // there is no JAR manifest to inspect.
+            return false;
+        }
+        try (JarFile jar = new JarFile(path)) {
+            Manifest manifest = jar.getManifest();
+            if (manifest == null) {
+                return false;
+            }
+            Attributes attrs = manifest.getMainAttributes();
+            return attrs.getValue(EMBEDDED_MARKER) != null;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static void verifyPlatformSupported() {

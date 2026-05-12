@@ -57,7 +57,7 @@ public class cuopt_c_h {
 
 
     static {
-        System.loadLibrary("cuopt");
+        com.nvidia.cuopt.internal.NativeLibraryLoader.ensureLoaded();
     }
 
     static final SymbolLookup SYMBOL_LOOKUP = SymbolLookup.loaderLookup()

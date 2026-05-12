@@ -85,6 +85,37 @@ cd /path/to/cuopt
 This regenerates panama bindings from `cpp/include/cuopt/linear_programming/cuopt_c.h`,
 then runs `mvn clean verify`. Output JARs land in `java/cuopt-java/target/`.
 
+## Distribution modes
+
+Two JAR shapes:
+
+- **Base JAR** (always built) — `cuopt-java-<version>.jar`. Contains only
+  Java classes. At runtime expects `libcuopt.so` to be reachable via
+  `java.library.path` (typical conda install: `LD_LIBRARY_PATH=$CONDA_PREFIX/lib`).
+  Loader path: `System.loadLibrary("cuopt")`.
+
+- **Classifier JAR** (opt-in) — `cuopt-java-<version>-<arch>-cuda<n>.jar`.
+  Bundles `libcuopt.so`, `libmps_parser.so`, `librmm.so`, `librapids_logger.so`
+  under `<arch>/Linux/` inside the JAR, with manifest entry
+  `Embedded-Libraries-Cuda-Version: <n>`. Loader extracts to a temp
+  directory + `System.load`. User must still install the CUDA toolkit
+  matching `<n>` (cuBLAS, cuSPARSE, cuDSS, cuBLASLt, cuDART, nvJitLink).
+
+To produce a classifier JAR locally:
+
+```bash
+# Activate a RAPIDS conda env (provides librmm + librapids_logger).
+conda activate cuopt
+CLASSIFIER_CUDA=13 SKIP_TESTS=true ./java/build.sh
+# Output:
+#   target/cuopt-java-<version>.jar                     ← base
+#   target/cuopt-java-<version>-x86_64-cuda13.jar       ← classifier
+```
+
+Excluded by policy (size + license + ABI risk; see issue #1203 for
+follow-up on static-linking these into `libcuopt.so`):
+CUDA toolkit, gRPC, protobuf, abseil, TBB, OpenMP, libstdc++.
+
 ## Per-folder design notes
 
 Each directory under `java/` has its own `README.md` explaining the role

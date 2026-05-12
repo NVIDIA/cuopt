@@ -89,6 +89,18 @@ jextract \
     --library cuopt \
     "${CURDIR}/headers.h"
 
+# jextract emits `System.loadLibrary("cuopt")` in cuopt_c_h's static
+# initializer (because we pass --use-system-load-library). That bypasses
+# our NativeLibraryLoader and fails in embedded-classifier-JAR mode where
+# libcuopt is bundled inside the JAR. Rewrite the call to route through
+# our loader, which handles both embedded and BYO modes.
+HEADER_CLASS_FILE="${PANAMA_DIR}/cuopt_c_h.java"
+if [[ -f "${HEADER_CLASS_FILE}" ]]; then
+    sed -i \
+        's|System\.loadLibrary("cuopt");|com.nvidia.cuopt.internal.NativeLibraryLoader.ensureLoaded();|' \
+        "${HEADER_CLASS_FILE}"
+fi
+
 # Normalize each generated file to end with exactly one trailing newline,
 # matching pre-commit's end-of-file-fixer. jextract output is inconsistent
 # (sometimes 0, sometimes 2 trailing newlines); without this the drift gate

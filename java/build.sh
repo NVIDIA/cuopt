@@ -26,6 +26,11 @@
 #   UNIT_TESTS_ONLY   If set to 'true', runs 'mvn test' (unit tests only,
 #                     skips integration tests). Useful for fast local
 #                     feedback when no GPU is available.
+#   CLASSIFIER_CUDA   If set (e.g. '12' or '13'), additionally produces a
+#                     classifier JAR cuopt-java-<version>-<arch>-cuda<n>.jar
+#                     that bundles libcuopt + libmps_parser + librmm +
+#                     librapids_logger. Requires CONDA_PREFIX to point at
+#                     an env with librmm.so and librapids_logger.so.
 
 set -euo pipefail
 
@@ -103,12 +108,28 @@ fi
 # 5. Maven build
 echo "==> Running Maven"
 cd "${CURDIR}/cuopt-java"
+
+MVN_ARGS=()
+if [[ -n "${CLASSIFIER_CUDA:-}" ]]; then
+    # Activate the classifier-jar profile. The profile copies librmm.so
+    # and librapids_logger.so from $CONDA_PREFIX/lib, so a conda env with
+    # those libs must be active.
+    if [[ -z "${CONDA_PREFIX:-}" ]]; then
+        echo "ERROR: CLASSIFIER_CUDA=${CLASSIFIER_CUDA} requires CONDA_PREFIX to be set" >&2
+        echo "       (the classifier JAR bundles librmm.so + librapids_logger.so" >&2
+        echo "       from \$CONDA_PREFIX/lib). Activate a RAPIDS conda env first." >&2
+        exit 1
+    fi
+    MVN_ARGS+=("-Dcuda.version=${CLASSIFIER_CUDA}")
+    echo "    Building classifier JAR for cuda${CLASSIFIER_CUDA} (RAPIDS libs from ${CONDA_PREFIX}/lib)"
+fi
+
 if [[ "${SKIP_TESTS:-false}" == "true" ]]; then
-    mvn clean package -DskipTests
+    mvn clean package -DskipTests "${MVN_ARGS[@]}"
 elif [[ "${UNIT_TESTS_ONLY:-false}" == "true" ]]; then
-    mvn clean test
+    mvn clean test "${MVN_ARGS[@]}"
 else
-    mvn clean verify -Djava.library.path="${CUOPT_LIB_DIR}"
+    mvn clean verify -Djava.library.path="${CUOPT_LIB_DIR}" "${MVN_ARGS[@]}"
 fi
 
 echo "==> cuopt-java build complete"

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+
+  Assembly descriptor for the per-(arch, cuda) classifier JAR. Used by
+  maven-assembly-plugin under the classifier-jar profile to produce
+  e.g. cuopt-java-<version>-x86_64-cuda13.jar.
+
+  Contents (mirrors the cuvs-java pattern):
+    - All classes / resources from the base JAR (unpacked)
+    - Native libs under <arch>/<os>/ — libcuopt.so, libmps_parser.so,
+      librmm.so, librapids_logger.so
+
+  Excluded by policy (see issue #1203): CUDA toolkit, gRPC/protobuf/abseil,
+  TBB, OpenMP, libstdc++.
+-->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.1.0
+                              http://maven.apache.org/xsd/assembly-2.1.0.xsd">
+
+    <id>${native.classifier}</id>
+    <formats>
+        <format>jar</format>
+    </formats>
+
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <dependencySets>
+        <dependencySet>
+            <outputDirectory>/</outputDirectory>
+            <useProjectArtifact>true</useProjectArtifact>
+            <unpack>true</unpack>
+            <scope>runtime</scope>
+        </dependencySet>
+    </dependencySets>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.build.directory}/native-libs</directory>
+            <outputDirectory>/</outputDirectory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+        </fileSet>
+    </fileSets>
+
+</assembly>
