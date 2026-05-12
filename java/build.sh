@@ -23,6 +23,9 @@
 #                     bindings are first committed.
 #   SKIP_TESTS        If set to 'true', runs 'mvn package' instead of
 #                     'mvn verify'.
+#   UNIT_TESTS_ONLY   If set to 'true', runs 'mvn test' (unit tests only,
+#                     skips integration tests). Used by the arm64 CI job
+#                     which has no GPU runner.
 
 set -euo pipefail
 
@@ -102,6 +105,8 @@ echo "==> Running Maven"
 cd "${CURDIR}/cuopt-java"
 if [[ "${SKIP_TESTS:-false}" == "true" ]]; then
     mvn clean package -DskipTests
+elif [[ "${UNIT_TESTS_ONLY:-false}" == "true" ]]; then
+    mvn clean test
 else
     mvn clean verify -Djava.library.path="${CUOPT_LIB_DIR}"
 fi

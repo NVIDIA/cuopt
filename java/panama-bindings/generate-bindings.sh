@@ -14,7 +14,7 @@
 #                    the local ./jextract-22/bin/).
 #   CUOPT_INCLUDE    Path to cpp/include (defaults to ../../cpp/include).
 #   CUDA_INCLUDE_DIR Path to CUDA include dir. Default: $CONDA_PREFIX/
-#                    targets/x86_64-linux/include if present, else
+#                    targets/<arch>-linux/include if present, else
 #                    /usr/local/cuda/include.
 
 set -euo pipefail
@@ -26,13 +26,25 @@ CUOPT_INCLUDE="${CUOPT_INCLUDE:-${REPODIR}/cpp/include}"
 OUTPUT_DIR="${REPODIR}/java/cuopt-java/src/main/java22"
 TARGET_PACKAGE="com.nvidia.cuopt.internal.panama"
 
+# Architecture detection — used to select the jextract tarball and the
+# CUDA toolkit include subdirectory.
+HOST_ARCH="$(uname -m)"
+case "${HOST_ARCH}" in
+    x86_64)   JEXTRACT_ARCH=x64;     CUDA_TARGET_DIR="targets/x86_64-linux/include" ;;
+    aarch64)  JEXTRACT_ARCH=aarch64; CUDA_TARGET_DIR="targets/aarch64-linux/include" ;;
+    *)
+        echo "ERROR: unsupported architecture: ${HOST_ARCH}" >&2
+        echo "       Supported: x86_64, aarch64." >&2
+        exit 1
+        ;;
+esac
+
 # CUDA include detection — prefer the conda env's CUDA toolkit if active.
-TARGET_DIR="targets/x86_64-linux/include"
 if [[ -z "${CUDA_INCLUDE_DIR:-}" ]]; then
-    if [[ -n "${CONDA_PREFIX:-}" ]] && [[ -d "${CONDA_PREFIX}/${TARGET_DIR}" ]]; then
-        CUDA_INCLUDE_DIR="${CONDA_PREFIX}/${TARGET_DIR}"
-    elif [[ -d "/usr/local/cuda/${TARGET_DIR}" ]]; then
-        CUDA_INCLUDE_DIR="/usr/local/cuda/${TARGET_DIR}"
+    if [[ -n "${CONDA_PREFIX:-}" ]] && [[ -d "${CONDA_PREFIX}/${CUDA_TARGET_DIR}" ]]; then
+        CUDA_INCLUDE_DIR="${CONDA_PREFIX}/${CUDA_TARGET_DIR}"
+    elif [[ -d "/usr/local/cuda/${CUDA_TARGET_DIR}" ]]; then
+        CUDA_INCLUDE_DIR="/usr/local/cuda/${CUDA_TARGET_DIR}"
     elif [[ -d "/usr/local/cuda/include" ]]; then
         CUDA_INCLUDE_DIR="/usr/local/cuda/include"
     else
@@ -49,7 +61,7 @@ export PATH
 
 JEXTRACT="${JEXTRACT:-jextract}"
 if ! command -v "${JEXTRACT}" >/dev/null 2>&1; then
-    JEXTRACT_FILENAME="openjdk-22-jextract+6-47_linux-x64_bin.tar.gz"
+    JEXTRACT_FILENAME="openjdk-22-jextract+6-47_linux-${JEXTRACT_ARCH}_bin.tar.gz"
     JEXTRACT_DOWNLOAD_URL="https://download.java.net/java/early_access/jextract/22/6/${JEXTRACT_FILENAME}"
     echo "jextract not found. Downloading from ${JEXTRACT_DOWNLOAD_URL} ..."
     (

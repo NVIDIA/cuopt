@@ -5,8 +5,9 @@
 # Build cuopt-java in CI.
 #
 # Usage:
-#   ci/build_java.sh                    # build only, skip tests
-#   ci/build_java.sh --run-java-tests   # build + tests
+#   ci/build_java.sh                      # build only, skip tests
+#   ci/build_java.sh --run-java-tests     # build + unit + integration tests (GPU required)
+#   ci/build_java.sh --unit-tests-only    # build + unit tests, skip IT (arm64 CPU runner)
 #
 # Inputs (set by RAPIDS shared workflow):
 #   RAPIDS_CUDA_VERSION
@@ -23,9 +24,11 @@ set +e
 
 # Argument handling — match cuvs build_java.sh contract
 RUN_JAVA_TESTS="false"
-if [[ "${1:-}" == "--run-java-tests" ]]; then
-    RUN_JAVA_TESTS="true"
-fi
+UNIT_TESTS_ONLY="false"
+case "${1:-}" in
+    --run-java-tests)  RUN_JAVA_TESTS="true" ;;
+    --unit-tests-only) UNIT_TESTS_ONLY="true" ;;
+esac
 
 source rapids-configure-sccache
 
@@ -58,18 +61,18 @@ rapids-logger "Build cuopt-java (run_tests=${RUN_JAVA_TESTS})"
 export CUOPT_INCLUDE="${CONDA_PREFIX}/include"
 export CMAKE_PREFIX_PATH="${CONDA_PREFIX}/lib"
 
-# jextract is not on conda-forge. The CI image must provide it.
-# TODO: build out a CI image with jextract preinstalled (follow-up PR).
-if ! command -v jextract >/dev/null 2>&1; then
-    rapids-logger "ERROR: jextract not available in CI image."
-    rapids-logger "       Add jextract for JDK 22 to the CI image."
-    exit 1
-fi
-
-# SKIP_DRIFT_CHECK=true on first build (before panama bindings are committed).
-# Remove this once the panama/ files exist in the repo.
+# jextract is auto-downloaded by panama-bindings/generate-bindings.sh on
+# first run (cuvs pattern). No CI image change required.
+#
+# SKIP_DRIFT_CHECK=true in CI because the CI build uses conda's headers
+# ($CONDA_PREFIX/include) while dev uses repo headers (cpp/include);
+# minor formatting differences between the two sources would falsely
+# trip the drift gate. The dev-workstation gate (./java/build.sh
+# without this flag) is the authoritative one.
 if [[ "${RUN_JAVA_TESTS}" == "true" ]]; then
     SKIP_DRIFT_CHECK=true ./java/build.sh
+elif [[ "${UNIT_TESTS_ONLY}" == "true" ]]; then
+    SKIP_DRIFT_CHECK=true UNIT_TESTS_ONLY=true ./java/build.sh
 else
     SKIP_DRIFT_CHECK=true SKIP_TESTS=true ./java/build.sh
 fi
