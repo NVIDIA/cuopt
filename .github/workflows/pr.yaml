@@ -13,13 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # TEMPORARY: while iterating on cuopt-java (PR #1192), the non-Java CI
-  # lanes are gated off with `if: false` to speed up feedback. They
-  # remain listed in pr-builder.needs because `rapids-check-pr-job-
-  # dependencies` requires every top-level job to be listed there;
-  # pr-builder.yaml treats skipped jobs as success, so this is safe.
-  # **Revert the `if: false` markers below before merge.** Lanes kept
-  # running: conda-cpp-build, conda-java-build-and-tests (amd64 + arm64).
   pr-builder:
     needs:
       - check-lean-ci
@@ -29,9 +22,7 @@ jobs:
       - checks
       - conda-cpp-build
       - conda-cpp-tests
-      - conda-java-build-and-tests-matrix
       - conda-java-build-and-tests
-      - conda-java-build-and-tests-arm64-matrix
       - conda-java-build-and-tests-arm64
       - conda-python-build
       - conda-python-tests
@@ -401,7 +392,7 @@ jobs:
   conda-cpp-tests:
     needs: [conda-cpp-build, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
@@ -468,7 +459,9 @@ jobs:
   conda-python-build:
     needs: [conda-cpp-build, compute-matrix-filters, changed-files]
     # Consumed by conda-python-tests and docs-build.
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: >-
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
@@ -478,7 +471,7 @@ jobs:
   conda-python-tests:
     needs: [conda-python-build, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
     with:
       run_codecov: false
       build_type: pull-request
@@ -495,7 +488,7 @@ jobs:
     needs: [conda-python-build, changed-files]
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     with:
       build_type: pull-request
       node_type: "gpu-l4-latest-1"
@@ -507,7 +500,7 @@ jobs:
   wheel-build-cuopt-mps-parser:
     needs: [compute-matrix-filters, changed-files]
     # All wheel-build-* jobs feed the wheel test jobs, so they gate on the same group.
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -520,7 +513,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.mps_parser_filter }}
   wheel-build-libcuopt:
     needs: [wheel-build-cuopt-mps-parser, compute-matrix-filters, changed-files]
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -532,7 +525,7 @@ jobs:
       script: ci/build_wheel_libcuopt.sh
   wheel-build-cuopt:
     needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt, compute-matrix-filters, changed-files]
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -544,7 +537,7 @@ jobs:
   wheel-tests-cuopt:
     needs: [wheel-build-cuopt, wheel-build-cuopt-mps-parser, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
@@ -558,7 +551,7 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   wheel-build-cuopt-server:
     needs: [checks, compute-matrix-filters, changed-files]
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -571,7 +564,7 @@ jobs:
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_filter }}
   wheel-build-cuopt-sh-client:
     needs: [compute-matrix-filters, changed-files]
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     secrets: inherit
     uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
@@ -586,7 +579,7 @@ jobs:
   wheel-tests-cuopt-server:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files, compute-matrix-filters]
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
@@ -602,7 +595,7 @@ jobs:
     needs: [wheel-build-cuopt, wheel-build-cuopt-server, changed-files]
     secrets: inherit
     uses: ./.github/workflows/self_hosted_service_test.yaml
-    if: false  # TEMP: disabled while iterating on cuopt-java (PR #1192). Revert before merge.
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
