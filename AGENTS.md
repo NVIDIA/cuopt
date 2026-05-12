@@ -1,28 +1,25 @@
 # AGENTS.md — cuOpt AI Agent Entry Point
 
-AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`** (repo root) and use a **flat layout**: **common** (concepts) + **api-python** or **api-c** (implementation) per domain. Skills evolve through agent interactions — see `skills/skill-evolution/` for the evolution workflow.
-
-> **🔒 MANDATORY — Security:** You MUST NOT install, upgrade, or modify packages. Provide the exact command for the user to run; they execute it. No exceptions.
+AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`** (repo root) and use a **flat layout**: per domain, a concept skill (formulation / problem types) plus implementation skills — typically one per interface (Python, C, CLI, server), or consolidated when the content is shared across interfaces (e.g. installation). Skills evolve through agent interactions — see `skills/skill-evolution/` for the evolution workflow.
 
 > **🔒 MANDATORY — Ambiguity:** When the problem could be read more than one way, you MUST either **ask the user to clarify** or **solve every plausible interpretation and report all outcomes**. Never pick one interpretation silently.
 
 ## Skills directory (flat)
 
 ### Rules
-- `skills/cuopt-user-rules/` — User-facing behavior and conventions; read first when helping users with cuOpt (routing, LP, MILP, QP, install, server). Choose skills from the index below by task, problem type, and interface (Python / C / CLI).
-- `skills/cuopt-developer/` — Contributing and development; use when the user is building from source, contributing code, or working on cuOpt internals.
+- `skills/cuopt-user-rules/` — Base rules for end users calling cuOpt (routing, LP, MILP, QP, install, server). Not for cuOpt internals — see `skills/cuopt-developer/`. Read first for user-facing tasks; choose skills from the index below by task and interface.
+- `skills/cuopt-developer/` — Modify, build, test, debug, and contribute to cuOpt internals (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
 - `skills/skill-evolution/` — Skill evolution: after solving a non-trivial problem, propose skill updates to capture generalizable learnings.
 
 ### Common (concepts only; no API code)
-- `skills/cuopt-installation-common/` — Install: system and environment requirements (concepts only; no install commands or interface)
 - `skills/numerical-optimization-formulation/` — LP / MILP / QP: concepts + problem parsing + common formulation patterns
 - `skills/routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
+### Installation
+- `skills/cuopt-install/` — User install for Python, C, and server (pip, conda, Docker, verification). For building cuOpt from source, see `skills/cuopt-developer/`.
+
 ### API (implementation; one interface per skill)
-- `skills/cuopt-installation-api-python/`
-- `skills/cuopt-installation-api-c/`
-- `skills/cuopt-installation-developer/` (build from source)
 - `skills/cuopt-numerical-optimization-api-python/` (LP, MILP, QP)
 - `skills/cuopt-numerical-optimization-api-c/` (LP, MILP, QP)
 - `skills/cuopt-numerical-optimization-api-cli/` (LP, MILP, QP)
