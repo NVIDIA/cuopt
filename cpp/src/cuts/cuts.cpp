@@ -3783,6 +3783,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
   // This is shared variable-bound preprocessing used by multiple cut separators.
   // Flow-cover applies its own 0-1 controller filter when it consumes these bounds.
+  std::vector<i_t> num_noncontinuous_in_row(lp.num_rows, 0);
 
   // Construct the slack map
   slack_map_.resize(lp.num_rows, -1);
@@ -3809,6 +3810,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = row_start; p < row_end; p++) {
       const i_t j = Arow.j[p];
       if (j == slack_index) { continue; }
+      if (var_types[j] != variable_type_t::CONTINUOUS) { num_noncontinuous_in_row[i]++; }
       const f_t aj = Arow.x[p];
       const f_t uj = lp.upper[j];
       const f_t lj = lp.lower[j];
@@ -3868,6 +3870,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i = lp.A.i[p];
+      if (num_noncontinuous_in_row[i] < 1) { continue; }
       if (num_neg_inf_[i] > 2 && num_pos_inf_[i] > 2) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
@@ -3959,7 +3962,8 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_start = lp.A.col_start[j];
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
-      const i_t i         = lp.A.i[p];
+      const i_t i = lp.A.i[p];
+      if (num_noncontinuous_in_row[i] < 1) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
