@@ -271,7 +271,7 @@ jobs:
     # Build cuopt-java JAR (amd64) for main / release-branch / tag pushes.
     # Integration tests are not run here — they live in test.yaml.
     needs: [cpp-build]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
@@ -290,7 +290,7 @@ jobs:
     # integration tests run on the conda-java-build-and-tests-arm64
     # GPU job in pr.yaml.
     needs: [cpp-build]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
