@@ -1711,6 +1711,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
+#pragma omp taskwait
+
   worker->set_inactive();
   bfs_worker_pool_.return_worker_to_pool(worker);
 }
@@ -1849,7 +1851,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
       assert(bfs_worker->total_active_diving_workers.load() <=
              bfs_worker->total_max_diving_workers);
 
-#pragma omp task affinity(*diving_worker)
+#pragma omp task affinity(*diving_worker) default(none) firstprivate(diving_worker)
       dive_with(diving_worker);
 
       return true;
@@ -2654,6 +2656,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   is_running_ = false;
 
+  if (solver_status_ == mip_status_t::UNSET &&
+      toc(exploration_stats_.start_time) > settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+  }
+
   // Compute final lower bound
   f_t lower_bound;
   if (deterministic_mode_enabled_) {
@@ -2675,6 +2682,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           // current upper bound
           search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
           search_tree_.update(start_node, node_status_t::FATHOMED);
+          --exploration_stats_.nodes_unexplored;
         } else {
           // Needed to ensure we don't lose the correct lower bound
           worker->node_queue.push(start_node);
