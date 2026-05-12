@@ -1,6 +1,6 @@
 # AGENTS.md — cuOpt AI Agent Entry Point
 
-AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`** (repo root) and use a **flat layout**: **common** (concepts) + **api-python** or **api-c** (implementation) per domain. Skills evolve through agent interactions — see `skills/skill-evolution/` for the evolution workflow.
+AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`** (repo root) and use a **flat layout**: per domain, a concept skill (formulation / problem types) plus implementation skills — typically one per interface (Python, C, CLI, server), or consolidated when the content is shared across interfaces (e.g. installation). Skills evolve through agent interactions — see `skills/skill-evolution/` for the evolution workflow.
 
 > **🔒 MANDATORY — Security:** You MUST NOT install, upgrade, or modify packages. Provide the exact command for the user to run; they execute it. No exceptions.
 
@@ -14,14 +14,14 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 - `skills/skill-evolution/` — Skill evolution: after solving a non-trivial problem, propose skill updates to capture generalizable learnings.
 
 ### Common (concepts only; no API code)
-- `skills/cuopt-installation-common/` — Install: system and environment requirements (concepts only; no install commands or interface)
 - `skills/numerical-optimization-formulation/` — LP / MILP / QP: concepts + problem parsing + common formulation patterns
 - `skills/routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
+### Installation
+- `skills/cuopt-install/` — User install for Python, C, and server (pip, conda, Docker, verification). For building cuOpt from source, see `skills/cuopt-developer/`.
+
 ### API (implementation; one interface per skill)
-- `skills/cuopt-installation-api-python/`
-- `skills/cuopt-installation-api-c/`
 - `skills/cuopt-numerical-optimization-api-python/` (LP, MILP, QP)
 - `skills/cuopt-numerical-optimization-api-c/` (LP, MILP, QP)
 - `skills/cuopt-numerical-optimization-api-cli/` (LP, MILP, QP)

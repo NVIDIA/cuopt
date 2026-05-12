@@ -4,7 +4,7 @@
     "name": "NVIDIA"
   },
   "metadata": {
-    "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (Python/C/developer), and REST server.",
+    "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (user/developer), and REST server.",
     "version": "26.06.00"
   },
   "plugins": [
@@ -21,22 +21,10 @@
       "description": "Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions."
     },
     {
-      "name": "cuopt-installation-common",
-      "source": "./skills/cuopt-installation-common",
+      "name": "cuopt-install",
+      "source": "./skills/cuopt-install",
       "skills": "./",
-      "description": "Install cuOpt — system and environment requirements only. Domain concepts; no install commands or interface guidance."
-    },
-    {
-      "name": "cuopt-installation-api-python",
-      "source": "./skills/cuopt-installation-api-python",
-      "skills": "./",
-      "description": "Install cuOpt for Python — pip, conda, Docker, verification. Use when the user is installing or verifying the Python API."
-    },
-    {
-      "name": "cuopt-installation-api-c",
-      "source": "./skills/cuopt-installation-api-c",
-      "skills": "./",
-      "description": "Install cuOpt for C — conda, locate lib/headers, verification. Use when the user is installing or verifying the C API."
+      "description": "Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. Use when the user wants to install or verify cuOpt for any user-facing interface."
     },
     {
       "name": "numerical-optimization-formulation",

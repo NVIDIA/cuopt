@@ -663,10 +663,10 @@
     "question": "I just want to use cuOpt to solve an LP. Should I follow this developer-installation skill?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "No \u2014 this skill is for building cuOpt from source to contribute or modify it. To just use cuOpt, the agent points to the user installation skill (cuopt-installation-api-python or cuopt-installation-api-c) which uses pre-built pip / conda / Docker packages rather than a from-source build. The user path is much simpler and does not require setting up a development environment.",
+    "ground_truth": "No \u2014 this skill is for building cuOpt from source to contribute or modify it. To just use cuOpt, the agent points to the user installation skill (cuopt-install) which uses pre-built pip / conda / Docker packages rather than a from-source build. The user path is much simpler and does not require setting up a development environment.",
     "expected_behavior": [
       "Identifies that the developer install is for building/contributing, not using",
-      "Points to cuopt-installation-api-python or cuopt-installation-api-c as the user path",
+      "Points to cuopt-install as the user path",
       "Mentions pre-built pip / conda / Docker packages for the user path",
       "Does not start walking the user through ./build.sh"
     ]
