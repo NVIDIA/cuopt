@@ -2081,7 +2081,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                    cuopt::timer_t timer(std::numeric_limits<double>::infinity());
                    std::shared_ptr<detail::clique_table_t<i_t, f_t>> table;
                    detail::find_initial_cliques(
-                     problem_copy, tolerances_for_clique, &table, timer, false, signal_ptr);
+                     problem_copy, tolerances_for_clique, &table, timer, signal_ptr);
                    return table;
                  });
   }
@@ -2218,6 +2218,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
+  // Apply CUOPT_CONFIG_ID sweep override (5 configs; see cuts.cpp).
+  // Mutates `cut_pool` knobs only (clique cousin filter on/off, Jaccard
+  // tau, integer-support size tilt). No-op when CUOPT_CONFIG_ID is unset
+  // / out of range. The deterministic measurement path (no concurrent
+  // root LP, no in-cut-pass RCS, exit-after-cuts) is unconditional.
+  apply_cut_sweep_config(cut_pool, settings_);
   cut_generation_t<i_t, f_t> cut_generation(cut_pool,
                                             original_lp_,
                                             settings_,
@@ -2542,6 +2548,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
+  // Publish the cut generation wall time so MIPLIBGapStat / run_mip can
+  // emit it alongside gap_closed_pct. Always set when the cut loop ran,
+  // even if no cuts were added (the time still measures real work in
+  // generate_cuts + score_cuts + dedup + LP resolves).
+  if (settings_.benchmark_info_ptr != nullptr) {
+    settings_.benchmark_info_ptr->cut_generation_time_sec =
+      static_cast<double>(cut_generation_time);
+  }
   if (cut_info.has_cuts()) {
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
@@ -2559,10 +2573,11 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // branch so MIPLIBGapStat numbers from both branches line up
   // exactly.
   settings_.log.printf(
-    "CutBench: cut generation complete (max_passes=%d, pool=%d), "
+    "CutBench: cut generation complete (max_passes=%d, pool=%d, time=%.3fs), "
     "exiting before strong branching / B&B exploration\n",
     static_cast<int>(settings_.max_cut_passes),
-    static_cast<int>(cut_pool_size));
+    static_cast<int>(cut_pool_size),
+    static_cast<double>(cut_generation_time));
   finish_clique_thread();
   solver_status_ = mip_status_t::TIME_LIMIT;
   set_final_solution(solution, root_objective_);

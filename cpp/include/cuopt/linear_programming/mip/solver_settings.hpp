@@ -39,6 +39,14 @@ struct benchmark_info_t {
   //                          / (opt - root_lp_no_cuts).
   // quiet_NaN() means "B&B did not finish the cut loop / value not written".
   double root_lp_with_cuts = std::numeric_limits<double>::quiet_NaN();
+
+  // Wall-clock time spent inside the root-node cut generation loop
+  // (sum of generate_cuts + score_cuts + check_for_duplicate_cuts +
+  // get_best_cuts + add_cuts + post-cut LP resolves), in seconds.
+  // Published by branch_and_bound.cpp::solve() at the same point that
+  // root_lp_with_cuts is finalised. quiet_NaN() means "cut loop did
+  // not run / value never written".
+  double cut_generation_time_sec = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Forward declare solver_settings_t for friend class

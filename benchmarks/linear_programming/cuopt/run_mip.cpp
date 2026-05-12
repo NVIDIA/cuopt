@@ -277,7 +277,8 @@ int run_single_file(std::string file_path,
                                        _gap_seconds,
                                        _status_str,
                                        benchmark_info.root_lp_no_cuts,
-                                       benchmark_info.root_lp_with_cuts);
+                                       benchmark_info.root_lp_with_cuts,
+                                       benchmark_info.cut_generation_time_sec);
   }
 
   std::stringstream ss;

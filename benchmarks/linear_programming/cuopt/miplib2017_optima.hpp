@@ -371,12 +371,14 @@ inline bool is_known_infeasible(const std::string& filename)
 // can join lines on (instance, field) without dropping rows. "NaN" is
 // emitted for root_lp_* when the value is unavailable.
 template <typename Solution>
-inline void print_miplib_gap_stat(const std::string& filename,
-                                  const Solution& solution,
-                                  double solve_time_seconds,
-                                  const std::string& termination_status,
-                                  double root_lp_no_cuts,
-                                  double root_lp_with_cuts)
+inline void print_miplib_gap_stat(
+  const std::string& filename,
+  const Solution& solution,
+  double solve_time_seconds,
+  const std::string& termination_status,
+  double root_lp_no_cuts,
+  double root_lp_with_cuts,
+  double cut_gen_time_sec = std::numeric_limits<double>::quiet_NaN())
 {
   const std::string norm   = normalize_instance_name(filename);
   const auto opt           = lookup_miplib_optimum(filename);
@@ -394,7 +396,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
       "abs_root_dual_gap=NA rel_root_dual_gap_pct=NA gap_closed_pct=NA "
       "abs_primal_gap=NA rel_primal_gap_pct=NA "
-      "mip_gap_reported=%.6g time_s=%.3f status=%s\n",
+      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
       norm.c_str(),
       primal,
       final_dual,
@@ -402,6 +404,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       root_lp_with_cuts,
       mip_gap,
       solve_time_seconds,
+      cut_gen_time_sec,
       termination_status.c_str());
   } else if (opt.has_value()) {
     const double o     = *opt;
@@ -434,7 +437,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
       "abs_root_dual_gap=%.10g rel_root_dual_gap_pct=%.6g gap_closed_pct=%.6g "
       "abs_primal_gap=%.10g rel_primal_gap_pct=%.6g "
-      "mip_gap_reported=%.6g time_s=%.3f status=%s\n",
+      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
       norm.c_str(),
       o,
       primal,
@@ -448,6 +451,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       rel_pgap_pct,
       mip_gap,
       solve_time_seconds,
+      cut_gen_time_sec,
       termination_status.c_str());
   } else {
     std::printf(
@@ -455,7 +459,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
       "abs_root_dual_gap=TBD rel_root_dual_gap_pct=TBD gap_closed_pct=TBD "
       "abs_primal_gap=TBD rel_primal_gap_pct=TBD "
-      "mip_gap_reported=%.6g time_s=%.3f status=%s\n",
+      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
       norm.c_str(),
       primal,
       final_dual,
@@ -463,6 +467,7 @@ inline void print_miplib_gap_stat(const std::string& filename,
       root_lp_with_cuts,
       mip_gap,
       solve_time_seconds,
+      cut_gen_time_sec,
       termination_status.c_str());
   }
   std::fflush(stdout);
