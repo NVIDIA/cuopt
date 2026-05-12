@@ -1651,7 +1651,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     if (diving_worker_pool_.num_workers() > 0 && settings_.diving_settings.guided_diving != 0 &&
         diving_settings.guided_diving == 0) {
       if (has_solver_space_incumbent()) {
-        std::cout << "Re-enabling guided diving" << std::endl;
         diving_settings.guided_diving = 1;
         worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
                                              diving_worker_pool_.num_workers(),
