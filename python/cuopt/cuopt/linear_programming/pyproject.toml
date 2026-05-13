@@ -72,7 +72,7 @@ commit-files = [
 ]
 disable-cuda = true
 requires = [
-    "cmake>=3.30.4",
+    "cmake>=4.0",
     "cython>=3.0.3",
     "ninja",
     "numpy>=1.23.5,<3.0",
