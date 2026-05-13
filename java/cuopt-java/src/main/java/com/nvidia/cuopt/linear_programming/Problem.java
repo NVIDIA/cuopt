@@ -77,7 +77,7 @@ public final class Problem implements AutoCloseable {
     private double solveTime;
     private SolverMethod solvedBy;
     private LpStats lpStats;
-    private MilpStats milpStats;
+    private MIPStats mipStats;
 
     private boolean closed = false;
 
@@ -225,14 +225,14 @@ public final class Problem implements AutoCloseable {
         return n;
     }
 
-    public boolean isMip() {
+    public boolean isMIP() {
         for (Variable v : variables) {
             if (v.variableType() != VType.CONTINUOUS) return true;
         }
         return false;
     }
 
-    public boolean isQp() {
+    public boolean isQP() {
         return quadraticObjective != null && quadraticObjective.numQuadraticTerms() > 0;
     }
 
@@ -292,13 +292,9 @@ public final class Problem implements AutoCloseable {
     }
 
     public ProblemCategory problemCategory() {
-        if (isQp()) return ProblemCategory.QP;
-        if (!isMip()) return ProblemCategory.LP;
-        // MIP vs IP: IP if all variables are integer
-        for (Variable v : variables) {
-            if (v.variableType() == VType.CONTINUOUS) return ProblemCategory.MIP;
-        }
-        return ProblemCategory.IP;
+        if (isQP()) return ProblemCategory.QP;
+        if (!isMIP()) return ProblemCategory.LP;
+        return ProblemCategory.MIP;
     }
 
     public LpStats lpStats() {
@@ -306,9 +302,9 @@ public final class Problem implements AutoCloseable {
         return lpStats;
     }
 
-    public Optional<MilpStats> milpStats() {
+    public Optional<MIPStats> mipStats() {
         checkSolved();
-        return Optional.ofNullable(milpStats);
+        return Optional.ofNullable(mipStats);
     }
 
     public boolean isSolved() {
@@ -404,7 +400,7 @@ public final class Problem implements AutoCloseable {
         this.solveTime = r.solveTime();
         this.solvedBy = r.solvedBy();
         this.lpStats = r.lpStats();
-        this.milpStats = r.milpStats();
+        this.mipStats = r.mipStats();
     }
 
     // LinearExpr copy used at addConstraint time so the user's

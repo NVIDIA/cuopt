@@ -41,7 +41,7 @@ class MilpSolverIT {
 
             problem.solve(settings);
 
-            assertTrue(problem.isMip());
+            assertTrue(problem.isMIP());
             // Termination should be OPTIMAL, FEASIBLE_FOUND, or a limit.
             TerminationStatus s = problem.status();
             assertTrue(s == TerminationStatus.OPTIMAL
@@ -57,7 +57,7 @@ class MilpSolverIT {
             }
 
             // MILP stats should be present.
-            assertTrue(problem.milpStats().isPresent());
+            assertTrue(problem.mipStats().isPresent());
         }
     }
 }

@@ -16,7 +16,7 @@ import com.nvidia.cuopt.linear_programming.LinearExpr;
 import com.nvidia.cuopt.linear_programming.LpStats;
 import com.nvidia.cuopt.linear_programming.MIPGetSolutionCallback;
 import com.nvidia.cuopt.linear_programming.MIPSetSolutionCallback;
-import com.nvidia.cuopt.linear_programming.MilpStats;
+import com.nvidia.cuopt.linear_programming.MIPStats;
 import com.nvidia.cuopt.linear_programming.Problem;
 import com.nvidia.cuopt.linear_programming.QuadraticExpr;
 import com.nvidia.cuopt.linear_programming.SolverMethod;
@@ -182,7 +182,7 @@ public final class CuOptProviderImpl implements CuOptProvider {
 
         // Build constraint CSR from per-constraint LinearExprs.
         List<LinearExpr> rows = problem.constraintExpressions();
-        CsrBuilder.Csr ccsr = CsrBuilder.buildConstraintCsr(rows);
+        CSRBuilder.CSR ccsr = CSRBuilder.buildConstraintCSR(rows);
 
         // Constraint sense + rhs from the Constraint metadata.
         byte[] sense = new byte[numC];
@@ -222,9 +222,9 @@ public final class CuOptProviderImpl implements CuOptProvider {
         double offset = problem.objectiveOffset();
 
         int rc;
-        if (problem.isQp() && problem.quadraticObjective() != null) {
+        if (problem.isQP() && problem.quadraticObjective() != null) {
             QuadraticExpr q = problem.quadraticObjective();
-            CsrBuilder.Csr qcsr = CsrBuilder.buildQuadraticCsr(q, numV);
+            CSRBuilder.CSR qcsr = CSRBuilder.buildQuadraticCSR(q, numV);
             MemorySegment qRowOff = intArray(arena, qcsr.rowOffsets);
             MemorySegment qColIdx = intArray(arena, qcsr.colIndices);
             MemorySegment qVals = doubleArray(arena, qcsr.values);
@@ -431,13 +431,13 @@ public final class CuOptProviderImpl implements CuOptProvider {
                 LpStats lpStats = new LpStats(
                     Double.NaN, Double.NaN, objVal, dualObjVal, -1L, Double.NaN);
 
-                MilpStats milpStats = null;
+                MIPStats mipStats = null;
                 if (isMip) {
                     cuopt_c_h.cuOptGetMIPGap(solutionHandle, outDbl);
                     double mipGap = outDbl.get(ValueLayout.JAVA_DOUBLE, 0);
                     cuopt_c_h.cuOptGetSolutionBound(solutionHandle, outDbl);
                     double bound = outDbl.get(ValueLayout.JAVA_DOUBLE, 0);
-                    milpStats = new MilpStats(mipGap, bound, -1L, -1L, Double.NaN, Double.NaN);
+                    mipStats = new MIPStats(mipGap, bound, -1L, -1L, Double.NaN, Double.NaN);
                 }
 
                 return new SolveResult(
@@ -445,7 +445,7 @@ public final class CuOptProviderImpl implements CuOptProvider {
                     term, term.name(), err, errMsg,
                     objVal, dualObjVal, solveTime,
                     SolverMethod.UNSET,
-                    lpStats, milpStats);
+                    lpStats, mipStats);
             } finally {
                 MemorySegment solDestroyPtr = arena.allocate(ValueLayout.ADDRESS);
                 solDestroyPtr.set(ValueLayout.ADDRESS, 0, solutionHandle);

@@ -6,7 +6,7 @@ package com.nvidia.cuopt.linear_programming;
 
 /**
  * Solver statistics for MILP solves. Returned by
- * {@code Problem.milpStats()} (empty {@link java.util.Optional} for LP-only problems).
+ * {@code Problem.mipStats()} (empty {@link java.util.Optional} for LP-only problems).
  *
  * @param mipGap             relative MIP gap at termination ({@code (UB - LB) / |UB|})
  * @param bestBound          best dual bound found
@@ -15,7 +15,7 @@ package com.nvidia.cuopt.linear_programming;
  * @param presolveTime       wall-clock time spent in presolve, seconds
  * @param rootRelaxationTime wall-clock time spent on the root LP relaxation, seconds
  */
-public record MilpStats(
+public record MIPStats(
     double mipGap,
     double bestBound,
     long nodesExplored,

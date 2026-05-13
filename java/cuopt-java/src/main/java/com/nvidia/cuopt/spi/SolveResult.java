@@ -6,7 +6,7 @@ package com.nvidia.cuopt.spi;
 
 import com.nvidia.cuopt.linear_programming.ErrorStatus;
 import com.nvidia.cuopt.linear_programming.LpStats;
-import com.nvidia.cuopt.linear_programming.MilpStats;
+import com.nvidia.cuopt.linear_programming.MIPStats;
 import com.nvidia.cuopt.linear_programming.SolverMethod;
 import com.nvidia.cuopt.linear_programming.TerminationStatus;
 
@@ -34,5 +34,5 @@ public record SolveResult(
     double solveTime,
     SolverMethod solvedBy,
     LpStats lpStats,
-    MilpStats milpStats
+    MIPStats mipStats
 ) {}

@@ -18,17 +18,17 @@ import java.util.Map;
  *
  * <p>Output arrays are ready to copy into native {@code MemorySegment}s.
  */
-final class CsrBuilder {
+final class CSRBuilder {
 
-    private CsrBuilder() {}
+    private CSRBuilder() {}
 
     /** Output of CSR construction for the linear constraint matrix. */
-    static final class Csr {
+    static final class CSR {
         final int[] rowOffsets;
         final int[] colIndices;
         final double[] values;
 
-        Csr(int[] rowOffsets, int[] colIndices, double[] values) {
+        CSR(int[] rowOffsets, int[] colIndices, double[] values) {
             this.rowOffsets = rowOffsets;
             this.colIndices = colIndices;
             this.values = values;
@@ -40,7 +40,7 @@ final class CsrBuilder {
      * expression, terms sorted by column (variable index) within each
      * row. Empty constraints produce a row with no non-zeros.
      */
-    static Csr buildConstraintCsr(List<LinearExpr> rows) {
+    static CSR buildConstraintCSR(List<LinearExpr> rows) {
         int numRows = rows.size();
         int[] rowOffsets = new int[numRows + 1];
 
@@ -78,7 +78,7 @@ final class CsrBuilder {
             }
         }
         rowOffsets[numRows] = writeIdx;
-        return new Csr(rowOffsets, colIndices, values);
+        return new CSR(rowOffsets, colIndices, values);
     }
 
     /**
@@ -90,7 +90,7 @@ final class CsrBuilder {
      *
      * <p>Returns CSR with {@code numVariables + 1} row offsets.
      */
-    static Csr buildQuadraticCsr(QuadraticExpr qexpr, int numVariables) {
+    static CSR buildQuadraticCSR(QuadraticExpr qexpr, int numVariables) {
         int n = qexpr.numQuadraticTerms();
         int[] rowOffsets = new int[numVariables + 1];
 
@@ -131,7 +131,7 @@ final class CsrBuilder {
             int end = rowOffsets[r + 1];
             sortRow(colIndices, values, start, end);
         }
-        return new Csr(rowOffsets, colIndices, values);
+        return new CSR(rowOffsets, colIndices, values);
     }
 
     private static void sortRow(int[] cols, double[] vals, int start, int end) {

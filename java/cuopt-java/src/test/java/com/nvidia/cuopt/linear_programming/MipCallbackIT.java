@@ -54,7 +54,7 @@ class MipCallbackIT {
 
             problem.solve(settings);
 
-            assertTrue(problem.isMip());
+            assertTrue(problem.isMIP());
             assertTrue(!incumbents.isEmpty(),
                 "Get callback should have been invoked at least once");
 

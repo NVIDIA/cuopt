@@ -73,7 +73,7 @@ public final class DataModel implements AutoCloseable {
     private double solveTime;
     private SolverMethod solvedBy;
     private LpStats lpStats;
-    private MilpStats milpStats;
+    private MIPStats mipStats;
 
     private boolean closed = false;
 
@@ -228,9 +228,9 @@ public final class DataModel implements AutoCloseable {
         return lpStats;
     }
 
-    public Optional<MilpStats> milpStats() {
+    public Optional<MIPStats> mipStats() {
         checkSolved();
-        return Optional.ofNullable(milpStats);
+        return Optional.ofNullable(mipStats);
     }
 
     public boolean isSolved() {
@@ -254,7 +254,7 @@ public final class DataModel implements AutoCloseable {
         this.solveTime = r.solveTime();
         this.solvedBy = r.solvedBy();
         this.lpStats = r.lpStats();
-        this.milpStats = r.milpStats();
+        this.mipStats = r.mipStats();
         this.solved = true;
     }
 
