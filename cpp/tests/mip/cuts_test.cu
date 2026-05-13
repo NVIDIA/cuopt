@@ -54,24 +54,19 @@ mps_parser::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_p
   std::vector<int> offsets         = {0, 2, 4, 6};
   std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
   std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
   std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
   std::vector<char> variable_types = {'I', 'I', 'I'};
   problem.set_variable_types(variable_types);
   problem.set_maximize(false);
@@ -86,24 +81,19 @@ mps_parser::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated
   std::vector<int> offsets         = {0, 2, 4, 6};
   std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
   std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
   std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
   std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
   problem.set_variable_types(variable_types);
   problem.set_maximize(false);
@@ -118,23 +108,18 @@ mps_parser::mps_data_model_t<int, double> create_binary_continuous_mixed_conflic
   std::vector<int> offsets         = {0, 2, 4};
   std::vector<int> indices         = {0, 1, 0, 2};
   std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
   std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
   std::vector<double> objective_coefficients = {0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
   std::vector<char> variable_types = {'I', 'C', 'I'};
   problem.set_variable_types(variable_types);
   problem.set_maximize(false);
@@ -149,22 +134,17 @@ mps_parser::mps_data_model_t<int, double> create_near_binary_bound_conflict_prob
   std::vector<int> offsets         = {0, 2};
   std::vector<int> indices         = {0, 1};
   std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
   std::vector<double> var_lower_bounds = {0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 0.9999999};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
   std::vector<double> objective_coefficients = {0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
   std::vector<char> variable_types = {'I', 'I'};
   problem.set_variable_types(variable_types);
   problem.set_maximize(false);
@@ -180,22 +160,17 @@ mps_parser::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem
   std::vector<int> offsets         = {0, 4};
   std::vector<int> indices         = {0, 1, 2, 3};
   std::vector<double> coefficients = {1.0, 2.0, 3.0, 4.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {5.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
   std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
   std::vector<double> objective_coefficients = {0.0, 0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
   std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
   problem.set_variable_types(variable_types);
   problem.set_maximize(false);
@@ -781,18 +756,11 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
     row_names.push_back("literal_cut_" + std::to_string(cut_idx));
   }
 
-  model_with_cuts.set_csr_constraint_matrix(matrix_values.data(),
-                                            matrix_values.size(),
-                                            matrix_indices.data(),
-                                            matrix_indices.size(),
-                                            matrix_offsets.data(),
-                                            matrix_offsets.size());
-  if (!constraint_rhs.empty()) {
-    model_with_cuts.set_constraint_bounds(constraint_rhs.data(), constraint_rhs.size());
-  }
-  model_with_cuts.set_constraint_lower_bounds(constraint_lbs.data(), constraint_lbs.size());
-  model_with_cuts.set_constraint_upper_bounds(constraint_ubs.data(), constraint_ubs.size());
-  if (!row_types.empty()) { model_with_cuts.set_row_types(row_types.data(), row_types.size()); }
+  model_with_cuts.set_csr_constraint_matrix(matrix_values, matrix_indices, matrix_offsets);
+  if (!constraint_rhs.empty()) { model_with_cuts.set_constraint_bounds(constraint_rhs); }
+  model_with_cuts.set_constraint_lower_bounds(constraint_lbs);
+  model_with_cuts.set_constraint_upper_bounds(constraint_ubs);
+  if (!row_types.empty()) { model_with_cuts.set_row_types(row_types); }
   model_with_cuts.set_row_names(row_names);
   return model_with_cuts;
 }
@@ -859,30 +827,25 @@ mps_parser::mps_data_model_t<int, double> create_cuts_problem_1()
   std::vector<int> offsets         = {0, 2, 4, 6};
   std::vector<int> indices         = {0, 1, 0, 1, 0, 1};
   std::vector<double> coefficients = {-1.0, 2.0, 5.0, 1.0, -2.0, -2.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {4.0, 20.0, -7.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower_bounds = {0.0, 0.0};
   std::vector<double> var_upper_bounds = {10.0, 10.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
 
   // Set objective coefficients (minimize -7*x1 -2*x2)
   std::vector<double> objective_coefficients = {-7.0, -2.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
 
   // Set variable types
   std::vector<char> variable_types = {'I', 'I'};
@@ -928,29 +891,24 @@ mps_parser::mps_data_model_t<int, double> create_cuts_problem_2()
   std::vector<int> offsets         = {0, 3, 6};
   std::vector<int> indices         = {0, 1, 2, 0, 1, 2};
   std::vector<double> coefficients = {774.0, 76.0, 42.0, 67.0, 27.0, 53.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
                                       -std::numeric_limits<double>::infinity()};
   std::vector<double> upper_bounds = {875.0, 875.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
   std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
+  problem.set_variable_lower_bounds(var_lower_bounds);
+  problem.set_variable_upper_bounds(var_upper_bounds);
 
   // Set objective coefficients (minimize -86*y1 -4*y2 -40*y3)
   std::vector<double> objective_coefficients = {-86.0, -4.0, -40.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
+  problem.set_objective_coefficients(objective_coefficients);
 
   // Set variable types
   std::vector<char> variable_types = {'I', 'I', 'I'};

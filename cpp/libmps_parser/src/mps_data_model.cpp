@@ -15,55 +15,29 @@
 namespace cuopt::mps_parser {
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_csr_constraint_matrix(const f_t* A_values,
-                                                           i_t size_values,
-                                                           const i_t* A_indices,
-                                                           i_t size_indices,
-                                                           const i_t* A_offsets,
-                                                           i_t size_offsets)
+void mps_data_model_t<i_t, f_t>::set_csr_constraint_matrix(std::span<const f_t> A_values,
+                                                           std::span<const i_t> A_indices,
+                                                           std::span<const i_t> A_offsets)
 {
-  if (size_values != 0) {
-    mps_parser_expects(
-      A_values != nullptr, error_type_t::ValidationError, "A_values cannot be null");
-  }
-  A_.resize(size_values);
-  std::copy(A_values, A_values + size_values, A_.data());
-
-  if (size_indices != 0) {
-    mps_parser_expects(
-      A_indices != nullptr, error_type_t::ValidationError, "A_indices cannot be null");
-  }
-  A_indices_.resize(size_indices);
-  std::copy(A_indices, A_indices + size_indices, A_indices_.data());
-
   mps_parser_expects(
-    A_offsets != nullptr, error_type_t::ValidationError, "A_offsets cannot be null");
-  mps_parser_expects(
-    size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
-  A_offsets_.resize(size_offsets);
-  std::copy(A_offsets, A_offsets + size_offsets, A_offsets_.data());
+    !A_offsets.empty(), error_type_t::ValidationError, "A_offsets cannot be empty");
+  A_.assign(A_values.begin(), A_values.end());
+  A_indices_.assign(A_indices.begin(), A_indices.end());
+  A_offsets_.assign(A_offsets.begin(), A_offsets.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_constraint_bounds(const f_t* b, i_t size)
+void mps_data_model_t<i_t, f_t>::set_constraint_bounds(std::span<const f_t> b)
 {
-  if (size != 0) {
-    mps_parser_expects(b != nullptr, error_type_t::ValidationError, "b cannot be null");
-  }
-  b_.resize(size);
-  n_constraints_ = size;
-  std::copy(b, b + size, b_.data());
+  b_.assign(b.begin(), b.end());
+  n_constraints_ = static_cast<i_t>(b.size());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_objective_coefficients(const f_t* c, i_t size)
+void mps_data_model_t<i_t, f_t>::set_objective_coefficients(std::span<const f_t> c)
 {
-  if (size != 0) {
-    mps_parser_expects(c != nullptr, error_type_t::ValidationError, "c cannot be null");
-  }
-  c_.resize(size);
-  n_vars_ = size;
-  std::copy(c, c + size, c_.data());
+  c_.assign(c.begin(), c.end());
+  n_vars_ = static_cast<i_t>(c.size());
 }
 
 template <typename i_t, typename f_t>
@@ -79,67 +53,38 @@ void mps_data_model_t<i_t, f_t>::set_objective_offset(f_t objective_offset)
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_lower_bounds,
-                                                           i_t size)
+void mps_data_model_t<i_t, f_t>::set_variable_lower_bounds(
+  std::span<const f_t> variable_lower_bounds)
 {
-  if (size != 0) {
-    mps_parser_expects(variable_lower_bounds != nullptr,
-                       error_type_t::ValidationError,
-                       "variable_lower_bounds cannot be null");
-  }
-  variable_lower_bounds_.resize(size);
-  std::copy(variable_lower_bounds, variable_lower_bounds + size, variable_lower_bounds_.data());
+  variable_lower_bounds_.assign(variable_lower_bounds.begin(), variable_lower_bounds.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_variable_upper_bounds(const f_t* variable_upper_bounds,
-                                                           i_t size)
+void mps_data_model_t<i_t, f_t>::set_variable_upper_bounds(
+  std::span<const f_t> variable_upper_bounds)
 {
-  if (size != 0) {
-    mps_parser_expects(variable_upper_bounds != nullptr,
-                       error_type_t::ValidationError,
-                       "variable_upper_bounds cannot be null");
-  }
-  variable_upper_bounds_.resize(size);
-  std::copy(variable_upper_bounds, variable_upper_bounds + size, variable_upper_bounds_.data());
+  variable_upper_bounds_.assign(variable_upper_bounds.begin(), variable_upper_bounds.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_constraint_lower_bounds(const f_t* constraint_lower_bounds,
-                                                             i_t size)
+void mps_data_model_t<i_t, f_t>::set_constraint_lower_bounds(
+  std::span<const f_t> constraint_lower_bounds)
 {
-  if (size != 0) {
-    mps_parser_expects(constraint_lower_bounds != nullptr,
-                       error_type_t::ValidationError,
-                       "constraint_lower_bounds cannot be null");
-  }
-  constraint_lower_bounds_.resize(size);
-  n_constraints_ = size;
-  std::copy(
-    constraint_lower_bounds, constraint_lower_bounds + size, constraint_lower_bounds_.data());
+  constraint_lower_bounds_.assign(constraint_lower_bounds.begin(), constraint_lower_bounds.end());
+  n_constraints_ = static_cast<i_t>(constraint_lower_bounds.size());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_constraint_upper_bounds(const f_t* constraint_upper_bounds,
-                                                             i_t size)
+void mps_data_model_t<i_t, f_t>::set_constraint_upper_bounds(
+  std::span<const f_t> constraint_upper_bounds)
 {
-  if (size != 0) {
-    mps_parser_expects(constraint_upper_bounds != nullptr,
-                       error_type_t::ValidationError,
-                       "constraint_upper_bounds cannot be null");
-  }
-  constraint_upper_bounds_.resize(size);
-  std::copy(
-    constraint_upper_bounds, constraint_upper_bounds + size, constraint_upper_bounds_.data());
+  constraint_upper_bounds_.assign(constraint_upper_bounds.begin(), constraint_upper_bounds.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_row_types(const char* row_types, i_t size)
+void mps_data_model_t<i_t, f_t>::set_row_types(std::span<const char> row_types)
 {
-  mps_parser_expects(
-    row_types != nullptr, error_type_t::ValidationError, "row_types cannot be null");
-  row_types_.resize(size);
-  std::copy(row_types, row_types + size, row_types_.data());
+  row_types_.assign(row_types.begin(), row_types.end());
 }
 
 template <typename i_t, typename f_t>
@@ -169,71 +114,41 @@ void mps_data_model_t<i_t, f_t>::set_row_names(const std::vector<std::string>& r
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_initial_primal_solution(const f_t* initial_primal_solution,
-                                                             i_t size)
+void mps_data_model_t<i_t, f_t>::set_initial_primal_solution(
+  std::span<const f_t> initial_primal_solution)
 {
-  mps_parser_expects(initial_primal_solution != nullptr,
-                     error_type_t::ValidationError,
-                     "initial_primal_solution cannot be null");
-  initial_primal_solution_.resize(size);
-  std::copy(
-    initial_primal_solution, initial_primal_solution + size, initial_primal_solution_.data());
+  initial_primal_solution_.assign(initial_primal_solution.begin(), initial_primal_solution.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_initial_dual_solution(const f_t* initial_dual_solution,
-                                                           i_t size)
+void mps_data_model_t<i_t, f_t>::set_initial_dual_solution(
+  std::span<const f_t> initial_dual_solution)
 {
-  mps_parser_expects(initial_dual_solution != nullptr,
-                     error_type_t::ValidationError,
-                     "initial_dual_solution cannot be null");
-  initial_dual_solution_.resize(size);
-  std::copy(initial_dual_solution, initial_dual_solution + size, initial_dual_solution_.data());
+  initial_dual_solution_.assign(initial_dual_solution.begin(), initial_dual_solution.end());
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(const f_t* Q_values,
-                                                                i_t size_values,
-                                                                const i_t* Q_indices,
-                                                                i_t size_indices,
-                                                                const i_t* Q_offsets,
-                                                                i_t size_offsets)
+void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(std::span<const f_t> Q_values,
+                                                                std::span<const i_t> Q_indices,
+                                                                std::span<const i_t> Q_offsets)
 {
-  if (size_values != 0) {
-    mps_parser_expects(
-      Q_values != nullptr, error_type_t::ValidationError, "Q_values cannot be null");
-  }
-  Q_objective_values_.resize(size_values);
-  std::copy(Q_values, Q_values + size_values, Q_objective_values_.data());
-
-  if (size_indices != 0) {
-    mps_parser_expects(
-      Q_indices != nullptr, error_type_t::ValidationError, "Q_indices cannot be null");
-  }
-  Q_objective_indices_.resize(size_indices);
-  std::copy(Q_indices, Q_indices + size_indices, Q_objective_indices_.data());
-
   mps_parser_expects(
-    Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
-  mps_parser_expects(
-    size_offsets > 0, error_type_t::ValidationError, "size_offsets cannot be empty");
-  Q_objective_offsets_.resize(size_offsets);
-  std::copy(Q_offsets, Q_offsets + size_offsets, Q_objective_offsets_.data());
+    !Q_offsets.empty(), error_type_t::ValidationError, "Q_offsets cannot be empty");
+  Q_objective_values_.assign(Q_values.begin(), Q_values.end());
+  Q_objective_indices_.assign(Q_indices.begin(), Q_indices.end());
+  Q_objective_offsets_.assign(Q_offsets.begin(), Q_offsets.end());
 }
 
 template <typename i_t, typename f_t>
 void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_index,
                                                              const std::string& constraint_row_name,
                                                              char constraint_row_type,
-                                                             const f_t* linear_values,
-                                                             i_t linear_nnz,
-                                                             const i_t* linear_indices,
-                                                             i_t linear_indices_nnz,
+                                                             std::span<const f_t> linear_values,
+                                                             std::span<const i_t> linear_indices,
                                                              f_t rhs_value,
-                                                             i_t quadratic_nnz,
-                                                             const f_t* quadratic_values,
-                                                             const i_t* quadratic_row_indices,
-                                                             const i_t* quadratic_col_indices)
+                                                             std::span<const f_t> quadratic_values,
+                                                             std::span<const i_t> quadratic_row_indices,
+                                                             std::span<const i_t> quadratic_col_indices)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
@@ -245,23 +160,29 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                      "Only 'L' is supported for convex quadratic constraints.",
                      constraint_row_type);
 
-  mps_parser_expects(linear_nnz == linear_indices_nnz,
+  mps_parser_expects(linear_values.size() == linear_indices.size(),
                      error_type_t::ValidationError,
                      "linear_values and linear_indices must have the same nnz count");
-  if (linear_nnz != 0) {
-    mps_parser_expects(linear_values != nullptr && linear_indices != nullptr,
+
+  const size_t q_nnz = quadratic_values.size();
+  mps_parser_expects(q_nnz == quadratic_row_indices.size(),
+                     error_type_t::ValidationError,
+                     "quadratic_values and quadratic_row_indices must have the same length");
+  mps_parser_expects(q_nnz == quadratic_col_indices.size(),
+                     error_type_t::ValidationError,
+                     "quadratic_values and quadratic_col_indices must have the same length");
+
+  if (!linear_values.empty()) {
+    mps_parser_expects(linear_values.data() != nullptr && linear_indices.data() != nullptr,
                        error_type_t::ValidationError,
-                       "linear_values and linear_indices cannot be null when linear_nnz > 0");
+                       "linear_values and linear_indices cannot be null when non-empty");
   }
 
-  mps_parser_expects(quadratic_nnz >= 0,
-                     error_type_t::ValidationError,
-                     "quadratic_nnz must be non-negative");
-  if (quadratic_nnz > 0) {
-    mps_parser_expects(quadratic_values != nullptr && quadratic_row_indices != nullptr &&
-                         quadratic_col_indices != nullptr,
+  if (q_nnz > 0) {
+    mps_parser_expects(quadratic_values.data() != nullptr && quadratic_row_indices.data() != nullptr &&
+                         quadratic_col_indices.data() != nullptr,
                        error_type_t::ValidationError,
-                       "Q COO pointers cannot be null when quadratic_nnz > 0");
+                       "Q COO spans cannot be null when nnz > 0");
   }
 
   quadratic_constraint_t qc;
@@ -269,45 +190,33 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
   qc.constraint_row_name  = constraint_row_name;
   qc.constraint_row_type  = constraint_row_type;
   qc.rhs_value            = rhs_value;
+  qc.linear_values.assign(linear_values.begin(), linear_values.end());
+  qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
 
-  qc.linear_values.resize(linear_nnz);
-  qc.linear_indices.resize(linear_nnz);
-  if (linear_nnz > 0) {
-    std::copy(linear_values, linear_values + linear_nnz, qc.linear_values.data());
-    std::copy(linear_indices, linear_indices + linear_nnz, qc.linear_indices.data());
-  }
-
-  if (quadratic_nnz == 0) {
+  if (q_nnz == 0) {
     qc.quadratic_row_indices.clear();
     qc.quadratic_col_indices.clear();
     qc.quadratic_values.clear();
   } else {
-    std::vector<i_t> wr(static_cast<size_t>(quadratic_nnz));
-    std::vector<i_t> wc(static_cast<size_t>(quadratic_nnz));
-    std::vector<f_t> wv(static_cast<size_t>(quadratic_nnz));
-    std::copy(quadratic_row_indices,
-              quadratic_row_indices + quadratic_nnz,
-              wr.begin());
-    std::copy(quadratic_col_indices,
-              quadratic_col_indices + quadratic_nnz,
-              wc.begin());
-    std::copy(quadratic_values, quadratic_values + quadratic_nnz, wv.begin());
+    std::vector<i_t> wr(quadratic_row_indices.begin(), quadratic_row_indices.end());
+    std::vector<i_t> wc(quadratic_col_indices.begin(), quadratic_col_indices.end());
+    std::vector<f_t> wv(quadratic_values.begin(), quadratic_values.end());
 
-    std::vector<size_t> perm(static_cast<size_t>(quadratic_nnz));
+    std::vector<size_t> perm(q_nnz);
     std::iota(perm.begin(), perm.end(), size_t{0});
     std::stable_sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
       if (wr[a] != wr[b]) { return wr[a] < wr[b]; }
       return wc[a] < wc[b];
     });
 
-    qc.quadratic_row_indices.resize(static_cast<size_t>(quadratic_nnz));
-    qc.quadratic_col_indices.resize(static_cast<size_t>(quadratic_nnz));
-    qc.quadratic_values.resize(static_cast<size_t>(quadratic_nnz));
-    for (i_t t = 0; t < quadratic_nnz; ++t) {
-      const size_t ix                           = perm[static_cast<size_t>(t)];
-      qc.quadratic_row_indices[static_cast<size_t>(t)] = wr[ix];
-      qc.quadratic_col_indices[static_cast<size_t>(t)] = wc[ix];
-      qc.quadratic_values[static_cast<size_t>(t)]     = wv[ix];
+    qc.quadratic_row_indices.resize(q_nnz);
+    qc.quadratic_col_indices.resize(q_nnz);
+    qc.quadratic_values.resize(q_nnz);
+    for (size_t t = 0; t < q_nnz; ++t) {
+      const size_t ix                                  = perm[t];
+      qc.quadratic_row_indices[t] = wr[ix];
+      qc.quadratic_col_indices[t] = wc[ix];
+      qc.quadratic_values[t]      = wv[ix];
     }
   }
 

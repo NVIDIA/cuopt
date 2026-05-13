@@ -116,8 +116,9 @@ static void set_bounds_if_not_set(detail::problem_t<i_t, f_t>& op_problem)
 
   set_variable_bounds(op_problem);
   if (op_problem.variable_types.is_empty() && !op_problem.objective_coefficients.is_empty()) {
-    op_problem.variable_types.resize(op_problem.objective_coefficients.size(),
-                                     op_problem.handle_ptr->get_stream());
+    // variable_types is a per-variable quantity so use n_variables (not
+    // objective_coefficients.size(), which may be batch-expanded in batch mode).
+    op_problem.variable_types.resize(op_problem.n_variables, op_problem.handle_ptr->get_stream());
     thrust::fill(op_problem.handle_ptr->get_thrust_policy(),
                  op_problem.variable_types.begin(),
                  op_problem.variable_types.end(),

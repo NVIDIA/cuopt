@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: Test self-hosted service on local-setup
@@ -66,7 +66,7 @@ jobs:
         - /tmp/asset_dir/:/tmp/asset_dir/
         - /tmp/response_dir/:/tmp/response_dir/
     steps:
-      - uses: aws-actions/configure-aws-credentials@v1-node16
+      - uses: aws-actions/configure-aws-credentials@023daa7fe5f7f817faa31fc0fc4a8d0fb6224ed0 # v1-node16
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -78,7 +78,7 @@ jobs:
         run: printf 'machine pypi.k8s.rapids.ai\n\tlogin cibuildwheel\n\tpassword ${{ secrets.RAPIDSAI_PYPI_CI_PASSWORD }}\n' > ~/.netrc
 
       - name: checkout code repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.sha }}
@@ -94,4 +94,17 @@ jobs:
           sha: ${{ inputs.sha }}
 
       - name: Run tests
-        run: ${{ inputs.script }}
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: |
+          script_path="$(realpath "$SCRIPT")"
+          ci_dir="$(realpath ci)"
+
+          # Use `realpath` to expand out both the script path and the ci path and compare to make sure
+          # that user isn't giving a relative path to a file outside of `ci/`
+          if [[ "$script_path" != "$ci_dir"/*.sh ]]; then
+            echo "::error::Invalid script path '$SCRIPT'. Expected an existing ci/*.sh script inside the checkout"
+            exit 1
+          fi
+
+          bash "$script_path"

@@ -25,8 +25,16 @@ on:
         type: string
         default: nightly
 
+permissions: {}
+
 jobs:
   conda-cpp-tests:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -35,13 +43,20 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_cpp.sh
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+
   conda-python-tests:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     with:
       run_codecov: false
@@ -51,13 +66,20 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+
   wheel-tests-cuopt:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -66,13 +88,20 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt.sh
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+
   wheel-tests-cuopt-server:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
     uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -81,14 +110,21 @@ jobs:
       sha: ${{ inputs.sha }}
       script: ci/test_wheel_cuopt_server.sh
     secrets:
-      script-env-secret-1-key: CUOPT_DATASET_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_DATASET_S3_URI }}
+      script-env-secret-1-key: CUOPT_S3_URI
+      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
       script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
       script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+
   conda-notebook-tests:
-    secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type }}
@@ -99,3 +135,26 @@ jobs:
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: ci/test_notebooks.sh
+  nightly-summary:
+    permissions:
+      contents: read
+    if: ${{ always() && inputs.build_type == 'nightly' }}
+    needs:
+      - conda-cpp-tests
+      - conda-python-tests
+      - wheel-tests-cuopt
+      - wheel-tests-cuopt-server
+      - conda-notebook-tests
+    uses: ./.github/workflows/nightly-summary.yaml
+    with:
+      branch: ${{ inputs.branch }}
+      sha: ${{ inputs.sha }}
+      build_type: ${{ inputs.build_type }}
+      date: ${{ inputs.date }}
+    secrets:
+      CUOPT_AWS_ACCESS_KEY_ID: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
+      CUOPT_AWS_SECRET_ACCESS_KEY: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
+      CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
+      CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+      CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}

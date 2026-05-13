@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <utilities/common_utils.hpp>
+#include <utilities/inline_mps_test_utils.hpp>
 
 #include <mps_parser.hpp>
 #include <mps_parser/mps_writer.hpp>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -26,6 +28,13 @@
 namespace cuopt::mps_parser {
 
 constexpr double tolerance = 1e-6;
+
+/** Non-owning view of a vector for APIs taking `std::span<const T>`. */
+template <class T>
+std::span<const T> as_span(const std::vector<T>& v) noexcept
+{
+  return std::span<const T>(v.data(), v.size());
+}
 
 mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_format = true)
 {
@@ -425,6 +434,59 @@ TEST(mps_bounds, upper_inf_var_bound)
   EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
 }
 
+TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
+{
+  struct Case {
+    const char* name;
+    const char* mps;
+    int n_vars;
+    double lower;
+    double upper;
+  };
+  const std::vector<Case> cases = {
+    {"sc_standard", cuopt::test::inline_mps::sc_standard_mps, 2, 2.0, 10.0},
+    {"sc_lb_zero", cuopt::test::inline_mps::sc_lb_zero_mps, 2, 0.0, 10.0},
+    {"sc_no_ub", cuopt::test::inline_mps::sc_no_ub_mps, 2, 2.0, 1e30},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.mps);
+    const auto& var_types = mps.get_variable_types();
+    const auto& lower     = mps.get_variable_lower_bounds();
+    const auto& upper     = mps.get_variable_upper_bounds();
+
+    ASSERT_EQ(c.n_vars, static_cast<int>(var_types.size()));
+    EXPECT_EQ('S', var_types[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(lower.size()));
+    ASSERT_EQ(c.n_vars, static_cast<int>(upper.size()));
+    EXPECT_DOUBLE_EQ(c.lower, lower[0]);
+    EXPECT_DOUBLE_EQ(c.upper, upper[0]);
+  }
+}
+
+TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
+{
+  auto mps = cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_lb_zero_mps);
+  const auto& var_types = mps.get_variable_types();
+  const auto& lower     = mps.get_variable_lower_bounds();
+  const auto& upper     = mps.get_variable_upper_bounds();
+
+  ASSERT_EQ(2, static_cast<int>(var_types.size()));
+  EXPECT_EQ('S', var_types[0]);
+  ASSERT_EQ(2, static_cast<int>(lower.size()));
+  ASSERT_EQ(2, static_cast<int>(upper.size()));
+  EXPECT_DOUBLE_EQ(0.0, lower[0]);
+  EXPECT_DOUBLE_EQ(10.0, upper[0]);
+}
+
+TEST(mps_bounds, semi_continuous_missing_upper_rejected)
+{
+  EXPECT_THROW(
+    cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_missing_upper_mps),
+    std::logic_error);
+}
+
 TEST(mps_ranges, fixed_ranges)
 {
   std::string file = "linear_programming/good-mps-fixed-ranges.mps";
@@ -558,16 +620,22 @@ TEST(mps_ranges, bad_value)
                std::logic_error);
 }
 
-TEST(mps_bounds, unsupported_or_invalid_mps_types)
+TEST(mps_bounds, semi_continuous_bound_type)
 {
-  std::stringstream ss;
-  static constexpr int NumMpsFiles = 2;
-  for (int i = 1; i <= NumMpsFiles; ++i) {
-    ss << "linear_programming/bad-mps-bound-" << i << ".mps";
-    ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
-    ss.str(std::string{});
-    ss.clear();
-  };
+  auto mps = read_from_mps("linear_programming/good-mps-semi-continuous-bound.mps", false);
+
+  ASSERT_EQ(int(2), mps.var_names.size());
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('S', mps.var_types[0]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_DOUBLE_EQ(0.0, mps.variable_lower_bounds[0]);
+  EXPECT_DOUBLE_EQ(2.0, mps.variable_upper_bounds[0]);
+}
+
+TEST(mps_bounds, invalid_bound_type)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
 }
 
 TEST(mps_parser, good_mps_file_mip_1)
@@ -844,12 +912,7 @@ TEST(qps_parser, quadratic_objective_basic)
   std::vector<int> Q_indices   = {0, 1, 0, 1};
   std::vector<int> Q_offsets   = {0, 2, 4};  // CSR offsets
 
-  model.set_quadratic_objective_matrix(Q_values.data(),
-                                       Q_values.size(),
-                                       Q_indices.data(),
-                                       Q_indices.size(),
-                                       Q_offsets.data(),
-                                       Q_offsets.size());
+  model.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets);
 
   // Verify the data was stored correctly
   EXPECT_TRUE(model.has_quadratic_objective());
@@ -886,15 +949,12 @@ TEST(qps_parser, qcmatrix_append_api)
   model.append_quadratic_constraint(0,
                                     "QC0",
                                     'L',
-                                    qc0_linear_values.data(),
-                                    qc0_linear_values.size(),
-                                    qc0_linear_indices.data(),
-                                    qc0_linear_indices.size(),
+                                    as_span(qc0_linear_values),
+                                    as_span(qc0_linear_indices),
                                     5.0,
-                                    static_cast<int>(qc0_values.size()),
-                                    qc0_values.data(),
-                                    qc0_rows.data(),
-                                    qc0_cols.data());
+                                    as_span(qc0_values),
+                                    as_span(qc0_rows),
+                                    as_span(qc0_cols));
 
   // QC1: [[4, 1], [1, 6]]
   const std::vector<double> qc1_values = {4.0, 1.0, 1.0, 6.0};
@@ -905,15 +965,12 @@ TEST(qps_parser, qcmatrix_append_api)
   model.append_quadratic_constraint(1,
                                     "QC1",
                                     'L',
-                                    qc1_linear_values.data(),
-                                    qc1_linear_values.size(),
-                                    qc1_linear_indices.data(),
-                                    qc1_linear_indices.size(),
+                                    as_span(qc1_linear_values),
+                                    as_span(qc1_linear_indices),
                                     10.0,
-                                    static_cast<int>(qc1_values.size()),
-                                    qc1_values.data(),
-                                    qc1_rows.data(),
-                                    qc1_cols.data());
+                                    as_span(qc1_values),
+                                    as_span(qc1_rows),
+                                    as_span(qc1_cols));
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qcs = model.get_quadratic_constraints();

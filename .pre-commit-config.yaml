@@ -99,6 +99,10 @@ repos:
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
             ^gemini-extension[.]json$
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.24.1
+    hooks:
+      - id: zizmor
   - repo: local
     hooks:
       - id: update-versions

@@ -10,6 +10,7 @@
 #include <utilities/copy_helpers.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
@@ -22,11 +23,49 @@
 #include <raft/util/cudart_utils.hpp>
 
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename f_t>
+struct weighted_square_op {
+  f_t weight;
+  HDI f_t operator()(f_t v) { return v * v * weight; }
+};
+
+template <typename f_t>
+struct rescaling_from_squared_norm_op {
+  HDI f_t operator()(f_t sum) { return f_t(1.0) / (raft::sqrt(sum) + f_t(1.0)); }
+};
+
+template <typename f_t>
+struct inverse_rescaling_op {
+  HDI f_t operator()(f_t v)
+  {
+    cuopt_assert(v != f_t(0), "Numerical error: rescaling should never equal 0");
+    return v != f_t(0) ? f_t(1.0) / v : v;
+  }
+};
+
+template <typename i_t, typename f_t>
+__global__ void scaling_swap_rescaling_kernel(const swap_pair_t<i_t>* swap_pairs,
+                                              i_t swap_count,
+                                              raft::device_span<f_t> bound_rescaling,
+                                              raft::device_span<f_t> objective_rescaling)
+{
+  const i_t idx = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  if (idx >= swap_count) { return; }
+
+  const i_t left  = swap_pairs[idx].left;
+  const i_t right = swap_pairs[idx].right;
+
+  cuda::std::swap(bound_rescaling[left], bound_rescaling[right]);
+  cuda::std::swap(objective_rescaling[left], objective_rescaling[right]);
+}
 
 template <typename i_t, typename f_t>
 pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
@@ -39,6 +78,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   rmm::device_uvector<i_t>& A_T_indices,
   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  i_t original_batch_size,
   bool running_mip)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -53,8 +93,11 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
     running_mip_(running_mip),
     iteration_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
     iteration_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_},
-    bound_rescaling_(f_t(1), stream_view_),
-    objective_rescaling_(f_t(1), stream_view_),
+    original_batch_size_(original_batch_size),
+    bound_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_),
+    objective_rescaling_(static_cast<size_t>(original_batch_size_), stream_view_),
+    h_bound_rescaling_(static_cast<size_t>(original_batch_size_), f_t(1)),
+    h_objective_rescaling_(static_cast<size_t>(original_batch_size_), f_t(1)),
     cummulative_constraint_matrix_scaling_{static_cast<size_t>(dual_size_h_), stream_view_},
     cummulative_variable_scaling_{static_cast<size_t>(primal_size_h_), stream_view_}
 {
@@ -65,6 +108,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
 #endif
 
   if (!running_mip_) cuopt_assert(pdhg_solver_ptr_ != nullptr, "PDHG solver pointer is null");
+  cuopt_assert(original_batch_size_ > 0, "Original batch size must be positive");
 
   // start with all one for scaling vectors
   RAFT_CUDA_TRY(cudaMemsetAsync(
@@ -78,6 +122,12 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   thrust::fill(handle_ptr_->get_thrust_policy(),
                cummulative_variable_scaling_.begin(),
                cummulative_variable_scaling_.end(),
+               f_t(1));
+  thrust::fill(
+    handle_ptr_->get_thrust_policy(), bound_rescaling_.begin(), bound_rescaling_.end(), f_t(1));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               objective_rescaling_.begin(),
+               objective_rescaling_.end(),
                f_t(1));
 
   compute_scaling_vectors(number_of_ruiz_iterations, alpha);
@@ -97,57 +147,37 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 {
   // TODO: test bound obj scaling w/ MIP
-  rmm::device_buffer d_temp_storage;
-  size_t bytes;
+  segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
 
-  auto main_op = [] HD(const thrust::tuple<f_t, f_t> t) {
-    const f_t lower = thrust::get<0>(t);
-    const f_t upper = thrust::get<1>(t);
-    f_t sum         = 0;
-    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
-    if (isfinite(upper)) sum += upper * upper;
-    return sum;
-  };
-  cub::DeviceReduce::TransformReduce(
-    nullptr,
-    bytes,
-    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                              op_problem_scaled_.constraint_upper_bounds.data()),
-    bound_rescaling_.data(),
-    op_problem_scaled_.constraint_lower_bounds.size(),
-    cuda::std::plus<>{},
-    main_op,
-    f_t(0),
-    stream_view_);
+  // ------- Constraints bounds scaling -------
+  // This works whether we have different bounds per climber or not because of the
+  // problem_wrap_container
+  const i_t n_constrs  = op_problem_scaled_.n_constraints;
+  const auto n_batches = original_batch_size_;
+  auto bound_input     = thrust::make_transform_iterator(
+    thrust::make_zip_iterator(problem_wrap_container(op_problem_scaled_.constraint_lower_bounds),
+                              problem_wrap_container(op_problem_scaled_.constraint_upper_bounds)),
+    rhs_sum_of_squares_t<f_t>{});
+  auto bound_output = thrust::make_transform_output_iterator(bound_rescaling_.data(),
+                                                             rescaling_from_squared_norm_op<f_t>{});
 
-  d_temp_storage.resize(bytes, stream_view_);
+  segmented_sum_handler.segmented_sum_helper(bound_input, bound_output, n_batches, n_constrs);
 
-  cub::DeviceReduce::TransformReduce(
-    d_temp_storage.data(),
-    bytes,
-    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                              op_problem_scaled_.constraint_upper_bounds.data()),
-    bound_rescaling_.data(),
-    op_problem_scaled_.constraint_lower_bounds.size(),
-    cuda::std::plus<>{},
-    main_op,
-    f_t(0),
-    stream_view_);
+  h_bound_rescaling_ = cuopt::host_copy(bound_rescaling_, stream_view_);
 
-  h_bound_rescaling = f_t(1.0) / (std::sqrt(bound_rescaling_.value(stream_view_)) + f_t(1.0));
-  bound_rescaling_.set_value_async(h_bound_rescaling, stream_view_);
+  // ------- Objective coefficients scaling -------
 
-  detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
-                                        hyper_params_.initial_primal_weight_c_scaling,
-                                        objective_rescaling_,
-                                        stream_view_);
+  const i_t n_variables = op_problem_scaled_.n_variables;
+  auto objective_input  = thrust::make_transform_iterator(
+    problem_wrap_container(op_problem_scaled_.objective_coefficients),
+    weighted_square_op<f_t>{f_t(hyper_params_.initial_primal_weight_c_scaling)});
+  auto objective_output = thrust::make_transform_output_iterator(
+    objective_rescaling_.data(), rescaling_from_squared_norm_op<f_t>{});
 
-  // sqrt already applied
-  h_objective_rescaling = f_t(1.0) / (objective_rescaling_.value(stream_view_) + f_t(1.0));
-  objective_rescaling_.set_value_async(h_objective_rescaling, stream_view_);
+  segmented_sum_handler.segmented_sum_helper(
+    objective_input, objective_output, n_batches, n_variables);
 
-  // Sync since we are using local variable
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+  h_objective_rescaling_ = cuopt::host_copy(objective_rescaling_, stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -406,13 +436,78 @@ __global__ void scale_transposed_problem_kernel(
 template <typename i_t, typename f_t>
 f_t pdlp_initial_scaling_strategy_t<i_t, f_t>::get_h_bound_rescaling() const
 {
-  return h_bound_rescaling;
+  cuopt_assert(!h_bound_rescaling_.empty(), "Bound rescaling vector should not be empty");
+  return h_bound_rescaling_[0];
 }
 
 template <typename i_t, typename f_t>
 f_t pdlp_initial_scaling_strategy_t<i_t, f_t>::get_h_objective_rescaling() const
 {
-  return h_objective_rescaling;
+  cuopt_assert(!h_objective_rescaling_.empty(), "Objective rescaling vector should not be empty");
+  return h_objective_rescaling_[0];
+}
+
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_bound_rescaling_vector() const
+{
+  return bound_rescaling_;
+}
+
+template <typename i_t, typename f_t>
+const rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_objective_rescaling_vector() const
+{
+  return objective_rescaling_;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::swap_context(
+  const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs)
+{
+  if (swap_pairs.empty()) { return; }
+
+  const auto batch_size = static_cast<i_t>(bound_rescaling_.size());
+  cuopt_assert(batch_size == static_cast<i_t>(objective_rescaling_.size()),
+               "Rescaling vectors must have the same size");
+  cuopt_assert(h_bound_rescaling_.size() == static_cast<size_t>(batch_size),
+               "Host/device bound rescaling sizes must match");
+  cuopt_assert(h_objective_rescaling_.size() == static_cast<size_t>(batch_size),
+               "Host/device objective rescaling sizes must match");
+  for (const auto& pair : swap_pairs) {
+    cuopt_assert(pair.left < pair.right, "Left swap index must be less than right swap index");
+    cuopt_assert(pair.right < batch_size, "Right swap index is out of bounds");
+  }
+
+  const auto [grid_size, block_size] =
+    kernel_config_from_batch_size(static_cast<i_t>(swap_pairs.size()));
+  scaling_swap_rescaling_kernel<i_t, f_t>
+    <<<grid_size, block_size, 0, stream_view_>>>(thrust::raw_pointer_cast(swap_pairs.data()),
+                                                 static_cast<i_t>(swap_pairs.size()),
+                                                 make_span(bound_rescaling_),
+                                                 make_span(objective_rescaling_));
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  for (const auto& pair : swap_pairs) {
+    std::swap(h_bound_rescaling_[pair.left], h_bound_rescaling_[pair.right]);
+    std::swap(h_objective_rescaling_[pair.left], h_objective_rescaling_[pair.right]);
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::resize_context(i_t new_size)
+{
+  [[maybe_unused]] const auto batch_size = static_cast<i_t>(bound_rescaling_.size());
+  cuopt_assert(batch_size == static_cast<i_t>(objective_rescaling_.size()),
+               "Rescaling vectors must have the same size");
+  cuopt_assert(new_size > 0, "New size must be greater than 0");
+  cuopt_assert(new_size < batch_size, "New size must be less than batch size");
+
+  bound_rescaling_.resize(new_size, stream_view_);
+  objective_rescaling_.resize(new_size, stream_view_);
+  h_bound_rescaling_.resize(new_size);
+  h_objective_rescaling_.resize(new_size);
+  original_batch_size_ = new_size;
 }
 
 template <typename i_t, typename f_t>
@@ -473,18 +568,19 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
       stream_view_);
   }
 
-  // TODO later batch mode: handle different constraints bounds
-  raft::linalg::eltwiseMultiply(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_lower_bounds).data(),
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
+                          problem_wrap_container(cummulative_constraint_matrix_scaling_)),
     op_problem_scaled_.constraint_lower_bounds.data(),
-    cummulative_constraint_matrix_scaling_.data(),
-    dual_size_h_,
+    op_problem_scaled_.constraint_lower_bounds.size(),
+    cuda::std::multiplies<f_t>{},
     stream_view_);
-  raft::linalg::eltwiseMultiply(
-    const_cast<rmm::device_uvector<f_t>&>(op_problem_scaled_.constraint_upper_bounds).data(),
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_upper_bounds.data(),
+                          problem_wrap_container(cummulative_constraint_matrix_scaling_)),
     op_problem_scaled_.constraint_upper_bounds.data(),
-    cummulative_constraint_matrix_scaling_.data(),
-    dual_size_h_,
+    op_problem_scaled_.constraint_upper_bounds.size(),
+    cuda::std::multiplies<f_t>{},
     stream_view_);
 
   if (hyper_params_.bound_objective_rescaling && !running_mip_) {
@@ -492,55 +588,48 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     bound_objective_rescaling();
 
 #ifdef CUPDLP_DEBUG_MODE
-    printf("Bound rescaling %lf %lf\n",
-           bound_rescaling_.value(stream_view_),
-           objective_rescaling_.value(stream_view_));
+    print("bound_rescaling", bound_rescaling_);
+    print("objective_rescaling", objective_rescaling_);
 #endif
 
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
-                            op_problem_scaled_.constraint_upper_bounds.data()),
+                            op_problem_scaled_.constraint_upper_bounds.data(),
+                            batch_wrapped_container(bound_rescaling_, dual_size_h_)),
       thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
                                 op_problem_scaled_.constraint_upper_bounds.data()),
       op_problem_scaled_.constraint_upper_bounds.size(),
-      [bound_rescaling = bound_rescaling_.data()] __device__(
-        f_t constraint_lower_bound, f_t constraint_upper_bound) -> thrust::tuple<f_t, f_t> {
-        return {constraint_lower_bound * *bound_rescaling,
-                constraint_upper_bound * *bound_rescaling};
+      [] __device__(f_t constraint_lower_bound,
+                    f_t constraint_upper_bound,
+                    f_t bound_rescaling) -> thrust::tuple<f_t, f_t> {
+        return {constraint_lower_bound * bound_rescaling, constraint_upper_bound * bound_rescaling};
       },
       stream_view_.value());
 
-    cub::DeviceTransform::Transform(
-      op_problem_scaled_.variable_bounds.data(),
-      op_problem_scaled_.variable_bounds.data(),
-      op_problem_scaled_.variable_bounds.size(),
-      [bound_rescaling     = bound_rescaling_.data(),
-       objective_rescaling = objective_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
-        return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
-      },
-      stream_view_);
-
-    if (pdhg_solver_ptr_ && pdhg_solver_ptr_->get_new_bounds_idx().size() != 0) {
+    // In batch mode we don't scale the variable bounds (here) because they are shared across
+    // climbers. While the variable bounds are the same across climbers, there can be different
+    // bound rescaling factors for each climber. One solution would be to have per climber variable
+    // bounds but its costly from a memory perspective and from a memory bandwidth perspective.
+    // Since the variable bounds are the same across climbers but only the scaling factor changes,
+    // we pass the scaling factor to PDHG later. In PDHG we act the (almost fully) scaled variable
+    // bounds and add this missing scaling factor.
+    if (original_batch_size_ == 1) {
       cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(pdhg_solver_ptr_->get_new_bounds_lower().data(),
-                              pdhg_solver_ptr_->get_new_bounds_upper().data()),
-        thrust::make_zip_iterator(pdhg_solver_ptr_->get_new_bounds_lower().data(),
-                                  pdhg_solver_ptr_->get_new_bounds_upper().data()),
-        pdhg_solver_ptr_->get_new_bounds_idx().size(),
-        [bound_rescaling = bound_rescaling_.data()] __device__(
-          f_t lower, f_t upper) -> thrust::tuple<f_t, f_t> {
-          return {lower * *bound_rescaling, upper * *bound_rescaling};
+        op_problem_scaled_.variable_bounds.data(),
+        op_problem_scaled_.variable_bounds.data(),
+        op_problem_scaled_.variable_bounds.size(),
+        [bound_rescaling = bound_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
+          return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
         },
         stream_view_);
     }
 
     cub::DeviceTransform::Transform(
-      op_problem_scaled_.objective_coefficients.data(),
+      cuda::std::make_tuple(op_problem_scaled_.objective_coefficients.data(),
+                            batch_wrapped_container(objective_rescaling_, primal_size_h_)),
       op_problem_scaled_.objective_coefficients.data(),
       op_problem_scaled_.objective_coefficients.size(),
-      [bound_rescaling     = bound_rescaling_.data(),
-       objective_rescaling = objective_rescaling_.data()] __device__(f_t objective_coefficient)
-        -> f_t { return objective_coefficient * *objective_rescaling; },
+      cuda::std::multiplies<f_t>{},
       stream_view_.value());
   }
 
@@ -592,11 +681,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
       stream_view_);
 
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cub::DeviceTransform::Transform(primal_solution.data(),
-                                      primal_solution.data(),
-                                      primal_solution.size(),
-                                      a_times_scalar<f_t>(h_bound_rescaling),
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(primal_solution.data(),
+                              batch_wrapped_container(bound_rescaling_, primal_size_h_)),
+        primal_solution.data(),
+        primal_solution.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 
@@ -617,11 +708,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
       stream_view_);
 
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cub::DeviceTransform::Transform(dual_solution.data(),
-                                      dual_solution.data(),
-                                      dual_solution.size(),
-                                      a_times_scalar<f_t>(h_objective_rescaling),
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_solution.data(),
+                              batch_wrapped_container(objective_rescaling_, dual_size_h_)),
+        dual_solution.data(),
+        dual_solution.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 
@@ -642,11 +735,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_solutions(
       stream_view_);
 
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cub::DeviceTransform::Transform(dual_slack.data(),
-                                      dual_slack.data(),
-                                      dual_slack.size(),
-                                      a_times_scalar<f_t>{h_objective_rescaling},
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_slack.data(),
+                              batch_wrapped_container(objective_rescaling_, primal_size_h_)),
+        dual_slack.data(),
+        dual_slack.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 }
@@ -708,13 +803,15 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       stream_view_);
 
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cuopt_assert(h_bound_rescaling != f_t(0),
-                   "Numerical error: bound_rescaling_ should never equal 0");
-      cub::DeviceTransform::Transform(primal_solution.data(),
-                                      primal_solution.data(),
-                                      primal_solution.size(),
-                                      a_times_scalar<f_t>(f_t(1.0) / h_bound_rescaling),
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(
+          primal_solution.data(),
+          thrust::make_transform_iterator(batch_wrapped_container(bound_rescaling_, primal_size_h_),
+                                          inverse_rescaling_op<f_t>{})),
+        primal_solution.data(),
+        primal_solution.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 
@@ -735,13 +832,15 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       cuda::std::multiplies<>{},
       stream_view_);
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cuopt_assert(h_bound_rescaling != f_t(0),
-                   "Numerical error: bound_rescaling_ should never equal 0");
-      cub::DeviceTransform::Transform(dual_solution.data(),
-                                      dual_solution.data(),
-                                      dual_solution.size(),
-                                      a_times_scalar<f_t>(f_t(1.0) / h_objective_rescaling),
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_solution.data(),
+                              thrust::make_transform_iterator(
+                                batch_wrapped_container(objective_rescaling_, dual_size_h_),
+                                inverse_rescaling_op<f_t>{})),
+        dual_solution.data(),
+        dual_solution.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 
@@ -760,13 +859,15 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
       batch_safe_div<f_t>(),
       stream_view_);
     if (hyper_params_.bound_objective_rescaling && !running_mip_) {
-      cuopt_assert(h_bound_rescaling != f_t(0),
-                   "Numerical error: bound_rescaling_ should never equal 0");
-      cub::DeviceTransform::Transform(dual_slack.data(),
-                                      dual_slack.data(),
-                                      dual_slack.size(),
-                                      a_times_scalar<f_t>{f_t(1.0) / h_objective_rescaling},
-                                      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_slack.data(),
+                              thrust::make_transform_iterator(
+                                batch_wrapped_container(objective_rescaling_, primal_size_h_),
+                                inverse_rescaling_op<f_t>{})),
+        dual_slack.data(),
+        dual_slack.size(),
+        cuda::std::multiplies<f_t>{},
+        stream_view_);
     }
   }
 }

@@ -20,7 +20,7 @@
 
 namespace cuopt::linear_programming {
 
-enum class var_t { CONTINUOUS = 0, INTEGER };
+enum class var_t { CONTINUOUS = 0, INTEGER, SEMI_CONTINUOUS };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 template <typename i_t, typename f_t>

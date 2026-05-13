@@ -42,7 +42,7 @@ enum BoundType {
   BinaryVariable,
   LowerBoundIntegerVariable,
   UpperBoundIntegerVariable,
-  SemiContiniousVariable,
+  SemiContinuousVariable,
 };  // enum BoundType
 
 /**
@@ -75,6 +75,18 @@ class mps_parser_t {
    */
   mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
                const std::string& file,
+               bool fixed_mps_format = true);
+
+  /**
+   * @brief Ctor. Parses the MPS text and generates the internal representation.
+   *
+   * @param[out] problem Problem representation that will be filled after parsing the MPS text
+   * @param[in] input MPS text to be parsed
+   * @param[in] fixed_mps_format Bool which describes whether the MPS file is in fixed format or
+   * not. Default is true.
+   */
+  mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
+               std::string_view input,
                bool fixed_mps_format = true);
 
   /** path to the mps file being parsed */
@@ -148,6 +160,7 @@ class mps_parser_t {
   std::unordered_map<std::string, i_t> var_names_map{};
   std::unordered_set<std::string> ignored_objective_names{};
   std::unordered_set<i_t> bounds_defined_for_var_id{};
+  std::unordered_set<i_t> lower_bounds_defined_for_var_id{};
   static constexpr f_t unset_range_value = std::numeric_limits<f_t>::infinity();
 
   /* Reads an MPS input file into a buffer.
