@@ -333,6 +333,18 @@ dependencies:
           # generate-bindings.sh auto-downloads it (cuvs pattern). For
           # CI to be hermetic, consider preinstalling jextract in the
           # ci-conda image; for now, the build pulls it on first run.
+          #
+          # libcuopt's conda recipe omits CUDA runtime libs from its
+          # `run:` deps (host-only). Python tests pick them up
+          # transitively via cudf/cupy/cuda-python; Java tests have no
+          # such chain, so we declare them explicitly here. Matches the
+          # ldd of libcuopt.so: libcublas, libcusparse, libcudart,
+          # libcudss, libnvjitlink (libcublasLt ships with libcublas).
+          - libcublas
+          - libcudart
+          - libcudss
+          - libcusparse
+          - libnvjitlink
   test_cpp_cuopt:
     common:
       - output_types: [conda]

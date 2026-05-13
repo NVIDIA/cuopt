@@ -30,11 +30,16 @@ dependencies:
 - jsonref==1.1.0
 - libabseil
 - libboost-devel
+- libcublas
+- libcudart
+- libcudss
 - libcudss-dev >=0.7
 - libcurand-dev
 - libcusolver-dev
+- libcusparse
 - libcusparse-dev
 - libgrpc >=1.78.0,<1.80.0a0
+- libnvjitlink
 - libprotobuf
 - libraft-headers==26.6.*,>=0.0.0a0
 - librmm==26.6.*,>=0.0.0a0
