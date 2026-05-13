@@ -1026,7 +1026,7 @@ bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
   f_t& b,
   bool& negate_row)
 {
-  const f_t coefficient_tol = context.settings.zero_tol;
+  const f_t coefficient_tol = static_cast<f_t>(1e-6);
   auto& scratch             = flow_cover_scratch_;
   row =
     inequality_t<i_t, f_t>(context.Arow, flow_cover_row.row, context.lp.rhs[flow_cover_row.row]);
@@ -1110,7 +1110,7 @@ bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
   const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& snf_b)
 {
   auto& scratch             = flow_cover_scratch_;
-  const f_t coefficient_tol = context.settings.zero_tol;
+  const f_t coefficient_tol = static_cast<f_t>(1e-6);
   const f_t feasibility_tol = context.settings.primal_tol;
   const f_t bound_tol       = context.settings.primal_tol;
   f_t b_shift               = 0.0;
@@ -1199,11 +1199,11 @@ bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
       };
 
     if (c > 0.0) {
-      add_simple_candidate(false, -c * lower_j, c, c * lower_j, lower_j);
-      add_simple_candidate(true, c * upper_j, -c, c * upper_j, upper_j);
+      add_simple_candidate(false, -c * lower_j, c, c * lower_j, upper_j);
+      add_simple_candidate(true, c * upper_j, -c, c * upper_j, lower_j);
     } else {
-      add_simple_candidate(true, c * lower_j, -c, c * lower_j, lower_j);
-      add_simple_candidate(false, -c * upper_j, c, c * upper_j, upper_j);
+      add_simple_candidate(true, c * lower_j, -c, c * lower_j, upper_j);
+      add_simple_candidate(false, -c * upper_j, c, c * upper_j, lower_j);
     }
   };
 
@@ -1220,9 +1220,13 @@ bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
                        [](const snf_candidate_t<i_t, f_t>& a, const snf_candidate_t<i_t, f_t>& b) {
                          return a.distance < b.distance;
                        });
-    const f_t arc_tol = flow_cover_arc_tol(context, best->arc);
-    if (best->arc.y_value < -arc_tol ||
-        best->arc.y_value > best->arc.u * best->arc.x_value + arc_tol) {
+    const f_t arc_lower_tol =
+      std::max<f_t>(10 * context.settings.primal_tol, static_cast<f_t>(1e-5));
+    const f_t arc_upper_tol =
+      std::max<f_t>(100 * context.settings.primal_tol, static_cast<f_t>(1e-4)) *
+      std::max<f_t>(1.0, best->arc.u);
+    if (best->arc.y_value < -arc_lower_tol ||
+        best->arc.y_value > best->arc.u * best->arc.x_value + arc_upper_tol) {
       return false;
     }
     if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
@@ -1334,7 +1338,8 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
   auto& scratch                       = flow_cover_scratch_;
   constexpr f_t min_mir_beta_fraction = 0.01;
   constexpr f_t max_mir_beta_fraction = 0.95;
-  const f_t lambda_tol                = flow_cover_scaled_primal_tol(context, lambda);
+  const f_t min_violation             = static_cast<f_t>(1e-6);
+  const f_t lambda_tol                = min_violation;
   f_t max_c1_ltilde2                  = -inf;
   f_t max_c1                          = -inf;
   f_t max_u_ge_lambda                 = -inf;
@@ -1342,9 +1347,8 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
   auto add_ubar_candidate = [&](f_t candidate) {
     if (candidate <= lambda + lambda_tol || !std::isfinite(candidate)) { return; }
     for (f_t existing : scratch.ubar_candidates) {
-      if (std::abs(existing - candidate) <= flow_cover_scaled_primal_tol(context, candidate)) {
-        return;
-      }
+      const f_t duplicate_tol = static_cast<f_t>(1e-8) * std::max<f_t>(1.0, std::abs(candidate));
+      if (std::abs(existing - candidate) <= duplicate_tol) { return; }
     }
     scratch.ubar_candidates.push_back(candidate);
   };
@@ -1358,7 +1362,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
       max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
     }
     if (arc.in_n2 && !scratch.in_c2[k] && arc.u > lambda + lambda_tol &&
-        std::min(arc.u, lambda) * arc.x_value <= arc.y_value + flow_cover_arc_tol(context, arc)) {
+        std::min(arc.u, lambda) * arc.x_value <= arc.y_value + min_violation) {
       max_c1_ltilde2 = std::max(max_c1_ltilde2, arc.u);
     }
   }
@@ -1403,12 +1407,11 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
       const f_t f_pos = flow_cover_mir_f(f_beta, arc.u / ubar);
       const f_t f_neg = flow_cover_mir_f(f_beta, -arc.u / ubar);
       if (!arc.in_n2 && !scratch.in_c1[k] &&
-          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >=
-            -flow_cover_arc_tol(context, arc)) {
+          arc.y_value - (arc.u - lambda * f_pos) * arc.x_value >= -min_violation) {
         scratch.in_l1[k] = 1;
       }
       if (arc.in_n2 && !scratch.in_c2[k] &&
-          lambda * f_neg * arc.x_value >= -arc.y_value - flow_cover_arc_tol(context, arc)) {
+          lambda * f_neg * arc.x_value >= -arc.y_value - min_violation) {
         scratch.in_l2[k] = 1;
       }
     }
@@ -1422,9 +1425,8 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
                                 scratch.in_l2[k],
                                 ubar);
     }
-    const f_t violation   = lhs_value - snf_b;
-    const f_t snf_rhs_tol = flow_cover_scaled_primal_tol(context, snf_b);
-    if (violation > best.violation + snf_rhs_tol) {
+    const f_t violation = lhs_value - snf_b;
+    if (violation > best.violation + min_violation) {
       best.violation     = violation;
       best.ubar          = ubar;
       scratch.best_in_l1 = scratch.in_l1;
@@ -1439,7 +1441,8 @@ template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
   const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, f_t lambda)
 {
-  auto& scratch = flow_cover_scratch_;
+  auto& scratch           = flow_cover_scratch_;
+  const f_t min_violation = static_cast<f_t>(1e-6);
   scratch.sgfci_in_l2.assign(scratch.arcs.size(), 0);
 
   f_t lhs_value = 0.0;
@@ -1451,8 +1454,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
       continue;
     } else if (scratch.in_c2[k]) {
       lhs_value -= arc.u;
-    } else if (std::min(arc.u, lambda) * arc.x_value <=
-               arc.y_value + flow_cover_arc_tol(context, arc)) {
+    } else if (std::min(arc.u, lambda) * arc.x_value <= arc.y_value + min_violation) {
       scratch.sgfci_in_l2[k] = 1;
       lhs_value -= std::min(arc.u, lambda) * arc.x_value;
     } else {
@@ -1472,14 +1474,15 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const flow_cover_evaluation_t<f_t>& sgfci,
   inequality_t<i_t, f_t>& cut)
 {
-  auto& scratch             = flow_cover_scratch_;
-  const f_t coefficient_tol = context.settings.zero_tol;
-  const bool use_cmirfci    = cmirfci.violation >= sgfci.violation;
-  f_t lhs_constant          = 0.0;
+  auto& scratch                = flow_cover_scratch_;
+  const f_t accumulator_tol    = static_cast<f_t>(1e-12);
+  const f_t output_drop_tol    = static_cast<f_t>(1e-9);
+  const bool use_cmirfci       = cmirfci.violation >= sgfci.violation;
+  f_t lhs_constant             = 0.0;
 
   scratch.lhs_indices.reserve(scratch.arcs.size() * 2);
   auto add_lhs_coeff = [&](i_t j, f_t value) {
-    if (j < 0 || std::abs(value) <= coefficient_tol) { return; }
+    if (j < 0 || std::abs(value) <= accumulator_tol) { return; }
     if (!scratch.lhs_coefficients_touched[j]) {
       scratch.lhs_coefficients_touched[j] = 1;
       scratch.touched_lhs_coefficients.push_back(j);
@@ -1556,7 +1559,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
   cut.reserve(scratch.lhs_indices.size());
   for (i_t j : scratch.lhs_indices) {
     const f_t coeff = scratch.lhs_coefficients[j];
-    if (std::abs(coeff) > coefficient_tol) { cut.push_back(j, -coeff); }
+    if (std::abs(coeff) > output_drop_tol) { cut.push_back(j, -coeff); }
   }
   if (cut.size() == 0) { return false; }
   cut.rhs = lhs_constant - snf_b;
@@ -1564,7 +1567,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
 
   const f_t dot = cut.vector.dot(context.xstar);
   const f_t violation_tol =
-    flow_cover_scaled_primal_tol(context, std::max(std::abs(cut.rhs), std::abs(dot)));
+    std::max(context.settings.primal_tol, static_cast<f_t>(1e-6));
   return dot < cut.rhs - violation_tol;
 }
 
@@ -1593,10 +1596,10 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   flow_cover_selection_t<f_t> selection{0.0};
   if (!select_flow_cover(context, snf_b, selection)) { return -1; }
 
-  const auto cmirfci    = evaluate_cmirfci(context, snf_b, selection.lambda);
-  const auto sgfci      = evaluate_sgfci(context, snf_b, selection.lambda);
-  const f_t snf_rhs_tol = flow_cover_scaled_primal_tol(context, snf_b);
-  if (cmirfci.violation <= snf_rhs_tol && sgfci.violation <= snf_rhs_tol) { return -1; }
+  const auto cmirfci      = evaluate_cmirfci(context, snf_b, selection.lambda);
+  const auto sgfci        = evaluate_sgfci(context, snf_b, selection.lambda);
+  const f_t violation_tol = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
+  if (cmirfci.violation <= violation_tol && sgfci.violation <= violation_tol) { return -1; }
 
   if (!emit_flow_cover_cut(context, snf_b, selection.lambda, cmirfci, sgfci, cut)) { return -1; }
   return 0;
