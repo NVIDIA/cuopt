@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.internal;
 
-import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.cuOptException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -86,7 +86,7 @@ public final class NativeLibraryLoader {
         try {
             System.loadLibrary("cuopt");
         } catch (UnsatisfiedLinkError e) {
-            throw new CuOptException(
+            throw new cuOptException(
                 "Failed to load libcuopt. Either add the directory containing "
                 + "libcuopt.so to java.library.path (typical conda install), "
                 + "or use a classifier JAR that bundles the native library "
@@ -105,7 +105,7 @@ public final class NativeLibraryLoader {
                 Path extracted = extractResource(resourcePath, libFile);
                 System.load(extracted.toAbsolutePath().toString());
             } catch (Throwable t) {
-                throw new CuOptException(
+                throw new cuOptException(
                     "Failed to load embedded native dependency: " + libFile
                     + " from resource path " + resourcePath, t);
             }
@@ -160,16 +160,16 @@ public final class NativeLibraryLoader {
         Properties props = new Properties();
         try (InputStream in = NativeLibraryLoader.class.getResourceAsStream(PLATFORM_PROPS)) {
             if (in == null) {
-                throw new CuOptException(
+                throw new cuOptException(
                     "Internal error: " + PLATFORM_PROPS + " not found in JAR.");
             }
             props.load(in);
         } catch (IOException e) {
-            throw new CuOptException("Failed to read " + PLATFORM_PROPS, e);
+            throw new cuOptException("Failed to read " + PLATFORM_PROPS, e);
         }
 
         if (!"true".equalsIgnoreCase(props.getProperty(key))) {
-            throw new CuOptException(
+            throw new cuOptException(
                 "Unsupported platform: " + key + ". Supported platforms: "
                 + props.stringPropertyNames());
         }

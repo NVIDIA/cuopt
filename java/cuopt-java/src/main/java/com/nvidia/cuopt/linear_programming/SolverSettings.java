@@ -4,9 +4,9 @@
  */
 package com.nvidia.cuopt.linear_programming;
 
-import com.nvidia.cuopt.CuOpt;
-import com.nvidia.cuopt.CuOptException;
-import com.nvidia.cuopt.spi.CuOptProvider;
+import com.nvidia.cuopt.cuOpt;
+import com.nvidia.cuopt.cuOptException;
+import com.nvidia.cuopt.spi.cuOptProvider;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -43,50 +43,50 @@ public final class SolverSettings implements AutoCloseable {
     private MIPSetSolutionCallback mipSetCallback;
 
     public SolverSettings() {
-        this.nativeHandle = CuOptProvider.instance().createSolverSettings();
+        this.nativeHandle = cuOptProvider.instance().createSolverSettings();
     }
 
     // ── typed setters (top-frequency parameters) ─────────────────
 
     public SolverSettings setTimeLimit(double seconds) {
-        return setFloatParameter(CuOpt.TIME_LIMIT, seconds);
+        return setFloatParameter(cuOpt.TIME_LIMIT, seconds);
     }
 
     public SolverSettings setIterationLimit(long iterations) {
-        return setIntegerParameter(CuOpt.ITERATION_LIMIT, iterations);
+        return setIntegerParameter(cuOpt.ITERATION_LIMIT, iterations);
     }
 
     public SolverSettings setOptimalityTolerance(double eps) {
         // Cuopt's "optimality tolerance" is the relative gap tolerance.
-        return setFloatParameter(CuOpt.RELATIVE_GAP_TOLERANCE, eps);
+        return setFloatParameter(cuOpt.RELATIVE_GAP_TOLERANCE, eps);
     }
 
     public SolverSettings setMethod(SolverMethod method) {
-        return setIntegerParameter(CuOpt.METHOD, method.code());
+        return setIntegerParameter(cuOpt.METHOD, method.code());
     }
 
     public SolverSettings setPdlpSolverMode(PdlpSolverMode mode) {
-        return setIntegerParameter(CuOpt.PDLP_SOLVER_MODE, mode.code());
+        return setIntegerParameter(cuOpt.PDLP_SOLVER_MODE, mode.code());
     }
 
     public SolverSettings setRelativeMipGap(double gap) {
-        return setFloatParameter(CuOpt.MIP_RELATIVE_GAP, gap);
+        return setFloatParameter(cuOpt.MIP_RELATIVE_GAP, gap);
     }
 
     public SolverSettings setAbsoluteMipGap(double gap) {
-        return setFloatParameter(CuOpt.MIP_ABSOLUTE_GAP, gap);
+        return setFloatParameter(cuOpt.MIP_ABSOLUTE_GAP, gap);
     }
 
     public SolverSettings setLogToConsole(boolean enabled) {
-        return setIntegerParameter(CuOpt.LOG_TO_CONSOLE, enabled ? 1 : 0);
+        return setIntegerParameter(cuOpt.LOG_TO_CONSOLE, enabled ? 1 : 0);
     }
 
     public SolverSettings setNumCpuThreads(int n) {
-        return setIntegerParameter(CuOpt.NUM_CPU_THREADS, n);
+        return setIntegerParameter(cuOpt.NUM_CPU_THREADS, n);
     }
 
     public SolverSettings setRandomSeed(long seed) {
-        return setIntegerParameter(CuOpt.RANDOM_SEED, seed);
+        return setIntegerParameter(cuOpt.RANDOM_SEED, seed);
     }
 
     // ── MIP user callbacks ───────────────────────────────────────
@@ -192,21 +192,21 @@ public final class SolverSettings implements AutoCloseable {
     public SolverSettings setIntegerParameter(String name, long value) {
         checkOpen();
         parameters.put(name, value);
-        CuOptProvider.instance().setSolverIntegerParameter(nativeHandle, name, value);
+        cuOptProvider.instance().setSolverIntegerParameter(nativeHandle, name, value);
         return this;
     }
 
     public SolverSettings setFloatParameter(String name, double value) {
         checkOpen();
         parameters.put(name, value);
-        CuOptProvider.instance().setSolverFloatParameter(nativeHandle, name, value);
+        cuOptProvider.instance().setSolverFloatParameter(nativeHandle, name, value);
         return this;
     }
 
     public SolverSettings setStringParameter(String name, String value) {
         checkOpen();
         parameters.put(name, value);
-        CuOptProvider.instance().setSolverStringParameter(nativeHandle, name, value);
+        cuOptProvider.instance().setSolverStringParameter(nativeHandle, name, value);
         return this;
     }
 
@@ -225,7 +225,7 @@ public final class SolverSettings implements AutoCloseable {
 
     private void checkOpen() {
         if (closed) {
-            throw new CuOptException("SolverSettings has been closed");
+            throw new cuOptException("SolverSettings has been closed");
         }
     }
 
@@ -233,7 +233,7 @@ public final class SolverSettings implements AutoCloseable {
     public synchronized void close() {
         if (closed) return;
         closed = true;
-        CuOptProvider.instance().destroySolverSettings(nativeHandle);
+        cuOptProvider.instance().destroySolverSettings(nativeHandle);
         nativeHandle = 0L;
     }
 }

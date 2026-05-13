@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.linear_programming;
 
-import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.cuOptException;
 import java.util.Objects;
 
 /**
@@ -67,7 +67,7 @@ public final class Variable {
     /**
      * Primal value of this variable in the current solution.
      *
-     * @throws CuOptException if the owning Problem has not been solved
+     * @throws cuOptException if the owning Problem has not been solved
      *                        or has been closed.
      */
     public double value() {
@@ -78,7 +78,7 @@ public final class Variable {
      * Reduced cost of this variable in the current LP solution. LP only;
      * returns {@code Double.NaN} for MIP solves.
      *
-     * @throws CuOptException if the owning Problem has not been solved
+     * @throws cuOptException if the owning Problem has not been solved
      *                        or has been closed.
      */
     public double reducedCost() {

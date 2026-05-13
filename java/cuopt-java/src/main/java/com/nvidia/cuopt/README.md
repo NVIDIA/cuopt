@@ -8,8 +8,8 @@ classes don't exist in Java 21.
 
 - The user-facing API: `Solver` (currently exposes `getVersion()` only;
   `Problem`, `Variable`, `LinearExpr`, etc. land in subsequent PRs).
-- Public exceptions: `CuOptException`.
-- The SPI interface (`spi/CuOptProvider.java`) — sealed; permits only the
+- Public exceptions: `cuOptException`.
+- The SPI interface (`spi/cuOptProvider.java`) — sealed; permits only the
   Java 22 implementation in `internal/`.
 
 ## How calls reach the FFM implementation
@@ -19,12 +19,12 @@ Layer 5 calls the SPI:
 ```java
 public final class Solver {
     public static String getVersion() {
-        return CuOptProvider.instance().getVersion();
+        return cuOptProvider.instance().getVersion();
     }
 }
 ```
 
-`CuOptProvider.instance()` uses `java.util.ServiceLoader` to find the
+`cuOptProvider.instance()` uses `java.util.ServiceLoader` to find the
 implementation registered in `META-INF/services/`. On a Java 22+ JVM,
 the registered class lives in `META-INF/versions/22/com/nvidia/cuopt/internal/`
 (the multi-release JAR layer), so the JVM picks it up automatically.

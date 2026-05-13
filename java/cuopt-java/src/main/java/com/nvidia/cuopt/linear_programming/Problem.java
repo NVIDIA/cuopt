@@ -4,8 +4,8 @@
  */
 package com.nvidia.cuopt.linear_programming;
 
-import com.nvidia.cuopt.CuOptException;
-import com.nvidia.cuopt.spi.CuOptProvider;
+import com.nvidia.cuopt.cuOptException;
+import com.nvidia.cuopt.spi.cuOptProvider;
 import com.nvidia.cuopt.spi.SolveResult;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,7 +25,7 @@ import java.util.Optional;
  * (status, objective, stats) via accessors on this class.
  *
  * <pre>{@code
- *   import static com.nvidia.cuopt.CuOpt.*;
+ *   import static com.nvidia.cuopt.cuOpt.*;
  *
  *   try (var problem = new Problem("diet")) {
  *       Variable x = problem.addVariable(0, INF, CONTINUOUS, "x");
@@ -244,7 +244,7 @@ public final class Problem implements AutoCloseable {
 
     public void solve(SolverSettings settings) {
         checkOpen();
-        SolveResult result = CuOptProvider.instance().solveProblem(this, settings);
+        SolveResult result = cuOptProvider.instance().solveProblem(this, settings);
         populateFromResult(result);
         this.solved = true;
     }
@@ -373,17 +373,17 @@ public final class Problem implements AutoCloseable {
     // ── helpers ──────────────────────────────────────────────────
 
     private void checkOpen() {
-        if (closed) throw new CuOptException("Problem has been closed");
+        if (closed) throw new cuOptException("Problem has been closed");
     }
 
     private void checkSolved() {
         checkOpen();
-        if (!solved) throw new CuOptException("Problem has not been solved");
+        if (!solved) throw new cuOptException("Problem has not been solved");
     }
 
     private void checkNotSolved() {
         checkOpen();
-        if (solved) throw new CuOptException("Problem has already been solved; create a new Problem to re-build");
+        if (solved) throw new cuOptException("Problem has already been solved; create a new Problem to re-build");
     }
 
     private void populateFromResult(SolveResult r) {

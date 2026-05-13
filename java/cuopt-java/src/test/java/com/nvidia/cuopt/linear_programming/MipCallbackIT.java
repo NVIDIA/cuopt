@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.linear_programming;
 
-import static com.nvidia.cuopt.CuOpt.*;
+import static com.nvidia.cuopt.cuOpt.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

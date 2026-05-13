@@ -6,7 +6,7 @@ package com.nvidia.cuopt;
 
 import com.nvidia.cuopt.linear_programming.Problem;
 import com.nvidia.cuopt.linear_programming.SolverSettings;
-import com.nvidia.cuopt.spi.CuOptProvider;
+import com.nvidia.cuopt.spi.cuOptProvider;
 
 /**
  * Static utility entry points for cuopt-java.
@@ -24,10 +24,10 @@ public final class Solver {
      * Returns the cuOpt library version (from {@code libcuopt.so}) as a
      * human-readable {@code major.minor.patch} string.
      *
-     * @throws CuOptException if the native library cannot be loaded.
+     * @throws cuOptException if the native library cannot be loaded.
      */
     public static String getVersion() {
-        return CuOptProvider.instance().getVersion();
+        return cuOptProvider.instance().getVersion();
     }
 
     // ── solve overloads ──────────────────────────────────────────

@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.spi;
 
-import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.cuOptException;
 import com.nvidia.cuopt.linear_programming.Problem;
 import com.nvidia.cuopt.linear_programming.SolverSettings;
 import java.util.ServiceLoader;
@@ -19,11 +19,11 @@ import java.util.ServiceLoader;
  * {@code long} values (raw addresses).
  *
  * <p>The implementation lives in
- * {@code com.nvidia.cuopt.internal.CuOptProviderImpl} under
+ * {@code com.nvidia.cuopt.internal.cuOptProviderImpl} under
  * {@code src/main/java22/}; the JVM resolves it via
  * {@link java.util.ServiceLoader} on Java 22+ runtimes.
  */
-public interface CuOptProvider {
+public interface cuOptProvider {
 
     // ── library-level ────────────────────────────────────────────
 
@@ -63,22 +63,22 @@ public interface CuOptProvider {
      * Returns the singleton implementation, resolved via
      * {@link ServiceLoader}.
      *
-     * @throws CuOptException if no implementation is registered
+     * @throws cuOptException if no implementation is registered
      *                        (e.g., running on Java 21 — the FFM
      *                        impl lives in the Java 22 multi-release
      *                        layer of the JAR and is not visible to
      *                        Java 21 JVMs).
      */
-    static CuOptProvider instance() {
+    static cuOptProvider instance() {
         return Holder.INSTANCE;
     }
 
     final class Holder {
-        private static final CuOptProvider INSTANCE = ServiceLoader
-            .load(CuOptProvider.class)
+        private static final cuOptProvider INSTANCE = ServiceLoader
+            .load(cuOptProvider.class)
             .findFirst()
-            .orElseThrow(() -> new CuOptException(
-                "No CuOptProvider implementation found. cuopt-java requires "
+            .orElseThrow(() -> new cuOptException(
+                "No cuOptProvider implementation found. cuopt-java requires "
                 + "Java 22 or higher at runtime; the FFM implementation lives "
                 + "in the Java 22 multi-release layer of the JAR and is not "
                 + "visible to Java 21 JVMs."));

@@ -6,7 +6,7 @@ Java 22 or higher.
 
 ## Layer 3 — FFM Implementation (`internal/`)
 
-- `CuOptProviderImpl` — the SPI implementation. Bridges Layer 5's public
+- `cuOptProviderImpl` — the SPI implementation. Bridges Layer 5's public
   API to the panama bindings.
 - `NativeLibraryLoader` — loads `libcuopt.so` (or `.dll`/`.dylib`).
   Reads `META-INF/cuopt/supported-platforms.properties` for the platform

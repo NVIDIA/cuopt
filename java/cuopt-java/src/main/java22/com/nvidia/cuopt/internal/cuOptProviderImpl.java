@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.internal;
 
-import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.cuOptException;
 import com.nvidia.cuopt.internal.panama.cuOptMIPGetSolutionCallback;
 import com.nvidia.cuopt.internal.panama.cuOptMIPSetSolutionCallback;
 import com.nvidia.cuopt.internal.panama.cuopt_c_h;
@@ -23,7 +23,7 @@ import com.nvidia.cuopt.linear_programming.SolverSettings;
 import com.nvidia.cuopt.linear_programming.TerminationStatus;
 import com.nvidia.cuopt.linear_programming.VType;
 import com.nvidia.cuopt.linear_programming.Variable;
-import com.nvidia.cuopt.spi.CuOptProvider;
+import com.nvidia.cuopt.spi.cuOptProvider;
 import com.nvidia.cuopt.spi.SolveResult;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -32,8 +32,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * FFM implementation of {@link CuOptProvider}. Registered via
- * {@code META-INF/services/com.nvidia.cuopt.spi.CuOptProvider}.
+ * FFM implementation of {@link cuOptProvider}. Registered via
+ * {@code META-INF/services/com.nvidia.cuopt.spi.cuOptProvider}.
  *
  * <p>Lives in the Java 22 multi-release layer; loaded only on JVMs at
  * Java 22 or higher.
@@ -42,9 +42,9 @@ import java.util.List;
  * addresses); this class reconstructs {@code MemorySegment} from the
  * addresses on each call.
  */
-public final class CuOptProviderImpl implements CuOptProvider {
+public final class cuOptProviderImpl implements cuOptProvider {
 
-    public CuOptProviderImpl() {
+    public cuOptProviderImpl() {
         NativeLibraryLoader.ensureLoaded();
     }
 
@@ -496,7 +496,7 @@ public final class CuOptProviderImpl implements CuOptProvider {
     private static void checkRc(int rc, String op) {
         if (rc != 0) {
             ErrorStatus err = ErrorStatus.fromCode(rc);
-            throw new CuOptException(op + " returned non-zero status " + rc + " (" + err + ")");
+            throw new cuOptException(op + " returned non-zero status " + rc + " (" + err + ")");
         }
     }
 }

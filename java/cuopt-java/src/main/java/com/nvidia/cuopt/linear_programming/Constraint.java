@@ -4,7 +4,7 @@
  */
 package com.nvidia.cuopt.linear_programming;
 
-import com.nvidia.cuopt.CuOptException;
+import com.nvidia.cuopt.cuOptException;
 import java.util.Objects;
 
 /**
@@ -58,7 +58,7 @@ public final class Constraint {
      * Dual value (shadow price) of this constraint in the current
      * LP solution. LP only — for MIP solves, returns {@code Double.NaN}.
      *
-     * @throws CuOptException if the owning Problem has not been solved
+     * @throws cuOptException if the owning Problem has not been solved
      *                        or has been closed.
      */
     public double dualValue() {
@@ -68,7 +68,7 @@ public final class Constraint {
     /**
      * Slack of this constraint in the current solution.
      *
-     * @throws CuOptException if the owning Problem has not been solved
+     * @throws cuOptException if the owning Problem has not been solved
      *                        or has been closed.
      */
     public double slack() {

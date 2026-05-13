@@ -12,7 +12,7 @@ import com.nvidia.cuopt.linear_programming.VType;
  * Constants holder for cuopt-java. Designed for static import:
  *
  * <pre>{@code
- *     import static com.nvidia.cuopt.CuOpt.*;
+ *     import static com.nvidia.cuopt.cuOpt.*;
  *
  *     Variable x = problem.addVariable(0, INF, CONTINUOUS, "x");
  *     problem.addConstraint(expr, LESS_EQUAL, 100, "c1");
@@ -24,9 +24,9 @@ import com.nvidia.cuopt.linear_programming.VType;
  * grouped at the bottom. They're used with
  * {@link com.nvidia.cuopt.linear_programming.SolverSettings#setParameter(String, Object)}.
  */
-public final class CuOpt {
+public final class cuOpt {
 
-    private CuOpt() {}
+    private cuOpt() {}
 
     // ── numeric constants ────────────────────────────────────────
     /** Positive infinity, for unbounded variable / constraint sides. */

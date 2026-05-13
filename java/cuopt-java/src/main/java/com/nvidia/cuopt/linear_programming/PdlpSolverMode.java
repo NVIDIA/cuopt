@@ -6,7 +6,7 @@ package com.nvidia.cuopt.linear_programming;
 
 /**
  * PDLP-specific solver mode tuning. Set via
- * {@code SolverSettings.setParameter(CuOpt.PDLP_SOLVER_MODE, mode)}.
+ * {@code SolverSettings.setParameter(cuOpt.PDLP_SOLVER_MODE, mode)}.
  *
  * <p>Maps to the C API constants {@code CUOPT_PDLP_SOLVER_MODE_*}.
  */

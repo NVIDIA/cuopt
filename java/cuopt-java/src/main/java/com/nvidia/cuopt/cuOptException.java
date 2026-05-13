@@ -9,19 +9,19 @@ package com.nvidia.cuopt;
  * the runtime environment is misconfigured (e.g., the native library
  * cannot be loaded, or the JVM is older than Java 22).
  */
-public class CuOptException extends RuntimeException {
+public class cuOptException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    public CuOptException(String message) {
+    public cuOptException(String message) {
         super(message);
     }
 
-    public CuOptException(String message, Throwable cause) {
+    public cuOptException(String message, Throwable cause) {
         super(message, cause);
     }
 
-    public CuOptException(Throwable cause) {
+    public cuOptException(Throwable cause) {
         super(cause);
     }
 }
