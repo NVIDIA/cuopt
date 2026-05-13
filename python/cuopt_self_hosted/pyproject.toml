@@ -20,7 +20,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-    "cuopt==26.6.*,>=0.0.0a0",
+    "cuopt-cu13==26.6.*,>=0.0.0a0",
     "msgpack-numpy==0.4.8",
     "msgpack==1.1.2",
     "requests",

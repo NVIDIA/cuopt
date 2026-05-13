@@ -202,7 +202,6 @@ files:
     extras:
       table: project
     includes:
-      - depends_on_cuopt
       - run_cuopt_sh_client
 channels:
   - rapidsai-nightly
@@ -375,6 +374,13 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
+          # cuopt-sh-client is published as a single pure-Python wheel
+          # (append-cuda-suffix=false), but cuopt is only on PyPI as
+          # CUDA-suffixed variants. Pin to cuopt-cu13 so the wheel resolves;
+          # the NVIDIA CUDA dependency wheels pip-install on hosts without
+          # a GPU / CUDA driver, which preserves the thin-client install
+          # path on machines that only run the client.
+          - cuopt-cu13==26.6.*,>=0.0.0a0
   depends_on_libcuopt:
     common:
       - output_types: conda
