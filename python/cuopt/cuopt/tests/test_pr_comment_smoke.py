@@ -21,6 +21,9 @@
 
 import os
 import signal
+import sys
+
+import pytest
 
 
 def test_pr_comment_smoke_always_fails():
@@ -31,6 +34,14 @@ def test_pr_comment_smoke_always_fails():
     )
 
 
+@pytest.mark.skipif(
+    sys.version_info[:2] != (3, 11),
+    reason=(
+        "Smoke crash is scoped to the py3.11 matrix so the CAUTION block "
+        "in the PR comment can be verified to appear on exactly one "
+        "matrix entry while other Python versions stay green-on-crash."
+    ),
+)
 def test_zz_pr_comment_smoke_segfault():
     """Intentionally crashes the pytest process to exercise the
     crash-marker path added in PR #1191.  Should produce a
