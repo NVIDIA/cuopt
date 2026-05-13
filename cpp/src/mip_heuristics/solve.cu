@@ -715,6 +715,12 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
                                solver_stats_t<i_t, f_t>{},
                                op_problem.get_handle_ptr()->get_stream());
 
+  // The outer solver opens an omp parallel region in solve.cu, so this inner team would
+  // collapse to a single thread under the default OMP_MAX_ACTIVE_LEVELS=1 and only worker 0
+  // would execute. Enable two active levels locally and restore on the way out.
+  const int saved_max_active_levels = omp_get_max_active_levels();
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(2); }
+
   // Creates the OpenMP thread pool. It will be shared across the entire MIP solver.
 #pragma omp parallel num_threads(num_threads) default(none) \
   shared(sol, op_problem, settings_const, exception)
@@ -731,15 +737,16 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     }
   }  // Implicit barrier
 
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(saved_max_active_levels); }
+
   if (exception) { std::rethrow_exception(exception); }
   return sol;
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(
-  raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
+                                   const mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+                                   mip_solver_settings_t<i_t, f_t> const& settings)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_mip(op_problem, settings);
