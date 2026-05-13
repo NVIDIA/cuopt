@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0 # unshallow fetch for setuptools-scm
           persist-credentials: false
@@ -71,13 +71,18 @@ jobs:
 
       - name: Compute matrix
         id: compute-matrix
+        env:
+          ARCH: ${{ inputs.arch }}
+          CUDA_VER: ${{ inputs.cuda_ver }}
+          PYTHON_VER: ${{ inputs.python_ver }}
+          LINUX_VER: ${{ inputs.linux_ver }}
         run: |
           MATRIX=$(jq -c '.' <<EOF
           {
-            "arch": ${{ inputs.arch }},
-            "cuda_ver": ${{ inputs.cuda_ver }},
-            "python_ver": ${{ inputs.python_ver }},
-            "linux_ver": ${{ inputs.linux_ver }}
+            "arch": $ARCH,
+            "cuda_ver": $CUDA_VER,
+            "python_ver": $PYTHON_VER,
+            "linux_ver": $LINUX_VER
           }
           EOF
           )
@@ -106,7 +111,7 @@ jobs:
   build-images:
     name: Build images
     needs: compute-matrix
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
     uses: ./.github/workflows/build_images.yaml
@@ -129,26 +134,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.CUOPT_DOCKERHUB_USERNAME }}
           password: ${{ secrets.CUOPT_DOCKERHUB_TOKEN }}
       - name: Login to NGC
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: "nvcr.io"
           username: "$oauthtoken"
           password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
       - name: Trim CUDA and Python versions
         id: trim
+        env:
+          CUDA_VER: ${{ matrix.CUDA_VER }}
+          PYTHON_VER: ${{ matrix.PYTHON_VER }}
         run: |
-          echo "CUDA_SHORT=$(echo '${{ matrix.CUDA_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
-          echo "PYTHON_SHORT=$(echo '${{ matrix.PYTHON_VER }}' | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
       - name: Create multiarch manifest
         shell: bash
         env:
@@ -162,7 +171,7 @@ jobs:
   test-images:
     name: Test images
     needs: [build-cuopt-multiarch-manifest, compute-matrix]
-    secrets: inherit
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix:
         CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}

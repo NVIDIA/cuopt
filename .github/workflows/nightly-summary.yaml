@@ -52,15 +52,20 @@ on:
       CUOPT_SLACK_MENTION_ID:
         required: false
 
+permissions: {}
+
 jobs:
   nightly-summary:
+    permissions:
+      contents: read
     runs-on: linux-amd64-cpu4
     container:
       image: python:3.14-slim
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.sha }}
+          persist-credentials: false
       - name: Install dependencies
         run: |
           apt-get update && apt-get install -y --no-install-recommends curl
