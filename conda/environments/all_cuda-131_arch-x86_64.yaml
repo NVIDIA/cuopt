@@ -14,6 +14,7 @@ dependencies:
 - clang==20.1.8
 - cmake>=3.30.4
 - cpp-argparse
+- cuda-cudart
 - cuda-nvcc
 - cuda-nvtx-dev
 - cuda-python>=13.0.1,<14.0
@@ -31,7 +32,6 @@ dependencies:
 - libabseil
 - libboost-devel
 - libcublas
-- libcudart
 - libcudss
 - libcudss-dev >=0.7
 - libcurand-dev

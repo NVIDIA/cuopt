@@ -340,8 +340,8 @@ dependencies:
           # such chain, so we declare them explicitly here. Matches the
           # ldd of libcuopt.so: libcublas, libcusparse, libcudart,
           # libcudss, libnvjitlink (libcublasLt ships with libcublas).
+          - cuda-cudart
           - libcublas
-          - libcudart
           - libcudss
           - libcusparse
           - libnvjitlink
