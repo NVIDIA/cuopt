@@ -50,10 +50,35 @@ option(CMAKE_CUDA_LINEINFO "Enable the -lineinfo option for nvcc useful for cuda
 option(BUILD_TESTS "Configure CMake to build tests" ON)
 option(BUILD_LP_ONLY "Build only linear programming components, exclude routing and MIP-specific files" OFF)
 option(SKIP_C_PYTHON_ADAPTERS "Skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)" OFF)
-option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
+option(SKIP_ROUTING_BUILD "Skip building routing components (same effect as CUOPT_BUILD_ROUTING=OFF)" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
+
+# Product slices: both ON = full libcuopt. Use build.sh --math / --routing or -DCUOPT_BUILD_*=OFF.
+option(CUOPT_BUILD_MATH "Build LP/MILP/QP C++ stack (pdlp, mip, simplex, …)" ON)
+option(CUOPT_BUILD_ROUTING "Build vehicle routing C++ stack" ON)
+
+if(SKIP_ROUTING_BUILD)
+  set(CUOPT_BUILD_ROUTING OFF CACHE BOOL "Build vehicle routing C++ stack" FORCE)
+endif()
+
+if(NOT CUOPT_BUILD_MATH AND NOT CUOPT_BUILD_ROUTING)
+  message(FATAL_ERROR "At least one of CUOPT_BUILD_MATH or CUOPT_BUILD_ROUTING must be ON.")
+endif()
+
+# LP remote/gRPC mappers depend on the math headers; routing-only lib cannot compile them.
+set(CUOPT_ENABLE_GRPC OFF)
+
+if(NOT CUOPT_BUILD_MATH AND NOT SKIP_GRPC_BUILD)
+  message(STATUS "CUOPT_BUILD_MATH=OFF: disabling gRPC (requires math stack).")
+  set(SKIP_GRPC_BUILD ON CACHE BOOL "" FORCE)
+endif()
+
+if(NOT CUOPT_BUILD_MATH AND BUILD_TESTS)
+  message(STATUS "CUOPT_BUILD_MATH=OFF: disabling C++ unit tests (require math stack).")
+  set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+endif()
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -62,6 +87,7 @@ message(VERBOSE "cuOpt: Disable OpenMP: ${DISABLE_OPENMP}")
 message(VERBOSE "cuOpt: Build LP-only mode: ${BUILD_LP_ONLY}")
 message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
+message(VERBOSE "cuOpt: CUOPT_BUILD_MATH=${CUOPT_BUILD_MATH} CUOPT_BUILD_ROUTING=${CUOPT_BUILD_ROUTING}")
 message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
 
@@ -241,52 +267,53 @@ else ()
     find_package(RAFT REQUIRED)
 endif ()
 
-FetchContent_Declare(
-        papilo
-        GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
-        # We would want to get the main branch. However, the main branch
-        # does not have some of the presolvers and settings that we need
-        # Mainly, probing and clique merging.
-        # This is the reason we are using the development branch
-        # from Oct 12, 2025. Once these changes are merged into the main branch,
-        #we can switch to the main branch.
-        GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
-        GIT_PROGRESS TRUE
-        EXCLUDE_FROM_ALL
-        SYSTEM
-)
+if(CUOPT_BUILD_MATH)
+  FetchContent_Declare(
+          papilo
+          GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+          # We would want to get the main branch. However, the main branch
+          # does not have some of the presolvers and settings that we need
+          # Mainly, probing and clique merging.
+          # This is the reason we are using the development branch
+          # from Oct 12, 2025. Once these changes are merged into the main branch,
+          #we can switch to the main branch.
+          GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+          GIT_PROGRESS TRUE
+          EXCLUDE_FROM_ALL
+          SYSTEM
+  )
 
-find_package(TBB REQUIRED)
-set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
-set(PAPILO_NO_BINARIES ON)
-option(LUSOL "Disable LUSOL" OFF)
+  find_package(TBB REQUIRED)
+  set(BUILD_TESTING OFF CACHE BOOL "Disable test build for papilo")
+  set(PAPILO_NO_BINARIES ON)
+  option(LUSOL "Disable LUSOL" OFF)
 
-FetchContent_MakeAvailable(papilo)
+  FetchContent_MakeAvailable(papilo)
 
-# PSLP - Lightweight C presolver for linear programs
-# https://github.com/dance858/PSLP
-FetchContent_Declare(
-        pslp
-        GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
-        GIT_TAG "v0.0.8"
-        GIT_PROGRESS TRUE
-        EXCLUDE_FROM_ALL
-        SYSTEM
-)
+  # PSLP - Lightweight C presolver for linear programs
+  # https://github.com/dance858/PSLP
+  FetchContent_Declare(
+          pslp
+          GIT_REPOSITORY "https://github.com/dance858/PSLP.git"
+          GIT_TAG "v0.0.8"
+          GIT_PROGRESS TRUE
+          EXCLUDE_FROM_ALL
+          SYSTEM
+  )
 
-# Build PSLP as static to embed in cuopt (avoids runtime library path issues)
-set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
-set(BUILD_SHARED_LIBS OFF)
-FetchContent_MakeAvailable(pslp)
-set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
+  # Build PSLP as static to embed in cuopt (avoids runtime library path issues)
+  set(BUILD_SHARED_LIBS_SAVED ${BUILD_SHARED_LIBS})
+  set(BUILD_SHARED_LIBS OFF)
+  FetchContent_MakeAvailable(pslp)
+  set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
+  find_package(CUDSS REQUIRED)
+endif()
 
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
-
-find_package(CUDSS REQUIRED)
 
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
@@ -461,17 +488,40 @@ endif ()
 add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
-message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
+if(CUOPT_BUILD_MATH)
+  message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
-# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt PRIVATE
-        "${papilo_SOURCE_DIR}/src"
-        "${papilo_BINARY_DIR}"
-)
+  # Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
+  target_include_directories(cuopt PRIVATE
+          "${papilo_SOURCE_DIR}/src"
+          "${papilo_BINARY_DIR}"
+  )
 
-target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
-)
+  target_include_directories(cuopt SYSTEM PRIVATE
+          "${pslp_SOURCE_DIR}/include"
+  )
+
+  target_include_directories(cuopt
+          PRIVATE
+          "${CMAKE_CURRENT_BINARY_DIR}"
+          "${CUDSS_INCLUDE}"
+          PUBLIC
+          "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
+          INTERFACE
+          ${CUDSS_INCLUDE}
+  )
+
+  # Link PSLP by file to avoid export dependency tracking
+  target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
+  add_dependencies(cuopt PSLP)
+
+  add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
+  set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
+
+  # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
+  get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+  target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+endif()
 
 target_include_directories(cuopt
         PRIVATE
@@ -480,38 +530,24 @@ target_include_directories(cuopt
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
         "${CMAKE_CURRENT_BINARY_DIR}"
-        "${CUDSS_INCLUDE}"
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
         INTERFACE
         "$<INSTALL_INTERFACE:include>"
-        ${CUDSS_INCLUDE}
 )
-
-# Link PSLP by file to avoid export dependency tracking
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-add_dependencies(cuopt PSLP)
 
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------
 
 set(CUOPT_PRIVATE_CUDA_LIBS
-        CUDA::curand
-        CUDA::cusolver
-        TBB::tbb
         OpenMP::OpenMP_CXX)
 
-list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
-set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
-
-
-# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
-get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
-target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+if(CUOPT_BUILD_MATH)
+  list(APPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::curand CUDA::cusolver)
+  list(APPEND CUOPT_PRIVATE_CUDA_LIBS TBB::tbb)
+  list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
+endif()
 
 execute_process(
         COMMAND git rev-parse --short HEAD
@@ -537,16 +573,19 @@ target_compile_definitions(cuopt PUBLIC
         CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
         CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 
-target_link_libraries(cuopt
-        PUBLIC
+set(_cuopt_link_public
         CUDA::cublas
-        CUDA::cusparse
         rmm::rmm
         rapids_logger::rapids_logger
         CCCL::CCCL
         raft::raft
-        cuopt::mps_parser
-        ${CUDSS_LIB_FILE}
+)
+if(CUOPT_BUILD_MATH)
+  list(PREPEND _cuopt_link_public CUDA::cusparse)
+  list(APPEND _cuopt_link_public cuopt::mps_parser ${CUDSS_LIB_FILE})
+endif()
+target_link_libraries(cuopt
+        PUBLIC ${_cuopt_link_public}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
@@ -583,14 +622,18 @@ else ()
 endif ()
 
 # adds the .so files to the runtime deb package
-install(TARGETS cuopt mps_parser
+set(_cuopt_install_libs cuopt)
+if(TARGET mps_parser)
+  list(APPEND _cuopt_install_libs mps_parser)
+endif()
+install(TARGETS ${_cuopt_install_libs}
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
         EXPORT cuopt-exports
 )
 
 # adds the .so files to the development deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS ${_cuopt_install_libs}
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )
@@ -659,7 +702,7 @@ rapids_cpm_find(
         GIT_SHALLOW TRUE
 )
 
-if (NOT BUILD_LP_ONLY)
+if (NOT BUILD_LP_ONLY AND CUOPT_BUILD_MATH)
     add_executable(cuopt_cli cuopt_cli.cpp)
 
     # PIE executable: auditwheel/patchelf expands .dynstr/RPATH when repairing wheels; non-PIE
@@ -711,7 +754,7 @@ endif ()
 
 
 option(BUILD_MIP_BENCHMARKS "Build MIP benchmarks" OFF)
-if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
+if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY AND CUOPT_BUILD_MATH)
     add_executable(solve_MIP ../benchmarks/linear_programming/cuopt/run_mip.cpp)
     target_include_directories(solve_MIP
             PRIVATE
@@ -747,7 +790,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
 endif ()
 
 option(BUILD_LP_BENCHMARKS "Build LP benchmarks" OFF)
-if (BUILD_LP_BENCHMARKS)
+if (BUILD_LP_BENCHMARKS AND CUOPT_BUILD_MATH)
     add_executable(solve_LP ../benchmarks/linear_programming/cuopt/run_pdlp.cu)
 
     set_target_properties(solve_LP
@@ -773,7 +816,7 @@ endif ()
 # ##################################################################################################
 # - cuopt_grpc_server - gRPC-based remote server --------------------------------------------------
 
-if (NOT SKIP_GRPC_BUILD)
+if (NOT SKIP_GRPC_BUILD AND CUOPT_BUILD_MATH)
     add_executable(cuopt_grpc_server
             src/grpc/server/grpc_server_main.cpp
             src/grpc/server/grpc_server_logger.cpp
@@ -834,7 +877,7 @@ if (NOT SKIP_GRPC_BUILD)
     )
 
     message(STATUS "Building cuopt_grpc_server (gRPC-based remote solve server)")
-endif (NOT SKIP_GRPC_BUILD)
+endif ()
 
 # ##################################################################################################
 # - CPack has to be the last item in the cmake file-------------------------------------------------

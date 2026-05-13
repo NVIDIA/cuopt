@@ -23,11 +23,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+set(CUOPT_PYTHON_COMPONENT "FULL" CACHE STRING "Python package slice: FULL, LP (math), or ROUTING")
+set_property(CACHE CUOPT_PYTHON_COMPONENT PROPERTY STRINGS FULL LP ROUTING)
+
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cuopt/_build_variant.py.in"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cuopt/_build_variant.py"
+        @ONLY
+)
+
 find_package(cuopt "${RAPIDS_VERSION}")
-find_package(mps_parser "${RAPIDS_VERSION}")
+if(NOT CUOPT_PYTHON_COMPONENT STREQUAL "ROUTING")
+  find_package(mps_parser "${RAPIDS_VERSION}")
+endif()
 
 include(rapids-cython-core)
 rapids_cython_init()
 
 add_subdirectory(cuopt)
-add_subdirectory(cuopt/linear_programming/internals/)
+if(NOT CUOPT_PYTHON_COMPONENT STREQUAL "ROUTING")
+  add_subdirectory(cuopt/linear_programming/internals/)
+endif()
