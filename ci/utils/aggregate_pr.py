@@ -244,6 +244,15 @@ def build_comment_body(
             "last test invoked before the signal."
         )
         parts.append("")
+        # Collapse per-crash details under a hidden tab — the CAUTION
+        # block is the headline; details are one click away.
+        crash_word = "crash" if len(all_crashes) == 1 else "crashes"
+        parts.append("<details>")
+        parts.append(
+            f"<summary><strong>{len(all_crashes)} {crash_word}"
+            " — click to expand details</strong></summary>"
+        )
+        parts.append("")  # blank line so the body renders as Markdown
         for entry in all_crashes:
             heading_tag = (
                 "NEW" if entry.get("pr_classification") == "new" else "KNOWN"
@@ -263,6 +272,8 @@ def build_comment_body(
                 parts.append(msg)
                 parts.append("```")
             parts.append("")
+        parts.append("</details>")
+        parts.append("")
 
     # --- NEW failures ---
     if new_failures:
