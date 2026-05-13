@@ -326,12 +326,12 @@ class cut_pool_t {
   // higher-scoring representative (or, if no score was supplied, the
   // earlier-inserted one).
   //
-  // Defaults: jaccard_tau=0.85, k=8, enable=false. Cousin filter is OFF
-  // by default so cut_pool_t behavior matches main_baselin (5335b659)
-  // unless apply_cut_sweep_config() explicitly turns it on. The numeric
-  // defaults (tau=0.85, k=8) match the cut_scoring branch's "final
-  // version" so config 1 here lines up with the P2-4 baseline measured
-  // there.
+  // Defaults: jaccard_tau=0.95, k=8, enable=true, size_weight=0.0.
+  // These match "config 3 / cousin_loose" from the clique-sweep on
+  // commit 0b04683b — the configuration that won the gap-closed-pct
+  // comparison and was promoted to be the production default for the
+  // clique cut family. Callers can still override at runtime via
+  // set_clique_cousin_* if they want to experiment.
   void set_clique_cousin_filter_enable(bool v) { clique_cousin_filter_enable_ = v; }
   void set_clique_cousin_jaccard_tau(f_t v) { clique_cousin_jaccard_tau_ = v; }
   void set_clique_cousin_minhash_k(i_t v) { clique_cousin_minhash_k_ = v; }
@@ -398,9 +398,9 @@ class cut_pool_t {
   std::vector<std::vector<uint64_t>> clique_support_minhash_;
   std::vector<f_t> clique_cousin_score_;
   std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
-  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.85)};
+  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.95)};
   i_t clique_cousin_minhash_k_{8};
-  bool clique_cousin_filter_enable_{false};
+  bool clique_cousin_filter_enable_{true};
   // When > 0, the cousin filter's "score" used to pick a winner is
   // boosted as: effective_score = base_score * (1 + size_weight * log2(1 + clique_size)).
   // This biases cousin replacement toward larger cliques (more variables
