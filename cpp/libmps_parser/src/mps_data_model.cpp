@@ -9,6 +9,7 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <numeric>
 #include <utility>
 
 namespace cuopt::mps_parser {
@@ -229,12 +230,10 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                                                              const i_t* linear_indices,
                                                              i_t linear_indices_nnz,
                                                              f_t rhs_value,
+                                                             i_t quadratic_nnz,
                                                              const f_t* quadratic_values,
-                                                             i_t quadratic_size_values,
-                                                             const i_t* quadratic_indices,
-                                                             i_t quadratic_size_indices,
-                                                             const i_t* quadratic_offsets,
-                                                             i_t quadratic_size_offsets)
+                                                             const i_t* quadratic_row_indices,
+                                                             const i_t* quadratic_col_indices)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
@@ -255,22 +254,15 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                        "linear_values and linear_indices cannot be null when linear_nnz > 0");
   }
 
-  if (quadratic_size_values != 0) {
-    mps_parser_expects(quadratic_values != nullptr,
-                       error_type_t::ValidationError,
-                       "quadratic_values cannot be null");
-  }
-  mps_parser_expects(quadratic_offsets != nullptr,
+  mps_parser_expects(quadratic_nnz >= 0,
                      error_type_t::ValidationError,
-                     "quadratic_offsets cannot be null");
-  if (quadratic_size_indices != 0) {
-    mps_parser_expects(quadratic_indices != nullptr,
+                     "quadratic_nnz must be non-negative");
+  if (quadratic_nnz > 0) {
+    mps_parser_expects(quadratic_values != nullptr && quadratic_row_indices != nullptr &&
+                         quadratic_col_indices != nullptr,
                        error_type_t::ValidationError,
-                       "quadratic_indices cannot be null");
+                       "Q COO pointers cannot be null when quadratic_nnz > 0");
   }
-  mps_parser_expects(quadratic_size_offsets > 0,
-                     error_type_t::ValidationError,
-                     "quadratic_size_offsets cannot be empty");
 
   quadratic_constraint_t qc;
   qc.constraint_row_index = constraint_row_index;
@@ -285,19 +277,39 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     std::copy(linear_indices, linear_indices + linear_nnz, qc.linear_indices.data());
   }
 
-  qc.quadratic_values.resize(quadratic_size_values);
-  if (quadratic_size_values > 0) {
-    std::copy(
-      quadratic_values, quadratic_values + quadratic_size_values, qc.quadratic_values.data());
+  if (quadratic_nnz == 0) {
+    qc.quadratic_row_indices.clear();
+    qc.quadratic_col_indices.clear();
+    qc.quadratic_values.clear();
+  } else {
+    std::vector<i_t> wr(static_cast<size_t>(quadratic_nnz));
+    std::vector<i_t> wc(static_cast<size_t>(quadratic_nnz));
+    std::vector<f_t> wv(static_cast<size_t>(quadratic_nnz));
+    std::copy(quadratic_row_indices,
+              quadratic_row_indices + quadratic_nnz,
+              wr.begin());
+    std::copy(quadratic_col_indices,
+              quadratic_col_indices + quadratic_nnz,
+              wc.begin());
+    std::copy(quadratic_values, quadratic_values + quadratic_nnz, wv.begin());
+
+    std::vector<size_t> perm(static_cast<size_t>(quadratic_nnz));
+    std::iota(perm.begin(), perm.end(), size_t{0});
+    std::stable_sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
+      if (wr[a] != wr[b]) { return wr[a] < wr[b]; }
+      return wc[a] < wc[b];
+    });
+
+    qc.quadratic_row_indices.resize(static_cast<size_t>(quadratic_nnz));
+    qc.quadratic_col_indices.resize(static_cast<size_t>(quadratic_nnz));
+    qc.quadratic_values.resize(static_cast<size_t>(quadratic_nnz));
+    for (i_t t = 0; t < quadratic_nnz; ++t) {
+      const size_t ix                           = perm[static_cast<size_t>(t)];
+      qc.quadratic_row_indices[static_cast<size_t>(t)] = wr[ix];
+      qc.quadratic_col_indices[static_cast<size_t>(t)] = wc[ix];
+      qc.quadratic_values[static_cast<size_t>(t)]     = wv[ix];
+    }
   }
-  qc.quadratic_indices.resize(quadratic_size_indices);
-  if (quadratic_size_indices > 0) {
-    std::copy(
-      quadratic_indices, quadratic_indices + quadratic_size_indices, qc.quadratic_indices.data());
-  }
-  qc.quadratic_offsets.resize(quadratic_size_offsets);
-  std::copy(
-    quadratic_offsets, quadratic_offsets + quadratic_size_offsets, qc.quadratic_offsets.data());
 
   quadratic_constraints_.push_back(std::move(qc));
 }

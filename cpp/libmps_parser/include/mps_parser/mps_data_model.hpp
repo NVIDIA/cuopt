@@ -269,7 +269,7 @@ class mps_data_model_t {
    * - row identity and type (from ROWS),
    * - sparse linear coefficients (from COLUMNS),
    * - RHS value (from RHS),
-   * - quadratic matrix Q in CSR (from QCMATRIX).
+   * - quadratic matrix Q in COO (SoA: row, col, value) from QCMATRIX — one triplet per nonzero.
    */
   struct quadratic_constraint_t {
     /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
@@ -281,9 +281,10 @@ class mps_data_model_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
+    /** Q nonzeros: parallel arrays, same length (COO / SoA). Sorted by (row, col) in append. */
+    std::vector<i_t> quadratic_row_indices{};
+    std::vector<i_t> quadratic_col_indices{};
     std::vector<f_t> quadratic_values{};
-    std::vector<i_t> quadratic_indices{};
-    std::vector<i_t> quadratic_offsets{};
   };
 
   /**
@@ -291,8 +292,9 @@ class mps_data_model_t {
    * @note Pointer+size signature is kept for current CI/toolchain compatibility; `std::span`
    *       can be revisited later when compatibility constraints are lifted.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
-   * @param quadratic_values, quadratic_indices CSR nnz; may be empty if Q is empty.
-   * @param quadratic_offsets CSR row starts; must be non-empty.
+   * @param quadratic_nnz Number of Q triplets; if 0, Q is empty (pointers may be null).
+   * @param quadratic_values, quadratic_row_indices, quadratic_col_indices COO triplets (length
+   *        quadratic_nnz). Stored sorted by (row, col).
    * @param constraint_row_type MPS ROWS type; must be 'L'. 'G' and 'E' quadratic rows are not
    *        supported.
    */
@@ -304,12 +306,10 @@ class mps_data_model_t {
                                    const i_t* linear_indices,
                                    i_t linear_indices_nnz,
                                    f_t rhs_value,
+                                   i_t quadratic_nnz,
                                    const f_t* quadratic_values,
-                                   i_t quadratic_size_values,
-                                   const i_t* quadratic_indices,
-                                   i_t quadratic_size_indices,
-                                   const i_t* quadratic_offsets,
-                                   i_t quadratic_size_offsets);
+                                   const i_t* quadratic_row_indices,
+                                   const i_t* quadratic_col_indices);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 

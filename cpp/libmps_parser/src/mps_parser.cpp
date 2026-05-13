@@ -343,7 +343,7 @@ void triples_to_csr_double_transpose_flat(
   if (!symmetrize_upper_triangular) {
     const size_t lg = ceil_log2_size_t(nnz);
     // Roughly: sort cost ~ nnz·lg vs ~O(n) column iterations in dense path; 48 is a tunable fudge.
-    constexpr size_t k_sparse_vs_dense_heuristic = 48;
+    constexpr size_t k_sparse_vs_dense_heuristic = 96;
     if (nnz * lg < k_sparse_vs_dense_heuristic * n_dim) {
       triples_to_csr_sparse_sorted_flat(
         entries, num_rows, num_cols, value_scale, scratch, out_values, out_indices, out_offsets);
@@ -739,26 +739,24 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
-  // Bundle row metadata, row-linear coefficients (from COLUMNS), rhs, and quadratic part together.
+  // Store Q in COO (row, col, value) per block — avoids O(n) CSR row-pointer materialization.
   constexpr f_t k_qcmatrix_value_scale = f_t(1);
-  std::vector<f_t> qc_csr_values{};
-  std::vector<i_t> qc_csr_indices{};
-  std::vector<i_t> qc_csr_offsets{};
   for (const auto& block : qcmatrix_blocks_) {
-    triples_to_csr_double_transpose_flat(block.entries,
-                                         num_vars_for_quad,
-                                         num_vars_for_quad,
-                                         false,
-                                         k_qcmatrix_value_scale,
-                                         triple_csr_scratch,
-                                         qc_csr_values,
-                                         qc_csr_indices,
-                                         qc_csr_offsets);
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
                        error_type_t::ValidationError,
                        "QCMATRIX row index %d is out of range for constraints",
                        static_cast<int>(row_id));
+    const i_t nnz = static_cast<i_t>(block.entries.size());
+    std::vector<i_t> qc_rows(static_cast<size_t>(nnz));
+    std::vector<i_t> qc_cols(static_cast<size_t>(nnz));
+    std::vector<f_t> qc_vals(static_cast<size_t>(nnz));
+    for (i_t e = 0; e < nnz; ++e) {
+      qc_rows[static_cast<size_t>(e)] = std::get<0>(block.entries[static_cast<size_t>(e)]);
+      qc_cols[static_cast<size_t>(e)] = std::get<1>(block.entries[static_cast<size_t>(e)]);
+      qc_vals[static_cast<size_t>(e)] =
+        std::get<2>(block.entries[static_cast<size_t>(e)]) * k_qcmatrix_value_scale;
+    }
     problem.append_quadratic_constraint(row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
@@ -767,12 +765,10 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                         A_indices[row_id].data(),
                                         static_cast<i_t>(A_indices[row_id].size()),
                                         b_values[row_id],
-                                        qc_csr_values.data(),
-                                        static_cast<i_t>(qc_csr_values.size()),
-                                        qc_csr_indices.data(),
-                                        static_cast<i_t>(qc_csr_indices.size()),
-                                        qc_csr_offsets.data(),
-                                        static_cast<i_t>(qc_csr_offsets.size()));
+                                        nnz,
+                                        qc_vals.data(),
+                                        qc_rows.data(),
+                                        qc_cols.data());
   }
 
   if (!quadratic_row_ids.empty()) {

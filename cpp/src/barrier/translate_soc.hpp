@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -107,43 +108,18 @@ void apply_soc_qcmatrix_conversion_for_simplex(
                   "Quadratic constraint '%s' linear_values and linear_indices length mismatch",
                   qc.constraint_row_name.c_str());
 
-    cuopt_expects(qc.quadratic_offsets.size() >= 2,
-                  error_type_t::ValidationError,
-                  "Quadratic constraint '%s' has invalid CSR offsets (need at least 2 entries)",
-                  qc.constraint_row_name.c_str());
-    cuopt_expects(qc.quadratic_values.size() == qc.quadratic_indices.size(),
-                  error_type_t::ValidationError,
-                  "Quadratic constraint '%s' quadratic_values and quadratic_indices length "
-                  "mismatch for CSR Q",
-                  qc.constraint_row_name.c_str());
-
     const i_t q_nnz = static_cast<i_t>(qc.quadratic_values.size());
+    cuopt_expects(qc.quadratic_row_indices.size() == static_cast<size_t>(q_nnz) &&
+                    qc.quadratic_col_indices.size() == static_cast<size_t>(q_nnz),
+                  error_type_t::ValidationError,
+                  "Quadratic constraint '%s' Q COO row/col/value length mismatch",
+                  qc.constraint_row_name.c_str());
     cuopt_expects(q_nnz >= 1,
                   error_type_t::ValidationError,
                   "Quadratic constraint '%s' SOC must have at least 1 entry in Q (nnz %d)",
                   qc.constraint_row_name.c_str(),
                   static_cast<int>(q_nnz));
 
-    cuopt_expects(
-      qc.quadratic_offsets.size() == static_cast<size_t>(n) + 1,
-      error_type_t::ValidationError,
-      "Quadratic constraint '%s' Q must be n by n in CSR: expected %zu CSR row pointers (offsets "
-      "length n+1), got %zu (n = %d)",
-      qc.constraint_row_name.c_str(),
-      static_cast<size_t>(n) + 1,
-      qc.quadratic_offsets.size(),
-      static_cast<int>(n));
-    cuopt_expects(
-      qc.quadratic_offsets[static_cast<size_t>(n)] == q_nnz,
-      error_type_t::ValidationError,
-      "Quadratic constraint '%s' Q last CSR offset %d must equal number of nonzeros (nnz) %d",
-      qc.constraint_row_name.c_str(),
-      static_cast<int>(qc.quadratic_offsets[static_cast<size_t>(n)]),
-      static_cast<int>(q_nnz));
-    cuopt_expects(qc.quadratic_offsets[0] == 0,
-                  error_type_t::ValidationError,
-                  "Quadratic constraint '%s' Q CSR offsets[0] must be 0",
-                  qc.constraint_row_name.c_str());
     // This is the index of the auxiliary variable for the linear part of the quadratic
     // constraint.
     const i_t affine_head      = qc_affine_heads[qc_i];
@@ -181,40 +157,41 @@ void apply_soc_qcmatrix_conversion_for_simplex(
       return std::abs(a - b) <= tol * scale;
     };
 
+    // Sort COO by (row, col); O(nnz log nnz). Enforce at most one stored entry per row (SOC CSR).
+    std::vector<size_t> perm(static_cast<size_t>(q_nnz));
+    std::iota(perm.begin(), perm.end(), size_t{0});
+    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
+      const i_t ra = qc.quadratic_row_indices[a];
+      const i_t rb = qc.quadratic_row_indices[b];
+      if (ra != rb) { return ra < rb; }
+      return qc.quadratic_col_indices[a] < qc.quadratic_col_indices[b];
+    });
+
     std::vector<std::tuple<i_t, i_t, f_t>> q_entries;
     q_entries.reserve(static_cast<size_t>(q_nnz));
-    for (i_t r = 0; r < n; ++r) {
-      const i_t p_beg = qc.quadratic_offsets[static_cast<size_t>(r)];
-      const i_t p_end = qc.quadratic_offsets[static_cast<size_t>(r + 1)];
-      cuopt_expects(p_beg >= 0 && p_beg <= p_end && p_end <= q_nnz,
+    for (size_t t = 0; t < static_cast<size_t>(q_nnz); ++t) {
+      const size_t ix = perm[t];
+      const i_t r     = qc.quadratic_row_indices[ix];
+      const i_t c     = qc.quadratic_col_indices[ix];
+      const f_t v     = qc.quadratic_values[ix];
+      cuopt_expects(r >= 0 && r < n && c >= 0 && c < n,
                     error_type_t::ValidationError,
-                    "Quadratic constraint '%s' Q row %d has invalid CSR offsets [%d, %d)",
+                    "Quadratic constraint '%s' Q entry (%d,%d) outside [0,%d)",
                     qc.constraint_row_name.c_str(),
                     static_cast<int>(r),
-                    static_cast<int>(p_beg),
-                    static_cast<int>(p_end));
-
-      if (p_beg == p_end) { continue; }
-
-      cuopt_expects(p_beg + 1 == p_end,
-                    error_type_t::ValidationError,
-                    "Quadratic constraint '%s' Q row %d: expected at most one stored entry per "
-                    "row (got end - beg = %d)",
-                    qc.constraint_row_name.c_str(),
-                    static_cast<int>(r),
-                    static_cast<int>(p_end - p_beg));
-
-      const i_t col = qc.quadratic_indices[static_cast<size_t>(p_beg)];
-      const f_t v   = qc.quadratic_values[static_cast<size_t>(p_beg)];
-      q_entries.emplace_back(r, col, v);
+                    static_cast<int>(c),
+                    static_cast<int>(n));
+      if (!q_entries.empty()) {
+        const i_t prev_r = std::get<0>(q_entries.back());
+        cuopt_expects(r != prev_r,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' Q row %d: expected at most one stored entry per "
+                      "row (CSR layout); duplicate or unsorted row in COO",
+                      qc.constraint_row_name.c_str(),
+                      static_cast<int>(r));
+      }
+      q_entries.emplace_back(r, c, v);
     }
-    cuopt_expects(static_cast<i_t>(q_entries.size()) == q_nnz,
-                  error_type_t::ValidationError,
-                  "Quadratic constraint '%s' Q row nnz mismatch (expected %d stored entries, got "
-                  "%zu)",
-                  qc.constraint_row_name.c_str(),
-                  static_cast<int>(q_nnz),
-                  q_entries.size());
 
     std::vector<std::pair<i_t, f_t>> pos_diag_rows;
     std::vector<std::pair<i_t, f_t>> neg_diag_rows;
