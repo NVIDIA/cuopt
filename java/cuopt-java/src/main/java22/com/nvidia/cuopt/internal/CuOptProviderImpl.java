@@ -10,7 +10,6 @@ import com.nvidia.cuopt.internal.panama.cuOptMIPSetSolutionCallback;
 import com.nvidia.cuopt.internal.panama.cuopt_c_h;
 import com.nvidia.cuopt.linear_programming.CType;
 import com.nvidia.cuopt.linear_programming.Constraint;
-import com.nvidia.cuopt.linear_programming.DataModel;
 import com.nvidia.cuopt.linear_programming.ErrorStatus;
 import com.nvidia.cuopt.linear_programming.LinearExpr;
 import com.nvidia.cuopt.linear_programming.LpStats;
@@ -129,15 +128,6 @@ public final class CuOptProviderImpl implements CuOptProvider {
         }
     }
 
-    @Override
-    public SolveResult solveDataModel(DataModel dm, SolverSettings settings) {
-        try (Arena arena = Arena.ofConfined()) {
-            ProblemBuild build = buildNativeFromDataModel(arena, dm);
-            return solveAndExtract(arena, build, settings, dm.constraintMatrixOffsets() == null
-                ? 0 : Math.max(0, dm.constraintMatrixOffsets().length - 1),
-                dm.objectiveCoefficients() == null ? 0 : dm.objectiveCoefficients().length);
-        }
-    }
 
     // ── native problem construction from Problem (modeling API) ──
 
@@ -246,89 +236,6 @@ public final class CuOptProviderImpl implements CuOptProvider {
         return new ProblemBuild(handle, numV, numC);
     }
 
-    private ProblemBuild buildNativeFromDataModel(Arena arena, DataModel dm) {
-        int numV = dm.objectiveCoefficients() == null ? 0 : dm.objectiveCoefficients().length;
-        int numC = dm.constraintMatrixOffsets() == null
-            ? 0 : Math.max(0, dm.constraintMatrixOffsets().length - 1);
-
-        MemorySegment objCoeffsSeg = doubleArray(arena, dm.objectiveCoefficients());
-        MemorySegment rowOffsetsSeg = intArray(arena, dm.constraintMatrixOffsets());
-        MemorySegment colIndicesSeg = intArray(arena, dm.constraintMatrixIndices());
-        MemorySegment ccoeffsSeg = doubleArray(arena, dm.constraintMatrixValues());
-
-        double[] varLb = dm.variableLowerBounds() != null
-            ? dm.variableLowerBounds() : zeros(numV);
-        double[] varUb = dm.variableUpperBounds() != null
-            ? dm.variableUpperBounds() : positiveInfinities(numV);
-        MemorySegment lbSeg = doubleArray(arena, varLb);
-        MemorySegment ubSeg = doubleArray(arena, varUb);
-
-        byte[] varTypeArr = new byte[numV];
-        if (dm.variableTypes() != null) {
-            for (int i = 0; i < numV; i++) {
-                varTypeArr[i] = (byte) dm.variableTypes()[i].code();
-            }
-        } else {
-            java.util.Arrays.fill(varTypeArr, (byte) 'C');
-        }
-        MemorySegment varTypesSeg = byteArray(arena, varTypeArr);
-
-        int senseCode = dm.maximize() ? -1 : 1;
-        double offset = dm.objectiveOffset();
-        MemorySegment problemPtr = arena.allocate(ValueLayout.ADDRESS);
-
-        boolean ranged = dm.constraintLowerBounds() != null || dm.constraintUpperBounds() != null;
-        boolean quadratic = dm.quadraticObjectiveOffsets() != null
-            && dm.quadraticObjectiveOffsets().length > 0;
-
-        int rc;
-        if (quadratic && ranged) {
-            rc = cuopt_c_h.cuOptCreateQuadraticRangedProblem(
-                numC, numV, senseCode, offset, objCoeffsSeg,
-                intArray(arena, dm.quadraticObjectiveOffsets()),
-                intArray(arena, dm.quadraticObjectiveIndices()),
-                doubleArray(arena, dm.quadraticObjectiveValues()),
-                rowOffsetsSeg, colIndicesSeg, ccoeffsSeg,
-                doubleArray(arena, dm.constraintLowerBounds()),
-                doubleArray(arena, dm.constraintUpperBounds()),
-                lbSeg, ubSeg, problemPtr);
-            checkRc(rc, "cuOptCreateQuadraticRangedProblem");
-        } else if (quadratic) {
-            byte[] senseArr = ctypesToBytes(dm.rowTypes(), numC);
-            double[] rhsArr = dm.constraintBoundsArray() != null
-                ? dm.constraintBoundsArray() : zeros(numC);
-            rc = cuopt_c_h.cuOptCreateQuadraticProblem(
-                numC, numV, senseCode, offset, objCoeffsSeg,
-                intArray(arena, dm.quadraticObjectiveOffsets()),
-                intArray(arena, dm.quadraticObjectiveIndices()),
-                doubleArray(arena, dm.quadraticObjectiveValues()),
-                rowOffsetsSeg, colIndicesSeg, ccoeffsSeg,
-                byteArray(arena, senseArr), doubleArray(arena, rhsArr),
-                lbSeg, ubSeg, problemPtr);
-            checkRc(rc, "cuOptCreateQuadraticProblem");
-        } else if (ranged) {
-            rc = cuopt_c_h.cuOptCreateRangedProblem(
-                numC, numV, senseCode, offset, objCoeffsSeg,
-                rowOffsetsSeg, colIndicesSeg, ccoeffsSeg,
-                doubleArray(arena, dm.constraintLowerBounds()),
-                doubleArray(arena, dm.constraintUpperBounds()),
-                lbSeg, ubSeg, varTypesSeg, problemPtr);
-            checkRc(rc, "cuOptCreateRangedProblem");
-        } else {
-            byte[] senseArr = ctypesToBytes(dm.rowTypes(), numC);
-            double[] rhsArr = dm.constraintBoundsArray() != null
-                ? dm.constraintBoundsArray() : zeros(numC);
-            rc = cuopt_c_h.cuOptCreateProblem(
-                numC, numV, senseCode, offset, objCoeffsSeg,
-                rowOffsetsSeg, colIndicesSeg, ccoeffsSeg,
-                byteArray(arena, senseArr), doubleArray(arena, rhsArr),
-                lbSeg, ubSeg, varTypesSeg, problemPtr);
-            checkRc(rc, "cuOptCreateProblem");
-        }
-
-        long handle = problemPtr.get(ValueLayout.ADDRESS, 0).address();
-        return new ProblemBuild(handle, numV, numC);
-    }
 
     // ── solve + extract ─────────────────────────────────────────
 
@@ -338,10 +245,6 @@ public final class CuOptProviderImpl implements CuOptProvider {
             problem);
     }
 
-    private SolveResult solveAndExtract(Arena arena, ProblemBuild build,
-                                        SolverSettings settings, int numC, int numV) {
-        return solveAndExtract(arena, build, settings, numC, numV, null);
-    }
 
     private SolveResult solveAndExtract(Arena arena, ProblemBuild build,
                                         SolverSettings settings, int numC, int numV,
@@ -589,15 +492,6 @@ public final class CuOptProviderImpl implements CuOptProvider {
         return out;
     }
 
-    private static double[] zeros(int n) {
-        return new double[n];
-    }
-
-    private static double[] positiveInfinities(int n) {
-        double[] out = new double[n];
-        java.util.Arrays.fill(out, Double.POSITIVE_INFINITY);
-        return out;
-    }
 
     private static void checkRc(int rc, String op) {
         if (rc != 0) {

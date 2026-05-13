@@ -13,7 +13,7 @@ import com.nvidia.cuopt.linear_programming.TerminationStatus;
 /**
  * Internal data carrier from the FFM implementation back to the
  * {@link com.nvidia.cuopt.linear_programming.Problem} or
- * {@link com.nvidia.cuopt.linear_programming.DataModel} that requested
+ * {@link com.nvidia.cuopt.linear_programming.Problem} that requested
  * the solve. Pre-extracted from the native {@code cuOptSolution}
  * handle before that handle is freed.
  *

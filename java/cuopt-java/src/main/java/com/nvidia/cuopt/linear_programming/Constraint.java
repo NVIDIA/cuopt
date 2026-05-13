@@ -14,42 +14,23 @@ import java.util.Objects;
  * accessors ({@link #dualValue()}, {@link #slack()}) delegate back to
  * the owning Problem.
  *
- * <p>Constraints can be one-sided (a single {@code rhs} with a
- * {@code sense} in {@link CType}) or ranged (lower &lt;= lhs &lt;= upper);
- * {@link #isRanged()} discriminates.
+ * <p>A constraint has a sense ({@link CType#LE}, {@link CType#GE},
+ * {@link CType#EQ}) and a right-hand-side value.
  */
 public final class Constraint {
 
     private final Problem owner;
     private final int index;
-    private final CType sense;        // null for ranged constraints
-    private final double rhs;         // single rhs for one-sided
-    private final double lowerBound;  // for ranged
-    private final double upperBound;  // for ranged
-    private final boolean ranged;
+    private final CType sense;
+    private final double rhs;
     private final String name;
 
-    // Package-private constructor for one-sided constraints.
+    // Package-private constructor.
     Constraint(Problem owner, int index, CType sense, double rhs, String name) {
         this.owner = Objects.requireNonNull(owner, "owner");
         this.index = index;
         this.sense = Objects.requireNonNull(sense, "sense");
         this.rhs = rhs;
-        this.lowerBound = Double.NaN;
-        this.upperBound = Double.NaN;
-        this.ranged = false;
-        this.name = name == null ? "" : name;
-    }
-
-    // Package-private constructor for ranged constraints.
-    Constraint(Problem owner, int index, double lowerBound, double upperBound, String name) {
-        this.owner = Objects.requireNonNull(owner, "owner");
-        this.index = index;
-        this.sense = null;
-        this.rhs = Double.NaN;
-        this.lowerBound = lowerBound;
-        this.upperBound = upperBound;
-        this.ranged = true;
         this.name = name == null ? "" : name;
     }
 
@@ -61,60 +42,14 @@ public final class Constraint {
         return name;
     }
 
-    /**
-     * Constraint sense ({@link CType#LE}, {@link CType#GE},
-     * {@link CType#EQ}) for one-sided constraints.
-     *
-     * @throws IllegalStateException if this is a ranged constraint.
-     */
+    /** Constraint sense ({@link CType#LE}, {@link CType#GE}, {@link CType#EQ}). */
     public CType sense() {
-        if (ranged) {
-            throw new IllegalStateException(
-                "sense() is not defined for ranged constraints; use lowerBound()/upperBound()");
-        }
         return sense;
     }
 
-    /**
-     * Right-hand side for one-sided constraints.
-     *
-     * @throws IllegalStateException if this is a ranged constraint.
-     */
+    /** Right-hand side of the constraint. */
     public double rhs() {
-        if (ranged) {
-            throw new IllegalStateException(
-                "rhs() is not defined for ranged constraints; use lowerBound()/upperBound()");
-        }
         return rhs;
-    }
-
-    /** Whether this is a ranged constraint (lower &lt;= lhs &lt;= upper). */
-    public boolean isRanged() {
-        return ranged;
-    }
-
-    /**
-     * Lower bound for ranged constraints. For one-sided constraints,
-     * returns the appropriate one-sided bound (e.g. rhs for GE; -infinity for LE).
-     */
-    public double lowerBound() {
-        if (ranged) return lowerBound;
-        return switch (sense) {
-            case LE -> Double.NEGATIVE_INFINITY;
-            case GE, EQ -> rhs;
-        };
-    }
-
-    /**
-     * Upper bound for ranged constraints. For one-sided constraints,
-     * returns the appropriate one-sided bound (e.g. rhs for LE; +infinity for GE).
-     */
-    public double upperBound() {
-        if (ranged) return upperBound;
-        return switch (sense) {
-            case LE, EQ -> rhs;
-            case GE -> Double.POSITIVE_INFINITY;
-        };
     }
 
     // ── post-solve accessors ─────────────────────────────────────

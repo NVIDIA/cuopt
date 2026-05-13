@@ -5,7 +5,6 @@
 package com.nvidia.cuopt.spi;
 
 import com.nvidia.cuopt.CuOptException;
-import com.nvidia.cuopt.linear_programming.DataModel;
 import com.nvidia.cuopt.linear_programming.Problem;
 import com.nvidia.cuopt.linear_programming.SolverSettings;
 import java.util.ServiceLoader;
@@ -57,12 +56,6 @@ public interface CuOptProvider {
      * handles before returning.
      */
     SolveResult solveProblem(Problem problem, SolverSettings settings);
-
-    /**
-     * Solves the given DataModel directly (low-level path). Builds the
-     * native problem handle from the DataModel's CSR arrays.
-     */
-    SolveResult solveDataModel(DataModel dm, SolverSettings settings);
 
     // ── lookup ───────────────────────────────────────────────────
 
