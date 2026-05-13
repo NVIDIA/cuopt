@@ -269,6 +269,31 @@ class branch_and_bound_t {
               i_t node_int_infeas,
               double work_time = -1);
 
+  enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
+  struct cut_pass_result_t {
+    cut_pass_action_t action{cut_pass_action_t::CONTINUE};
+    mip_status_t status{mip_status_t::UNSET};
+  };
+
+  cut_pass_result_t do_cut_pass(i_t cut_pass,
+                                mip_solution_t<i_t, f_t>& solution,
+                                i_t& num_fractional,
+                                std::vector<i_t>& fractional,
+                                cut_generation_t<i_t, f_t>& cut_generation,
+                                basis_update_mpf_t<i_t, f_t>& basis_update,
+                                std::vector<i_t>& basic_list,
+                                std::vector<i_t>& nonbasic_list,
+                                variable_bounds_t<i_t, f_t>& variable_bounds,
+                                cut_pool_t<i_t, f_t>& cut_pool,
+                                cut_info_t<i_t, f_t>& cut_info,
+                                simplex_solver_settings_t<i_t, f_t>& lp_settings,
+                                i_t original_rows,
+                                f_t& last_upper_bound,
+                                f_t& last_objective,
+                                f_t root_relax_objective,
+                                i_t& cut_pool_size,
+                                const std::vector<f_t>& saved_solution);
+
   // Set the solution when found at the root node
   void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
                             const cut_info_t<i_t, f_t>& cut_info);
