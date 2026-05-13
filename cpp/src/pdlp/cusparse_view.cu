@@ -407,8 +407,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                            _tmp_primal.data(),
                            CUSPARSE_ORDER_COL);
 
-  primal_gradient.create(op_problem_scaled.n_variables,
-                         current_saddle_point_state.get_primal_gradient().data());
+  primal_gradient.create(
+    current_saddle_point_state.get_primal_gradient().size(),  // It is 0 in cupdlpx
+    current_saddle_point_state.get_primal_gradient().data());
   dual_gradient.create(op_problem_scaled.n_constraints,
                        current_saddle_point_state.get_dual_gradient().data());
 
@@ -1079,6 +1080,39 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
                                                   handle_ptr_->get_stream().value()));
 
     handle_ptr_->get_stream().synchronize();
+  }
+}
+
+// Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
+// so the duplicated row/column buffers can be freed.
+template <typename i_t, typename f_t>
+void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
+  const problem_t<i_t, f_t>& original_problem)
+{
+  RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
+                                           const_cast<i_t*>(original_problem.offsets.data()),
+                                           const_cast<i_t*>(original_problem.variables.data()),
+                                           const_cast<f_t*>(A_.data())));
+
+  RAFT_CUSPARSE_TRY(
+    cusparseCsrSetPointers(A_T,
+                           const_cast<i_t*>(original_problem.reverse_offsets.data()),
+                           const_cast<i_t*>(original_problem.reverse_constraints.data()),
+                           const_cast<f_t*>(A_T_.data())));
+
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (mixed_precision_enabled_) {
+      RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A_mixed_,
+                                               const_cast<i_t*>(original_problem.offsets.data()),
+                                               const_cast<i_t*>(original_problem.variables.data()),
+                                               A_float_.data()));
+
+      RAFT_CUSPARSE_TRY(
+        cusparseCsrSetPointers(A_T_mixed_,
+                               const_cast<i_t*>(original_problem.reverse_offsets.data()),
+                               const_cast<i_t*>(original_problem.reverse_constraints.data()),
+                               A_T_float_.data()));
+    }
   }
 }
 
