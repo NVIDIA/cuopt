@@ -48,7 +48,6 @@ from pr_comment_helper import COMMENT_MARKER  # noqa: E402
 # tables so the comment stays readable.
 MAX_BODY_CHARS = 60000
 MAX_ROWS_PER_BUCKET = 80
-MAX_ERROR_SNIPPET = 600
 # Crash entries get their full message in a code block, capped only at a
 # generous limit since the diagnostic line is the whole point of the entry.
 MAX_CRASH_MESSAGE_CHARS = 2000
@@ -84,18 +83,6 @@ def _short_msg(msg, limit=300):
     if len(summary) > limit:
         summary = summary[: limit - 1] + "…"
     return summary.replace("|", "\\|")
-
-
-def _details_block(msg):
-    """Render an error message as a collapsible <details> block."""
-    if not msg:
-        return ""
-    snippet = msg.strip()
-    if len(snippet) > MAX_ERROR_SNIPPET:
-        snippet = snippet[:MAX_ERROR_SNIPPET] + "\n…[truncated]"
-    return (
-        f"<details><summary>error</summary>\n\n```\n{snippet}\n```\n</details>"
-    )
 
 
 def _classify_known_subgroups(recurring, flaky):
