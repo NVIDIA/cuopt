@@ -15,7 +15,9 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <stdexcept>
 #include <unordered_set>
 
 #include <barrier/dense_matrix.hpp>
@@ -81,13 +83,46 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
 
   cut.i.clear();
   cut.x.clear();
-  i_t num_complements = 0;
+
+  // P0-3 (1): two-pass complement-pair detection. The baseline returned
+  // NO_CUT on the first variable that appeared both as itself and as its
+  // complement; that hides how many such conflicts a candidate clique has
+  // and makes it impossible to attribute infeasibility events to specific
+  // clique generators. Pre-pass collects every original/complement
+  // occurrence per variable, counts the actual complement pairs, and only
+  // then decides. Accept/reject behavior matches baseline (a complement
+  // pair still aborts cut construction); only the diagnostics change.
   std::unordered_set<i_t> seen_original;
   std::unordered_set<i_t> seen_complement;
   seen_original.reserve(clique_vertices.size());
   seen_complement.reserve(clique_vertices.size());
   for (const auto vertex_idx : clique_vertices) {
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
+    const i_t var_idx     = vertex_idx % num_vars;
+    const bool complement = vertex_idx >= num_vars;
+    if (complement) {
+      seen_complement.insert(var_idx);
+    } else {
+      seen_original.insert(var_idx);
+    }
+  }
+  i_t complement_pairs = 0;
+  for (const auto var_idx : seen_original) {
+    if (seen_complement.count(var_idx) > 0) { complement_pairs++; }
+  }
+  if (complement_pairs > 0) {
+    CLIQUE_CUTS_DEBUG("build_clique_cut infeasible: %lld complement-pairs",
+                      static_cast<long long>(complement_pairs));
+    return clique_cut_build_status_t::NO_CUT;
+  }
+
+  // Second pass: emit cut coefficients. We already know there are no
+  // complement-pair conflicts so the lookups against seen_original /
+  // seen_complement that the baseline performed are now redundant.
+  i_t num_complements       = 0;
+  const bool has_original   = !seen_original.empty();
+  const bool has_complement = !seen_complement.empty();
+  for (const auto vertex_idx : clique_vertices) {
     const i_t var_idx     = vertex_idx % num_vars;
     const bool complement = vertex_idx >= num_vars;
     const f_t lower_bound = lower_bounds[var_idx];
@@ -97,32 +132,17 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
                  "Clique contains continuous variable");
     cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
     cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
+    static_cast<void>(lower_bound);
+    static_cast<void>(upper_bound);
 
-    // we store the cut in the form of >= 1, for easy violation check with dot product
-    // that's why compelements have 1 as coeff and normal vars have -1
+    // Cut is stored in form sum_j a_j x_j >= rhs for direct dot-product
+    // violation checks. Complemented literals (1 - x_j) contribute +1*x_j
+    // to the inequality and originals contribute -1*x_j.
     if (complement) {
-      if (seen_original.count(var_idx) > 0) {
-        // FIXME: this is temporary, fix all the vars of all other vars in the clique
-        return clique_cut_build_status_t::NO_CUT;
-        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
-                          static_cast<long long>(var_idx));
-        return clique_cut_build_status_t::INFEASIBLE;
-      }
-      cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");
-      seen_complement.insert(var_idx);
       num_complements++;
       cut.i.push_back(var_idx);
       cut.x.push_back(1.0);
     } else {
-      if (seen_complement.count(var_idx) > 0) {
-        // FIXME: this is temporary, fix all the vars of all other vars in the clique
-        return clique_cut_build_status_t::NO_CUT;
-        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
-                          static_cast<long long>(var_idx));
-        return clique_cut_build_status_t::INFEASIBLE;
-      }
-      cuopt_assert(seen_original.count(var_idx) == 0, "Duplicate variable in clique");
-      seen_original.insert(var_idx);
       cut.i.push_back(var_idx);
       cut.x.push_back(-1.0);
     }
@@ -136,27 +156,36 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   cut_rhs = static_cast<f_t>(num_complements - 1);
   cut.sort();
 
+  // P0-3 (4): has_pair distinguishes pure (all originals OR all
+  // complements) from mixed cliques in the accepted-cut log line so
+  // post-mortem analysis can attribute gap closure to one variant or
+  // the other.
+  const int has_pair  = (has_original && has_complement) ? 1 : 0;
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
   if (violation > min_violation) {
     CLIQUE_CUTS_DEBUG(
-      "build_clique_cut accepted nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+      "build_clique_cut accepted nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld "
+      "has_pair=%d",
       static_cast<long long>(cut.i.size()),
       static_cast<double>(cut_rhs),
       static_cast<double>(dot),
       static_cast<double>(violation),
       static_cast<double>(min_violation),
-      static_cast<long long>(num_complements));
+      static_cast<long long>(num_complements),
+      has_pair);
     return clique_cut_build_status_t::CUT_ADDED;
   }
   CLIQUE_CUTS_DEBUG(
-    "build_clique_cut rejected nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+    "build_clique_cut rejected nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld "
+    "has_pair=%d",
     static_cast<long long>(cut.i.size()),
     static_cast<double>(cut_rhs),
     static_cast<double>(dot),
     static_cast<double>(violation),
     static_cast<double>(min_violation),
-    static_cast<long long>(num_complements));
+    static_cast<long long>(num_complements),
+    has_pair);
   return clique_cut_build_status_t::NO_CUT;
 }
 
@@ -389,11 +418,20 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
-  const f_t adj_set_build_cost     = 2.0 * static_cast<f_t>(adj_set.size());
-  const f_t adj_check_cost         = 5.0;
-  const f_t estimated_preloop_work = 2.0 * initial_clique_size + adj_set_build_cost +
-                                     3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
-                                     2.0 * candidate_size;
+  const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
+  // P0-3 (2): account for the addtl_cliques scan that
+  // clique_table_t::check_adjacency performs on every adjacency probe.
+  // Baseline ignored this, so on instances with many addtl_clique entries
+  // the extension loop dominated cut-generation wall time without being
+  // attributed to clique cuts. avg_slice_size of var_clique_addtl is a
+  // robust proxy for the per-call addtl scan cost.
+  const f_t addtl_cliques_scan_cost =
+    1.0 + static_cast<f_t>(graph.var_clique_addtl.avg_slice_size());
+  const f_t adj_check_cost = 5.0 + addtl_cliques_scan_cost;
+  const f_t estimated_preloop_work =
+    2.0 * initial_clique_size + adj_set_build_cost + 3.0 * static_cast<f_t>(adj_set.size()) +
+    sort_work + 2.0 * candidate_size + addtl_cliques_scan_cost * initial_clique_size +
+    addtl_cliques_scan_cost;
   if (add_work_estimate(estimated_preloop_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
@@ -429,6 +467,8 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
         break;
       }
     }
+    // Each check_adjacency now charges its own addtl_cliques_scan_cost
+    // term so the per-iteration budget reflects the addtl scan cost.
     if (add_work_estimate(
           adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
       break;
@@ -942,8 +982,66 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   return result;
 }
 
+namespace {
+
+// 64-bit integer mixer (SplitMix64). Used as the building block for the
+// cousin filter's per-slot independent hash family.
+inline uint64_t splitmix64_mix(uint64_t x)
+{
+  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+  x = x ^ (x >> 31);
+  return x;
+}
+
+inline uint64_t hash64_with_seed(uint64_t value, uint64_t seed)
+{
+  return splitmix64_mix(value ^ (seed * 0xbf58476d1ce4e5b9ULL + 0x9e3779b97f4a7c15ULL));
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
-void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
+void cut_pool_t<i_t, f_t>::compute_clique_minhash_sketch(const inequality_t<i_t, f_t>& cut,
+                                                         std::vector<uint64_t>& sketch) const
+{
+  // Min-hash over the cut's column-support set. With clique_cousin_minhash_k_
+  // independent random orderings of the variable index space, the expected
+  // number of agreements between two sketches is k * Jaccard(supp_a, supp_b),
+  // so sketch comparison estimates Jaccard in O(k) regardless of support
+  // sizes.
+  const i_t k = clique_cousin_minhash_k_;
+  sketch.assign(k, std::numeric_limits<uint64_t>::max());
+  const i_t nz = cut.size();
+  for (i_t p = 0; p < nz; p++) {
+    const uint64_t j = static_cast<uint64_t>(cut.index(p));
+    for (i_t s = 0; s < k; s++) {
+      const uint64_t h = hash64_with_seed(j, static_cast<uint64_t>(s));
+      if (h < sketch[s]) { sketch[s] = h; }
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+void cut_pool_t<i_t, f_t>::rebuild_clique_cousin_buckets()
+{
+  // Buckets index CLIQUE rows by the first sketch hash. Compaction
+  // routines (check_for_duplicate_cuts) shift row indices, so they call
+  // this after the parallel sketch vector has been remapped to make
+  // sure bucket entries point to the post-compaction rows.
+  clique_cousin_buckets_.clear();
+  const i_t m = static_cast<i_t>(clique_support_minhash_.size());
+  for (i_t i = 0; i < m; i++) {
+    if (clique_support_minhash_[i].empty()) { continue; }
+    const uint64_t key = clique_support_minhash_[i][0];
+    clique_cousin_buckets_[key].push_back(i);
+  }
+}
+
+template <typename i_t, typename f_t>
+void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
+                                   const inequality_t<i_t, f_t>& cut,
+                                   f_t cut_score)
 {
   // TODO: Add fast duplicate check and only add if the cut is not already in the pool
 
@@ -962,10 +1060,126 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, 
     settings_.log.printf("Cut has no coefficients\n");
     return;
   }
+
+  // P2-4 at-insert cousin filter for the clique-cut family. Bron-Kerbosch
+  // emits all maximal cliques, so dense conflict graphs can produce
+  // hundreds of "cousin" cliques per round whose support sets agree in
+  // |k - 1| of |k| vertices. The selection-stage orthogonality scan
+  // catches them only after each cousin has paid the full insert + dedup
+  // + score cost. The cousin filter intercepts at insert: we estimate
+  // Jaccard via min-hash and, on a collision >= clique_cousin_jaccard_tau_
+  // with an existing pool entry, keep the higher-scoring representative.
+  std::vector<uint64_t> new_sketch;
+  i_t cousin_replace_row     = -1;
+  bool cousin_invariant_path = false;
+  // Apply the size-tilt boost to the caller's score so larger cliques win
+  // ties on cousin replacement (more variables covered = more constraint
+  // strength; a proxy for "integer support" since clique vars are 0-1).
+  f_t effective_score = cut_score;
+  if (effective_score >= static_cast<f_t>(0.0) &&
+      clique_cousin_size_weight_ > static_cast<f_t>(0.0) && cut_type == cut_type_t::CLIQUE) {
+    const f_t sz = static_cast<f_t>(cut_squeezed.size());
+    const f_t mult =
+      static_cast<f_t>(1.0) +
+      clique_cousin_size_weight_ * static_cast<f_t>(std::log2(1.0 + static_cast<double>(sz)));
+    effective_score *= mult;
+  }
+  if (cut_type == cut_type_t::CLIQUE) { clique_inserts_++; }
+  if (cut_type == cut_type_t::CLIQUE && clique_cousin_filter_enable_ &&
+      clique_cousin_minhash_k_ > 0) {
+    cousin_invariant_path = true;
+    compute_clique_minhash_sketch(cut_squeezed, new_sketch);
+    const uint64_t bucket_key = new_sketch[0];
+    auto bucket_it            = clique_cousin_buckets_.find(bucket_key);
+    if (bucket_it != clique_cousin_buckets_.end()) {
+      const i_t pool_size = cut_storage_.m;
+      const i_t k         = clique_cousin_minhash_k_;
+      // Walk the bucket, computing min-hash agreement with each peer.
+      // Bucket sizes are O(distinct max-clique families per round) so
+      // this loop is short on every realistic instance even when the
+      // pool is large.
+      auto& bucket_rows = bucket_it->second;
+      for (size_t b = 0; b < bucket_rows.size(); b++) {
+        const i_t row = bucket_rows[b];
+        if (row < 0 || row >= pool_size) { continue; }
+        if (static_cast<i_t>(clique_support_minhash_[row].size()) != k) { continue; }
+        i_t agree = 0;
+        for (i_t s = 0; s < k; s++) {
+          if (clique_support_minhash_[row][s] == new_sketch[s]) { agree++; }
+        }
+        const f_t jaccard_est = static_cast<f_t>(agree) / static_cast<f_t>(k);
+        if (jaccard_est < clique_cousin_jaccard_tau_) { continue; }
+        // Cousin found. Compare scores; keep the better representative.
+        const f_t existing_score = clique_cousin_score_[row];
+        if (effective_score < static_cast<f_t>(0.0)) {
+          // Caller did not supply a score — be conservative and drop the
+          // new cut; the existing entry stays as the bucket invariant
+          // winner ("first-write-wins" policy).
+          cousin_drops_++;
+          return;
+        }
+        if (effective_score <= existing_score) {
+          // Existing representative is at least as good; drop the new cut.
+          cousin_drops_++;
+          return;
+        }
+        // New cut beats the existing representative. We "soft-replace":
+        // clear the loser's sketch so future cousins don't anchor against
+        // it (restoring the bucket invariant for new inserts), and
+        // reroute the bucket entry to the new row below. The loser stays
+        // in cut_storage_ for now and will be filtered by the standard
+        // orthogonality scan in score_cuts() — main_baselin has no
+        // mid-pass eviction primitive, and adding one would invalidate
+        // the per-pass cut_pool_size accounting.
+        cousin_replace_row = row;
+        // Replace at most one peer per insert; a transitive cousin of
+        // the loser at the same bucket is filtered next time. Matches
+        // the SCIP / Mops "pairwise" family invariant.
+        break;
+      }
+    }
+  }
+
   cut_storage_.append_row(cut_squeezed.vector);
   rhs_storage_.push_back(cut_squeezed.rhs);
   cut_type_.push_back(cut_type);
   cut_age_.push_back(0);
+
+  // Keep the cousin-filter side tables sized like cut_storage_ regardless
+  // of cut type. Non-CLIQUE rows carry an empty sketch and a zero score;
+  // they are skipped by rebuild_clique_cousin_buckets().
+  const i_t new_row = cut_storage_.m - 1;
+  clique_support_minhash_.resize(cut_storage_.m);
+  clique_cousin_score_.resize(cut_storage_.m, static_cast<f_t>(0.0));
+  if (cousin_invariant_path) {
+    clique_support_minhash_[new_row] = std::move(new_sketch);
+    clique_cousin_score_[new_row]    = effective_score;
+    if (cousin_replace_row >= 0) {
+      // Reroute the bucket entry from the loser's row to the new row.
+      // Other peers in the same bucket (if any) keep their entries.
+      const uint64_t bucket_key = clique_support_minhash_[new_row][0];
+      auto& rows                = clique_cousin_buckets_[bucket_key];
+      bool replaced             = false;
+      for (auto& r : rows) {
+        if (r == cousin_replace_row) {
+          r        = new_row;
+          replaced = true;
+          break;
+        }
+      }
+      if (!replaced) { rows.push_back(new_row); }
+      // Clear the loser's sketch so it's a no-op on subsequent inserts
+      // and rebuild_clique_cousin_buckets() ignores it. Loser's row
+      // lingers in cut_storage_ until score_cuts compacts via dedup or
+      // filters via orthogonality.
+      clique_support_minhash_[cousin_replace_row].clear();
+      clique_cousin_score_[cousin_replace_row] = static_cast<f_t>(0.0);
+      cousin_replaces_++;
+    } else {
+      const uint64_t bucket_key = clique_support_minhash_[new_row][0];
+      clique_cousin_buckets_[bucket_key].push_back(new_row);
+    }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1140,17 +1354,35 @@ void cut_pool_t<i_t, f_t>::check_for_duplicate_cuts()
     cut_storage_.remove_rows(cuts_to_remove, new_cut_storage);
     cut_storage_ = new_cut_storage;
     i_t write    = 0;
+    // Cousin-filter parallel arrays: only meaningful when populated, but
+    // size them up before the loop so the row remap is uniform.
+    const bool cousin_active = !clique_support_minhash_.empty();
+    if (cousin_active) {
+      clique_support_minhash_.resize(m);
+      clique_cousin_score_.resize(m, static_cast<f_t>(0.0));
+    }
     for (i_t i = 0; i < m; i++) {
       if (cuts_to_remove[i] == 0) {
         rhs_storage_[write] = rhs_storage_[i];
         cut_type_[write]    = cut_type_[i];
         cut_age_[write]     = cut_age_[i];
+        if (cousin_active) {
+          clique_support_minhash_[write] = std::move(clique_support_minhash_[i]);
+          clique_cousin_score_[write]    = clique_cousin_score_[i];
+        }
         write++;
       }
     }
     rhs_storage_.resize(write);
     cut_type_.resize(write);
     cut_age_.resize(write);
+    if (cousin_active) {
+      clique_support_minhash_.resize(write);
+      clique_cousin_score_.resize(write);
+      // Row indices changed — bucket entries point to old row IDs and
+      // would corrupt the next at-insert filter. Rebuild from scratch.
+      rebuild_clique_cousin_buckets();
+    }
   }
 }
 
@@ -2557,7 +2789,11 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
       inequality_t<i_t, f_t> cut_inequality;
       cut_inequality.vector = cut;
       cut_inequality.rhs    = cut_rhs;
-      cut_pool_.add_cut(cut_type_t::CLIQUE, cut_inequality);
+      // Pass the LP violation as the cousin-filter score so add_cut can
+      // pick the stronger representative on a Jaccard collision (>= tau).
+      // build_clique_cut has already verified violation > min_violation.
+      const f_t cut_violation = cut_rhs - cut.dot(xstar);
+      cut_pool_.add_cut(cut_type_t::CLIQUE, cut_inequality, cut_violation);
 #if DEBUG_CLIQUE_CUTS
       added_cuts++;
       CLIQUE_CUTS_DEBUG("generate_clique_cuts added cut nz=%lld rhs=%g clique_size=%lld",
@@ -5399,6 +5635,123 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
   }
 }
 
+// Cut-pool sweep configuration dispatch (declared in cuts.hpp).
+//
+// Driven by the same CUOPT_CONFIG_ID / CUOPT_MAX_CONFIG env vars the
+// diversity manager uses (see diversity_manager.cu). One integer
+// selects one of kCutSweepNumConfigs hard-coded cut-pool configurations.
+// Caller side is just:
+//   CUOPT_MAX_CONFIG=5 CUOPT_CONFIG_ID=$id $RUN_MIP ...
+//
+// CUOPT_MAX_CONFIG is the caller's expected upper bound; when set
+// we additionally range-check CUOPT_CONFIG_ID against it.
+//   CUOPT_CONFIG_ID unset / unparsable        -> baseline (config 0).
+//   CUOPT_CONFIG_ID < 0 or >= valid range     -> baseline + warning.
+//
+// Banner printf is gated to a single emission per process so B&B
+// restarts (which re-construct cut_pool_t) don't spam the log.
+template <typename i_t, typename f_t>
+void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
+                            const simplex_solver_settings_t<i_t, f_t>& settings)
+{
+  static std::atomic<bool> banner_emitted{false};
+
+  const char* env_config_id_raw = std::getenv("CUOPT_CONFIG_ID");
+  int config_id                 = -1;
+  if (env_config_id_raw != nullptr && env_config_id_raw[0] != '\0') {
+    try {
+      config_id = std::stoi(env_config_id_raw);
+    } catch (const std::exception&) {
+      config_id = -1;
+    }
+  }
+
+  int max_config             = kCutSweepNumConfigs;
+  const char* env_max_config = std::getenv("CUOPT_MAX_CONFIG");
+  if (env_max_config != nullptr && env_max_config[0] != '\0') {
+    try {
+      max_config = std::stoi(env_max_config);
+    } catch (const std::exception&) {
+      max_config = kCutSweepNumConfigs;
+    }
+  }
+
+  if (config_id < 0 || config_id >= max_config || config_id >= kCutSweepNumConfigs) {
+    if (!banner_emitted.load()) {
+      settings.log.printf(
+        "CutPoolConfig WARN config_id=%d out of range [0,%d), falling back to baseline\n",
+        config_id,
+        std::min(max_config, kCutSweepNumConfigs));
+    }
+    config_id = 0;
+  }
+
+  // Defaults match cut_pool_t's initializers: cousin filter OFF, tau=0.85,
+  // k=8, size_weight=0.0. Each case below documents what it tweaks.
+  switch (config_id) {
+    case 0:
+      // 00_baseline_no_cousin: clique algorithmic changes only (8f2cf00a).
+      // Cousin filter disabled — isolates the impact of the
+      // build_clique_cut two-pass refactor and the addtl_cliques_scan_cost
+      // work-accounting.
+      cut_pool.set_clique_cousin_filter_enable(false);
+      break;
+    case 1:
+      // 01_cousin_default: P2-4 cousin filter on with the cut_scoring branch
+      // defaults (tau=0.85, k=8, no size tilt). Score is the caller-supplied
+      // violation; ties prefer the earlier insert.
+      cut_pool.set_clique_cousin_filter_enable(true);
+      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.85));
+      cut_pool.set_clique_cousin_minhash_k(8);
+      cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
+      break;
+    case 2:
+      // 02_cousin_strict: tighter Jaccard threshold (0.85 -> 0.70). Calls
+      // more cliques "cousins" so we drop / replace more aggressively.
+      cut_pool.set_clique_cousin_filter_enable(true);
+      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.70));
+      cut_pool.set_clique_cousin_minhash_k(8);
+      cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
+      break;
+    case 3:
+      // 03_cousin_loose: looser Jaccard threshold (0.85 -> 0.95). Closer
+      // to no-filter behavior. Gap should match config 0 if the cousin
+      // filter is mostly absorbing redundancy that the orthogonality
+      // scan would catch anyway.
+      cut_pool.set_clique_cousin_filter_enable(true);
+      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.95));
+      cut_pool.set_clique_cousin_minhash_k(8);
+      cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
+      break;
+    case 4:
+      // 04_cousin_size_tilt: cousin filter on at default tau=0.85, but the
+      // score used for cousin replacement is multiplied by
+      //   (1 + 0.5 * log2(1 + clique_size))
+      // so larger cliques win on ties / near-ties. For clique cuts every
+      // variable is binary, so clique size is the integer-support count
+      // — this is the "clique integer support" knob the user requested.
+      cut_pool.set_clique_cousin_filter_enable(true);
+      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.85));
+      cut_pool.set_clique_cousin_minhash_k(8);
+      cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.5));
+      break;
+    default: break;  // unreachable due to range check above
+  }
+
+  if (!banner_emitted.exchange(true)) {
+    settings.log.printf(
+      "CutPoolConfig id=%d name=%s clique_cousin_enable=%d clique_cousin_tau=%g "
+      "clique_cousin_k=%d clique_cousin_size_weight=%g\n",
+      config_id,
+      cut_sweep_config_name(config_id),
+      static_cast<int>(cut_pool.clique_cousin_filter_enable() ? 1 : 0),
+      static_cast<double>(cut_pool.clique_cousin_jaccard_tau()),
+      static_cast<int>(cut_pool.clique_cousin_minhash_k()),
+      static_cast<double>(cut_pool.clique_cousin_size_weight()));
+    std::fflush(stdout);
+  }
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
@@ -5406,6 +5759,9 @@ template class knapsack_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
 template class complemented_mixed_integer_rounding_cut_t<int, double>;
 template class variable_bounds_t<int, double>;
+
+template void apply_cut_sweep_config<int, double>(
+  cut_pool_t<int, double>& cut_pool, const simplex_solver_settings_t<int, double>& settings);
 
 template int add_cuts(const simplex_solver_settings_t<int, double>& settings,
                       const csr_matrix_t<int, double>& cuts,
