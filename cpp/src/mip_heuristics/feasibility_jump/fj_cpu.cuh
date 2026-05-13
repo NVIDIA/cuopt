@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <mip_heuristics/feasibility_jump/cpu_fj_thread.cuh>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <utilities/memory_instrumentation.hpp>
 #include <utilities/producer_sync.hpp>
@@ -191,7 +192,8 @@ struct fj_cpu_climber_t {
 
 template <typename i_t, typename f_t>
 void cpufj_solve(fj_cpu_climber_t<i_t, f_t>* fj_cpu,
-                 f_t in_time_limit = std::numeric_limits<f_t>::infinity());
+                 f_t in_time_limit      = std::numeric_limits<f_t>::infinity(),
+                 double work_unit_limit = std::numeric_limits<double>::infinity());
 
 // Standalone CPUFJ init for running without full fj_t infrastructure (avoids GPU allocations).
 // Used for early CPUFJ during presolve.
