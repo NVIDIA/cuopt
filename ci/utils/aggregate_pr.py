@@ -275,9 +275,12 @@ def build_comment_body(
         parts.append("</details>")
         parts.append("")
 
-    # --- NEW failures ---
+    # --- NEW failures (red CAUTION callout as the section header) ---
     if new_failures:
-        parts.append("### NEW failures (likely introduced by this PR)")
+        parts.append("> [!CAUTION]")
+        parts.append(
+            f"> **NEW failures ({len(new_failures)}) — likely introduced by this PR**"
+        )
         parts.append("")
         parts.append(
             _failure_table(
