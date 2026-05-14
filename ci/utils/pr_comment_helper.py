@@ -28,9 +28,8 @@ from urllib import error, request
 
 GITHUB_API = "https://api.github.com"
 
-# Single source of truth for the sticky-comment marker.  ``aggregate_pr.py``
-# imports this so the body it writes always matches the marker the poster
-# searches for.
+# Imported by aggregate_pr.py so the body it writes and the marker the
+# poster searches for stay in sync.
 COMMENT_MARKER = "<!-- pr-test-classification -->"
 
 

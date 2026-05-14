@@ -196,9 +196,8 @@ def build_comment_body(
     if not new_failures and not recurring and not flaky:
         return ""
 
-    # Pull crashes out so they render in a dedicated CAUTION block above
-    # the normal NEW/KNOWN tables and don't get drowned out by ordinary
-    # assertion failures.
+    # Pulled out so crashes render in their own CAUTION block and don't
+    # get drowned out by ordinary assertion failures.
     new_crashes, new_failures = _split_crashes(new_failures)
     recurring_crashes, recurring = _split_crashes(recurring)
     all_crashes = new_crashes + recurring_crashes
@@ -247,7 +246,6 @@ def build_comment_body(
         parts.append("\n</details>")
         parts.append("")
 
-    # --- CRASHES (top of comment, GitHub red-alert callout) ---
     if all_crashes:
         parts.append("> [!CAUTION]")
         parts.append(
@@ -260,8 +258,6 @@ def build_comment_body(
             "last test invoked before the signal."
         )
         parts.append("")
-        # Collapse per-crash details under a hidden tab — the CAUTION
-        # block is the headline; details are one click away.
         crash_word = "crash" if len(all_crashes) == 1 else "crashes"
         parts.append("<details>")
         parts.append(
@@ -291,7 +287,6 @@ def build_comment_body(
         parts.append("</details>")
         parts.append("")
 
-    # --- NEW failures (red CAUTION callout as the section header) ---
     if new_failures:
         parts.append("> [!CAUTION]")
         parts.append(
@@ -311,7 +306,6 @@ def build_comment_body(
         )
         parts.append("")
 
-    # --- KNOWN issues ---
     if known_total:
         parts.append("### KNOWN issues (pre-existing, not caused by this PR)")
         parts.append("")

@@ -2,20 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Aggregate per-matrix PR test summaries from S3 and post (or update) a
-# sticky comment on the PR that classifies every failure as NEW
-# (introduced by this PR) or KNOWN (recurring on nightly, known flaky on
-# nightly, or flaked in this run via pytest-rerunfailures).
-#
-# Runs as a post-test job after every PR test job finishes.  See
-# ci/utils/aggregate_pr.py for content generation and
-# ci/utils/pr_comment_helper.py for GitHub API interactions.
-#
-# Required env (all must be set; the script exits with a loud error if any
-# are missing):
-#   PR_NUMBER, GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_BASE_REF,
-#   GITHUB_SHA, GITHUB_TOKEN, CUOPT_S3_URI, CUOPT_AWS_ACCESS_KEY_ID,
-#   CUOPT_AWS_SECRET_ACCESS_KEY.
+# Aggregate per-matrix PR test summaries from S3 and post (or update)
+# the sticky PR classification comment.  See ci/utils/aggregate_pr.py
+# (content) and ci/utils/pr_comment_helper.py (GitHub API).
 
 set -euo pipefail
 

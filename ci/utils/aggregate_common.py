@@ -26,11 +26,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from s3_helpers import s3_download, s3_list  # noqa: E402
 
 
-# ---------------------------------------------------------------------------
-# Download and load summaries
-# ---------------------------------------------------------------------------
-
-
 def download_summaries(
     s3_prefix: str,
     local_dir: str | os.PathLike[str],
@@ -132,11 +127,6 @@ def load_local_summaries(
     return summaries
 
 
-# ---------------------------------------------------------------------------
-# Aggregation
-# ---------------------------------------------------------------------------
-
-
 def aggregate_summaries(
     summaries: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -233,11 +223,6 @@ def aggregate_summaries(
         "all_resolved_tests": all_resolved_tests,
         "has_new_flaky": any_new_flaky,
     }
-
-
-# ---------------------------------------------------------------------------
-# HTML escaping
-# ---------------------------------------------------------------------------
 
 
 def html_escape(text: Any) -> str:
