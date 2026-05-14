@@ -70,6 +70,21 @@ def test_dist_mat():
     )
 
 
+def test_dist_mat_null():
+    cost_matrix = cudf.DataFrame(
+        [
+            [0, 5.0, 5.0, 5.0],
+            [5.0, 0, 5.0, 5.0],
+            [5.0, 5.0, 0, 5.0],
+            [5.0, None, 5.0, 0],
+        ]
+    )
+    with pytest.raises(Exception) as exc_info:
+        dm = routing.DataModel(cost_matrix.shape[0], 3)
+        dm.add_cost_matrix(cost_matrix)
+    assert str(exc_info.value) == "cost matrix cannot have NULL values"
+
+
 def test_time_windows():
     cost_matrix = cudf.DataFrame(
         [
