@@ -27,6 +27,8 @@ If nothing failed or flaked across the run, this script writes an empty
 file and the poster skips commenting.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -34,6 +36,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from aggregate_common import (  # noqa: E402
@@ -154,11 +157,37 @@ def _failure_table(entries, columns, row_fn, cap=MAX_ROWS_PER_BUCKET):
 
 
 def build_comment_body(
-    agg, target_branch, github_run_url, sha="", run_date=""
-):
-    """Build the Markdown body for the sticky PR comment.
+    agg: dict[str, Any],
+    target_branch: str,
+    github_run_url: str,
+    sha: str = "",
+    run_date: str = "",
+) -> str:
+    """Build the Markdown body for the sticky PR test-classification comment.
 
-    Returns an empty string if there is nothing worth commenting on.
+    Renders a CAUTION callout for crashes (with collapsible details),
+    a CAUTION callout + table for NEW failures, and plain sub-sections
+    for KNOWN issues (recurring on nightly, known flaky on nightly,
+    flaked in this PR run only).
+
+    Args:
+        agg: Output of ``aggregate_summaries(...)``.  Must contain
+            ``all_new_failures``, ``all_recurring_failures``,
+            ``all_flaky_tests``, and ``matrix_grid``.
+        target_branch: PR target branch (e.g., ``main``); surfaced in
+            the comment meta line.
+        github_run_url: Workflow run URL — linked from the meta line.
+        sha: PR head SHA (truncated to 12 chars for display).
+        run_date: ``YYYY-MM-DD`` run date string.
+
+    Returns:
+        The full Markdown body, prefixed with ``COMMENT_MARKER`` and
+        capped at ``MAX_BODY_CHARS`` (with a "comment truncated" note
+        appended when the cap is hit).  Empty string when there are
+        no failures or flakes — callers must skip posting in that case.
+
+    Raises:
+        This function does not raise.
     """
     new_failures = agg["all_new_failures"]
     recurring = agg["all_recurring_failures"]
@@ -377,7 +406,24 @@ def build_comment_body(
     return body
 
 
-def main():
+def main() -> int:
+    """CLI entry point — aggregate PR summaries and write the comment body.
+
+    Reads per-matrix summary JSONs (from S3 or a local directory),
+    classifies failures, writes ``pr_comment.md`` and
+    ``pr_consolidated.json`` to ``--output-dir``.  When all tests
+    pass, writes an empty ``pr_comment.md`` so the poster skips
+    commenting.
+
+    Returns:
+        ``0`` on success (including the all-green / empty-body case),
+        or ``2`` when neither an S3 prefix nor a local directory was
+        provided.
+
+    Raises:
+        SystemExit: Indirectly via ``argparse`` if argument parsing
+            fails.
+    """
     parser = argparse.ArgumentParser(
         description="Aggregate per-matrix PR test summaries into a Markdown PR comment."
     )

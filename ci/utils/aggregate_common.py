@@ -13,10 +13,13 @@ Renderers (HTML dashboard for nightly; Markdown comment for PRs) stay in the
 respective aggregator scripts since their output formats diverge.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Ensure ci/utils is importable when invoked from a sibling script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,14 +31,32 @@ from s3_helpers import s3_download, s3_list  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def download_summaries(s3_prefix, local_dir, s3_fallback_prefix=""):
-    """Download all JSON summaries from S3 prefix into local_dir.
+def download_summaries(
+    s3_prefix: str,
+    local_dir: str | os.PathLike[str],
+    s3_fallback_prefix: str = "",
+) -> list[dict[str, Any]]:
+    """Download all JSON summaries from an S3 prefix into a local directory.
 
-    If s3_fallback_prefix is set and no summaries are found at s3_prefix,
-    retries with the fallback (used when the run-scoped path is empty
-    because uploads landed under the branch-scoped path).
+    If ``s3_fallback_prefix`` is set and no summaries are found at
+    ``s3_prefix``, retries with the fallback (used when the run-scoped
+    path is empty because uploads landed under the branch-scoped path).
 
-    Returns a list of loaded summary dicts.
+    Args:
+        s3_prefix: Primary S3 URI prefix to list (e.g.,
+            ``s3://bucket/ci_test_reports/pr/run-12345/``).
+        local_dir: Local directory to download into.  Created if absent.
+        s3_fallback_prefix: Optional secondary prefix to try when
+            ``s3_prefix`` yields no ``*.json`` summaries.
+
+    Returns:
+        List of loaded summary dicts.  Files that fail to parse are
+        skipped with a warning to stderr; the list contains only
+        successfully loaded entries.
+
+    Raises:
+        This function does not raise.  Underlying S3 / IO / JSON parse
+        errors are caught and logged.
     """
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -82,8 +103,22 @@ def download_summaries(s3_prefix, local_dir, s3_fallback_prefix=""):
     return summaries
 
 
-def load_local_summaries(local_dir):
-    """Load summaries from a local directory (for testing without S3)."""
+def load_local_summaries(
+    local_dir: str | os.PathLike[str],
+) -> list[dict[str, Any]]:
+    """Load JSON summaries from a local directory (for testing without S3).
+
+    Args:
+        local_dir: Directory containing ``*.json`` per-matrix summaries.
+
+    Returns:
+        List of loaded summary dicts.  Files that fail to parse are
+        skipped with a warning to stderr.
+
+    Raises:
+        This function does not raise.  IO / JSON parse errors are caught
+        and logged.
+    """
     local_dir = Path(local_dir)
     summaries = []
     for json_file in sorted(local_dir.glob("*.json")):
@@ -102,14 +137,32 @@ def load_local_summaries(local_dir):
 # ---------------------------------------------------------------------------
 
 
-def aggregate_summaries(summaries):
-    """Merge per-matrix summaries into a consolidated view.
+def aggregate_summaries(
+    summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge per-matrix summaries into a single consolidated view.
 
-    Returns a dict with:
-      - matrix_grid: list of {test_type, matrix_label, status, counts, ...}
-      - totals: aggregate counts
-      - all_new_failures, all_recurring_failures, all_flaky_tests,
-        all_resolved_tests: merged lists with matrix context added
+    Args:
+        summaries: List of per-matrix summary dicts as produced by
+            ``nightly_report.py`` (either nightly or PR mode).  Each
+            dict is expected to provide at least ``test_type``,
+            ``matrix_label``, ``counts``, and the per-bucket failure
+            lists; missing fields default to safe values.
+
+    Returns:
+        Consolidated dict with keys:
+
+          - ``matrix_grid``: list of per-matrix status dicts (sorted
+            by ``test_type`` then ``matrix_label``).
+          - ``totals``: aggregate test counts across all matrices.
+          - ``all_new_failures``, ``all_recurring_failures``,
+            ``all_flaky_tests``, ``all_resolved_tests``: merged failure
+            lists with per-entry ``test_type`` / ``matrix_label``
+            context added.
+          - ``has_new_flaky``: True iff any summary flagged a new flaky.
+
+    Raises:
+        This function does not raise.  Malformed entries are tolerated.
     """
     grid = []
     totals = {
@@ -187,7 +240,20 @@ def aggregate_summaries(summaries):
 # ---------------------------------------------------------------------------
 
 
-def html_escape(text):
+def html_escape(text: Any) -> str:
+    """Escape HTML special characters in ``text``.
+
+    Args:
+        text: Any value; converted to ``str`` before escaping.
+
+    Returns:
+        ``str(text)`` with ``&``, ``<``, ``>`` and ``"`` replaced by
+        their HTML entity equivalents.  Safe for inclusion in HTML
+        attribute values and element bodies.
+
+    Raises:
+        This function does not raise.
+    """
     return (
         str(text)
         .replace("&", "&amp;")

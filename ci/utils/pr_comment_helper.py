@@ -18,6 +18,8 @@ The hidden marker is defined here as the single source of truth and
 re-used by ``aggregate_pr.py`` when it builds the comment body.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -64,16 +66,47 @@ def _gh_request(method, url, token, payload=None, timeout=30):
         return None
 
 
-def resolve_base_ref(repo, pr_number, token):
-    """Return the PR's target branch (e.g. ``main``)."""
+def resolve_base_ref(repo: str, pr_number: int, token: str) -> str:
+    """Return the PR's target branch (e.g. ``main``).
+
+    Args:
+        repo: GitHub ``owner/name`` slug.
+        pr_number: Pull-request number.
+        token: GitHub token with at least ``pull-requests: read``.
+
+    Returns:
+        The PR's base ref, or ``"main"`` if the API response lacks one.
+
+    Raises:
+        RuntimeError: If the underlying GitHub API call fails.
+    """
     data = _gh_request(
         "GET", f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}", token
     )
     return ((data or {}).get("base") or {}).get("ref", "main")
 
 
-def find_existing_comment_id(repo, pr_number, token, marker):
-    """Find a comment whose body starts with ``marker``.  Returns id or None."""
+def find_existing_comment_id(
+    repo: str, pr_number: int, token: str, marker: str
+) -> int | None:
+    """Find the id of a PR comment whose body starts with ``marker``.
+
+    Paginates through issue comments (100 per page) until a match is
+    found or all pages are exhausted.
+
+    Args:
+        repo: GitHub ``owner/name`` slug.
+        pr_number: Pull-request number.
+        token: GitHub token with ``pull-requests: read``.
+        marker: Hidden HTML-comment marker that identifies the sticky
+            comment (matched after stripping leading whitespace).
+
+    Returns:
+        The integer comment id, or ``None`` if no comment matches.
+
+    Raises:
+        RuntimeError: If a GitHub API call fails.
+    """
     page = 1
     while True:
         url = (
@@ -90,10 +123,29 @@ def find_existing_comment_id(repo, pr_number, token, marker):
         page += 1
 
 
-def post_or_update_comment(repo, pr_number, token, body, marker):
-    """Update the existing sticky comment if present; otherwise create one.
+def post_or_update_comment(
+    repo: str, pr_number: int, token: str, body: str, marker: str
+) -> str:
+    """Update the existing sticky PR comment if present; otherwise create one.
 
-    Returns the comment URL (``html_url``) or ``""``.
+    Looks up an existing comment by ``marker``; if found, ``PATCH``es it
+    in place; otherwise ``POST``s a new one.
+
+    Args:
+        repo: GitHub ``owner/name`` slug.
+        pr_number: Pull-request number.
+        token: GitHub token with ``pull-requests: write``.
+        body: Full Markdown body to post (must already include
+            ``marker`` somewhere near the top for future lookups).
+        marker: Hidden HTML-comment marker that identifies the sticky
+            comment.
+
+    Returns:
+        The created/updated comment's ``html_url``, or ``""`` if the
+        API response lacked one.
+
+    Raises:
+        RuntimeError: If a GitHub API call fails.
     """
     existing_id = find_existing_comment_id(repo, pr_number, token, marker)
     payload = {"body": body}
@@ -143,7 +195,17 @@ def _add_common_args(sp):
     )
 
 
-def main():
+def main() -> int:
+    """Dispatch to the requested subcommand.
+
+    Returns:
+        ``0`` on success, ``1`` if a GitHub API call failed, or ``2``
+        if a token was not provided.
+
+    Raises:
+        SystemExit: Indirectly via ``argparse`` if argument parsing
+            fails.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 

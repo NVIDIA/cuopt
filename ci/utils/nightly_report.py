@@ -34,6 +34,8 @@ Usage:
       --s3-summary-uri s3://bucket/ci_test_reports/nightly/summaries/2026-04-13/python-cuda12.9-py3.12-x86_64.json
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -41,6 +43,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
 
 # Ensure ci/utils is importable when invoked as a script
@@ -373,8 +376,15 @@ def update_history(history, classified, sha, date_str):
 # ---------------------------------------------------------------------------
 
 
-def classify_pr_against_history(classified, history):
-    """Classify PR run results by comparing against the nightly history.
+def classify_pr_against_history(
+    classified: dict[str, list[dict[str, Any]]],
+    history: dict[str, Any],
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    """Classify PR run results against the nightly failure history.
 
     Read-only: never mutates ``history``.  Each failure is annotated with a
     ``pr_classification`` field used by the PR comment renderer.
@@ -384,43 +394,66 @@ def classify_pr_against_history(classified, history):
 
       - ``new_failures``: hard failures the PR introduced.  ``pr_classification=new``.
       - ``recurring_failures``: hard failures known to nightly.
-        ``pr_classification`` is ``known_recurring`` (active on nightly) or
-        ``known_flaky_nightly`` (history flagged the test flaky).
+        ``pr_classification`` is ``known_flaky_nightly`` when the history
+        flagged the test as cross-run flaky (checked first, since it is a
+        more specific signal than mere "currently active"), or
+        ``known_recurring`` when the test is active on nightly but not
+        flagged flaky.
       - ``flaky_tests``: tests that passed on retry within the PR run.
         ``pr_classification`` is ``known_flaky_nightly`` (already known
         flaky), ``known_recurring`` (hard-failing on nightly but flaked
         here), or ``known_flaky_pr`` (only flaked in this PR run).
 
-    Returns ``(new_failures, recurring_failures, flaky_tests)``.
+    Args:
+        classified: Output of ``classify_failures(...)`` — a mapping with
+            keys ``passed``, ``failed``, ``error``, ``flaky``, ``skipped``
+            whose values are lists of per-testcase dicts.
+        history: Loaded nightly history JSON.  Expected to contain a
+            ``tests`` mapping keyed by ``suite::classname::name``; absent
+            or malformed input is treated as empty history.
+
+    Returns:
+        Tuple ``(new_failures, recurring_failures, flaky_tests)``.  Each
+        list contains the original testcase dict augmented with a
+        ``pr_classification`` string and, where applicable, ``first_seen``
+        and ``failure_count`` keys pulled from history.
+
+    Raises:
+        This function does not raise.  Malformed ``history`` (missing
+        ``tests`` mapping, missing per-test fields) is tolerated.
     """
     tests_history = history.get("tests", {})
 
-    new_failures = []
-    recurring_failures = []
-    flaky_tests = []
+    new_failures: list[dict[str, Any]] = []
+    recurring_failures: list[dict[str, Any]] = []
+    flaky_tests: list[dict[str, Any]] = []
 
-    def _key(entry):
+    def _key(entry: dict[str, Any]) -> str:
         return f"{entry['suite']}::{entry['classname']}::{entry['name']}"
 
     # Hard failures: failed/errored in PR run, did NOT pass on retry.
+    # Check ``is_flaky`` before ``status == 'active'`` so a test marked
+    # both active and flaky lands in ``known_flaky_nightly`` (the more
+    # specific signal).  Matches the precedence in the flaky-in-run loop
+    # below.
     for entry in classified["failed"] + classified["error"]:
         rec = tests_history.get(_key(entry))
-        if rec and rec.get("status") == "active":
-            recurring_failures.append(
-                {
-                    **entry,
-                    "first_seen": rec.get("first_seen_date", "unknown"),
-                    "failure_count": rec.get("failure_count", 0),
-                    "pr_classification": "known_recurring",
-                }
-            )
-        elif rec and rec.get("is_flaky"):
+        if rec and rec.get("is_flaky"):
             recurring_failures.append(
                 {
                     **entry,
                     "first_seen": rec.get("first_seen_date", "unknown"),
                     "failure_count": rec.get("failure_count", 0),
                     "pr_classification": "known_flaky_nightly",
+                }
+            )
+        elif rec and rec.get("status") == "active":
+            recurring_failures.append(
+                {
+                    **entry,
+                    "first_seen": rec.get("first_seen_date", "unknown"),
+                    "failure_count": rec.get("failure_count", 0),
+                    "pr_classification": "known_recurring",
                 }
             )
         else:
