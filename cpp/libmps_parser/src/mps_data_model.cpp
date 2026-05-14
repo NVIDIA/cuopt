@@ -435,9 +435,9 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-template class mps_data_model_t<int, float>;
+template class MPS_PARSER_EXPORT mps_data_model_t<int, float>;
 
-template class mps_data_model_t<int, double>;
+template class MPS_PARSER_EXPORT mps_data_model_t<int, double>;
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I
 

@@ -106,6 +106,7 @@ outputs:
       script:
         content: |
           cmake --install cpp/libmps_parser/build
+          ./ci/check_symbols.sh "$PREFIX/lib/libmps_parser.so"
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
@@ -159,6 +160,7 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
+          ./ci/check_symbols.sh "$PREFIX/lib/libcuopt.so"
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:

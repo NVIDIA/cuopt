@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
 #include <raft/core/handle.hpp>
@@ -17,7 +18,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -206,4 +208,5 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<std::string> row_names_{};
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

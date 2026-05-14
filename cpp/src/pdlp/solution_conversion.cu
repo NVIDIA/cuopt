@@ -217,9 +217,9 @@ cuopt::cython::mip_ret_t cpu_mip_solution_t<i_t, f_t>::to_cpu_mip_ret_t()
 // Explicit template instantiations
 template cuopt::cython::linear_programming_ret_t
 gpu_lp_solution_t<int, double>::to_linear_programming_ret_t();
-template cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t();
-template cuopt::cython::linear_programming_ret_t
+template CUOPT_EXPORT cuopt::cython::mip_ret_t gpu_mip_solution_t<int, double>::to_mip_ret_t();
+template CUOPT_EXPORT cuopt::cython::linear_programming_ret_t
 cpu_lp_solution_t<int, double>::to_cpu_linear_programming_ret_t();
-template cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
+template CUOPT_EXPORT cuopt::cython::mip_ret_t cpu_mip_solution_t<int, double>::to_cpu_mip_ret_t();
 
 }  // namespace cuopt::linear_programming

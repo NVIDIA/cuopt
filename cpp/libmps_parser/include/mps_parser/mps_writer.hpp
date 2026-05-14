@@ -8,6 +8,7 @@
 #pragma once
 
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/export.hpp>
 #include <mps_parser/mps_data_model.hpp>
 
 #include <stdarg.h>
@@ -18,7 +19,8 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::mps_parser {
+namespace cuopt {
+namespace MPS_PARSER_EXPORT mps_parser {
 
 /**
  * @brief Main writer class for MPS files
@@ -60,4 +62,5 @@ class mps_writer_t {
   static data_model_view_t<i_t, f_t> create_view(const mps_data_model_t<i_t, f_t>& model);
 };  // class mps_writer_t
 
-}  // namespace cuopt::mps_parser
+}  // namespace MPS_PARSER_EXPORT mps_parser
+}  // namespace cuopt

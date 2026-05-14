@@ -2099,28 +2099,28 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
 }
 
 #define INSTANTIATE(F_TYPE)                                                                      \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                                \
+  template CUOPT_EXPORT optimization_problem_solution_t<int, F_TYPE> solve_lp(                   \
     optimization_problem_t<int, F_TYPE>& op_problem,                                             \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
     bool problem_checking,                                                                       \
     bool use_pdlp_solver_mode,                                                                   \
     bool is_batch_mode);                                                                         \
                                                                                                  \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                                \
+  template CUOPT_EXPORT optimization_problem_solution_t<int, F_TYPE> solve_lp(                   \
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,                      \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
     bool problem_checking,                                                                       \
     bool use_pdlp_solver_mode);                                                                  \
                                                                                                  \
-  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(                       \
+  template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(          \
     cpu_optimization_problem_t<int, F_TYPE>&,                                                    \
     pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
     bool,                                                                                        \
     bool,                                                                                        \
     bool);                                                                                       \
                                                                                                  \
-  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(                       \
+  template CUOPT_EXPORT std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(          \
     optimization_problem_interface_t<int, F_TYPE>*,                                              \
     pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
     bool,                                                                                        \

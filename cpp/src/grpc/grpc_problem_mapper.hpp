@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
+
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
@@ -18,7 +20,8 @@ namespace cuopt::remote {
 class ChunkedProblemHeader;
 }
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -128,4 +131,5 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
   const std::string& upload_id,
   int64_t chunk_size_bytes);
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

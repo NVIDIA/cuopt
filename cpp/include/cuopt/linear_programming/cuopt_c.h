@@ -9,6 +9,7 @@
 #define CUOPT_C_API_H
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/common/export.hpp>
 
 #include <stdint.h>
 
@@ -76,12 +77,12 @@ typedef int64_t cuopt_int_t;
  *
  * @return The size in bytes of the float type.
  */
-int8_t cuOptGetFloatSize();
+CUOPT_EXPORT int8_t cuOptGetFloatSize();
 
 /** @brief Get the size of the integer type used by the library.
  * @return The size of the integer type in bytes.
  */
-int8_t cuOptGetIntSize();
+CUOPT_EXPORT int8_t cuOptGetIntSize();
 
 /**
  * @brief Get the version of the library.
@@ -95,9 +96,9 @@ int8_t cuOptGetIntSize();
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
-                            cuopt_int_t* version_minor,
-                            cuopt_int_t* version_patch);
+CUOPT_EXPORT cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
+                                         cuopt_int_t* version_minor,
+                                         cuopt_int_t* version_patch);
 
 /**
  * @brief Read an optimization problem from an MPS file.
@@ -109,7 +110,8 @@ cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptReadProblem(const char* filename,
+                                          cuOptOptimizationProblem* problem_ptr);
 
 /**
  * @brief Write an optimization problem to a file.
@@ -121,9 +123,9 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
  * @return A status code indicating success or failure. Returns CUOPT_INVALID_ARGUMENT
  *         if an unsupported format is specified.
  */
-cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
-                              const char* filename,
-                              cuopt_int_t format);
+CUOPT_EXPORT cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
+                                           const char* filename,
+                                           cuopt_int_t format);
 
 /** @brief Create an optimization problem of the form
  *
@@ -168,20 +170,21 @@ cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
  * @param[out] problem_ptr Pointer to store the created optimization problem
  * @return CUOPT_SUCCESS if successful, CUOPT_ERROR otherwise
  */
-cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
-                               cuopt_int_t num_variables,
-                               cuopt_int_t objective_sense,
-                               cuopt_float_t objective_offset,
-                               const cuopt_float_t* objective_coefficients,
-                               const cuopt_int_t* constraint_matrix_row_offsets,
-                               const cuopt_int_t* constraint_matrix_column_indices,
-                               const cuopt_float_t* constraint_matrix_coefficent_values,
-                               const char* constraint_sense,
-                               const cuopt_float_t* rhs,
-                               const cuopt_float_t* lower_bounds,
-                               const cuopt_float_t* upper_bounds,
-                               const char* variable_types,
-                               cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT cuopt_int_t
+cuOptCreateProblem(cuopt_int_t num_constraints,
+                   cuopt_int_t num_variables,
+                   cuopt_int_t objective_sense,
+                   cuopt_float_t objective_offset,
+                   const cuopt_float_t* objective_coefficients,
+                   const cuopt_int_t* constraint_matrix_row_offsets,
+                   const cuopt_int_t* constraint_matrix_column_indices,
+                   const cuopt_float_t* constraint_matrix_coefficent_values,
+                   const char* constraint_sense,
+                   const cuopt_float_t* rhs,
+                   const cuopt_float_t* lower_bounds,
+                   const cuopt_float_t* upper_bounds,
+                   const char* variable_types,
+                   cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Create an optimization problem of the form *
  * @verbatim
@@ -237,20 +240,21 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
-                                     cuopt_int_t num_variables,
-                                     cuopt_int_t objective_sense,
-                                     cuopt_float_t objective_offset,
-                                     const cuopt_float_t* objective_coefficients,
-                                     const cuopt_int_t* constraint_matrix_row_offsets,
-                                     const cuopt_int_t* constraint_matrix_column_indices,
-                                     const cuopt_float_t* constraint_matrix_coefficients,
-                                     const cuopt_float_t* constraint_lower_bounds,
-                                     const cuopt_float_t* constraint_upper_bounds,
-                                     const cuopt_float_t* variable_lower_bounds,
-                                     const cuopt_float_t* variable_upper_bounds,
-                                     const char* variable_types,
-                                     cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT cuopt_int_t
+cuOptCreateRangedProblem(cuopt_int_t num_constraints,
+                         cuopt_int_t num_variables,
+                         cuopt_int_t objective_sense,
+                         cuopt_float_t objective_offset,
+                         const cuopt_float_t* objective_coefficients,
+                         const cuopt_int_t* constraint_matrix_row_offsets,
+                         const cuopt_int_t* constraint_matrix_column_indices,
+                         const cuopt_float_t* constraint_matrix_coefficients,
+                         const cuopt_float_t* constraint_lower_bounds,
+                         const cuopt_float_t* constraint_upper_bounds,
+                         const cuopt_float_t* variable_lower_bounds,
+                         const cuopt_float_t* variable_upper_bounds,
+                         const char* variable_types,
+                         cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Create an optimization problem of the form
  *
@@ -306,23 +310,23 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
  * @param[out] problem_ptr Pointer to store the created optimization problem
  * @return CUOPT_SUCCESS if successful, CUOPT_ERROR otherwise
  */
-cuopt_int_t cuOptCreateQuadraticProblem(
-  cuopt_int_t num_constraints,
-  cuopt_int_t num_variables,
-  cuopt_int_t objective_sense,
-  cuopt_float_t objective_offset,
-  const cuopt_float_t* objective_coefficients,
-  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
-  const cuopt_int_t* quadratic_objective_matrix_column_indices,
-  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
-  const cuopt_int_t* constraint_matrix_row_offsets,
-  const cuopt_int_t* constraint_matrix_column_indices,
-  const cuopt_float_t* constraint_matrix_coefficent_values,
-  const char* constraint_sense,
-  const cuopt_float_t* rhs,
-  const cuopt_float_t* lower_bounds,
-  const cuopt_float_t* upper_bounds,
-  cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT cuopt_int_t
+cuOptCreateQuadraticProblem(cuopt_int_t num_constraints,
+                            cuopt_int_t num_variables,
+                            cuopt_int_t objective_sense,
+                            cuopt_float_t objective_offset,
+                            const cuopt_float_t* objective_coefficients,
+                            const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+                            const cuopt_int_t* quadratic_objective_matrix_column_indices,
+                            const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+                            const cuopt_int_t* constraint_matrix_row_offsets,
+                            const cuopt_int_t* constraint_matrix_column_indices,
+                            const cuopt_float_t* constraint_matrix_coefficent_values,
+                            const char* constraint_sense,
+                            const cuopt_float_t* rhs,
+                            const cuopt_float_t* lower_bounds,
+                            const cuopt_float_t* upper_bounds,
+                            cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Create an optimization problem of the form *
  * @verbatim
@@ -388,30 +392,30 @@ cuopt_int_t cuOptCreateQuadraticProblem(
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptCreateQuadraticRangedProblem(
-  cuopt_int_t num_constraints,
-  cuopt_int_t num_variables,
-  cuopt_int_t objective_sense,
-  cuopt_float_t objective_offset,
-  const cuopt_float_t* objective_coefficients,
-  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
-  const cuopt_int_t* quadratic_objective_matrix_column_indices,
-  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
-  const cuopt_int_t* constraint_matrix_row_offsets,
-  const cuopt_int_t* constraint_matrix_column_indices,
-  const cuopt_float_t* constraint_matrix_coefficients,
-  const cuopt_float_t* constraint_lower_bounds,
-  const cuopt_float_t* constraint_upper_bounds,
-  const cuopt_float_t* variable_lower_bounds,
-  const cuopt_float_t* variable_upper_bounds,
-  cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT cuopt_int_t
+cuOptCreateQuadraticRangedProblem(cuopt_int_t num_constraints,
+                                  cuopt_int_t num_variables,
+                                  cuopt_int_t objective_sense,
+                                  cuopt_float_t objective_offset,
+                                  const cuopt_float_t* objective_coefficients,
+                                  const cuopt_int_t* quadratic_objective_matrix_row_offsets,
+                                  const cuopt_int_t* quadratic_objective_matrix_column_indices,
+                                  const cuopt_float_t* quadratic_objective_matrix_coefficent_values,
+                                  const cuopt_int_t* constraint_matrix_row_offsets,
+                                  const cuopt_int_t* constraint_matrix_column_indices,
+                                  const cuopt_float_t* constraint_matrix_coefficients,
+                                  const cuopt_float_t* constraint_lower_bounds,
+                                  const cuopt_float_t* constraint_upper_bounds,
+                                  const cuopt_float_t* variable_lower_bounds,
+                                  const cuopt_float_t* variable_upper_bounds,
+                                  cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Destroy an optimization problem
  *
  * @param[in, out] problem_ptr - A pointer to a cuOptOptimizationProblem. On
  *  output the problem will be destroyed, and the pointer will be set to NULL.
  */
-void cuOptDestroyProblem(cuOptOptimizationProblem* problem_ptr);
+CUOPT_EXPORT void cuOptDestroyProblem(cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Get the number of constraints of an optimization problem.
  *
@@ -422,8 +426,8 @@ void cuOptDestroyProblem(cuOptOptimizationProblem* problem_ptr);
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
-                                   cuopt_int_t* num_constraints_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
+                                                cuopt_int_t* num_constraints_ptr);
 
 /** @brief Get the number of variables of an optimization problem.
  *
@@ -434,7 +438,8 @@ cuopt_int_t cuOptGetNumConstraints(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem, cuopt_int_t* num_variables_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem,
+                                              cuopt_int_t* num_variables_ptr);
 
 /** @brief Get the objective sense of an optimization problem.
  *
@@ -445,8 +450,8 @@ cuopt_int_t cuOptGetNumVariables(cuOptOptimizationProblem problem, cuopt_int_t* 
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetObjectiveSense(cuOptOptimizationProblem problem,
-                                   cuopt_int_t* objective_sense_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetObjectiveSense(cuOptOptimizationProblem problem,
+                                                cuopt_int_t* objective_sense_ptr);
 
 /** @brief Get the objective offset of an optimization problem.
  *
@@ -457,8 +462,8 @@ cuopt_int_t cuOptGetObjectiveSense(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetObjectiveOffset(cuOptOptimizationProblem problem,
-                                    cuopt_float_t* objective_offset_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetObjectiveOffset(cuOptOptimizationProblem problem,
+                                                 cuopt_float_t* objective_offset_ptr);
 
 /** @brief Get the objective coefficients of an optimization problem.
  *
@@ -470,8 +475,8 @@ cuopt_int_t cuOptGetObjectiveOffset(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
-                                          cuopt_float_t* objective_coefficients_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
+                                                       cuopt_float_t* objective_coefficients_ptr);
 
 /** @brief Get the number of non-zero elements in the constraint matrix of an
  *  optimization problem.
@@ -483,7 +488,8 @@ cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem, cuopt_int_t* num_non_zeros_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem,
+                                             cuopt_int_t* num_non_zeros_ptr);
 
 /** @brief Get the constraint matrix of an optimization problem in compressed sparse row format.
  *
@@ -503,10 +509,11 @@ cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem, cuopt_int_t* n
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
-                                     cuopt_int_t* constraint_matrix_row_offsets_ptr,
-                                     cuopt_int_t* constraint_matrix_column_indices_ptr,
-                                     cuopt_float_t* constraint_matrix_coefficients_ptr);
+CUOPT_EXPORT cuopt_int_t
+cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
+                         cuopt_int_t* constraint_matrix_row_offsets_ptr,
+                         cuopt_int_t* constraint_matrix_column_indices_ptr,
+                         cuopt_float_t* constraint_matrix_coefficients_ptr);
 
 /** @brief Get the constraint sense of an optimization problem.
  *
@@ -517,7 +524,8 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetConstraintSense(cuOptOptimizationProblem problem, char* constraint_sense_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetConstraintSense(cuOptOptimizationProblem problem,
+                                                 char* constraint_sense_ptr);
 
 /** @brief Get the right-hand side of an optimization problem.
  *
@@ -528,8 +536,8 @@ cuopt_int_t cuOptGetConstraintSense(cuOptOptimizationProblem problem, char* cons
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetConstraintRightHandSide(cuOptOptimizationProblem problem,
-                                            cuopt_float_t* rhs_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetConstraintRightHandSide(cuOptOptimizationProblem problem,
+                                                         cuopt_float_t* rhs_ptr);
 
 /** @brief Get the lower bounds of an optimization problem.
  *
@@ -540,8 +548,8 @@ cuopt_int_t cuOptGetConstraintRightHandSide(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetConstraintLowerBounds(cuOptOptimizationProblem problem,
-                                          cuopt_float_t* lower_bounds_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetConstraintLowerBounds(cuOptOptimizationProblem problem,
+                                                       cuopt_float_t* lower_bounds_ptr);
 
 /** @brief Get the upper bounds of an optimization problem.
  *
@@ -552,8 +560,8 @@ cuopt_int_t cuOptGetConstraintLowerBounds(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetConstraintUpperBounds(cuOptOptimizationProblem problem,
-                                          cuopt_float_t* upper_bounds_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetConstraintUpperBounds(cuOptOptimizationProblem problem,
+                                                       cuopt_float_t* upper_bounds_ptr);
 
 /** @brief Get the lower bounds of an optimization problem.
  *
@@ -564,8 +572,8 @@ cuopt_int_t cuOptGetConstraintUpperBounds(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetVariableLowerBounds(cuOptOptimizationProblem problem,
-                                        cuopt_float_t* lower_bounds_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetVariableLowerBounds(cuOptOptimizationProblem problem,
+                                                     cuopt_float_t* lower_bounds_ptr);
 
 /** @brief Get the upper bounds of an optimization problem.
  *
@@ -576,8 +584,8 @@ cuopt_int_t cuOptGetVariableLowerBounds(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
-                                        cuopt_float_t* upper_bounds_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
+                                                     cuopt_float_t* upper_bounds_ptr);
 
 /** @brief Get the variable types of an optimization problem.
  *
@@ -589,7 +597,8 @@ cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variable_types_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem,
+                                               char* variable_types_ptr);
 
 /** @brief Create a solver settings object.
  *
@@ -598,14 +607,14 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptCreateSolverSettings(cuOptSolverSettings* settings_ptr);
 
 /** @brief Destroy a solver settings object.
  *
  * @param[in, out] settings_ptr - A pointer to a cuOptSolverSettings object. On output
  *  the solver settings will be destroyed and the pointer will be set to NULL.
  */
-void cuOptDestroySolverSettings(cuOptSolverSettings* settings_ptr);
+CUOPT_EXPORT void cuOptDestroySolverSettings(cuOptSolverSettings* settings_ptr);
 
 /** @brief Set a parameter of a solver settings object.
  *
@@ -615,9 +624,9 @@ void cuOptDestroySolverSettings(cuOptSolverSettings* settings_ptr);
  *
  * @param[in] parameter_value - The value of the parameter to set.
  */
-cuopt_int_t cuOptSetParameter(cuOptSolverSettings settings,
-                              const char* parameter_name,
-                              const char* parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptSetParameter(cuOptSolverSettings settings,
+                                           const char* parameter_name,
+                                           const char* parameter_value);
 
 /** @brief Get a parameter of a solver settings object.
  *
@@ -632,10 +641,10 @@ cuopt_int_t cuOptSetParameter(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetParameter(cuOptSolverSettings settings,
-                              const char* parameter_name,
-                              cuopt_int_t parameter_value_size,
-                              char* parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptGetParameter(cuOptSolverSettings settings,
+                                           const char* parameter_name,
+                                           cuopt_int_t parameter_value_size,
+                                           char* parameter_value);
 
 /** @brief Set an integer parameter of a solver settings object.
  *
@@ -647,9 +656,9 @@ cuopt_int_t cuOptGetParameter(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
-                                     const char* parameter_name,
-                                     cuopt_int_t parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
+                                                  const char* parameter_name,
+                                                  cuopt_int_t parameter_value);
 
 /** @brief Get an integer parameter of a solver settings object.
  *
@@ -662,9 +671,9 @@ cuopt_int_t cuOptSetIntegerParameter(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
-                                     const char* parameter_name,
-                                     cuopt_int_t* parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
+                                                  const char* parameter_name,
+                                                  cuopt_int_t* parameter_value);
 
 /** @brief Set a float parameter of a solver settings object.
  *
@@ -676,9 +685,9 @@ cuopt_int_t cuOptGetIntegerParameter(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetFloatParameter(cuOptSolverSettings settings,
-                                   const char* parameter_name,
-                                   cuopt_float_t parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptSetFloatParameter(cuOptSolverSettings settings,
+                                                const char* parameter_name,
+                                                cuopt_float_t parameter_value);
 
 /** @brief Get a float parameter of a solver settings object.
  *
@@ -691,9 +700,9 @@ cuopt_int_t cuOptSetFloatParameter(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
-                                   const char* parameter_name,
-                                   cuopt_float_t* parameter_value);
+CUOPT_EXPORT cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
+                                                const char* parameter_name,
+                                                cuopt_float_t* parameter_value);
 
 /**
  * @brief Type of callback for receiving incumbent MIP solutions with user context.
@@ -744,9 +753,9 @@ typedef void (*cuOptMIPSetSolutionCallback)(cuopt_float_t* solution,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
-                                           cuOptMIPGetSolutionCallback callback,
-                                           void* user_data);
+CUOPT_EXPORT cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
+                                                        cuOptMIPGetSolutionCallback callback,
+                                                        void* user_data);
 
 /**
  * @brief Register a callback to inject MIP solutions.
@@ -762,9 +771,9 @@ cuopt_int_t cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
-                                           cuOptMIPSetSolutionCallback callback,
-                                           void* user_data);
+CUOPT_EXPORT cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
+                                                        cuOptMIPSetSolutionCallback callback,
+                                                        void* user_data);
 /**
  * @brief Set the initial primal solution for an LP solve.
  *
@@ -778,9 +787,9 @@ cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
  * @note All pointer arguments (primal_solution) refer to host memory.
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
-                                          const cuopt_float_t* primal_solution,
-                                          cuopt_int_t num_variables);
+CUOPT_EXPORT cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
+                                                       const cuopt_float_t* primal_solution,
+                                                       cuopt_int_t num_variables);
 
 /**
  * @brief Set the initial dual solution for an LP solve.
@@ -795,9 +804,9 @@ cuopt_int_t cuOptSetInitialPrimalSolution(cuOptSolverSettings settings,
  * @note All pointer arguments (dual_solution) refer to host memory.
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSetInitialDualSolution(cuOptSolverSettings settings,
-                                        const cuopt_float_t* dual_solution,
-                                        cuopt_int_t num_constraints);
+CUOPT_EXPORT cuopt_int_t cuOptSetInitialDualSolution(cuOptSolverSettings settings,
+                                                     const cuopt_float_t* dual_solution,
+                                                     cuopt_int_t num_constraints);
 
 /**
  * @brief Add an initial solution (MIP start) for MIP solving.
@@ -815,9 +824,9 @@ cuopt_int_t cuOptSetInitialDualSolution(cuOptSolverSettings settings,
  * @note All pointer arguments (solution) refer to host memory.
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptAddMIPStart(cuOptSolverSettings settings,
-                             const cuopt_float_t* solution,
-                             cuopt_int_t num_variables);
+CUOPT_EXPORT cuopt_int_t cuOptAddMIPStart(cuOptSolverSettings settings,
+                                          const cuopt_float_t* solution,
+                                          cuopt_int_t num_variables);
 
 /** @brief Check if an optimization problem is a mixed integer programming problem.
  *
@@ -828,7 +837,7 @@ cuopt_int_t cuOptAddMIPStart(cuOptSolverSettings settings,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptIsMIP(cuOptOptimizationProblem problem, cuopt_int_t* is_mip_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptIsMIP(cuOptOptimizationProblem problem, cuopt_int_t* is_mip_ptr);
 
 /** @brief Solve an optimization problem.
  *
@@ -841,16 +850,16 @@ cuopt_int_t cuOptIsMIP(cuOptOptimizationProblem problem, cuopt_int_t* is_mip_ptr
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
-                       cuOptSolverSettings settings,
-                       cuOptSolution* solution_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
+                                    cuOptSolverSettings settings,
+                                    cuOptSolution* solution_ptr);
 
 /** @brief Destroy a solution object.
  *
  * @param[in, out] solution_ptr - A pointer to a cuOptSolution object. On output
  *  the solution will be destroyed and the pointer will be set to NULL.
  */
-void cuOptDestroySolution(cuOptSolution* solution_ptr);
+CUOPT_EXPORT void cuOptDestroySolution(cuOptSolution* solution_ptr);
 
 /** @brief Get the termination reason of an optimization problem.
  *
@@ -861,7 +870,8 @@ void cuOptDestroySolution(cuOptSolution* solution_ptr);
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetTerminationStatus(cuOptSolution solution, cuopt_int_t* termination_status_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetTerminationStatus(cuOptSolution solution,
+                                                   cuopt_int_t* termination_status_ptr);
 
 /* @brief Get the error status of a solution object.
  *
@@ -872,7 +882,7 @@ cuopt_int_t cuOptGetTerminationStatus(cuOptSolution solution, cuopt_int_t* termi
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetErrorStatus(cuOptSolution solution, cuopt_int_t* error_status_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetErrorStatus(cuOptSolution solution, cuopt_int_t* error_status_ptr);
 
 /* @brief Get the error string of a solution object.
  *
@@ -885,9 +895,9 @@ cuopt_int_t cuOptGetErrorStatus(cuOptSolution solution, cuopt_int_t* error_statu
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
-                                char* error_string_ptr,
-                                cuopt_int_t error_string_size);
+CUOPT_EXPORT cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
+                                             char* error_string_ptr,
+                                             cuopt_int_t error_string_size);
 
 /* @brief Get the solution of an optimization problem.
  *
@@ -898,7 +908,8 @@ cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* solution_values);
+CUOPT_EXPORT cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution,
+                                                cuopt_float_t* solution_values);
 
 /** @brief Get the objective value of an optimization problem.
  *
@@ -909,7 +920,8 @@ cuopt_int_t cuOptGetPrimalSolution(cuOptSolution solution, cuopt_float_t* soluti
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetObjectiveValue(cuOptSolution solution, cuopt_float_t* objective_value_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetObjectiveValue(cuOptSolution solution,
+                                                cuopt_float_t* objective_value_ptr);
 
 /** @brief Get the solve time of an optimization problem.
  *
@@ -919,7 +931,7 @@ cuopt_int_t cuOptGetObjectiveValue(cuOptSolution solution, cuopt_float_t* object
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetSolveTime(cuOptSolution solution, cuopt_float_t* solve_time_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetSolveTime(cuOptSolution solution, cuopt_float_t* solve_time_ptr);
 
 /** @brief Get the relative MIP gap of an optimization problem.
  *
@@ -930,7 +942,7 @@ cuopt_int_t cuOptGetSolveTime(cuOptSolution solution, cuopt_float_t* solve_time_
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetMIPGap(cuOptSolution solution, cuopt_float_t* mip_gap_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetMIPGap(cuOptSolution solution, cuopt_float_t* mip_gap_ptr);
 
 /** @brief Get the solution bound of an optimization problem.
  *
@@ -941,7 +953,8 @@ cuopt_int_t cuOptGetMIPGap(cuOptSolution solution, cuopt_float_t* mip_gap_ptr);
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solution_bound_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution,
+                                               cuopt_float_t* solution_bound_ptr);
 
 /** @brief Get the dual solution of an optimization problem.
  *
@@ -952,7 +965,8 @@ cuopt_int_t cuOptGetSolutionBound(cuOptSolution solution, cuopt_float_t* solutio
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_solution_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetDualSolution(cuOptSolution solution,
+                                              cuopt_float_t* dual_solution_ptr);
 
 /** @brief Get the dual objective value of an optimization problem.
  *
@@ -963,8 +977,8 @@ cuopt_int_t cuOptGetDualSolution(cuOptSolution solution, cuopt_float_t* dual_sol
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
-                                       cuopt_float_t* dual_objective_value_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
+                                                    cuopt_float_t* dual_objective_value_ptr);
 
 /** @brief Get the reduced costs of an optimization problem.
  *
@@ -975,7 +989,8 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
+CUOPT_EXPORT cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution,
+                                              cuopt_float_t* reduced_cost_ptr);
 
 #ifdef __cplusplus
 }

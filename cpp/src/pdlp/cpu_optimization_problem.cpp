@@ -1058,10 +1058,10 @@ void cpu_optimization_problem_t<i_t, f_t>::copy_variable_types_to_host(var_t* ou
 // ==============================================================================
 
 #if MIP_INSTANTIATE_FLOAT
-template class cpu_optimization_problem_t<int32_t, float>;
+template class CUOPT_EXPORT cpu_optimization_problem_t<int32_t, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
-template class cpu_optimization_problem_t<int32_t, double>;
+template class CUOPT_EXPORT cpu_optimization_problem_t<int32_t, double>;
 #endif
 
 }  // namespace cuopt::linear_programming

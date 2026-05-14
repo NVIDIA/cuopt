@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/common/export.hpp>
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
@@ -22,7 +23,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Possible reasons for terminating
 enum class pdlp_termination_status_t : int8_t {
@@ -310,4 +312,5 @@ class optimization_problem_solution_t : public base_solution_t {
   /** error struct */
   cuopt::logic_error error_status_;
 };
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

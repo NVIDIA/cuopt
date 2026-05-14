@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <mps_parser/export.hpp>
 #include <mps_parser/mps_data_model.hpp>
 
 #include <stdarg.h>
@@ -17,7 +18,8 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::mps_parser {
+namespace cuopt {
+namespace MPS_PARSER_EXPORT mps_parser {
 
 /**
  * @brief Different possible types of 'ROWS'
@@ -203,4 +205,5 @@ class mps_parser_t {
 
 };  // class mps_parser_t
 
-}  // namespace cuopt::mps_parser
+}  // namespace MPS_PARSER_EXPORT mps_parser
+}  // namespace cuopt

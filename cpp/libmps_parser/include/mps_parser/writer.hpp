@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,10 +8,12 @@
 #pragma once
 
 #include <mps_parser/data_model_view.hpp>
+#include <mps_parser/export.hpp>
 
 // TODO: we might want to eventually rename libmps_parser to libmps_io
 // (or libcuopt_io if we want to support other hypothetical formats)
-namespace cuopt::mps_parser {
+namespace cuopt {
+namespace MPS_PARSER_EXPORT mps_parser {
 
 /**
  * @brief Writes the problem to an MPS formatted file
@@ -25,4 +27,5 @@ namespace cuopt::mps_parser {
 template <typename i_t, typename f_t>
 void write_mps(const data_model_view_t<i_t, f_t>& problem, const std::string& mps_file_path);
 
-}  // namespace cuopt::mps_parser
+}  // namespace MPS_PARSER_EXPORT mps_parser
+}  // namespace cuopt

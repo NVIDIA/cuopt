@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/common/export.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
@@ -21,7 +22,8 @@
 
 #include <cuda/std/span>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -349,4 +351,5 @@ class pdlp_solver_settings_t {
   friend class solver_settings_t<i_t, f_t>;
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

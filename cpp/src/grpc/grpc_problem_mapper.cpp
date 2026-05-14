@@ -698,10 +698,12 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
 
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
-template void map_problem_to_proto(const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
-                                   cuopt::remote::OptimizationProblem* pb_problem);
-template void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
-                                   cpu_optimization_problem_t<int32_t, float>& cpu_problem);
+template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, float>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& pb_problem,
+  cpu_optimization_problem_t<int32_t, float>& cpu_problem);
 template size_t estimate_problem_proto_size(
   const cpu_optimization_problem_t<int32_t, float>& cpu_problem);
 template void populate_chunked_header_lp(
@@ -727,10 +729,12 @@ template std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_req
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
-template void map_problem_to_proto(const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
-                                   cuopt::remote::OptimizationProblem* pb_problem);
-template void map_proto_to_problem(const cuopt::remote::OptimizationProblem& pb_problem,
-                                   cpu_optimization_problem_t<int32_t, double>& cpu_problem);
+template CUOPT_EXPORT void map_problem_to_proto(
+  const cpu_optimization_problem_t<int32_t, double>& cpu_problem,
+  cuopt::remote::OptimizationProblem* pb_problem);
+template CUOPT_EXPORT void map_proto_to_problem(
+  const cuopt::remote::OptimizationProblem& pb_problem,
+  cpu_optimization_problem_t<int32_t, double>& cpu_problem);
 template size_t estimate_problem_proto_size(
   const cpu_optimization_problem_t<int32_t, double>& cpu_problem);
 template void populate_chunked_header_lp(
@@ -742,10 +746,10 @@ template void populate_chunked_header_mip(
   const mip_solver_settings_t<int32_t, double>& settings,
   bool enable_incumbents,
   cuopt::remote::ChunkedProblemHeader* header);
-template void map_chunked_header_to_problem(
+template CUOPT_EXPORT void map_chunked_header_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   cpu_optimization_problem_t<int32_t, double>& cpu_problem);
-template void map_chunked_arrays_to_problem(
+template CUOPT_EXPORT void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   cpu_optimization_problem_t<int32_t, double>& cpu_problem);

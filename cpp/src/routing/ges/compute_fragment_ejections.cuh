@@ -35,6 +35,23 @@ __global__ void kernel_get_best_insertion_ejection_solution(
   feasible_move_t feasible_candidates,
   int64_t seed);
 
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void* kernel_get_best_insertion_ejection_solution_ptr();
+
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void launch_kernel_get_best_insertion_ejection_solution(
+  dim3 grid,
+  dim3 block,
+  size_t shared_memory,
+  rmm::cuda_stream_view stream,
+  typename solution_t<i_t, f_t, REQUEST>::view_t solution,
+  const request_info_t<i_t, REQUEST>* request_id,
+  i_t* p_scores,
+  i_t fragment_size,
+  i_t fragment_step,
+  feasible_move_t feasible_candidates,
+  int64_t seed);
+
 template <int BLOCK_SIZE,
           typename i_t,
           typename f_t,

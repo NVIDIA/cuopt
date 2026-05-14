@@ -7,13 +7,16 @@
 
 #pragma once
 
+#include <mps_parser/export.hpp>
+
 #include <cstdint>
 #include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-namespace cuopt::mps_parser {
+namespace cuopt {
+namespace MPS_PARSER_EXPORT mps_parser {
 
 /**
  * @brief A representation of a linear programming (LP) optimization problem
@@ -383,4 +386,5 @@ class mps_data_model_t {
 
 };  // class mps_data_model_t
 
-}  // namespace cuopt::mps_parser
+}  // namespace MPS_PARSER_EXPORT mps_parser
+}  // namespace cuopt

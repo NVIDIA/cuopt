@@ -1692,8 +1692,8 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
 }
 
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
-template class mps_parser_t<int, float>;
+template class MPS_PARSER_EXPORT mps_parser_t<int, float>;
 
-template class mps_parser_t<int, double>;
+template class MPS_PARSER_EXPORT mps_parser_t<int, double>;
 
 }  // namespace cuopt::mps_parser

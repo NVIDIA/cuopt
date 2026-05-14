@@ -1438,55 +1438,397 @@ __global__ void handle_local_minimum_kernel(typename fj_t<i_t, f_t>::climber_dat
 // to save from compilation time, separate those and instantiate separately rather being part of a
 // class
 
-#define INSTANTIATE(F_TYPE)                                                           \
-  template __global__ void compute_iteration_related_variables_kernel<int, F_TYPE>(   \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void load_balancing_prepare_iteration<int, F_TYPE>(             \
-    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
-  template __global__ void load_balancing_compute_workid_mappings<int, F_TYPE>(       \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj,                            \
-    raft::device_span<int> row_size_prefix_sum,                                       \
-    raft::device_span<int> var_indices,                                               \
-    raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx);        \
-  template __global__ void load_balancing_init_cstr_bounds_csr<int, F_TYPE>(          \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj,                            \
-    raft::device_span<int> row_size_prefix_sum,                                       \
-    raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx);        \
-  template __global__ void load_balancing_compute_scores_binary<int, F_TYPE>(         \
-    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
-  template __global__ void load_balancing_mtm_compute_candidates<int, F_TYPE>(        \
-    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
-  template __global__ void load_balancing_mtm_compute_scores<int, F_TYPE>(            \
-    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
-  template __global__ void load_balancing_sanity_checks<int, F_TYPE>(                 \
-    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);   \
-  template __global__ void init_lhs_and_violation<int, F_TYPE>(                       \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void update_lift_moves_kernel<int, F_TYPE>(                     \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void update_breakthrough_moves_kernel<int, F_TYPE>(             \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void handle_local_minimum_kernel<int, F_TYPE>(                  \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void update_assignment_kernel<int, F_TYPE>(                     \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool IgnoreLoadBalancing); \
-  template __global__ void update_changed_constraints_kernel<int, F_TYPE>(            \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void update_best_solution_kernel<int, F_TYPE>(                  \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                           \
-  template __global__ void                                                            \
-  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(         \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
-  template __global__ void                                                            \
-  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>(          \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
-  template __global__ void                                                            \
-  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, false>(        \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
-  template __global__ void                                                            \
-  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, true>(         \
-    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                     \
-  template __global__ void select_variable_kernel<int, F_TYPE>(                       \
+template <typename i_t, typename f_t>
+void* update_assignment_kernel_ptr()
+{
+  return reinterpret_cast<void*>(update_assignment_kernel<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* update_changed_constraints_kernel_ptr()
+{
+  return reinterpret_cast<void*>(update_changed_constraints_kernel<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+void* compute_mtm_moves_kernel_ptr()
+{
+  return reinterpret_cast<void*>(compute_mtm_moves_kernel<i_t, f_t, move_type, is_binary_pb>);
+}
+
+template <typename i_t, typename f_t>
+void* handle_local_minimum_kernel_ptr()
+{
+  return reinterpret_cast<void*>(handle_local_minimum_kernel<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* update_lift_moves_kernel_ptr()
+{
+  return reinterpret_cast<void*>(update_lift_moves_kernel<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* load_balancing_compute_workid_mappings_kernel_ptr()
+{
+  return reinterpret_cast<void*>(load_balancing_compute_workid_mappings<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* load_balancing_compute_scores_binary_kernel_ptr()
+{
+  return reinterpret_cast<void*>(load_balancing_compute_scores_binary<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* load_balancing_mtm_compute_candidates_kernel_ptr()
+{
+  return reinterpret_cast<void*>(load_balancing_mtm_compute_candidates<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* load_balancing_mtm_compute_scores_kernel_ptr()
+{
+  return reinterpret_cast<void*>(load_balancing_mtm_compute_scores<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+void* load_balancing_prepare_iteration_kernel_ptr()
+{
+  return reinterpret_cast<void*>(load_balancing_prepare_iteration<i_t, f_t>);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_load_balancing_prepare_iteration(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+  rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchCooperativeKernel(
+    reinterpret_cast<void*>(load_balancing_prepare_iteration<i_t, f_t>),
+    grid,
+    block,
+    kernel_args,
+    0,
+    stream);
+}
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_compute_scores_binary(dim3 grid,
+                                                 dim3 block,
+                                                 typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                                 rmm::cuda_stream_view stream)
+{
+  load_balancing_compute_scores_binary<i_t, f_t><<<grid, block, 0, stream>>>(fj);
+}
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_mtm_compute_candidates(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+  rmm::cuda_stream_view stream)
+{
+  load_balancing_mtm_compute_candidates<i_t, f_t><<<grid, block, 0, stream>>>(fj);
+}
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_mtm_compute_scores(dim3 grid,
+                                              dim3 block,
+                                              typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                              rmm::cuda_stream_view stream)
+{
+  load_balancing_mtm_compute_scores<i_t, f_t><<<grid, block, 0, stream>>>(fj);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_update_lift_moves_kernel(dim3 grid,
+                                            dim3 block,
+                                            typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                            rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchKernel(reinterpret_cast<void*>(update_lift_moves_kernel<i_t, f_t>),
+                          grid,
+                          block,
+                          kernel_args,
+                          0,
+                          stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_update_breakthrough_moves_kernel(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+  rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchKernel(reinterpret_cast<void*>(update_breakthrough_moves_kernel<i_t, f_t>),
+                          grid,
+                          block,
+                          kernel_args,
+                          0,
+                          stream);
+}
+
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+cudaError_t launch_compute_mtm_moves_kernel(dim3 grid,
+                                            dim3 block,
+                                            typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                            bool* force_refresh,
+                                            rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj, force_refresh};
+  return cudaLaunchCooperativeKernel(
+    reinterpret_cast<void*>(compute_mtm_moves_kernel<i_t, f_t, move_type, is_binary_pb>),
+    grid,
+    block,
+    kernel_args,
+    0,
+    stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_select_variable_kernel(dim3 grid,
+                                          dim3 block,
+                                          typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                          rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchKernel(
+    reinterpret_cast<void*>(select_variable_kernel<i_t, f_t>), grid, block, kernel_args, 0, stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_handle_local_minimum_kernel(dim3 grid,
+                                               dim3 block,
+                                               typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                               rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchCooperativeKernel(reinterpret_cast<void*>(handle_local_minimum_kernel<i_t, f_t>),
+                                     grid,
+                                     block,
+                                     kernel_args,
+                                     0,
+                                     stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_update_assignment_kernel(dim3 grid,
+                                            dim3 block,
+                                            typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                            bool* ignore_load_balancing,
+                                            rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj, ignore_load_balancing};
+  return cudaLaunchKernel(reinterpret_cast<void*>(update_assignment_kernel<i_t, f_t>),
+                          grid,
+                          block,
+                          kernel_args,
+                          0,
+                          stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_update_changed_constraints_kernel(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+  rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchKernel(reinterpret_cast<void*>(update_changed_constraints_kernel<i_t, f_t>),
+                          grid,
+                          block,
+                          kernel_args,
+                          0,
+                          stream);
+}
+
+template <typename i_t, typename f_t>
+cudaError_t launch_load_balancing_sanity_checks(dim3 grid,
+                                                dim3 block,
+                                                typename fj_t<i_t, f_t>::climber_data_t::view_t* fj,
+                                                rmm::cuda_stream_view stream)
+{
+  void* kernel_args[] = {fj};
+  return cudaLaunchCooperativeKernel(
+    reinterpret_cast<void*>(load_balancing_sanity_checks<i_t, f_t>),
+    grid,
+    block,
+    kernel_args,
+    0,
+    stream);
+}
+
+template <typename i_t, typename f_t>
+void launch_init_lhs_and_violation(dim3 grid,
+                                   dim3 block,
+                                   typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                   rmm::cuda_stream_view stream)
+{
+  init_lhs_and_violation<i_t, f_t><<<grid, block, 0, stream>>>(fj);
+}
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_compute_workid_mappings(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+  raft::device_span<i_t> row_size_prefix_sum,
+  raft::device_span<i_t> var_indices,
+  raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx,
+  rmm::cuda_stream_view stream)
+{
+  load_balancing_compute_workid_mappings<i_t, f_t>
+    <<<grid, block, 0, stream>>>(fj, row_size_prefix_sum, var_indices, work_id_to_var_idx);
+}
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_init_cstr_bounds_csr(
+  dim3 grid,
+  dim3 block,
+  typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+  raft::device_span<i_t> row_size_prefix_sum,
+  raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx,
+  rmm::cuda_stream_view stream)
+{
+  load_balancing_init_cstr_bounds_csr<i_t, f_t>
+    <<<grid, block, 0, stream>>>(fj, row_size_prefix_sum, work_id_to_var_idx);
+}
+
+template <typename i_t, typename f_t>
+void launch_update_best_solution_kernel(dim3 grid,
+                                        dim3 block,
+                                        typename fj_t<i_t, f_t>::climber_data_t::view_t fj,
+                                        rmm::cuda_stream_view stream)
+{
+  update_best_solution_kernel<i_t, f_t><<<grid, block, 0, stream>>>(fj);
+}
+
+#define INSTANTIATE(F_TYPE)                                                                        \
+  template void* update_assignment_kernel_ptr<int, F_TYPE>();                                      \
+  template void* update_changed_constraints_kernel_ptr<int, F_TYPE>();                             \
+  template void* compute_mtm_moves_kernel_ptr<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(); \
+  template void* compute_mtm_moves_kernel_ptr<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>();  \
+  template void* handle_local_minimum_kernel_ptr<int, F_TYPE>();                                   \
+  template void* update_lift_moves_kernel_ptr<int, F_TYPE>();                                      \
+  template void* load_balancing_compute_workid_mappings_kernel_ptr<int, F_TYPE>();                 \
+  template void* load_balancing_compute_scores_binary_kernel_ptr<int, F_TYPE>();                   \
+  template void* load_balancing_mtm_compute_candidates_kernel_ptr<int, F_TYPE>();                  \
+  template void* load_balancing_mtm_compute_scores_kernel_ptr<int, F_TYPE>();                      \
+  template void* load_balancing_prepare_iteration_kernel_ptr<int, F_TYPE>();                       \
+  template cudaError_t launch_load_balancing_prepare_iteration<int, F_TYPE>(                       \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template void launch_load_balancing_compute_scores_binary<int, F_TYPE>(                          \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t, rmm::cuda_stream_view);        \
+  template void launch_load_balancing_mtm_compute_candidates<int, F_TYPE>(                         \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t, rmm::cuda_stream_view);        \
+  template void launch_load_balancing_mtm_compute_scores<int, F_TYPE>(                             \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t, rmm::cuda_stream_view);        \
+  template cudaError_t launch_update_lift_moves_kernel<int, F_TYPE>(                               \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template cudaError_t launch_update_breakthrough_moves_kernel<int, F_TYPE>(                       \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template cudaError_t                                                                             \
+  launch_compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(               \
+    dim3,                                                                                          \
+    dim3,                                                                                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t*,                                           \
+    bool*,                                                                                         \
+    rmm::cuda_stream_view);                                                                        \
+  template cudaError_t                                                                             \
+  launch_compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>(                \
+    dim3,                                                                                          \
+    dim3,                                                                                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t*,                                           \
+    bool*,                                                                                         \
+    rmm::cuda_stream_view);                                                                        \
+  template cudaError_t launch_select_variable_kernel<int, F_TYPE>(                                 \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template cudaError_t launch_handle_local_minimum_kernel<int, F_TYPE>(                            \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template cudaError_t launch_update_assignment_kernel<int, F_TYPE>(                               \
+    dim3,                                                                                          \
+    dim3,                                                                                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t*,                                           \
+    bool*,                                                                                         \
+    rmm::cuda_stream_view);                                                                        \
+  template cudaError_t launch_update_changed_constraints_kernel<int, F_TYPE>(                      \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template cudaError_t launch_load_balancing_sanity_checks<int, F_TYPE>(                           \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t*, rmm::cuda_stream_view);       \
+  template void launch_init_lhs_and_violation<int, F_TYPE>(                                        \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t, rmm::cuda_stream_view);        \
+  template void launch_load_balancing_compute_workid_mappings<int, F_TYPE>(                        \
+    dim3,                                                                                          \
+    dim3,                                                                                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t,                                            \
+    raft::device_span<int>,                                                                        \
+    raft::device_span<int>,                                                                        \
+    raft::device_span<fj_load_balancing_workid_mapping_t>,                                         \
+    rmm::cuda_stream_view);                                                                        \
+  template void launch_load_balancing_init_cstr_bounds_csr<int, F_TYPE>(                           \
+    dim3,                                                                                          \
+    dim3,                                                                                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t,                                            \
+    raft::device_span<int>,                                                                        \
+    raft::device_span<fj_load_balancing_workid_mapping_t>,                                         \
+    rmm::cuda_stream_view);                                                                        \
+  template void launch_update_best_solution_kernel<int, F_TYPE>(                                   \
+    dim3, dim3, typename fj_t<int, F_TYPE>::climber_data_t::view_t, rmm::cuda_stream_view);        \
+  template __global__ void compute_iteration_related_variables_kernel<int, F_TYPE>(                \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void load_balancing_prepare_iteration<int, F_TYPE>(                          \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                \
+  template __global__ void load_balancing_compute_workid_mappings<int, F_TYPE>(                    \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj,                                         \
+    raft::device_span<int> row_size_prefix_sum,                                                    \
+    raft::device_span<int> var_indices,                                                            \
+    raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx);                     \
+  template __global__ void load_balancing_init_cstr_bounds_csr<int, F_TYPE>(                       \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj,                                         \
+    raft::device_span<int> row_size_prefix_sum,                                                    \
+    raft::device_span<fj_load_balancing_workid_mapping_t> work_id_to_var_idx);                     \
+  template __global__ void load_balancing_compute_scores_binary<int, F_TYPE>(                      \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                \
+  template __global__ void load_balancing_mtm_compute_candidates<int, F_TYPE>(                     \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                \
+  template __global__ void load_balancing_mtm_compute_scores<int, F_TYPE>(                         \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                \
+  template __global__ void load_balancing_sanity_checks<int, F_TYPE>(                              \
+    const __grid_constant__ typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                \
+  template __global__ void init_lhs_and_violation<int, F_TYPE>(                                    \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void update_lift_moves_kernel<int, F_TYPE>(                                  \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void update_breakthrough_moves_kernel<int, F_TYPE>(                          \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void handle_local_minimum_kernel<int, F_TYPE>(                               \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void update_assignment_kernel<int, F_TYPE>(                                  \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool IgnoreLoadBalancing);              \
+  template __global__ void update_changed_constraints_kernel<int, F_TYPE>(                         \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void update_best_solution_kernel<int, F_TYPE>(                               \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);                                        \
+  template __global__ void                                                                         \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, false>(                      \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                                  \
+  template __global__ void                                                                         \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_VIOLATED, true>(                       \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                                  \
+  template __global__ void                                                                         \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, false>(                     \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                                  \
+  template __global__ void                                                                         \
+  compute_mtm_moves_kernel<int, F_TYPE, MTMMoveType::FJ_MTM_SATISFIED, true>(                      \
+    typename fj_t<int, F_TYPE>::climber_data_t::view_t fj, bool);                                  \
+  template __global__ void select_variable_kernel<int, F_TYPE>(                                    \
     typename fj_t<int, F_TYPE>::climber_data_t::view_t fj);
 
 #if MIP_INSTANTIATE_FLOAT

@@ -662,24 +662,24 @@ void build_mip_solution_proto(const cuopt::remote::ChunkedResultHeader& header,
 
 // Explicit template instantiations
 #if CUOPT_INSTANTIATE_FLOAT
-template void map_lp_solution_to_proto(const cpu_lp_solution_t<int32_t, float>& solution,
-                                       cuopt::remote::LPSolution* pb_solution);
-template cpu_lp_solution_t<int32_t, float> map_proto_to_lp_solution(
+template CUOPT_EXPORT void map_lp_solution_to_proto(
+  const cpu_lp_solution_t<int32_t, float>& solution, cuopt::remote::LPSolution* pb_solution);
+template CUOPT_EXPORT cpu_lp_solution_t<int32_t, float> map_proto_to_lp_solution(
   const cuopt::remote::LPSolution& pb_solution);
-template void map_mip_solution_to_proto(const cpu_mip_solution_t<int32_t, float>& solution,
-                                        cuopt::remote::MIPSolution* pb_solution);
-template cpu_mip_solution_t<int32_t, float> map_proto_to_mip_solution(
+template CUOPT_EXPORT void map_mip_solution_to_proto(
+  const cpu_mip_solution_t<int32_t, float>& solution, cuopt::remote::MIPSolution* pb_solution);
+template CUOPT_EXPORT cpu_mip_solution_t<int32_t, float> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution);
 template size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<int32_t, float>& solution);
 template size_t estimate_mip_solution_proto_size(
   const cpu_mip_solution_t<int32_t, float>& solution);
-template void populate_chunked_result_header_lp(const cpu_lp_solution_t<int32_t, float>& solution,
-                                                cuopt::remote::ChunkedResultHeader* header);
-template void populate_chunked_result_header_mip(const cpu_mip_solution_t<int32_t, float>& solution,
-                                                 cuopt::remote::ChunkedResultHeader* header);
-template std::map<int32_t, std::vector<uint8_t>> collect_lp_solution_arrays(
+template CUOPT_EXPORT void populate_chunked_result_header_lp(
+  const cpu_lp_solution_t<int32_t, float>& solution, cuopt::remote::ChunkedResultHeader* header);
+template CUOPT_EXPORT void populate_chunked_result_header_mip(
+  const cpu_mip_solution_t<int32_t, float>& solution, cuopt::remote::ChunkedResultHeader* header);
+template CUOPT_EXPORT std::map<int32_t, std::vector<uint8_t>> collect_lp_solution_arrays(
   const cpu_lp_solution_t<int32_t, float>& solution);
-template std::map<int32_t, std::vector<uint8_t>> collect_mip_solution_arrays(
+template CUOPT_EXPORT std::map<int32_t, std::vector<uint8_t>> collect_mip_solution_arrays(
   const cpu_mip_solution_t<int32_t, float>& solution);
 template cpu_lp_solution_t<int32_t, float> chunked_result_to_lp_solution(
   const cuopt::remote::ChunkedResultHeader& header,
@@ -687,35 +687,35 @@ template cpu_lp_solution_t<int32_t, float> chunked_result_to_lp_solution(
 template cpu_mip_solution_t<int32_t, float> chunked_result_to_mip_solution(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays);
-template void build_lp_solution_proto<int32_t, float>(
+template CUOPT_EXPORT void build_lp_solution_proto<int32_t, float>(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   cuopt::remote::LPSolution* proto);
-template void build_mip_solution_proto<int32_t, float>(
+template CUOPT_EXPORT void build_mip_solution_proto<int32_t, float>(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   cuopt::remote::MIPSolution* proto);
 #endif
 
 #if CUOPT_INSTANTIATE_DOUBLE
-template void map_lp_solution_to_proto(const cpu_lp_solution_t<int32_t, double>& solution,
-                                       cuopt::remote::LPSolution* pb_solution);
-template cpu_lp_solution_t<int32_t, double> map_proto_to_lp_solution(
+template CUOPT_EXPORT void map_lp_solution_to_proto(
+  const cpu_lp_solution_t<int32_t, double>& solution, cuopt::remote::LPSolution* pb_solution);
+template CUOPT_EXPORT cpu_lp_solution_t<int32_t, double> map_proto_to_lp_solution(
   const cuopt::remote::LPSolution& pb_solution);
-template void map_mip_solution_to_proto(const cpu_mip_solution_t<int32_t, double>& solution,
-                                        cuopt::remote::MIPSolution* pb_solution);
-template cpu_mip_solution_t<int32_t, double> map_proto_to_mip_solution(
+template CUOPT_EXPORT void map_mip_solution_to_proto(
+  const cpu_mip_solution_t<int32_t, double>& solution, cuopt::remote::MIPSolution* pb_solution);
+template CUOPT_EXPORT cpu_mip_solution_t<int32_t, double> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution);
 template size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<int32_t, double>& solution);
 template size_t estimate_mip_solution_proto_size(
   const cpu_mip_solution_t<int32_t, double>& solution);
-template void populate_chunked_result_header_lp(const cpu_lp_solution_t<int32_t, double>& solution,
-                                                cuopt::remote::ChunkedResultHeader* header);
-template void populate_chunked_result_header_mip(
+template CUOPT_EXPORT void populate_chunked_result_header_lp(
+  const cpu_lp_solution_t<int32_t, double>& solution, cuopt::remote::ChunkedResultHeader* header);
+template CUOPT_EXPORT void populate_chunked_result_header_mip(
   const cpu_mip_solution_t<int32_t, double>& solution, cuopt::remote::ChunkedResultHeader* header);
-template std::map<int32_t, std::vector<uint8_t>> collect_lp_solution_arrays(
+template CUOPT_EXPORT std::map<int32_t, std::vector<uint8_t>> collect_lp_solution_arrays(
   const cpu_lp_solution_t<int32_t, double>& solution);
-template std::map<int32_t, std::vector<uint8_t>> collect_mip_solution_arrays(
+template CUOPT_EXPORT std::map<int32_t, std::vector<uint8_t>> collect_mip_solution_arrays(
   const cpu_mip_solution_t<int32_t, double>& solution);
 template cpu_lp_solution_t<int32_t, double> chunked_result_to_lp_solution(
   const cuopt::remote::ChunkedResultHeader& header,
@@ -723,11 +723,11 @@ template cpu_lp_solution_t<int32_t, double> chunked_result_to_lp_solution(
 template cpu_mip_solution_t<int32_t, double> chunked_result_to_mip_solution(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays);
-template void build_lp_solution_proto<int32_t, double>(
+template CUOPT_EXPORT void build_lp_solution_proto<int32_t, double>(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   cuopt::remote::LPSolution* proto);
-template void build_mip_solution_proto<int32_t, double>(
+template CUOPT_EXPORT void build_mip_solution_proto<int32_t, double>(
   const cuopt::remote::ChunkedResultHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
   cuopt::remote::MIPSolution* proto);

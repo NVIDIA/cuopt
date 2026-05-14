@@ -520,7 +520,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   mps_file.close();
 }
 
-template class mps_writer_t<int, float>;
-template class mps_writer_t<int, double>;
+template class MPS_PARSER_EXPORT mps_writer_t<int, float>;
+template class MPS_PARSER_EXPORT mps_writer_t<int, double>;
 
 }  // namespace cuopt::mps_parser

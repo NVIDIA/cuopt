@@ -256,10 +256,10 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class mip_solution_t<int, float>;
+template class CUOPT_EXPORT mip_solution_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class mip_solution_t<int, double>;
+template class CUOPT_EXPORT mip_solution_t<int, double>;
 #endif
 }  // namespace cuopt::linear_programming

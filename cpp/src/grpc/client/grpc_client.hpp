@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
@@ -35,7 +36,8 @@ class ResultResponse;
 class SubmitJobRequest;
 }  // namespace cuopt::remote
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
@@ -478,4 +480,5 @@ class grpc_client_t {
                              std::string& job_id_out);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

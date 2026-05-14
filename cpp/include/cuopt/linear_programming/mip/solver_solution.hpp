@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/common/export.hpp>
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -21,7 +22,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 enum class mip_termination_status_t : int8_t {
   NoTermination         = CUOPT_TERMINATION_STATUS_NO_TERMINATION,
@@ -92,4 +94,5 @@ class mip_solution_t : public base_solution_t {
   std::vector<rmm::device_uvector<f_t>> solution_pool_;
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

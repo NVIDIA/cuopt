@@ -1593,10 +1593,10 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
 // ==============================================================================
 // Explicit template instantiations matching MIP constants
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class optimization_problem_t<int32_t, float>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
-template class optimization_problem_t<int32_t, double>;
+template class CUOPT_EXPORT optimization_problem_t<int32_t, double>;
 #endif
 
 #if PDLP_INSTANTIATE_FLOAT || MIP_INSTANTIATE_FLOAT

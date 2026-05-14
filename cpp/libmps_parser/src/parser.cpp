@@ -28,12 +28,13 @@ mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
   return problem;
 }
 
-template mps_data_model_t<int, float> parse_mps(const std::string& mps_file, bool fixed_mps_format);
-template mps_data_model_t<int, double> parse_mps(const std::string& mps_file,
-                                                 bool fixed_mps_format);
-template mps_data_model_t<int, float> parse_mps_from_string(std::string_view mps_contents,
-                                                            bool fixed_mps_format);
-template mps_data_model_t<int, double> parse_mps_from_string(std::string_view mps_contents,
-                                                             bool fixed_mps_format);
+template MPS_PARSER_EXPORT mps_data_model_t<int, float> parse_mps(const std::string& mps_file,
+                                                                  bool fixed_mps_format);
+template MPS_PARSER_EXPORT mps_data_model_t<int, double> parse_mps(const std::string& mps_file,
+                                                                   bool fixed_mps_format);
+template MPS_PARSER_EXPORT mps_data_model_t<int, float> parse_mps_from_string(
+  std::string_view mps_contents, bool fixed_mps_format);
+template MPS_PARSER_EXPORT mps_data_model_t<int, double> parse_mps_from_string(
+  std::string_view mps_contents, bool fixed_mps_format);
 
 }  // namespace cuopt::mps_parser

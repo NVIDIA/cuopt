@@ -5,12 +5,15 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
+
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
 #include <string>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -105,4 +108,5 @@ inline cuopt::remote::DeleteRequest build_delete_request(const std::string& job_
   return request;
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

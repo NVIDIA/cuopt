@@ -415,11 +415,11 @@ pdlp_solver_settings_t<i_t, f_t>::get_pdlp_warm_start_data_view() const noexcept
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class pdlp_solver_settings_t<int, float>;
+template class CUOPT_EXPORT pdlp_solver_settings_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class pdlp_solver_settings_t<int, double>;
+template class CUOPT_EXPORT pdlp_solver_settings_t<int, double>;
 #endif
 
 }  // namespace cuopt::linear_programming

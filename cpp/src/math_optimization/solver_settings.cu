@@ -630,25 +630,39 @@ bool solver_settings_t<i_t, f_t>::dump_parameters_to_file(const std::string& pat
 }
 
 #if MIP_INSTANTIATE_FLOAT
-template class solver_settings_t<int, float>;
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, int value);
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, float value);
-template void solver_settings_t<int, float>::set_parameter(const std::string& name, bool value);
-template int solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template float solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template bool solver_settings_t<int, float>::get_parameter(const std::string& name) const;
-template std::string solver_settings_t<int, float>::get_parameter(const std::string& name) const;
+template class CUOPT_EXPORT solver_settings_t<int, float>;
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        int value);
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        float value);
+template CUOPT_EXPORT void solver_settings_t<int, float>::set_parameter(const std::string& name,
+                                                                        bool value);
+template CUOPT_EXPORT int solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT float solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT bool solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT std::string solver_settings_t<int, float>::get_parameter(
+  const std::string& name) const;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class solver_settings_t<int, double>;
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, int value);
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, double value);
-template void solver_settings_t<int, double>::set_parameter(const std::string& name, bool value);
-template int solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template double solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template bool solver_settings_t<int, double>::get_parameter(const std::string& name) const;
-template std::string solver_settings_t<int, double>::get_parameter(const std::string& name) const;
+template class CUOPT_EXPORT solver_settings_t<int, double>;
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         int value);
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         double value);
+template CUOPT_EXPORT void solver_settings_t<int, double>::set_parameter(const std::string& name,
+                                                                         bool value);
+template CUOPT_EXPORT int solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT double solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT bool solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
+template CUOPT_EXPORT std::string solver_settings_t<int, double>::get_parameter(
+  const std::string& name) const;
 #endif
 
 }  // namespace cuopt::linear_programming

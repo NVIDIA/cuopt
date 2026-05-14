@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
@@ -16,7 +17,8 @@
 #include <raft/core/copy.hpp>
 #include <rmm/cuda_stream_view.hpp>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 /**
  * @brief GPU-backed LP solution (wraps optimization_problem_solution_t)
@@ -476,4 +478,5 @@ class gpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
   mip_solution_t<i_t, f_t> solution_;
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

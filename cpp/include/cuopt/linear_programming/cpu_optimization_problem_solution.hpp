@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
@@ -18,7 +19,8 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 /**
  * @brief CPU-backed LP solution (uses std::vector instead of rmm::device_uvector)
@@ -389,4 +391,5 @@ class cpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
   i_t num_simplex_iterations_;
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

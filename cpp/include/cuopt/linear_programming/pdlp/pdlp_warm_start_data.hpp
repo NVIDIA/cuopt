@@ -7,11 +7,14 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
+
 #include <rmm/device_uvector.hpp>
 
 #include <span>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 template <typename i_t, typename f_t>
 struct pdlp_warm_start_data_view_t;
@@ -99,4 +102,5 @@ struct pdlp_warm_start_data_view_t {
   i_t iterations_since_last_restart_{-1};
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

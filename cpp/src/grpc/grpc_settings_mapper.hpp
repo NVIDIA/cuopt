@@ -5,11 +5,14 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
+
 #include <cuopt_remote.pb.h>
 
 #include <cstdint>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -58,4 +61,5 @@ template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                                mip_solver_settings_t<i_t, f_t>& settings);
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cuopt/common/export.hpp>
+
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
@@ -17,7 +19,8 @@
 #include <map>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 /**
  * @brief Map cpu_lp_solution_t to protobuf LPSolution message.
@@ -180,4 +183,5 @@ void build_mip_solution_proto(const cuopt::remote::ChunkedResultHeader& header,
                               const std::map<int32_t, std::vector<uint8_t>>& arrays,
                               cuopt::remote::MIPSolution* proto);
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

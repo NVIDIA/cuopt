@@ -7,7 +7,10 @@
 
 #pragma once
 
-namespace cuopt::linear_programming {
+#include <cuopt/common/export.hpp>
+
+namespace cuopt {
+namespace CUOPT_EXPORT linear_programming {
 
 /**
  * @brief Enum for execution mode (local vs remote solve)
@@ -61,4 +64,5 @@ bool use_cpu_memory_for_local();
  */
 memory_backend_t get_memory_backend_type();
 
-}  // namespace cuopt::linear_programming
+}  // namespace CUOPT_EXPORT linear_programming
+}  // namespace cuopt

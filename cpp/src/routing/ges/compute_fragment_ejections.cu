@@ -113,6 +113,49 @@ __global__ void kernel_get_best_insertion_ejection_solution(
                                                                      fragment_step);
 }
 
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void* kernel_get_best_insertion_ejection_solution_ptr()
+{
+  return reinterpret_cast<void*>(
+    kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, i_t, f_t, REQUEST>);
+}
+
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void launch_kernel_get_best_insertion_ejection_solution(
+  dim3 grid,
+  dim3 block,
+  size_t shared_memory,
+  rmm::cuda_stream_view stream,
+  typename solution_t<i_t, f_t, REQUEST>::view_t solution,
+  const request_info_t<i_t, REQUEST>* request_id,
+  i_t* p_scores,
+  i_t fragment_size,
+  i_t fragment_step,
+  feasible_move_t feasible_candidates,
+  int64_t seed)
+{
+  kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, i_t, f_t, REQUEST>
+    <<<grid, block, shared_memory, stream>>>(
+      solution, request_id, p_scores, fragment_size, fragment_step, feasible_candidates, seed);
+}
+
+#define INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(BLOCK_SIZE, REQUEST)              \
+  template void*                                                                                  \
+  kernel_get_best_insertion_ejection_solution_ptr<BLOCK_SIZE, int, float, request_t::REQUEST>();  \
+  template void                                                                                   \
+  launch_kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, int, float, request_t::REQUEST>( \
+    dim3,                                                                                         \
+    dim3,                                                                                         \
+    size_t,                                                                                       \
+    rmm::cuda_stream_view,                                                                        \
+    typename solution_t<int, float, request_t::REQUEST>::view_t,                                  \
+    const request_info_t<int, request_t::REQUEST>*,                                               \
+    int*,                                                                                         \
+    int,                                                                                          \
+    int,                                                                                          \
+    feasible_move_t,                                                                              \
+    int64_t);
+
 template __global__ void
 kernel_get_best_insertion_ejection_solution<32, int, float, request_t::PDP>(
   typename solution_t<int, float, request_t::PDP>::view_t solution,
@@ -186,6 +229,17 @@ kernel_get_best_insertion_ejection_solution<512, int, float, request_t::VRP>(
   int fragment_step,
   feasible_move_t feasible_candidates,
   int64_t seed);
+
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(32, PDP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(64, PDP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(128, PDP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(512, PDP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(32, VRP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(64, VRP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(128, VRP)
+INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION(512, VRP)
+
+#undef INSTANTIATE_KERNEL_GET_BEST_INSERTION_EJECTION_SOLUTION
 }  // namespace detail
 }  // namespace routing
 }  // namespace cuopt

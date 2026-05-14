@@ -109,17 +109,17 @@ pdlp_warm_start_data_t<i_t, f_t> convert_to_gpu_warmstart(
 }
 
 #if MIP_INSTANTIATE_DOUBLE
-template cpu_pdlp_warm_start_data_t<int, double> convert_to_cpu_warmstart(
+template CUOPT_EXPORT cpu_pdlp_warm_start_data_t<int, double> convert_to_cpu_warmstart(
   const pdlp_warm_start_data_t<int, double>&, rmm::cuda_stream_view);
-template pdlp_warm_start_data_t<int, double> convert_to_gpu_warmstart(
+template CUOPT_EXPORT pdlp_warm_start_data_t<int, double> convert_to_gpu_warmstart(
   const cpu_pdlp_warm_start_data_t<int, double>&, rmm::cuda_stream_view);
 #endif
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template cpu_pdlp_warm_start_data_t<int, float> convert_to_cpu_warmstart(
+template CUOPT_EXPORT cpu_pdlp_warm_start_data_t<int, float> convert_to_cpu_warmstart(
   const pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
 
-template pdlp_warm_start_data_t<int, float> convert_to_gpu_warmstart(
+template CUOPT_EXPORT pdlp_warm_start_data_t<int, float> convert_to_gpu_warmstart(
   const cpu_pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
 #endif
 
