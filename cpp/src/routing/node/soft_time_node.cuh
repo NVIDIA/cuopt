@@ -26,7 +26,7 @@ namespace detail {
 //! Keep K small enough so that shared_route_size + size_of_frag stays within the device shmem
 //! limit. With K=32, routes with more than 32 orders silently drop the excess from the backward
 //! arrays (the oldest/leftmost orders), giving an approximate lateness penalty for those routes.
-static constexpr int MAX_SOFT_TIME_ROUTE_SIZE = 32;
+static constexpr int MAX_SOFT_TIME_ROUTE_SIZE = 48;
 
 /**
  * @brief Per-node state for the SOFT_TIME dimension.
