@@ -1490,12 +1490,20 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
   std::thread dual_simplex_thread;
+  std::exception_ptr dual_simplex_exception;
+  auto request_concurrent_halt = [&settings_pdlp]() {
+    if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
+  };
   if (!settings.inside_mip) {
-    dual_simplex_thread = std::thread(run_dual_simplex_thread<i_t, f_t>,
-                                      std::ref(dual_simplex_problem),
-                                      std::ref(settings_pdlp),
-                                      std::ref(sol_dual_simplex_ptr),
-                                      std::ref(timer));
+    dual_simplex_thread = std::thread([&]() {
+      try {
+        run_dual_simplex_thread<i_t, f_t>(
+          dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+      } catch (...) {
+        dual_simplex_exception = std::current_exception();
+        request_concurrent_halt();
+      }
+    });
   }
   // Create a thread for barrier.
   // The barrier handle is owned here so that its destructor runs on the
@@ -1505,25 +1513,28 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_barrier_ptr;
+  std::exception_ptr barrier_exception;
   auto barrier_thread = std::thread([&]() {
-    auto call_barrier_thread = [&]() {
-      rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-      barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
-      auto barrier_problem                 = dual_simplex_problem;
-      barrier_problem.handle_ptr           = barrier_handle_ptr.get();
+    try {
+      auto call_barrier_thread = [&]() {
+        rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+        barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
+        auto barrier_problem                 = dual_simplex_problem;
+        barrier_problem.handle_ptr           = barrier_handle_ptr.get();
 
-      run_barrier_thread<i_t, f_t>(std::ref(barrier_problem),
-                                   std::ref(settings_pdlp),
-                                   std::ref(sol_barrier_ptr),
-                                   std::ref(timer));
-    };
-    if (settings.num_gpus > 1) {
-      problem.handle_ptr->sync_stream();
-      raft::device_setter device_setter(1);  // Scoped variable
-      CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
-      call_barrier_thread();
-    } else {
-      call_barrier_thread();
+        run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
+      };
+      if (settings.num_gpus > 1) {
+        problem.handle_ptr->sync_stream();
+        raft::device_setter device_setter(1);  // Scoped variable
+        CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
+        call_barrier_thread();
+      } else {
+        call_barrier_thread();
+      }
+    } catch (...) {
+      barrier_exception = std::current_exception();
+      request_concurrent_halt();
     }
   });
 
@@ -1540,18 +1551,21 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   try {
     sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
   } catch (...) {
-    pdlp_exception                 = std::current_exception();
-    *settings_pdlp.concurrent_halt = 1;
-    std::rethrow_exception(pdlp_exception);
+    pdlp_exception = std::current_exception();
+    request_concurrent_halt();
   }
 
   // Wait for dual simplex thread to finish
-  if (!settings.inside_mip) { dual_simplex_thread.join(); }
+  if (dual_simplex_thread.joinable()) { dual_simplex_thread.join(); }
 
-  barrier_thread.join();
+  if (barrier_thread.joinable()) { barrier_thread.join(); }
   // At this point, it is safe to destroy the barrier context since we're outside of any PDLP graph
   // capture.
   barrier_handle_ptr.reset();
+
+  if (pdlp_exception) { std::rethrow_exception(pdlp_exception); }
+  if (dual_simplex_exception) { std::rethrow_exception(dual_simplex_exception); }
+  if (barrier_exception) { std::rethrow_exception(barrier_exception); }
 
   // copy the dual simplex solution to the device
   auto sol_dual_simplex =

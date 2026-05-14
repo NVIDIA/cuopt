@@ -233,16 +233,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                       is_legacy_batch_mode,
                       climber_strategies_,
                       settings_.hyper_params},
-    average_termination_strategy_{handle_ptr_,
-                                  op_problem,
-                                  op_problem_scaled_,
-                                  average_op_problem_evaluation_cusparse_view_,
-                                  pdhg_solver_.get_cusparse_view(),
-                                  primal_size_h_,
-                                  dual_size_h_,
-                                  initial_scaling_strategy_,
-                                  settings_,
-                                  climber_strategies_},
+    average_termination_strategy_{
+      handle_ptr_,
+      op_problem,
+      op_problem_scaled_,
+      average_op_problem_evaluation_cusparse_view_,
+      pdhg_solver_.get_cusparse_view(),
+      settings_.hyper_params.never_restart_to_average ? 0 : primal_size_h_,
+      settings_.hyper_params.never_restart_to_average ? 0 : dual_size_h_,
+      initial_scaling_strategy_,
+      settings_,
+      climber_strategies_},
     current_termination_strategy_{handle_ptr_,
                                   op_problem,
                                   op_problem_scaled_,
@@ -349,7 +350,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                                    ? -std::numeric_limits<f_t>::infinity()
                                                    : std::numeric_limits<f_t>::infinity();
   op_problem.check_problem_representation(true, false);
-  op_problem_scaled_.check_problem_representation(true, false);
 
   if (batch_mode_) {
     batch_solution_to_return_.get_additional_termination_informations().resize(
@@ -2319,6 +2319,14 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   // Update FP32 matrix copies for mixed precision SpMV after scaling
   pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
+
+  // Redirect cuSPARSE descriptors to use the original problem's structural data (offsets, indices),
+  // then free the duplicated structural vectors from the scaled copy to save device memory.
+  pdhg_solver_.get_cusparse_view().redirect_cusparse_csr_structure_pointers(*problem_ptr);
+  op_problem_scaled_.variables.resize(0, stream_view_);
+  op_problem_scaled_.offsets.resize(0, stream_view_);
+  op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
+  op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
 
   if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
       !settings_.get_initial_step_size().has_value())

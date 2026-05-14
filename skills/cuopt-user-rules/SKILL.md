@@ -130,12 +130,12 @@ If the result required a correction, retry, or workaround to reach this point, y
 
    | Language / Interface | Package | Check |
    |----------------------|---------|-------|
-   | **Python** | `cuopt` (pip/conda) | `import cuopt` |
-   | **C** | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
+   | **Python** | `cuopt` (pip/conda) — also pulls in `libcuopt` | `import cuopt` |
+   | **C** | `libcuopt` (pip/conda) — already present if `cuopt` is installed | `find libcuopt.so` or header check |
    | REST Server | `cuopt-server` or Docker | `curl /cuopt/health` |
    | CLI | `cuopt` package includes CLI | `cuopt_cli --help` |
 
-   **Note:** `libcuopt` (C library) is separate from the Python package — C and Python use different installs.
+   **Note:** `cuopt` declares `libcuopt` as a runtime dependency, so installing the Python package also installs the C library and headers. Installing `libcuopt` on its own does **not** install the Python API.
 
 3. **If not installed, ask how they want to access:**
    - "Would you like help installing cuOpt, or do you have access another way?"

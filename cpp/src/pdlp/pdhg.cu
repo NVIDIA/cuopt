@@ -55,8 +55,11 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
     problem_ptr(&op_problem_scaled),
     primal_size_h_(problem_ptr->n_variables),
     dual_size_h_(problem_ptr->n_constraints),
-    current_saddle_point_state_{
-      handle_ptr_, problem_ptr->n_variables, problem_ptr->n_constraints, climber_strategies.size()},
+    current_saddle_point_state_{handle_ptr_,
+                                problem_ptr->n_variables,
+                                problem_ptr->n_constraints,
+                                climber_strategies.size(),
+                                hyper_params},
     tmp_primal_{(climber_strategies.size() * problem_ptr->n_variables), stream_view_},
     tmp_dual_{(climber_strategies.size() * problem_ptr->n_constraints), stream_view_},
     potential_next_primal_solution_{(climber_strategies.size() * problem_ptr->n_variables),

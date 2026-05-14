@@ -42,6 +42,7 @@
 #include <thrust/functional.h>
 #include <thrust/logical.h>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -140,6 +141,30 @@ TEST(pdlp_class, precision_mixed)
   EXPECT_NEAR(solution_mixed.get_additional_termination_information().primal_objective,
               solution_full.get_additional_termination_information().primal_objective,
               1e-2);
+}
+
+TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
+{
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
+    cuopt::mps_parser::parse_mps<int, double>(path, true);
+
+  auto settings           = pdlp_solver_settings_t<int, double>{};
+  settings.method         = cuopt::linear_programming::method_t::Concurrent;
+  settings.presolver      = cuopt::linear_programming::presolver_t::None;
+  settings.log_to_console = false;
+  // In concurrent mode, dual simplex and barrier workers are started before PDLP validates that
+  // all_primal_feasible is batch-only. This exercises the exception path with live worker threads.
+  settings.all_primal_feasible = true;
+
+  optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+  const auto error_status                               = solution.get_error_status();
+
+  EXPECT_EQ(error_status.get_error_type(), cuopt::error_type_t::ValidationError);
+  EXPECT_THAT(error_status.what(),
+              testing::HasSubstr("all_primal_feasible only applies in batch mode"));
 }
 
 TEST(pdlp_class, run_double_very_low_accuracy)

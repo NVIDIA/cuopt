@@ -4,6 +4,9 @@
 
 set -e -u -o pipefail
 
+# shellcheck source=ci/utils/crash_helpers.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../utils/crash_helpers.sh"
+
 rapids-logger "building 'pulp' from source and running cuOpt tests"
 
 if [ -z "${PIP_CONSTRAINT:-}" ]; then
@@ -45,6 +48,15 @@ if [ "$pytest_rc" -eq 5 ]; then
     rapids-logger "No pytest -k cuopt tests found; running PuLP run_tests.py (solver auto-detection, includes cuopt)"
     timeout 5m python pulp/tests/run_tests.py
     pytest_rc=$?
+fi
+
+# pytest's normal exit codes are 0-5 (passed / failed / interrupted /
+# internal error / usage / no tests collected). Anything beyond that
+# (timeout=124, signal deaths >128, etc.) means pytest did not finalize
+# its JUnit XML, so synthesize a crash marker — otherwise nightly_report.py
+# would see no failure and report "All tests passed."
+if [ "${pytest_rc}" -gt 5 ]; then
+    write_pytest_crash_marker "${RAPIDS_TESTS_DIR}/junit-thirdparty-pulp.xml" "thirdparty-pulp" "${pytest_rc}"
 fi
 
 popd || exit 1
