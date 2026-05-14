@@ -148,8 +148,8 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, true);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
 
   auto settings           = pdlp_solver_settings_t<int, double>{};
   settings.method         = cuopt::linear_programming::method_t::Concurrent;
