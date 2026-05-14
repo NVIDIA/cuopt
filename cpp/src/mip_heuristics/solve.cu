@@ -425,7 +425,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
          &early_best_user_obj,
          &early_best_user_assignment,
          &early_callback_mutex,
-         &early_fj_start,
+         early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
            detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
