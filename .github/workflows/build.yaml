@@ -39,7 +39,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.build_type || 'branch' }}
   cancel-in-progress: true
 
 permissions: {}
