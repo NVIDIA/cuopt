@@ -401,8 +401,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     // Start early FJ (CPU and GPU) during presolve to find incumbents ASAP
     // Only run if presolve is enabled (gives FJ time to find solutions)
     // and we're not in deterministic mode
-    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
-    std::unique_ptr<detail::early_gpufj_t<i_t, f_t>> early_gpufj;
 
     // Track best incumbent found during presolve (shared across CPU and GPU FJ).
     // early_best_objective is in the original problem's solver-space (always minimization),
@@ -414,6 +412,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     std::vector<f_t> early_best_user_assignment;
     std::mutex early_callback_mutex;
 
+    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
+    std::unique_ptr<detail::early_gpufj_t<i_t, f_t>> early_gpufj;
+
     bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                         op_problem.get_n_integers() > 0 && op_problem.get_n_constraints() > 0;
     f_t no_bound = problem.presolve_data.objective_scaling_factor >= 0 ? (f_t)-1e20 : (f_t)1e20;
@@ -424,7 +425,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
          &early_best_user_obj,
          &early_best_user_assignment,
          &early_callback_mutex,
-         &early_fj_start,
+         early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
            detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
