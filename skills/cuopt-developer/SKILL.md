@@ -10,7 +10,7 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 **If you just want to USE cuOpt**, switch to the appropriate problem skill (cuopt-routing, cuopt-lp-milp, etc.)
 
-**First-time dev environment setup?** See [resources/first_time_setup.md](resources/first_time_setup.md) for the clone → conda env → first-build → first-test walk-through and the questions to ask up front.
+**First-time dev environment setup?** See [resources/first_time_setup.md](resources/first_time_setup.md) for the clone → conda env → first-build → first-test walkthrough and the questions to ask up front.
 
 ---
 
