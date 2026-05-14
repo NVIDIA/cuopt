@@ -20,32 +20,28 @@ namespace routing {
 namespace detail {
 
 /**
- * @brief Per-block workspace with shmem-first, global-memory fallback.
+ * @brief Per-block workspace with shmem-first, mixed shmem+global fallback.
  *
  * Policy
  * ------
- *   - Global memory is ALWAYS pre-allocated (n_blocks × workspace_size bytes) so that
- *     a global fallback is available regardless of the shmem outcome.
- *   - shmem_size is capped at: default_limit + opt_in_fraction*(optin_limit - default_limit)
- *       • opt_in_fraction = 0.0 → default ~48 KB, no attribute setting, L1 preserved.
- *       • opt_in_fraction = 1.0 → full opt-in max (e.g. ~228 KB on GH200); calls
- *         cudaFuncSetAttribute for the primary constructor.
- *       • Secondary (bool false) constructor: capped at the default limit regardless
- *         of opt_in_fraction (attribute cannot be set for these kernels).
- *   - Call block_workspace_t::set_opt_in_fraction(f) once at startup to tune.
- *   - The kernel receives shmem_size bytes of dynamic shared memory.
- *   - Per-allocation placement is decided by workspace_bump_t (see below).
+ *   - Global memory is ALWAYS pre-allocated (n_blocks × workspace_size bytes).
+ *   - shmem_cap = default_limit + opt_in_fraction*(optin_limit - default_limit)
  *
- * Single-allocation kernels (workspace == one route)
- * ---------------------------------------------------
- *   Use view_t::get_workspace(shmem_buf): returns shmem if all of workspace fits,
- *   otherwise returns the per-block global slice.
+ *   Case A — workspace ≤ shmem_cap:
+ *     Entire workspace fits in shmem.  cudaFuncSetAttribute is called if needed
+ *     (workspace > default_limit).  shmem_size() == workspace_size.
  *
- * Multi-allocation kernels
- * ------------------------
- *   Construct a workspace_bump_t from the view and the shmem pointer.  Call
- *   bump.alloc<T>(count) for each piece; each piece is placed entirely in shmem
- *   when it fits, otherwise entirely in global.  No piece is ever split.
+ *   Case B — workspace > shmem_cap:
+ *     No cudaFuncSetAttribute call.  shmem_size() == default_limit (~48 KB).
+ *     The kernel is launched with default_limit bytes of dynamic shmem.
+ *     - Single-allocation kernels (get_workspace): use global for the full workspace.
+ *     - Multi-allocation kernels (workspace_bump_t): shmem receives allocations up
+ *       to default_limit, then overflow goes to global automatically.
+ *
+ *   opt_in_fraction = 0.0 → shmem_cap == default_limit; Case B applies for
+ *                            everything above ~48 KB.
+ *   opt_in_fraction = 1.0 → shmem_cap == optin_limit (~228 KB on GH200); larger
+ *                            workspaces mix shmem (48 KB) + global.
  *
  * Usage at kernel launch site:
  *
@@ -53,12 +49,12 @@ namespace detail {
  *   my_kernel<<<n_blocks, n_threads, ws.shmem_size(), stream>>>(
  *       ..., ws.view());
  *
- * Inside the kernel (single-allocation):
+ * Inside the kernel (single-allocation, Case A only):
  *
  *   extern __shared__ char shmem[];
- *   char* mem = block_workspace.get_workspace(shmem);
+ *   char* mem = block_workspace.get_workspace(shmem);  // shmem or global
  *
- * Inside the kernel (multi-allocation):
+ * Inside the kernel (multi-allocation, Cases A and B):
  *
  *   extern __shared__ char shmem[];
  *   workspace_bump_t bump(block_workspace, shmem);
@@ -112,57 +108,74 @@ struct block_workspace_t {
   // -------------------------------------------------------------------------
   static void set_opt_in_fraction(double fraction) { s_opt_in_fraction_ = fraction; }
   static double get_opt_in_fraction() { return s_opt_in_fraction_; }
+  /** @brief Effective shmem cap (same value used internally); for call-site shmem_fits checks. */
+  static size_t shmem_cap_static() { return shmem_cap(); }
 
   // -------------------------------------------------------------------------
   // Host-side constructors — decide shmem vs global at construction time.
   // -------------------------------------------------------------------------
 
-  // Primary overload: deduces kernel type and sets the shmem attribute.
+  // Primary overload: deduces kernel type and sets the shmem attribute when needed.
   // Works for kernels with only type template parameters and no __launch_bounds__.
+  //
+  // cudaFuncSetAttribute(MaxDynamicSharedMemorySize) is called ONLY for Case A when
+  // workspace > default_limit.  It is never called for Case B (workspace > shmem_cap)
+  // so the kernel's occupancy footprint is never permanently inflated for large workspaces.
   template <typename Function>
   block_workspace_t(Function* kernel,
                     size_t workspace_size,
                     int n_blocks,
                     rmm::cuda_stream_view stream)
     : workspace_size_(raft::alignTo(workspace_size, kAlignment)),
-      shmem_size_(std::min(raft::alignTo(workspace_size, kAlignment), shmem_cap())),
+      shmem_size_(device_shmem_default_limit()),
       global_buffer_(static_cast<size_t>(n_blocks) * raft::alignTo(workspace_size, kAlignment),
                      stream)
   {
-    // Only need cudaFuncSetAttribute when exceeding the no-opt-in default.
-    if (shmem_size_ > device_shmem_default_limit()) {
-      if (!set_shmem_of_kernel(kernel, shmem_size_)) {
-        // Attribute failed; fall back to the default limit.
-        shmem_size_ = std::min(workspace_size_, device_shmem_default_limit());
+    size_t cap = shmem_cap();
+    size_t def = device_shmem_default_limit();
+    if (workspace_size_ <= cap) {
+      // Case A: workspace fits in (possibly opt-in) shmem.
+      shmem_size_ = workspace_size_;
+      if (shmem_size_ > def) {
+        if (!set_shmem_of_kernel(kernel, shmem_size_)) {
+          // Opt-in attribute failed: fall back to mixed mode (def shmem + global).
+          shmem_size_ = (workspace_size_ <= def) ? workspace_size_ : def;
+        }
       }
     }
+    // Case B (workspace > cap): shmem_size_ stays at default_limit.
+    // Kernel launched with default_limit shmem; overflow handled via global memory.
+    // No cudaFuncSetAttribute call — occupancy footprint is not inflated.
   }
 
   // Secondary overload: for kernels where NVCC cannot deduce Function* in the primary overload.
   // This happens for __global__ kernels annotated with __launch_bounds__ (with or without NTTPs).
-  // NVCC cannot resolve the kernel to a unique function pointer in a dependent template context.
   //
-  //   shmem_fits = true  → caller guarantees the workspace fits; use shmem for all of it.
-  //   shmem_fits = false → cannot set attribute; use shmem up to shmem_cap(),
-  //                        global memory for any overflow.
-  //
-  // Note: when opt_in_fraction > 0 and shmem_fits = false, shmem is still capped
-  // at the default limit because the attribute cannot be set for these kernels.
+  //   shmem_fits = true  → caller guarantees workspace ≤ shmem_cap and the attribute
+  //                         has been set externally; all of workspace goes to shmem.
+  //   shmem_fits = false → Case B: shmem = default_limit, overflow to global.
+  //                         No cudaFuncSetAttribute is called.
   block_workspace_t(bool shmem_fits,
                     size_t workspace_size,
                     int n_blocks,
                     rmm::cuda_stream_view stream)
     : workspace_size_(raft::alignTo(workspace_size, kAlignment)),
-      shmem_size_(shmem_fits
-                    ? raft::alignTo(workspace_size, kAlignment)
-                    : std::min(raft::alignTo(workspace_size, kAlignment),
-                               device_shmem_default_limit())),
+      shmem_size_(shmem_fits ? raft::alignTo(workspace_size, kAlignment)
+                             : std::min(raft::alignTo(workspace_size, kAlignment),
+                                        device_shmem_default_limit())),
       global_buffer_(static_cast<size_t>(n_blocks) * raft::alignTo(workspace_size, kAlignment),
                      stream)
   {
   }
 
-  /** @brief Dynamic shared memory size to pass to the kernel launch chevrons. */
+  /**
+   * @brief Dynamic shared memory size to pass to the kernel launch chevrons.
+   *
+   * Case A (workspace ≤ shmem_cap): returns workspace_size — full shmem.
+   * Case B (workspace > shmem_cap): returns default_limit (~48 KB) — partial shmem.
+   *   The kernel's get_workspace() falls through to global (shmem < workspace),
+   *   while workspace_bump_t uses the 48 KB for its early allocations.
+   */
   size_t shmem_size() const noexcept { return shmem_size_; }
 
   /** @brief True when global memory is needed for some or all of the workspace. */
@@ -238,8 +251,8 @@ struct block_workspace_t {
 //   auto s_route = route_t::view_t::create_shared_route(route, ...);
 // ---------------------------------------------------------------------------
 struct workspace_bump_t {
-  char*  sh_;        // shmem base pointer
-  char*  gl_;        // per-block global base pointer
+  char* sh_;         // shmem base pointer
+  char* gl_;         // per-block global base pointer
   size_t sh_avail_;  // bytes of shmem available for this block
   size_t sh_used_{0};
   size_t gl_used_{0};
