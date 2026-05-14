@@ -7,6 +7,7 @@
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <cuopt/error.hpp>
@@ -847,7 +848,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
 
     // Convert enum types to char types
     for (size_t i = 0; i < variable_types.size(); ++i) {
-      variable_types[i] = (enum_variable_types[i] == var_t::INTEGER) ? 'I' : 'C';
+      variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
     }
 
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());

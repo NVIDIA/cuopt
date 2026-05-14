@@ -25,6 +25,13 @@ inline constexpr var_t char_to_var_type(char variable_type)
   return var_t::CONTINUOUS;
 }
 
+inline constexpr char var_type_to_char(var_t variable_type)
+{
+  if (variable_type == var_t::INTEGER) { return 'I'; }
+  if (variable_type == var_t::SEMI_CONTINUOUS) { return 'S'; }
+  return 'C';
+}
+
 }  // namespace detail
 
 /**

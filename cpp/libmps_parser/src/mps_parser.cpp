@@ -250,7 +250,7 @@ BoundType convert(std::string_view str)
     return LowerBoundIntegerVariable;
   } else if (str == "UI") {
     return UpperBoundIntegerVariable;
-  } else if (str == "SC" || str == "LC") {
+  } else if (str == "SC") {
     return SemiContinuousVariable;
   } else {
     mps_parser_expects(false,
