@@ -416,29 +416,26 @@ def main() -> int:
     commenting.
 
     Returns:
-        ``0`` on success (including the all-green / empty-body case),
-        or ``2`` when neither an S3 prefix nor a local directory was
-        provided.
+        ``0`` on success (including the all-green / empty-body case).
 
     Raises:
         SystemExit: Indirectly via ``argparse`` if argument parsing
-            fails.
+            fails (missing required arguments).
     """
     parser = argparse.ArgumentParser(
         description="Aggregate per-matrix PR test summaries into a Markdown PR comment."
     )
-    parser.add_argument(
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument(
         "--s3-pr-summaries-prefix",
-        default="",
         help=(
             "S3 prefix where ``nightly_report.py --mode pr`` uploaded "
             "per-matrix summaries for this run.  Example: "
             "s3://bucket/ci_test_reports/pr/run-12345/"
         ),
     )
-    parser.add_argument(
+    src.add_argument(
         "--local-summaries-dir",
-        default="",
         help="Local directory of summaries (for testing without S3).",
     )
     parser.add_argument(
@@ -448,23 +445,23 @@ def main() -> int:
     )
     parser.add_argument(
         "--target-branch",
-        default=os.environ.get("GITHUB_BASE_REF", "main"),
+        required=True,
         help="PR target branch — surfaced in the comment for context.",
     )
     parser.add_argument(
         "--sha",
-        default=os.environ.get("GITHUB_SHA", ""),
+        required=True,
         help="PR head SHA — surfaced in the comment for context.",
     )
     parser.add_argument(
         "--github-run-url",
-        default="",
+        required=True,
         help="Workflow run URL — linked from the comment footer.",
     )
     parser.add_argument(
         "--run-date",
         default=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        help="Date the run started (YYYY-MM-DD).",
+        help="Date the run started (YYYY-MM-DD).  Defaults to today (UTC).",
     )
     args = parser.parse_args()
 
@@ -473,16 +470,10 @@ def main() -> int:
 
     if args.local_summaries_dir:
         summaries = load_local_summaries(args.local_summaries_dir)
-    elif args.s3_pr_summaries_prefix:
+    else:
         summaries = download_summaries(
             args.s3_pr_summaries_prefix, output_dir / "summaries"
         )
-    else:
-        print(
-            "ERROR: provide --s3-pr-summaries-prefix or --local-summaries-dir.",
-            file=sys.stderr,
-        )
-        return 2
 
     if not summaries:
         print("No PR per-matrix summaries found; nothing to comment on.")

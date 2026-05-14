@@ -87,7 +87,7 @@ def resolve_base_ref(repo: str, pr_number: int, token: str) -> str:
 
 
 def find_existing_comment_id(
-    repo: str, pr_number: int, token: str, marker: str
+    repo: str, pr_number: int, token: str, marker: str = COMMENT_MARKER
 ) -> int | None:
     """Find the id of a PR comment whose body starts with ``marker``.
 
@@ -124,7 +124,11 @@ def find_existing_comment_id(
 
 
 def post_or_update_comment(
-    repo: str, pr_number: int, token: str, body: str, marker: str
+    repo: str,
+    pr_number: int,
+    token: str,
+    body: str,
+    marker: str = COMMENT_MARKER,
 ) -> str:
     """Update the existing sticky PR comment if present; otherwise create one.
 
@@ -170,37 +174,36 @@ def post_or_update_comment(
     return url
 
 
-def _cmd_base_ref(args):
-    print(resolve_base_ref(args.repo, args.pr, args.token))
+def _cmd_base_ref(args: argparse.Namespace, token: str) -> int:
+    print(resolve_base_ref(args.repo, args.pr, token))
     return 0
 
 
-def _cmd_post(args):
+def _cmd_post(args: argparse.Namespace, token: str) -> int:
     with open(args.body_file) as f:
         body = f.read()
     if not body.strip():
         print("Empty body; nothing to post.")
         return 0
-    post_or_update_comment(args.repo, args.pr, args.token, body, args.marker)
+    post_or_update_comment(args.repo, args.pr, token, body)
     return 0
 
 
-def _add_common_args(sp):
+def _add_common_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--repo", required=True, help="owner/name")
     sp.add_argument("--pr", required=True, type=int, help="PR number")
-    sp.add_argument(
-        "--token",
-        default=os.environ.get("GITHUB_TOKEN", ""),
-        help="GitHub token (defaults to $GITHUB_TOKEN).",
-    )
 
 
 def main() -> int:
     """Dispatch to the requested subcommand.
 
+    Reads ``GITHUB_TOKEN`` from the environment (the GitHub convention);
+    there is no ``--token`` CLI flag so configuration comes from a
+    single source.
+
     Returns:
         ``0`` on success, ``1`` if a GitHub API call failed, or ``2``
-        if a token was not provided.
+        if ``GITHUB_TOKEN`` is not set in the environment.
 
     Raises:
         SystemExit: Indirectly via ``argparse`` if argument parsing
@@ -222,19 +225,15 @@ def main() -> int:
         required=True,
         help="File whose contents are the comment body.",
     )
-    sp_post.add_argument(
-        "--marker",
-        default=COMMENT_MARKER,
-        help="Hidden HTML-comment marker that identifies the sticky comment.",
-    )
     sp_post.set_defaults(func=_cmd_post)
 
     args = p.parse_args()
-    if not args.token:
-        print("ERROR: --token or $GITHUB_TOKEN must be set.", file=sys.stderr)
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("ERROR: GITHUB_TOKEN env var must be set.", file=sys.stderr)
         return 2
     try:
-        return args.func(args)
+        return args.func(args, token)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
