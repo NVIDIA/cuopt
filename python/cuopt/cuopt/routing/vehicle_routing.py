@@ -57,7 +57,9 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().__init__(n_locations, n_fleet, n_orders=n_orders)
 
     @catch_cuopt_exception
-    def add_cost_matrix(self, cost_mat, vehicle_type=0, *, skip_validation=False):
+    def add_cost_matrix(
+        self, cost_mat, vehicle_type=0, *, skip_validation=False
+    ):
         """
         Add a matrix for all locations (vehicle/technician locations included)
         at once.
