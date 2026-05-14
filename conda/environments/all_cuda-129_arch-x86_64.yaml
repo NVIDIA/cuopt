@@ -12,7 +12,7 @@ dependencies:
 - ccache
 - clang-tools=20.1.8
 - clang==20.1.8
-- cmake>=3.30.4
+- cmake>=4.0
 - cpp-argparse
 - cuda-nvcc
 - cuda-nvtx-dev
