@@ -534,6 +534,7 @@ class solution_t {
   size_t get_temp_route_shared_size(i_t added_size = 0) const;
   void compute_initial_data(bool check_feasibility = true);
   void random_init_routes();
+  void due_time_greedy_init_routes();
   void set_route_views();
   void expand_route(i_t route_id);
   void resize_route(i_t route_id, i_t new_route_size);
