@@ -399,6 +399,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_two_opt(
 
   block_workspace_t find_ws(
     find_two_opt_moves<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
+
   find_two_opt_moves<i_t, f_t, REQUEST>
     <<<n_blocks, n_threads, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
       sol.view(),
