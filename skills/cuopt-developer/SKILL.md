@@ -202,7 +202,7 @@ cuOpt uses Cython to bridge Python and C++. See [resources/python_bindings.md](r
 
 ## Contributing — Commits, PRs, Common Tasks
 
-For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [resources/contributing.md](resources/contributing.md).
+For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, PR-description rules (keep it short — no "how it works" walkthroughs or file tables), CI/workflow authoring conventions (extend existing scripts before adding new ones; no LLM-cruft like restated defaults or fallback values), and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [resources/contributing.md](resources/contributing.md).
 
 ## Coding Conventions
 

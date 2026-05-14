@@ -55,7 +55,34 @@ When an AI agent creates a pull request, it **must be a draft PR** (`gh pr creat
 
 ### PR Descriptions
 
-Keep PR summaries **short and informative**. State what changed and why in a few bullet points. Avoid verbose explanations, full file listings, or restating the diff. Reviewers read the code — the summary should give them context, not a transcript.
+Keep PR summaries **short and informative** — typically a few bullets stating *what* changed and *why*. Most merged cuOpt PRs run a single short paragraph or 3–5 bullets; calibrate by skimming a few recent merges on the target branch before writing.
+
+**Don't include:**
+- "How it works" walkthroughs of the implementation — reviewers read the code.
+- File-by-file tables listing every changed path — the diff already shows this.
+- Exhaustive test-plan checklists enumerating every assertion. A short high-level test note is fine; a 10-item checklist is not.
+- Restating the diff in prose.
+- Embedded screenshots of CI dashboards or generated output unless they show something the reviewer can't reproduce locally.
+
+**Why:** Reviewers skim PR descriptions to get oriented, then read the code. A long, structured summary signals "LLM-generated" and erodes trust in the change. The shorter the summary, the more carefully each line gets read.
+
+If the change genuinely needs more context (a design decision, an unusual constraint, a follow-up plan), state it in one or two sentences and link to an issue or design doc rather than expanding the PR body.
+
+### Editing CI scripts and workflows
+
+CI scripts (`ci/`) and GitHub Actions workflows (`.github/workflows/`) attract LLM-generated cruft more than any other area of the repo because the conventions are unfamiliar and "safe defaults" look helpful. Reviewers push back hard on it. Apply these rules before writing or extending CI:
+
+- **Prefer extending an existing script or workflow over adding a new one.** New files in `ci/` or `.github/workflows/` need a justification that can't be met by extending what's already there. If you're tempted to add a new file, first identify the closest existing one and explain why it doesn't fit.
+- **Every flag, option, and env-var override must trace to a real problem.** If you can't point to the failure mode it prevents, drop it. Reviewers will (and do) ask "is this something you added for a real problem, or LLM-generated?" — assume that question on every line.
+- **Don't restate defaults.** GitHub Actions already runs steps with `shell: bash -e {0}`; don't add it explicitly. Same for any framework default — restating it implies the writer thought the default was wrong, which confuses readers.
+- **Make interfaces strict; no fallback defaults for required inputs.** If an env var, CLI flag, or workflow input is required, fail loudly when it's missing rather than silently defaulting. The risk of "the job has been silently failing for months" outweighs the convenience of a fallback.
+- **Hard-code GitHub-specific URLs.** Use `https://github.com/${GITHUB_REPOSITORY}/...` directly. Don't introduce `${GITHUB_SERVER_URL}` overrides unless cuOpt actually runs on GHES.
+- **Validate inputs at the top of the script, before any expensive work.** Argument and env-var checks belong before downloads, S3 calls, or aggregation — surface the misconfiguration fast.
+- **Split chained bash commands onto their own lines.** `apt-get update && apt-get install -y curl` reads worse than the two-line form and obscures which command failed when one does.
+- **No comments that restate the code.** If a comment would tell a reader something the next line already says, delete it. Reserve comments for the non-obvious *why*.
+- **Keep PR-scoped CI additions informational and non-blocking.** A new reporting/aggregation job should not be added to `pr-builder`'s `needs:` list — comment posting and dashboards must not gate merging.
+
+When in doubt, look at how the surrounding cuOpt scripts handle the same concern and match that style rather than introducing a new convention.
 
 ## Common Tasks
 
