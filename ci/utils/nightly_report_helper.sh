@@ -118,6 +118,13 @@ generate_nightly_report() {
         # comment aggregator picks up.
         mode="pr"
 
+        # GITHUB_BASE_REF is unset for the `push` events the PR workflow
+        # triggers on (GHA only populates it for `pull_request` events).
+        # The shared rapidsai test workflows don't propagate a target
+        # branch into the test container, so we fall back to RAPIDS_BRANCH
+        # then "main".  Follow-up: centralize PR classification in the
+        # pr-test-summary job so this fallback is no longer needed
+        # (see PR #1194 description).
         local target_branch="${GITHUB_BASE_REF:-${RAPIDS_BRANCH:-main}}"
         local target_branch_slug
         target_branch_slug=$(echo "${target_branch}" | tr '/' '-')
