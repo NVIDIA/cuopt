@@ -61,6 +61,13 @@ rapids-logger "Build cuopt-java (run_tests=${RUN_JAVA_TESTS})"
 export CUOPT_INCLUDE="${CONDA_PREFIX}/include"
 export CMAKE_PREFIX_PATH="${CONDA_PREFIX}/lib"
 
+# Produce the per-(arch, cuda) classifier JAR alongside the base JAR
+# on every CI run. The classifier JAR bundles libcuopt.so + libmps_parser.so
+# + librmm.so + librapids_logger.so and carries the manifest entry
+# Embedded-Libraries-Cuda-Version. Matches cuvs's java/build.sh behavior
+# of always activating the build profile (cuvs sets -P $arch-cuda$major).
+export CLASSIFIER_CUDA="${RAPIDS_CUDA_VERSION%%.*}"
+
 # jextract is auto-downloaded by panama-bindings/generate-bindings.sh on
 # first run (cuvs pattern). No CI image change required.
 #
