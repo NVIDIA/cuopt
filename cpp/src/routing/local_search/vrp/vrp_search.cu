@@ -13,12 +13,7 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-// FIXME get rid of share memory completely. (Akif has a commit for this somewhere)
-#ifdef BENCHMARK
-constexpr int max_n_neighbors = 128;
-#else
 constexpr int max_n_neighbors = 96;
-#endif
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void compute_reverse_distances(typename solution_t<i_t, f_t, REQUEST>::view_t solution)
