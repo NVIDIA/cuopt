@@ -563,10 +563,11 @@ DI bool get_work_config(typename solution_t<i_t, f_t, REQUEST>::view_t& solution
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-__global__ void find_vrp_moves_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
-                                      typename move_candidates_t<i_t, f_t>::view_t move_candidates,
-                                      bool recycle,
-                                      block_workspace_t::view_t block_workspace)
+__launch_bounds__(max_n_neighbors) __global__
+  void find_vrp_moves_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t solution,
+                             typename move_candidates_t<i_t, f_t>::view_t move_candidates,
+                             bool recycle,
+                             block_workspace_t::view_t block_workspace)
 {
   extern __shared__ char shmem_buf[];
   char* shmem = block_workspace.get_workspace(shmem_buf);
@@ -671,14 +672,18 @@ bool find_vrp_moves(solution_t<i_t, f_t, REQUEST>& sol,
   }
   cuopt_assert(n_blocks > 0, "n_blocks should be positive");
   cuopt_expects(n_blocks > 0, error_type_t::RuntimeError, "A runtime error occurred!");
-  block_workspace_t find_ws(
-    find_vrp_moves_kernel<i_t, f_t, REQUEST>, sh_size, n_blocks, sol.sol_handle->get_stream());
+  // __launch_bounds__ prevents primary-constructor type deduction; use bool overload.
+  block_workspace_t find_ws(sh_size <= block_workspace_t::shmem_cap_static(),
+                            sh_size,
+                            n_blocks,
+                            sol.sol_handle->get_stream());
   // TODO: re-enable CUDA graph once block_workspace_t global alloc is compatible with capture
   // move_candidates.vrp_move_candidates.find_kernel_graph.start_capture(sol.sol_handle->get_stream());
   move_candidates.vrp_move_candidates.reset(sol.sol_handle);
   find_vrp_moves_kernel<i_t, f_t, REQUEST>
     <<<n_blocks, TPB, find_ws.shmem_size(), sol.sol_handle->get_stream()>>>(
       sol.view(), move_candidates.view(), recycle, find_ws.view());
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   // move_candidates.vrp_move_candidates.find_kernel_graph.end_capture(sol.sol_handle->get_stream());
   // move_candidates.vrp_move_candidates.find_kernel_graph.launch_graph(sol.sol_handle->get_stream());
   sol.sol_handle->sync_stream();
