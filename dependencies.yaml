@@ -203,6 +203,14 @@ files:
       table: project
     includes:
       - run_cuopt_sh_client
+  py_mps_cuopt_sh_client:
+    output: pyproject
+    pyproject_dir: python/cuopt_self_hosted/
+    extras:
+      table: project.optional-dependencies
+      key: mps
+    includes:
+      - mps_cuopt_sh_client
 channels:
   - rapidsai-nightly
   - rapidsai
@@ -374,12 +382,17 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
-          # cuopt-sh-client is published as a single pure-Python wheel
-          # (append-cuda-suffix=false), but cuopt is only on PyPI as
-          # CUDA-suffixed variants. Pin to cuopt-cu13 so the wheel resolves;
-          # the NVIDIA CUDA dependency wheels pip-install on hosts without
-          # a GPU / CUDA driver, which preserves the thin-client install
-          # path on machines that only run the client.
+  mps_cuopt_sh_client:
+    # Optional dependency exposed as the `cuopt-sh-client[mps]` extra.
+    # cuopt-sh-client itself is a CUDA-free thin client, but the MPS
+    # parser ships inside cuopt, which on PyPI only exists as the
+    # CUDA-suffixed cuopt-cu12 / cuopt-cu13 wheels. Those two cannot
+    # coexist (both install to the same `cuopt/` directory), so a user
+    # who already has cuopt-cu12 installed should NOT pull this extra
+    # and should pip-install cuopt-cu12 manually instead.
+    common:
+      - output_types: [requirements, pyproject]
+        packages:
           - cuopt-cu13==26.6.*,>=0.0.0a0
   depends_on_libcuopt:
     common:

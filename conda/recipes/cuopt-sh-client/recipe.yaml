@@ -29,7 +29,6 @@ requirements:
     - python-gil =${{ py_version }}
     - setuptools>=77.0.0
   run:
-    - cuopt =${{ version }}
     - msgpack-python =1.1.2
     - python
     - requests
