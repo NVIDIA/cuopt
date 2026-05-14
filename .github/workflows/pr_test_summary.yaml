@@ -21,13 +21,6 @@ on:
       CUOPT_S3_URI:
         required: true
 
-# The python:3.14-slim container's default /bin/sh is dash, which doesn't
-# understand `[[ ... ]]` or `set -o pipefail`.  Force bash for all run
-# steps in this workflow (matches self_hosted_service_test.yaml convention).
-defaults:
-  run:
-    shell: bash
-
 jobs:
   pr-test-summary:
     runs-on: linux-amd64-cpu4
@@ -42,7 +35,8 @@ jobs:
           persist-credentials: false
       - name: Install dependencies
         run: |
-          apt-get update && apt-get install -y --no-install-recommends curl
+          apt-get update
+          apt-get install -y --no-install-recommends curl
           pip install awscli
       - name: Aggregate per-matrix summaries and post sticky comment
         env:
@@ -51,7 +45,6 @@ jobs:
           CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |

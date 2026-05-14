@@ -639,11 +639,6 @@ jobs:
       - wheel-tests-cuopt-server
       - test-self-hosted-server
     if: always()
-    # The reusable workflow's job needs `contents: read` (for
-    # actions/checkout) and `pull-requests: write` (to post the sticky
-    # comment).  Reusable workflows inherit the caller's GITHUB_TOKEN
-    # permissions, so the caller must grant at least the same set —
-    # the workflow-level default is `permissions: {}`.
     permissions:
       contents: read
       pull-requests: write
