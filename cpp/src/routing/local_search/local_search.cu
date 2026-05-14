@@ -6,7 +6,7 @@
 /* clang-format on */
 
 // 1 = std::cout timing/cost logs in run_fast_search; 0 = off. Uses #if (not #ifdef).
-#define CUOPT_PROFILE_FAST_SEARCH 1
+#define CUOPT_PROFILE_FAST_SEARCH 0
 
 #include "local_search.cuh"
 
