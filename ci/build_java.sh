@@ -68,6 +68,11 @@ export CMAKE_PREFIX_PATH="${CONDA_PREFIX}/lib"
 # of always activating the build profile (cuvs sets -P $arch-cuda$major).
 export CLASSIFIER_CUDA="${RAPIDS_CUDA_VERSION%%.*}"
 
+# In CI there is no local cpp/build directory; libcuopt.so + libmps_parser.so
+# come from the conda env populated by rapids-download-conda-from-github.
+# Tell the maven classifier-jar profile to pull them from $CONDA_PREFIX/lib.
+export NATIVE_CPP_BUILD_PATH="${CONDA_PREFIX}/lib"
+
 # jextract is auto-downloaded by panama-bindings/generate-bindings.sh on
 # first run (cuvs pattern). No CI image change required.
 #

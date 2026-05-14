@@ -132,6 +132,14 @@ if [[ -n "${CLASSIFIER_CUDA:-}" ]]; then
     fi
     MVN_ARGS+=("-Dcuda.version=${CLASSIFIER_CUDA}")
     echo "    Building classifier JAR for cuda${CLASSIFIER_CUDA} (RAPIDS libs from ${CONDA_PREFIX}/lib)"
+
+    # CI sets NATIVE_CPP_BUILD_PATH because there's no local cpp/build; libcuopt.so
+    # and libmps_parser.so live at $CONDA_PREFIX/lib alongside librmm/rapids_logger.
+    # For local dev with a populated cpp/build/, leave it unset to use the pom default.
+    if [[ -n "${NATIVE_CPP_BUILD_PATH:-}" ]]; then
+        MVN_ARGS+=("-Dnative.cpp.build.path=${NATIVE_CPP_BUILD_PATH}")
+        echo "    libcuopt + libmps_parser sourced from ${NATIVE_CPP_BUILD_PATH}"
+    fi
 fi
 
 if [[ "${SKIP_TESTS:-false}" == "true" ]]; then

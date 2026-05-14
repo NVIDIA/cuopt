@@ -246,11 +246,18 @@
                                 <configuration>
                                     <overwrite>true</overwrite>
                                     <outputDirectory>${project.build.directory}/native-libs/${os.arch}/${os.name}</outputDirectory>
+                                    <!-- Two possible layouts for libcuopt + libmps_parser:
+                                           A. Flat (CONDA / installed):       $native.cpp.build.path/{libcuopt.so, libmps_parser.so}
+                                           B. Nested (local cpp/build dev):   $native.cpp.build.path/libcuopt.so
+                                                                              $native.cpp.build.path/libmps_parser/libmps_parser.so
+                                         Maven warns and skips non-existent <directory> entries, so listing
+                                         both layouts is safe — whichever exists wins. -->
                                     <resources>
                                         <resource>
                                             <directory>${native.cpp.build.path}</directory>
                                             <includes>
                                                 <include>libcuopt.so</include>
+                                                <include>libmps_parser.so</include>
                                             </includes>
                                         </resource>
                                         <resource>
