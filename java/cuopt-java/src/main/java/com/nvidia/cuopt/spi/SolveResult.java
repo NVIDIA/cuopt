@@ -4,16 +4,16 @@
  */
 package com.nvidia.cuopt.spi;
 
-import com.nvidia.cuopt.linear_programming.ErrorStatus;
-import com.nvidia.cuopt.linear_programming.LpStats;
-import com.nvidia.cuopt.linear_programming.MIPStats;
-import com.nvidia.cuopt.linear_programming.SolverMethod;
-import com.nvidia.cuopt.linear_programming.TerminationStatus;
+import com.nvidia.cuopt.optimization.ErrorStatus;
+import com.nvidia.cuopt.optimization.LpStats;
+import com.nvidia.cuopt.optimization.MIPStats;
+import com.nvidia.cuopt.optimization.SolverMethod;
+import com.nvidia.cuopt.optimization.TerminationStatus;
 
 /**
  * Internal data carrier from the FFM implementation back to the
- * {@link com.nvidia.cuopt.linear_programming.Problem} or
- * {@link com.nvidia.cuopt.linear_programming.Problem} that requested
+ * {@link com.nvidia.cuopt.optimization.Problem} or
+ * {@link com.nvidia.cuopt.optimization.Problem} that requested
  * the solve. Pre-extracted from the native {@code cuOptSolution}
  * handle before that handle is freed.
  *

@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
-package com.nvidia.cuopt.linear_programming;
+package com.nvidia.cuopt.optimization;
 
 import static com.nvidia.cuopt.cuOpt.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-class MipCallbackIT {
+class MIPCallbackIT {
 
     /** Captures one incumbent delivered by the solver. */
     private record Incumbent(double[] solution, double objective, double bound) {}

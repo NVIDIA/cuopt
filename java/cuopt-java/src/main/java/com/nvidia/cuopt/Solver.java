@@ -4,8 +4,8 @@
  */
 package com.nvidia.cuopt;
 
-import com.nvidia.cuopt.linear_programming.Problem;
-import com.nvidia.cuopt.linear_programming.SolverSettings;
+import com.nvidia.cuopt.optimization.Problem;
+import com.nvidia.cuopt.optimization.SolverSettings;
 import com.nvidia.cuopt.spi.cuOptProvider;
 
 /**

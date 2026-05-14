@@ -4,9 +4,9 @@
  */
 package com.nvidia.cuopt;
 
-import com.nvidia.cuopt.linear_programming.CType;
-import com.nvidia.cuopt.linear_programming.Sense;
-import com.nvidia.cuopt.linear_programming.VType;
+import com.nvidia.cuopt.optimization.CType;
+import com.nvidia.cuopt.optimization.Sense;
+import com.nvidia.cuopt.optimization.VType;
 
 /**
  * Constants holder for cuopt-java. Designed for static import:
@@ -22,7 +22,7 @@ import com.nvidia.cuopt.linear_programming.VType;
  * <p>Parameter name string constants (mirrors of the C-side
  * {@code CUOPT_*} preprocessor macros from {@code constants.h}) are
  * grouped at the bottom. They're used with
- * {@link com.nvidia.cuopt.linear_programming.SolverSettings#setParameter(String, Object)}.
+ * {@link com.nvidia.cuopt.optimization.SolverSettings#setParameter(String, Object)}.
  */
 public final class cuOpt {
 

@@ -5,8 +5,8 @@
 package com.nvidia.cuopt.spi;
 
 import com.nvidia.cuopt.cuOptException;
-import com.nvidia.cuopt.linear_programming.Problem;
-import com.nvidia.cuopt.linear_programming.SolverSettings;
+import com.nvidia.cuopt.optimization.Problem;
+import com.nvidia.cuopt.optimization.SolverSettings;
 import java.util.ServiceLoader;
 
 /**

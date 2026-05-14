@@ -4,9 +4,9 @@
  */
 package com.nvidia.cuopt.internal;
 
-import com.nvidia.cuopt.linear_programming.LinearExpr;
-import com.nvidia.cuopt.linear_programming.QuadraticExpr;
-import com.nvidia.cuopt.linear_programming.Variable;
+import com.nvidia.cuopt.optimization.LinearExpr;
+import com.nvidia.cuopt.optimization.QuadraticExpr;
+import com.nvidia.cuopt.optimization.Variable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
