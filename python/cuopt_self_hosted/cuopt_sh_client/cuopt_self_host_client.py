@@ -134,25 +134,33 @@ def is_uuid(cuopt_problem_data):
         return False
 
 
-def _mps_parse(LP_problem_data, solver_config):
+def _parse_file_to_data_model(problem_input, solver_config):
     try:
         from cuopt.linear_programming import mps_parser
     except ImportError as e:
         raise ImportError(
-            "MPS parsing on the client requires the cuopt package. "
+            "MPS/LP parsing on the client requires the cuopt package. "
             "Install it with `pip install cuopt-sh-client[mps]` (or "
             "`pip install cuopt-cu13` / `cuopt-cu12` matching your CUDA), "
-            "or pass an already-parsed dict instead of an MPS file or "
+            "or pass an already-parsed dict instead of an MPS/LP file or "
             "DataModel."
         ) from e
-    if isinstance(LP_problem_data, mps_parser.parser_wrapper.DataModel):
-        model = LP_problem_data
-        log.debug("Received Mps parser DataModel object")
+    # problem_input is either a path (str) to an MPS/LP file, or an
+    # mps_parser DataModel already handed to us.
+    if isinstance(problem_input, mps_parser.parser_wrapper.DataModel):
+        model = problem_input
+        log.debug("Received mps_parser DataModel object")
     else:
         t0 = time.time()
-        model = mps_parser.ParseMps(LP_problem_data)
+        # Dispatch on file extension: ".lp" ⇒ LP parser, otherwise MPS.
+        if isinstance(problem_input, str) and problem_input.lower().endswith(
+            ".lp"
+        ):
+            model = mps_parser.ParseLp(problem_input)
+        else:
+            model = mps_parser.ParseMps(problem_input)
         parse_time = time.time() - t0
-        log.debug(f"mps_parsing time was {parse_time}")
+        log.debug(f"file parsing time was {parse_time}")
     problem_data = mps_parser.toDict(model, json=use_zlib)
 
     if type(solver_config) is dict:
@@ -732,14 +740,14 @@ class CuOptServiceSelfHostClient:
         cuopt_data_models :
             Note - Batch mode is only supported in LP and not in MILP
 
-            File path to mps or json/dict/DataModel returned by
-            cuopt.linear_programming.mps_parser/list[mps file paths]/list[dict]/list[DataModel].
+            File path to mps/lp or json/dict/DataModel returned by
+            cuopt.linear_programming.mps_parser/list[mps or lp file paths]/list[dict]/list[DataModel].
 
-            For single problem, input should be either a path to mps/json file,
+            For single problem, input should be either a path to mps/lp/json file,
             /DataModel returned by cuopt.linear_programming.mps_parser/ path to json file/
             dictionary.
 
-            For batch problem, input should be either a list of paths to mps
+            For batch problem, input should be either a list of paths to mps or lp
             files/ a list of DataModel returned by cuopt.linear_programming.mps_parser/ a
             list of dictionaries.
 
@@ -798,22 +806,29 @@ class CuOptServiceSelfHostClient:
 
         def read_cuopt_problem_data(cuopt_data_model, filepath):
             if isinstance(cuopt_data_model, dict):
-                mps = False
+                needs_parsing = False
                 filepath = False
             else:
-                mps = (
-                    isinstance(cuopt_data_model, str)
-                    and cuopt_data_model.endswith(".mps")
-                ) or not isinstance(cuopt_data_model, str)
+                # Needs parsing if it's either (a) a string path ending in
+                # .mps/.lp, or (b) a non-string (DataModel) to normalize.
+                if isinstance(cuopt_data_model, str):
+                    lowered = cuopt_data_model.lower()
+                    needs_parsing = lowered.endswith(
+                        ".mps"
+                    ) or lowered.endswith(".lp")
+                else:
+                    needs_parsing = True
 
-            if mps:
+            if needs_parsing:
                 if filepath:
                     raise ValueError(
-                        "Cannot use local file mode with MPS data. "
+                        "Cannot use local file mode with MPS/LP data. "
                         "Resubmit with filepath=False."
                     )
 
-                cuopt_data_model = _mps_parse(cuopt_data_model, solver_config)
+                cuopt_data_model = _parse_file_to_data_model(
+                    cuopt_data_model, solver_config
+                )
 
             elif filepath and cuopt_data_model.startswith("/"):
                 log.warning(

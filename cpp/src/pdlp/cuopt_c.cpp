@@ -104,16 +104,17 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   std::string filename_str(filename);
-  bool input_mps_strict = false;
   std::unique_ptr<mps_data_model_t<cuopt_int_t, cuopt_float_t>> mps_data_model_ptr;
   try {
+    // Dispatches on file extension; see parse_problem for the enumerated rules.
     mps_data_model_ptr = std::make_unique<mps_data_model_t<cuopt_int_t, cuopt_float_t>>(
-      parse_mps<cuopt_int_t, cuopt_float_t>(filename_str, input_mps_strict));
+      parse_problem<cuopt_int_t, cuopt_float_t>(filename_str));
   } catch (const std::exception& e) {
-    CUOPT_LOG_INFO("Error parsing MPS file: %s", e.what());
+    CUOPT_LOG_INFO("Error parsing input file: %s", e.what());
     delete problem_and_stream;
-    *problem_ptr = nullptr;
-    if (std::string(e.what()).find("Error opening MPS file") != std::string::npos) {
+    *problem_ptr        = nullptr;
+    std::string err_msg = e.what();
+    if (err_msg.find("Error opening input file") != std::string::npos) {
       return CUOPT_MPS_FILE_ERROR;
     } else {
       return CUOPT_MPS_PARSE_ERROR;

@@ -13,6 +13,10 @@ def ParseMps(mps_file_path, fixed_mps_format=False):
     """
     Reads the equation from the input text file which is MPS formatted
 
+    See Also
+    --------
+    ParseLp : parses LP format files (for users with .lp inputs).
+
     Notes
     -----
     Read this link http://lpsolve.sourceforge.net/5.5/mps-format.htm for more
@@ -48,6 +52,50 @@ def ParseMps(mps_file_path, fixed_mps_format=False):
     """
 
     return parser_wrapper.ParseMps(mps_file_path, fixed_mps_format)
+
+
+@catch_mps_parser_exception
+def ParseLp(lp_file_path):
+    """
+    Reads an optimization problem from a file in LP format.
+
+    The LP format is a human-readable alternative to MPS and supports LP,
+    MIP, and QP, plus semi-continuous variables (declared via a
+    Semi-Continuous section; finite upper bound required) and
+    quadratic constraints (QCQP; ``<=`` only).
+
+    Quadratic terms live in ``[ ... ]`` blocks. The objective bracket must
+    be followed by ``/ 2`` (the file states coefficients in the
+    ``0.5 x^T Q x`` convention); a constraint bracket must NOT be followed
+    by ``/ 2`` (coefficients are at face value, ``x^T Q x``).
+
+    This function parses the conventional LP dialect implemented by most
+    commercial optimization solvers (not the lpsolve variant, which has a
+    different syntax).
+
+    Unsupported LP sections (SOS, PWL objective, user cuts, general
+    constraints) raise a ValueError.
+
+    Parameters
+    ----------
+    lp_file_path : str
+        Path to LP-formatted file.
+
+    Returns
+    -------
+    data_model: DataModel
+        A fully formed LP/MIP/QP problem representing the given file.
+
+    Examples
+    --------
+    >>> from cuopt import linear_programming
+    >>>
+    >>> data_model = linear_programming.ParseLp(lp_file_path)
+    >>> solver_settings = linear_programming.SolverSettings()
+    >>> solution = linear_programming.Solve(data_model, solver_settings)
+    """
+
+    return parser_wrapper.ParseLp(lp_file_path)
 
 
 def toDict(model, json=False):
