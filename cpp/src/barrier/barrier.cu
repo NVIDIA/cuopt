@@ -3124,9 +3124,7 @@ static void fill_linear_cc_rhs(iteration_data_t<i_t, f_t>& data,
       cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
       out.data(),
       out.size(),
-      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
-        return -(dx_aff_val * dz_aff_val) + new_mu;
-      },
+      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) { return -(dx_aff_val * dz_aff_val) + new_mu; },
       stream_view.value());
   }
 }
@@ -3616,7 +3614,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
     iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings, start_time);
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
+    iteration_data_t<i_t, f_t> data(
+      lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
