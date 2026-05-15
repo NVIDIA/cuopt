@@ -2208,11 +2208,11 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
   const bool has_free = data.n_free_vars > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
 
   if (has_free) {
-    auto is_free_ptr = data.d_is_free_.data();
+    auto is_free_ptr     = data.d_is_free_.data();
     auto ratio_test_free = [is_free_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
-      const f_t dx_val   = thrust::get<0>(t);
-      const f_t x_val    = thrust::get<1>(t);
-      const i_t is_free  = thrust::get<2>(t);
+      const f_t dx_val  = thrust::get<0>(t);
+      const f_t x_val   = thrust::get<1>(t);
+      const i_t is_free = thrust::get<2>(t);
       if (is_free) return f_t(1.0);
       if (dx_val < f_t(0.0)) return -x_val / dx_val;
       return f_t(1.0);
@@ -2314,8 +2314,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       constexpr f_t free_var_reg = 1e-7;
       if (data.Q.n > 0 && data.Q_diagonal) {
         cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(),
-                                data.d_is_free_.data(), data.d_Q_diag_.data()),
+          cuda::std::make_tuple(
+            data.d_z_.data(), data.d_x_.data(), data.d_is_free_.data(), data.d_Q_diag_.data()),
           data.d_diag_.data(),
           data.d_diag_.size(),
           [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_free, f_t q_jj) {
@@ -2459,7 +2459,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         [] HD(f_t inv_diag, f_t tmp3, f_t complementarity_xz_rhs, f_t x, f_t dual_rhs, i_t is_free)
           -> thrust::tuple<f_t, f_t> {
           const f_t xz_term = is_free ? f_t(0) : (complementarity_xz_rhs / x);
-          const f_t tmp = tmp3 - xz_term + dual_rhs;
+          const f_t tmp     = tmp3 - xz_term + dual_rhs;
           return {tmp, inv_diag * tmp};
         },
         stream_view_.value());
@@ -3110,9 +3110,7 @@ static void fill_linear_cc_rhs(iteration_data_t<i_t, f_t>& data,
       cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
       out.data(),
       out.size(),
-      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
-        return -(dx_aff_val * dz_aff_val) + new_mu;
-      },
+      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) { return -(dx_aff_val * dz_aff_val) + new_mu; },
       stream_view.value());
   }
 }
@@ -3601,7 +3599,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
+    iteration_data_t<i_t, f_t> data(
+      lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
