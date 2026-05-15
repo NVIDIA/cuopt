@@ -57,6 +57,31 @@ extract_failed_tests() {
 }
 
 OVERALL_RC=0
+FAILED_BINARIES=()
+
+# Record a failed gtest binary for the end-of-run summary.
+# Args: <test_name> <reason>
+record_binary_failure() {
+    FAILED_BINARIES+=("$1 — $2")
+}
+
+# Synthesize a JUnit crash record so a binary-level crash is visible to
+# nightly_report.py. gtest only writes its XML at the end of
+# RUN_ALL_TESTS(); a SIGSEGV/SIGABRT mid-run leaves no XML behind, so
+# without this record the failure is invisible to the classifier.
+# Written to a separate *-crash.xml file to preserve any partial XML.
+# Args: <test_name> <xml_dir> <rc>
+write_binary_crash_marker() {
+    local test_name="$1"
+    local xml_dir="$2"
+    local rc="$3"
+    local sig
+    sig=$(signal_name "${rc}")
+    local crash_xml="${xml_dir}/${test_name}-crash.xml"
+    write_crash_xml "${crash_xml}" "${test_name}" "PROCESS_CRASH" \
+        "${test_name} crashed with ${sig} (exit code ${rc})" \
+        "Process terminated by ${sig} mid-run. gtest did not emit a JUnit XML because RUN_ALL_TESTS() did not complete; inspect the run log for [FAILED] / stack-trace lines that preceded the crash."
+}
 
 run_gtest_with_retry() {
     local gt="$1"
@@ -78,6 +103,16 @@ run_gtest_with_retry() {
     # For non-nightly builds: fail immediately, no retries
     # PRs should surface failures directly so authors can see what broke
     if [ "${IS_NIGHTLY}" != "nightly" ]; then
+        if was_signal_death "${rc}"; then
+            local sig
+            sig=$(signal_name "${rc}")
+            echo "CRASH: ${test_name} died from ${sig} (exit code ${rc})"
+            write_binary_crash_marker "${test_name}" "${RAPIDS_TESTS_DIR}" "${rc}"
+            record_binary_failure "${test_name}" "CRASH (${sig})"
+        else
+            echo "FAILED: ${test_name} (exit code ${rc})"
+            record_binary_failure "${test_name}" "exit ${rc}"
+        fi
         OVERALL_RC=1
         return 1
     fi
@@ -115,6 +150,7 @@ run_gtest_with_retry() {
             write_crash_xml "${xml_file}" "${test_name}" "PROCESS_CRASH" \
                 "${test_name} crashed with $(signal_name ${rc}) (exit code ${rc})" \
                 "Process terminated by $(signal_name ${rc}). This may indicate a segfault, double-free, or stack overflow."
+            record_binary_failure "${test_name}" "CRASH ($(signal_name ${rc})), gtest_list_tests unavailable"
             OVERALL_RC=1
             return 1
         fi
@@ -124,6 +160,7 @@ run_gtest_with_retry() {
 
         if [ -z "${tests_to_retry}" ]; then
             echo "FAILED: ${test_name} failed but could not identify failing test cases"
+            record_binary_failure "${test_name}" "exit ${rc}, no failing testcase parseable from XML"
             OVERALL_RC=1
             return 1
         fi
@@ -168,6 +205,7 @@ run_gtest_with_retry() {
     done <<< "${tests_to_retry}"
 
     if [ "${all_passed}" = false ]; then
+        record_binary_failure "${test_name}" "retries exhausted"
         OVERALL_RC=1
         return 1
     fi
@@ -184,6 +222,19 @@ if [ -x "${GTEST_DIR}/C_API_TEST" ]; then
   CUOPT_USE_CPU_MEM_FOR_LOCAL=1 run_gtest_with_retry "${GTEST_DIR}/C_API_TEST" --gtest_filter=-c_api/TimeLimitTestFixture.* "$@" || true
 else
   echo "Skipping C_API_TEST with CUOPT_USE_CPU_MEM_FOR_LOCAL (binary not found)"
+fi
+
+# Final summary so failures are easy to spot in the raw run log.
+# nightly_report.py also produces a structured report from the XML files,
+# but this prints early (before any post-test-script steps) and surfaces
+# crashes that bypassed gtest's XML output.
+if [ "${#FAILED_BINARIES[@]}" -gt 0 ]; then
+    echo ""
+    echo "==================== FAILED gtest BINARIES (${#FAILED_BINARIES[@]}) ===================="
+    for entry in "${FAILED_BINARIES[@]}"; do
+        echo "  - ${entry}"
+    done
+    echo "================================================================"
 fi
 
 exit ${OVERALL_RC}

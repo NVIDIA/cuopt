@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -16,7 +16,7 @@ def Solve(data_model, solver_settings=None):
 
     Data Model object can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt_mps_parser.ParseMps function)
+    (see cuopt.linear_programming.ParseMps function)
 
 
     Notes
@@ -113,7 +113,7 @@ def BatchSolve(data_model_list, solver_settings=None):
 
     Data Model objects can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt_mps_parser.ParseMps function)
+    (see cuopt.linear_programming.ParseMps function)
 
 
     Notes
@@ -149,11 +149,11 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
     >>> from cuopt.linear_programming.solver.solver_parameters import *
-    >>> import cuopt_mps_parser
+    >>> from cuopt.linear_programming import mps_parser
     >>>
     >>> data_models = []
     >>> for i in range(...):
-    >>>     data_models.append(cuopt_mps_parser.ParseMps(...))
+    >>>     data_models.append(mps_parser.ParseMps(...))
     >>>
     >>> # Build a solver setting object
     >>> settings = linear_programming.SolverSettings()

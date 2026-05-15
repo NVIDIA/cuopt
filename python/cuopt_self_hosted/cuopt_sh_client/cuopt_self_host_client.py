@@ -12,7 +12,6 @@ from enum import Enum
 from types import NoneType
 from uuid import UUID
 
-import cuopt_mps_parser
 import msgpack
 import msgpack_numpy
 import numpy as np
@@ -136,15 +135,25 @@ def is_uuid(cuopt_problem_data):
 
 
 def _mps_parse(LP_problem_data, solver_config):
-    if isinstance(LP_problem_data, cuopt_mps_parser.parser_wrapper.DataModel):
+    try:
+        from cuopt.linear_programming import mps_parser
+    except ImportError as e:
+        raise ImportError(
+            "MPS parsing on the client requires the cuopt package. "
+            "Install it with `pip install cuopt-sh-client[mps]` (or "
+            "`pip install cuopt-cu13` / `cuopt-cu12` matching your CUDA), "
+            "or pass an already-parsed dict instead of an MPS file or "
+            "DataModel."
+        ) from e
+    if isinstance(LP_problem_data, mps_parser.parser_wrapper.DataModel):
         model = LP_problem_data
         log.debug("Received Mps parser DataModel object")
     else:
         t0 = time.time()
-        model = cuopt_mps_parser.ParseMps(LP_problem_data)
+        model = mps_parser.ParseMps(LP_problem_data)
         parse_time = time.time() - t0
         log.debug(f"mps_parsing time was {parse_time}")
-    problem_data = cuopt_mps_parser.toDict(model, json=use_zlib)
+    problem_data = mps_parser.toDict(model, json=use_zlib)
 
     if type(solver_config) is dict:
         problem_data["solver_config"] = solver_config
@@ -724,14 +733,14 @@ class CuOptServiceSelfHostClient:
             Note - Batch mode is only supported in LP and not in MILP
 
             File path to mps or json/dict/DataModel returned by
-            cuopt_mps_parser/list[mps file paths]/list[dict]/list[DataModel].
+            cuopt.linear_programming.mps_parser/list[mps file paths]/list[dict]/list[DataModel].
 
             For single problem, input should be either a path to mps/json file,
-            /DataModel returned by cuopt_mps_parser/ path to json file/
+            /DataModel returned by cuopt.linear_programming.mps_parser/ path to json file/
             dictionary.
 
             For batch problem, input should be either a list of paths to mps
-            files/ a list of DataModel returned by cuopt_mps_parser/ a
+            files/ a list of DataModel returned by cuopt.linear_programming.mps_parser/ a
             list of dictionaries.
 
             To use a cached cuopt problem data, input should be a uuid

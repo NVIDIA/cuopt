@@ -9,5 +9,5 @@ Example
 .. code-block:: python
     :linenos:
 
-    import cuopt_mps_parser
-    x = cuopt_mps_parser.ParseMps('good-mps-1.mps')
+    from cuopt.linear_programming import mps_parser
+    x = mps_parser.ParseMps('good-mps-1.mps')

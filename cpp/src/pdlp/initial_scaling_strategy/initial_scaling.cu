@@ -131,6 +131,9 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
                f_t(1));
 
   compute_scaling_vectors(number_of_ruiz_iterations, alpha);
+
+  iteration_constraint_matrix_scaling_.resize(0, stream_view_);
+  iteration_variable_scaling_.resize(0, stream_view_);
 }
 
 template <typename i_t, typename f_t>
