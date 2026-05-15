@@ -127,7 +127,15 @@ grpc_client_t::grpc_client_t(const std::string& server_address) : impl_(std::mak
   chunked_array_threshold_bytes_ = config_.max_message_bytes * 3 / 4;
 }
 
-grpc_client_t::~grpc_client_t() { stop_log_streaming(); }
+grpc_client_t::~grpc_client_t()
+{
+  // stop_log_streaming() can throw via std::thread::join (std::system_error)
+  // and std::lock_guard's mutex acquisition. Keep the destructor exception-free.
+  try {
+    stop_log_streaming();
+  } catch (...) {
+  }
+}
 
 bool grpc_client_t::connect()
 {
