@@ -57,7 +57,9 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         super().__init__(n_locations, n_fleet, n_orders=n_orders)
 
     @catch_cuopt_exception
-    def add_cost_matrix(self, cost_mat, vehicle_type=0):
+    def add_cost_matrix(
+        self, cost_mat, vehicle_type=0, *, skip_validation=False
+    ):
         """
         Add a matrix for all locations (vehicle/technician locations included)
         at once.
@@ -84,6 +86,10 @@ class DataModel(vehicle_routing_wrapper.DataModel):
             num_location rows and columns.
         vehicle_type : uint8
             Identifier of the vehicle.
+        skip_validation : bool
+            If True, skips Python validation for matrix shape, NULL values,
+            and non-negative values. The caller is responsible for providing
+            a valid square matrix matching the number of locations.
 
         Examples
         --------
@@ -125,7 +131,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         if vehicle_type in self.costs:
             raise ValueError("Vehicle type matrix has already been added")
 
-        validate_matrix(cost_mat, "cost matrix", self.get_num_locations())
+        if not skip_validation:
+            validate_matrix(cost_mat, "cost matrix", self.get_num_locations())
 
         super().add_cost_matrix(cost_mat, vehicle_type)
 
