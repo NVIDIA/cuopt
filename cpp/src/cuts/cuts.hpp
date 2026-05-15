@@ -619,6 +619,59 @@ class mixed_integer_rounding_cut_t;
 template <typename i_t, typename f_t>
 class variable_bounds_t;
 
+// Shared fractional conflict-graph subgraph used by both the clique-cut and
+// zero-half cut separators. Built once per cut pass in
+// cut_generation_t::generate_cuts and consumed by both routines so neither
+// has to rebuild the same vertex/weight/adjacency tables.
+//
+// Vertex indexing: each fractional binary variable j contributes two CG
+// vertices — the original literal `j` and the complement literal
+// `j + num_vars`. Local indices are dense in `[0, vertices.size())`.
+template <typename i_t, typename f_t>
+struct fractional_conflict_subgraph_t {
+  // Number of variables in the original problem; CG vertex indices are in
+  // [0, 2 * num_vars).
+  i_t num_vars{0};
+
+  // Global CG vertex indices (length = 2 * #fractional binary vars).
+  std::vector<i_t> vertices;
+
+  // LP value of the literal at each local index. weights[k] = x_j for the
+  // original copy of variable j; 1 - x_j for the complement copy.
+  std::vector<f_t> weights;
+
+  // Inverse mapping: vertex_to_local[CG_vertex] = local_idx (or -1 if not
+  // in the subgraph). Sized 2 * num_vars when ready.
+  std::vector<i_t> vertex_to_local;
+
+  // 1 if CG_vertex is in the subgraph, 0 otherwise. Sized 2 * num_vars when
+  // ready.
+  std::vector<char> in_subgraph;
+
+  // For each local index l, adj_local[l] is the list of local indices of
+  // its neighbors (CG neighbors restricted to the subgraph).
+  std::vector<std::vector<i_t>> adj_local;
+
+  // True iff a build completed for the current cut pass. May be true with
+  // an empty subgraph (no fractional binaries), in which case both
+  // separators have nothing to do but the build itself succeeded.
+  bool ready{false};
+
+  i_t num_local() const { return static_cast<i_t>(vertices.size()); }
+  bool empty_subgraph() const { return vertices.empty(); }
+
+  void clear()
+  {
+    num_vars = 0;
+    vertices.clear();
+    weights.clear();
+    vertex_to_local.clear();
+    in_subgraph.clear();
+    adj_local.clear();
+    ready = false;
+  }
+};
+
 template <typename i_t, typename f_t>
 class cut_generation_t {
  public:
@@ -712,6 +765,16 @@ class cut_generation_t {
                                    const std::vector<f_t>& xstar,
                                    f_t start_time);
 
+  // Resolve the async clique-table future (if still pending) and build the
+  // fractional conflict-graph subgraph against the current xstar. Both the
+  // clique-cut and zero-half cut separators consume the result via sub_cg_.
+  // Skips cleanly (sub_cg_.ready = false) if the clique table is missing or
+  // empty, if budgets are exceeded, or if cut routines depending on it are
+  // disabled. Safe to call multiple times per cut pass.
+  void prepare_fractional_sub_cg(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                 const std::vector<f_t>& xstar,
+                                 f_t start_time);
+
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
@@ -719,6 +782,10 @@ class cut_generation_t {
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
   std::atomic<bool>* signal_extend_{nullptr};
+  // Cached fractional sub-CG, rebuilt at the top of each generate_cuts call
+  // by prepare_fractional_sub_cg. Both clique cuts and zero-half cuts read
+  // from this and skip if !sub_cg_.ready.
+  fractional_conflict_subgraph_t<i_t, f_t> sub_cg_;
 };
 
 template <typename i_t, typename f_t>

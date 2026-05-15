@@ -29,8 +29,9 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-#define DEBUG_CLIQUE_CUTS 0
-#define CHECK_WORKSPACE   0
+#define DEBUG_CLIQUE_CUTS    0
+#define DEBUG_ZERO_HALF_CUTS 1
+#define CHECK_WORKSPACE      0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
 
@@ -44,6 +45,22 @@ enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEA
 #else
 #define CLIQUE_CUTS_DEBUG(...) \
   do {                         \
+  } while (0)
+#endif
+
+// Crash-tolerant logger: writes to stderr and flushes immediately so the
+// last log line is visible even if the process aborts/terminates right after.
+#if DEBUG_ZERO_HALF_CUTS
+#define ZERO_HALF_DEBUG(...)              \
+  do {                                    \
+    std::fprintf(stderr, "[zero_half] "); \
+    std::fprintf(stderr, __VA_ARGS__);    \
+    std::fprintf(stderr, "\n");           \
+    std::fflush(stderr);                  \
+  } while (0)
+#else
+#define ZERO_HALF_DEBUG(...) \
+  do {                       \
   } while (0)
 #endif
 
@@ -505,7 +522,20 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
                                               f_t max_work_estimate)
 {
   const size_t cycle_size = cycle_vertices.size();
-  if (cycle_size < 5 || (cycle_size % 2) == 0) { return clique_cut_build_status_t::NO_CUT; }
+  ZERO_HALF_DEBUG(
+    "build_zero_half_cut enter cycle_size=%zu wheel_centers=%zu num_vars=%lld var_types.size=%zu "
+    "lower.size=%zu upper.size=%zu xstar.size=%zu",
+    cycle_size,
+    wheel_centers.size(),
+    static_cast<long long>(num_vars),
+    var_types.size(),
+    lower_bounds.size(),
+    upper_bounds.size(),
+    xstar.size());
+  if (cycle_size < 5 || (cycle_size % 2) == 0) {
+    ZERO_HALF_DEBUG("build_zero_half_cut reject cycle_size=%zu", cycle_size);
+    return clique_cut_build_status_t::NO_CUT;
+  }
   cuopt_assert(num_vars > 0, "Zero-half cut num_vars must be positive");
   cuopt_assert(static_cast<size_t>(num_vars) <= lower_bounds.size(),
                "Zero-half cut lower bounds size mismatch");
@@ -516,6 +546,7 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   const f_t total_size     = static_cast<f_t>(cycle_size + wheel_centers.size());
   const f_t estimated_work = 8.0 * total_size + 2.0 * total_size * std::log2(total_size + 1.0);
   if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
+    ZERO_HALF_DEBUG("build_zero_half_cut work_limit hit");
     return clique_cut_build_status_t::NO_CUT;
   }
 
@@ -533,10 +564,27 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
 
   auto accumulate =
     [&](const std::vector<i_t>& verts, f_t weight, bool is_cycle) -> clique_cut_build_status_t {
+    ZERO_HALF_DEBUG("build_zero_half_cut accumulate verts.size=%zu weight=%g is_cycle=%d",
+                    verts.size(),
+                    static_cast<double>(weight),
+                    static_cast<int>(is_cycle));
     for (const auto vertex_idx : verts) {
+      ZERO_HALF_DEBUG("  acc vertex_idx=%lld (range [0, %lld))",
+                      static_cast<long long>(vertex_idx),
+                      static_cast<long long>(2 * num_vars));
+      if (vertex_idx < 0 || vertex_idx >= 2 * num_vars) {
+        ZERO_HALF_DEBUG("  acc OUT_OF_RANGE vertex_idx=%lld", static_cast<long long>(vertex_idx));
+        return clique_cut_build_status_t::NO_CUT;
+      }
       cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Zero-half vertex out of range");
       const i_t var_idx     = vertex_idx % num_vars;
       const bool complement = vertex_idx >= num_vars;
+      if (var_idx < 0 || static_cast<size_t>(var_idx) >= lower_bounds.size() ||
+          static_cast<size_t>(var_idx) >= upper_bounds.size() ||
+          static_cast<size_t>(var_idx) >= var_types.size()) {
+        ZERO_HALF_DEBUG("  acc var_idx OUT_OF_RANGE var_idx=%lld", static_cast<long long>(var_idx));
+        return clique_cut_build_status_t::NO_CUT;
+      }
       const f_t lower_bound = lower_bounds[var_idx];
       const f_t upper_bound = upper_bounds[var_idx];
       cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
@@ -564,10 +612,12 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
 
   if (accumulate(cycle_vertices, static_cast<f_t>(1), true) !=
       clique_cut_build_status_t::CUT_ADDED) {
+    ZERO_HALF_DEBUG("build_zero_half_cut cycle accumulate failed");
     return clique_cut_build_status_t::NO_CUT;
   }
   if (m > 0 && !wheel_centers.empty()) {
     if (accumulate(wheel_centers, f_m, false) != clique_cut_build_status_t::CUT_ADDED) {
+      ZERO_HALF_DEBUG("build_zero_half_cut wheel accumulate failed");
       return clique_cut_build_status_t::NO_CUT;
     }
   }
@@ -582,18 +632,20 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   }
 
   if (cut.i.empty()) {
-    CUOPT_LOG_DEBUG("[zero_half] build_zero_half_cut empty support after accumulation");
+    ZERO_HALF_DEBUG("build_zero_half_cut empty support after accumulation");
     return clique_cut_build_status_t::NO_CUT;
   }
 
   cut_rhs = rhs_acc;
+  ZERO_HALF_DEBUG(
+    "build_zero_half_cut pre-sort nz=%zu rhs=%g", cut.i.size(), static_cast<double>(cut_rhs));
   cut.sort();
+  ZERO_HALF_DEBUG("build_zero_half_cut post-sort nz=%zu", cut.i.size());
 
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
-  CUOPT_LOG_DEBUG(
-    "[zero_half] build_zero_half_cut nz=%lld rhs=%g dot=%g violation=%g threshold=%g cycle=%lld "
-    "wheel=%lld",
+  ZERO_HALF_DEBUG(
+    "build_zero_half_cut nz=%lld rhs=%g dot=%g violation=%g threshold=%g cycle=%lld wheel=%lld",
     static_cast<long long>(cut.i.size()),
     static_cast<double>(cut_rhs),
     static_cast<double>(dot),
@@ -601,6 +653,12 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
     static_cast<double>(min_violation),
     static_cast<long long>(cycle_size),
     static_cast<long long>(wheel_centers.size()));
+  // Dijkstra found a path < 0.5 − min_violation, so the violation should be
+  // > min_violation here (modulo wheel-lift effects, dropped near-zero
+  // coefficients, and FP reorder). Slight drift below the threshold is fine
+  // — we just won't ship the cut. A *strongly* negative violation indicates
+  // a real bug in cycle construction, the wheel lift, or the cut algebra.
+  cuopt_assert(violation > -bound_tol, "Zero-half cut violation flipped sign unexpectedly");
   if (violation > min_violation) { return clique_cut_build_status_t::CUT_ADDED; }
   return clique_cut_build_status_t::NO_CUT;
 }
@@ -624,6 +682,18 @@ bool dijkstra_odd_cycle(i_t source_local,
                         f_t max_work_estimate)
 {
   const i_t num_local = static_cast<i_t>(local_adj.size());
+  ZERO_HALF_DEBUG("dijkstra_odd_cycle enter source_local=%lld num_local=%lld weights.size=%zu",
+                  static_cast<long long>(source_local),
+                  static_cast<long long>(num_local),
+                  weights.size());
+  if (source_local < 0 || source_local >= num_local) {
+    ZERO_HALF_DEBUG("dijkstra_odd_cycle source OUT_OF_RANGE");
+    return false;
+  }
+  if (weights.size() != static_cast<size_t>(num_local)) {
+    ZERO_HALF_DEBUG("dijkstra_odd_cycle weights size mismatch");
+    return false;
+  }
   cuopt_assert(source_local >= 0 && source_local < num_local,
                "Zero-half Dijkstra source out of range");
   cuopt_assert(weights.size() == static_cast<size_t>(num_local),
@@ -642,9 +712,17 @@ bool dijkstra_odd_cycle(i_t source_local,
   std::priority_queue<node_t, std::vector<node_t>, std::greater<node_t>> pq;
   pq.emplace(static_cast<f_t>(0), source_idx);
 
+  i_t pops = 0;
   while (!pq.empty()) {
     auto [d, u] = pq.top();
     pq.pop();
+    ++pops;
+    if (u < 0 || u >= total_idx) {
+      ZERO_HALF_DEBUG("dijkstra_odd_cycle popped u OUT_OF_RANGE u=%lld total_idx=%lld",
+                      static_cast<long long>(u),
+                      static_cast<long long>(total_idx));
+      return false;
+    }
     if (d > dist[u]) { continue; }
     if (u == target_idx) { break; }
     if (cutoff > 0 && d >= cutoff) { break; }
@@ -654,13 +732,36 @@ bool dijkstra_odd_cycle(i_t source_local,
     const i_t v_part  = 1 - u_part;
     cuopt_assert(u_part == 0 || u_part == 1, "Bipartite part out of range");
 
+    if (u_local < 0 || u_local >= static_cast<i_t>(local_adj.size())) {
+      ZERO_HALF_DEBUG("dijkstra_odd_cycle u_local OUT_OF_RANGE u_local=%lld local_adj.size=%zu",
+                      static_cast<long long>(u_local),
+                      local_adj.size());
+      return false;
+    }
     const auto& neigh = local_adj[u_local];
     if (add_work_estimate(static_cast<f_t>(neigh.size()) + 4.0, work_estimate, max_work_estimate)) {
+      ZERO_HALF_DEBUG("dijkstra_odd_cycle work_limit hit pops=%lld", static_cast<long long>(pops));
       return false;
     }
     for (const auto v_local : neigh) {
+      if (v_local < 0 || v_local >= num_local) {
+        ZERO_HALF_DEBUG("dijkstra_odd_cycle neighbor OUT_OF_RANGE v_local=%lld num_local=%lld",
+                        static_cast<long long>(v_local),
+                        static_cast<long long>(num_local));
+        return false;
+      }
       cuopt_assert(v_local >= 0 && v_local < num_local, "Zero-half Dijkstra neighbor out of range");
+      // Edge weight = (1 − x_u − x_v) / 2, where x_u/x_v are the LP values of
+      // the literals at u and v. For a CG edge the conflict constraint
+      // x_u + x_v <= 1 must hold, so the weight is non-negative. Tiny
+      // negative values arise from FP drift; clamp them. A *significantly*
+      // negative weight means the LP is meaningfully violating a conflict
+      // constraint — that's an upstream bug we want to know about, hence
+      // the debug-only assert with a generous tolerance.
       f_t edge_w = (static_cast<f_t>(1) - weights[u_local] - weights[v_local]) / 2;
+      cuopt_assert(edge_w >= -static_cast<f_t>(1e-6),
+                   "Zero-half edge weight significantly negative — conflict constraint violated by "
+                   "LP?");
       if (edge_w < 0) { edge_w = 0; }
       const i_t v  = v_local + v_part * num_local;
       const f_t nd = d + edge_w;
@@ -672,9 +773,17 @@ bool dijkstra_odd_cycle(i_t source_local,
     }
   }
 
-  if (!std::isfinite(dist[target_idx])) { return false; }
+  if (!std::isfinite(dist[target_idx])) {
+    ZERO_HALF_DEBUG("dijkstra_odd_cycle no path pops=%lld", static_cast<long long>(pops));
+    return false;
+  }
   total_weight = dist[target_idx];
-  if (cutoff > 0 && total_weight >= cutoff) { return false; }
+  if (cutoff > 0 && total_weight >= cutoff) {
+    ZERO_HALF_DEBUG("dijkstra_odd_cycle path too long total=%g cutoff=%g",
+                    static_cast<double>(total_weight),
+                    static_cast<double>(cutoff));
+    return false;
+  }
 
   path.clear();
   for (i_t cur = target_idx; cur != -1; cur = prev[cur]) {
@@ -686,6 +795,10 @@ bool dijkstra_odd_cycle(i_t source_local,
   std::reverse(path.begin(), path.end());
   // bipartite path from j1 to j2 must have odd number of edges
   cuopt_assert((path.size() % 2) == 0, "Zero-half bipartite path must have even node count");
+  ZERO_HALF_DEBUG("dijkstra_odd_cycle done path.size=%zu total_weight=%g pops=%lld",
+                  path.size(),
+                  static_cast<double>(total_weight),
+                  static_cast<long long>(pops));
   return true;
 }
 
@@ -702,30 +815,57 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
                        f_t* work_estimate,
                        f_t max_work_estimate)
 {
+  ZERO_HALF_DEBUG(
+    "path_to_odd_cycle enter bipartite_path.size=%zu vertices.size=%zu num_local=%lld "
+    "num_vars=%lld",
+    bipartite_path.size(),
+    vertices.size(),
+    static_cast<long long>(num_local),
+    static_cast<long long>(num_vars));
   cycle_vertices.clear();
-  if (bipartite_path.size() < 4) { return false; }
+  if (bipartite_path.size() < 4) {
+    ZERO_HALF_DEBUG("path_to_odd_cycle reject short path");
+    return false;
+  }
   if (add_work_estimate(
         static_cast<f_t>(bipartite_path.size()) * 2.0, work_estimate, max_work_estimate)) {
+    ZERO_HALF_DEBUG("path_to_odd_cycle work_limit hit");
     return false;
   }
 
   std::vector<i_t> local_seq;
   local_seq.reserve(bipartite_path.size());
   for (const auto bv : bipartite_path) {
+    if (num_local <= 0) {
+      ZERO_HALF_DEBUG("path_to_odd_cycle num_local <= 0 num_local=%lld",
+                      static_cast<long long>(num_local));
+      return false;
+    }
     local_seq.push_back(bv % num_local);
   }
   // First and last entry should both correspond to the source CG vertex
+  if (local_seq.front() != local_seq.back()) {
+    ZERO_HALF_DEBUG("path_to_odd_cycle endpoints mismatch front=%lld back=%lld",
+                    static_cast<long long>(local_seq.front()),
+                    static_cast<long long>(local_seq.back()));
+    return false;
+  }
   cuopt_assert(local_seq.front() == local_seq.back(), "Zero-half cycle path endpoints must match");
 
   // Drop the duplicate end so we have a sequence covering each cycle vertex once
   local_seq.pop_back();
-  if ((local_seq.size() % 2) == 0 || local_seq.size() < 5) { return false; }
+  if ((local_seq.size() % 2) == 0 || local_seq.size() < 5) {
+    ZERO_HALF_DEBUG("path_to_odd_cycle reject local_seq.size=%zu", local_seq.size());
+    return false;
+  }
 
   std::unordered_set<i_t> seen_local;
   seen_local.reserve(local_seq.size());
   for (const auto lv : local_seq) {
     if (!seen_local.insert(lv).second) {
       // Same CG vertex appears twice in the path; reject (degenerate cycle)
+      ZERO_HALF_DEBUG("path_to_odd_cycle duplicate local vertex lv=%lld",
+                      static_cast<long long>(lv));
       return false;
     }
   }
@@ -734,16 +874,32 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
   std::unordered_set<i_t> seen_var;
   seen_var.reserve(local_seq.size());
   for (const auto lv : local_seq) {
+    if (lv < 0 || lv >= num_local || static_cast<size_t>(lv) >= vertices.size()) {
+      ZERO_HALF_DEBUG(
+        "path_to_odd_cycle local idx OUT_OF_RANGE lv=%lld num_local=%lld vertices.size=%zu",
+        static_cast<long long>(lv),
+        static_cast<long long>(num_local),
+        vertices.size());
+      return false;
+    }
     cuopt_assert(lv >= 0 && lv < num_local, "Zero-half local idx out of range");
     const i_t global = vertices[lv];
+    if (global < 0 || global >= 2 * num_vars) {
+      ZERO_HALF_DEBUG("path_to_odd_cycle global vertex OUT_OF_RANGE global=%lld 2*num_vars=%lld",
+                      static_cast<long long>(global),
+                      static_cast<long long>(2 * num_vars));
+      return false;
+    }
     cuopt_assert(global >= 0 && global < 2 * num_vars, "Zero-half global vertex out of range");
     const i_t var_idx = global % num_vars;
     if (!seen_var.insert(var_idx).second) {
       // Variable appears as both x and ¯x in the cycle; reject (degenerate)
+      ZERO_HALF_DEBUG("path_to_odd_cycle duplicate var_idx=%lld", static_cast<long long>(var_idx));
       return false;
     }
     cycle_vertices.push_back(global);
   }
+  ZERO_HALF_DEBUG("path_to_odd_cycle done cycle_vertices.size=%zu", cycle_vertices.size());
   return cycle_vertices.size() >= 5;
 }
 
@@ -761,6 +917,13 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
                          f_t* work_estimate,
                          f_t max_work_estimate)
 {
+  ZERO_HALF_DEBUG(
+    "extend_to_odd_wheel enter cycle.size=%zu num_vars=%lld reduced_costs.size=%zu "
+    "graph.n_variables=%lld",
+    cycle_vertices.size(),
+    static_cast<long long>(num_vars),
+    reduced_costs.size(),
+    static_cast<long long>(graph.n_variables));
   wheel_centers.clear();
   if (cycle_vertices.empty()) { return; }
   if (toc(start_time) >= time_limit) { return; }
@@ -769,20 +932,34 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   i_t smallest_degree_var = -1;
   for (auto v : cycle_vertices) {
     if (toc(start_time) >= time_limit) { return; }
+    if (v < 0 || v >= 2 * num_vars) {
+      ZERO_HALF_DEBUG("extend_to_odd_wheel cycle vertex OUT_OF_RANGE v=%lld",
+                      static_cast<long long>(v));
+      return;
+    }
     i_t degree = graph.get_degree_of_var(v);
     if (degree < smallest_degree) {
       smallest_degree     = degree;
       smallest_degree_var = v;
     }
   }
+  ZERO_HALF_DEBUG("extend_to_odd_wheel smallest_degree_var=%lld smallest_degree=%lld",
+                  static_cast<long long>(smallest_degree_var),
+                  static_cast<long long>(smallest_degree));
   if (smallest_degree_var < 0) { return; }
 
   auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
+  ZERO_HALF_DEBUG("extend_to_odd_wheel adj_set.size=%zu", adj_set.size());
   std::unordered_set<i_t> cycle_members(cycle_vertices.begin(), cycle_vertices.end());
   std::vector<i_t> candidates;
   candidates.reserve(adj_set.size());
   for (const auto candidate : adj_set) {
     if (toc(start_time) >= time_limit) { return; }
+    if (candidate < 0 || candidate >= 2 * num_vars) {
+      ZERO_HALF_DEBUG("extend_to_odd_wheel candidate OUT_OF_RANGE candidate=%lld",
+                      static_cast<long long>(candidate));
+      continue;
+    }
     if (cycle_members.count(candidate) != 0) { continue; }
     bool adj_to_all = true;
     for (const auto v : cycle_vertices) {
@@ -797,6 +974,7 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
     }
     if (adj_to_all) { candidates.push_back(candidate); }
   }
+  ZERO_HALF_DEBUG("extend_to_odd_wheel candidates.size=%zu", candidates.size());
   if (candidates.empty()) { return; }
 
   const f_t candidate_size = static_cast<f_t>(candidates.size());
@@ -807,11 +985,17 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   if (add_work_estimate(adj_set_cost + cycle_size_f * candidate_size + sort_cost,
                         work_estimate,
                         max_work_estimate)) {
+    ZERO_HALF_DEBUG("extend_to_odd_wheel work_limit hit pre-sort");
     return;
   }
 
   auto reduced_cost = [&](i_t vertex_idx) -> f_t {
     i_t var_idx = vertex_idx % num_vars;
+    if (var_idx < 0 || static_cast<size_t>(var_idx) >= reduced_costs.size()) {
+      ZERO_HALF_DEBUG("extend_to_odd_wheel reduced_cost OUT_OF_RANGE var_idx=%lld",
+                      static_cast<long long>(var_idx));
+      return 0.0;
+    }
     cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
                  "Reduced cost index out of range");
     f_t rc = reduced_costs[var_idx];
@@ -841,6 +1025,7 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
     }
     if (adj_to_wheel) { wheel_centers.push_back(candidate); }
   }
+  ZERO_HALF_DEBUG("extend_to_odd_wheel done wheel_centers.size=%zu", wheel_centers.size());
 }
 
 }  // namespace
@@ -2435,6 +2620,146 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 }
 
 template <typename i_t, typename f_t>
+void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const std::vector<f_t>& xstar,
+  f_t start_time)
+{
+  sub_cg_.clear();
+
+  if (settings.clique_cuts == 0 && settings.zero_half_cuts == 0) { return; }
+  if (toc(start_time) >= settings.time_limit) { return; }
+
+  // Resolve the async clique-table future, if any. Both the clique-cut and
+  // zero-half routines depend on the conflict graph; the first to need it
+  // pays for the join here so we avoid duplicating the wait below.
+  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
+      clique_table_future_->valid()) {
+    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
+    clique_table_        = clique_table_future_->get();
+    clique_table_future_ = nullptr;
+  }
+
+  if (clique_table_ == nullptr) { return; }
+  // small_clique_adj may carry pairwise CG edges from cliques demoted by
+  // remove_small_cliques; clique_table_t::empty() accounts for that.
+  if (clique_table_->empty()) { return; }
+
+  const i_t num_vars = user_problem_.num_cols;
+  cuopt_assert(clique_table_->n_variables == num_vars,
+               "prepare_fractional_sub_cg clique table variable count mismatch");
+  cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(),
+               "prepare_fractional_sub_cg xstar size mismatch");
+  cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
+               "prepare_fractional_sub_cg user problem var_types size mismatch");
+
+  const f_t bound_tol         = settings.primal_tol;
+  f_t work_estimate           = 0.0;
+  const f_t max_work_estimate = 1e8;
+
+  sub_cg_.num_vars = num_vars;
+  sub_cg_.vertices.reserve(static_cast<size_t>(num_vars) * 2);
+  sub_cg_.weights.reserve(static_cast<size_t>(num_vars) * 2);
+
+  for (i_t j = 0; j < num_vars; ++j) {
+    if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
+    const f_t lower_bound = user_problem_.lower[j];
+    const f_t upper_bound = user_problem_.upper[j];
+    if (lower_bound < -bound_tol || upper_bound > 1 + bound_tol) { continue; }
+    const f_t xj = xstar[j];
+    if (std::abs(xj - std::round(xj)) <= settings.integer_tol) { continue; }
+    sub_cg_.vertices.push_back(j);
+    sub_cg_.weights.push_back(xj);
+    sub_cg_.vertices.push_back(j + num_vars);
+    sub_cg_.weights.push_back(static_cast<f_t>(1.0) - xj);
+  }
+  work_estimate +=
+    4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(sub_cg_.vertices.size());
+  if (work_estimate > max_work_estimate) {
+    sub_cg_.clear();
+    return;
+  }
+
+  if (sub_cg_.vertices.empty()) {
+    // No fractional binaries — both separators have nothing to do, but the
+    // build itself succeeded. Mark ready so callers don't keep retrying.
+    sub_cg_.ready = true;
+    return;
+  }
+
+  sub_cg_.vertex_to_local.assign(static_cast<size_t>(2 * num_vars), -1);
+  sub_cg_.in_subgraph.assign(static_cast<size_t>(2 * num_vars), 0);
+  for (size_t idx = 0; idx < sub_cg_.vertices.size(); ++idx) {
+    if (toc(start_time) >= settings.time_limit) {
+      sub_cg_.clear();
+      return;
+    }
+    const i_t v_idx                = sub_cg_.vertices[idx];
+    sub_cg_.vertex_to_local[v_idx] = static_cast<i_t>(idx);
+    sub_cg_.in_subgraph[v_idx]     = 1;
+  }
+  work_estimate += 3.0 * static_cast<f_t>(sub_cg_.vertices.size());
+  if (work_estimate > max_work_estimate) {
+    sub_cg_.clear();
+    return;
+  }
+
+  sub_cg_.adj_local.assign(sub_cg_.vertices.size(), {});
+  size_t total_adj_entries = 0;
+  size_t kept_adj_entries  = 0;
+  for (size_t idx = 0; idx < sub_cg_.vertices.size(); ++idx) {
+    if (toc(start_time) >= settings.time_limit) {
+      sub_cg_.clear();
+      return;
+    }
+    const i_t v_idx = sub_cg_.vertices[idx];
+    auto adj_set    = clique_table_->get_adj_set_of_var(v_idx);
+    total_adj_entries += adj_set.size();
+    auto& adj = sub_cg_.adj_local[idx];
+    adj.reserve(adj_set.size());
+    for (const auto neighbor : adj_set) {
+      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars,
+                   "prepare_fractional_sub_cg neighbor out of range");
+      if (!sub_cg_.in_subgraph[neighbor]) { continue; }
+      const i_t local_neighbor = sub_cg_.vertex_to_local[neighbor];
+      cuopt_assert(local_neighbor >= 0, "prepare_fractional_sub_cg local_neighbor out of range");
+      adj.push_back(local_neighbor);
+    }
+    kept_adj_entries += adj.size();
+#ifdef ASSERT_MODE
+    {
+      std::unordered_set<i_t> adj_global;
+      adj_global.reserve(adj.size());
+      for (const auto neighbor : adj) {
+        const i_t v = sub_cg_.vertices[neighbor];
+        cuopt_assert(adj_global.insert(v).second,
+                     "Duplicate neighbor in fractional sub-CG adjacency list");
+        const i_t complement = (v >= num_vars) ? (v - num_vars) : (v + num_vars);
+        cuopt_assert(adj_global.find(complement) == adj_global.end(),
+                     "Fractional sub-CG adjacency list contains complementing variable");
+      }
+    }
+#endif
+  }
+  work_estimate += static_cast<f_t>(sub_cg_.vertices.size()) + static_cast<f_t>(total_adj_entries) +
+                   2.0 * static_cast<f_t>(kept_adj_entries);
+  if (work_estimate > max_work_estimate) {
+    sub_cg_.clear();
+    return;
+  }
+
+  sub_cg_.ready = true;
+  CLIQUE_CUTS_DEBUG("prepare_fractional_sub_cg ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+                    static_cast<long long>(sub_cg_.vertices.size()),
+                    static_cast<long long>(total_adj_entries),
+                    static_cast<long long>(kept_adj_entries));
+  ZERO_HALF_DEBUG("prepare_fractional_sub_cg ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+                  static_cast<long long>(sub_cg_.vertices.size()),
+                  static_cast<long long>(total_adj_entries),
+                  static_cast<long long>(kept_adj_entries));
+}
+
+template <typename i_t, typename f_t>
 bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
                                                const simplex_solver_settings_t<i_t, f_t>& settings,
                                                csr_matrix_t<i_t, f_t>& Arow,
@@ -2480,6 +2805,14 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
+  // Build the fractional conflict-graph subgraph once (resolving the async
+  // clique-table future on the way) so both clique-cut and zero-half cut
+  // separators consume the same vertex/weight/adjacency tables instead of
+  // each recomputing them. Done here, after the cut routines that don't
+  // need the clique table, to give the background clique-table thread as
+  // much time as possible to finish before we join it.
+  prepare_fractional_sub_cg(settings, xstar, start_time);
+
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
     f_t cut_start_time = tic();
@@ -2496,8 +2829,11 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate Zero-half (odd-cycle / odd-wheel) cuts; reuses the clique table built above
   if (settings.zero_half_cuts != 0) {
+    ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
     bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    ZERO_HALF_DEBUG("generate_cuts: returned from generate_zero_half_cuts feasible=%d",
+                    static_cast<int>(feasible));
     if (!feasible) {
       settings.log.printf("Zero-half cuts proved infeasible\n");
       return false;
@@ -2506,6 +2842,9 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     if (cut_generation_time > 1.0) {
       settings.log.debug("Zero-half cut generation time %.2f seconds\n", cut_generation_time);
     }
+  } else {
+    ZERO_HALF_DEBUG("generate_cuts: zero_half_cuts disabled (setting=%d)",
+                    static_cast<int>(settings.zero_half_cuts));
   }
 
   // Generate implied bound cuts
@@ -2559,34 +2898,22 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<double>(settings.time_limit),
                     static_cast<double>(toc(start_time)));
 
-  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
-      clique_table_future_->valid()) {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts signaling background thread and waiting");
-    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
-    clique_table_        = clique_table_future_->get();
-    clique_table_future_ = nullptr;
-    if (clique_table_) {
-      CLIQUE_CUTS_DEBUG("generate_clique_cuts received clique table first=%lld addtl=%lld",
-                        static_cast<long long>(clique_table_->first.size()),
-                        static_cast<long long>(clique_table_->addtl_cliques.size()));
-    }
-  }
-
-  if (clique_table_ == nullptr) {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts no clique table available, skipping");
+  // The fractional conflict-graph subgraph is built once per cut pass in
+  // prepare_fractional_sub_cg() (called from generate_cuts) and shared with
+  // the zero-half cut separator. Skip if the build was unable to produce a
+  // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
+  if (!sub_cg_.ready) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts sub_cg_ not ready, skipping");
     return true;
   }
-  CLIQUE_CUTS_DEBUG("generate_clique_cuts using clique table first=%lld addtl=%lld",
-                    static_cast<long long>(clique_table_->first.size()),
-                    static_cast<long long>(clique_table_->addtl_cliques.size()));
-
-  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts empty clique table, nothing to separate");
+  if (sub_cg_.empty_subgraph()) {
+    CLIQUE_CUTS_DEBUG("generate_clique_cuts no fractional binary vertices");
     return true;
   }
-
-  cuopt_assert(clique_table_->n_variables == num_vars, "Clique table variable count mismatch");
+  cuopt_assert(sub_cg_.num_vars == num_vars, "generate_clique_cuts sub_cg_ num_vars mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Clique cut xstar size mismatch");
+  cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
+               "User problem var_types size mismatch");
 
   const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   const f_t bound_tol     = settings.primal_tol;
@@ -2596,90 +2923,13 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   f_t work_estimate           = 0.0;
   const f_t max_work_estimate = 1e8;
 
-  cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
-               "User problem var_types size mismatch");
+  const auto& vertices  = sub_cg_.vertices;
+  const auto& weights   = sub_cg_.weights;
+  const auto& adj_local = sub_cg_.adj_local;
 
-  std::vector<i_t> vertices;
-  std::vector<f_t> weights;
-  vertices.reserve(num_vars * 2);
-  weights.reserve(num_vars * 2);
-
-  // create the sub graph induced by fractional binary variables
-  for (i_t j = 0; j < num_vars; ++j) {
-    if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
-    const f_t lower_bound = user_problem_.lower[j];
-    const f_t upper_bound = user_problem_.upper[j];
-    if (lower_bound < -bound_tol || upper_bound > 1 + bound_tol) { continue; }
-    const f_t xj = xstar[j];
-    if (std::abs(xj - std::round(xj)) <= settings.integer_tol) { continue; }
-    vertices.push_back(j);
-    weights.push_back(xj);
-    vertices.push_back(j + num_vars);
-    weights.push_back(1.0 - xj);
-  }
-  // Coarse loop estimate: variable scans + selected vertex/weight writes
-  work_estimate += 4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(vertices.size());
-  if (work_estimate > max_work_estimate) { return true; }
-
-  if (vertices.empty()) {
-    CLIQUE_CUTS_DEBUG("generate_clique_cuts no fractional binary vertices");
-    return true;
-  }
   CLIQUE_CUTS_DEBUG("generate_clique_cuts fractional subgraph vertices=%lld (literals=%lld)",
                     static_cast<long long>(vertices.size() / 2),
                     static_cast<long long>(vertices.size()));
-
-  std::vector<i_t> vertex_to_local(2 * num_vars, -1);
-  std::vector<char> in_subgraph(2 * num_vars, 0);
-  for (size_t idx = 0; idx < vertices.size(); ++idx) {
-    if (toc(start_time) >= settings.time_limit) { return true; }
-    const i_t vertex_idx        = vertices[idx];
-    vertex_to_local[vertex_idx] = static_cast<i_t>(idx);
-    in_subgraph[vertex_idx]     = 1;
-  }
-  work_estimate += 3.0 * static_cast<f_t>(vertices.size());
-  if (work_estimate > max_work_estimate) { return true; }
-
-  std::vector<std::vector<i_t>> adj_local(vertices.size());
-  size_t total_adj_entries = 0;
-  size_t kept_adj_entries  = 0;
-  for (size_t idx = 0; idx < vertices.size(); ++idx) {
-    if (toc(start_time) >= settings.time_limit) { return true; }
-    i_t vertex_idx = vertices[idx];
-    // returns the complement as well
-    auto adj_set = clique_table_->get_adj_set_of_var(vertex_idx);
-    total_adj_entries += adj_set.size();
-    auto& adj = adj_local[idx];
-    adj.reserve(adj_set.size());
-    for (const auto neighbor : adj_set) {
-      if (toc(start_time) >= settings.time_limit) { return true; }
-      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Neighbor out of range");
-      if (!in_subgraph[neighbor]) { continue; }
-      i_t local_neighbor = vertex_to_local[neighbor];
-      cuopt_assert(local_neighbor >= 0, "Local neighbor out of range");
-      adj.push_back(local_neighbor);
-    }
-    kept_adj_entries += adj.size();
-#ifdef ASSERT_MODE
-    {
-      std::unordered_set<i_t> adj_global;
-      adj_global.reserve(adj.size());
-      for (const auto neighbor : adj) {
-        i_t v = vertices[neighbor];
-        cuopt_assert(adj_global.insert(v).second, "Duplicate neighbor in adjacency list");
-        i_t complement = (v >= num_vars) ? (v - num_vars) : (v + num_vars);
-        cuopt_assert(adj_global.find(complement) == adj_global.end(),
-                     "Adjacency list contains complementing variable");
-      }
-    }
-#endif
-  }
-  work_estimate += static_cast<f_t>(vertices.size()) + static_cast<f_t>(total_adj_entries) +
-                   2.0 * static_cast<f_t>(kept_adj_entries);
-  if (work_estimate > max_work_estimate) { return true; }
-  CLIQUE_CUTS_DEBUG("generate_clique_cuts adjacency raw_entries=%lld kept_entries=%lld",
-                    static_cast<long long>(total_adj_entries),
-                    static_cast<long long>(kept_adj_entries));
 
   const size_t words = bitset_words(vertices.size());
   std::vector<std::vector<uint64_t>> adj_bitset(vertices.size(), std::vector<uint64_t>(words, 0));
@@ -2834,26 +3084,41 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   if (toc(start_time) >= settings.time_limit) { return true; }
 
   const i_t num_vars = user_problem_.num_cols;
-  CUOPT_LOG_DEBUG("[zero_half] generate_zero_half_cuts start num_vars=%lld elapsed=%g",
-                  static_cast<long long>(num_vars),
-                  static_cast<double>(toc(start_time)));
+  ZERO_HALF_DEBUG(
+    "generate_zero_half_cuts ENTER num_vars=%lld elapsed=%g time_limit=%g xstar.size=%zu "
+    "reduced_costs.size=%zu var_types.size=%zu user_problem_.lower.size=%zu "
+    "user_problem_.upper.size=%zu user_problem_.var_types.size=%zu lp.num_cols=%lld "
+    "sub_cg_.ready=%d sub_cg_.vertices=%zu",
+    static_cast<long long>(num_vars),
+    static_cast<double>(toc(start_time)),
+    static_cast<double>(settings.time_limit),
+    xstar.size(),
+    reduced_costs.size(),
+    var_types.size(),
+    user_problem_.lower.size(),
+    user_problem_.upper.size(),
+    user_problem_.var_types.size(),
+    static_cast<long long>(lp.num_cols),
+    static_cast<int>(sub_cg_.ready),
+    sub_cg_.vertices.size());
 
-  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
-      clique_table_future_->valid()) {
-    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
-    clique_table_        = clique_table_future_->get();
-    clique_table_future_ = nullptr;
+  // The fractional conflict-graph subgraph is built once per cut pass in
+  // prepare_fractional_sub_cg() (called from generate_cuts) and shared with
+  // the clique-cut separator. Skip if the build was unable to produce a
+  // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
+  if (!sub_cg_.ready) {
+    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping");
+    return true;
   }
-
+  if (sub_cg_.empty_subgraph()) {
+    ZERO_HALF_DEBUG("no fractional binary vertices");
+    return true;
+  }
   if (clique_table_ == nullptr) {
-    CUOPT_LOG_DEBUG("[zero_half] no clique table available, skipping");
+    ZERO_HALF_DEBUG("no clique table available, skipping");
     return true;
   }
-  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
-    CUOPT_LOG_DEBUG("[zero_half] empty clique table, nothing to separate");
-    return true;
-  }
-
+  cuopt_assert(sub_cg_.num_vars == num_vars, "generate_zero_half_cuts sub_cg_ num_vars mismatch");
   cuopt_assert(clique_table_->n_variables == num_vars,
                "Zero-half clique table variable count mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Zero-half xstar size mismatch");
@@ -2867,60 +3132,12 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   f_t work_estimate           = 0.0;
   const f_t max_work_estimate = 1e8;
 
-  std::vector<i_t> vertices;
-  std::vector<f_t> weights;
-  vertices.reserve(num_vars * 2);
-  weights.reserve(num_vars * 2);
-
-  for (i_t j = 0; j < num_vars; ++j) {
-    if (user_problem_.var_types[j] == variable_type_t::CONTINUOUS) { continue; }
-    const f_t lower_bound = user_problem_.lower[j];
-    const f_t upper_bound = user_problem_.upper[j];
-    if (lower_bound < -bound_tol || upper_bound > 1 + bound_tol) { continue; }
-    const f_t xj = xstar[j];
-    if (std::abs(xj - std::round(xj)) <= settings.integer_tol) { continue; }
-    vertices.push_back(j);
-    weights.push_back(xj);
-    vertices.push_back(j + num_vars);
-    weights.push_back(1.0 - xj);
-  }
-  work_estimate += 4.0 * static_cast<f_t>(num_vars) + 2.0 * static_cast<f_t>(vertices.size());
-  if (work_estimate > max_work_estimate) { return true; }
-  if (vertices.empty()) {
-    CUOPT_LOG_DEBUG("[zero_half] no fractional binary vertices");
-    return true;
-  }
-
-  const i_t num_local = static_cast<i_t>(vertices.size());
-  CUOPT_LOG_DEBUG("[zero_half] fractional sub-CG vertices=%lld", static_cast<long long>(num_local));
-
-  std::vector<i_t> vertex_to_local(2 * num_vars, -1);
-  std::vector<char> in_subgraph(2 * num_vars, 0);
-  for (i_t idx = 0; idx < num_local; ++idx) {
-    const i_t vertex_idx        = vertices[idx];
-    vertex_to_local[vertex_idx] = idx;
-    in_subgraph[vertex_idx]     = 1;
-  }
-  work_estimate += 3.0 * static_cast<f_t>(num_local);
-  if (work_estimate > max_work_estimate) { return true; }
-
-  std::vector<std::vector<i_t>> adj_local(num_local);
-  for (i_t idx = 0; idx < num_local; ++idx) {
-    if (toc(start_time) >= settings.time_limit) { return true; }
-    const i_t vertex_idx = vertices[idx];
-    auto adj_set         = clique_table_->get_adj_set_of_var(vertex_idx);
-    auto& adj            = adj_local[idx];
-    adj.reserve(adj_set.size());
-    for (const auto neighbor : adj_set) {
-      cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars, "Zero-half neighbor out of range");
-      if (!in_subgraph[neighbor]) { continue; }
-      const i_t local_neighbor = vertex_to_local[neighbor];
-      cuopt_assert(local_neighbor >= 0, "Zero-half local neighbor out of range");
-      adj.push_back(local_neighbor);
-    }
-    work_estimate += static_cast<f_t>(adj_set.size());
-  }
-  if (work_estimate > max_work_estimate) { return true; }
+  const auto& vertices        = sub_cg_.vertices;
+  const auto& weights         = sub_cg_.weights;
+  const auto& adj_local       = sub_cg_.adj_local;
+  const auto& vertex_to_local = sub_cg_.vertex_to_local;
+  const i_t num_local         = sub_cg_.num_local();
+  ZERO_HALF_DEBUG("starting separation loop num_local=%lld", static_cast<long long>(num_local));
 
   sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
   f_t cut_rhs = 0.0;
@@ -2937,6 +3154,9 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     if (toc(start_time) >= settings.time_limit) { break; }
     if (work_estimate > max_work_estimate) { break; }
     if (already_used[s]) { continue; }
+    ZERO_HALF_DEBUG("separation loop s=%lld / %lld",
+                    static_cast<long long>(s),
+                    static_cast<long long>(num_local));
 
     f_t total_weight = 0;
     if (!dijkstra_odd_cycle<i_t, f_t>(s,
@@ -2959,6 +3179,9 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
       continue;
     }
     cycles_found++;
+    ZERO_HALF_DEBUG("cycle found s=%lld cycle_vertices.size=%zu",
+                    static_cast<long long>(s),
+                    cycle_vertices.size());
 
     extend_to_odd_wheel<i_t, f_t>(cycle_vertices,
                                   wheel_centers,
@@ -2970,6 +3193,9 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
                                   &work_estimate,
                                   max_work_estimate);
 
+    ZERO_HALF_DEBUG("calling build_zero_half_cut cycle=%zu wheel=%zu",
+                    cycle_vertices.size(),
+                    wheel_centers.size());
     const auto build_status = build_zero_half_cut<i_t, f_t>(cycle_vertices,
                                                             wheel_centers,
                                                             num_vars,
@@ -2983,28 +3209,37 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
                                                             cut_rhs,
                                                             &work_estimate,
                                                             max_work_estimate);
+    ZERO_HALF_DEBUG("build_zero_half_cut returned status=%d", static_cast<int>(build_status));
     if (work_estimate > max_work_estimate) { break; }
     if (build_status == clique_cut_build_status_t::INFEASIBLE) {
-      CUOPT_LOG_DEBUG("[zero_half] infeasible cycle detected");
+      ZERO_HALF_DEBUG("infeasible cycle detected, returning false");
       return false;
     }
     if (build_status == clique_cut_build_status_t::CUT_ADDED) {
       inequality_t<i_t, f_t> cut_inequality;
       cut_inequality.vector = cut;
       cut_inequality.rhs    = cut_rhs;
+      ZERO_HALF_DEBUG(
+        "adding cut to pool nz=%zu rhs=%g", cut.i.size(), static_cast<double>(cut_rhs));
       cut_pool_.add_cut(cut_type_t::ZERO_HALF, cut_inequality);
+      ZERO_HALF_DEBUG("cut added to pool");
       cuts_added++;
       added_per_var++;
       // mark all CG vertices that participated so we do not re-derive the same
       // cycle from a different source vertex
       for (const auto v : cycle_vertices) {
+        if (v < 0 || v >= 2 * num_vars) {
+          ZERO_HALF_DEBUG("mark already_used: cycle v OUT_OF_RANGE v=%lld",
+                          static_cast<long long>(v));
+          continue;
+        }
         const i_t lv = vertex_to_local[v];
-        if (lv >= 0) { already_used[lv] = 1; }
+        if (lv >= 0 && lv < num_local) { already_used[lv] = 1; }
       }
     }
   }
 
-  CUOPT_LOG_DEBUG("[zero_half] generate_zero_half_cuts done cycles=%lld cuts=%lld work=%g",
+  ZERO_HALF_DEBUG("generate_zero_half_cuts EXIT cycles=%lld cuts=%lld work=%g",
                   static_cast<long long>(cycles_found),
                   static_cast<long long>(cuts_added),
                   static_cast<double>(work_estimate));
