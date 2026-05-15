@@ -9,7 +9,7 @@
 
 #include <cuopt/linear_programming/optimization_problem.hpp>
 
-#include <mps_parser/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <raft/core/handle.hpp>
 
@@ -23,7 +23,7 @@ class problem_t;
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& data_model);
 
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(

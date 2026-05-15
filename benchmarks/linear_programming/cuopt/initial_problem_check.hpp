@@ -30,7 +30,7 @@ struct violation {
 };
 
 bool test_constraint_and_variable_sanity(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& primal_vars,
   double abs_tol,
   double rel_tol,

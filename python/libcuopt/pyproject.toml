@@ -31,7 +31,6 @@ classifiers = [
 ]
 dependencies = [
     "cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*",
-    "cuopt-mps-parser==26.6.*,>=0.0.0a0",
     "librmm==26.6.*,>=0.0.0a0",
     "nvidia-cudss-cu13",
     "nvidia-nvjitlink>=13.0,<14",
@@ -77,7 +76,6 @@ dependencies-file = "../../dependencies.yaml"
 matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
     "cmake>=4.0",
-    "cuopt-mps-parser==26.6.*,>=0.0.0a0",
     "librmm==26.6.*,>=0.0.0a0",
     "ninja",
     "rapids-logger==0.2.*,>=0.0.0a0",

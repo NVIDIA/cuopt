@@ -9,10 +9,10 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/io/data_model_view.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <mps_parser/data_model_view.hpp>
-#include <mps_parser/mps_data_model.hpp>
 
 namespace cuopt::linear_programming {
 
@@ -40,7 +40,7 @@ inline constexpr var_t char_to_var_type(char variable_type)
  */
 template <typename i_t, typename f_t>
 void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* problem,
-                                  const mps_parser::mps_data_model_t<i_t, f_t>& data_model)
+                                  const io::mps_data_model_t<i_t, f_t>& data_model)
 {
   // Set scalar values
   problem->set_maximize(data_model.get_sense());
@@ -138,10 +138,11 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
  * @param[in] handle Optional RAFT handle (for warmstart data, GPU only)
  */
 template <typename i_t, typename f_t>
-void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* problem,
-                                   cuopt::mps_parser::data_model_view_t<i_t, f_t>* data_model,
-                                   solver_settings_t<i_t, f_t>* solver_settings = nullptr,
-                                   const raft::handle_t* handle                 = nullptr)
+void populate_from_data_model_view(
+  optimization_problem_interface_t<i_t, f_t>* problem,
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t>* data_model,
+  solver_settings_t<i_t, f_t>* solver_settings = nullptr,
+  const raft::handle_t* handle                 = nullptr)
 {
   problem->set_maximize(data_model->get_sense());
 

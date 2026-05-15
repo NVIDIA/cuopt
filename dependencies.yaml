@@ -54,7 +54,6 @@ files:
       - depends_on_cuopt
       - depends_on_cuopt_server
       - depends_on_cuopt_sh_client
-      - depends_on_mps_parser
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
@@ -80,44 +79,8 @@ files:
         - depends_on_cuopt
         - depends_on_cuopt_server
         - depends_on_cuopt_sh_client
-        - depends_on_mps_parser
         - docs
         - py_version
-  py_build_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: build-system
-    includes:
-      - rapids_build_backend
-  py_rapids_build_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: tool.rapids-build-backend
-      key: requires
-    includes:
-      - build_common
-      - build_python_common
-      - depends_on_rapids_logger
-      - run_common
-  py_test_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: project.optional-dependencies
-      key: test
-    includes:
-      - test_python_common
-      - depends_on_rapids_logger
-  py_run_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: project
-    includes:
-      - run_common
-      - depends_on_rapids_logger
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -136,7 +99,6 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
-      - depends_on_mps_parser
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -147,7 +109,6 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
-      - depends_on_mps_parser
   py_build_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
@@ -165,7 +126,6 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
-      - depends_on_mps_parser
       - depends_on_rapids_logger
       - depends_on_cupy
       - depends_on_pylibraft
@@ -180,7 +140,6 @@ files:
       - run_cuopt
       - depends_on_cupy
       - depends_on_libcuopt
-      - depends_on_mps_parser
       - depends_on_rmm
       - depends_on_cudf
       - depends_on_pylibraft
@@ -244,7 +203,14 @@ files:
       table: project
     includes:
       - run_cuopt_sh_client
-      - depends_on_mps_parser
+  py_mps_cuopt_sh_client:
+    output: pyproject
+    pyproject_dir: python/cuopt_self_hosted/
+    extras:
+      table: project.optional-dependencies
+      key: mps
+    includes:
+      - mps_cuopt_sh_client
 channels:
   - rapidsai-nightly
   - rapidsai
@@ -416,6 +382,18 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
+  mps_cuopt_sh_client:
+    # Optional dependency exposed as the `cuopt-sh-client[mps]` extra.
+    # cuopt-sh-client itself is a CUDA-free thin client, but the MPS
+    # parser ships inside cuopt, which on PyPI only exists as the
+    # CUDA-suffixed cuopt-cu12 / cuopt-cu13 wheels. Those two cannot
+    # coexist (both install to the same `cuopt/` directory), so a user
+    # who already has cuopt-cu12 installed should NOT pull this extra
+    # and should pip-install cuopt-cu12 manually instead.
+    common:
+      - output_types: [requirements, pyproject]
+        packages:
+          - cuopt-cu13==26.6.*,>=0.0.0a0
   depends_on_libcuopt:
     common:
       - output_types: conda
@@ -493,16 +471,6 @@ dependencies:
       - output_types: [conda, requirements, pyproject]
         packages:
           - &cuopt_sh_client_unsuffixed cuopt-sh-client==26.6.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-  depends_on_mps_parser:
-    common:
-      - output_types: [requirements, pyproject, conda]
-        packages:
-          - cuopt-mps-parser==26.6.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file

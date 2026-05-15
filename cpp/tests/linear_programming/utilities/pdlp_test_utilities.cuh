@@ -11,7 +11,7 @@
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 
-#include <mps_parser.hpp>
+#include <mps_parser_internal.hpp>
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/common_utils.hpp>
@@ -39,7 +39,7 @@ static std::string make_path_absolute(const std::string& file)
 template <typename i_t, typename f_t>
 static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   const cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t>& settings)
 {
   auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
@@ -72,7 +72,7 @@ static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
 template <typename i_t, typename f_t>
 static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch_fixed(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t> settings,
   i_t batch_size,
   const std::vector<f_t>& per_climber_objective_coefficients  = {},
@@ -112,7 +112,7 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
 
 // Compute on the CPU x * c to check that the returned objective value is correct
 static void test_objective_sanity(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& primal_solution,
   double objective_value,
   double epsilon = tolerance)
@@ -137,7 +137,7 @@ static void test_objective_sanity(
 
 // Compute on the CPU x * c to check that the returned objective value is correct
 static void test_objective_sanity(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& primal_solution,
   double objective_value,
   double epsilon = tolerance)
@@ -164,7 +164,7 @@ static void test_objective_sanity(
 //  Check that it respect the absolute/relative tolerance
 // Check that the primal variables respected the variable bounds
 static void test_constraint_sanity(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const optimization_problem_solution_t<int, double>::additional_termination_information_t&
     termination_information,
   const rmm::device_uvector<double>& primal_solution,
