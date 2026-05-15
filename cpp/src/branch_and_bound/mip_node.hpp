@@ -44,18 +44,24 @@ class mip_node_t {
   {
     // Iterative teardown to avoid stack overflow on deep trees.
     // Detach all descendants breadth-first, then destroy them as leaves.
-    std::vector<std::unique_ptr<mip_node_t>> nodes;
-    for (auto& c : children) {
-      if (c) { nodes.push_back(std::move(c)); }
-    }
-    // nodes.size() grows so that this loop only terminates when only leaves remain
-    for (size_t i = 0; i < nodes.size(); ++i) {
-      for (auto& c : nodes[i]->children) {
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Under OOM, any not-yet-detached descendants are destroyed
+    // via the recursive unique_ptr chain in `children` as this frame unwinds.
+    try {
+      std::vector<std::unique_ptr<mip_node_t>> nodes;
+      for (auto& c : children) {
         if (c) { nodes.push_back(std::move(c)); }
       }
-    }
+      // nodes.size() grows so that this loop only terminates when only leaves remain
+      for (size_t i = 0; i < nodes.size(); ++i) {
+        for (auto& c : nodes[i]->children) {
+          if (c) { nodes.push_back(std::move(c)); }
+        }
+      }
 
-    // scope-exit ensure destruction of all detached leaves
+      // scope-exit ensure destruction of all detached leaves
+    } catch (...) {
+    }
   }
 
   mip_node_t(mip_node_t&&)            = default;
