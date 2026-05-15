@@ -180,7 +180,6 @@ cusparse_spmvop_descr_wrapper_t& cusparse_spmvop_descr_wrapper_t::operator=(
   return *this;
 }
 
-
 void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
                                              cusparseOperation_t opA,
                                              cusparseSpMatDescr_t matA,
@@ -191,8 +190,8 @@ void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
                                              void* buffer)
 {
   if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyDescr(descr_)); }
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(
-    handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer));
+  RAFT_CUSPARSE_TRY(
+    cusparseSpMVOp_createDescr(handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer));
   need_destruction_ = true;
 }
 
@@ -230,8 +229,7 @@ void cusparse_spmvop_plan_wrapper_t::create(cusparseHandle_t handle,
                                             size_t lto_buffer_size)
 {
   if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyPlan(plan_)); }
-  RAFT_CUSPARSE_TRY(
-    cusparseSpMVOp_createPlan(handle, descr, &plan_, lto_buffer, lto_buffer_size));
+  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle, descr, &plan_, lto_buffer, lto_buffer_size));
   need_destruction_ = true;
 }
 
@@ -1122,7 +1120,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              handle_ptr->get_stream());
 #endif
 }
-
 
 // Empty constructor used in kkt restart to save memory
 template <typename i_t, typename f_t>

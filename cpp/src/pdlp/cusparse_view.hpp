@@ -117,9 +117,9 @@ class cusparse_spmvop_plan_wrapper_t {
   cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
 
   void create(cusparseHandle_t handle,
-                cusparseSpMVOpDescr_t descr,
-                char* lto_buffer,
-                size_t lto_buffer_size);
+              cusparseSpMVOpDescr_t descr,
+              char* lto_buffer,
+              size_t lto_buffer_size);
 
   operator cusparseSpMVOpPlan_t() const;
 
@@ -225,7 +225,7 @@ class cusparse_view_t {
   // SpMVOp buffers for A and A_T
   rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop{0, handle_ptr_->get_stream()};
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
-  
+
 #if CUDA_VER_13_2_UP
   // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
   cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_;

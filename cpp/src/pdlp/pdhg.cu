@@ -457,17 +457,16 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
                                    cusparse_view_.current_AtY,
                                    cusparse_view_.current_AtY));
 #else
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                       reusable_device_scalar_value_1_.data(),
-                                       cusparse_view_.A_T,
-                                       cusparse_view_.dual_solution,
-                                       reusable_device_scalar_value_0_.data(),
-                                       cusparse_view_.current_AtY,
-                                       CUSPARSE_SPMV_CSR_ALG2,
-                                       (f_t*)cusparse_view_.buffer_transpose.data(),
-                                       stream_view_));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view_.A_T,
+                                                       cusparse_view_.dual_solution,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       cusparse_view_.current_AtY,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                                       stream_view_));
 #endif
 }
 
