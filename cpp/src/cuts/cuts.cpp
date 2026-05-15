@@ -114,31 +114,6 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
     const i_t var_idx     = vertex_idx % num_vars;
     const bool complement = vertex_idx >= num_vars;
-    if (complement) {
-      seen_complement.insert(var_idx);
-    } else {
-      seen_original.insert(var_idx);
-    }
-  }
-  i_t complement_pairs = 0;
-  for (const auto var_idx : seen_original) {
-    if (seen_complement.count(var_idx) > 0) { complement_pairs++; }
-  }
-  if (complement_pairs > 0) {
-    CLIQUE_CUTS_DEBUG("build_clique_cut infeasible: %lld complement-pairs",
-                      static_cast<long long>(complement_pairs));
-    return clique_cut_build_status_t::NO_CUT;
-  }
-
-  // Second pass: emit cut coefficients. We already know there are no
-  // complement-pair conflicts so the lookups against seen_original /
-  // seen_complement that the baseline performed are now redundant.
-  i_t num_complements       = 0;
-  const bool has_original   = !seen_original.empty();
-  const bool has_complement = !seen_complement.empty();
-  for (const auto vertex_idx : clique_vertices) {
-    const i_t var_idx     = vertex_idx % num_vars;
-    const bool complement = vertex_idx >= num_vars;
     const f_t lower_bound = lower_bounds[var_idx];
     const f_t upper_bound = upper_bounds[var_idx];
     cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
@@ -190,11 +165,6 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   cut_rhs = has_pair ? static_cast<f_t>(num_complements) : static_cast<f_t>(num_complements - 1);
   cut.sort();
 
-  // P0-3 (4): has_pair distinguishes pure (all originals OR all
-  // complements) from mixed cliques in the accepted-cut log line so
-  // post-mortem analysis can attribute gap closure to one variant or
-  // the other.
-  const int has_pair  = (has_original && has_complement) ? 1 : 0;
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
   if (violation > min_violation) {
@@ -207,8 +177,7 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
       static_cast<double>(dot),
       static_cast<double>(violation),
       static_cast<double>(min_violation),
-      static_cast<long long>(num_complements),
-      has_pair);
+      static_cast<long long>(num_complements));
     return clique_cut_build_status_t::CUT_ADDED;
   }
   CLIQUE_CUTS_DEBUG(
@@ -220,8 +189,7 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     static_cast<double>(dot),
     static_cast<double>(violation),
     static_cast<double>(min_violation),
-    static_cast<long long>(num_complements),
-    has_pair);
+    static_cast<long long>(num_complements));
   return clique_cut_build_status_t::NO_CUT;
 }
 
