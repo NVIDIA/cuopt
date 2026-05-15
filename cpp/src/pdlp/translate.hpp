@@ -20,7 +20,7 @@
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, const optimization_problem_interface_t<i_t, f_t>& problem)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
@@ -94,7 +94,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 }
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, detail::problem_t<i_t, f_t>& model)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
@@ -190,7 +190,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 }
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_simplex_problem(
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
   raft::handle_t const* handle_ptr, optimization_problem_t<i_t, f_t>& model)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);

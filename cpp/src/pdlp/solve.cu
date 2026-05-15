@@ -352,8 +352,12 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
-  detail::problem_t<i_t, f_t>& problem,
   const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  raft::handle_t const* handle_ptr,
+  std::string const& objective_name,
+  std::vector<std::string> const& var_names,
+  std::vector<std::string> const& row_names,
+  bool maximize,
   dual_simplex::lp_status_t status,
   f_t duration,
   f_t norm_user_objective,
@@ -378,18 +382,18 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   };
 
   rmm::device_uvector<f_t> final_primal_solution =
-    cuopt::device_copy(solution.x, problem.handle_ptr->get_stream());
+    cuopt::device_copy(solution.x, handle_ptr->get_stream());
   rmm::device_uvector<f_t> final_dual_solution =
-    cuopt::device_copy(solution.y, problem.handle_ptr->get_stream());
+    cuopt::device_copy(solution.y, handle_ptr->get_stream());
   rmm::device_uvector<f_t> final_reduced_cost =
-    cuopt::device_copy(solution.z, problem.handle_ptr->get_stream());
-  problem.handle_ptr->sync_stream();
+    cuopt::device_copy(solution.z, handle_ptr->get_stream());
+  handle_ptr->sync_stream();
 
   // Negate dual variables and reduced costs for maximization problems
-  if (problem.maximize) {
+  if (maximize) {
     adjust_dual_solution_and_reduced_cost(
-      final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
-    problem.handle_ptr->sync_stream();
+      final_dual_solution, final_reduced_cost, handle_ptr->get_stream());
+    handle_ptr->sync_stream();
   }
 
   // Should be filled with more information from dual simplex
@@ -417,9 +421,9 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                        final_dual_solution,
                                                        final_reduced_cost,
-                                                       problem.objective_name,
-                                                       problem.var_names,
-                                                       problem.row_names,
+                                                       objective_name,
+                                                       var_names,
+                                                       row_names,
                                                        std::move(info),
                                                        {termination_status});
 
@@ -431,8 +435,31 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                    sol.get_termination_status_string().c_str());
   }
 
-  problem.handle_ptr->sync_stream();
+  handle_ptr->sync_stream();
   return sol;
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
+  detail::problem_t<i_t, f_t>& problem,
+  const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  dual_simplex::lp_status_t status,
+  f_t duration,
+  f_t norm_user_objective,
+  f_t norm_rhs,
+  method_t method)
+{
+  return convert_dual_simplex_sol(solution,
+                                  problem.handle_ptr,
+                                  problem.objective_name,
+                                  problem.var_names,
+                                  problem.row_names,
+                                  problem.maximize,
+                                  status,
+                                  duration,
+                                  norm_user_objective,
+                                  norm_rhs,
+                                  method);
 }
 
 template <typename i_t, typename f_t>
@@ -445,78 +472,17 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   f_t norm_rhs,
   method_t method)
 {
-  auto to_termination_status = [](dual_simplex::lp_status_t st) {
-    switch (st) {
-      case dual_simplex::lp_status_t::OPTIMAL: return pdlp_termination_status_t::Optimal;
-      case dual_simplex::lp_status_t::INFEASIBLE:
-        return pdlp_termination_status_t::PrimalInfeasible;
-      case dual_simplex::lp_status_t::UNBOUNDED: return pdlp_termination_status_t::DualInfeasible;
-      case dual_simplex::lp_status_t::TIME_LIMIT: return pdlp_termination_status_t::TimeLimit;
-      case dual_simplex::lp_status_t::ITERATION_LIMIT:
-        return pdlp_termination_status_t::IterationLimit;
-      case dual_simplex::lp_status_t::CONCURRENT_LIMIT:
-        return pdlp_termination_status_t::ConcurrentLimit;
-      case dual_simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE:
-        return pdlp_termination_status_t::UnboundedOrInfeasible;
-      default: return pdlp_termination_status_t::NumericalError;
-    }
-  };
-
-  raft::handle_t const* handle_ptr = op_problem.get_handle_ptr();
-  rmm::device_uvector<f_t> final_primal_solution =
-    cuopt::device_copy(solution.x, handle_ptr->get_stream());
-  rmm::device_uvector<f_t> final_dual_solution =
-    cuopt::device_copy(solution.y, handle_ptr->get_stream());
-  rmm::device_uvector<f_t> final_reduced_cost =
-    cuopt::device_copy(solution.z, handle_ptr->get_stream());
-  handle_ptr->sync_stream();
-
-  if (op_problem.get_sense()) {
-    adjust_dual_solution_and_reduced_cost(
-      final_dual_solution, final_reduced_cost, handle_ptr->get_stream());
-    handle_ptr->sync_stream();
-  }
-
-  std::vector<
-    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-    info(1);
-  info[0].solved_by                       = method;
-  info[0].primal_objective                = solution.user_objective;
-  info[0].dual_objective                  = solution.user_objective;
-  info[0].gap                             = 0.0;
-  info[0].relative_gap                    = 0.0;
-  info[0].solve_time                      = duration;
-  info[0].number_of_steps_taken           = solution.iterations;
-  info[0].total_number_of_attempted_steps = solution.iterations;
-  info[0].l2_primal_residual              = solution.l2_primal_residual;
-  info[0].l2_dual_residual                = solution.l2_dual_residual;
-  info[0].l2_relative_primal_residual  = solution.l2_primal_residual / (1.0 + norm_user_objective);
-  info[0].l2_relative_dual_residual    = solution.l2_dual_residual / (1.0 + norm_rhs);
-  info[0].max_primal_ray_infeasibility = 0.0;
-  info[0].primal_ray_linear_objective  = 0.0;
-  info[0].max_dual_ray_infeasibility   = 0.0;
-  info[0].dual_ray_linear_objective    = 0.0;
-
-  pdlp_termination_status_t termination_status = to_termination_status(status);
-  auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
-                                                       final_dual_solution,
-                                                       final_reduced_cost,
-                                                       op_problem.get_objective_name(),
-                                                       op_problem.get_variable_names(),
-                                                       op_problem.get_row_names(),
-                                                       std::move(info),
-                                                       {termination_status});
-
-  if (termination_status != pdlp_termination_status_t::Optimal &&
-      termination_status != pdlp_termination_status_t::TimeLimit &&
-      termination_status != pdlp_termination_status_t::ConcurrentLimit) {
-    CUOPT_LOG_INFO("%s Solve status %s",
-                   method == method_t::DualSimplex ? "Dual Simplex" : "Barrier",
-                   sol.get_termination_status_string().c_str());
-  }
-
-  handle_ptr->sync_stream();
-  return sol;
+  return convert_dual_simplex_sol(solution,
+                                  op_problem.get_handle_ptr(),
+                                  op_problem.get_objective_name(),
+                                  op_problem.get_variable_names(),
+                                  op_problem.get_row_names(),
+                                  op_problem.get_sense(),
+                                  status,
+                                  duration,
+                                  norm_user_objective,
+                                  norm_rhs,
+                                  method);
 }
 
 template <typename i_t, typename f_t>
@@ -552,10 +518,6 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
     barrier_settings.log.log = false;
   }
 
-  barrier_settings.log.printf("Barrier settings created at %.2f seconds, toc time: %.2f seconds\n",
-                              timer.elapsed_time(),
-                              linear_programming::dual_simplex::toc(timer.get_tic_start()));
-
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution);
@@ -583,7 +545,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -657,7 +619,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -1576,7 +1538,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
   // capture off
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   // Create a thread for dual simplex
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
@@ -1793,8 +1755,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     }
     // Convert data structures to dual simplex format and back
     dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-      cuopt_optimization_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(),
-                                                              op_problem);
+      cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
     auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qp_timer);
     auto solution         = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),

@@ -95,8 +95,7 @@ class iteration_data_t {
                    i_t num_upper_bounds,
                    const std::vector<i_t>& free_variable_indices,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings,
-                   const f_t start_time)
+                   const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -3612,7 +3611,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings, start_time);
 
     iteration_data_t<i_t, f_t> data(
       lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
