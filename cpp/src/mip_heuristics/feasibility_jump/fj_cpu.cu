@@ -230,10 +230,15 @@ class timing_raii_t {
 
   ~timing_raii_t()
   {
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration =
-      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
-    times_vec_.push_back(duration.count());
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Losing one timing sample under OOM is acceptable.
+    try {
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto duration =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
+      times_vec_.push_back(duration.count());
+    } catch (...) {
+    }
   }
 
  private:
