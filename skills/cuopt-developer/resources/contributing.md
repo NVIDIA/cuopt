@@ -63,17 +63,16 @@ For extra context (a design decision, unusual constraint, follow-up), one or two
 
 ### Writing scripts and CI workflows
 
-Shell scripts, Python helper tools, and CI workflows all attract speculative complexity — flags, fallbacks, and config knobs that "might be useful" but trace back to no real problem. Strip it.
+Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.
 
-- Prefer extending an existing script over adding a new one. If you add a new file, be ready to say why an existing one didn't fit.
-- Every flag, option, env-var override, and configuration knob needs a concrete failure mode it prevents. If you can't name one, drop it.
-- Don't restate framework or platform defaults — it implies the default was wrong and confuses readers.
-- Make required inputs strict: fail loudly when they're missing instead of silently defaulting. Silent fallbacks turn into "this has been broken for months" bugs.
-- Validate inputs at the top, before any expensive work, so misconfiguration surfaces fast.
-- Keep the source readable: one shell command per line over chained `&&`, and no comments that restate the next line — reserve comments for the non-obvious *why*.
-- CI-specific: new informational jobs (reporting, dashboards, comment posting) should not gate merging; keep them out of any required-checks list.
+A few non-YAGNI points worth keeping in mind:
 
-When in doubt, mirror how the surrounding cuOpt code handles the same concern rather than introducing a new convention.
+- Prefer extending an existing script over adding a new one.
+- Validate inputs at the top, before any expensive work.
+- One shell command per line over chained `&&`; no comments that restate the next line.
+- Keep informational CI jobs (reporting, dashboards, comment posting) out of any required-checks list.
+
+When in doubt, mirror how the surrounding cuOpt code handles the same concern.
 
 ## Common Tasks
 
