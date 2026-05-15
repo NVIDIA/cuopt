@@ -93,6 +93,7 @@ class iteration_data_t {
  public:
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
+                   const std::vector<i_t>& free_variable_indices,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
@@ -222,6 +223,18 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
+    // Set up free variable tracking for QPs
+    if (!free_variable_indices.empty()) {
+      n_free_vars = free_variable_indices.size();
+      std::vector<i_t> is_free_host(lp.num_cols, 0);
+      for (i_t j : free_variable_indices) {
+        is_free_host[j] = 1;
+      }
+      d_is_free_.resize(lp.num_cols, stream_view_);
+      raft::copy(d_is_free_.data(), is_free_host.data(), lp.num_cols, stream_view_);
+      settings.log.printf("Free variables (QP)  : %d\n", n_free_vars);
+    }
+
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
@@ -289,11 +302,6 @@ class iteration_data_t {
     f_t estimated_nz_AAT = 0.0;
     std::vector<i_t> dense_columns_unordered;
 
-    if (has_Q) {
-      // QPs always use the augmented system; skip dense column detection
-      use_augmented   = true;
-      n_dense_columns = 0;
-    } else {
     f_t start_column_density = tic();
     // Ignore Q matrix for now
     find_dense_columns(
@@ -327,7 +335,6 @@ class iteration_data_t {
       n_dense_columns = 0;
       use_augmented   = !Q_diagonal;
     }
-    } // end !has_Q
 
     if (use_augmented) {
       settings.log.printf("Linear system               : augmented\n");
@@ -1986,25 +1993,23 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
                       vector_norm2<i_t, f_t>(data.dual_residual));
 #endif
   // Make sure (w, x, v, z) > 0
-  // Save free variable x values before forcing positive (they can be negative)
-  std::vector<f_t> free_x_save;
   if (data.n_free_vars > 0) {
-    free_x_save.resize(data.n_free_vars);
-    for (i_t k = 0; k < data.n_free_vars; ++k) {
-      free_x_save[k] = data.x[presolve_info.free_variable_indices[k]];
+    std::vector<i_t> nonnegative_variables(data.w.size(), 1);
+    for (i_t j : presolve_info.free_variable_indices) {
+      nonnegative_variables[j] = 0;
     }
-  }
-  data.w.ensure_positive(epsilon_adjust);
-  data.x.ensure_positive(epsilon_adjust);
 
-  // For native free variables (QP): restore x values and set z = 0
-  if (data.n_free_vars > 0) {
-    for (i_t k = 0; k < data.n_free_vars; ++k) {
-      i_t j = presolve_info.free_variable_indices[k];
-      data.x[j] = free_x_save[k];
+    data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
+
+    for (i_t j : presolve_info.free_variable_indices) {
       data.z[j] = 0.0;
     }
+
+  } else {
+    data.x.ensure_positive(epsilon_adjust);
   }
+  data.w.ensure_positive(epsilon_adjust);
+
 #ifdef PRINT_INFO
   settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
 #endif
@@ -3082,38 +3087,47 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
 }
 
 template <typename i_t, typename f_t>
+static void fill_linear_cc_rhs(iteration_data_t<i_t, f_t>& data,
+                               f_t new_mu,
+                               raft::device_span<f_t> out,
+                               raft::device_span<f_t> dx_aff,
+                               raft::device_span<f_t> dz_aff,
+                               rmm::cuda_stream_view stream_view)
+{
+  if (out.empty()) return;
+  if (data.n_free_vars > 0) {
+    auto is_free_ptr = data.d_is_free_.data();
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), is_free_ptr),
+      out.data(),
+      out.size(),
+      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_free) {
+        return is_free ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
+      },
+      stream_view.value());
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
+      out.data(),
+      out.size(),
+      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
+        return -(dx_aff_val * dz_aff_val) + new_mu;
+      },
+      stream_view.value());
+  }
+}
+
+template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data, f_t& new_mu)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
 
-  auto fill_linear_cc_rhs = [&](raft::device_span<f_t> out,
-                                raft::device_span<const f_t> dx_aff,
-                                raft::device_span<const f_t> dz_aff) {
-    if (out.empty()) return;
-    if (data.n_free_vars > 0) {
-      auto is_free_ptr = data.d_is_free_.data();
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), is_free_ptr),
-        out.data(),
-        out.size(),
-        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_free) {
-          return is_free ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
-        },
-        stream_view_.value());
-    } else {
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
-        out.data(),
-        out.size(),
-        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) {
-          return -(dx_aff_val * dz_aff_val) + new_mu;
-        },
-        stream_view_.value());
-    }
-  };
-  fill_linear_cc_rhs(cuopt::make_span(data.d_complementarity_xz_rhs_),
+  fill_linear_cc_rhs(data,
+                     new_mu,
+                     cuopt::make_span(data.d_complementarity_xz_rhs_),
                      cuopt::make_span(data.d_dx_aff_),
-                     cuopt::make_span(data.d_dz_aff_));
+                     cuopt::make_span(data.d_dz_aff_),
+                     stream_view_);
   RAFT_CHECK_CUDA(stream_view_);
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(data.d_dw_aff_.data(), data.d_dv_aff_.data()),
@@ -3587,18 +3601,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
-    // Set up native free variable tracking for QPs
-    if (!presolve_info.free_variable_indices.empty()) {
-      data.n_free_vars = presolve_info.free_variable_indices.size();
-      std::vector<i_t> is_free_host(n, 0);
-      for (i_t j : presolve_info.free_variable_indices) {
-        is_free_host[j] = 1;
-      }
-      data.d_is_free_.resize(n, stream_view_);
-      raft::copy(data.d_is_free_.data(), is_free_host.data(), n, stream_view_);
-      settings.log.printf("Native free variables (QP)  : %d\n", data.n_free_vars);
-    }
+    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
