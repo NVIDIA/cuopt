@@ -667,7 +667,7 @@ dependencies:
             packages:
               - cuda-version=13.0
           - matrix:
-              cuda: "13.2"
+              cuda: "13.1"
             packages:
               - cuda-version=13.1
           - matrix:
