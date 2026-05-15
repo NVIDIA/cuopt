@@ -311,26 +311,30 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                                                       rmm::cuda_stream_view stream) const
 {
   static_assert(std::is_signed_v<i_t>);
-  i_t const mm = m;
-  i_t const nn = n;
+
+  // Device CSC -> CSR: col_start[], i[], x[] (this) -> Arow.row_start[], j[], x[].
+  // Nonzeros are reordered by sorting (row, col) so each CSR row segment is contiguous.
+
   i_t const nz = nz_max;
 
-  Arow.m      = mm;
-  Arow.n      = nn;
-  Arow.nz_max = nz;
-  Arow.row_start.resize(mm + 1, stream);
+  Arow.m      = m;
+  Arow.n      = n;
+  Arow.nz_max = nz_max;
+  Arow.row_start.resize(m + 1, stream);
   Arow.j.resize(nz, stream);
   Arow.x.resize(nz, stream);
 
   auto exec = rmm::exec_policy(stream);
 
   if (nz == 0) {
-    RAFT_CUDA_TRY(cudaMemsetAsync(Arow.row_start.data(), 0, sizeof(i_t) * (mm + 1), stream));
+    // Empty matrix: row_start all zero; j/x unused.
+    RAFT_CUDA_TRY(cudaMemsetAsync(Arow.row_start.data(), 0, sizeof(i_t) * (m + 1), stream));
     return;
   }
 
-  rmm::device_uvector<i_t> row_counts(mm, stream);
-  RAFT_CUDA_TRY(cudaMemsetAsync(row_counts.data(), 0, sizeof(i_t) * mm, stream));
+  // Per-row nnz from CSC row indices i[] (one atomic add per nonzero).
+  rmm::device_uvector<i_t> row_counts(m, stream);
+  RAFT_CUDA_TRY(cudaMemsetAsync(row_counts.data(), 0, sizeof(i_t) * m, stream));
 
   thrust::for_each(exec,
                    thrust::make_counting_iterator<i_t>(0),
@@ -339,27 +343,29 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                      atomicAdd(counts + row_ind[p], i_t(1));
                    });
 
+  // CSR row pointers: exclusive prefix sum of row_counts; Arow.row_start[m] = nz.
   rmm::device_buffer scan_tmp;
   std::size_t scan_bytes = 0;
   cub::DeviceScan::ExclusiveSum(
-    nullptr, scan_bytes, row_counts.data(), Arow.row_start.data(), mm, stream);
+    nullptr, scan_bytes, row_counts.data(), Arow.row_start.data(), m, stream);
   scan_tmp.resize(scan_bytes, stream);
   cub::DeviceScan::ExclusiveSum(
-    scan_tmp.data(), scan_bytes, row_counts.data(), Arow.row_start.data(), mm, stream);
+    scan_tmp.data(), scan_bytes, row_counts.data(), Arow.row_start.data(), m, stream);
 
   RAFT_CUDA_TRY(
-    cudaMemcpyAsync(Arow.row_start.data() + mm, &nz, sizeof(i_t), cudaMemcpyHostToDevice, stream));
+    cudaMemcpyAsync(Arow.row_start.data() + m, &nz, sizeof(i_t), cudaMemcpyHostToDevice, stream));
 
+  // rows[]: CSC row indices (sort key). Arow.j / Arow.x hold (col, val) per flat CSC index,
+  // then sort_by_key permutes j and x in place into CSR (row, col) order.
   rmm::device_uvector<i_t> rows(nz, stream);
-  rmm::device_uvector<i_t> cols(nz, stream);
-  rmm::device_uvector<f_t> vals(nz, stream);
   raft::copy(rows.data(), i.data(), nz, stream);
-  raft::copy(vals.data(), x.data(), nz, stream);
+  raft::copy(Arow.x.data(), x.data(), nz, stream);
 
+  // Global CSC position p lies in column c iff col_start[c] <= p < col_start[c+1].
   thrust::tabulate(exec,
-                   thrust::device_pointer_cast(cols.data()),
-                   thrust::device_pointer_cast(cols.data() + nz),
-                   [cs = col_start.data(), nn_c = nn] __device__(i_t p) {
+                   thrust::device_pointer_cast(Arow.j.data()),
+                   thrust::device_pointer_cast(Arow.j.data() + nz),
+                   [cs = col_start.data(), nn_c = n] __device__(i_t p) {
                      i_t lo = 0;
                      i_t hi = nn_c;
                      while (lo < hi) {
@@ -373,15 +379,13 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                      return lo - 1;
                    });
 
+  // CSR column order: sort (row, col) lexicographically; values follow the same permutation.
   auto row_iter = thrust::device_pointer_cast(rows.data());
-  auto col_iter = thrust::device_pointer_cast(cols.data());
+  auto col_iter = thrust::device_pointer_cast(Arow.j.data());
   thrust::sort_by_key(exec,
                       thrust::make_zip_iterator(thrust::make_tuple(row_iter, col_iter)),
                       thrust::make_zip_iterator(thrust::make_tuple(row_iter + nz, col_iter + nz)),
-                      thrust::device_pointer_cast(vals.data()));
-
-  raft::copy(Arow.j.data(), cols.data(), nz, stream);
-  raft::copy(Arow.x.data(), vals.data(), nz, stream);
+                      thrust::device_pointer_cast(Arow.x.data()));
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex
