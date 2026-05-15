@@ -15,7 +15,7 @@ REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only --math --routing --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -41,9 +41,11 @@ HELP="$0 [<target> ...] [<flag> ...]
    -l=              - log level. Options are: TRACE | DEBUG | INFO | WARN | ERROR | CRITICAL | OFF. Default=INFO
    --verbose-pdlp   - verbose mode for pdlp solver
    --build-lp-only  - build only linear programming components, excluding routing package and MIP-specific files
+   --math           - math-only slice: C++ LP/MILP/QP stack without routing; Python LP slice; cuopt.routing raises ImportError
+   --routing        - routing-only slice: C++ routing without math stack; Python routing slice; cuopt.linear_programming raises ImportError
    --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
    --skip-tests-build  - disable building of all tests
-   --skip-routing-build - skip building routing components
+   --skip-routing-build - legacy CMake flag: native routing C++ off only (same routing half as --math). Does not set the Python slice; prefer --math for a coherent math-only install.
    --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
@@ -86,6 +88,9 @@ SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
 SKIP_GRPC_BUILD=0
+CUOPT_BUILD_MATH_CMAKE=ON
+CUOPT_BUILD_ROUTING_CMAKE=ON
+CUOPT_PYTHON_COMPONENT=FULL
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
@@ -316,6 +321,16 @@ if [ ${BUILD_LP_ONLY} -eq 1 ] && [ ${SKIP_C_PYTHON_ADAPTERS} -eq 0 ]; then
     exit 1
 fi
 
+if hasArg --math && hasArg --routing; then
+    echo "ERROR: --math and --routing cannot be used together."
+    exit 1
+fi
+
+if hasArg --routing && [ ${SKIP_ROUTING_BUILD} -eq 1 ]; then
+    echo "ERROR: --routing conflicts with --skip-routing-build (or --build-lp-only, which implies skip routing)."
+    exit 1
+fi
+
 if [ ${BUILD_SANITIZER} -eq 1 ] && [ ${BUILD_TSAN} -eq 1 ]; then
     echo "ERROR: -fsanitize and -tsan cannot be used together"
     echo "AddressSanitizer and ThreadSanitizer are mutually exclusive"
@@ -347,9 +362,20 @@ else
     fi
 fi
 
+# Product slices (--math / --routing): native CUOPT_BUILD_* + Python CUOPT_PYTHON_COMPONENT
+if hasArg --math && ! hasArg --routing; then
+    CUOPT_BUILD_MATH_CMAKE=ON
+    CUOPT_BUILD_ROUTING_CMAKE=OFF
+    CUOPT_PYTHON_COMPONENT=LP
+elif hasArg --routing && ! hasArg --math; then
+    CUOPT_BUILD_MATH_CMAKE=OFF
+    CUOPT_BUILD_ROUTING_CMAKE=ON
+    CUOPT_PYTHON_COMPONENT=ROUTING
+fi
+
 ################################################################################
 # Configure, build, and install libmps_parser
-if buildAll || hasArg libmps_parser; then
+if { buildAll || hasArg libmps_parser; } && [ "${CUOPT_PYTHON_COMPONENT}" != "ROUTING" ]; then
     mkdir -p "${LIBMPS_PARSER_BUILD_DIR}"
     cd "${LIBMPS_PARSER_BUILD_DIR}"
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
@@ -367,6 +393,10 @@ fi
 ################################################################################
 # Configure and build libcuopt (and optionally just the gRPC server)
 if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+    if hasArg cuopt_grpc_server && [ "${CUOPT_BUILD_MATH_CMAKE}" != "ON" ]; then
+        echo "ERROR: cuopt_grpc_server requires the math stack (CUOPT_BUILD_MATH=ON). Omit --routing or use --math / full build."
+        exit 1
+    fi
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
     cd "${LIBCUOPT_BUILD_DIR}"
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
@@ -385,6 +415,8 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
+          -DCUOPT_BUILD_MATH=${CUOPT_BUILD_MATH_CMAKE} \
+          -DCUOPT_BUILD_ROUTING=${CUOPT_BUILD_ROUTING_CMAKE} \
           -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
@@ -426,12 +458,12 @@ if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
     # $EXTRA_CMAKE_ARGS gets concatenated into a string with [*] and then we find/replace spaces with semi-colons
-    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
+    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};-DCUOPT_PYTHON_COMPONENT=${CUOPT_PYTHON_COMPONENT};${EXTRA_CMAKE_ARGS[*]// /;}" \
         python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt MPS parser Python package
-if buildAll || hasArg cuopt_mps_parser; then
+if { buildAll || hasArg cuopt_mps_parser; } && [ "${CUOPT_PYTHON_COMPONENT}" != "ROUTING" ]; then
     cd "${REPODIR}"/python/cuopt/cuopt/linear_programming
 
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
@@ -439,13 +471,13 @@ if buildAll || hasArg cuopt_mps_parser; then
 fi
 
 # Build and install the cuopt_server Python package
-if buildAll || hasArg cuopt_server; then
+if { buildAll || hasArg cuopt_server; } && [ "${CUOPT_PYTHON_COMPONENT}" != "ROUTING" ]; then
     cd "${REPODIR}"/python/cuopt_server
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
 # Build and install the cuopt_sh_client Python package
-if buildAll || hasArg cuopt_sh_client; then
+if { buildAll || hasArg cuopt_sh_client; } && [ "${CUOPT_PYTHON_COMPONENT}" != "ROUTING" ]; then
     cd "${REPODIR}"/python/cuopt_self_hosted/
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi

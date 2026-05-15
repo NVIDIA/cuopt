@@ -17,8 +17,7 @@ readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "NVIDIA Corporation" },
 ]
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
     "cuopt==26.6.*,>=0.0.0a0",

@@ -2,18 +2,50 @@
 # SPDX-License-Identifier: Apache-2.0
 
 try:
-    import libcuopt
+    from cuopt._build_variant import CUOPT_PYTHON_BUILD_COMPONENT as _CUOPT_SLICE
 except ModuleNotFoundError:
-    pass
+    _CUOPT_SLICE = "FULL"
+
+# Native loader: try split wheels first, then full libcuopt
+if _CUOPT_SLICE == "LP":
+    for _native in ("libcuopt_lp", "libcuopt"):
+        try:
+            _m = __import__(_native, fromlist=["load_library"])
+        except ModuleNotFoundError:
+            continue
+        _m.load_library()
+        del _m
+        break
+    del _native
+elif _CUOPT_SLICE == "ROUTING":
+    for _native in ("libcuopt_routing", "libcuopt"):
+        try:
+            _m = __import__(_native, fromlist=["load_library"])
+        except ModuleNotFoundError:
+            continue
+        _m.load_library()
+        del _m
+        break
+    del _native
 else:
-    libcuopt.load_library()
-    del libcuopt
+    for _native_pkg in ("libcuopt", "libcuopt_lp", "libcuopt_routing"):
+        try:
+            _m = __import__(_native_pkg, fromlist=["load_library"])
+        except ModuleNotFoundError:
+            continue
+        _m.load_library()
+        del _m
+        break
+    del _native_pkg
 
 from cuopt._version import __git_commit__, __version__, __version_major_minor__
 
-# Lazy imports for linear_programming, routing, and distance_engine modules
-# This allows cuopt to be imported on CPU-only hosts when remote solve is configured
-_submodules = ["linear_programming", "routing", "distance_engine"]
+if _CUOPT_SLICE == "ROUTING":
+    _submodules = ["routing", "distance_engine"]
+elif _CUOPT_SLICE == "LP":
+    _submodules = ["linear_programming"]
+else:
+    _submodules = ["linear_programming", "routing", "distance_engine"]
 
 
 def __getattr__(name):
