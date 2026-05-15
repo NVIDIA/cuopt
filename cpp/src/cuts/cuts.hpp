@@ -347,14 +347,6 @@ class cut_pool_t {
 
   void check_for_duplicate_cuts();
 
-  // Configuration knobs for the HiGHS-like cut pool. Defaults match the
-  // recommended starting values from the cut-selection design note.
-  void set_pool_age_limit(i_t v) { pool_age_limit_ = v; }
-  void set_pool_soft_limit(i_t v) { pool_soft_limit_ = v; }
-  void set_max_parallelism(f_t v) { max_parallelism_ = v; }
-
-  // ----- P2-4 clique cousin filter knobs / counters -----------------------
-  //
   // The clique cut family (Bron-Kerbosch + extension) emits cousin
   // cliques whose support sets agree in |k-1| of |k| vertices. The
   // selection-stage orthogonality scan catches them but only after the
@@ -365,12 +357,12 @@ class cut_pool_t {
   // higher-scoring representative (or, if no score was supplied, the
   // earlier-inserted one).
   //
-  // Defaults: jaccard_tau=0.85, k=8, enable=false. Cousin filter is OFF
-  // by default so cut_pool_t behavior matches main_baselin (5335b659)
-  // unless apply_cut_sweep_config() explicitly turns it on. The numeric
-  // defaults (tau=0.85, k=8) match the cut_scoring branch's "final
-  // version" so config 1 here lines up with the P2-4 baseline measured
-  // there.
+  // Defaults: jaccard_tau=0.95, k=8, enable=true, size_weight=0.0.
+  // These match "config 3 / cousin_loose" from the clique-sweep on
+  // commit 0b04683b — the configuration that won the gap-closed-pct
+  // comparison and was promoted to be the production default for the
+  // clique cut family. Callers can still override at runtime via
+  // set_clique_cousin_* if they want to experiment.
   void set_clique_cousin_filter_enable(bool v) { clique_cousin_filter_enable_ = v; }
   void set_clique_cousin_jaccard_tau(f_t v) { clique_cousin_jaccard_tau_ = v; }
   void set_clique_cousin_minhash_k(i_t v) { clique_cousin_minhash_k_ = v; }
@@ -398,32 +390,6 @@ class cut_pool_t {
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
   f_t cut_orthogonality(i_t i, i_t j);
-
-  // HiGHS-like active-support score for a single pool row. Returns true if
-  // the cut is currently violated (violation > feastol). Falls back to the
-  // full row norm if no variable is "active" (rare for a violated cut).
-  bool compute_active_support_score(i_t row,
-                                    const std::vector<f_t>& x,
-                                    const std::vector<f_t>& lower,
-                                    const std::vector<f_t>& upper,
-                                    const std::vector<variable_type_t>& var_types,
-                                    f_t feastol,
-                                    f_t& violation,
-                                    f_t& score) const;
-
-  // Parallelism in [-1, 1] using stored 1/||a||_2. We use the absolute
-  // value because cuts are stored in a fixed sign convention (a^T x >= rhs)
-  // but two equivalent cuts may differ by a global sign.
-  f_t parallelism_abs(i_t i, i_t j) const;
-
-  // Compact: drop pool rows for which keep_row[r] == 0.
-  void compact_pool(const std::vector<i_t>& keep_row);
-  uint64_t support_hash(const i_t* indices, i_t size) const;
-  void rebuild_support_hash_buckets();
-  static bool is_integral_type(variable_type_t t)
-  {
-    return t == variable_type_t::INTEGER || t == variable_type_t::BINARY;
-  }
 
   // Cousin filter helpers. compute_clique_minhash_sketch() fills
   // `sketch` (length = clique_cousin_minhash_k_) with k independent
@@ -460,30 +426,12 @@ class cut_pool_t {
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
 
-  // HiGHS-like cut-pool configuration
-  i_t pool_age_limit_{30};
-  i_t pool_soft_limit_{10000};
-  f_t max_parallelism_{0.1};
-  f_t min_score_factor_{0.9};
-  f_t best_observed_score_{0.0};
-  f_t integer_support_weight_{0.1};
-  f_t full_support_penalty_{0.01};
-  std::unordered_map<uint64_t, std::vector<i_t>> support_hash_buckets_;
-
-  // P2-4 cousin filter state. clique_support_minhash_ is sized in
-  // lock-step with cut_storage_; non-CLIQUE rows carry an empty
-  // sketch and are skipped by rebuild_clique_cousin_buckets() and the
-  // cousin loop in add_cut. clique_cousin_score_ holds the
-  // caller-supplied score (raw violation, or violation * size-tilt) so
-  // we can decide which representative to keep when two cliques
-  // collide. clique_cousin_buckets_ maps the first sketch hash to the
-  // list of pool rows whose sketches start with that hash.
   std::vector<std::vector<uint64_t>> clique_support_minhash_;
   std::vector<f_t> clique_cousin_score_;
   std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
-  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.85)};
+  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.95)};
   i_t clique_cousin_minhash_k_{8};
-  bool clique_cousin_filter_enable_{false};
+  bool clique_cousin_filter_enable_{true};
   // When > 0, the cousin filter's "score" used to pick a winner is
   // boosted as: effective_score = base_score * (1 + size_weight * log2(1 + clique_size)).
   // This biases cousin replacement toward larger cliques (more variables

@@ -6,6 +6,7 @@
 /* clang-format on */
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
+#include "miplib2017_optima.hpp"
 
 #include <cstdio>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
@@ -23,15 +24,20 @@
 #include <rmm/mr/pool_memory_resource.hpp>
 #include <rmm/mr/tracking_resource_adaptor.hpp>
 
+#include <cuda_runtime_api.h>
 #include <fcntl.h>
 #include <omp.h>
 #include <sys/file.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <algorithm>
 #include <argparse/argparse.hpp>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <queue>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -238,6 +244,43 @@ int run_single_file(std::string file_path,
   } else {
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
+
+  // Per-instance "gap closed to optimum" stat. Emits a single
+  // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
+  // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
+  // Optima are looked up from the in-source MIPLIB2017 benchmark-set
+  // table (miplib2017_optima.hpp); unknown instances emit "opt=TBD"
+  // and infeasibility-flagged instances emit "opt=Infeasible".
+  {
+    const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::high_resolution_clock::now() - start_run_solver)
+                                  .count() /
+                                1000.0;
+    std::string _status_str;
+    switch (solution.get_termination_status()) {
+      case cuopt::linear_programming::mip_termination_status_t::Optimal:
+        _status_str = "Optimal";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::FeasibleFound:
+        _status_str = "FeasibleFound";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::TimeLimit:
+        _status_str = "TimeLimit";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::Infeasible:
+        _status_str = "Infeasible";
+        break;
+      default: _status_str = "Other"; break;
+    }
+    cuopt_bench::print_miplib_gap_stat(base_filename,
+                                       solution,
+                                       _gap_seconds,
+                                       _status_str,
+                                       benchmark_info.root_lp_no_cuts,
+                                       benchmark_info.root_lp_with_cuts,
+                                       benchmark_info.cut_generation_time_sec);
+  }
+
   std::stringstream ss;
   int decimal_places = 2;
   double mip_gap     = solution.get_mip_gap();
@@ -290,6 +333,157 @@ void run_single_file_mp(std::string file_path,
   // this is a bad design to communicate the result but better than adding complexity of IPC or
   // pipes
   exit(sol_found);
+}
+
+// Return the NUMA node of each GPU (one entry per gpu_id), or -1 when the
+// node can't be determined. Reads /sys/bus/pci/devices/<bdf>/numa_node so it
+// requires no extra dependencies (NVML / hwloc).
+static std::vector<int> get_gpu_numa_nodes(int n_gpus)
+{
+  std::vector<int> nodes(static_cast<size_t>(std::max(0, n_gpus)), -1);
+  for (int i = 0; i < n_gpus; ++i) {
+    char pci_id[32] = {0};
+    if (cudaDeviceGetPCIBusId(pci_id, sizeof(pci_id), i) != cudaSuccess) { continue; }
+    for (char* c = pci_id; *c; ++c) {
+      *c = static_cast<char>(std::tolower(static_cast<unsigned char>(*c)));
+    }
+    std::ifstream f(std::string("/sys/bus/pci/devices/") + pci_id + "/numa_node");
+    if (!f) { continue; }
+    int node = -1;
+    f >> node;
+    nodes[i] = node;
+  }
+  return nodes;
+}
+
+// Parse a sysfs cpulist string ("0-71,144-215") into a sorted list of CPU IDs.
+// Returns empty on any read or parse failure.
+static std::vector<int> read_numa_cpulist(int numa_node)
+{
+  std::vector<int> cpus;
+  if (numa_node < 0) { return cpus; }
+  std::ifstream f(std::string("/sys/devices/system/node/node") + std::to_string(numa_node) +
+                  "/cpulist");
+  if (!f) { return cpus; }
+  std::string line;
+  if (!std::getline(f, line)) { return cpus; }
+  size_t pos = 0;
+  while (pos < line.size()) {
+    const size_t comma      = line.find(',', pos);
+    const size_t end        = (comma == std::string::npos) ? line.size() : comma;
+    const std::string range = line.substr(pos, end - pos);
+    if (!range.empty()) {
+      try {
+        const size_t dash = range.find('-');
+        const int lo      = std::stoi(range.substr(0, dash));
+        const int hi      = (dash == std::string::npos) ? lo : std::stoi(range.substr(dash + 1));
+        for (int c = lo; c <= hi; ++c) {
+          cpus.push_back(c);
+        }
+      } catch (...) {
+        return std::vector<int>{};
+      }
+    }
+    if (comma == std::string::npos) { break; }
+    pos = comma + 1;
+  }
+  std::sort(cpus.begin(), cpus.end());
+  return cpus;
+}
+
+// Bind the current process to a fair partition of the inherited CPU mask,
+// preferring CPUs on the same NUMA node as the GPU. Returns the actual
+// number of CPUs the child was pinned to, or -1 if the partition could not
+// be applied (caller must then choose a fallback).
+//
+// Algorithm:
+//   1. Read inherited (parent) affinity mask -> visible_cpus.
+//   2. Look up each GPU's NUMA node via PCI BDF.
+//   3. If this GPU's NUMA node is known and has visible CPUs, partition
+//      that NUMA node's CPUs among the GPUs that landed on the same node
+//      (siblings, ordered by gpu_id).
+//   4. Otherwise fall back to a contiguous global partition of visible_cpus.
+//
+// The function always emits a single stdout line per child summarising the
+// partition (NUMA-local vs contiguous-fallback), so the parent's log isn't
+// interleaved per-CPU across n_gpus children.
+int bind_process_to_cpu_partition(int gpu_id, int n_gpus)
+{
+  if (gpu_id < 0 || n_gpus <= 0 || gpu_id >= n_gpus) { return -1; }
+
+  cpu_set_t parent_mask;
+  CPU_ZERO(&parent_mask);
+  if (sched_getaffinity(0, sizeof(parent_mask), &parent_mask) != 0) {
+    perror("sched_getaffinity");
+    return -1;
+  }
+
+  std::vector<int> visible_cpus;
+  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+    if (CPU_ISSET(cpu, &parent_mask)) { visible_cpus.push_back(cpu); }
+  }
+  if (visible_cpus.empty()) { return -1; }
+  std::sort(visible_cpus.begin(), visible_cpus.end());
+
+  std::vector<int> chosen_cpus;
+  bool numa_aware = false;
+
+  const std::vector<int> gpu_numa_nodes = get_gpu_numa_nodes(n_gpus);
+  const int my_numa                     = gpu_numa_nodes[gpu_id];
+  if (my_numa >= 0) {
+    std::vector<int> siblings;
+    for (int i = 0; i < n_gpus; ++i) {
+      if (gpu_numa_nodes[i] == my_numa) { siblings.push_back(i); }
+    }
+    std::vector<int> numa_cpus = read_numa_cpulist(my_numa);
+    if (!numa_cpus.empty() && !siblings.empty()) {
+      std::vector<int> local_visible;
+      std::set_intersection(visible_cpus.begin(),
+                            visible_cpus.end(),
+                            numa_cpus.begin(),
+                            numa_cpus.end(),
+                            std::back_inserter(local_visible));
+      if (!local_visible.empty()) {
+        const int siblings_count = static_cast<int>(siblings.size());
+        const int my_idx =
+          static_cast<int>(std::find(siblings.begin(), siblings.end(), gpu_id) - siblings.begin());
+        const int local_per_gpu =
+          std::max(1, static_cast<int>(local_visible.size()) / siblings_count);
+        const int s = my_idx * local_per_gpu;
+        const int e = std::min(s + local_per_gpu, static_cast<int>(local_visible.size()));
+        if (s < e) {
+          chosen_cpus.assign(local_visible.begin() + s, local_visible.begin() + e);
+          numa_aware = true;
+        }
+      }
+    }
+  }
+
+  if (!numa_aware) {
+    const int cpus_per_gpu = std::max(1, static_cast<int>(visible_cpus.size()) / n_gpus);
+    const int start        = gpu_id * cpus_per_gpu;
+    if (start >= static_cast<int>(visible_cpus.size())) { return -1; }
+    const int end = std::min(start + cpus_per_gpu, static_cast<int>(visible_cpus.size()));
+    chosen_cpus.assign(visible_cpus.begin() + start, visible_cpus.begin() + end);
+  }
+
+  cpu_set_t child_mask;
+  CPU_ZERO(&child_mask);
+  std::ostringstream oss;
+  oss << "[gpu " << gpu_id << "] bound to " << chosen_cpus.size() << " CPUs ("
+      << (numa_aware ? "NUMA-local node " + std::to_string(my_numa) : "contiguous-fallback")
+      << "):";
+  for (int c : chosen_cpus) {
+    CPU_SET(c, &child_mask);
+    oss << ' ' << c;
+  }
+  std::cout << oss.str() << std::endl;
+
+  if (sched_setaffinity(0, sizeof(child_mask), &child_mask) != 0) {
+    perror("sched_setaffinity");
+    return -1;
+  }
+  return static_cast<int>(chosen_cpus.size());
 }
 
 void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
@@ -416,15 +610,9 @@ int main(int argc, char* argv[])
   int reliability_branching = program.get<int>("--reliability-branching");
   bool deterministic        = program.get<bool>("--determinism");
 
-  if (num_cpu_threads < 0) {
-    num_cpu_threads = omp_get_max_threads() / n_gpus;
-    // std::ifstream smt_file("/sys/devices/system/cpu/smt/active");
-    // if (smt_file.is_open()) {
-    //   int smt_active = 0;
-    //   smt_file >> smt_active;
-    //   if (smt_active) { num_cpu_threads /= 2; }
-    // }
-    num_cpu_threads = std::max(num_cpu_threads, 1);
+  if (run_dir && program.is_used("--num-cpu-threads")) {
+    std::cerr << "Warning: --num-cpu-threads is ignored in directory-run mode; "
+                 "thread count is set per process from the bound CPU partition.\n";
   }
 
   if (program.is_used("--out-dir")) {
@@ -501,6 +689,18 @@ int main(int argc, char* argv[])
           }
           if (sys_pid == 0) {
             RAFT_CUDA_TRY(cudaSetDevice(gpu_id));
+            int assigned_cpus = bind_process_to_cpu_partition(gpu_id, n_gpus);
+            if (assigned_cpus <= 0) {
+              assigned_cpus = std::max(1, omp_get_max_threads() / n_gpus);
+              std::cerr << "[gpu " << gpu_id << "] CPU pin failed; falling back to "
+                        << assigned_cpus << " threads\n";
+            }
+            // Directory-run mode owns the thread count: --num-cpu-threads is
+            // intentionally ignored here so per-process thread budgets match
+            // the bound CPU partition. The single-run path below still
+            // honours --num-cpu-threads.
+            omp_set_num_threads(assigned_cpus);
+            num_cpu_threads = assigned_cpus;
             run_single_file_mp(file_name,
                                gpu_id,
                                batch_num,
@@ -533,31 +733,36 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
+    auto run_single      = [&]() {
+      run_single_file(path,
+                      0,
+                      0,
+                      n_gpus,
+                      out_dir,
+                      initial_solution_file,
+                      heuristics_only,
+                      num_cpu_threads,
+                      write_log_file,
+                      log_to_console,
+                      reliability_branching,
+                      time_limit,
+                      work_limit,
+                      deterministic);
+    };
     if (memory_limit > 0) {
       auto limiting_adaptor =
         rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
       rmm::mr::set_current_device_resource(limiting_adaptor);
+      run_single();
     } else if (track_allocations) {
       rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
       rmm::mr::set_current_device_resource(tracking_adaptor);
+      run_single();
     } else {
       rmm::mr::set_current_device_resource(memory_resource);
+      run_single();
     }
-    run_single_file(path,
-                    0,
-                    0,
-                    n_gpus,
-                    out_dir,
-                    initial_solution_file,
-                    heuristics_only,
-                    num_cpu_threads,
-                    write_log_file,
-                    log_to_console,
-                    reliability_branching,
-                    time_limit,
-                    work_limit,
-                    deterministic);
   }
 
   return 0;
