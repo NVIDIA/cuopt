@@ -94,8 +94,12 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       }
 
       // --- Column scaling: scale each column by 1/sqrt(max|a_ij|) ---
+      // For cone variables, use a uniform scale per cone block to preserve SOC structure.
       std::vector<f_t> c(n);
-      for (i_t j = 0; j < n; ++j) {
+      const i_t cone_start = unscaled.second_order_cone_dims.empty() ? n : unscaled.cone_var_start;
+
+      // Linear columns: scale independently
+      for (i_t j = 0; j < cone_start; ++j) {
         f_t cm = 0.0;
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
           f_t a = std::abs(scaled.A.x[p]);
@@ -103,6 +107,26 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
         }
         c[j] = cm > 0 ? 1.0 / std::sqrt(cm) : 1.0;
         max_deviation = std::max(max_deviation, std::abs(cm - 1.0));
+      }
+
+      // Cone columns: uniform scale per cone block
+      i_t cone_off = cone_start;
+      for (i_t k = 0; k < static_cast<i_t>(unscaled.second_order_cone_dims.size()); ++k) {
+        i_t q_k = unscaled.second_order_cone_dims[k];
+        // Find max column inf-norm across all columns in this cone
+        f_t cone_max = 0.0;
+        for (i_t j = cone_off; j < cone_off + q_k; ++j) {
+          for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
+            f_t a = std::abs(scaled.A.x[p]);
+            if (a > cone_max) cone_max = a;
+          }
+        }
+        f_t cone_scale = cone_max > 0 ? 1.0 / std::sqrt(cone_max) : 1.0;
+        max_deviation = std::max(max_deviation, std::abs(cone_max - 1.0));
+        for (i_t j = cone_off; j < cone_off + q_k; ++j) {
+          c[j] = cone_scale;
+        }
+        cone_off += q_k;
       }
       for (i_t j = 0; j < n; ++j) {
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
