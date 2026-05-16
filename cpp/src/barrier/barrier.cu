@@ -506,8 +506,6 @@ class iteration_data_t {
     i_t nnzA                 = A.col_start[n];
     i_t nnzQ                 = Q.n > 0 ? Q.col_start[n] : 0;
     i_t factorization_size   = n + m;
-    const f_t dual_perturb   = 1e-8;
-    const f_t primal_perturb = 1e-8;
 
     const bool has_soc  = has_cones();
     const i_t m_c       = cone_entry_count();
@@ -1746,6 +1744,10 @@ class iteration_data_t {
   i_t n_free_vars{0};
   rmm::device_uvector<i_t> d_is_free_;  // 1 if native free (QP/SOCP augmented), 0 otherwise
 
+  // Adaptive regularization for the augmented system
+  f_t dual_perturb{1e-8};
+  f_t primal_perturb{1e-8};
+
   std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
 
   bool has_factorization;
@@ -2081,27 +2083,35 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   dense_vector_t<i_t, f_t> dual_res(lp.num_cols);
   float64_t epsilon_adjust = 10.0;
 
-  // Set the initial point for the SOC case separately
+  // Data-dependent initial point for SOCP, following SeDuMi (Sturm, 1999).
+  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
+  //   primal and dual: x = mu * e_K,  z = mu * e_K
+  // where e_K is the identity of the symmetric cone:
+  //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
   if (has_soc) {
-    const i_t cs = data.cone_start();
-    // Nonnegative primal / dual (linear orthant): x_j, z_j <- 1
+    const i_t cs     = data.cone_start();
+    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
+    const f_t sqrt2  = std::sqrt(2.0);
+    const f_t x_soc  = mu * sqrt2;
+    const f_t z_soc  = mu * sqrt2;
+    // Linear orthant
     for (i_t j = 0; j < cs; ++j) {
-      data.x[j] = 1.0;
-      data.z[j] = 1.0;
+      data.x[j] = mu;
+      data.z[j] = mu;
     }
-    // Native free variables: no finite lower barrier — dual slack z_j stays at 0 (matches non-SOC
-    // branch and barrier algebra).
     if (has_free) {
       for (i_t j : presolve_info.free_variable_indices) {
         if (j < cs) { data.z[j] = 0.0; }
       }
     }
-    // Primal and dual SOC blocks: (t, x_bar) <- (1, 0, ..., 0)
+    // SOC blocks
     i_t off = 0;
     for (i_t k = 0; k < static_cast<i_t>(lp.second_order_cone_dims.size()); ++k) {
       i_t q_k          = lp.second_order_cone_dims[k];
-      data.x[cs + off] = 1.0;
-      data.z[cs + off] = 1.0;
+      data.x[cs + off] = x_soc;
+      data.z[cs + off] = z_soc;
       for (i_t j = 1; j < q_k; ++j) {
         data.x[cs + off + j] = 0.0;
         data.z[cs + off + j] = 0.0;
@@ -2110,8 +2120,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     }
     data.y.set_scalar(0.0);
     if (data.n_upper_bounds > 0) {
-      data.w.set_scalar(1.0);
-      data.v.set_scalar(1.0);
+      data.w.set_scalar(mu);
+      data.v.set_scalar(mu);
     }
     return 0;
   }
@@ -2522,6 +2532,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                                                              pinned_dense_vector_t<i_t, f_t>& dy,
                                                              pinned_dense_vector_t<i_t, f_t>& dv,
                                                              pinned_dense_vector_t<i_t, f_t>& dz,
+                                                             f_t& dual_perturb,
+                                                             f_t& primal_perturb,
                                                              f_t& max_residual)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_search_direction");
@@ -2749,6 +2761,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     i_t status;
     if (use_augmented) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+      data.dual_perturb   = dual_perturb;
+      data.primal_perturb = primal_perturb;
       data.form_augmented();
       // Check halt after form_augmented (synchronous) and before factorize (~1s).
       // If halt was set while form_augmented ran, we catch it here and skip the
@@ -2878,6 +2892,25 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
     if (solve_err > 1e-1) {
       settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
+    }
+
+    // Adaptive regularization: increase/decrease by 10x based on IR quality
+    {
+      constexpr f_t min_perturb = 1e-8;
+      constexpr f_t max_perturb = 1e-1;
+      if (solve_err > 1e-2) {
+        f_t old_dp = dual_perturb;
+        dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
+        primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
+        settings.log.printf("  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+      } else if (solve_err < 1e-4) {
+        f_t old_dp = dual_perturb;
+        dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
+        primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
+        if (old_dp != dual_perturb) {
+          settings.log.printf("  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+        }
+      }
     }
 
     raft::copy(data.d_dx_.data(), d_augmented_soln.data(), lp.num_cols, stream_view_);
@@ -4177,6 +4210,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
     const i_t iteration_limit = settings.iteration_limit;
 
+    // Separate adaptive regularization for affine and centering steps
+    f_t affine_dual_perturb    = 1e-8;
+    f_t affine_primal_perturb  = 1e-8;
+    f_t centering_dual_perturb   = 1e-8;
+    f_t centering_primal_perturb = 1e-8;
+
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
 
@@ -4189,13 +4228,14 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
 
-      // Compute the affine step
+      // Compute the affine step (use adaptive regularization — system is ill-conditioned near boundary)
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
       // Update NT-scaling in gpu_compute_search_direction
       i_t status = gpu_compute_search_direction(
-        data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff, max_affine_residual);
+        data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff,
+        affine_dual_perturb, affine_primal_perturb, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -4231,10 +4271,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       compute_cc_rhs(data, new_mu);
 
+      // Centering step: use its own adaptive regularization
       f_t max_corrector_residual = 0.0;
 
       status = gpu_compute_search_direction(
-        data, data.dw, data.dx, data.dy, data.dv, data.dz, max_corrector_residual);
+        data, data.dw, data.dx, data.dy, data.dv, data.dz,
+        centering_dual_perturb, centering_primal_perturb, max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -4293,15 +4335,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
             relative_dual_residual < data.relative_dual_residual_save &&
             relative_complementarity_residual < data.relative_complementarity_residual_save &&
             primal_objective == primal_objective && dual_objective == dual_objective) {
-          settings.log.debug(
-            "Saving solution: feasibility %.2e (%.2e), optimality %.2e (%.2e), complementarity "
-            "%.2e (%.2e)\n",
+          settings.log.printf(
+            "Saving solution at iter %d: feasibility %.2e, optimality %.2e, complementarity "
+            "%.2e\n",
+            iter,
             relative_primal_residual,
-            primal_residual_norm,
             relative_dual_residual,
-            dual_residual_norm,
-            relative_complementarity_residual,
-            complementarity_residual_norm);
+            relative_complementarity_residual);
           data.w_save                                 = data.w;
           data.x_save                                 = data.x;
           data.y_save                                 = data.y;
