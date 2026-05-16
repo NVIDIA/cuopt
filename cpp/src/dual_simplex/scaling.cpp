@@ -31,10 +31,37 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
   // For SOCP problems, apply Ruiz equilibration: alternating row and column
   // infinity-norm scaling to bring the constraint matrix close to equilibrium.
   // This dramatically improves the conditioning of the augmented KKT system.
+  // Ruiz equilibration for SOCP (and QP) problems, applied only when the
+  // constraint matrix has a large row-norm imbalance.
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     col_scale.assign(n, 1.0);
 
-    // Build CSR view for row-wise access
+    // Decide whether Ruiz scaling is needed by checking row-norm imbalance.
+    // If max_row_norm / min_row_norm is small, the matrix is already well-conditioned
+    // and scaling can hurt (e.g. by amplifying tiny noise coefficients).
+    csr_matrix_t<i_t, f_t> Arow_check(0, 0, 0);
+    scaled.A.to_compressed_row(Arow_check);
+    f_t max_row_norm = 0;
+    f_t min_row_norm = std::numeric_limits<f_t>::max();
+    for (i_t i = 0; i < m; ++i) {
+      f_t row_norm = 0;
+      for (i_t p = Arow_check.row_start[i]; p < Arow_check.row_start[i + 1]; ++p) {
+        f_t a = std::abs(Arow_check.x[p]);
+        if (a > row_norm) row_norm = a;
+      }
+      if (row_norm > 0) {
+        max_row_norm = std::max(max_row_norm, row_norm);
+        min_row_norm = std::min(min_row_norm, row_norm);
+      }
+    }
+    f_t row_norm_ratio = (min_row_norm > 0) ? max_row_norm / min_row_norm : 1.0;
+
+    if (row_norm_ratio < 100.0) {
+      settings.log.printf("Skipping Ruiz equilibration (row norm ratio %.1f < 100)\n", row_norm_ratio);
+      return 0;
+    }
+
+    // Apply Ruiz equilibration
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
     scaled.A.to_compressed_row(Arow);
 
@@ -45,15 +72,14 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       // --- Row scaling: scale each row by 1/sqrt(max|a_ij|) ---
       std::vector<f_t> r(m);
       for (i_t i = 0; i < m; ++i) {
-        f_t row_max = 0.0;
+        f_t rm = 0.0;
         for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
           f_t a = std::abs(Arow.x[p]);
-          if (a > row_max) row_max = a;
+          if (a > rm) rm = a;
         }
-        r[i] = row_max > 0 ? 1.0 / std::sqrt(row_max) : 1.0;
-        max_deviation = std::max(max_deviation, std::abs(row_max - 1.0));
+        r[i] = rm > 0 ? 1.0 / std::sqrt(rm) : 1.0;
+        max_deviation = std::max(max_deviation, std::abs(rm - 1.0));
       }
-      // Apply row scaling to CSC (scaled.A) and CSR (Arow)
       for (i_t j = 0; j < n; ++j) {
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
           scaled.A.x[p] *= r[scaled.A.i[p]];
@@ -70,15 +96,14 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       // --- Column scaling: scale each column by 1/sqrt(max|a_ij|) ---
       std::vector<f_t> c(n);
       for (i_t j = 0; j < n; ++j) {
-        f_t col_max = 0.0;
+        f_t cm = 0.0;
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
           f_t a = std::abs(scaled.A.x[p]);
-          if (a > col_max) col_max = a;
+          if (a > cm) cm = a;
         }
-        c[j] = col_max > 0 ? 1.0 / std::sqrt(col_max) : 1.0;
-        max_deviation = std::max(max_deviation, std::abs(col_max - 1.0));
+        c[j] = cm > 0 ? 1.0 / std::sqrt(cm) : 1.0;
+        max_deviation = std::max(max_deviation, std::abs(cm - 1.0));
       }
-      // Apply column scaling to CSC (scaled.A) and CSR (Arow)
       for (i_t j = 0; j < n; ++j) {
         for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
           scaled.A.x[p] *= c[j];
@@ -89,18 +114,14 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
           Arow.x[p] *= c[Arow.j[p]];
         }
       }
-      // Scale objective: c_scaled = C * c_original
       for (i_t j = 0; j < n; ++j) {
         scaled.objective[j] *= c[j];
         col_scale[j] *= c[j];
       }
-      // Scale bounds: l_scaled = l / C,  u_scaled = u / C
       for (i_t j = 0; j < n; ++j) {
         if (scaled.lower[j] > -1e20) scaled.lower[j] /= c[j];
         if (scaled.upper[j] < 1e20) scaled.upper[j] /= c[j];
       }
-
-      // Scale Q if present: Q_scaled = C * Q * C
       if (scaled.Q.n > 0) {
         for (i_t row = 0; row < scaled.Q.m; ++row) {
           for (i_t p = scaled.Q.row_start[row]; p < scaled.Q.row_start[row + 1]; ++p) {
@@ -109,12 +130,9 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
           }
         }
       }
-
-      // Check convergence: if all row/col maxima are close to 1, stop
       if (max_deviation < 0.1) break;
     }
 
-    // Compute final coefficient range for logging
     f_t a_min = std::numeric_limits<f_t>::max();
     f_t a_max = 0;
     for (i_t p = 0; p < scaled.A.col_start[n]; ++p) {
@@ -125,7 +143,6 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       }
     }
     settings.log.printf("Ruiz equilibration: coefficient range [%e, %e]\n", a_min, a_max);
-
     return 0;
   }
 
