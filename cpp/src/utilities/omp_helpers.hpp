@@ -24,6 +24,11 @@ namespace cuopt {
 // happen in exactly one translation unit. Otherwise NVCC host passes (and
 // other TUs) can end up with different `sizeof(omp_lock_t)` values, which
 // ODR-merges into a `new-delete-type-mismatch` at runtime under ASan.
+//
+// `virtual` on the destructor is preserved on purpose: it has been part of the
+// class for a long time and removing it would change `sizeof(omp_mutex_t)`
+// (no more vtable pointer), which would silently break any incremental build
+// or any object file that wasn't rebuilt against the new header.
 class omp_mutex_t {
  public:
   omp_mutex_t();
@@ -31,7 +36,7 @@ class omp_mutex_t {
   omp_mutex_t(omp_mutex_t&& other) noexcept;
   omp_mutex_t& operator=(const omp_mutex_t&) = delete;
   omp_mutex_t& operator=(omp_mutex_t&& other) noexcept;
-  ~omp_mutex_t();
+  virtual ~omp_mutex_t();
 
   void lock() { omp_set_lock(mutex.get()); }
   void unlock() { omp_unset_lock(mutex.get()); }
