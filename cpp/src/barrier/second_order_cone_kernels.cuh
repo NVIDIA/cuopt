@@ -859,7 +859,7 @@ __global__ void __launch_bounds__(soc_block_size)
   const auto u_c             = (c == 0) ? w0 : w[off + c];
   auto val                   = f_t{2} * u_r * eta_sq * u_c;
   const auto diag_correction = (r == 0) ? -eta_sq : eta_sq;
-  if (r == c) { val += diag_correction; }
+  if (r == c) { val += diag_correction + dual_perturb_value; }
 
   augmented_x[csr_indices[e]] = -val - q_values[e];
 }
@@ -888,7 +888,6 @@ void scatter_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
   thrust::inclusive_scan(
     rmm::exec_policy(stream), block_sizes, block_sizes + cones.n_cones, block_offsets.begin() + 1);
 
-  // TODO: use dual_perturb_value for regularization
   const auto grid = raft::ceildiv<std::size_t>(count, soc_block_size);
   scatter_hessian_into_augmented_kernel<i_t, f_t>
     <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),

@@ -689,10 +689,12 @@ class iteration_data_t {
       cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
 #endif
     } else {
-      // Update the augmented matrix with the new diagonal values for primal and dual variables
+      const i_t linear_n = has_soc ? cone_start() : n;
+
+      // Primal diagonal: linear block includes dual_perturb; SOC block is filled by scatter below.
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
-                         i_t(n),
+                         linear_n,
                          [span_x             = cuopt::make_span(device_augmented.x),
                           span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
                           span_q_diag        = cuopt::make_span(d_Q_diag_),
@@ -702,8 +704,8 @@ class iteration_data_t {
                            span_x[span_diag_indices[j]] =
                              -q_diag - span_diag[j] - dual_perturb_value;
                          });
-
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
+
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(n),
                          i_t(m),
@@ -714,8 +716,6 @@ class iteration_data_t {
                          });
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
-      // Update the augmented matrix with the new diagonal blocks for soc constraints
-      // Overwrites the diagonal updates for primal variables of soc constraints
       if (has_soc) {
         scatter_hessian_into_augmented(cones(),
                                        device_augmented.x,

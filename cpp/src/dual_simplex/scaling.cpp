@@ -142,6 +142,9 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
         scaled.objective[j] *= c[j];
         col_scale[j] *= c[j];
       }
+      // Bounds use +/-inf for unbounded sides (see types.hpp). Use +/-1e20 as a practical
+      // sentinel: we do not expect finite bounds beyond this magnitude, and skipping scale
+      // on |bound| >= 1e20 avoids overflow when dividing very large limits by small c[j].
       for (i_t j = 0; j < n; ++j) {
         if (scaled.lower[j] > -1e20) scaled.lower[j] /= c[j];
         if (scaled.upper[j] < 1e20) scaled.upper[j] /= c[j];
