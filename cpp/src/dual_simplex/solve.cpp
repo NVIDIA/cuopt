@@ -332,9 +332,14 @@ lp_status_t solve_linear_program_with_advanced_basis(
       std::vector<f_t> unscaled_x(lp.num_cols);
       std::vector<f_t> unscaled_y(lp.num_rows);
       std::vector<f_t> unscaled_z(lp.num_cols);
-      unscale_solution<i_t, f_t>(
-        column_scales, row_scales_simplex, solution.x, solution.y, solution.z,
-        unscaled_x, unscaled_y, unscaled_z);
+      unscale_solution<i_t, f_t>(column_scales,
+                                 row_scales_simplex,
+                                 solution.x,
+                                 solution.y,
+                                 solution.z,
+                                 unscaled_x,
+                                 unscaled_y,
+                                 unscaled_z);
       uncrush_solution(presolve_info,
                        settings,
                        unscaled_x,
@@ -459,9 +464,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     std::vector<f_t> unscaled_x(barrier_lp.num_cols);
     std::vector<f_t> unscaled_y(barrier_lp.num_rows);
     std::vector<f_t> unscaled_z(barrier_lp.num_cols);
-    unscale_solution<i_t, f_t>(
-      column_scales, row_scales, barrier_solution.x, barrier_solution.y, barrier_solution.z,
-      unscaled_x, unscaled_y, unscaled_z);
+    unscale_solution<i_t, f_t>(column_scales,
+                               row_scales,
+                               barrier_solution.x,
+                               barrier_solution.y,
+                               barrier_solution.z,
+                               unscaled_x,
+                               unscaled_y,
+                               unscaled_z);
 
     std::vector<f_t> residual = presolved_lp.rhs;
     matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);

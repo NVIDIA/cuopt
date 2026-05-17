@@ -100,7 +100,6 @@ echo "${RAPIDS_BRANCH_NAME}" > RAPIDS_BRANCH
 DEPENDENCIES=(
   cudf
   cuopt
-  cuopt-mps-parser
   cuopt-server
   cuopt-sh-client
   libcuopt

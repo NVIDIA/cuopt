@@ -501,11 +501,11 @@ class iteration_data_t {
 
   void form_augmented(bool first_call = false)
   {
-    i_t n                    = A.n;
-    i_t m                    = A.m;
-    i_t nnzA                 = A.col_start[n];
-    i_t nnzQ                 = Q.n > 0 ? Q.col_start[n] : 0;
-    i_t factorization_size   = n + m;
+    i_t n                  = A.n;
+    i_t m                  = A.m;
+    i_t nnzA               = A.col_start[n];
+    i_t nnzQ               = Q.n > 0 ? Q.col_start[n] : 0;
+    i_t factorization_size = n + m;
 
     const bool has_soc  = has_cones();
     const i_t m_c       = cone_entry_count();
@@ -2899,16 +2899,17 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       constexpr f_t min_perturb = 1e-8;
       constexpr f_t max_perturb = 1e-1;
       if (solve_err > 1e-2) {
-        f_t old_dp = dual_perturb;
+        f_t old_dp     = dual_perturb;
         dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
         primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
         settings.log.printf("  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
       } else if (solve_err < 1e-4) {
-        f_t old_dp = dual_perturb;
+        f_t old_dp     = dual_perturb;
         dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
         primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
         if (old_dp != dual_perturb) {
-          settings.log.printf("  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+          settings.log.printf(
+            "  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
         }
       }
     }
@@ -4211,8 +4212,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Separate adaptive regularization for affine and centering steps
-    f_t affine_dual_perturb    = 1e-8;
-    f_t affine_primal_perturb  = 1e-8;
+    f_t affine_dual_perturb      = 1e-8;
+    f_t affine_primal_perturb    = 1e-8;
     f_t centering_dual_perturb   = 1e-8;
     f_t centering_primal_perturb = 1e-8;
 
@@ -4228,14 +4229,21 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
         return lp_status_t::CONCURRENT_LIMIT;
       }
 
-      // Compute the affine step (use adaptive regularization — system is ill-conditioned near boundary)
+      // Compute the affine step (use adaptive regularization — system is ill-conditioned near
+      // boundary)
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
       // Update NT-scaling in gpu_compute_search_direction
-      i_t status = gpu_compute_search_direction(
-        data, data.dw_aff, data.dx_aff, data.dy_aff, data.dv_aff, data.dz_aff,
-        affine_dual_perturb, affine_primal_perturb, max_affine_residual);
+      i_t status = gpu_compute_search_direction(data,
+                                                data.dw_aff,
+                                                data.dx_aff,
+                                                data.dy_aff,
+                                                data.dv_aff,
+                                                data.dz_aff,
+                                                affine_dual_perturb,
+                                                affine_primal_perturb,
+                                                max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
@@ -4274,9 +4282,15 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       // Centering step: use its own adaptive regularization
       f_t max_corrector_residual = 0.0;
 
-      status = gpu_compute_search_direction(
-        data, data.dw, data.dx, data.dy, data.dv, data.dz,
-        centering_dual_perturb, centering_primal_perturb, max_corrector_residual);
+      status = gpu_compute_search_direction(data,
+                                            data.dw,
+                                            data.dx,
+                                            data.dy,
+                                            data.dv,
+                                            data.dz,
+                                            centering_dual_perturb,
+                                            centering_primal_perturb,
+                                            max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;

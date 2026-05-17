@@ -278,7 +278,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
-    integer_fixed_variable_map(problem_.n_variables, handle_ptr->get_stream()),
+    integer_fixed_variable_map((!no_deep_copy) ? 0 : problem_.n_variables,
+                               handle_ptr->get_stream()),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -342,10 +343,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.combined_bounds, handle_ptr->get_stream())
         : rmm::device_uvector<f_t>(problem_.combined_bounds.size(), handle_ptr->get_stream())),
-    variable_types(
-      (!no_deep_copy)
-        ? rmm::device_uvector<var_t>(problem_.variable_types, handle_ptr->get_stream())
-        : rmm::device_uvector<var_t>(problem_.variable_types.size(), handle_ptr->get_stream())),
+    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
     integer_indices((!no_deep_copy) ? 0 : problem_.integer_indices.size(),
                     handle_ptr->get_stream()),
     binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(), handle_ptr->get_stream()),
@@ -354,7 +352,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     is_binary_variable((!no_deep_copy) ? 0 : problem_.is_binary_variable.size(),
                        handle_ptr->get_stream()),
     related_variables(problem_.related_variables, handle_ptr->get_stream()),
-    related_variables_offsets(problem_.related_variables_offsets, handle_ptr->get_stream()),
+    related_variables_offsets((!no_deep_copy) ? 0 : problem_.related_variables_offsets.size(),
+                              handle_ptr->get_stream()),
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),

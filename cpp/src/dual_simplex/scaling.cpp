@@ -57,7 +57,8 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     f_t row_norm_ratio = (min_row_norm > 0) ? max_row_norm / min_row_norm : 1.0;
 
     if (row_norm_ratio < 100.0) {
-      settings.log.printf("Skipping Ruiz equilibration (row norm ratio %.1f < 100)\n", row_norm_ratio);
+      settings.log.printf("Skipping Ruiz equilibration (row norm ratio %.1f < 100)\n",
+                          row_norm_ratio);
       return 0;
     }
 
@@ -77,7 +78,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
           f_t a = std::abs(Arow.x[p]);
           if (a > rm) rm = a;
         }
-        r[i] = rm > 0 ? 1.0 / std::sqrt(rm) : 1.0;
+        r[i]          = rm > 0 ? 1.0 / std::sqrt(rm) : 1.0;
         max_deviation = std::max(max_deviation, std::abs(rm - 1.0));
       }
       for (i_t j = 0; j < n; ++j) {
@@ -105,7 +106,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
           f_t a = std::abs(scaled.A.x[p]);
           if (a > cm) cm = a;
         }
-        c[j] = cm > 0 ? 1.0 / std::sqrt(cm) : 1.0;
+        c[j]          = cm > 0 ? 1.0 / std::sqrt(cm) : 1.0;
         max_deviation = std::max(max_deviation, std::abs(cm - 1.0));
       }
 
@@ -122,7 +123,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
           }
         }
         f_t cone_scale = cone_max > 0 ? 1.0 / std::sqrt(cone_max) : 1.0;
-        max_deviation = std::max(max_deviation, std::abs(cone_max - 1.0));
+        max_deviation  = std::max(max_deviation, std::abs(cone_max - 1.0));
         for (i_t j = cone_off; j < cone_off + q_k; ++j) {
           c[j] = cone_scale;
         }
@@ -192,8 +193,8 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       sum += x * x;
     }
     f_t col_norm_j = col_scale[j] = sum > 0 ? std::sqrt(sum) : 1.0;
-    max                            = std::max(col_norm_j, max);
-    min                            = std::min(col_norm_j, min);
+    max                           = std::max(col_norm_j, max);
+    min                           = std::min(col_norm_j, min);
   }
   settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max, min);
 

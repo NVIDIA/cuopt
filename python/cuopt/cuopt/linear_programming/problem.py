@@ -5,11 +5,11 @@
 import copy
 from enum import Enum
 
-import cuopt_mps_parser
 import numpy as np
 from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
+import cuopt.linear_programming.mps_parser as mps_parser
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
@@ -1797,7 +1797,7 @@ class Problem:
         >>> problem = problem.Problem.readMPS("model.mps")
         """
         problem = cls()
-        data_model = cuopt_mps_parser.ParseMps(mps_file)
+        data_model = mps_parser.ParseMps(mps_file)
         problem._from_data_model(data_model)
         problem.model = data_model
         return problem

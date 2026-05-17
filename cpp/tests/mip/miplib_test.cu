@@ -11,8 +11,8 @@
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -38,8 +38,8 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute(test_instance.file);
-  cuopt::mps_parser::mps_data_model_t<int, double> problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   // set the time limit depending on we are in assert mode or not
 #ifdef ASSERT_MODE
@@ -80,8 +80,8 @@ TEST(mip_solve, low_thread_count_test)
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute("mip/dominating_set.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
