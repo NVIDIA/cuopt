@@ -282,7 +282,10 @@ int main(int argc, char* argv[])
 
   // Define all arguments with appropriate defaults and help messages
   program.add_argument("filename")
-    .help("input MPS or LP file (dispatched by .lp / .mps extension)")
+    .help(
+      "input problem file; format dispatched by extension (case-insensitive). "
+      "Supported: .lp, .mps, .qps and their .gz / .bz2 compressed variants "
+      "(e.g. .lp.gz, .mps.bz2, .qps.gz)")
     .nargs(1)
     .required();
 
