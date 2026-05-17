@@ -24,9 +24,10 @@ namespace cuopt::linear_programming::io {
  * machinery (tokenizer, expression/section parsers, token types) lives in
  * src/lp_parser.cpp and is never exposed.
  *
- * The public fields mirror mps_parser_t so the two parsers share a single
- * finalization path (see src/parser_finalize.hpp) and so tests and tools
- * can introspect the same shape of intermediate data from either parser.
+ * The public fields mirror mps_parser_t so tests and tools can introspect
+ * the same shape of intermediate data from either parser. Finalization
+ * (CSR flatten, constraint-bound derivation, quadratic objective assembly)
+ * is performed by finalize_problem() inside src/io/lp_parser.cpp.
  */
 template <typename i_t, typename f_t>
 class lp_parser_t {

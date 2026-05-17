@@ -9,7 +9,6 @@
 
 #include <file_to_string.hpp>
 #include <lp_parser.hpp>
-#include <parser_finalize.hpp>
 #include <utilities/error.hpp>
 
 #include <algorithm>
@@ -1341,6 +1340,178 @@ void LpParseEngine<i_t, f_t>::parse_all()
 
 namespace {
 
+// Consumes the LP parser's intermediate parsed data and populates `problem`.
+//
+// CSR flatten, row-type → constraint-bound conversion, quadratic objective
+// matrix construction, metadata setters. MPS uses its own fill_problem
+// (mps_parser.cpp) because its quadratic rows are interleaved with linear
+// rows in the per-row vectors and need a compaction pass; the LP parser
+// partitions quadratic rows into quadratic_constraint_blocks at parse time,
+// so the per-row vectors here contain only linear rows and no compaction is
+// needed. Quadratic LP constraints are emitted by flush_quadratic_constraints
+// below.
+template <typename i_t, typename f_t>
+void finalize_problem(mps_data_model_t<i_t, f_t>& problem, lp_parser_t<i_t, f_t>& parser)
+{
+  const i_t n_vars = static_cast<i_t>(parser.var_names.size());
+  const i_t n_rows = static_cast<i_t>(parser.row_names.size());
+
+  // Pad per-variable vectors that may have grown after their initial size
+  // (e.g., a variable first appeared after c_values was already initialized).
+  if (static_cast<i_t>(parser.c_values.size()) < n_vars) parser.c_values.resize(n_vars, f_t(0));
+  if (static_cast<i_t>(parser.variable_lower_bounds.size()) < n_vars) {
+    parser.variable_lower_bounds.resize(n_vars, f_t(0));
+  }
+  if (static_cast<i_t>(parser.variable_upper_bounds.size()) < n_vars) {
+    parser.variable_upper_bounds.resize(n_vars, std::numeric_limits<f_t>::infinity());
+  }
+  if (static_cast<i_t>(parser.var_types.size()) < n_vars) parser.var_types.resize(n_vars, 'C');
+
+  // Flatten the ragged A_indices / A_values into a single CSR.
+  std::vector<i_t> offsets;
+  std::vector<i_t> indices;
+  std::vector<f_t> values;
+  offsets.reserve(n_rows + 1);
+  offsets.push_back(0);
+  for (i_t i = 0; i < n_rows; ++i) {
+    for (i_t idx : parser.A_indices[i])
+      indices.push_back(idx);
+    for (f_t v : parser.A_values[i])
+      values.push_back(v);
+    offsets.push_back(static_cast<i_t>(values.size()));
+  }
+  problem.set_csr_constraint_matrix(values, indices, offsets);
+
+  mps_parser_expects(indices.size() == values.size(),
+                     error_type_t::ValidationError,
+                     "Constraint matrix nonzero vector (%zu) and column-index vector (%zu) "
+                     "must have the same size.",
+                     indices.size(),
+                     values.size());
+  mps_parser_expects(!offsets.empty() && offsets.back() == static_cast<i_t>(values.size()),
+                     error_type_t::ValidationError,
+                     "CSR offset tail (%d) must equal the nonzero count (%zu).",
+                     offsets.empty() ? 0 : offsets.back(),
+                     values.size());
+
+  problem.set_constraint_bounds(parser.b_values);
+  problem.set_objective_coefficients(parser.c_values);
+  problem.set_objective_scaling_factor(f_t(1));
+  problem.set_objective_offset(parser.objective_offset_value);
+
+  problem.set_variable_lower_bounds(parser.variable_lower_bounds);
+  problem.set_variable_upper_bounds(parser.variable_upper_bounds);
+
+  mps_parser_expects(
+    (problem.get_variable_lower_bounds().size() == problem.get_variable_upper_bounds().size()) &&
+      (problem.get_variable_upper_bounds().size() == problem.get_objective_coefficients().size()),
+    error_type_t::ValidationError,
+    "Per-variable vectors are inconsistently sized. objective=%zu, lb=%zu, ub=%zu.",
+    problem.get_objective_coefficients().size(),
+    problem.get_variable_lower_bounds().size(),
+    problem.get_variable_upper_bounds().size());
+
+  // Semi-continuous variables must have a finite upper bound; otherwise the
+  // "x = 0 or lb <= x <= ub" semantics collapse to a regular continuous
+  // variable. Matches the MPS parser's rule.
+  for (i_t i = 0; i < n_vars; ++i) {
+    if (parser.var_types[i] == 'S') {
+      mps_parser_expects(!std::isinf(parser.variable_upper_bounds[i]),
+                         error_type_t::ValidationError,
+                         "Semi-continuous variable '%s' must have a finite upper bound",
+                         parser.var_names[i].c_str());
+    }
+  }
+
+  // Row types + RHS → explicit constraint lower/upper bounds.
+  const f_t inf = std::numeric_limits<f_t>::infinity();
+  std::vector<f_t> clb;
+  std::vector<f_t> cub;
+  clb.reserve(n_rows);
+  cub.reserve(n_rows);
+  for (i_t i = 0; i < n_rows; ++i) {
+    switch (parser.row_types[i]) {
+      case Equality:
+        clb.push_back(parser.b_values[i]);
+        cub.push_back(parser.b_values[i]);
+        break;
+      case GreaterThanOrEqual:
+        clb.push_back(parser.b_values[i]);
+        cub.push_back(inf);
+        break;
+      case LesserThanOrEqual:
+        clb.push_back(-inf);
+        cub.push_back(parser.b_values[i]);
+        break;
+      default:
+        mps_parser_expects(false,
+                           error_type_t::ValidationError,
+                           "Unsupported row type for row '%s'",
+                           parser.row_names[i].c_str());
+    }
+    mps_parser_expects(!std::isnan(clb.back()) && !std::isnan(cub.back()),
+                       error_type_t::ValidationError,
+                       "Constraint bound for row '%s' is NaN",
+                       parser.row_names[i].c_str());
+  }
+  problem.set_constraint_lower_bounds(clb);
+  problem.set_constraint_upper_bounds(cub);
+
+  mps_parser_expects(
+    (problem.get_constraint_lower_bounds().size() ==
+     problem.get_constraint_upper_bounds().size()) &&
+      (problem.get_constraint_upper_bounds().size() == problem.get_constraint_bounds().size()),
+    error_type_t::ValidationError,
+    "Per-constraint vectors are inconsistently sized. rhs=%zu, lb=%zu, ub=%zu.",
+    problem.get_constraint_bounds().size(),
+    problem.get_constraint_lower_bounds().size(),
+    problem.get_constraint_upper_bounds().size());
+
+  problem.set_problem_name(parser.problem_name);
+  problem.set_objective_name(parser.objective_name);
+  problem.set_variable_names(parser.var_names);
+  problem.set_variable_types(parser.var_types);
+  problem.set_row_names(parser.row_names);
+  std::vector<char> row_types_chars(parser.row_types.size());
+  for (size_t i = 0; i < parser.row_types.size(); ++i) {
+    row_types_chars[i] = static_cast<char>(parser.row_types[i]);
+  }
+  problem.set_row_types(row_types_chars);
+  problem.set_maximize(parser.maximize);
+
+  // Quadratic objective: build the full symmetric Q from upper-triangular
+  // QUADOBJ-convention entries; mirror off-diagonals and apply the file's
+  // '0.5 x^T Q x' → cuOpt's 'x^T Q x' conversion (×0.5 on every stored value).
+  if (!parser.quadobj_entries.empty()) {
+    std::vector<std::vector<std::pair<i_t, f_t>>> csc(n_vars);
+    for (const auto& [row, col, val] : parser.quadobj_entries) {
+      csc[col].emplace_back(row, val);
+      if (row != col) { csc[row].emplace_back(col, val); }
+    }
+    std::vector<std::vector<std::pair<i_t, f_t>>> csr(n_vars);
+    for (i_t col = 0; col < n_vars; ++col) {
+      for (const auto& [row, val] : csc[col]) {
+        csr[row].emplace_back(col, val);
+      }
+    }
+    // Within each row the entries are naturally ordered by column because
+    // the outer loop above walks columns in ascending order — no sort needed.
+    std::vector<f_t> q_values;
+    std::vector<i_t> q_indices;
+    std::vector<i_t> q_offsets;
+    q_offsets.reserve(n_vars + 1);
+    q_offsets.push_back(0);
+    for (i_t row = 0; row < n_vars; ++row) {
+      for (const auto& [col, val] : csr[row]) {
+        q_values.push_back(val * f_t(0.5));
+        q_indices.push_back(col);
+      }
+      q_offsets.push_back(static_cast<i_t>(q_values.size()));
+    }
+    problem.set_quadratic_objective_matrix(q_values, q_indices, q_offsets);
+  }
+}
+
 // Emits one quadratic_constraint_block_t to `problem` via
 // append_quadratic_constraint(). Row indices are assigned
 // linear_row_count..linear_row_count + nqc - 1, mirroring MPS's QCMATRIX
@@ -1376,7 +1547,7 @@ template <typename i_t, typename f_t>
 lp_parser_t<i_t, f_t>::lp_parser_t(mps_data_model_t<i_t, f_t>& problem, const std::string& file)
 {
   LpParseEngine<i_t, f_t> engine(*this, file);
-  detail::finalize_problem(problem, *this);
+  finalize_problem(problem, *this);
   flush_quadratic_constraints(problem, *this);
 }
 
@@ -1384,7 +1555,7 @@ template <typename i_t, typename f_t>
 lp_parser_t<i_t, f_t>::lp_parser_t(mps_data_model_t<i_t, f_t>& problem, std::string_view input)
 {
   LpParseEngine<i_t, f_t> engine(*this, input);
-  detail::finalize_problem(problem, *this);
+  finalize_problem(problem, *this);
   flush_quadratic_constraints(problem, *this);
 }
 
