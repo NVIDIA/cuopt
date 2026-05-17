@@ -1748,6 +1748,50 @@ End
   EXPECT_NEAR(m.get_variable_upper_bounds()[xi], 10.0, tolerance);
 }
 
+TEST(lp_parser, semi_continuous_bare_semi_keyword)
+{
+  // Both Gurobi and CPLEX accept the bare "Semi" keyword as a synonym for
+  // the "Semi-Continuous" section header.
+  auto m = parse_lp_string(R"LP(
+Minimize
+  x
+Subject To
+ c1: x >= 0
+Bounds
+ 2 <= x <= 10
+Semi
+ x
+End
+)LP");
+  int xi = find_var(m, "x");
+  ASSERT_GE(xi, 0);
+  EXPECT_EQ(m.get_variable_types()[xi], 'S');
+  EXPECT_NEAR(m.get_variable_lower_bounds()[xi], 2.0, tolerance);
+  EXPECT_NEAR(m.get_variable_upper_bounds()[xi], 10.0, tolerance);
+}
+
+TEST(lp_parser, semi_continuous_bare_semis_keyword)
+{
+  // Both Gurobi and CPLEX accept the bare "Semis" keyword as a synonym for
+  // the "Semi-Continuous" section header.
+  auto m = parse_lp_string(R"LP(
+Minimize
+  x
+Subject To
+ c1: x >= 0
+Bounds
+ 2 <= x <= 10
+Semis
+ x
+End
+)LP");
+  int xi = find_var(m, "x");
+  ASSERT_GE(xi, 0);
+  EXPECT_EQ(m.get_variable_types()[xi], 'S');
+  EXPECT_NEAR(m.get_variable_lower_bounds()[xi], 2.0, tolerance);
+  EXPECT_NEAR(m.get_variable_upper_bounds()[xi], 10.0, tolerance);
+}
+
 TEST(lp_parser, semi_continuous_default_lower_is_zero)
 {
   auto m = parse_lp_string(R"LP(

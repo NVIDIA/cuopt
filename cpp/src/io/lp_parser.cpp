@@ -602,12 +602,13 @@ bool LpParseEngine<i_t, f_t>::at_section_boundary() const
   if (lower == "user" && name_equals_ci(t2, "cuts")) return true;
   if (lower == "general" && name_equals_ci(t2, "constraints")) return true;
 
-  // Semi-Continuous section header (supported); plus other section headers
-  // that we recognize as boundaries (some supported, some unsupported —
-  // dispatch decides).
-  if (lower == "semi" && peek(1).kind == LpTokenKind::Minus &&
-      name_equals_ci(peek(2), "continuous"))
-    return true;
+  // Semi-Continuous section header (supported); three spellings:
+  //   - 3-token "Semi - Continuous"
+  //   - bare "Semi"
+  //   - bare "Semis"
+  // Plus other section headers that we recognize as boundaries (some
+  // supported, some unsupported — dispatch decides).
+  if (lower == "semi" || lower == "semis") return true;
   if (lower == "sos") return true;
   if (lower == "pwlobj") return true;
   if (lower == "scenarios" || lower == "scenario") return true;
@@ -686,11 +687,18 @@ typename LpParseEngine<i_t, f_t>::SectionKind LpParseEngine<i_t, f_t>::try_consu
     advance();
     return SectionKind::Binaries;
   }
-  // "Semi-Continuous" (3 tokens: semi - continuous).
+  // Semi-Continuous section header — accepted spellings:
+  //   - 3-token "Semi - Continuous"   (CPLEX/Gurobi documented)
+  //   - bare "Semi" / "Semis"          (CPLEX/Gurobi documented)
+  // Check the 3-token form first so it consumes all three tokens.
   if (lower == "semi" && peek(1).kind == LpTokenKind::Minus &&
       name_equals_ci(peek(2), "continuous")) {
     advance();
     advance();
+    advance();
+    return SectionKind::SemiContinuous;
+  }
+  if (lower == "semi" || lower == "semis") {
     advance();
     return SectionKind::SemiContinuous;
   }
