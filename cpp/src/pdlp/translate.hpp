@@ -218,27 +218,37 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
 
-  auto model_constraint_lower_bounds = model.get_constraint_lower_bounds_host();
-  auto model_constraint_upper_bounds = model.get_constraint_upper_bounds_host();
+  auto model_constraint_sense = model.get_row_types_host();
+  auto model_constraint_rhs   = model.get_constraint_bounds_host();
 
-  for (i_t i = 0; i < m; ++i) {
-    const f_t constraint_lower_bound = model_constraint_lower_bounds[i];
-    const f_t constraint_upper_bound = model_constraint_upper_bounds[i];
-    if (constraint_lower_bound == constraint_upper_bound) {
-      user_problem.row_sense[i] = 'E';
-      user_problem.rhs[i]       = constraint_lower_bound;
-    } else if (constraint_upper_bound == std::numeric_limits<f_t>::infinity()) {
-      user_problem.row_sense[i] = 'G';
-      user_problem.rhs[i]       = constraint_lower_bound;
-    } else if (constraint_lower_bound == -std::numeric_limits<f_t>::infinity()) {
-      user_problem.row_sense[i] = 'L';
-      user_problem.rhs[i]       = constraint_upper_bound;
-    } else {
-      user_problem.row_sense[i] = 'E';
-      user_problem.rhs[i]       = constraint_lower_bound;
-      user_problem.range_rows.push_back(i);
-      const f_t bound_difference = constraint_upper_bound - constraint_lower_bound;
-      user_problem.range_value.push_back(bound_difference);
+  if (!model_constraint_sense.empty()) {
+    for (i_t i = 0; i < m; ++i) {
+      user_problem.row_sense[i] = model_constraint_sense[i];
+      user_problem.rhs[i]       = model_constraint_rhs[i];
+    }
+  } else {
+    auto model_constraint_lower_bounds = model.get_constraint_lower_bounds_host();
+    auto model_constraint_upper_bounds = model.get_constraint_upper_bounds_host();
+
+    for (i_t i = 0; i < m; ++i) {
+      const f_t constraint_lower_bound = model_constraint_lower_bounds[i];
+      const f_t constraint_upper_bound = model_constraint_upper_bounds[i];
+      if (constraint_lower_bound == constraint_upper_bound) {
+        user_problem.row_sense[i] = 'E';
+        user_problem.rhs[i]       = constraint_lower_bound;
+      } else if (constraint_upper_bound == std::numeric_limits<f_t>::infinity()) {
+        user_problem.row_sense[i] = 'G';
+        user_problem.rhs[i]       = constraint_lower_bound;
+      } else if (constraint_lower_bound == -std::numeric_limits<f_t>::infinity()) {
+        user_problem.row_sense[i] = 'L';
+        user_problem.rhs[i]       = constraint_upper_bound;
+      } else {
+        user_problem.row_sense[i] = 'E';
+        user_problem.rhs[i]       = constraint_lower_bound;
+        user_problem.range_rows.push_back(i);
+        const f_t bound_difference = constraint_upper_bound - constraint_lower_bound;
+        user_problem.range_value.push_back(bound_difference);
+      }
     }
   }
   user_problem.num_range_rows = static_cast<i_t>(user_problem.range_rows.size());
