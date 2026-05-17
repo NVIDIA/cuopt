@@ -4,10 +4,10 @@
 import os
 import tempfile
 
-from cuopt.linear_programming import mps_parser
+from cuopt.linear_programming import io as mps_parser
 import numpy as np
 import pytest
-from cuopt.linear_programming.mps_parser.utilities import InputValidationError
+from cuopt.linear_programming.io.utilities import InputValidationError
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:

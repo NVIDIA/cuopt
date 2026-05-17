@@ -135,8 +135,8 @@ def is_uuid(cuopt_problem_data):
 
 
 # File extensions (case-insensitive, after stripping a compression suffix) that
-# the cuopt mps_parser package can parse client-side. Matches the dispatch
-# table in parse_problem() on the C++ side.
+# the cuopt.linear_programming.io package can parse client-side. Matches the
+# dispatch table in parse_problem() on the C++ side.
 _PARSEABLE_LP_EXTS = (".lp",)
 _PARSEABLE_MPS_EXTS = (".mps", ".qps")
 _COMPRESSION_SUFFIXES = (".gz", ".bz2")
@@ -164,7 +164,7 @@ def _client_parseable_extension(path):
 
 def _parse_file_to_data_model(problem_input, solver_config):
     try:
-        from cuopt.linear_programming import mps_parser
+        from cuopt.linear_programming import io as mps_parser
     except ImportError as e:
         raise ImportError(
             "MPS/LP parsing on the client requires the cuopt package. "
@@ -774,14 +774,14 @@ class CuOptServiceSelfHostClient:
             Note - Batch mode is only supported in LP and not in MILP
 
             File path to mps/lp or json/dict/DataModel returned by
-            cuopt.linear_programming.mps_parser/list[mps or lp file paths]/list[dict]/list[DataModel].
+            cuopt.linear_programming.io/list[mps or lp file paths]/list[dict]/list[DataModel].
 
             For single problem, input should be either a path to mps/lp/json file,
-            /DataModel returned by cuopt.linear_programming.mps_parser/ path to json file/
+            /DataModel returned by cuopt.linear_programming.io/ path to json file/
             dictionary.
 
             For batch problem, input should be either a list of paths to mps or lp
-            files/ a list of DataModel returned by cuopt.linear_programming.mps_parser/ a
+            files/ a list of DataModel returned by cuopt.linear_programming.io/ a
             list of dictionaries.
 
             To use a cached cuopt problem data, input should be a uuid

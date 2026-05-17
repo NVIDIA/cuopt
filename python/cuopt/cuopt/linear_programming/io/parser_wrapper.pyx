@@ -7,8 +7,8 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from cuopt.linear_programming.mps_parser.utilities import (
-    catch_mps_parser_exception,
+from cuopt.linear_programming.io.utilities import (
+    catch_io_exception,
 )
 
 from libc.stdint cimport uintptr_t
@@ -138,7 +138,7 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     return data_model
 
 
-@catch_mps_parser_exception
+@catch_io_exception
 def ParseMps(mps_file_path, fixed_mps_formats):
     data_model = DataModel()
     dm_ret_ptr = move(
@@ -150,7 +150,7 @@ def ParseMps(mps_file_path, fixed_mps_formats):
     return _marshal_data_model(dm_ret_ptr.get(), data_model)
 
 
-@catch_mps_parser_exception
+@catch_io_exception
 def ParseLp(lp_file_path):
     data_model = DataModel()
     dm_ret_ptr = move(

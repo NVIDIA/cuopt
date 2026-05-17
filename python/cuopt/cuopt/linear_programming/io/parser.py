@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from cuopt.linear_programming.mps_parser import parser_wrapper
-from cuopt.linear_programming.mps_parser.utilities import (
-    catch_mps_parser_exception,
+from cuopt.linear_programming.io import parser_wrapper
+from cuopt.linear_programming.io.utilities import (
+    catch_io_exception,
 )
 
 
-@catch_mps_parser_exception
+@catch_io_exception
 def ParseMps(mps_file_path, fixed_mps_format=False):
     """
     Reads the equation from the input text file which is MPS formatted
@@ -54,7 +54,7 @@ def ParseMps(mps_file_path, fixed_mps_format=False):
     return parser_wrapper.ParseMps(mps_file_path, fixed_mps_format)
 
 
-@catch_mps_parser_exception
+@catch_io_exception
 def ParseLp(lp_file_path):
     """
     Reads an optimization problem from a file in LP format.
@@ -102,7 +102,7 @@ def ParseLp(lp_file_path):
 def toDict(model, json=False):
     if not isinstance(model, parser_wrapper.DataModel):
         raise ValueError(
-            "model must be a cuopt.linear_programming.mps_parser.parser_wrapper.DataModel"
+            "model must be a cuopt.linear_programming.io.parser_wrapper.DataModel"
         )
 
     # Replace numpy objects in generated data so that it is JSON serializable
