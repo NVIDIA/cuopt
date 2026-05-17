@@ -32,8 +32,8 @@ def type_cast(np_obj, np_type, name):
 
 
 # Copies the C++ data model behind `dm` into the Python-side `data_model`.
-# Extracted from ParseMps so ParseLp shares the same marshaling path —
-# every field on mps_data_model_t is format-agnostic.
+# Shared by ParseMps and ParseLp — every field on mps_data_model_t is
+# format-agnostic.
 cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     A_values_data = dm.A_.data()
     A_values_size = dm.A_.size()

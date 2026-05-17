@@ -2541,9 +2541,8 @@ TEST(parse_problem, unrecognized_extension_throws)
 }
 
 // ===========================================================================
-// MPS-only tests preserved from cpp/tests/linear_programming/mps_parser_test.cpp
-// (semi-continuous variables and quadratic-constraint coverage added in #1193;
-// kept here because the LP parser does not support these constructs).
+// MPS-syntax-specific tests: bound codes (UP/LO/MI/PL/BV/SC) and QCMATRIX
+// blocks. LP-equivalent semantic coverage lives above.
 // ===========================================================================
 
 TEST(mps_bounds, standard_var_bounds_0_inf)
