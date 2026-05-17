@@ -2221,9 +2221,9 @@ End
   EXPECT_EQ(nth_qc(m, 1).constraint_row_name, "q2");
 }
 
-TEST(lp_parser, qc_outer_minus_sign_flips_quadratic_and_linear)
+TEST(lp_parser, qc_outer_minus_sign_flips_quadratic)
 {
-  // `- [ x^2 + 2 x ] + 5` on the LHS contributes -x^2 - 2 x + 5 to the LHS.
+  // `- 2 x + 5 - [ x^2 ]` on the LHS contributes -x^2 - 2 x + 5 to the LHS.
   // After moving the constant to the RHS: -x^2 - 2 x <= rhs - 5.
   // Here the RHS is 10, so the row becomes: -x^2 - 2 x <= 5  (in x^T Q x form
   // Q[x,x] = -1).
@@ -2231,7 +2231,7 @@ TEST(lp_parser, qc_outer_minus_sign_flips_quadratic_and_linear)
 Minimize
   x
 Subject To
- q1: - [ x ^ 2 + 2 x ] + 5 <= 10
+ q1: - 2 x + 5 - [ x ^ 2 ] <= 10
 Bounds
  x free
 End
@@ -2243,6 +2243,33 @@ End
   EXPECT_NEAR(qc.quadratic_values[0], -1.0, tolerance);
   ASSERT_EQ(qc.linear_indices.size(), 1u);
   EXPECT_NEAR(qc.linear_values[0], -2.0, tolerance);
+}
+
+TEST(lp_parser, bare_linear_inside_objective_bracket_rejected)
+{
+  // Gurobi's LP-format docs reserve `[ ... ]` for quadratic terms only
+  // (squared and product). A bare linear term like `2 x` inside the
+  // bracket is malformed; the user should write it outside.
+  EXPECT_THROW(parse_lp_string(R"LP(
+Minimize
+  obj: [ x ^ 2 + 2 x ] / 2
+Subject To
+  c1: x >= 1
+End
+)LP"),
+               std::logic_error);
+}
+
+TEST(lp_parser, bare_linear_inside_constraint_bracket_rejected)
+{
+  EXPECT_THROW(parse_lp_string(R"LP(
+Minimize
+  x
+Subject To
+  q1: [ x ^ 2 + 2 x ] <= 5
+End
+)LP"),
+               std::logic_error);
 }
 
 TEST(lp_parser, qc_named_constraint)

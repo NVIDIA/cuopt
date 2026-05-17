@@ -262,8 +262,7 @@ class LpParseEngine {
   //               face value (x^T Q x); bracket must contain at least one
   //               quadratic term.
   enum class BracketRole { Objective, Constraint };
-  void parse_quadratic_bracket(std::vector<LinearTerm>& out_linear,
-                               int outer_sign,
+  void parse_quadratic_bracket(int outer_sign,
                                BracketRole role,
                                std::vector<std::tuple<i_t, i_t, f_t>>& out_quad_entries);
 
@@ -832,10 +831,7 @@ void LpParseEngine<i_t, f_t>::parse_linear_expression(std::vector<LinearTerm>& o
 
 template <typename i_t, typename f_t>
 void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
-  std::vector<LinearTerm>& out_linear,
-  int outer_sign,
-  BracketRole role,
-  std::vector<std::tuple<i_t, i_t, f_t>>& out_quad_entries)
+  int outer_sign, BracketRole role, std::vector<std::tuple<i_t, i_t, f_t>>& out_quad_entries)
 {
   expect(LpTokenKind::LBracket, "'[' at start of quadratic section");
 
@@ -905,10 +901,16 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
       i_t b = std::max(i1, i2);
       raw_quad.emplace_back(a, b, sign * coeff);
     } else {
-      // Purely linear term inside the brackets — permitted as long as the
-      // surrounding /2 convention is respected (the linear term is scaled
-      // the same way as the quadratic ones).
-      out_linear.push_back({i1, sign * coeff});
+      // Pure linear terms are not allowed inside a quadratic bracket — the
+      // LP convention reserves '[ ... ]' for squared and product terms only
+      // (matches Gurobi's documented LP format). Place linear terms outside
+      // the bracket.
+      mps_parser_expects(false,
+                         error_type_t::ValidationError,
+                         "LP parse error at line %d: bare linear term '%s' is not "
+                         "allowed inside a quadratic bracket '[ ... ]'; move it outside",
+                         peek().line,
+                         var1.c_str());
     }
 
     first = false;
@@ -942,13 +944,6 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
       v /= f_t(2);
       out_quad_entries.emplace_back(a, b, sign_scale * v);
     }
-    // Linear terms inside the brackets pick up the /2 scaling and the outer sign.
-    for (auto& lt : out_linear)
-      lt.coeff /= f_t(2);
-    if (outer_sign < 0) {
-      for (auto& lt : out_linear)
-        lt.coeff = -lt.coeff;
-    }
   } else {
     // Constraint: '/ 2' is forbidden — the LP convention is that constraint
     // quadratic brackets carry bare face-value coefficients of x^T Q x.
@@ -972,10 +967,6 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
     // expansion and the /2 split for off-diagonals.
     for (auto& [a, b, v] : raw_quad) {
       out_quad_entries.emplace_back(a, b, sign_scale * v);
-    }
-    if (outer_sign < 0) {
-      for (auto& lt : out_linear)
-        lt.coeff = -lt.coeff;
     }
   }
 }
@@ -1009,11 +1000,7 @@ void LpParseEngine<i_t, f_t>::parse_objective_section()
     quad_sign = -1;
   }
   if (peek().kind == LpTokenKind::LBracket) {
-    std::vector<LinearTerm> in_bracket_linear;
-    parse_quadratic_bracket(
-      in_bracket_linear, quad_sign, BracketRole::Objective, out_.quadobj_entries);
-    for (const auto& lt : in_bracket_linear)
-      linear.push_back(lt);
+    parse_quadratic_bracket(quad_sign, BracketRole::Objective, out_.quadobj_entries);
 
     // More linear terms may follow the bracket.
     std::vector<LinearTerm> more;
@@ -1069,10 +1056,7 @@ void LpParseEngine<i_t, f_t>::parse_constraints_section()
     }
     if (peek().kind == LpTokenKind::LBracket) {
       is_quadratic_row = true;
-      std::vector<LinearTerm> in_bracket_linear;
-      parse_quadratic_bracket(in_bracket_linear, quad_sign, BracketRole::Constraint, qc_triples);
-      for (const auto& lt : in_bracket_linear)
-        linear.push_back(lt);
+      parse_quadratic_bracket(quad_sign, BracketRole::Constraint, qc_triples);
 
       // More linear terms may follow the bracket. parse_linear_expression
       // does not produce a constant unless the user wrote one in the LHS;
