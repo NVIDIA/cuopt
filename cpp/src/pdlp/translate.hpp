@@ -271,7 +271,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   auto model_variable_types = model.get_variable_types_host();
   for (i_t j = 0; j < n; ++j) {
     user_problem.var_types[j] =
-      model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
+      model_variable_types.empty() ||
+          model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
         ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
         : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
   }
