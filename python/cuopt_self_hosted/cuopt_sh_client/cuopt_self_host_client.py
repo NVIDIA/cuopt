@@ -134,6 +134,34 @@ def is_uuid(cuopt_problem_data):
         return False
 
 
+# File extensions (case-insensitive, after stripping a compression suffix) that
+# the cuopt mps_parser package can parse client-side. Matches the dispatch
+# table in parse_problem() on the C++ side.
+_PARSEABLE_LP_EXTS = (".lp",)
+_PARSEABLE_MPS_EXTS = (".mps", ".qps")
+_COMPRESSION_SUFFIXES = (".gz", ".bz2")
+
+
+def _strip_compression_suffix(lowered_path):
+    for suffix in _COMPRESSION_SUFFIXES:
+        if lowered_path.endswith(suffix):
+            return lowered_path[: -len(suffix)]
+    return lowered_path
+
+
+def _client_parseable_extension(path):
+    """Return 'lp', 'mps', or None for a path.
+
+    Case-insensitive; recognizes .gz / .bz2 compressed variants.
+    """
+    base = _strip_compression_suffix(path.lower())
+    if base.endswith(_PARSEABLE_LP_EXTS):
+        return "lp"
+    if base.endswith(_PARSEABLE_MPS_EXTS):
+        return "mps"
+    return None
+
+
 def _parse_file_to_data_model(problem_input, solver_config):
     try:
         from cuopt.linear_programming import mps_parser
@@ -145,19 +173,24 @@ def _parse_file_to_data_model(problem_input, solver_config):
             "or pass an already-parsed dict instead of an MPS/LP file or "
             "DataModel."
         ) from e
-    # problem_input is either a path (str) to an MPS/LP file, or an
-    # mps_parser DataModel already handed to us.
+    # problem_input is either a path (str) to an MPS/LP/QPS file (optionally
+    # .gz / .bz2 compressed), or an mps_parser DataModel already handed to us.
     if isinstance(problem_input, mps_parser.parser_wrapper.DataModel):
         model = problem_input
         log.debug("Received mps_parser DataModel object")
     else:
         t0 = time.time()
-        # Dispatch on file extension: ".lp" ⇒ LP parser, otherwise MPS.
-        if isinstance(problem_input, str) and problem_input.lower().endswith(
-            ".lp"
-        ):
+        kind = (
+            _client_parseable_extension(problem_input)
+            if isinstance(problem_input, str)
+            else None
+        )
+        if kind == "lp":
             model = mps_parser.ParseLp(problem_input)
         else:
+            # MPS, QPS, and any unrecognized extension fall through to the
+            # MPS parser, which accepts both .mps and .qps (and their .gz /
+            # .bz2 variants) via the underlying C++ parse_mps().
             model = mps_parser.ParseMps(problem_input)
         parse_time = time.time() - t0
         log.debug(f"file parsing time was {parse_time}")
@@ -809,13 +842,15 @@ class CuOptServiceSelfHostClient:
                 needs_parsing = False
                 filepath = False
             else:
-                # Needs parsing if it's either (a) a string path ending in
-                # .mps/.lp, or (b) a non-string (DataModel) to normalize.
+                # Needs parsing if it's either (a) a string path with a
+                # client-parseable extension (.lp / .mps / .qps, optionally
+                # .gz / .bz2 compressed), or (b) a non-string (DataModel)
+                # to normalize.
                 if isinstance(cuopt_data_model, str):
-                    lowered = cuopt_data_model.lower()
-                    needs_parsing = lowered.endswith(
-                        ".mps"
-                    ) or lowered.endswith(".lp")
+                    needs_parsing = (
+                        _client_parseable_extension(cuopt_data_model)
+                        is not None
+                    )
                 else:
                     needs_parsing = True
 
