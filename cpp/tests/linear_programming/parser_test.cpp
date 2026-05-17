@@ -1752,8 +1752,8 @@ End
 
 TEST(lp_parser, semi_continuous_bare_semi_keyword)
 {
-  // Both Gurobi and CPLEX accept the bare "Semi" keyword as a synonym for
-  // the "Semi-Continuous" section header.
+  // The LP-format convention accepts the bare "Semi" keyword as a synonym
+  // for the "Semi-Continuous" section header.
   auto m = parse_lp_string(R"LP(
 Minimize
   x
@@ -1774,8 +1774,8 @@ End
 
 TEST(lp_parser, semi_continuous_bare_semis_keyword)
 {
-  // Both Gurobi and CPLEX accept the bare "Semis" keyword as a synonym for
-  // the "Semi-Continuous" section header.
+  // The LP-format convention accepts the bare "Semis" keyword as a synonym
+  // for the "Semi-Continuous" section header.
   auto m = parse_lp_string(R"LP(
 Minimize
   x
@@ -2247,7 +2247,7 @@ End
 
 TEST(lp_parser, bare_linear_inside_objective_bracket_rejected)
 {
-  // Gurobi's LP-format docs reserve `[ ... ]` for quadratic terms only
+  // The LP-format convention reserves `[ ... ]` for quadratic terms only
   // (squared and product). A bare linear term like `2 x` inside the
   // bracket is malformed; the user should write it outside.
   EXPECT_THROW(parse_lp_string(R"LP(

@@ -63,9 +63,9 @@ mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
  *        a file in LP format.
  *
  * The LP format is a human-readable alternative to MPS format. This parser
- * supports the conventional LP dialect implemented by most commercial
- * optimization solvers (not the lpsolve variant, which has a different
- * syntax).
+ * supports the dialect in which the objective and constraints are written
+ * as algebraic expressions over named variables (it does not implement the
+ * alternative tableau-style LP dialect used by some open-source readers).
  *
  * Scope: LP, MIP, and QP problems are supported, plus semi-continuous
  * variables (via a Semi-Continuous section; finite upper bound required)

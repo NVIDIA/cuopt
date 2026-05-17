@@ -69,9 +69,10 @@ def ParseLp(lp_file_path):
     ``0.5 x^T Q x`` convention); a constraint bracket must NOT be followed
     by ``/ 2`` (coefficients are at face value, ``x^T Q x``).
 
-    This function parses the conventional LP dialect implemented by most
-    commercial optimization solvers (not the lpsolve variant, which has a
-    different syntax).
+    This function parses the dialect in which the objective and constraints
+    are written as algebraic expressions over named variables (it does not
+    implement the alternative tableau-style LP dialect used by some
+    open-source readers).
 
     Unsupported LP sections (SOS, PWL objective, user cuts, general
     constraints) raise a ValueError.

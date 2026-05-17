@@ -686,9 +686,9 @@ typename LpParseEngine<i_t, f_t>::SectionKind LpParseEngine<i_t, f_t>::try_consu
     advance();
     return SectionKind::Binaries;
   }
-  // Semi-Continuous section header — accepted spellings:
-  //   - 3-token "Semi - Continuous"   (CPLEX/Gurobi documented)
-  //   - bare "Semi" / "Semis"          (CPLEX/Gurobi documented)
+  // Semi-Continuous section header. Documented spellings:
+  //   - 3-token "Semi - Continuous"
+  //   - bare "Semi" / "Semis"
   // Check the 3-token form first so it consumes all three tokens.
   if (lower == "semi" && peek(1).kind == LpTokenKind::Minus &&
       name_equals_ci(peek(2), "continuous")) {
@@ -902,9 +902,8 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
       raw_quad.emplace_back(a, b, sign * coeff);
     } else {
       // Pure linear terms are not allowed inside a quadratic bracket — the
-      // LP convention reserves '[ ... ]' for squared and product terms only
-      // (matches Gurobi's documented LP format). Place linear terms outside
-      // the bracket.
+      // LP-format convention reserves '[ ... ]' for squared and product
+      // terms only. Place linear terms outside the bracket.
       mps_parser_expects(false,
                          error_type_t::ValidationError,
                          "LP parse error at line %d: bare linear term '%s' is not "
