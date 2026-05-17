@@ -25,9 +25,17 @@ on:
         type: string
         default: nightly
 
+permissions: {}
+
 jobs:
   conda-cpp-tests:
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-tests.yaml@cuda-13.2.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -43,7 +51,13 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   conda-python-tests:
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@cuda-13.2.0
     with:
       run_codecov: false
       build_type: ${{ inputs.build_type }}
@@ -60,7 +74,13 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   wheel-tests-cuopt:
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.2.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -76,7 +96,13 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   wheel-tests-cuopt-server:
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-test.yaml@cuda-13.2.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -92,8 +118,14 @@ jobs:
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
 
   conda-notebook-tests:
-    secrets: inherit
-    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@cuda-13.2.0
     with:
       build_type: ${{ inputs.build_type }}
       branch: ${{ inputs.branch }}
@@ -104,6 +136,8 @@ jobs:
       container_image: "rapidsai/ci-conda:26.06-latest"
       script: ci/test_notebooks.sh
   nightly-summary:
+    permissions:
+      contents: read
     if: ${{ always() && inputs.build_type == 'nightly' }}
     needs:
       - conda-cpp-tests
