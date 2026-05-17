@@ -764,11 +764,37 @@ void LpParseEngine<i_t, f_t>::parse_linear_expression(std::vector<LinearTerm>& o
     // 'inf' is a bounds-only keyword and never appears here.
     f_t coeff      = f_t(1);
     bool had_coeff = false;
+    bool had_star  = false;
     if (peek().kind == LpTokenKind::Number) {
       coeff     = number_from_text(peek().text);
       had_coeff = true;
       advance();
-      match(LpTokenKind::Star);  // optional '*'
+      had_star = match(LpTokenKind::Star);
+    }
+
+    // '<number> *' must be followed by a variable name; a stray '*' before a
+    // relation, section header, or EOL would otherwise be silently dropped
+    // (and the number would be misinterpreted as a constant).
+    if (had_star) {
+      mps_parser_expects(
+        peek().kind == LpTokenKind::Name && !at_section_boundary() && !is_infinity_keyword(peek()),
+        error_type_t::ValidationError,
+        "LP parse error at line %d: expected variable name after '*', got '%s'",
+        peek().line,
+        peek().text.c_str());
+    }
+
+    // '<number> [' is ambiguous: did the user mean "<number> times the quadratic
+    // bracket" or "constant <number> followed by a separate bracket"? Neither
+    // interpretation is supported. The LP convention places the coefficient
+    // inside the brackets, so reject and tell the user how to rewrite.
+    if (had_coeff && peek().kind == LpTokenKind::LBracket) {
+      mps_parser_expects(false,
+                         error_type_t::ValidationError,
+                         "LP parse error at line %d: a numeric coefficient may not "
+                         "directly precede a quadratic bracket '['; place the coefficient "
+                         "inside the brackets",
+                         peek().line);
     }
 
     if (peek().kind == LpTokenKind::Name && !at_section_boundary() &&

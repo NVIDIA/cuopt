@@ -1998,6 +1998,78 @@ End
                std::logic_error);
 }
 
+TEST(lp_parser, leading_coefficient_before_objective_bracket_rejected)
+{
+  // '2 [ x^2 ] / 2' is ambiguous between "constant 2 plus 0.5 x^2" and
+  // "scalar 2 times 0.5 x^2"; the LP convention is to place coefficients
+  // inside the brackets, so reject.
+  EXPECT_THROW(parse_lp_string(R"LP(
+Minimize
+  2 [ x ^ 2 ] / 2
+Subject To
+ c1: x >= 1
+End
+)LP"),
+               std::logic_error);
+}
+
+TEST(lp_parser, leading_coefficient_before_constraint_bracket_rejected)
+{
+  // Same ambiguity as the objective case, in a quadratic constraint.
+  EXPECT_THROW(parse_lp_string(R"LP(
+Minimize
+  x
+Subject To
+ q1: 2 [ x ^ 2 ] <= 5
+End
+)LP"),
+               std::logic_error);
+}
+
+TEST(lp_parser, constant_then_signed_bracket_in_objective_is_accepted)
+{
+  // The positive form: a literal constant in the objective followed by a
+  // signed quadratic bracket still parses (constant becomes objective offset).
+  auto m = parse_lp_string(R"LP(
+Minimize
+  5 + [ x ^ 2 ] / 2
+Subject To
+ c1: x >= 1
+End
+)LP");
+  EXPECT_NEAR(m.get_objective_offset(), 5.0, tolerance);
+  EXPECT_TRUE(m.has_quadratic_objective());
+}
+
+TEST(lp_parser, stray_star_after_number_without_variable_rejected)
+{
+  // '3 *' followed by a relation, section header, or EOL must error rather
+  // than silently drop the '*' and treat the '3' as a bare constant.
+  EXPECT_THROW(parse_lp_string(R"LP(
+Minimize
+  3 *
+Subject To
+ c1: x >= 1
+End
+)LP"),
+               std::logic_error);
+}
+
+TEST(lp_parser, explicit_star_between_coefficient_and_variable_is_accepted)
+{
+  // The positive form: '3 * x' is the same as '3 x'.
+  auto m = parse_lp_string(R"LP(
+Minimize
+  3 * x
+Subject To
+ c1: x >= 1
+End
+)LP");
+  int x  = find_var(m, "x");
+  ASSERT_GE(x, 0);
+  EXPECT_NEAR(m.get_objective_coefficients()[x], 3.0, tolerance);
+}
+
 // ===========================================================================
 // Quadratic constraints (LHS contains [ ... ] without the /2 divisor).
 // ===========================================================================
