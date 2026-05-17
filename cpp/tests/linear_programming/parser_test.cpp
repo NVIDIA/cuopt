@@ -2499,9 +2499,18 @@ mps_data_model_t<int, double> dispatch_parse(const std::string& content, const s
     std::ofstream out(tmp);
     out << content;
   }
-  auto model = parse_problem<int, double>(tmp.string());
-  std::filesystem::remove(tmp);
-  return model;
+  // Scope guard: remove the temp file even if parse_problem throws.
+  // std::error_code is passed so the destructor does not throw during stack
+  // unwinding when a parse exception is propagating.
+  struct cleanup_t {
+    const std::filesystem::path& path;
+    ~cleanup_t()
+    {
+      std::error_code ec;
+      std::filesystem::remove(path, ec);
+    }
+  } cleanup{tmp};
+  return parse_problem<int, double>(tmp.string());
 }
 
 constexpr const char* kTrivialLp = R"LP(
