@@ -182,8 +182,8 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
 
   col_scale.resize(n);
 
-  f_t max = 0;
-  f_t min = std::numeric_limits<f_t>::max();
+  f_t max_col_norm = 0;
+  f_t min_col_norm = std::numeric_limits<f_t>::max();
   for (i_t j = 0; j < n; ++j) {
     const i_t col_start = scaled.A.col_start[j];
     const i_t col_end   = scaled.A.col_start[j + 1];
@@ -192,38 +192,33 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       const f_t x = scaled.A.x[p];
       sum += x * x;
     }
-    f_t col_norm_j = col_scale[j] = sum > 0 ? std::sqrt(sum) : 1.0;
-    max                           = std::max(col_norm_j, max);
-    min                           = std::min(col_norm_j, min);
+    const f_t col_norm = sum > 0 ? std::sqrt(sum) : 1.0;
+    col_scale[j]       = f_t(1) / col_norm;
+    max_col_norm       = std::max(col_norm, max_col_norm);
+    min_col_norm       = std::min(col_norm, min_col_norm);
   }
-  settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max, min);
+  settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n",
+                      max_col_norm,
+                      min_col_norm);
 
   // scaled_A = unscaled_A * C
   for (i_t j = 0; j < n; ++j) {
     const i_t col_start = scaled.A.col_start[j];
     const i_t col_end   = scaled.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; ++p) {
-      scaled.A.x[p] /= col_scale[j];
+      scaled.A.x[p] *= col_scale[j];
     }
-  }
-  // scaled_obj = C*unscaled_obj
-  for (i_t j = 0; j < n; ++j) {
-    scaled.objective[j] /= col_scale[j];
-  }
-  // scaled_lower = C^{-1} * unscaled_lower
-  // scaled_upper = C^{-1} * unscaled_upper
-  for (i_t j = 0; j < n; ++j) {
-    scaled.lower[j] *= col_scale[j];
-    scaled.upper[j] *= col_scale[j];
+    scaled.objective[j] *= col_scale[j];
+    if (scaled.lower[j] > -1e20) scaled.lower[j] /= col_scale[j];
+    if (scaled.upper[j] < 1e20) scaled.upper[j] /= col_scale[j];
   }
 
   for (i_t i = 0; i < unscaled.Q.n; ++i) {
     const i_t row_start = unscaled.Q.row_start[i];
     const i_t row_end   = unscaled.Q.row_start[i + 1];
-    i_t row             = i;
     for (i_t p = row_start; p < row_end; ++p) {
-      i_t col       = unscaled.Q.j[p];
-      scaled.Q.x[p] = unscaled.Q.x[p] / (col_scale[row] * col_scale[col]);
+      const i_t col = unscaled.Q.j[p];
+      scaled.Q.x[p] = unscaled.Q.x[p] * col_scale[i] * col_scale[col];
     }
   }
   return 0;
@@ -243,9 +238,9 @@ void unscale_solution(const std::vector<f_t>& col_scale,
   unscaled_x.resize(n);
   unscaled_z.resize(n);
   for (i_t j = 0; j < n; ++j) {
-    // x_unscaled = C * x_scaled  (column scaling: x_scaled = C^{-1} * x)
+    // column_scaling multiplies A(:,j) and c_j by col_scale[j], divides bounds:
+    // x_orig = col_scale .* x_scaled, z_orig = z_scaled / col_scale.
     unscaled_x[j] = scaled_x[j] * col_scale[j];
-    // z_unscaled = C^{-1} * z_scaled (dual of column scaling)
     unscaled_z[j] = scaled_z[j] / col_scale[j];
   }
 
