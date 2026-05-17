@@ -932,18 +932,14 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
     advance();  // '/'
     advance();  // '2'
 
-    // Apply the /2 convention and the QUADOBJ-convention scaling so that
-    // finalize_problem()'s expansion to full symmetric and *0.5 factor yield
-    // the right Q for cuOpt's 'x^T Q x' form.
-    //
-    //   LP term ([...]/2):                    →  quadobj entry
-    //     diagonal  c x^2   (actual = c/2)    →  c
-    //     off-diag  c x*y   (actual = c/2)    →  c/2
+    // Apply the LP "/ 2" convention uniformly: a bracket coefficient c on
+    // either x_i^2 or x_i*x_j contributes c/2 to the corresponding objective
+    // term. The resulting upper-triangular quadobj entries are passed
+    // directly to cuOpt's set_quadratic_objective_matrix, which internally
+    // computes H = Q + Q^T; the solver then minimizes (1/2) x^T H x, which
+    // recovers the user's intended objective.
     for (auto& [a, b, v] : raw_quad) {
-      if (a != b) {
-        // off-diagonal: /2 to recover Q[i,j] = Q[j,i] after the later x^T Q x expansion.
-        v /= f_t(2);
-      }
+      v /= f_t(2);
       out_quad_entries.emplace_back(a, b, sign_scale * v);
     }
     // Linear terms inside the brackets pick up the /2 scaling and the outer sign.
@@ -1487,31 +1483,27 @@ void finalize_problem(mps_data_model_t<i_t, f_t>& problem, lp_parser_t<i_t, f_t>
   problem.set_row_types(row_types_chars);
   problem.set_maximize(parser.maximize);
 
-  // Quadratic objective: build the full symmetric Q from upper-triangular
-  // QUADOBJ-convention entries; mirror off-diagonals and apply the file's
-  // '0.5 x^T Q x' → cuOpt's 'x^T Q x' conversion (×0.5 on every stored value).
+  // Quadratic objective: emit the upper-triangular quadobj entries as CSR.
+  // cuOpt's GPU-side set_quadratic_objective_matrix applies H = Q + Q^T
+  // internally, so no mirror step is needed here — the entries are already
+  // /2-scaled inside parse_quadratic_bracket so the solver's (1/2) x^T H x
+  // recovers the user's intended objective.
   if (!parser.quadobj_entries.empty()) {
-    std::vector<std::vector<std::pair<i_t, f_t>>> csc(n_vars);
+    std::vector<std::vector<std::pair<i_t, f_t>>> row_data(n_vars);
     for (const auto& [row, col, val] : parser.quadobj_entries) {
-      csc[col].emplace_back(row, val);
-      if (row != col) { csc[row].emplace_back(col, val); }
+      row_data[row].emplace_back(col, val);
     }
-    std::vector<std::vector<std::pair<i_t, f_t>>> csr(n_vars);
-    for (i_t col = 0; col < n_vars; ++col) {
-      for (const auto& [row, val] : csc[col]) {
-        csr[row].emplace_back(col, val);
-      }
+    for (auto& row : row_data) {
+      std::sort(row.begin(), row.end());
     }
-    // Within each row the entries are naturally ordered by column because
-    // the outer loop above walks columns in ascending order — no sort needed.
     std::vector<f_t> q_values;
     std::vector<i_t> q_indices;
     std::vector<i_t> q_offsets;
-    q_offsets.reserve(n_vars + 1);
+    q_offsets.reserve(static_cast<size_t>(n_vars) + 1);
     q_offsets.push_back(0);
     for (i_t row = 0; row < n_vars; ++row) {
-      for (const auto& [col, val] : csr[row]) {
-        q_values.push_back(val * f_t(0.5));
+      for (const auto& [col, val] : row_data[row]) {
+        q_values.push_back(val);
         q_indices.push_back(col);
       }
       q_offsets.push_back(static_cast<i_t>(q_values.size()));

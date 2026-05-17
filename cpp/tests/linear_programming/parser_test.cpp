@@ -1621,16 +1621,18 @@ End
   int x = find_var(m, "x");
   int y = find_var(m, "y");
   int z = find_var(m, "z");
-  // Diagonal 2 x^2 / 2 = x^2  ⇒  Q[x,x] = 1, similarly for y, z.
+  // The LP parser stores Q in upper-triangular form (i <= j). cuOpt's
+  // set_quadratic_objective_matrix symmetrizes via H = Q + Q^T, and the
+  // solver minimizes (1/2) x^T H x.
+  // Diagonal 2 x^2 / 2 → Q[x,x] = 1.
   EXPECT_NEAR(q_entry(m, x, x), 1.0, tolerance);
   EXPECT_NEAR(q_entry(m, y, y), 1.0, tolerance);
   EXPECT_NEAR(q_entry(m, z, z), 1.0, tolerance);
-  // Cross 2 x*y / 2 = x*y  ⇒  full matrix Q[x,y] = Q[y,x] = 0.5 each
-  // (so that x^T Q x sums to x*y).
-  EXPECT_NEAR(q_entry(m, x, y), 0.5, tolerance);
-  EXPECT_NEAR(q_entry(m, y, x), 0.5, tolerance);
-  EXPECT_NEAR(q_entry(m, y, z), 0.5, tolerance);
-  EXPECT_NEAR(q_entry(m, z, y), 0.5, tolerance);
+  // Cross 2 x*y / 2 → stored as Q[x,y] = 1 only (no Q[y,x]).
+  EXPECT_NEAR(q_entry(m, x, y), 1.0, tolerance);
+  EXPECT_NEAR(q_entry(m, y, x), 0.0, tolerance);
+  EXPECT_NEAR(q_entry(m, y, z), 1.0, tolerance);
+  EXPECT_NEAR(q_entry(m, z, y), 0.0, tolerance);
   // x and z have no cross term.
   EXPECT_NEAR(q_entry(m, x, z), 0.0, tolerance);
 
