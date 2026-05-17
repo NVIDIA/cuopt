@@ -138,7 +138,20 @@ End
   }
 
   cuOptOptimizationProblem handle = nullptr;
-  cuopt_int_t status              = cuOptReadProblem(lp_path.string().c_str(), &handle);
+  // Scope guard: tear the temp file and the problem handle down on every
+  // exit path (including assertion failure) so the test doesn't leak.
+  struct cleanup_t {
+    cuOptOptimizationProblem* handle_ptr;
+    const std::filesystem::path& lp_path;
+    ~cleanup_t()
+    {
+      if (*handle_ptr != nullptr) { cuOptDestroyProblem(handle_ptr); }
+      std::error_code ec;
+      std::filesystem::remove(lp_path, ec);
+    }
+  } cleanup{&handle, lp_path};
+
+  cuopt_int_t status = cuOptReadProblem(lp_path.string().c_str(), &handle);
   EXPECT_EQ(status, CUOPT_SUCCESS);
   ASSERT_NE(handle, nullptr);
 
@@ -148,9 +161,6 @@ End
   EXPECT_EQ(cuOptGetNumConstraints(handle, &n_constrs), CUOPT_SUCCESS);
   EXPECT_EQ(n_vars, 1);
   EXPECT_EQ(n_constrs, 1);
-
-  cuOptDestroyProblem(&handle);
-  std::filesystem::remove(lp_path);
 }
 
 TEST(c_api, test_infeasible_problem) { EXPECT_EQ(test_infeasible_problem(), CUOPT_SUCCESS); }
