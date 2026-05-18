@@ -8,11 +8,11 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_stats.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
@@ -45,8 +45,8 @@ void test_bounds_standardization_test(std::string test_instance)
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::mps_parser::mps_data_model_t<int, double> problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);

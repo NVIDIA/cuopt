@@ -3,8 +3,8 @@
 
 
 from cuopt_server.utils.utils import build_routing_datamodel_from_json
+from cuopt.linear_programming import mps_parser
 from cuopt.linear_programming.solver_settings import SolverSettings
-import cuopt_mps_parser
 import os
 import json
 from typing import NamedTuple
@@ -16,7 +16,7 @@ def build_datamodel_from_mps(data):
     """
 
     if os.path.isfile(data):
-        data_model = cuopt_mps_parser.ParseMps(data)
+        data_model = mps_parser.ParseMps(data)
     else:
         raise ValueError(
             f"Invalid type : {type(data)} has been provided as input, "

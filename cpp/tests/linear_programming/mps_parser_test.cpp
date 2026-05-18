@@ -1,0 +1,1401 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#include <utilities/common_utils.hpp>
+#include <utilities/inline_mps_test_utils.hpp>
+
+#include <cuopt/linear_programming/io/mps_writer.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
+#include <mps_parser_internal.hpp>
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace cuopt::linear_programming::io {
+
+constexpr double tolerance = 1e-6;
+
+mps_parser_t<int, double> read_from_mps(const std::string& file, bool fixed_format = true)
+{
+  std::string rel_file{};
+  // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  // Empty problem not used in the test
+  mps_data_model_t<int, double> problem;
+  mps_parser_t<int, double> mps{problem, rel_file, fixed_format};
+  return mps;
+}
+
+bool file_exists(const std::string& file)
+{
+  std::string rel_file{};
+  // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  return std::filesystem::exists(rel_file);
+}
+
+TEST(mps_parser, bad_mps_files)
+{
+  std::stringstream ss;
+  static constexpr int NumMpsFiles = 15;
+  for (int i = 1; i <= NumMpsFiles; ++i) {
+    ss << "linear_programming/bad-mps-" << i << ".mps";
+    // Check if file exists
+    if (file_exists(ss.str())) ASSERT_THROW(read_from_mps(ss.str()), std::logic_error);
+    ss.str(std::string{});
+    ss.clear();
+  }
+}
+
+TEST(mps_parser, good_mps_file_1)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_file_clrf)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1-clrf.mps");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_free_file_clrf)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1-clrf.mps", false);
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_file_comments)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1-comments.mps", false);
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(1), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(1), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser, good_mps_file_no_name)
+{
+  // Should not throw an error
+  read_from_mps("linear_programming/good-mps-fixed-no-name.mps");
+}
+
+TEST(mps_parser, good_mps_file_empty_name)
+{
+  // Should not throw an error
+  read_from_mps("linear_programming/good-mps-fixed-empty-name.mps");
+}
+
+TEST(mps_parser, good_mps_file_2)
+{
+  auto mps = read_from_mps("linear_programming/good-fixed-mps-2.mps");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("RO W1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VA R1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+
+TEST(mps_parser_free_format, free_format_mps_file_1)
+{  // tests for arbitrary spacing in rows, column, rhs
+  auto mps = read_from_mps("linear_programming/free-format-mps-1.mps", false);
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+  EXPECT_EQ(false, mps.maximize);
+}
+
+TEST(mps_parser_free_format, bad_free_format_mps_with_spaces_in_names)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/good-fixed-mps-2.mps", false), std::logic_error);
+}
+
+TEST(mps_parser_free_format, bad_mps_files_free_format)
+{
+  std::stringstream ss;
+  static constexpr int NumMpsFiles = 13;
+  for (int i = 1; i <= NumMpsFiles; ++i) {
+    ss << "linear_programming/bad-mps-" << i << ".mps";
+    if (file_exists(ss.str())) ASSERT_THROW(read_from_mps(ss.str(), false), std::logic_error);
+    ss.str(std::string{});
+    ss.clear();
+  }
+}
+
+TEST(mps_bounds, up_low_bounds)
+{
+  auto mps = read_from_mps("linear_programming/lp_model_with_var_bounds.mps", false);
+  EXPECT_EQ("lp_model_with_var_bounds", mps.problem_name);
+
+  ASSERT_EQ(int(1), mps.row_names.size());
+  EXPECT_EQ("con", mps.row_names[0]);
+  ASSERT_EQ(int(1), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ("OBJ", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("x", mps.var_names[0]);
+  EXPECT_EQ("y", mps.var_names[1]);
+  ASSERT_EQ(int(1), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(1), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(1., mps.A_values[0][0]);
+  EXPECT_EQ(1., mps.A_values[0][1]);
+  ASSERT_EQ(int(1), mps.b_values.size());
+  EXPECT_EQ(3., mps.b_values[0]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(2., mps.c_values[0]);
+  EXPECT_EQ(-1., mps.c_values[1]);
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(1., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(1., mps.variable_upper_bounds[0]);
+  EXPECT_EQ(2., mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, standard_var_bounds_0_inf)
+{
+  auto mps = read_from_mps("linear_programming/free-format-mps-1.mps", false);
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, only_some_UP_LO_var_bounds)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-some-var-bounds.mps");
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(-1., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
+  EXPECT_EQ(2., mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, fixed_var_bound)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-fixed-var.mps");
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(2., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(2., mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std ::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, free_var_bound)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-free-var.mps");
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, lower_inf_var_bound)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-lower-bound-inf-var.mps");
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, rhs_cost)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-rhs-cost.mps");
+
+  // objective value offset should be set to -5
+  EXPECT_EQ(int(-5), mps.objective_offset_value);
+}
+
+TEST(mps_bounds, upper_inf_var_bound)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-upper-bound-inf-var.mps");
+
+  // standard bounds are 0,inf when no var bounds are specified
+  EXPECT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  EXPECT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_bounds, semi_continuous_var_bounds_from_dataset)
+{
+  struct Case {
+    const char* name;
+    const char* mps;
+    int n_vars;
+    double lower;
+    double upper;
+  };
+  const std::vector<Case> cases = {
+    {"sc_standard", cuopt::test::inline_mps::sc_standard_mps, 2, 2.0, 10.0},
+    {"sc_lb_zero", cuopt::test::inline_mps::sc_lb_zero_mps, 2, 0.0, 10.0},
+    {"sc_no_ub", cuopt::test::inline_mps::sc_no_ub_mps, 2, 2.0, 1e30},
+  };
+
+  for (const auto& c : cases) {
+    SCOPED_TRACE(c.name);
+    auto mps              = cuopt::test::inline_mps::parse_inline_mps(c.mps);
+    const auto& var_types = mps.get_variable_types();
+    const auto& lower     = mps.get_variable_lower_bounds();
+    const auto& upper     = mps.get_variable_upper_bounds();
+
+    ASSERT_EQ(c.n_vars, static_cast<int>(var_types.size()));
+    EXPECT_EQ('S', var_types[0]);
+    ASSERT_EQ(c.n_vars, static_cast<int>(lower.size()));
+    ASSERT_EQ(c.n_vars, static_cast<int>(upper.size()));
+    EXPECT_DOUBLE_EQ(c.lower, lower[0]);
+    EXPECT_DOUBLE_EQ(c.upper, upper[0]);
+  }
+}
+
+TEST(mps_bounds, semi_continuous_missing_lower_defaults_to_zero)
+{
+  auto mps = cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_lb_zero_mps);
+  const auto& var_types = mps.get_variable_types();
+  const auto& lower     = mps.get_variable_lower_bounds();
+  const auto& upper     = mps.get_variable_upper_bounds();
+
+  ASSERT_EQ(2, static_cast<int>(var_types.size()));
+  EXPECT_EQ('S', var_types[0]);
+  ASSERT_EQ(2, static_cast<int>(lower.size()));
+  ASSERT_EQ(2, static_cast<int>(upper.size()));
+  EXPECT_DOUBLE_EQ(0.0, lower[0]);
+  EXPECT_DOUBLE_EQ(10.0, upper[0]);
+}
+
+TEST(mps_bounds, semi_continuous_missing_upper_rejected)
+{
+  EXPECT_THROW(
+    cuopt::test::inline_mps::parse_inline_mps(cuopt::test::inline_mps::sc_missing_upper_mps),
+    std::logic_error);
+}
+
+TEST(mps_ranges, fixed_ranges)
+{
+  std::string file = "linear_programming/good-mps-fixed-ranges.mps";
+  auto mps         = read_from_mps(file);
+
+  EXPECT_NEAR(4.2, mps.ranges_values[0], tolerance);   //  ROW1 range value
+  EXPECT_NEAR(3.4, mps.ranges_values[1], tolerance);   //  ROW2 range value
+  EXPECT_NEAR(-1.6, mps.ranges_values[2], tolerance);  // ROW3 range value
+  EXPECT_NEAR(3.4, mps.ranges_values[3], tolerance);   //  ROW3 range value
+
+  std::string rel_file{};
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  auto data_model                         = parse_mps<int, double>(rel_file, true);
+
+  EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
+  EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
+  EXPECT_NEAR(1.5, data_model.get_constraint_lower_bounds()[1], tolerance);  // ROW2 lower bound
+  EXPECT_NEAR(4.9, data_model.get_constraint_upper_bounds()[1], tolerance);  // ROW2 upper bound
+  EXPECT_NEAR(
+    7.9, data_model.get_constraint_lower_bounds()[2], tolerance);  // ROW3, equal constraint
+  EXPECT_NEAR(
+    9.5, data_model.get_constraint_upper_bounds()[2], tolerance);  // ROW3, equal constraint
+  EXPECT_NEAR(
+    3.5, data_model.get_constraint_lower_bounds()[3], tolerance);  // ROW4, equal constraint
+  EXPECT_NEAR(
+    6.9, data_model.get_constraint_upper_bounds()[3], tolerance);  // ROW4, equal constraint
+  EXPECT_NEAR(3.9,
+              data_model.get_constraint_lower_bounds()[4],
+              tolerance);  // ROW5, lower turned into equal constraint
+  EXPECT_NEAR(3.9,
+              data_model.get_constraint_upper_bounds()[4],
+              tolerance);  // ROW5, lower turned into equal constraint
+  EXPECT_NEAR(4.9,
+              data_model.get_constraint_lower_bounds()[5],
+              tolerance);  // ROW6, greater turned into equal constraint
+  EXPECT_NEAR(4.9,
+              data_model.get_constraint_upper_bounds()[5],
+              tolerance);  // ROW6, greater turned into equal constraint
+}
+
+TEST(mps_ranges, free_ranges)
+{
+  std::string file = "linear_programming/good-mps-free-ranges.mps";
+  auto mps         = read_from_mps(file, false);
+
+  EXPECT_NEAR(4.2, mps.ranges_values[0], tolerance);   //  ROW1 range value
+  EXPECT_NEAR(3.4, mps.ranges_values[1], tolerance);   //  ROW2 range value
+  EXPECT_NEAR(-1.6, mps.ranges_values[2], tolerance);  // ROW3 range value
+  EXPECT_NEAR(3.4, mps.ranges_values[3], tolerance);   //  ROW3 range value
+
+  std::string rel_file{};
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  rel_file                                = rapidsDatasetRootDir + "/" + file;
+  auto data_model                         = parse_mps<int, double>(rel_file, false);
+
+  EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
+  EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
+  EXPECT_NEAR(1.5, data_model.get_constraint_lower_bounds()[1], tolerance);  // ROW2 lower bound
+  EXPECT_NEAR(4.9, data_model.get_constraint_upper_bounds()[1], tolerance);  // ROW2 upper bound
+  EXPECT_NEAR(
+    7.9, data_model.get_constraint_lower_bounds()[2], tolerance);  // ROW3, equal constraint
+  EXPECT_NEAR(
+    9.5, data_model.get_constraint_upper_bounds()[2], tolerance);  // ROW3, equal constraint
+  EXPECT_NEAR(
+    3.5, data_model.get_constraint_lower_bounds()[3], tolerance);  // ROW4, equal constraint
+  EXPECT_NEAR(
+    6.9, data_model.get_constraint_upper_bounds()[3], tolerance);  // ROW4, equal constraint
+  EXPECT_NEAR(3.9,
+              data_model.get_constraint_lower_bounds()[4],
+              tolerance);  // ROW5, lower turned into equal constraint
+  EXPECT_NEAR(3.9,
+              data_model.get_constraint_upper_bounds()[4],
+              tolerance);  // ROW5, lower turned into equal constraint
+  EXPECT_NEAR(4.9,
+              data_model.get_constraint_lower_bounds()[5],
+              tolerance);  // ROW6, greater turned into equal constraint
+  EXPECT_NEAR(4.9,
+              data_model.get_constraint_upper_bounds()[5],
+              tolerance);  // ROW6, greater turned into equal constraint
+}
+
+TEST(mps_name, two_objectives)
+{
+  std::string file = "linear_programming/good-mps-fixed-two-objectives.mps";
+  auto mps         = read_from_mps(file, false);
+
+  // Objective name should be first one found and not trigger an error
+  EXPECT_EQ(mps.objective_name, "COST");
+}
+
+TEST(mps_objname, two_objectives)
+{
+  std::string file = "linear_programming/good-mps-fixed-two-objectives-objname.mps";
+  auto mps         = read_from_mps(file, false);
+
+  // Objective name is the second one found since it's specified as objname
+  EXPECT_EQ(mps.objective_name, "COST6679327");
+}
+
+TEST(mps_objname, two_objectives_next_line)
+{
+  std::string file = "linear_programming/good-mps-fixed-two-objectives-objname-next-line.mps";
+  auto mps         = read_from_mps(file, false);
+
+  // Objective name is the second one found since it's specified as objname
+  EXPECT_EQ(mps.objective_name, "COST6679327");
+}
+
+TEST(mps_objname, bad_after)
+{
+  std::string file = "linear_programming/bad-mps-fixed-objname-after-rows.mps";
+  ASSERT_THROW(read_from_mps(file, false), std::logic_error);
+}
+
+TEST(mps_objname, bad_no_fixed)
+{
+  std::string file = "linear_programming/bad-mps-fixed-objname-after-rows.mps";
+  ASSERT_THROW(read_from_mps(file, true), std::logic_error);
+}
+
+TEST(mps_ranges, bad_name)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-fixed-ranges-name.mps", false),
+               std::logic_error);
+}
+
+TEST(mps_ranges, bad_value)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-fixed-ranges-value.mps", false),
+               std::logic_error);
+}
+
+TEST(mps_bounds, semi_continuous_bound_type)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-semi-continuous-bound.mps", false);
+
+  ASSERT_EQ(int(2), mps.var_names.size());
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('S', mps.var_types[0]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_DOUBLE_EQ(0.0, mps.variable_lower_bounds[0]);
+  EXPECT_DOUBLE_EQ(2.0, mps.variable_upper_bounds[0]);
+}
+
+TEST(mps_bounds, invalid_bound_type)
+{
+  ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
+}
+
+TEST(mps_parser, good_mps_file_mip_1)
+{
+  auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-1.mps", false);
+
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(8000., mps.A_values[0][0]);
+  EXPECT_EQ(4000., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(15., mps.A_values[1][0]);
+  EXPECT_EQ(30., mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(40000., mps.b_values[0]);
+  EXPECT_EQ(200., mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(100., mps.c_values[0]);
+  EXPECT_EQ(150., mps.c_values[1]);
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('I', mps.var_types[0]);
+  EXPECT_EQ('I', mps.var_types[1]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(10., mps.variable_upper_bounds[0]);
+  EXPECT_EQ(10., mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_parser, good_mps_file_mip_no_marker)
+{
+  auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-1-no-mark.mps", false);
+
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(8000., mps.A_values[0][0]);
+  EXPECT_EQ(4000., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(15., mps.A_values[1][0]);
+  EXPECT_EQ(30., mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(40000., mps.b_values[0]);
+  EXPECT_EQ(200., mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(100., mps.c_values[0]);
+  EXPECT_EQ(150., mps.c_values[1]);
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('I', mps.var_types[0]);
+  EXPECT_EQ('I', mps.var_types[1]);
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(10., mps.variable_upper_bounds[0]);
+  EXPECT_EQ(10., mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_parser, good_mps_file_no_bounds)
+{
+  auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-no-bounds.mps", false);
+
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(8000., mps.A_values[0][0]);
+  EXPECT_EQ(4000., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(15., mps.A_values[1][0]);
+  EXPECT_EQ(30., mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(40000., mps.b_values[0]);
+  EXPECT_EQ(200., mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(100., mps.c_values[0]);
+  EXPECT_EQ(150., mps.c_values[1]);
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('I', mps.var_types[0]);
+  EXPECT_EQ('C', mps.var_types[1]);
+
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(1.0, mps.variable_upper_bounds[0]);
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), mps.variable_upper_bounds[1]);
+}
+
+TEST(mps_parser, good_mps_file_partial_bounds)
+{
+  auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false);
+
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(8000., mps.A_values[0][0]);
+  EXPECT_EQ(4000., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(15., mps.A_values[1][0]);
+  EXPECT_EQ(30., mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(40000., mps.b_values[0]);
+  EXPECT_EQ(200., mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(100., mps.c_values[0]);
+  EXPECT_EQ(150., mps.c_values[1]);
+  ASSERT_EQ(int(2), mps.var_types.size());
+  EXPECT_EQ('I', mps.var_types[0]);
+  EXPECT_EQ('C', mps.var_types[1]);
+
+  ASSERT_EQ(int(2), mps.variable_lower_bounds.size());
+  EXPECT_EQ(0., mps.variable_lower_bounds[0]);
+  EXPECT_EQ(0., mps.variable_lower_bounds[1]);
+  ASSERT_EQ(int(2), mps.variable_upper_bounds.size());
+  EXPECT_EQ(1.0, mps.variable_upper_bounds[0]);
+  EXPECT_EQ(10.0, mps.variable_upper_bounds[1]);
+}
+
+#ifdef MPS_PARSER_WITH_BZIP2
+TEST(mps_parser, good_mps_file_bzip2_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.bz2");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+#endif  // MPS_PARSER_WITH_BZIP2
+
+#ifdef MPS_PARSER_WITH_ZLIB
+TEST(mps_parser, good_mps_file_zlib_compressed)
+{
+  auto mps = read_from_mps("linear_programming/good-mps-1.mps.gz");
+  EXPECT_EQ("good-1", mps.problem_name);
+  ASSERT_EQ(int(2), mps.row_names.size());
+  EXPECT_EQ("ROW1", mps.row_names[0]);
+  EXPECT_EQ("ROW2", mps.row_names[1]);
+  ASSERT_EQ(int(2), mps.row_types.size());
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[0]);
+  EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
+  EXPECT_EQ("COST", mps.objective_name);
+  ASSERT_EQ(int(2), mps.var_names.size());
+  EXPECT_EQ("VAR1", mps.var_names[0]);
+  EXPECT_EQ("VAR2", mps.var_names[1]);
+  ASSERT_EQ(int(2), mps.A_indices.size());
+  ASSERT_EQ(int(2), mps.A_indices[0].size());
+  EXPECT_EQ(int(0), mps.A_indices[0][0]);
+  EXPECT_EQ(int(1), mps.A_indices[0][1]);
+  ASSERT_EQ(int(2), mps.A_indices[1].size());
+  EXPECT_EQ(int(0), mps.A_indices[1][0]);
+  EXPECT_EQ(int(1), mps.A_indices[1][1]);
+  ASSERT_EQ(int(2), mps.A_values.size());
+  ASSERT_EQ(int(2), mps.A_values[0].size());
+  EXPECT_EQ(3., mps.A_values[0][0]);
+  EXPECT_EQ(4., mps.A_values[0][1]);
+  ASSERT_EQ(int(2), mps.A_values[1].size());
+  EXPECT_EQ(2.7, mps.A_values[1][0]);
+  EXPECT_EQ(10.1, mps.A_values[1][1]);
+  ASSERT_EQ(int(2), mps.b_values.size());
+  EXPECT_EQ(5.4, mps.b_values[0]);
+  EXPECT_EQ(4.9, mps.b_values[1]);
+  ASSERT_EQ(int(2), mps.c_values.size());
+  EXPECT_EQ(0.2, mps.c_values[0]);
+  EXPECT_EQ(0.1, mps.c_values[1]);
+}
+#endif  // MPS_PARSER_WITH_ZLIB
+
+// ================================================================================================
+// QPS (Quadratic Programming) Support Tests
+// ================================================================================================
+
+// QPS-specific tests for quadratic programming support
+TEST(qps_parser, quadratic_objective_basic)
+{
+  // Create a simple QPS test to verify quadratic objective parsing
+  // This would require actual QPS test files - for now, test the API
+  mps_data_model_t<int, double> model;
+
+  // Test setting quadratic objective matrix
+  std::vector<double> Q_values = {2.0, 1.0, 1.0, 2.0};  // 2x2 matrix
+  std::vector<int> Q_indices   = {0, 1, 0, 1};
+  std::vector<int> Q_offsets   = {0, 2, 4};  // CSR offsets
+
+  model.set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets);
+
+  // Verify the data was stored correctly
+  EXPECT_TRUE(model.has_quadratic_objective());
+  EXPECT_EQ(4, model.get_quadratic_objective_values().size());
+  EXPECT_EQ(2.0, model.get_quadratic_objective_values()[0]);
+  EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
+}
+
+// ================================================================================================
+// QCMATRIX Support Tests
+// ================================================================================================
+
+TEST(qps_parser, qcmatrix_append_api)
+{
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+
+  // Validate default-constructed struct shape.
+  model_t::quadratic_constraint_t default_qcm;
+  EXPECT_EQ(0, default_qcm.constraint_row_index);
+  EXPECT_TRUE(default_qcm.quadratic_values.empty());
+  EXPECT_TRUE(default_qcm.quadratic_indices.empty());
+  EXPECT_TRUE(default_qcm.quadratic_offsets.empty());
+  EXPECT_TRUE(default_qcm.linear_values.empty());
+  EXPECT_TRUE(default_qcm.linear_indices.empty());
+  EXPECT_EQ(0.0, default_qcm.rhs_value);
+
+  // QC0: [[10, 2], [2, 2]]
+  const std::vector<double> qc0_values        = {10.0, 2.0, 2.0, 2.0};
+  const std::vector<int> qc0_indices          = {0, 1, 0, 1};
+  const std::vector<int> qc0_offsets          = {0, 2, 4};
+  const std::vector<double> qc0_linear_values = {1.0, 1.0};
+  const std::vector<int> qc0_linear_indices   = {0, 1};
+  model.append_quadratic_constraint(0,
+                                    "QC0",
+                                    'L',
+                                    qc0_linear_values,
+                                    qc0_linear_indices,
+                                    5.0,
+                                    qc0_values,
+                                    qc0_indices,
+                                    qc0_offsets);
+
+  // QC1: [[4, 1], [1, 6]]
+  const std::vector<double> qc1_values        = {4.0, 1.0, 1.0, 6.0};
+  const std::vector<int> qc1_indices          = {0, 1, 0, 1};
+  const std::vector<int> qc1_offsets          = {0, 2, 4};
+  const std::vector<double> qc1_linear_values = {3.0, 1.0};
+  const std::vector<int> qc1_linear_indices   = {0, 1};
+  model.append_quadratic_constraint(1,
+                                    "QC1",
+                                    'L',
+                                    qc1_linear_values,
+                                    qc1_linear_indices,
+                                    10.0,
+                                    qc1_values,
+                                    qc1_indices,
+                                    qc1_offsets);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(2u, qcs.size());
+
+  EXPECT_EQ(0, qcs[0].constraint_row_index);
+  EXPECT_EQ("QC0", qcs[0].constraint_row_name);
+  EXPECT_EQ('L', qcs[0].constraint_row_type);
+  EXPECT_EQ(qc0_linear_values, qcs[0].linear_values);
+  EXPECT_EQ(qc0_linear_indices, qcs[0].linear_indices);
+  EXPECT_EQ(5.0, qcs[0].rhs_value);
+  EXPECT_EQ(qc0_values, qcs[0].quadratic_values);
+  EXPECT_EQ(qc0_indices, qcs[0].quadratic_indices);
+  EXPECT_EQ(qc0_offsets, qcs[0].quadratic_offsets);
+
+  EXPECT_EQ(1, qcs[1].constraint_row_index);
+  EXPECT_EQ("QC1", qcs[1].constraint_row_name);
+  EXPECT_EQ('L', qcs[1].constraint_row_type);
+  EXPECT_EQ(qc1_linear_values, qcs[1].linear_values);
+  EXPECT_EQ(qc1_linear_indices, qcs[1].linear_indices);
+  EXPECT_EQ(10.0, qcs[1].rhs_value);
+  EXPECT_EQ(qc1_values, qcs[1].quadratic_values);
+  EXPECT_EQ(qc1_indices, qcs[1].quadratic_indices);
+  EXPECT_EQ(qc1_offsets, qcs[1].quadratic_offsets);
+}
+
+// QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
+TEST(qps_parser, qcmatrix_mps_linear_rhs_and_bounds)
+{
+  if (!file_exists("qcqp/QC_Test_1.mps")) {
+    GTEST_SKIP() << "qcqp/QC_Test_1.mps not in dataset root";
+  }
+  const auto model = parse_mps<int, double>(
+    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/QC_Test_1.mps", false);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(2u, qcs.size());
+
+  ASSERT_EQ(1, model.get_n_constraints());
+  ASSERT_EQ(1u, model.get_row_names().size());
+  EXPECT_EQ("LIN0", model.get_row_names()[0]);
+  EXPECT_EQ('L', model.get_row_types()[0]);
+
+  // LIN0: 2*x1 + x2 ≤ 15 (linear row only; not duplicated in quadratic_constraints)
+  EXPECT_DOUBLE_EQ(-std::numeric_limits<double>::infinity(),
+                   model.get_constraint_lower_bounds()[0]);
+  EXPECT_DOUBLE_EQ(15.0, model.get_constraint_upper_bounds()[0]);
+  const auto& A_off = model.get_constraint_matrix_offsets();
+  const auto& A_val = model.get_constraint_matrix_values();
+  const auto& A_idx = model.get_constraint_matrix_indices();
+  ASSERT_EQ(2, A_off[1] - A_off[0]);
+  EXPECT_EQ(2.0, A_val[A_off[0] + 0]);
+  EXPECT_EQ(1.0, A_val[A_off[0] + 1]);
+  EXPECT_EQ(0, A_idx[A_off[0] + 0]);
+  EXPECT_EQ(1, A_idx[A_off[0] + 1]);
+
+  // QC0: x1 + x2 + xᵀQ₀x ≤ 5 (MPS ROWS declaration index 1; OBJ 'N' rows are not counted)
+  EXPECT_EQ(1, qcs[0].constraint_row_index);
+  EXPECT_EQ("QC0", qcs[0].constraint_row_name);
+  EXPECT_EQ('L', qcs[0].constraint_row_type);
+  ASSERT_EQ(2u, qcs[0].linear_values.size());
+  EXPECT_EQ(1.0, qcs[0].linear_values[0]);
+  EXPECT_EQ(1.0, qcs[0].linear_values[1]);
+  EXPECT_EQ(0, qcs[0].linear_indices[0]);
+  EXPECT_EQ(1, qcs[0].linear_indices[1]);
+  EXPECT_DOUBLE_EQ(5.0, qcs[0].rhs_value);
+  EXPECT_FALSE(qcs[0].quadratic_values.empty());
+
+  // QC1: 3*x1 + x2 + xᵀQ₁x ≤ 10
+  EXPECT_EQ(2, qcs[1].constraint_row_index);
+  EXPECT_EQ("QC1", qcs[1].constraint_row_name);
+  EXPECT_EQ('L', qcs[1].constraint_row_type);
+  ASSERT_EQ(2u, qcs[1].linear_values.size());
+  EXPECT_EQ(3.0, qcs[1].linear_values[0]);
+  EXPECT_EQ(1.0, qcs[1].linear_values[1]);
+  EXPECT_DOUBLE_EQ(10.0, qcs[1].rhs_value);
+}
+
+TEST(qps_parser, qcqp_p0033_mps_sections)
+{
+  if (!file_exists("qcqp/p0033_qc1.mps")) {
+    GTEST_SKIP() << "qcqp/p0033_qc1.mps not in dataset root";
+  }
+  const auto model = parse_mps<int, double>(
+    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps", false);
+
+  EXPECT_EQ(12, model.get_n_constraints());
+  EXPECT_EQ(33, model.get_n_variables());
+  ASSERT_EQ(12u, model.get_row_types().size());
+  ASSERT_EQ(12u, model.get_row_names().size());
+
+  const auto& qcs = model.get_quadratic_constraints();
+  ASSERT_EQ(4u, qcs.size());
+  EXPECT_EQ(12, qcs[0].constraint_row_index);
+  ASSERT_EQ(1u, qcs[0].linear_values.size());
+  EXPECT_DOUBLE_EQ(1.0, qcs[0].linear_values[0]);
+
+  const auto& vnames = model.get_variable_names();
+  auto c159_it       = std::find(vnames.begin(), vnames.end(), std::string("C159"));
+  ASSERT_NE(c159_it, vnames.end());
+  EXPECT_EQ(static_cast<int>(c159_it - vnames.begin()), qcs[0].linear_indices[0]);
+
+  EXPECT_DOUBLE_EQ(1.0, qcs[0].rhs_value);
+  EXPECT_FALSE(qcs[0].quadratic_values.empty());
+}
+
+// Test actual QPS files from the dataset
+TEST(qps_parser, test_qps_files)
+{
+  // Test QP_Test_1.qps if it exists
+  if (file_exists("quadratic_programming/QP_Test_1.qps")) {
+    auto parsed_data = parse_mps<int, double>(
+      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps", false);
+
+    EXPECT_EQ("QP_Test_1", parsed_data.get_problem_name());
+    EXPECT_EQ(2, parsed_data.get_n_variables());    // C------1 and C------2
+    EXPECT_EQ(1, parsed_data.get_n_constraints());  // R------1
+    EXPECT_TRUE(parsed_data.has_quadratic_objective());
+
+    // Check variable bounds
+    const auto& lower_bounds = parsed_data.get_variable_lower_bounds();
+    const auto& upper_bounds = parsed_data.get_variable_upper_bounds();
+
+    EXPECT_NEAR(2.0, lower_bounds[0], tolerance);    // C------1 lower bound
+    EXPECT_NEAR(50.0, upper_bounds[0], tolerance);   // C------1 upper bound
+    EXPECT_NEAR(-50.0, lower_bounds[1], tolerance);  // C------2 lower bound
+    EXPECT_NEAR(50.0, upper_bounds[1], tolerance);   // C------2 upper bound
+  }
+
+  // Test QP_Test_2.qps if it exists
+  if (file_exists("quadratic_programming/QP_Test_2.qps")) {
+    auto parsed_data = parse_mps<int, double>(
+      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps", false);
+
+    EXPECT_EQ("QP_Test_2", parsed_data.get_problem_name());
+    EXPECT_EQ(3, parsed_data.get_n_variables());    // C------1, C------2, C------3
+    EXPECT_EQ(1, parsed_data.get_n_constraints());  // R------1
+    EXPECT_TRUE(parsed_data.has_quadratic_objective());
+
+    // Check that quadratic objective matrix has values
+    const auto& Q_values = parsed_data.get_quadratic_objective_values();
+    EXPECT_GT(Q_values.size(), 0) << "Quadratic objective should have non-zero elements";
+  }
+}
+
+// ================================================================================================
+// MPS Round-Trip Tests (Read -> Write -> Read -> Compare)
+// ================================================================================================
+
+// Helper function to compare two data models
+template <typename i_t, typename f_t>
+void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
+                         const mps_data_model_t<i_t, f_t>& reloaded,
+                         f_t tol = 1e-9)
+{
+  // Compare basic dimensions
+  EXPECT_EQ(original.get_n_variables(), reloaded.get_n_variables());
+  EXPECT_EQ(original.get_n_constraints(), reloaded.get_n_constraints());
+
+  // Compare objective coefficients
+  auto orig_c   = original.get_objective_coefficients();
+  auto reload_c = reloaded.get_objective_coefficients();
+  ASSERT_EQ(orig_c.size(), reload_c.size());
+  for (size_t i = 0; i < orig_c.size(); ++i) {
+    EXPECT_NEAR(orig_c[i], reload_c[i], tol) << "Objective coefficient mismatch at index " << i;
+  }
+
+  // Compare constraint matrix values
+  auto orig_A   = original.get_constraint_matrix_values();
+  auto reload_A = reloaded.get_constraint_matrix_values();
+  ASSERT_EQ(orig_A.size(), reload_A.size());
+  for (size_t i = 0; i < orig_A.size(); ++i) {
+    EXPECT_NEAR(orig_A[i], reload_A[i], tol) << "Constraint matrix value mismatch at index " << i;
+  }
+
+  // Compare constraint matrix indices
+  auto orig_A_idx   = original.get_constraint_matrix_indices();
+  auto reload_A_idx = reloaded.get_constraint_matrix_indices();
+  ASSERT_EQ(orig_A_idx.size(), reload_A_idx.size());
+  for (size_t i = 0; i < orig_A_idx.size(); ++i) {
+    EXPECT_EQ(orig_A_idx[i], reload_A_idx[i]) << "Constraint matrix index mismatch at index " << i;
+  }
+
+  // Compare constraint matrix offsets
+  auto orig_A_off   = original.get_constraint_matrix_offsets();
+  auto reload_A_off = reloaded.get_constraint_matrix_offsets();
+  ASSERT_EQ(orig_A_off.size(), reload_A_off.size());
+  for (size_t i = 0; i < orig_A_off.size(); ++i) {
+    EXPECT_EQ(orig_A_off[i], reload_A_off[i]) << "Constraint matrix offset mismatch at index " << i;
+  }
+
+  // Compare variable bounds
+  auto orig_lb   = original.get_variable_lower_bounds();
+  auto reload_lb = reloaded.get_variable_lower_bounds();
+  ASSERT_EQ(orig_lb.size(), reload_lb.size());
+  for (size_t i = 0; i < orig_lb.size(); ++i) {
+    if (std::isinf(orig_lb[i]) && std::isinf(reload_lb[i])) {
+      EXPECT_EQ(std::signbit(orig_lb[i]), std::signbit(reload_lb[i]))
+        << "Variable lower bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_lb[i], reload_lb[i], tol) << "Variable lower bound mismatch at index " << i;
+    }
+  }
+
+  auto orig_ub   = original.get_variable_upper_bounds();
+  auto reload_ub = reloaded.get_variable_upper_bounds();
+  ASSERT_EQ(orig_ub.size(), reload_ub.size());
+  for (size_t i = 0; i < orig_ub.size(); ++i) {
+    if (std::isinf(orig_ub[i]) && std::isinf(reload_ub[i])) {
+      EXPECT_EQ(std::signbit(orig_ub[i]), std::signbit(reload_ub[i]))
+        << "Variable upper bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_ub[i], reload_ub[i], tol) << "Variable upper bound mismatch at index " << i;
+    }
+  }
+
+  // Compare constraint bounds
+  auto orig_cl   = original.get_constraint_lower_bounds();
+  auto reload_cl = reloaded.get_constraint_lower_bounds();
+  ASSERT_EQ(orig_cl.size(), reload_cl.size());
+  for (size_t i = 0; i < orig_cl.size(); ++i) {
+    if (std::isinf(orig_cl[i]) && std::isinf(reload_cl[i])) {
+      EXPECT_EQ(std::signbit(orig_cl[i]), std::signbit(reload_cl[i]))
+        << "Constraint lower bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_cl[i], reload_cl[i], tol)
+        << "Constraint lower bound mismatch at index " << i;
+    }
+  }
+
+  auto orig_cu   = original.get_constraint_upper_bounds();
+  auto reload_cu = reloaded.get_constraint_upper_bounds();
+  ASSERT_EQ(orig_cu.size(), reload_cu.size());
+  for (size_t i = 0; i < orig_cu.size(); ++i) {
+    if (std::isinf(orig_cu[i]) && std::isinf(reload_cu[i])) {
+      EXPECT_EQ(std::signbit(orig_cu[i]), std::signbit(reload_cu[i]))
+        << "Constraint upper bound infinity sign mismatch at index " << i;
+    } else {
+      EXPECT_NEAR(orig_cu[i], reload_cu[i], tol)
+        << "Constraint upper bound mismatch at index " << i;
+    }
+  }
+
+  // Compare quadratic objective if present
+  EXPECT_EQ(original.has_quadratic_objective(), reloaded.has_quadratic_objective());
+  if (original.has_quadratic_objective() && reloaded.has_quadratic_objective()) {
+    auto orig_Q       = original.get_quadratic_objective_values();
+    auto orig_Q_idx   = original.get_quadratic_objective_indices();
+    auto orig_Q_off   = original.get_quadratic_objective_offsets();
+    auto reload_Q     = reloaded.get_quadratic_objective_values();
+    auto reload_Q_idx = reloaded.get_quadratic_objective_indices();
+    auto reload_Q_off = reloaded.get_quadratic_objective_offsets();
+
+    // Compare Q matrix structure and values
+    ASSERT_EQ(orig_Q.size(), reload_Q.size()) << "Q values size mismatch";
+    ASSERT_EQ(orig_Q_idx.size(), reload_Q_idx.size()) << "Q indices size mismatch";
+    ASSERT_EQ(orig_Q_off.size(), reload_Q_off.size()) << "Q offsets size mismatch";
+
+    for (size_t i = 0; i < orig_Q.size(); ++i) {
+      EXPECT_NEAR(orig_Q[i], reload_Q[i], tol) << "Q value mismatch at index " << i;
+    }
+    for (size_t i = 0; i < orig_Q_idx.size(); ++i) {
+      EXPECT_EQ(orig_Q_idx[i], reload_Q_idx[i]) << "Q index mismatch at index " << i;
+    }
+    for (size_t i = 0; i < orig_Q_off.size(); ++i) {
+      EXPECT_EQ(orig_Q_off[i], reload_Q_off[i]) << "Q offset mismatch at index " << i;
+    }
+  }
+
+  EXPECT_EQ(original.has_quadratic_constraints(), reloaded.has_quadratic_constraints());
+  if (original.has_quadratic_constraints() && reloaded.has_quadratic_constraints()) {
+    const auto& oqc = original.get_quadratic_constraints();
+    const auto& rq  = reloaded.get_quadratic_constraints();
+    ASSERT_EQ(oqc.size(), rq.size()) << "Quadratic constraint count mismatch";
+    for (size_t k = 0; k < oqc.size(); ++k) {
+      EXPECT_EQ(oqc[k].constraint_row_index, rq[k].constraint_row_index);
+      EXPECT_EQ(oqc[k].constraint_row_name, rq[k].constraint_row_name);
+      EXPECT_EQ(oqc[k].constraint_row_type, rq[k].constraint_row_type);
+      EXPECT_NEAR(oqc[k].rhs_value, rq[k].rhs_value, tol);
+      ASSERT_EQ(oqc[k].linear_values.size(), rq[k].linear_values.size());
+      ASSERT_EQ(oqc[k].linear_indices.size(), rq[k].linear_indices.size());
+      for (size_t i = 0; i < oqc[k].linear_values.size(); ++i) {
+        EXPECT_NEAR(oqc[k].linear_values[i], rq[k].linear_values[i], tol);
+        EXPECT_EQ(oqc[k].linear_indices[i], rq[k].linear_indices[i]);
+      }
+      ASSERT_EQ(oqc[k].quadratic_values.size(), rq[k].quadratic_values.size());
+      ASSERT_EQ(oqc[k].quadratic_indices.size(), rq[k].quadratic_indices.size());
+      ASSERT_EQ(oqc[k].quadratic_offsets.size(), rq[k].quadratic_offsets.size());
+      for (size_t i = 0; i < oqc[k].quadratic_values.size(); ++i) {
+        EXPECT_NEAR(oqc[k].quadratic_values[i], rq[k].quadratic_values[i], tol);
+      }
+      for (size_t i = 0; i < oqc[k].quadratic_indices.size(); ++i) {
+        EXPECT_EQ(oqc[k].quadratic_indices[i], rq[k].quadratic_indices[i]);
+      }
+      for (size_t i = 0; i < oqc[k].quadratic_offsets.size(); ++i) {
+        EXPECT_EQ(oqc[k].quadratic_offsets[i], rq[k].quadratic_offsets[i]);
+      }
+    }
+  }
+}
+
+TEST(mps_roundtrip, linear_programming_basic)
+{
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/good-mps-1.mps";
+  std::string temp_file = "/tmp/mps_roundtrip_lp_test.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, true);
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, linear_programming_with_bounds)
+{
+  if (!file_exists("linear_programming/lp_model_with_var_bounds.mps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/lp_model_with_var_bounds.mps";
+  std::string temp_file = "/tmp/mps_roundtrip_lp_bounds_test.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, quadratic_programming_qp_test_1)
+{
+  if (!file_exists("quadratic_programming/QP_Test_1.qps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps";
+  std::string temp_file = "/tmp/mps_roundtrip_qp_test_1.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, quadratic_programming_qp_test_2)
+{
+  if (!file_exists("quadratic_programming/QP_Test_2.qps")) {
+    GTEST_SKIP() << "Test file not found";
+  }
+
+  std::string input_file =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps";
+  std::string temp_file = "/tmp/mps_roundtrip_qp_test_2.mps";
+
+  // Read original
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
+
+  // Write to temp file
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  // Read back
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
+
+  // Compare
+  compare_data_models(original, reloaded);
+
+  // Cleanup
+  std::filesystem::remove(temp_file);
+}
+
+TEST(mps_roundtrip, qcqp_p0033_qc1)
+{
+  if (!file_exists("qcqp/p0033_qc1.mps")) { GTEST_SKIP() << "Test file not found"; }
+
+  std::string input_file  = cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps";
+  std::string temp_file   = "/tmp/mps_roundtrip_p0033_qc1.mps";
+  std::string temp_file_2 = "/tmp/mps_roundtrip_p0033_qc1_r2.mps";
+
+  auto original = parse_mps<int, double>(input_file, false);
+  ASSERT_TRUE(original.has_quadratic_objective());
+  ASSERT_TRUE(original.has_quadratic_constraints());
+
+  mps_writer_t<int, double> writer(original);
+  writer.write(temp_file);
+
+  auto reloaded = parse_mps<int, double>(temp_file, false);
+  mps_writer_t<int, double> writer_r2(reloaded);
+  writer_r2.write(temp_file_2);
+  auto reloaded_2 = parse_mps<int, double>(temp_file_2, false);
+  compare_data_models(reloaded, reloaded_2);
+
+  std::filesystem::remove(temp_file);
+  std::filesystem::remove(temp_file_2);
+}
+
+}  // namespace cuopt::linear_programming::io
