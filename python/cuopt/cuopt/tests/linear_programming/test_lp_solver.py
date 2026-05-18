@@ -605,7 +605,7 @@ def test_warm_start():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
-    data_model_obj_different = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj_different = mps_parser.ParseMps(file_path)
     with pytest.raises(Exception, match="Invalid PDLPWarmStart data"):
         solver.Solve(data_model_obj_different, settings)
 

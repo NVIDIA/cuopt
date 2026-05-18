@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -12,6 +12,8 @@ from .data_model cimport data_model_view_t, write_mps
 import warnings
 
 import numpy as np
+
+from cuopt.utilities import get_data_ptr
 
 from libc.stdint cimport uintptr_t
 from libcpp.memory cimport unique_ptr
@@ -29,15 +31,6 @@ def type_cast(np_obj, np_type, name):
         warnings.warn(msg)
     np_obj = np_obj.astype(np.dtype(np_type))
     return np_obj
-
-
-def get_data_ptr(array):
-    if isinstance(array, np.ndarray):
-        return array.__array_interface__['data'][0]
-    else:
-        raise Exception(
-            "get_data_ptr must be called with np.ndarray"
-        )
 
 
 cdef class DataModel:

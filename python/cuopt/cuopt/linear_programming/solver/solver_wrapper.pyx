@@ -67,7 +67,7 @@ from cuopt.linear_programming.solver_settings.solver_settings import (
 from cuopt.linear_programming.solver_settings.solver_settings cimport (
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError, series_from_buf
+from cuopt.utilities import InputValidationError, get_data_ptr, series_from_buf
 
 import pyarrow as pa
 
@@ -129,17 +129,6 @@ cdef object _vector_to_numpy(const vector[double]& vec):
     return np.asarray(<double[:size]> data_ptr, dtype=np.float64).copy()
 
 
-def get_data_ptr(array):
-    if isinstance(array, cudf.Series):
-        return array.__cuda_array_interface__['data'][0]
-    elif isinstance(array, np.ndarray):
-        return array.__array_interface__['data'][0]
-    else:
-        raise Exception(
-            "get_data_ptr must be called with cudf.Series or np.ndarray"
-        )
-
-
 def type_cast(cudf_obj, np_type, name):
     if isinstance(cudf_obj, cudf.Series):
         cudf_type = cudf_obj.dtype
@@ -169,6 +158,15 @@ cdef set_solver_setting(
         SolverSettings settings,
         DataModel data_model_obj=None,
         mip=False):
+    """Apply settings for one solve using the reset-replay invariant.
+
+    Discards the current C++ ``solver_settings_t`` and repopulates it from
+    Python-side state via :meth:`SolverSettings.set_c_solver_settings`. See
+    that method for the source-of-truth contract (``settings_dict``,
+    ``pdlp_warm_start_data``, ``mip_callbacks``).
+    """
+    # Reset-replay: fresh C++ object every Solve/BatchSolve; do not treat
+    # settings.c_solver_settings as long-lived state (see set_c_solver_settings).
     settings.c_solver_settings.reset(new solver_settings_t[int, double]())
     if settings.get_pdlp_warm_start_data() is not None:  # noqa
         if len(data_model_obj.get_objective_coefficients()) != len(
@@ -185,7 +183,7 @@ cdef set_solver_setting(
                 "Invalid PDLPWarmStart data. Passed problem and PDLPWarmStart " # noqa
                 "data should have the same amount of constraints."
             )
-    # Set solver parameters and pdlp warmstart data
+    # Replay Python state into the new C++ settings object.
     settings.set_c_solver_settings()
 
     cdef solver_settings_t[int, double]* c_solver_settings = settings.c_solver_settings.get()

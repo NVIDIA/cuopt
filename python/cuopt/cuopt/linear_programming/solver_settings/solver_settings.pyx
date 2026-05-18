@@ -10,6 +10,8 @@
 
 from enum import IntEnum, auto
 
+from cuopt.utilities import get_data_ptr
+
 from libcpp.memory cimport unique_ptr
 from libc.stdint cimport uintptr_t
 from libcpp.string cimport string
@@ -345,14 +347,28 @@ cdef class SolverSettings:
         return self.pdlp_warm_start_data
 
     def set_c_solver_settings(self):
-        """Push Python-side state into the C++ ``solver_settings_t`` object.
+        """Replay Python-side state into the C++ ``solver_settings_t`` object.
 
-        ``Solve`` / ``BatchSolve`` reset ``c_solver_settings`` to a new C++ instance
-        and call this method immediately after, so ``settings_dict``,
-        ``pdlp_warm_start_data``, and ``mip_callbacks`` are the source of truth for
-        each solve. Any direct mutation of the C++ object alone would be discarded
-        on the next solve. :meth:`load_parameters_from_file` mirrors loaded values
-        back into ``settings_dict`` so this contract stays consistent.
+        Reset-replay invariant
+        ----------------------
+        ``Solve`` and ``BatchSolve`` call ``c_solver_settings.reset(new ...)``
+        in ``solver_wrapper`` immediately before this method. Every solve therefore
+        uses a **new** C++ settings object that is filled from Python, not from
+        whatever was left in C++ after the previous solve.
+
+        Source of truth on the Python object:
+
+        * ``settings_dict`` — solver parameters (use :meth:`set_parameter` /
+          :meth:`get_parameter`, not direct C++ mutation).
+        * ``pdlp_warm_start_data`` — PDLP warm start (see :meth:`set_pdlp_warm_start_data`).
+        * ``mip_callbacks`` — MIP callbacks (see :meth:`set_mip_callback`).
+
+        Any change made only on ``c_solver_settings`` without updating these Python
+        attributes is **discarded** on the next solve.
+
+        :meth:`load_parameters_from_file` loads into C++ then mirrors every
+        parameter back into ``settings_dict`` so :meth:`get_parameter` and the next
+        replay stay consistent.
         """
         # All cdef declarations must precede other statements in this function.
         cdef solver_settings_t[int, double]* c_solver_settings
@@ -375,10 +391,6 @@ cdef class SolverSettings:
             )
 
         if self.get_pdlp_warm_start_data() is not None:
-            from cuopt.linear_programming.solver.solver_wrapper import (
-                get_data_ptr,
-            )
-
             warm_start_data = self.get_pdlp_warm_start_data()
             c_current_primal_solution = (
                 get_data_ptr(
@@ -470,11 +482,13 @@ cdef class SolverSettings:
         return c_ss.dump_parameters_to_file(c_path, hyperparameters_only)
 
     def load_parameters_from_file(self, path):
-        """Load parameters from a cuOpt config file into the C++ settings object.
+        """Load parameters from a cuOpt config file.
 
-        After a successful load, :attr:`settings_dict` is refreshed from C++
-        for every name in :data:`solver_params` so :meth:`get_parameter` matches
-        the loaded state.
+        Loads into the current C++ object, then refreshes :attr:`settings_dict`
+        from C++ for every name in :data:`solver_params`. That keeps
+        :meth:`get_parameter` aligned with what :meth:`set_c_solver_settings` will
+        replay on the next :func:`~cuopt.linear_programming.solver.Solve` (see
+        reset-replay invariant on :meth:`set_c_solver_settings`).
 
         Parameters
         ----------
