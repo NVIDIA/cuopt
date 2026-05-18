@@ -117,8 +117,7 @@ class cusparse_spmvop_plan_wrapper_t {
   cusparse_spmvop_plan_wrapper_t& operator=(cusparse_spmvop_plan_wrapper_t&& other);
   cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
 
-  void create(cusparseHandle_t handle,
-              cusparseSpMVOpDescr_t descr);
+  void create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr);
 
   operator cusparseSpMVOpPlan_t() const;
 
