@@ -1290,7 +1290,7 @@ template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
 #if CUDA_VER_13_2_UP
-  if (!is_cusparse_runtime_spmvop_supported()) { return; }
+  if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
   CUSPARSE_CHECK(cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
