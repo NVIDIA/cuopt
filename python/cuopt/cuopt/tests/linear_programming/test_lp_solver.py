@@ -5,7 +5,7 @@ import math
 import os
 from enum import IntEnum
 
-import cuopt_mps_parser
+from cuopt.linear_programming import mps_parser
 import numpy as np
 import pytest
 
@@ -93,7 +93,7 @@ def test_solver():
 
 def test_parser_and_solver():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-1.mps"
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-2)
@@ -326,7 +326,7 @@ def test_solver_settings_basic():
         file_path = (
             RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-1.mps"
         )
-        solver.Solve(cuopt_mps_parser.ParseMps(file_path), settings)
+        solver.Solve(mps_parser.ParseMps(file_path), settings)
 
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Methodical1)
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
@@ -445,7 +445,7 @@ def test_parse_var_names():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     expected_names = [
         "X01",
@@ -544,7 +544,7 @@ def test_parser_and_batch_solver():
     nb_solves = 5
 
     for i in range(nb_solves):
-        data_model_list.append(cuopt_mps_parser.ParseMps(file_path))
+        data_model_list.append(mps_parser.ParseMps(file_path))
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
@@ -557,7 +557,7 @@ def test_parser_and_batch_solver():
     individual_solutions = [] * nb_solves
     for i in range(nb_solves):
         individual_solution = solver.Solve(
-            cuopt_mps_parser.ParseMps(file_path), settings
+            mps_parser.ParseMps(file_path), settings
         )
         individual_solutions.append(individual_solution)
 
@@ -571,7 +571,7 @@ def test_parser_and_batch_solver():
 
 def test_warm_start():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
@@ -609,7 +609,6 @@ def test_warm_start():
     with pytest.raises(Exception, match="Invalid PDLPWarmStart data"):
         solver.Solve(data_model_obj_different, settings)
 
-    # Should raise an exception for batch solve
     # Should raise an exception
     data_model_list = [data_model_obj, data_model_obj]
     with pytest.raises(
@@ -653,7 +652,7 @@ def test_solved_by():
 
 def test_heuristics_only():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_MIP_HEURISTICS_ONLY, True)
@@ -720,7 +719,7 @@ def test_write_files():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
@@ -731,7 +730,7 @@ def test_write_files():
 
     assert os.path.isfile("afiro_out.mps")
 
-    afiro = cuopt_mps_parser.ParseMps("afiro_out.mps")
+    afiro = mps_parser.ParseMps("afiro_out.mps")
     os.remove("afiro_out.mps")
 
     settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "")

@@ -81,11 +81,11 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
       (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
     homogenous_dual_upper_bounds_{
       (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
-    primal_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params))
+    primal_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params) && infeasibility_detection)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
                   stream_view_},
-    dual_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params))
+    dual_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params) && infeasibility_detection)
                   ? static_cast<size_t>(primal_size_h_ * climber_strategies.size())
                   : 0,
                 stream_view_},

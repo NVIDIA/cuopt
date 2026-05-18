@@ -9,12 +9,23 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/io/data_model_view.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <mps_parser/data_model_view.hpp>
-#include <mps_parser/mps_data_model.hpp>
 
 namespace cuopt::linear_programming {
+
+namespace detail {
+
+inline constexpr var_t char_to_var_type(char variable_type)
+{
+  if (variable_type == 'I' || variable_type == 'B') { return var_t::INTEGER; }
+  if (variable_type == 'S') { return var_t::SEMI_CONTINUOUS; }
+  return var_t::CONTINUOUS;
+}
+
+}  // namespace detail
 
 /**
  * @brief Helper function to populate optimization_problem_interface_t from mps_data_model_t
@@ -29,7 +40,7 @@ namespace cuopt::linear_programming {
  */
 template <typename i_t, typename f_t>
 void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* problem,
-                                  const mps_parser::mps_data_model_t<i_t, f_t>& data_model)
+                                  const io::mps_data_model_t<i_t, f_t>& data_model)
 {
   // Set scalar values
   problem->set_maximize(data_model.get_sense());
@@ -87,9 +98,7 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
   if (!char_variable_types.empty()) {
     std::vector<var_t> enum_variable_types(char_variable_types.size());
     for (size_t i = 0; i < char_variable_types.size(); ++i) {
-      enum_variable_types[i] = (char_variable_types[i] == 'I' || char_variable_types[i] == 'B')
-                                 ? var_t::INTEGER
-                                 : var_t::CONTINUOUS;
+      enum_variable_types[i] = detail::char_to_var_type(char_variable_types[i]);
     }
     problem->set_variable_types(enum_variable_types.data(), enum_variable_types.size());
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
@@ -109,6 +118,10 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
                                             q_offsets.data(),
                                             n_vars + 1);
   }
+  // Handle quadratic constraints if present
+  if (data_model.has_quadratic_constraints()) {
+    problem->set_quadratic_constraints(data_model.get_quadratic_constraints());
+  }
 }
 
 /**
@@ -125,10 +138,11 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
  * @param[in] handle Optional RAFT handle (for warmstart data, GPU only)
  */
 template <typename i_t, typename f_t>
-void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* problem,
-                                   cuopt::mps_parser::data_model_view_t<i_t, f_t>* data_model,
-                                   solver_settings_t<i_t, f_t>* solver_settings = nullptr,
-                                   const raft::handle_t* handle                 = nullptr)
+void populate_from_data_model_view(
+  optimization_problem_interface_t<i_t, f_t>* problem,
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t>* data_model,
+  solver_settings_t<i_t, f_t>* solver_settings = nullptr,
+  const raft::handle_t* handle                 = nullptr)
 {
   problem->set_maximize(data_model->get_sense());
 
@@ -252,9 +266,7 @@ void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* p
       data_model->get_variable_types().data(),
       data_model->get_variable_types().data() + data_model->get_variable_types().size(),
       enum_variable_types.begin(),
-      [](const auto val) -> var_t {
-        return (val == 'I' || val == 'B') ? var_t::INTEGER : var_t::CONTINUOUS;
-      });
+      detail::char_to_var_type);
     problem->set_variable_types(enum_variable_types.data(), enum_variable_types.size());
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
   }
@@ -265,6 +277,10 @@ void populate_from_data_model_view(optimization_problem_interface_t<i_t, f_t>* p
 
   if (data_model->get_row_names().size() != 0) {
     problem->set_row_names(data_model->get_row_names());
+  }
+
+  if (data_model->has_quadratic_constraints()) {
+    problem->set_quadratic_constraints(data_model->get_quadratic_constraints());
   }
 }
 

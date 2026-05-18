@@ -12,7 +12,7 @@ dependencies:
 - ccache
 - clang-tools=20.1.8
 - clang==20.1.8
-- cmake>=3.30.4
+- cmake>=4.0
 - cpp-argparse
 - cuda-nvcc
 - cuda-nvtx-dev
@@ -57,6 +57,7 @@ dependencies:
 - pylibraft==26.6.*,>=0.0.0a0
 - pyrsistent
 - pytest-cov
+- pytest-rerunfailures
 - pytest<9.0
 - python>=3.11,<3.15
 - pyyaml>=6.0.0
