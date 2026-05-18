@@ -1580,14 +1580,6 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
 
     work_estimate += trailing_matrix.record_and_clear_work_estimate_();
 
-
-#ifdef CHECK_MAX_IN_COLUMN
-    // Check that maximum in column is maintained
-
-#endif
-
-
-
   }
 
   trailing_matrix.print_stats();
@@ -2314,6 +2306,110 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   return pivots;
 }
 
+template <typename i_t, typename f_t>
+i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
+                                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                                          f_t tol,
+                                          f_t start_time,
+                                          std::vector<i_t>& q,
+                                          std::vector<i_t>& pinv)
+{
+  // Factorize PAQ = LU, where A is m x n with m >= n, and P and Q are permutation matrices
+  // We return the inverser row permutation vector pinv and the column permutation vector q
+
+  f_t factorization_start_time = tic();
+  f_t work_estimate            = 0;
+  const i_t n                  = A.n;
+  const i_t m                  = A.m;
+  assert(pinv.size() == m);
+  assert(q.size() == n);
+  (void)tol;  // Unused; kept for API compatibility with right_looking_lu_row_permutation_only
+
+  std::vector<i_t> column_list(n);
+  for (i_t k = 0; k < n; ++k) {
+    column_list[k] = k;
+  }
+
+  trailing_matrix_t<i_t, f_t> trailing_matrix(A, column_list);
+
+  std::fill(q.begin(), q.end(), -1);
+  std::fill(pinv.begin(), pinv.end(), -1);
+  std::vector<i_t> qinv(n);
+  std::fill(qinv.begin(), qinv.end(), -1);
+
+  f_t last_print = start_time;
+  i_t pivots     = 0;
+  for (i_t k = 0; k < std::min(m, n); ++k) {
+    // Find pivot that satisfies
+    // abs(pivot) >= abstol,
+    // abs(pivot) >= threshold_tol * max abs[pivot column]
+    i_t pivot_i                 = -1;
+    i_t pivot_j                 = -1;
+    f_t pivot_val               = std::numeric_limits<f_t>::quiet_NaN();
+    constexpr f_t pivot_tol     = 1e-9;
+    constexpr f_t drop_tol      = 1e-14;
+    constexpr f_t threshold_tol = 1.0 / 10.0;
+    trailing_matrix.markowitz_search(pivot_tol, threshold_tol, pivot_i, pivot_j, pivot_val);
+    if (pivot_i == -1 || pivot_j == -1) {
+      settings.log.debug("Breaking can't find a pivot %d\n", k);
+      break;
+    }
+    // Pivot
+    pinv[pivot_i]       = k;  // pivot_i is the kth pivot row
+    q[k]                = pivot_j;
+    qinv[pivot_j]       = k;
+    assert(std::abs(pivot_val) >= pivot_tol);
+    pivots++;
+
+    trailing_matrix.cache_pivot_row(pivot_i);
+
+    trailing_matrix.update_for_pivot_removal(pivot_i, pivot_j);
+
+    trailing_matrix.schur_complement(pivot_i, pivot_j, drop_tol, pivot_val);
+
+    trailing_matrix.remove_pivot_row_and_column(pivot_i, pivot_j);
+
+    trailing_matrix.garbage_collect();
+
+    if (toc(last_print) > 10.0) {
+      settings.log.printf(
+        "Right-looking LU factorization: Pivots %d m %d n %d in "
+        "%.2f seconds\n",
+        pivots,
+        m,
+        n,
+        toc(factorization_start_time));
+      last_print = tic();
+    }
+    if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      if (!settings.inside_mip) { settings.log.printf("Concurrent halt\n"); }
+      return CONCURRENT_HALT_RETURN;
+    }
+  }
+
+  // Finalize the permutation pinv
+  // We will have only defined pinv[0..n-1]. When n < m, we still need to define
+  // pinv[n..m]
+  settings.log.debug("Pivots %d m %d n %d\n", pivots, m, n);
+  if (m > n || pivots < n) {
+    i_t start = pivots;
+    for (i_t i = 0; i < m; ++i) {
+      if (pinv[i] == -1) { pinv[i] = start++; }
+    }
+
+    // Finalize the permutation q. Do this by first completing the inverse permutation qinv.
+    // Then invert qinv to get the final permutation q.
+    start = pivots;
+    for (i_t j = 0; j < n; ++j) {
+      if (qinv[j] == -1) { qinv[j] = start++; }
+    }
+    inverse_permutation(qinv, q);
+  }
+
+  return pivots;
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
@@ -2339,6 +2435,14 @@ template int right_looking_lu2<int, double>(const csc_matrix_t<int, double>& A,
                                             double& work_estimate);
 
 template int right_looking_lu_row_permutation_only<int, double>(
+  const csc_matrix_t<int, double>& A,
+  const simplex_solver_settings_t<int, double>& settings,
+  double tol,
+  double start_time,
+  std::vector<int>& q,
+  std::vector<int>& pinv);
+
+template int right_looking_lu_row_permutation_only2<int, double>(
   const csc_matrix_t<int, double>& A,
   const simplex_solver_settings_t<int, double>& settings,
   double tol,

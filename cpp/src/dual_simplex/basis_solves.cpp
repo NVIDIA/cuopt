@@ -621,7 +621,7 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   work_estimate += m;
   f_t fact_start = tic();
   rank =
-    right_looking_lu(A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
+    right_looking_lu2(A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
   if (rank < 0) {
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
