@@ -448,15 +448,18 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
 {
 #if CUDA_VER_13_2_UP
-  RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
-                                   cusparse_view_.spmv_op_plan_A_t_,
-                                   reusable_device_scalar_value_1_.data(),
-                                   reusable_device_scalar_value_0_.data(),
-                                   cusparse_view_.dual_solution,
-                                   cusparse_view_.current_AtY,
-                                   cusparse_view_.current_AtY));
-#else
+  if (is_cusparse_runtime_spmvop_supported()) {
+    RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
+    RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
+                                     cusparse_view_.spmv_op_plan_A_t_,
+                                     reusable_device_scalar_value_1_.data(),
+                                     reusable_device_scalar_value_0_.data(),
+                                     cusparse_view_.dual_solution,
+                                     cusparse_view_.current_AtY,
+                                     cusparse_view_.current_AtY));
+    return;
+  }
+#endif
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                        reusable_device_scalar_value_1_.data(),
@@ -467,22 +470,24 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view_.buffer_transpose.data(),
                                                        stream_view_));
-#endif
 }
 
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
 {
 #if CUDA_VER_13_2_UP
-  RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
-                                   cusparse_view_.spmv_op_plan_A_,
-                                   reusable_device_scalar_value_1_.data(),
-                                   reusable_device_scalar_value_0_.data(),
-                                   cusparse_view_.reflected_primal_solution,
-                                   cusparse_view_.dual_gradient,
-                                   cusparse_view_.dual_gradient));
-#else
+  if (is_cusparse_runtime_spmvop_supported()) {
+    RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
+    RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
+                                     cusparse_view_.spmv_op_plan_A_,
+                                     reusable_device_scalar_value_1_.data(),
+                                     reusable_device_scalar_value_0_.data(),
+                                     cusparse_view_.reflected_primal_solution,
+                                     cusparse_view_.dual_gradient,
+                                     cusparse_view_.dual_gradient));
+    return;
+  }
+#endif
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -494,7 +499,6 @@ void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
                                        CUSPARSE_SPMV_CSR_ALG2,
                                        (f_t*)cusparse_view_.buffer_non_transpose.data(),
                                        stream_view_));
-#endif
 }
 
 template <typename i_t, typename f_t>

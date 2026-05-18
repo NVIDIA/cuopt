@@ -331,4 +331,7 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 
 bool is_cusparse_runtime_mixed_precision_supported();
 
+// False if cuda version < 13.2 or runtime cuSPARSE does not export SpMVOp symbols. True otherwise.
+bool is_cusparse_runtime_spmvop_supported();
+
 }  // namespace cuopt::linear_programming::detail

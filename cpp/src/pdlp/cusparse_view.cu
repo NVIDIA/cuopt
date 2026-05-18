@@ -1274,11 +1274,26 @@ bool is_cusparse_runtime_mixed_precision_supported()
   return (major > 12) || (major == 12 && minor >= 5);
 }
 
+bool is_cusparse_runtime_spmvop_supported()
+{
+#if CUDA_VER_13_2_UP
+  // Probe the runtimme to ensure cusparseSpMVOp is supported
+  static const bool supported = []() {
+    dlerror();
+    return dlsym(RTLD_DEFAULT, "cusparseSpMVOp") != nullptr;
+  }();
+  return supported;
+#else
+  return false;
+#endif
+}
+
 // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
 #if CUDA_VER_13_2_UP
+  if (!is_cusparse_runtime_spmvop_supported()) { return; }
   CUSPARSE_CHECK(cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
