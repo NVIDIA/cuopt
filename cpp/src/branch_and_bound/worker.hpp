@@ -162,6 +162,8 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void set_inactive() { this->is_active = false; }
 
+  f_t get_lower_bound() { return std::min<f_t>(this->lower_bound, node_queue.get_lower_bound()); }
+
   // Steal nodes from another worker
   bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
   {
@@ -175,6 +177,11 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
     while (num_nodes > 0) {
       other->node_queue.lock();
+
+      // We need to temporarily save the lower bound in this worker so it is
+      // considered when calculating the global lower bound.
+      this->lower_bound = std::min(this->lower_bound, other->node_queue.get_lower_bound());
+
       mip_node_t<i_t, f_t>* node = other->node_queue.best_first_queue_size() > num_nodes
                                      ? other->node_queue.pop_best_first()
                                      : nullptr;
@@ -282,6 +289,8 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     --bfs_worker->active_diving_workers[this->search_strategy];
     --bfs_worker->total_active_diving_workers;
   }
+
+  f_t get_lower_bound() { return this->lower_bound; }
 
   mip_node_t<i_t, f_t> start_node;
 

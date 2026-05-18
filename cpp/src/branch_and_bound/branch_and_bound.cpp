@@ -1468,13 +1468,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     // If any best-first worker become idle,
     if (bfs_worker_pool_.num_idle_workers() > 0 && worker->node_queue.best_first_queue_size() > 0) {
       worker->node_queue.lock();
-      mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
-
       // We need to temporarily save the lower bound in this worker so it is
       // considered when calculating the global lower bound.
-      f_t node_lower_bound = node ? node->lower_bound : std::numeric_limits<f_t>::infinity();
-      worker->lower_bound  = std::min(worker->lower_bound.load(), node_lower_bound);
-
+      worker->lower_bound        = worker->get_lower_bound();
+      mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
       worker->node_queue.unlock();
 
       if (node != nullptr) {
