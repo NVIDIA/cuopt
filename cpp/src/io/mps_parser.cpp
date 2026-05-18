@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #ifdef MPS_PARSER_WITH_BZIP2
 #include <bzlib.h>
@@ -634,7 +635,7 @@ std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file
   std::vector<char> buf(bufsize + 1);
   rewind(fp.get());
 
-  mps_parser_expects(fread(buf.data(), sizeof(char), bufsize, fp.get()) == bufsize,
+  mps_parser_expects(std::cmp_equal(fread(buf.data(), sizeof(char), bufsize, fp.get()), bufsize),
                      error_type_t::ValidationError,
                      "Error reading MPS file! Given path: %s",
                      mps_file.c_str());
