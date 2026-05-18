@@ -157,7 +157,15 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   std::vector<f_t> constraint_bounds(problem_.get_constraint_bounds().size());
   std::vector<f_t> variable_lower_bounds(problem_.get_variable_lower_bounds().size());
   std::vector<f_t> variable_upper_bounds(problem_.get_variable_upper_bounds().size());
-  std::vector<char> variable_types(problem_.get_variable_types().size());
+  // Default unset variable types to continuous ('C'); API models often omit set_variable_types.
+  std::vector<char> variable_types(static_cast<size_t>(n_variables), 'C');
+  {
+    const auto& src_types = problem_.get_variable_types();
+    const size_t n_copy   = std::min(src_types.size(), variable_types.size());
+    for (size_t j = 0; j < n_copy; ++j) {
+      variable_types[j] = src_types[j];
+    }
+  }
   std::vector<char> row_types(problem_.get_row_types().size());
   std::vector<i_t> constraint_matrix_offsets(problem_.get_constraint_matrix_offsets().size());
   std::vector<i_t> constraint_matrix_indices(problem_.get_constraint_matrix_indices().size());
@@ -178,9 +186,6 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     problem_.get_variable_upper_bounds().data(),
     problem_.get_variable_upper_bounds().data() + problem_.get_variable_upper_bounds().size(),
     variable_upper_bounds.data());
-  std::copy(problem_.get_variable_types().data(),
-            problem_.get_variable_types().data() + problem_.get_variable_types().size(),
-            variable_types.data());
   std::copy(problem_.get_row_types().data(),
             problem_.get_row_types().data() + problem_.get_row_types().size(),
             row_types.data());
