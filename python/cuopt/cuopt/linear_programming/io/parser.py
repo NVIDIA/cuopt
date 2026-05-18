@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+from cuopt.linear_programming.data_model import DataModel
 from cuopt.linear_programming.io import parser_wrapper
 from cuopt.linear_programming.io.utilities import (
     catch_io_exception,
@@ -55,9 +56,8 @@ def ParseMps(mps_file_path, fixed_mps_format=False):
 
 
 @catch_io_exception
-def ParseLp(lp_file_path):
-    """
-    Reads an optimization problem from a file in LP format.
+def ParseLp(lp_file_path: str) -> DataModel:
+    """Read an optimization problem from a file in LP format.
 
     The LP format is a human-readable alternative to MPS and supports LP,
     MIP, and QP, plus semi-continuous variables (declared via a
@@ -67,25 +67,47 @@ def ParseLp(lp_file_path):
     Quadratic terms live in ``[ ... ]`` blocks. The objective bracket must
     be followed by ``/ 2`` (the file states coefficients in the
     ``0.5 x^T Q x`` convention); a constraint bracket must NOT be followed
-    by ``/ 2`` (coefficients are at face value, ``x^T Q x``).
+    by ``/ 2`` (coefficients are at face value, ``x^T Q x``). Only squared
+    (``x^2``) and product (``x * y``) terms are allowed inside the
+    bracket; bare linear terms must be written outside it.
 
     This function parses the dialect in which the objective and constraints
     are written as algebraic expressions over named variables (it does not
     implement the alternative tableau-style LP dialect used by some
     open-source readers).
 
-    Unsupported LP sections (SOS, PWL objective, user cuts, general
-    constraints) raise a ValueError.
-
     Parameters
     ----------
     lp_file_path : str
-        Path to LP-formatted file.
+        Path to LP-formatted file. May end in ``.lp``, ``.lp.gz``, or
+        ``.lp.bz2``; compressed inputs are decompressed at read time
+        via zlib / libbz2 when those libraries are available.
 
     Returns
     -------
-    data_model: DataModel
-        A fully formed LP/MIP/QP problem representing the given file.
+    data_model : DataModel
+        A fully formed LP/MIP/QP problem representing the contents of
+        ``lp_file_path``.
+
+    Raises
+    ------
+    InputValidationError
+        Raised when ``lp_file_path`` is malformed or uses unsupported
+        syntax. Examples include unsupported sections (SOS, PWL
+        objective, user cuts, general constraints), bare linear terms
+        inside a quadratic ``[ ... ]`` bracket, an objective bracket
+        not followed by ``/ 2``, a constraint bracket followed by
+        ``/ 2``, a semi-continuous variable without a finite upper
+        bound, and similar input-level errors raised by the underlying
+        C++ parser. Exceptions propagated from
+        :func:`parser_wrapper.ParseLp` are translated to this type by
+        :func:`catch_io_exception`.
+    InputRuntimeError
+        Raised for non-validation runtime errors that the C++ parser
+        flags during file I/O or parsing.
+    OutOfMemoryError
+        Raised when the parser cannot allocate memory for the
+        resulting data model.
 
     Examples
     --------
@@ -95,7 +117,6 @@ def ParseLp(lp_file_path):
     >>> solver_settings = linear_programming.SolverSettings()
     >>> solution = linear_programming.Solve(data_model, solver_settings)
     """
-
     return parser_wrapper.ParseLp(lp_file_path)
 
 
