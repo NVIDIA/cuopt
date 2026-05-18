@@ -115,6 +115,19 @@ TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 
 TEST(c_api, test_missing_file) { EXPECT_EQ(test_missing_file(), CUOPT_MPS_FILE_ERROR); }
 
+TEST(c_api, read_problem_null_or_empty_inputs_rejected)
+{
+  cuOptOptimizationProblem handle = nullptr;
+  // Null filename pointer.
+  EXPECT_EQ(cuOptReadProblem(nullptr, &handle), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+  // Empty filename string.
+  EXPECT_EQ(cuOptReadProblem("", &handle), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+  // Null out-pointer.
+  EXPECT_EQ(cuOptReadProblem("any.lp", nullptr), CUOPT_INVALID_ARGUMENT);
+}
+
 // Verifies that cuOptReadProblem dispatches to the LP parser when given a
 // path with a .lp extension. The input is a minimal LP (1 variable, 1
 // constraint); we just check the round-trip read produces the expected shape.

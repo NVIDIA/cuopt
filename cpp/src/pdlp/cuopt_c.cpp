@@ -101,6 +101,13 @@ cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
 {
+  // Validate C-API inputs before any allocation. A null/empty filename or a
+  // null out-pointer cannot succeed and must not leave the user with a
+  // partially-constructed problem_and_stream_view_t.
+  if (filename == nullptr || filename[0] == '\0' || problem_ptr == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   std::string filename_str(filename);
