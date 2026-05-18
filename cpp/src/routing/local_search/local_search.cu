@@ -6,7 +6,7 @@
 /* clang-format on */
 
 // 1 = std::cout timing/cost logs in run_fast_search; 0 = off. Uses #if (not #ifdef).
-#define CUOPT_PROFILE_FAST_SEARCH 0
+#define CUOPT_PROFILE_FAST_SEARCH 1
 
 #include "local_search.cuh"
 
@@ -176,7 +176,8 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
 #endif
 
   std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING, fast_operators_t::CROSS};
-  if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
+  if (false && !sol.problem_ptr->fleet_info.is_homogenous_ &&
+      !sol.problem_ptr->has_non_uniform_breaks()) {
     fast_operators.push_back(fast_operators_t::REGRET);
   }
 
@@ -308,98 +309,177 @@ bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
+bool local_search_t<i_t, f_t, REQUEST>::run_vrp_search_tier(solution_t<i_t, f_t, REQUEST>& sol,
+                                                            bool full_set,
+                                                            int tier)
+{
+  if constexpr (REQUEST != request_t::VRP) {
+    (void)sol;
+    (void)full_set;
+    (void)tier;
+    return false;
+  } else {
+    raft::common::nvtx::range fun_scope("run_vrp_search_tier");
+    if (tier != 0 && tier != 1) { return false; }
+    const bool tier_full_set = full_set;
+
+    if (tier == 1 && sol.problem_ptr->is_tsp) {
+      // Medium tier is empty for TSP (no VRP operator).
+      return false;
+    }
+
+    std::vector<fast_operators_t> operators;
+    if (tier == 0) {
+      operators.push_back(fast_operators_t::TWO_OPT);
+      operators.push_back(fast_operators_t::SLIDING);
+      if (false && !sol.problem_ptr->fleet_info.is_homogenous_ &&
+          !sol.problem_ptr->has_non_uniform_breaks()) {
+        operators.push_back(fast_operators_t::REGRET);
+      }
+    } else {
+      operators.push_back(fast_operators_t::VRP);
+    }
+
+    std::shuffle(operators.begin(), operators.end(), rng);
+
+    auto& nodes_to_search = move_candidates.nodes_to_search;
+    if (tier_full_set) {
+      sol.set_routes_to_search();
+      extract_nodes_to_search(sol, move_candidates);
+    } else if (nodes_to_search.h_nodes_to_search.empty()) {
+      // Fast tier sampling removes nodes from h_nodes_to_search; restore_found_nodes may not
+      // refill enough before medium (VRP) runs — repopulate from the solution when empty.
+      extract_nodes_to_search(sol, move_candidates);
+    }
+    if (!nodes_to_search.sample_nodes_to_search(sol, rng, tier_full_set)) {
+      std::cout << "run_vrp_search_tier t=" << tier
+                << " nodes_to_search.sample_nodes_to_search failed" << std::endl;
+      exit(1);
+      return false;
+    }
+
+#if CUOPT_PROFILE_FAST_SEARCH
+    const auto t_entry      = std::chrono::steady_clock::now();
+    const double cost_entry = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+#endif
+
+    bool move_found = false;
+    for (auto const& op : operators) {
+#if CUOPT_PROFILE_FAST_SEARCH
+      const auto t_op0 = std::chrono::steady_clock::now();
+#endif
+      switch (op) {
+        case fast_operators_t::SLIDING: {
+          move_found = run_sliding_search(sol) || move_found;
+          break;
+        }
+        case fast_operators_t::VRP: {
+          move_found = perform_vrp_search(sol, move_candidates) || move_found;
+          break;
+        }
+        case fast_operators_t::REGRET: {
+          move_found =
+            run_vehicle_assignment<i_t, f_t, REQUEST>(sol, move_candidates, vehicle_assignment) ||
+            move_found;
+          break;
+        }
+        case fast_operators_t::TWO_OPT: {
+          move_found = run_two_opt_search(sol) || move_found;
+          break;
+        }
+        case fast_operators_t::CROSS: {
+          break;
+        }
+      }
+#if CUOPT_PROFILE_FAST_SEARCH
+      {
+        const auto t_op1           = std::chrono::steady_clock::now();
+        const double cost_after_op = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+        std::cout << "[run_vrp_search_tier t=" << tier << "] op=" << fast_operator_label(op)
+                  << " wall_op=" << std::fixed << std::setprecision(3)
+                  << std::chrono::duration<double, std::milli>(t_op1 - t_op0).count()
+                  << " ms cost=" << std::setprecision(12) << cost_after_op
+                  << " (vs_entry_delta=" << (cost_after_op - cost_entry)
+                  << ") move_found_accum=" << static_cast<int>(move_found) << std::defaultfloat
+                  << '\n';
+      }
+#endif
+    }
+
+    move_candidates.nodes_to_search.restore_found_nodes(sol);
+#if CUOPT_PROFILE_FAST_SEARCH
+    {
+      const auto t_exit      = std::chrono::steady_clock::now();
+      const double cost_exit = cuopt_fast_search_sync_and_cost(sol, move_candidates);
+      std::cout << "[run_vrp_search_tier t=" << tier
+                << "] exit full_set=" << static_cast<int>(tier_full_set)
+                << " move_found_accum=" << static_cast<int>(move_found)
+                << " cost_entry=" << std::fixed << std::setprecision(12) << cost_entry
+                << " cost_exit=" << cost_exit << " delta=" << (cost_exit - cost_entry)
+                << " total_wall=" << std::setprecision(3)
+                << std::chrono::duration<double, std::milli>(t_exit - t_entry).count() << " ms\n"
+                << std::defaultfloat;
+    }
+#endif
+
+    if (tier == 0) { return move_found; }
+    if (tier == 1) { return move_found; }
+    if (tier_full_set) { return move_found; }
+    return true;
+  }
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
+bool local_search_t<i_t, f_t, REQUEST>::try_negative_cycle_improvement(
+  solution_t<i_t, f_t, REQUEST>& sol,
+  bool should_all_nodes_be_served,
+  bool run_cycle_finder_enabled)
+{
+  if (!run_cycle_finder_enabled || sol.n_routes > 1023) { return false; }
+  if constexpr (REQUEST == request_t::VRP) {
+    if (sol.n_routes < 2) { return false; }
+  }
+
+  move_candidates.reset(sol.sol_handle);
+  calculate_route_compatibility(sol);
+  find_insertions<i_t, f_t, REQUEST>(sol, move_candidates, search_type_t::IMPROVE);
+
+  RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
+  sol.sol_handle->sync_stream();
+  fill_gpu_graph(sol);
+
+  move_candidates.find_best_negative_cycles(
+    sol.n_routes, cycle_finder_small, cycle_finder_big, sol.sol_handle);
+  [[maybe_unused]] double cost_before = 0., cost_after = 0.;
+  cuopt_func_call(cost_before =
+                    sol.get_cost(move_candidates.include_objective, move_candidates.weights));
+
+  populate_move_path(sol, move_candidates);
+
+  bool improved = move_candidates.move_path.n_insertions.value(sol.sol_handle->get_stream()) != 0;
+
+  if (improved) {
+    sol.unset_routes_to_search();
+    perform_moves(sol, move_candidates);
+    cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
+    sol.global_runtime_checks(should_all_nodes_be_served, false, "run_best_local_search_end");
+    cuopt_func_call(sol.compute_cost());
+    cuopt_func_call(cost_after =
+                      sol.get_cost(move_candidates.include_objective, move_candidates.weights));
+    cuopt_assert((cost_after - cost_before) - move_candidates.cycles.total_cycle_cost < 1.,
+                 "Cost mismatch after a move");
+    sol.sol_handle->sync_stream();
+  }
+
+  return improved;
+}
+
+template <typename i_t, typename f_t, request_t REQUEST>
 template <request_t r_t, std::enable_if_t<r_t == request_t::VRP, bool>>
 bool local_search_t<i_t, f_t, REQUEST>::run_fast_search(solution_t<i_t, f_t, r_t>& sol,
                                                         bool full_set)
 {
-  raft::common::nvtx::range fun_scope("run_fast_search");
-
-  std::vector<fast_operators_t> fast_operators{fast_operators_t::SLIDING};
-
-  if (!sol.problem_ptr->is_tsp) {
-    fast_operators.push_back(fast_operators_t::VRP);
-    fast_operators.push_back(fast_operators_t::TWO_OPT);
-  }
-
-  if (!sol.problem_ptr->fleet_info.is_homogenous_ && !sol.problem_ptr->has_non_uniform_breaks()) {
-    // fast_operators.push_back(fast_operators_t::REGRET);
-  }
-
-  std::shuffle(fast_operators.begin(), fast_operators.end(), rng);
-
-  auto& nodes_to_search = move_candidates.nodes_to_search;
-  // this is activated if we ever want to run with full nodes
-  if (full_set) {
-    sol.set_routes_to_search();
-    extract_nodes_to_search(sol, move_candidates);
-  }
-  if (!nodes_to_search.sample_nodes_to_search(sol, rng, full_set)) { return false; }
-
-#if CUOPT_PROFILE_FAST_SEARCH
-  const auto t_entry      = std::chrono::steady_clock::now();
-  const double cost_entry = cuopt_fast_search_sync_and_cost(sol, move_candidates);
-#endif
-
-  bool move_found = false;
-
-  for (auto const& op : fast_operators) {
-#if CUOPT_PROFILE_FAST_SEARCH
-    const auto t_op0 = std::chrono::steady_clock::now();
-#endif
-    switch (op) {
-      case fast_operators_t::SLIDING: {
-        move_found = run_sliding_search(sol) || move_found;
-        break;
-      }
-      case fast_operators_t::VRP: {
-        move_found = perform_vrp_search(sol, move_candidates) || move_found;
-        break;
-      }
-      case fast_operators_t::REGRET: {
-        move_found =
-          run_vehicle_assignment<i_t, f_t, REQUEST>(sol, move_candidates, vehicle_assignment) ||
-          move_found;
-        break;
-      }
-      case fast_operators_t::TWO_OPT: {
-        move_found = run_two_opt_search(sol) || move_found;
-        break;
-      }
-      case fast_operators_t::CROSS: {
-        break;
-      }
-    }
-#if CUOPT_PROFILE_FAST_SEARCH
-    {
-      const auto t_op1           = std::chrono::steady_clock::now();
-      const double cost_after_op = cuopt_fast_search_sync_and_cost(sol, move_candidates);
-      std::cout << "[run_fast_search VRP] op=" << fast_operator_label(op)
-                << " wall_op=" << std::fixed << std::setprecision(3)
-                << std::chrono::duration<double, std::milli>(t_op1 - t_op0).count()
-                << " ms cost=" << std::setprecision(12) << cost_after_op
-                << " (vs_entry_delta=" << (cost_after_op - cost_entry)
-                << ") move_found_accum=" << static_cast<int>(move_found) << std::defaultfloat
-                << '\n';
-    }
-#endif
-  }
-
-  move_candidates.nodes_to_search.restore_found_nodes(sol);
-#if CUOPT_PROFILE_FAST_SEARCH
-  {
-    const auto t_exit      = std::chrono::steady_clock::now();
-    const double cost_exit = cuopt_fast_search_sync_and_cost(sol, move_candidates);
-    std::cout << "[run_fast_search VRP] exit full_set=" << static_cast<int>(full_set)
-              << " move_found_accum=" << static_cast<int>(move_found)
-              << " cost_entry=" << std::fixed << std::setprecision(12) << cost_entry
-              << " cost_exit=" << cost_exit << " delta=" << (cost_exit - cost_entry)
-              << " total_wall=" << std::setprecision(3)
-              << std::chrono::duration<double, std::milli>(t_exit - t_entry).count() << " ms\n"
-              << std::defaultfloat;
-  }
-#endif
-  if (full_set) { return move_found; }
-  return true;
+  return run_vrp_search_tier(sol, full_set, 0);
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
@@ -420,23 +500,45 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
     run_vehicle_assignment(sol, move_candidates, vehicle_assignment);
   }
 
-  i_t outer_iter = 0;
-  i_t iter       = 0;
+  i_t iter = 0;
   sol.sol_handle->sync_stream();
   sol.compute_cost();
   const i_t iter_limit = max_iterations;
   const bool should_all_nodes_be_served =
     consider_unserviced && !sol.problem_ptr->has_prize_collection();
   sol.global_runtime_checks(should_all_nodes_be_served, false, "run_best_local_search_begin");
-  [[maybe_unused]] double cost_before = 0., cost_after = 0.;
   while (iter < iter_limit) {
     if constexpr (REQUEST == request_t::VRP) { extract_nodes_to_search(sol, move_candidates); }
     iter++;
-    // fast loop, insider this sliding, fast vrp search and fast cross search happens
+    // Fast / medium / slow (negative-cycle) search. PDP: fast = existing operators; medium empty;
+    // slow = try_negative_cycle_improvement.
     while (true) {
       if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
       iter++;
-      if (run_fast_search(sol, sol.problem_ptr->is_tsp && iter == 2)) { continue; }
+      if constexpr (REQUEST == request_t::VRP) {
+        while (run_vrp_search_tier(sol, sol.problem_ptr->is_tsp && iter == 2, 0)) {
+          if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) {
+            break;
+          }
+          iter++;
+        }
+        if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
+        if (run_vrp_search_tier(sol, sol.problem_ptr->is_tsp && iter == 2, 1)) { continue; }
+        if (try_negative_cycle_improvement(sol, should_all_nodes_be_served, run_cycle_finder)) {
+          continue;
+        }
+      } else {
+        while (run_fast_search(sol, sol.problem_ptr->is_tsp && iter == 2)) {
+          if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) {
+            break;
+          }
+          iter++;
+        }
+        if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) { break; }
+        if (try_negative_cycle_improvement(sol, should_all_nodes_be_served, run_cycle_finder)) {
+          continue;
+        }
+      }
       if (consider_unserviced && sol.problem_ptr->has_prize_collection() &&
           run_collect_prizes(sol)) {
         continue;
@@ -445,57 +547,17 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
       break;
     }
 
-    std::cout << "Number of fast search iterations: " << iter << std::endl;
     sol.global_runtime_checks(
       should_all_nodes_be_served, false, "run_best_local_search_after_fast_search");
 
-    outer_iter++;
-    if (!run_cycle_finder || (sol.n_routes > 1023)) { break; }
-    // cycle finder is needed even for single route in PDP cases
-    if (REQUEST == request_t::VRP && sol.n_routes < 2) { break; }
-    move_candidates.reset(sol.sol_handle);
-    calculate_route_compatibility(sol);
-    find_insertions<i_t, f_t, REQUEST>(sol, move_candidates, search_type_t::IMPROVE);
-
-    RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
-    sol.sol_handle->sync_stream();
-    fill_gpu_graph(sol);
-
-    move_candidates.find_best_negative_cycles(
-      sol.n_routes, cycle_finder_small, cycle_finder_big, sol.sol_handle);
-    cuopt_func_call(cost_before =
-                      sol.get_cost(move_candidates.include_objective, move_candidates.weights));
-
-    populate_move_path(sol, move_candidates);
-
-    bool improved = move_candidates.move_path.n_insertions.value(sol.sol_handle->get_stream()) != 0;
-
-    if (improved) {
-      // printf("cycle found\n");
-      sol.unset_routes_to_search();
-      perform_moves(sol, move_candidates);
-      cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
-      sol.global_runtime_checks(should_all_nodes_be_served, false, "run_best_local_search_end");
-      // with very big weights 1. epsilon is not enough
-      cuopt_func_call(sol.compute_cost());
-      cuopt_func_call(cost_after =
-                        sol.get_cost(move_candidates.include_objective, move_candidates.weights));
-      cuopt_assert((cost_after - cost_before) - move_candidates.cycles.total_cycle_cost < 1.,
-                   "Cost mismatch after a move");
-      sol.sol_handle->sync_stream();
-    }
-
-    // If there is no improvement at all, break the local search loop
-    bool time_limit_reached =
-      (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit());
-    if (time_limit_reached || !improved) {
+    if (time_limit_enabled && local_search_t<i_t, f_t, REQUEST>::check_time_limit()) {
       cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
       break;
     }
+    break;
   }
   // reset it, so that next time all routes will be searched unless otherwise is specified
   sol.set_routes_to_search();
-  std::cout << "      Number of outer iterations: " << outer_iter << std::endl;
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>

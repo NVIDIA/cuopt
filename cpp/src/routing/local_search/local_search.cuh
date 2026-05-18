@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -179,6 +179,13 @@ class local_search_t {
   bool run_two_opt_search(solution_t<i_t, f_t, REQUEST>& sol);
   bool run_cross_search(solution_t<i_t, f_t, REQUEST>& sol);
   bool run_inter_search(solution_t<i_t, f_t, REQUEST>& sol);
+  /// VRP only (PDP returns false). Tier 0 = fast (TWO_OPT, SLIDING, REGRET); tier 1 = medium (VRP
+  /// search only). Slow tier uses try_negative_cycle_improvement in the inner loop.
+  bool run_vrp_search_tier(solution_t<i_t, f_t, REQUEST>& sol, bool full_set, int tier);
+  /// One negative-cycle improvement attempt (same work as the former post-inner-loop block).
+  bool try_negative_cycle_improvement(solution_t<i_t, f_t, REQUEST>& sol,
+                                      bool should_all_nodes_be_served,
+                                      bool run_cycle_finder_enabled);
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::PDP, bool> = true>
   bool run_fast_search(solution_t<i_t, f_t, r_t>& sol, bool full_set = false);
   template <request_t r_t = REQUEST, std::enable_if_t<r_t == request_t::VRP, bool> = true>
