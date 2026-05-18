@@ -1315,7 +1315,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                             buffer_transpose_spmvop);
 
   spmv_op_plan_A_t_.create(
-    handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t);
+    handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t_);
 
   // Only prepare buffers for A_x if we are using reflected_halpern
   if (is_reflected) {
