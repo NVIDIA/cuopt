@@ -77,7 +77,7 @@ DELAY=10
 
 sleep $DELAY
 
-server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health)
+server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health) # NOSONAR — self-signed cert generated locally by this script for CI; not a real TLS endpoint.
 
 EXITCODE=0
 
