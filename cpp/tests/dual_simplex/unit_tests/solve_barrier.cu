@@ -8,9 +8,13 @@
 #include <cstdio>
 
 #include <utilities/common_utils.hpp>
+#include <utilities/copy_helpers.hpp>
 
 #include <gtest/gtest.h>
 
+#include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/linear_programming/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
@@ -20,6 +24,7 @@
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cuopt/linear_programming/io/parser.hpp>
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
@@ -35,6 +40,7 @@ static void init_handler(const raft::handle_t* handle_ptr)
 
 TEST(barrier, chess_set)
 {
+  cuopt::init_logger_t log("", true);
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   raft::handle_t handle{};
   init_handler(&handle);
@@ -104,6 +110,7 @@ TEST(barrier, chess_set)
 
 TEST(barrier, dual_variable_greater_than)
 {
+  cuopt::init_logger_t log("", true);
   // minimize   3*x0 + 2 * x1
   // subject to  x0 + x1  >= 1
   //             x0 + 2x1 >= 3
@@ -172,6 +179,41 @@ TEST(barrier, dual_variable_greater_than)
   EXPECT_NEAR(solution.y[1], 1.0, 1e-5);
   EXPECT_NEAR(solution.z[0], 2.0, 1e-5);
   EXPECT_NEAR(solution.z[1], 0.0, 1e-5);
+}
+
+TEST(barrier, min_x_squared_free_variable_dual_correction)
+{
+  // minimize   x^2         (Q = [2.0], so 0.5 * x^T Q x = x^2)
+  // subject to x >= 1
+  // x is free
+  //
+  // Optimal: x = 1, obj = 1, y[0] = 2, z[0] = 0
+  // This tests the dual correction for originally-free variables that
+  // received implied bounds during presolve.
+
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/min_x_squared.mps";
+  auto mps_data = cuopt::linear_programming::io::parse_mps<int, double>(path);
+
+  auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+
+  auto solution = cuopt::linear_programming::solve_lp(&handle, mps_data, settings);
+
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+
+  auto h_x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
+  auto h_y = cuopt::host_copy(solution.get_dual_solution(), handle.get_stream());
+  auto h_z = cuopt::host_copy(solution.get_reduced_cost(), handle.get_stream());
+
+  printf("x %e y %e z %e\n", h_x[0], h_y[0], h_z[0]);
+
+  const double tol = 1e-5;
+  EXPECT_NEAR(h_x[0], 1.0, tol);
+  EXPECT_NEAR(h_y[0], 2.0, tol);
+  EXPECT_NEAR(h_z[0], 0.0, tol);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex::test
