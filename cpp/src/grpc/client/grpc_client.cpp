@@ -129,11 +129,32 @@ grpc_client_t::grpc_client_t(const std::string& server_address) : impl_(std::mak
 
 grpc_client_t::~grpc_client_t()
 {
-  // stop_log_streaming() can throw via std::thread::join (std::system_error)
-  // and std::lock_guard's mutex acquisition. Keep the destructor exception-free.
+  // The destructor must not propagate exceptions AND must not leave a joinable
+  // std::thread alive — a joinable thread's destructor calls std::terminate.
+  // We inline a noexcept variant of stop_log_streaming() here so that on any
+  // failure we still detach the thread before its destructor runs.
+  stop_logs_.store(true);
   try {
-    stop_log_streaming();
+    std::lock_guard<std::mutex> lk(log_context_mutex_);
+    if (active_log_context_) {
+      static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
+    }
   } catch (...) {
+    // Best-effort cancel; fall through to join/detach the thread.
+  }
+  std::unique_ptr<std::thread> t;
+  std::swap(t, log_thread_);
+  if (t && t->joinable()) {
+    try {
+      t->join();
+    } catch (...) {
+      // join failed (e.g., std::system_error). Detach so the local
+      // unique_ptr's destructor doesn't terminate on the joinable thread.
+      try {
+        t->detach();
+      } catch (...) {
+      }
+    }
   }
 }
 
