@@ -12,6 +12,21 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 
+cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
+
+    cdef cppclass mps_data_model_t[i_t, f_t]:
+        cppclass quadratic_constraint_t:
+            int constraint_row_index
+            string constraint_row_name
+            char constraint_row_type
+            vector[double] linear_values
+            vector[int] linear_indices
+            double rhs_value
+            vector[int] quadratic_row_indices
+            vector[int] quadratic_col_indices
+            vector[double] quadratic_values
+
+
 cdef extern from "cuopt/linear_programming/io/data_model_view.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
 
     cdef cppclass data_model_view_t[i_t, f_t]:
@@ -54,6 +69,8 @@ cdef extern from "cuopt/linear_programming/io/data_model_view.hpp" namespace "cu
         void set_row_names(const vector[string] row_names) except +
         void set_problem_name(const string problem_name) except +
         void set_objective_name(const string objective_name) except +
+        void set_quadratic_constraints(
+            vector[mps_data_model_t[i_t, f_t].quadratic_constraint_t] constraints) except +
 
 
 cdef extern from "cuopt/linear_programming/io/writer.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa

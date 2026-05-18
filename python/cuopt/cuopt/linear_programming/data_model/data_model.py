@@ -289,6 +289,165 @@ class DataModel(data_model_wrapper.DataModel):
         super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
 
     @catch_cuopt_exception
+    def clear_quadratic_constraints(self):
+        """
+        Remove all quadratic (QCMATRIX) constraints from the model.
+
+        Quadratic constraints are converted to second-order cone form internally
+        and solved with the barrier method.
+        """
+        super().clear_quadratic_constraints()
+
+    @catch_cuopt_exception
+    def add_quadratic_constraint(
+        self,
+        constraint_row_index,
+        constraint_row_name="",
+        linear_values=None,
+        linear_indices=None,
+        rhs_value=0.0,
+        quadratic_values=None,
+        quadratic_row_indices=None,
+        quadratic_col_indices=None,
+    ):
+        """
+        Add one quadratic constraint in MPS QCMATRIX form (``<=`` row).
+
+        Each constraint has a linear part (optional) and a quadratic part in COO
+        format. Call multiple times to add several QCMATRIX rows; each call must
+        use a distinct ``constraint_row_index``.
+
+        Parameters
+        ----------
+        constraint_row_index : int
+            ROWS declaration index for this quadratic row (among all rows).
+        constraint_row_name : str, optional
+            Optional row name (for MPS export).
+        linear_values, linear_indices : array-like, optional
+            Sparse linear coefficients on the same variable index space.
+        rhs_value : float, optional
+            Right-hand side of the quadratic row.
+        quadratic_values, quadratic_row_indices, quadratic_col_indices : array-like
+            COO triplets for the quadratic matrix Q in
+            ``linear^T x + x^T Q x <= rhs_value``.
+
+        Notes
+        -----
+        When any quadratic constraint is present, cuOpt selects the barrier
+        solver and converts QCMATRIX rows to second-order cones.
+        """
+        super().add_quadratic_constraint(
+            constraint_row_index,
+            constraint_row_name,
+            linear_values,
+            linear_indices,
+            rhs_value,
+            quadratic_values,
+            quadratic_row_indices,
+            quadratic_col_indices,
+        )
+
+    @catch_cuopt_exception
+    def add_second_order_cone_constraint(
+        self,
+        variable_indices,
+        constraint_row_index,
+        constraint_row_name="",
+    ):
+        """
+        Add a second-order cone constraint in QCMATRIX (Lorentz) form.
+
+        Encodes ``sum_{i>0} x_i^2 - x_0^2 <= 0`` for
+        ``variable_indices = [x_0, x_1, ..., x_{k-1}]``, which is equivalent to
+        ``x_0 >= sqrt(sum_{i>0} x_i^2)`` when ``x_0 >= 0``. Call multiple times
+        to add several cones; each call must use a distinct ``constraint_row_index``.
+
+        Parameters
+        ----------
+        variable_indices : sequence of int
+            Variable indices ``[head, tail_1, ..., tail_{k-1}]`` with ``k >= 2``.
+        constraint_row_index : int
+            ROWS index for this quadratic constraint row.
+        constraint_row_name : str, optional
+            Optional row name.
+
+        See Also
+        --------
+        add_quadratic_constraint
+        """
+        import numpy as np
+
+        indices = [int(i) for i in variable_indices]
+        if len(indices) < 2:
+            raise ValueError("variable_indices must contain at least head and one tail index")
+
+        tails = indices[1:]
+        q_values = [-1.0] + [1.0] * len(tails)
+
+        self.add_quadratic_constraint(
+            constraint_row_index=constraint_row_index,
+            constraint_row_name=constraint_row_name,
+            rhs_value=0.0,
+            quadratic_values=np.array(q_values, dtype=np.float64),
+            quadratic_row_indices=np.array(indices, dtype=np.int32),
+            quadratic_col_indices=np.array(indices, dtype=np.int32),
+        )
+
+    @catch_cuopt_exception
+    def add_rotated_second_order_cone_constraint(
+        self,
+        variable_indices,
+        constraint_row_index,
+        constraint_row_name="",
+    ):
+        """
+        Add a rotated second-order cone constraint in QCMATRIX form.
+
+        Encodes ``-2 x_0 x_1 + sum_{i>1} x_i^2 <= 0`` for
+        ``variable_indices = [x_0, x_1, x_2, ..., x_{k-1}]`` with ``k >= 3``, which is
+        equivalent to ``2 x_0 x_1 >= sum_{i>1} x_i^2`` when ``x_0, x_1 >= 0``. Call
+        multiple times to add several cones; each call must use a distinct
+        ``constraint_row_index``.
+
+        Parameters
+        ----------
+        variable_indices : sequence of int
+            Variable indices ``[head_0, head_1, tail_1, ..., tail_{k-2}]``.
+        constraint_row_index : int
+            ROWS index for this quadratic constraint row.
+        constraint_row_name : str, optional
+            Optional row name.
+
+        See Also
+        --------
+        add_second_order_cone_constraint
+        add_quadratic_constraint
+        """
+        import numpy as np
+
+        indices = [int(i) for i in variable_indices]
+        if len(indices) < 3:
+            raise ValueError(
+                "variable_indices must contain two head indices and at least one tail index"
+            )
+
+        head0, head1 = indices[0], indices[1]
+        tails = indices[2:]
+
+        q_rows = [head0, head1] + tails
+        q_cols = [head1, head0] + tails
+        q_values = [-1.0, -1.0] + [1.0] * len(tails)
+
+        self.add_quadratic_constraint(
+            constraint_row_index=constraint_row_index,
+            constraint_row_name=constraint_row_name,
+            rhs_value=0.0,
+            quadratic_values=np.array(q_values, dtype=np.float64),
+            quadratic_row_indices=np.array(q_rows, dtype=np.int32),
+            quadratic_col_indices=np.array(q_cols, dtype=np.int32),
+        )
+
+    @catch_cuopt_exception
     def set_variable_lower_bounds(self, variable_lower_bounds):
         """
         Set the variables (x) lower bounds.

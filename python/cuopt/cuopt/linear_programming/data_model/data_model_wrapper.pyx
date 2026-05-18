@@ -7,7 +7,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from .data_model cimport data_model_view_t, write_mps
+from .data_model cimport data_model_view_t, mps_data_model_t, write_mps
 
 import warnings
 
@@ -15,7 +15,9 @@ import numpy as np
 
 from libc.stdint cimport uintptr_t
 from libcpp.memory cimport unique_ptr
+from libcpp.string cimport string
 from libcpp.utility cimport move
+from libcpp.vector cimport vector
 
 
 def type_cast(np_obj, np_type, name):
@@ -69,6 +71,70 @@ cdef class DataModel:
         self.variable_types = np.array([])
         self.variable_names = np.array([])
         self.row_names = np.array([])
+        self.quadratic_constraints = []
+
+    def clear_quadratic_constraints(self):
+        self.quadratic_constraints = []
+
+    def add_quadratic_constraint(
+        self,
+        constraint_row_index,
+        constraint_row_name="",
+        linear_values=None,
+        linear_indices=None,
+        rhs_value=0.0,
+        quadratic_values=None,
+        quadratic_row_indices=None,
+        quadratic_col_indices=None,
+    ):
+        linear_values = (
+            np.array([], dtype=np.float64)
+            if linear_values is None
+            else type_cast(linear_values, np.float64, "linear_values")
+        )
+        linear_indices = (
+            np.array([], dtype=np.int32)
+            if linear_indices is None
+            else type_cast(linear_indices, np.int32, "linear_indices")
+        )
+        if linear_values.shape[0] != linear_indices.shape[0]:
+            raise ValueError("linear_values and linear_indices must have the same length")
+        quadratic_values = (
+            np.array([], dtype=np.float64)
+            if quadratic_values is None
+            else type_cast(quadratic_values, np.float64, "quadratic_values")
+        )
+        quadratic_row_indices = (
+            np.array([], dtype=np.int32)
+            if quadratic_row_indices is None
+            else type_cast(quadratic_row_indices, np.int32, "quadratic_row_indices")
+        )
+        quadratic_col_indices = (
+            np.array([], dtype=np.int32)
+            if quadratic_col_indices is None
+            else type_cast(quadratic_col_indices, np.int32, "quadratic_col_indices")
+        )
+        if not (
+            quadratic_values.shape[0]
+            == quadratic_row_indices.shape[0]
+            == quadratic_col_indices.shape[0]
+        ):
+            raise ValueError(
+                "quadratic_values, quadratic_row_indices, and "
+                "quadratic_col_indices must have the same length"
+            )
+        self.quadratic_constraints.append(
+            {
+                "constraint_row_index": int(constraint_row_index),
+                "constraint_row_name": str(constraint_row_name),
+                "linear_values": linear_values,
+                "linear_indices": linear_indices,
+                "rhs_value": float(rhs_value),
+                "quadratic_values": quadratic_values,
+                "quadratic_row_indices": quadratic_row_indices,
+                "quadratic_col_indices": quadratic_col_indices,
+            }
+        )
 
     def set_maximize(self, maximize):
         self.maximize = maximize
@@ -385,6 +451,57 @@ cdef class DataModel:
                 <const double *> c_initial_dual_solution,
                 self.get_initial_dual_solution().shape[0]
             )
+
+        if self.quadratic_constraints:
+            self._set_cpp_quadratic_constraints(c_data_model_view)
+
+    cdef void _set_cpp_quadratic_constraints(
+        self, data_model_view_t[int, double]* c_data_model_view
+    ):
+        cdef vector[mps_data_model_t[int, double].quadratic_constraint_t] constraints
+        cdef mps_data_model_t[int, double].quadratic_constraint_t qc
+        cdef dict item
+        cdef size_t i
+        cdef uintptr_t c_linear_values
+        cdef uintptr_t c_linear_indices
+        cdef uintptr_t c_quadratic_values
+        cdef uintptr_t c_quadratic_row_indices
+        cdef uintptr_t c_quadratic_col_indices
+        cdef size_t linear_nnz
+        cdef size_t quadratic_nnz
+
+        for item in self.quadratic_constraints:
+            qc.constraint_row_index = item["constraint_row_index"]
+            qc.constraint_row_name = item["constraint_row_name"].encode("utf-8")
+            qc.constraint_row_type = ord("L")
+            qc.rhs_value = item["rhs_value"]
+
+            linear_nnz = item["linear_values"].shape[0]
+            qc.linear_values.resize(linear_nnz)
+            qc.linear_indices.resize(linear_nnz)
+            if linear_nnz > 0:
+                c_linear_values = get_data_ptr(item["linear_values"])
+                c_linear_indices = get_data_ptr(item["linear_indices"])
+                for i in range(linear_nnz):
+                    qc.linear_values[i] = (<double*>c_linear_values)[i]
+                    qc.linear_indices[i] = (<int*>c_linear_indices)[i]
+
+            quadratic_nnz = item["quadratic_values"].shape[0]
+            qc.quadratic_values.resize(quadratic_nnz)
+            qc.quadratic_row_indices.resize(quadratic_nnz)
+            qc.quadratic_col_indices.resize(quadratic_nnz)
+            if quadratic_nnz > 0:
+                c_quadratic_values = get_data_ptr(item["quadratic_values"])
+                c_quadratic_row_indices = get_data_ptr(item["quadratic_row_indices"])
+                c_quadratic_col_indices = get_data_ptr(item["quadratic_col_indices"])
+                for i in range(quadratic_nnz):
+                    qc.quadratic_values[i] = (<double*>c_quadratic_values)[i]
+                    qc.quadratic_row_indices[i] = (<int*>c_quadratic_row_indices)[i]
+                    qc.quadratic_col_indices[i] = (<int*>c_quadratic_col_indices)[i]
+
+            constraints.push_back(qc)
+
+        c_data_model_view.set_quadratic_constraints(constraints)
 
     def writeMPS(self, user_problem_file):
         self.variable_types = type_cast(
