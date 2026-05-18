@@ -21,6 +21,8 @@ from libcpp.vector cimport vector
 
 
 def type_cast(np_obj, np_type, name):
+    if not isinstance(np_obj, np.ndarray):
+        np_obj = np.asarray(np_obj)
     obj_type = np_obj.dtype
 
     if ((np.issubdtype(np_type, np.floating) and
@@ -86,6 +88,7 @@ cdef class DataModel:
         quadratic_values=None,
         quadratic_row_indices=None,
         quadratic_col_indices=None,
+        constraint_row_type="L",
     ):
         linear_values = (
             np.array([], dtype=np.float64)
@@ -123,10 +126,18 @@ cdef class DataModel:
                 "quadratic_values, quadratic_row_indices, and "
                 "quadratic_col_indices must have the same length"
             )
+        row_type = str(constraint_row_type)
+        if row_type != "L":
+            raise ValueError(
+                "constraint_row_type must be 'L' for quadratic constraints; "
+                "use DataModel.add_quadratic_constraint(sense='G') to normalize "
+                "'>=' rows."
+            )
         self.quadratic_constraints.append(
             {
                 "constraint_row_index": int(constraint_row_index),
                 "constraint_row_name": str(constraint_row_name),
+                "constraint_row_type": row_type,
                 "linear_values": linear_values,
                 "linear_indices": linear_indices,
                 "rhs_value": float(rhs_value),
@@ -473,7 +484,7 @@ cdef class DataModel:
         for item in self.quadratic_constraints:
             qc.constraint_row_index = item["constraint_row_index"]
             qc.constraint_row_name = item["constraint_row_name"].encode("utf-8")
-            qc.constraint_row_type = ord("L")
+            qc.constraint_row_type = ord(item.get("constraint_row_type", "L"))
             qc.rhs_value = item["rhs_value"]
 
             linear_nnz = item["linear_values"].shape[0]
@@ -504,9 +515,13 @@ cdef class DataModel:
         c_data_model_view.set_quadratic_constraints(constraints)
 
     def writeMPS(self, user_problem_file):
-        self.variable_types = type_cast(
-            self.variable_types, "S1", "variable_types"
-        )
+        n_vars = self.get_variable_lower_bounds().shape[0]
+        if self.variable_types.shape[0] == 0 and n_vars > 0:
+            self.variable_types = np.array(["C"] * n_vars, dtype="S1")
+        else:
+            self.variable_types = type_cast(
+                self.variable_types, "S1", "variable_types"
+            )
         self.set_data_model_view()
         write_mps(self.c_data_model_view.get()[0],
                   user_problem_file.encode('utf-8'))
