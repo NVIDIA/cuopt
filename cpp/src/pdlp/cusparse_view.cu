@@ -187,11 +187,11 @@ void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
                                              cusparseDnVecDescr_t vecY,
                                              cusparseDnVecDescr_t vecZ,
                                              cudaDataType computeType,
-                                             void* buffer)
+                                             rmm::device_uvector<uint8_t>& buffer)
 {
   if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyDescr(descr_)); }
   RAFT_CUSPARSE_TRY(
-    cusparseSpMVOp_createDescr(handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer));
+    cusparseSpMVOp_createDescr(handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
   need_destruction_ = true;
 }
 
@@ -224,12 +224,10 @@ cusparse_spmvop_plan_wrapper_t& cusparse_spmvop_plan_wrapper_t::operator=(
 }
 
 void cusparse_spmvop_plan_wrapper_t::create(cusparseHandle_t handle,
-                                            cusparseSpMVOpDescr_t descr,
-                                            char* lto_buffer,
-                                            size_t lto_buffer_size)
+                                            cusparseSpMVOpDescr_t descr)
 {
   if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyPlan(plan_)); }
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle, descr, &plan_, lto_buffer, lto_buffer_size));
+  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle, descr, &plan_, nullptr, 0));
   need_destruction_ = true;
 }
 
@@ -1314,12 +1312,10 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                             current_AtY,
                             current_AtY,
                             CUDA_R_64F,
-                            buffer_transpose_spmvop.data());
+                            buffer_transpose_spmvop);
 
-  char* lto_buffer       = NULL;
-  size_t lto_buffer_size = 0;
   spmv_op_plan_A_t_.create(
-    handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t_, lto_buffer, lto_buffer_size);
+    handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t);
 
   // Only prepare buffers for A_x if we are using reflected_halpern
   if (is_reflected) {
@@ -1341,10 +1337,10 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                             dual_gradient,
                             dual_gradient,
                             CUDA_R_64F,
-                            buffer_non_transpose_spmvop.data());
+                            buffer_non_transpose_spmvop);
 
     spmv_op_plan_A_.create(
-      handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_, lto_buffer, lto_buffer_size);
+      handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_);
   }
 #endif
 }

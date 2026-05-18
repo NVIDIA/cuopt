@@ -82,6 +82,7 @@ class cusparse_dn_mat_descr_wrapper_t {
 };
 
 #if CUDA_VER_13_2_UP
+// RAII wrapper around cusparse SpMVOp objects. All the buffers are owned by the cusparse_view_t.
 class cusparse_spmvop_descr_wrapper_t {
  public:
   cusparse_spmvop_descr_wrapper_t();
@@ -98,7 +99,7 @@ class cusparse_spmvop_descr_wrapper_t {
               cusparseDnVecDescr_t vecY,
               cusparseDnVecDescr_t vecZ,
               cudaDataType computeType,
-              void* buffer);
+              rmm::device_uvector<uint8_t>& buffer);
 
   operator cusparseSpMVOpDescr_t() const;
 
@@ -117,9 +118,7 @@ class cusparse_spmvop_plan_wrapper_t {
   cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
 
   void create(cusparseHandle_t handle,
-              cusparseSpMVOpDescr_t descr,
-              char* lto_buffer,
-              size_t lto_buffer_size);
+              cusparseSpMVOpDescr_t descr);
 
   operator cusparseSpMVOpPlan_t() const;
 
