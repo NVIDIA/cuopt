@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
-#include <mps_parser/parser.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -148,8 +148,8 @@ static int run_solver(const argparse::ArgumentParser& program, const raft::handl
   }
 
   // Parse MPS file
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(program.get<std::string>("--path"));
+  cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(program.get<std::string>("--path"));
 
   // Solve LP problem
   bool problem_checking = true;

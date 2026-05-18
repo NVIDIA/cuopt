@@ -3,7 +3,7 @@
 
 import os
 
-import cuopt_mps_parser
+from cuopt.linear_programming import mps_parser
 import pytest
 
 from cuopt.linear_programming import solver, solver_settings
@@ -85,7 +85,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
     )
 
     file_path = RAPIDS_DATASET_ROOT_DIR + file_name
-    data_model_obj = cuopt_mps_parser.ParseMps(file_path)
+    data_model_obj = mps_parser.ParseMps(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_TIME_LIMIT, 10)

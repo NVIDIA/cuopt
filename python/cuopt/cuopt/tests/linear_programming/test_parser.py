@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
 
-import cuopt_mps_parser
+from cuopt.linear_programming import mps_parser
 import numpy as np
 import pytest
-from cuopt_mps_parser.utilities import InputValidationError
+from cuopt.linear_programming.mps_parser.utilities import InputValidationError
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -22,14 +22,14 @@ def test_bad_mps_files():
         )
         if os.path.exists(file_path):
             with pytest.raises(InputValidationError):
-                cuopt_mps_parser.ParseMps(file_path, True)
+                mps_parser.ParseMps(file_path, True)
 
 
 def test_good_mps_file():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
     )
-    data_model = cuopt_mps_parser.ParseMps(file_path)
+    data_model = mps_parser.ParseMps(file_path)
 
     assert not data_model.get_sense()
 

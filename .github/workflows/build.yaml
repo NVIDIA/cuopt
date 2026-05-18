@@ -93,47 +93,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-  wheel-build-cuopt-mps-parser:
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@cuda-13.2.0
-    with:
-      build_type: ${{ inputs.build_type || 'branch' }}
-      branch: ${{ inputs.branch }}
-      sha: ${{ inputs.sha }}
-      date: ${{ inputs.date }}
-      script: ci/build_wheel_cuopt_mps_parser.sh
-      package-name: cuopt_mps_parser
-      package-type: python
-      append-cuda-suffix: false
-      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
-      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
-  wheel-publish-cuopt-mps-parser:
-    needs: wheel-build-cuopt-mps-parser
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@cuda-13.2.0
-    secrets:
-      CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN: ${{ secrets.CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN }}
-      RAPIDSAI_PYPI_TOKEN: ${{ secrets.RAPIDSAI_PYPI_TOKEN }}
-    with:
-      build_type: ${{ inputs.build_type || 'branch' }}
-      branch: ${{ inputs.branch }}
-      sha: ${{ inputs.sha }}
-      date: ${{ inputs.date }}
-      package-name: cuopt_mps_parser
-      package-type: python
   wheel-build-libcuopt:
-    needs: wheel-build-cuopt-mps-parser
     permissions:
       actions: read
       contents: read
@@ -171,7 +131,7 @@ jobs:
       package-name: libcuopt
       package-type: cpp
   wheel-build-cuopt:
-    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
+    needs: [wheel-build-libcuopt]
     permissions:
       actions: read
       contents: read
@@ -313,7 +273,6 @@ jobs:
     needs:
       - upload-conda
       - wheel-publish-cuopt
-      - wheel-publish-cuopt-mps-parser
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
       - wheel-publish-libcuopt

@@ -8,8 +8,8 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -27,10 +27,10 @@
 namespace cuopt::linear_programming::test {
 
 // Problem data for the mixed integer linear programming example from documentation
-mps_parser::mps_data_model_t<int, double> create_doc_example_problem()
+io::mps_data_model_t<int, double> create_doc_example_problem()
 {
   // Create problem instance
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 2, 4};
@@ -126,8 +126,8 @@ TEST(docs, user_problem_file)
 
   EXPECT_TRUE(std::filesystem::exists(user_problem_path));
 
-  cuopt::mps_parser::mps_data_model_t<int, double> problem2 =
-    cuopt::mps_parser::parse_mps<int, double>(user_problem_path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem2 =
+    cuopt::linear_programming::io::parse_mps<int, double>(user_problem_path, false);
 
   EXPECT_EQ(problem2.get_n_variables(), problem.get_n_variables());
   EXPECT_EQ(problem2.get_n_constraints(), problem.get_n_constraints());

@@ -17,7 +17,7 @@
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
-#include <mps_parser/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-using namespace cuopt::mps_parser;
+using namespace cuopt::linear_programming::io;
 using namespace cuopt::linear_programming;
 
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {

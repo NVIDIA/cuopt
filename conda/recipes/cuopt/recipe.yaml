@@ -85,7 +85,6 @@ requirements:
   run:
     - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
     - cudf =${{ minor_version }}
-    - cuopt-mps-parser =${{ version }}
     - cupy >=13.6.0
     - h5py
     - libcuopt =${{ version }}
