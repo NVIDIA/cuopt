@@ -13,7 +13,7 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-constexpr int max_n_neighbors = 96;
+constexpr int max_n_neighbors = 256;
 
 template <typename i_t, typename f_t, request_t REQUEST>
 __global__ void compute_reverse_distances(typename solution_t<i_t, f_t, REQUEST>::view_t solution)
