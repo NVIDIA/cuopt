@@ -237,6 +237,8 @@ class timing_raii_t {
       auto duration =
         std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
       times_vec_.push_back(duration.count());
+    } catch (const std::exception& e) {
+      CUOPT_LOG_ERROR("timing_raii_t destructor: failed to record sample (%s).", e.what());
     } catch (...) {
     }
   }

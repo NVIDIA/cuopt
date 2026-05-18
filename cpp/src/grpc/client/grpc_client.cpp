@@ -139,6 +139,11 @@ grpc_client_t::~grpc_client_t()
     if (active_log_context_) {
       static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
     }
+  } catch (const std::exception& e) {
+    CUOPT_LOG_ERROR(
+      "grpc_client_t destructor: TryCancel/lock failed (%s); proceeding to "
+      "join/detach.",
+      e.what());
   } catch (...) {
     // Best-effort cancel; fall through to join/detach the thread.
   }
@@ -147,13 +152,21 @@ grpc_client_t::~grpc_client_t()
   if (t && t->joinable()) {
     try {
       t->join();
-    } catch (...) {
+    } catch (const std::exception& e) {
+      CUOPT_LOG_ERROR("grpc_client_t destructor: log-thread join failed (%s); detaching.",
+                      e.what());
       // join failed (e.g., std::system_error). Detach so the local
       // unique_ptr's destructor doesn't terminate on the joinable thread.
       try {
         t->detach();
+      } catch (const std::exception& e2) {
+        CUOPT_LOG_ERROR(
+          "grpc_client_t destructor: detach also failed (%s); thread may "
+          "terminate the process on unique_ptr destruction.",
+          e2.what());
       } catch (...) {
       }
+    } catch (...) {
     }
   }
 }

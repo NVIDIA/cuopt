@@ -13,6 +13,7 @@
 #include <dual_simplex/types.hpp>
 
 #include <utilities/hashing.hpp>
+#include <utilities/logger.hpp>
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
@@ -60,6 +61,11 @@ class mip_node_t {
       }
 
       // scope-exit ensure destruction of all detached leaves
+    } catch (const std::exception& e) {
+      CUOPT_LOG_ERROR(
+        "mip_node_t destructor: iterative teardown failed (%s); falling back to "
+        "recursive unique_ptr destruction.",
+        e.what());
     } catch (...) {
     }
   }
