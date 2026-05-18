@@ -114,7 +114,8 @@ TEST(mip_solve, node_limit_test)
               status == mip_termination_status_t::Optimal);
   // for now keep a 100% error rate
   EXPECT_NEAR(expect_obj, solution.get_objective_value(), expect_obj);
-  EXPECT_NEAR(settings.node_limit, solution.get_num_nodes(), 8);
+  EXPECT_GE(solution.get_num_nodes(), settings.node_limit);
+  EXPECT_LE(solution.get_num_nodes(), settings.node_limit + settings.num_cpu_threads - 1);
   test_variable_bounds(problem, solution.get_solution(), settings);
 }
 

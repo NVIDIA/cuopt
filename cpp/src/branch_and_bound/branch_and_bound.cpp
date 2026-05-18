@@ -1476,6 +1476,11 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       break;
     }
 
+    if (exploration_stats_.nodes_explored > settings_.node_limit) {
+      solver_status_ = mip_status_t::NODE_LIMIT;
+      break;
+    }
+
     dual::status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
@@ -1492,11 +1497,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
     }
 
     if (lp_status == dual::status_t::ITERATION_LIMIT) { break; }
-
-    if (exploration_stats_.nodes_explored >= settings_.node_limit) {
-      solver_status_ = mip_status_t::NODE_LIMIT;
-      break;
-    }
 
     auto [node_status, round_dir] =
       update_tree(node_ptr, search_tree_, worker, lp_status, settings_.log);
@@ -1608,6 +1608,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
+    if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
     dual::status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
     ++dive_stats.nodes_explored;
@@ -1619,7 +1620,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
 
     if (lp_status == dual::status_t::CONCURRENT_LIMIT) { break; }
     if (lp_status == dual::status_t::ITERATION_LIMIT) { break; }
-    if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
     auto [node_status, round_dir] = update_tree(node_ptr, dive_tree, worker, lp_status, log);
 
