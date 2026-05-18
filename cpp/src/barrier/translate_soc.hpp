@@ -753,10 +753,10 @@ void apply_soc_qcmatrix_conversion_for_simplex(
       }
 
       for (const auto& [alias, original] : cone_alias_pairs) {
+        // Cone copies are not box-constrained; linking rows tie them to the linear original.
         user_problem.lower[static_cast<size_t>(alias)] =
-          user_problem.lower[static_cast<size_t>(original)];
-        user_problem.upper[static_cast<size_t>(alias)] =
-          user_problem.upper[static_cast<size_t>(original)];
+          -std::numeric_limits<f_t>::infinity();
+        user_problem.upper[static_cast<size_t>(alias)] = std::numeric_limits<f_t>::infinity();
         user_problem.var_types[static_cast<size_t>(alias)] =
           user_problem.var_types[static_cast<size_t>(original)];
         // Keep objective unchanged: alias coefficient stays zero and alias==original links
@@ -797,6 +797,93 @@ void apply_soc_qcmatrix_conversion_for_simplex(
       cuopt_expects(csr_A.m == m_new,
                     error_type_t::RuntimeError,
                     "Internal error: CSR row count after cone alias linking");
+
+      n_prob = n_new;
+    }
+  }
+
+  // Box-bounded originals cannot sit in the cone block: introduce a free cone copy and
+  // alias - original = 0 so linear rows/objective keep the bounded variable.
+  {
+    const f_t neg_inf = -std::numeric_limits<f_t>::infinity();
+    const f_t pos_inf = std::numeric_limits<f_t>::infinity();
+    auto is_box_free  = [&](i_t j) {
+      return user_problem.lower[static_cast<size_t>(j)] == neg_inf &&
+             user_problem.upper[static_cast<size_t>(j)] == pos_inf;
+    };
+
+    std::vector<std::pair<i_t, i_t>> bound_split_pairs;  // (cone_alias, linear_original)
+
+    for (auto& cone : cone_vars) {
+      for (auto& var : cone) {
+        cuopt_expects(var >= 0 && var < n_prob,
+                      error_type_t::ValidationError,
+                      "SOC variable index %d is outside [0, %d)",
+                      static_cast<int>(var),
+                      static_cast<int>(n_prob));
+        if (!is_box_free(var)) {
+          const i_t alias = static_cast<i_t>(n_prob + bound_split_pairs.size());
+          bound_split_pairs.emplace_back(alias, var);
+          var = alias;
+        }
+      }
+    }
+
+    if (!bound_split_pairs.empty()) {
+      const i_t n_old = n_prob;
+      const i_t n_new = static_cast<i_t>(n_old + bound_split_pairs.size());
+      const i_t m_old = csr_A.m;
+      const i_t m_new = static_cast<i_t>(m_old + bound_split_pairs.size());
+
+      user_problem.objective.resize(static_cast<size_t>(n_new), f_t(0));
+      user_problem.lower.resize(static_cast<size_t>(n_new), neg_inf);
+      user_problem.upper.resize(static_cast<size_t>(n_new), pos_inf);
+      user_problem.var_types.resize(
+        static_cast<size_t>(n_new),
+        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+      if (!user_problem.col_names.empty()) {
+        user_problem.col_names.resize(static_cast<size_t>(n_new));
+      }
+
+      for (const auto& [alias, original] : bound_split_pairs) {
+        user_problem.var_types[static_cast<size_t>(alias)] =
+          user_problem.var_types[static_cast<size_t>(original)];
+        if (!user_problem.col_names.empty()) {
+          user_problem.col_names[static_cast<size_t>(alias)] =
+            "_CUOPT_cone_bound_split_" + std::to_string(static_cast<int>(alias - n_old));
+        }
+      }
+
+      user_problem.rhs.resize(static_cast<size_t>(m_new));
+      user_problem.row_sense.resize(static_cast<size_t>(m_new));
+      if (!user_problem.row_names.empty()) {
+        user_problem.row_names.resize(static_cast<size_t>(m_new));
+      }
+
+      csr_A.n = n_new;
+      dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+      eq_row.n    = n_new;
+      i_t row_idx = m_old;
+      for (const auto& [alias, original] : bound_split_pairs) {
+        eq_row.i = {alias, original};
+        eq_row.x = {f_t(1), f_t(-1)};
+        eq_row.sort();
+        csr_A.append_row(eq_row);
+        user_problem.row_sense[static_cast<size_t>(row_idx)] = 'E';
+        user_problem.rhs[static_cast<size_t>(row_idx)]       = f_t(0);
+        if (!user_problem.row_names.empty()) {
+          user_problem.row_names[static_cast<size_t>(row_idx)] =
+            "_CUOPT_cone_bound_split_link_" + std::to_string(static_cast<int>(row_idx - m_old));
+        }
+        ++row_idx;
+      }
+
+      cuopt_expects(row_idx == m_new,
+                    error_type_t::RuntimeError,
+                    "Internal error: cone bound-split linking row count mismatch");
+      cuopt_expects(csr_A.m == m_new,
+                    error_type_t::RuntimeError,
+                    "Internal error: CSR row count after cone bound-split linking");
 
       n_prob = n_new;
     }
