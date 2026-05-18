@@ -470,7 +470,7 @@ class SolverConfig(BaseModel):
     )
     num_cpu_threads: Optional[int] = Field(
         default=None,
-        description="Set the number of CPU threads to use for branch and bound.",  # noqa
+        description="Set the number of CPU threads to use in the MIP solver",  # noqa
     )
     num_gpus: Optional[int] = Field(
         default=None,

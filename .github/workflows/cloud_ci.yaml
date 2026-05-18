@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 name: cloud_ci_checker
@@ -8,12 +8,17 @@ on:
       - ${GITHUB_REF##*/}
     paths:
       - 'cloud-scripts'
+
+permissions: {}
+
 jobs:
   conditional_step:
+    permissions:
+      contents: read
     runs-on: 'ubuntu-22.04'
     steps:
       - run: echo "Starting GitHub Actions Job for Cloud CI test notification"
-      - uses: cinotify/github-action@main
+      - uses: cinotify/github-action@92a15ed24b17cce1bb185b985c0d463859c5b800 # v1.6.0
         with:
           to: 'cuopt-eng@nvidia.com'
           subject: 'Cloud scripts change notification'

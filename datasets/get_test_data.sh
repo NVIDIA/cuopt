@@ -8,7 +8,7 @@ set -o pipefail
 ################################################################################
 # S3 Dataset Download Support
 ################################################################################
-# Set CUOPT_DATASET_S3_URI to base S3 path
+# Set CUOPT_S3_URI to S3 bucket root (e.g., s3://cuopt-datasets/)
 # AWS credentials should be configured via:
 #   - Environment variables (CUOPT_AWS_ACCESS_KEY_ID, CUOPT_AWS_SECRET_ACCESS_KEY)
 #   - Standard AWS variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
@@ -18,8 +18,8 @@ set -o pipefail
 function try_download_from_s3() {
     local s3_dirs=("$@")  # Array of directories to sync from S3
 
-    if [ -z "${CUOPT_DATASET_S3_URI:-}" ]; then
-        echo "CUOPT_DATASET_S3_URI not set, skipping S3 download..."
+    if [ -z "${CUOPT_S3_URI:-}" ]; then
+        echo "CUOPT_S3_URI not set, skipping S3 download..."
         return 1
     fi
 
@@ -35,7 +35,7 @@ function try_download_from_s3() {
     fi
 
     # Append routing subdirectory to base S3 URI
-    local s3_uri="${CUOPT_DATASET_S3_URI}routing/"
+    local s3_uri="${CUOPT_S3_URI}ci_datasets/routing/"
     echo "Downloading datasets from S3..."
 
     # Use CUOPT-specific credentials only

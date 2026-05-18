@@ -36,13 +36,8 @@ pdlp_termination_strategy_t<i_t, f_t>::pdlp_termination_strategy_t(
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     problem_ptr(&op_problem),
-    convergence_information_{handle_ptr_,
-                             op_problem,
-                             cusparse_view,
-                             primal_size,
-                             dual_size,
-                             climber_strategies,
-                             settings.hyper_params},
+    convergence_information_{
+      handle_ptr_, op_problem, cusparse_view, primal_size, dual_size, climber_strategies, settings},
     infeasibility_information_{handle_ptr_,
                                op_problem,
                                scaled_op_problem,
@@ -92,29 +87,10 @@ void pdlp_termination_strategy_t<i_t, f_t>::resize_context(i_t new_size)
 }
 
 template <typename i_t, typename f_t>
-void pdlp_termination_strategy_t<i_t, f_t>::set_relative_dual_tolerance_factor(
-  f_t dual_tolerance_factor)
-{
-  convergence_information_.set_relative_dual_tolerance_factor(dual_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
 void pdlp_termination_strategy_t<i_t, f_t>::set_relative_primal_tolerance_factor(
   f_t primal_tolerance_factor)
 {
   convergence_information_.set_relative_primal_tolerance_factor(primal_tolerance_factor);
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_termination_strategy_t<i_t, f_t>::get_relative_dual_tolerance_factor() const
-{
-  return convergence_information_.get_relative_dual_tolerance_factor();
-}
-
-template <typename i_t, typename f_t>
-f_t pdlp_termination_strategy_t<i_t, f_t>::get_relative_primal_tolerance_factor() const
-{
-  return convergence_information_.get_relative_primal_tolerance_factor();
 }
 
 template <typename i_t, typename f_t>
@@ -257,15 +233,14 @@ __global__ void check_termination_criteria_kernel(
       printf(
         "Primal residual : convergence_information.linf_relative_primal_resiprimal %lf < "
         "tolerance.absolute_primal_tolerance %lf\n",
-        *convergence_information.relative_l_inf_primal_residual,
+        convergence_information.relative_l_inf_primal_residual[idx],
         tolerance.absolute_primal_tolerance);
       printf(
         "Dual residual : convergence_information.linf_relative_dual_residual %lf < "
         "tolerance.absolute_dual_tolerance %lf\n",
-        *convergence_information.relative_l_inf_dual_residual,
+        convergence_information.relative_l_inf_dual_residual[idx],
         tolerance.absolute_dual_tolerance);
     } else {
-      // TODO later batch mode: per problem rhs
       printf(
         "Primal residual  %lf <= %lf [%d] (tolerance.absolute_primal_tolerance %lf + "
         "tolerance.relative_primal_tolerance %lf * "
@@ -273,14 +248,14 @@ __global__ void check_termination_criteria_kernel(
         convergence_information.l2_primal_residual[idx],
         tolerance.absolute_primal_tolerance +
           tolerance.relative_primal_tolerance *
-            *convergence_information.l2_norm_primal_right_hand_side,
+            convergence_information.l2_norm_primal_right_hand_side[idx],
         convergence_information.l2_primal_residual[idx] <=
           tolerance.absolute_primal_tolerance +
             tolerance.relative_primal_tolerance *
-              *convergence_information.l2_norm_primal_right_hand_side,
+              convergence_information.l2_norm_primal_right_hand_side[idx],
         tolerance.absolute_primal_tolerance,
         tolerance.relative_primal_tolerance,
-        *convergence_information.l2_norm_primal_right_hand_side);
+        convergence_information.l2_norm_primal_right_hand_side[idx]);
       printf(
         "Dual residual  %lf <= %lf [%d] (tolerance.absolute_dual_tolerance %lf + "
         "tolerance.relative_dual_tolerance %lf * "
@@ -288,14 +263,14 @@ __global__ void check_termination_criteria_kernel(
         convergence_information.l2_dual_residual[idx],
         tolerance.absolute_dual_tolerance +
           tolerance.relative_dual_tolerance *
-            *convergence_information.l2_norm_primal_linear_objective,
+            convergence_information.l2_norm_primal_linear_objective[idx],
         convergence_information.l2_dual_residual[idx] <=
           tolerance.absolute_dual_tolerance +
             tolerance.relative_dual_tolerance *
-              *convergence_information.l2_norm_primal_linear_objective,
+              convergence_information.l2_norm_primal_linear_objective[idx],
         tolerance.absolute_dual_tolerance,
         tolerance.relative_dual_tolerance,
-        *convergence_information.l2_norm_primal_linear_objective);
+        convergence_information.l2_norm_primal_linear_objective[idx]);
     }
     if (infeasibility_detection) {
       printf(
@@ -325,10 +300,10 @@ __global__ void check_termination_criteria_kernel(
   // test if respect constraints
   if (per_constraint_residual) {
     // In residual we store l_inf(residual_i - rel * b/c_i)
-    const bool primal_feasible = *convergence_information.relative_l_inf_primal_residual <=
+    const bool primal_feasible = convergence_information.relative_l_inf_primal_residual[idx] <=
                                  tolerance.absolute_primal_tolerance;
     // First check for optimality
-    if (*convergence_information.relative_l_inf_dual_residual <=
+    if (convergence_information.relative_l_inf_dual_residual[idx] <=
           tolerance.absolute_dual_tolerance &&
         primal_feasible && optimal_gap) {
       termination_status[idx] = (i_t)pdlp_termination_status_t::Optimal;
@@ -337,16 +312,18 @@ __global__ void check_termination_criteria_kernel(
     {
       termination_status[idx] = (i_t)pdlp_termination_status_t::PrimalFeasible;
       return;
+    } else {
+      termination_status[idx] = (i_t)pdlp_termination_status_t::NoTermination;
     }
   } else {
     const bool primal_feasible = convergence_information.l2_primal_residual[idx] <=
                                  tolerance.absolute_primal_tolerance +
                                    tolerance.relative_primal_tolerance *
-                                     *convergence_information.l2_norm_primal_right_hand_side;
+                                     convergence_information.l2_norm_primal_right_hand_side[idx];
     if (convergence_information.l2_dual_residual[idx] <=
           tolerance.absolute_dual_tolerance +
             tolerance.relative_dual_tolerance *
-              *convergence_information.l2_norm_primal_linear_objective &&
+              convergence_information.l2_norm_primal_linear_objective[idx] &&
         primal_feasible && optimal_gap) {
       termination_status[idx] = (i_t)pdlp_termination_status_t::Optimal;
       return;
@@ -393,20 +370,35 @@ bool pdlp_termination_strategy_t<i_t, f_t>::all_optimal_status() const
 
 template <typename i_t, typename f_t>
 __host__ __device__ bool pdlp_termination_strategy_t<i_t, f_t>::is_done(
-  pdlp_termination_status_t termination_status)
+  pdlp_termination_status_t termination_status, bool accept_primal_feasible)
 {
   return termination_status == pdlp_termination_status_t::Optimal ||
          termination_status == pdlp_termination_status_t::PrimalInfeasible ||
          termination_status == pdlp_termination_status_t::DualInfeasible ||
-         termination_status == pdlp_termination_status_t::ConcurrentLimit;
+         termination_status == pdlp_termination_status_t::ConcurrentLimit ||
+         (accept_primal_feasible &&
+          termination_status == pdlp_termination_status_t::PrimalFeasible);
 }
 
 template <typename i_t, typename f_t>
-bool pdlp_termination_strategy_t<i_t, f_t>::all_done() const
+bool pdlp_termination_strategy_t<i_t, f_t>::all_done(bool accept_primal_feasible) const
 {
-  return std::all_of(
+  return std::all_of(termination_status_.cbegin(),
+                     termination_status_.cend(),
+                     [accept_primal_feasible](i_t termination_status) {
+                       return is_done((pdlp_termination_status_t)termination_status,
+                                      accept_primal_feasible);
+                     });
+}
+
+template <typename i_t, typename f_t>
+bool pdlp_termination_strategy_t<i_t, f_t>::any_primal_feasible_or_optimal() const
+{
+  return std::any_of(
     termination_status_.cbegin(), termination_status_.cend(), [](i_t termination_status) {
-      return is_done((pdlp_termination_status_t)termination_status);
+      const auto status = static_cast<pdlp_termination_status_t>(termination_status);
+      return status == pdlp_termination_status_t::Optimal ||
+             status == pdlp_termination_status_t::PrimalFeasible;
     });
 }
 
@@ -436,32 +428,40 @@ __global__ void fill_gpu_terms_stats_kernel(
                                        f_t>::gpu_batch_additional_termination_information_t::view_t
     additional_termination_information,
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view,
-  i_t number_of_steps_taken)
+  i_t number_of_steps_taken,
+  bool accept_primal_feasible,
+  bool per_constraint_residual,
+  bool force_all)
 {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= termination_status.size()) { return; }
 
   // TODO later batch mode: add infeasibility information here
-  // TODO later batch mode: handle per climber rhs and objective
 
-  // Will be removed store its data in the struct
-  if (pdlp_termination_strategy_t<i_t, f_t>::is_done(
-        (pdlp_termination_status_t)termination_status[idx])) {
+  // Snapshot stats for climbers that just terminated
+  if (force_all || pdlp_termination_strategy_t<i_t, f_t>::is_done(
+                     (pdlp_termination_status_t)termination_status[idx], accept_primal_feasible)) {
     const i_t original_index = original_indices[idx];
     additional_termination_information.number_of_steps_taken[original_index] =
       number_of_steps_taken;
     additional_termination_information.total_number_of_attempted_steps[original_index] =
       number_of_steps_taken;
+    // When `per_constraint_residual` is on the primary primal/dual residual stat exposed to
+    // the user is the per-row `relative_l_inf_*_residual` (the quantity the kernel actually
+    // checks against the tolerances), mirroring the non-batch `fill_return_problem_solution`
+    // path. Otherwise the classic L2 residual is reported.
     additional_termination_information.l2_primal_residual[original_index] =
-      convergence_information_view.l2_primal_residual[idx];
+      per_constraint_residual ? convergence_information_view.relative_l_inf_primal_residual[idx]
+                              : convergence_information_view.l2_primal_residual[idx];
     additional_termination_information.l2_relative_primal_residual[original_index] =
       convergence_information_view.l2_primal_residual[idx] /
-      (f_t(1.0) + *convergence_information_view.l2_norm_primal_right_hand_side);
+      (f_t(1.0) + convergence_information_view.l2_norm_primal_right_hand_side[idx]);
     additional_termination_information.l2_dual_residual[original_index] =
-      convergence_information_view.l2_dual_residual[idx];
+      per_constraint_residual ? convergence_information_view.relative_l_inf_dual_residual[idx]
+                              : convergence_information_view.l2_dual_residual[idx];
     additional_termination_information.l2_relative_dual_residual[original_index] =
       convergence_information_view.l2_dual_residual[idx] /
-      (f_t(1.0) + *convergence_information_view.l2_norm_primal_linear_objective);
+      (f_t(1.0) + convergence_information_view.l2_norm_primal_linear_objective[idx]);
     additional_termination_information.primal_objective[original_index] =
       convergence_information_view.primal_objective[idx];
     additional_termination_information.dual_objective[original_index] =
@@ -474,23 +474,30 @@ __global__ void fill_gpu_terms_stats_kernel(
 }
 
 template <typename i_t, typename f_t>
-void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_iterations)
+void pdlp_termination_strategy_t<i_t, f_t>::fill_gpu_terms_stats(i_t number_of_iterations,
+                                                                 bool force_all)
 {
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();
 
-  // Update original index pinned view so that we can read it safely from the kernel
+  // Refresh the local->original index map so the kernel can write to original-index space.
+  // `climber_strategies_` is reordered by `swap_context`, so this must be rebuilt each call.
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
     original_index_[i] = climber_strategies_[i].original_index;
   }
 
+  const bool accept_primal_feasible =
+    settings_.first_primal_feasible || settings_.all_primal_feasible;
   const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
   fill_gpu_terms_stats_kernel<i_t, f_t><<<grid_size, block_size, 0, stream_view_>>>(
     make_span(termination_status_),
     make_span(original_index_),
     gpu_batch_additional_termination_information_.view(),
     convergence_information_view,
-    number_of_iterations);
+    number_of_iterations,
+    accept_primal_feasible,
+    settings_.per_constraint_residual,
+    force_all);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
@@ -501,6 +508,9 @@ void pdlp_termination_strategy_t<i_t, f_t>::convert_gpu_terms_stats_to_host(
     typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>&
     additional_termination_informations)
 {
+  cuopt_assert(additional_termination_informations.size() ==
+                 gpu_batch_additional_termination_information_.number_of_steps_taken.size(),
+               "Additional termination informations size mismatch");
   for (size_t i = 0; i < additional_termination_informations.size(); ++i) {
     additional_termination_informations[i].number_of_steps_taken =
       gpu_batch_additional_termination_information_.number_of_steps_taken[i];
@@ -558,9 +568,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
 
     raft::copy(&term_stats_vector[i].l2_primal_residual,
                (settings_.per_constraint_residual)
-                 ? convergence_information_view
-                     .relative_l_inf_primal_residual  // TODO later batch mode: handle per climber
-                                                      // overall residual
+                 ? convergence_information_view.relative_l_inf_primal_residual.data() + i
                  : convergence_information_view.l2_primal_residual.data() + i,
                1,
                stream_view_);
@@ -570,7 +578,7 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
 
     raft::copy(&term_stats_vector[i].l2_dual_residual,
                (settings_.per_constraint_residual)
-                 ? convergence_information_view.relative_l_inf_dual_residual
+                 ? convergence_information_view.relative_l_inf_dual_residual.data() + i
                  : convergence_information_view.l2_dual_residual.data() + i,
                1,
                stream_view_);

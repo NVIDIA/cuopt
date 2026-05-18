@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -29,78 +29,68 @@
 namespace cuopt::linear_programming::test {
 
 // Create standard LP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
+io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 2};
   std::vector<int> indices         = {0, 1};
   std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {0.0};
   std::vector<double> upper_bounds = {5000.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower = {0.0, 0.0};
   std::vector<double> var_upper = {3000.0, 5000.0};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+  problem.set_variable_lower_bounds(var_lower);
+  problem.set_variable_upper_bounds(var_upper);
 
   // Set objective coefficients
   std::vector<double> obj_coeffs = {1.2, 1.7};
-  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
+  problem.set_objective_coefficients(obj_coeffs);
   problem.set_maximize(false);
 
   return problem;
 }
 
-mps_parser::mps_data_model_t<int, double> create_single_var_lp_problem()
+io::mps_data_model_t<int, double> create_single_var_lp_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 1};
   std::vector<int> indices         = {0};
   std::vector<double> coefficients = {1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
+  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {0.0};
   std::vector<double> upper_bounds = {0.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   // Set variable bounds
   std::vector<double> var_lower = {0.0};
   std::vector<double> var_upper = {0.0};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+  problem.set_variable_lower_bounds(var_lower);
+  problem.set_variable_upper_bounds(var_upper);
 
   // Set objective coefficients
   std::vector<double> obj_coeffs = {-0.23};
-  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
+  problem.set_objective_coefficients(obj_coeffs);
   problem.set_maximize(false);
 
   return problem;
 }
 
 // Create standard MILP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
 
@@ -113,7 +103,7 @@ mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 }
 
 // Create standard MILP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
 {
   auto problem = create_single_var_lp_problem();
 
@@ -149,23 +139,18 @@ TEST(LPTest, TestSampleLP2)
   std::vector<char> row_types = {'L', 'L'};  // Both constraints are <=
 
   // Build the problem
-  mps_parser::mps_data_model_t<int, double> problem;
-  problem.set_csr_constraint_matrix(A_values.data(),
-                                    A_values.size(),
-                                    A_indices.data(),
-                                    A_indices.size(),
-                                    A_offsets.data(),
-                                    A_offsets.size());
-  problem.set_constraint_upper_bounds(b.data(), b.size());
-  problem.set_constraint_lower_bounds(b_lower.data(), b_lower.size());
+  io::mps_data_model_t<int, double> problem;
+  problem.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+  problem.set_constraint_upper_bounds(b);
+  problem.set_constraint_lower_bounds(b_lower);
 
   // Set variable bounds (x >= 0)
   std::vector<double> var_lower = {0.0};
   std::vector<double> var_upper = {std::numeric_limits<double>::infinity()};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+  problem.set_variable_lower_bounds(var_lower);
+  problem.set_variable_upper_bounds(var_upper);
 
-  problem.set_objective_coefficients(c.data(), c.size());
+  problem.set_objective_coefficients(c);
   problem.set_maximize(false);
   // Set up solver settings
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
@@ -217,8 +202,8 @@ TEST(ErrorTest, TestError)
   // Set constraint bounds
   std::vector<double> lower_bounds = {1.0};
   std::vector<double> upper_bounds = {1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
@@ -297,9 +282,9 @@ INSTANTIATE_TEST_SUITE_P(
 // Scaling integrality preservation test
 // ---------------------------------------------------------------------------
 
-static mps_parser::mps_data_model_t<int, double> create_wide_spread_milp()
+static io::mps_data_model_t<int, double> create_wide_spread_milp()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // 6 rows, 4 variables (x0=INT, x1=INT, x2=INT, x3=CONT)
   // Coefficient spread: ~log2(100000/1) ≈ 17, well above the 12-threshold.
@@ -316,21 +301,20 @@ static mps_parser::mps_data_model_t<int, double> create_wide_spread_milp()
   std::vector<int> indices = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
                               0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
   std::vector<int> offsets = {0, 4, 8, 12, 16, 20, 24};
-  problem.set_csr_constraint_matrix(
-    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
+  problem.set_csr_constraint_matrix(values, indices, offsets);
 
   std::vector<double> cl = {0, 0, 0, 0, 0, 0};
   std::vector<double> cu = {1e6, 1e8, 1e4, 1e8, 100, 1e4};
-  problem.set_constraint_lower_bounds(cl.data(), cl.size());
-  problem.set_constraint_upper_bounds(cu.data(), cu.size());
+  problem.set_constraint_lower_bounds(cl);
+  problem.set_constraint_upper_bounds(cu);
 
   std::vector<double> vl = {0, 0, 0, 0};
   std::vector<double> vu = {1000, 1000, 1000, 1e6};
-  problem.set_variable_lower_bounds(vl.data(), vl.size());
-  problem.set_variable_upper_bounds(vu.data(), vu.size());
+  problem.set_variable_lower_bounds(vl);
+  problem.set_variable_upper_bounds(vu);
 
   std::vector<double> obj = {1.0, 2.0, 3.0, 0.5};
-  problem.set_objective_coefficients(obj.data(), obj.size());
+  problem.set_objective_coefficients(obj);
   problem.set_maximize(false);
 
   std::vector<char> var_types = {'I', 'I', 'I', 'C'};

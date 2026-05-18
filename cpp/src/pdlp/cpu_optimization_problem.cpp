@@ -11,8 +11,8 @@
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>
@@ -131,6 +131,14 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   std::copy(Q_values, Q_values + size_values, Q_values_.begin());
   std::copy(Q_indices, Q_indices + size_indices, Q_indices_.begin());
   std::copy(Q_offsets, Q_offsets + size_offsets, Q_offsets_.begin());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -494,6 +502,19 @@ bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
   return !Q_values_.empty();
 }
 
+template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+cpu_optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
+}
+
 // ==============================================================================
 // Host Getters (return references to CPU memory)
 // ==============================================================================
@@ -621,6 +642,12 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t con
                                                 Q_offsets_.size());
   }
 
+  if (!quadratic_constraints_.empty()) {
+    gpu_problem->set_quadratic_constraints(
+      std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>(
+        quadratic_constraints_));
+  }
+
   // Set variable bounds
   if (!variable_lower_bounds_.empty()) {
     gpu_problem->set_variable_lower_bounds(variable_lower_bounds_.data(),
@@ -660,7 +687,7 @@ template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
   // Data is already in host memory, so we can directly create a view and write
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(maximize_);
@@ -744,7 +771,11 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
                                                    false);
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
+  }
+
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 // ==============================================================================

@@ -1878,12 +1878,10 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<double>(settings.time_limit),
                     static_cast<double>(toc(start_time)));
 
-  if (clique_table_ == nullptr && clique_table_future_ != nullptr &&
-      clique_table_future_->valid()) {
+  if (clique_table_ == nullptr) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts signaling background thread and waiting");
     if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
-    clique_table_        = clique_table_future_->get();
-    clique_table_future_ = nullptr;
+#pragma omp taskwait depend(in : *signal_extend_)
     if (clique_table_) {
       CLIQUE_CUTS_DEBUG("generate_clique_cuts received clique table first=%lld addtl=%lld",
                         static_cast<long long>(clique_table_->first.size()),

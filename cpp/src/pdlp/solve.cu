@@ -30,11 +30,12 @@
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 
-#include <mps_parser/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/version_info.hpp>
 
@@ -53,8 +54,14 @@
 
 #include <rmm/cuda_stream.hpp>
 
+#include <thrust/iterator/counting_iterator.h>
+
+#include <algorithm>
+#include <cmath>
 #include <exception>
+#include <set>
 #include <thread>
+#include <tuple>
 
 #define CUOPT_LOG_CONDITIONAL_INFO(condition, ...) \
   if ((condition)) { CUOPT_LOG_INFO(__VA_ARGS__); }
@@ -630,6 +637,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.per_constraint_residual = settings.per_constraint_residual;
   fs.save_best_primal_so_far = settings.save_best_primal_so_far;
   fs.first_primal_feasible   = settings.first_primal_feasible;
+  fs.all_primal_feasible     = settings.all_primal_feasible;
   fs.eliminate_dense_columns = settings.eliminate_dense_columns;
   fs.pdlp_precision          = pdlp_precision_t::DefaultPrecision;
   fs.method                  = method_t::PDLP;
@@ -846,10 +854,15 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
 }
 
 // Compute in double as some cases overflow when using size_t
+//
+// `per_climber_objectives` / `per_climber_constraint_bounds` tell the estimator whether the caller
+// will expand these fields to (trial_batch_size * n_{vars,constraints}).
 template <typename i_t, typename f_t>
 static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>& problem,
                                           double trial_batch_size,
-                                          bool collect_solutions = false)
+                                          bool per_climber_objectives        = false,
+                                          bool per_climber_constraint_bounds = false,
+                                          bool collect_solutions             = false)
 {
   double total_memory = 0.0;
   // In PDLP we store the scaled version of the problem which contains all of those
@@ -857,12 +870,30 @@ static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>
   total_memory += problem.get_constraint_matrix_offsets().size() * sizeof(i_t);
   total_memory += problem.get_constraint_matrix_values().size() * sizeof(f_t);
   total_memory *= 2.0;  // To account for the A_t matrix
-  total_memory += problem.get_objective_coefficients().size() * sizeof(f_t);
+
+  // Internally we always use have a scaled and an unscaled version of the objective coefficients
+  if (per_climber_objectives) {
+    total_memory += 2.0 * trial_batch_size * problem.get_n_variables() * sizeof(f_t);
+  } else {
+    total_memory += 2.0 * problem.get_objective_coefficients().size() * sizeof(f_t);
+  }
+
   total_memory += problem.get_constraint_bounds().size() * sizeof(f_t);
   total_memory += problem.get_variable_lower_bounds().size() * sizeof(f_t);
   total_memory += problem.get_variable_upper_bounds().size() * sizeof(f_t);
-  total_memory += problem.get_constraint_lower_bounds().size() * sizeof(f_t);
-  total_memory += problem.get_constraint_upper_bounds().size() * sizeof(f_t);
+
+  // Per-climber constraint bounds expansion adds 2 * trial_batch_size * n_constraints. Strong
+  // branching never expands these, so the flag guards the cost.
+  // 2.0 because we have scaled and unscaled
+  if (per_climber_constraint_bounds) {
+    total_memory +=
+      2.0 * trial_batch_size * problem.get_constraint_lower_bounds().size() * sizeof(f_t);
+    total_memory +=
+      2.0 * trial_batch_size * problem.get_constraint_upper_bounds().size() * sizeof(f_t);
+  } else {
+    total_memory += 2.0 * problem.get_constraint_lower_bounds().size() * sizeof(f_t);
+    total_memory += 2.0 * problem.get_constraint_upper_bounds().size() * sizeof(f_t);
+  }
 
   // Batch data estimator
 
@@ -909,34 +940,306 @@ static double batch_pdlp_memory_estimator(const optimization_problem_t<i_t, f_t>
   return total_memory;
 }
 
+// We need to custom craft a solver settings for the batch mode as we need a specific set of values
+// We override iteration limit and pdlp tolerance unless the user has specified otherwise
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
-  optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+static void apply_batch_settings_overrides(
+  const pdlp_solver_settings_t<i_t, f_t>& original_settings,
+  pdlp_solver_settings_t<i_t, f_t>& batch_settings)
 {
-  // Hyper parameter than can be changed, I have put what I believe to be the best
+  constexpr int batch_iteration_limit = 100000;
+  constexpr f_t pdlp_tolerance        = 1e-4;
+
+  const pdlp_solver_settings_t<i_t, f_t> default_settings{};
+
+  auto override_or_keep_given =
+    [&](const auto& given_value, const auto& default_value, const auto& override_value) {
+      return given_value == default_value ? override_value : given_value;
+    };
+
+  batch_settings.method               = cuopt::linear_programming::method_t::PDLP;
+  batch_settings.presolver            = presolver_t::None;
+  batch_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
+  batch_settings.detect_infeasibility = false;
+  batch_settings.iteration_limit      = override_or_keep_given(
+    original_settings.iteration_limit, default_settings.iteration_limit, batch_iteration_limit);
+  batch_settings.inside_mip = true;
+  // Override the tolerances unless the user has specified otherwise
+  // Only risk is overriding a user intentionnaly wanting to use numeric_limits<f_t>::max() as an
+  // iteration limit
+  batch_settings.tolerances.absolute_dual_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_dual_tolerance,
+                           default_settings.tolerances.absolute_dual_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_dual_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_dual_tolerance,
+                           default_settings.tolerances.relative_dual_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.absolute_primal_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_primal_tolerance,
+                           default_settings.tolerances.absolute_primal_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_primal_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_primal_tolerance,
+                           default_settings.tolerances.relative_primal_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.absolute_gap_tolerance =
+    override_or_keep_given(original_settings.tolerances.absolute_gap_tolerance,
+                           default_settings.tolerances.absolute_gap_tolerance,
+                           pdlp_tolerance);
+  batch_settings.tolerances.relative_gap_tolerance =
+    override_or_keep_given(original_settings.tolerances.relative_gap_tolerance,
+                           default_settings.tolerances.relative_gap_tolerance,
+                           pdlp_tolerance);
+
   constexpr bool pdlp_primal_dual_init       = true;
   constexpr bool primal_weight_init          = true;
-  constexpr bool use_initial_pdlp_iterations = true;
-  bool use_optimal_batch_size                = false;
-  constexpr int batch_iteration_limit        = 100000;
-  constexpr f_t pdlp_tolerance               = 1e-5;
+  constexpr bool use_initial_pdlp_iterations = false;
+  if (original_settings.has_initial_primal_solution() && pdlp_primal_dual_init) {
+    batch_settings.set_initial_primal_solution(
+      original_settings.get_initial_primal_solution().data(),
+      original_settings.get_initial_primal_solution().size(),
+      original_settings.get_initial_primal_solution().stream());
+  }
+  if (original_settings.has_initial_dual_solution() && pdlp_primal_dual_init) {
+    batch_settings.set_initial_dual_solution(
+      original_settings.get_initial_dual_solution().data(),
+      original_settings.get_initial_dual_solution().size(),
+      original_settings.get_initial_dual_solution().stream());
+  }
+  // Step size doesn't change anyways, just to save the compute
+  if (original_settings.get_initial_step_size().has_value()) {
+    batch_settings.set_initial_step_size(original_settings.get_initial_step_size().value());
+  }
+  if (original_settings.get_initial_primal_weight().has_value() && primal_weight_init) {
+    batch_settings.set_initial_primal_weight(original_settings.get_initial_primal_weight().value());
+  }
+  if (original_settings.get_initial_pdlp_iteration().has_value() && use_initial_pdlp_iterations) {
+    batch_settings.set_initial_pdlp_iteration(
+      original_settings.get_initial_pdlp_iteration().value());
+  }
+}
 
+// Fixed-path helper: caller pre-sized the batch via fixed_batch_size and pre-expanded any
+// per-climber problem fields directly on the optimization_problem_t (objective_coefficients,
+// constraint_lower_bounds, constraint_upper_bounds, batch_objective_offsets_). A single
+// solve_lp call runs the batch — no memory heuristics, no sub-batching.
+template <typename i_t, typename f_t>
+static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_fixed(
+  optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  cuopt_expects(settings.fixed_batch_size > 0,
+                error_type_t::ValidationError,
+                "run_batch_pdlp_fixed requires fixed_batch_size > 0");
+
+  const size_t n_vars        = static_cast<size_t>(problem.get_n_variables());
+  const size_t n_constraints = static_cast<size_t>(problem.get_n_constraints());
+  const size_t bs            = static_cast<size_t>(settings.fixed_batch_size);
+
+  const size_t obj_size = problem.get_objective_coefficients().size();
+  const size_t clb_size = problem.get_constraint_lower_bounds().size();
+  const size_t cub_size = problem.get_constraint_upper_bounds().size();
+  const size_t off_size = problem.get_batch_objective_offsets().size();
+
+  cuopt_expects(
+    obj_size == n_vars || obj_size == bs * n_vars,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: objective_coefficients size (%zu) must equal n_variables "
+    "(%zu, shared across climbers) or fixed_batch_size * n_variables (%zu, per-climber).",
+    obj_size,
+    n_vars,
+    bs * n_vars);
+
+  cuopt_expects(
+    clb_size == n_constraints || clb_size == bs * n_constraints,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: constraint_lower_bounds size (%zu) must equal n_constraints "
+    "(%zu, shared across climbers) or fixed_batch_size * n_constraints (%zu, per-climber).",
+    clb_size,
+    n_constraints,
+    bs * n_constraints);
+
+  cuopt_expects(
+    cub_size == n_constraints || cub_size == bs * n_constraints,
+    error_type_t::ValidationError,
+    "run_batch_pdlp fixed path: constraint_upper_bounds size (%zu) must equal n_constraints "
+    "(%zu, shared across climbers) or fixed_batch_size * n_constraints (%zu, per-climber).",
+    cub_size,
+    n_constraints,
+    bs * n_constraints);
+
+  // The lower/upper sweep in pdhg.cu (`if (constraint_lower_bounds.size() > dual_size_h_)`) keys
+  // off the lower-bound array only and assumes the upper-bound array follows. Reject any layout
+  // where one is shared and the other is per-climber.
+  cuopt_expects(clb_size == cub_size,
+                error_type_t::ValidationError,
+                "run_batch_pdlp fixed path: constraint_lower_bounds (%zu) and "
+                "constraint_upper_bounds (%zu) must have the same size (both shared or both "
+                "per-climber).",
+                clb_size,
+                cub_size);
+
+  cuopt_expects(off_size == 0 || off_size == bs,
+                error_type_t::ValidationError,
+                "run_batch_pdlp fixed path: batch_objective_offsets size (%zu) must be 0 (no "
+                "per-climber offsets) or fixed_batch_size (%zu).",
+                off_size,
+                bs);
+
+  pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
+  apply_batch_settings_overrides(settings, batch_settings);
+
+  return solve_lp(problem,
+                  batch_settings,
+                  /*problem_checking=*/false,
+                  /*use_pdlp_solver_mode=*/true,
+                  /*is_batch_mode=*/true);
+}
+
+template <typename i_t, typename f_t>
+static void validate_new_bounds(const optimization_problem_t<i_t, f_t>& problem,
+                                pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  std::set<std::pair<i_t, i_t>> seen_bounds;
+  i_t last_climber_id = -1;
+  for (const auto& new_bound : settings.new_bounds) {
+    const auto climber_id = std::get<0>(new_bound);
+    const auto var_idx    = std::get<1>(new_bound);
+    const auto lower      = std::get<2>(new_bound);
+    const auto upper      = std::get<3>(new_bound);
+
+    cuopt_expects(
+      climber_id >= 0, error_type_t::ValidationError, "new_bounds climber_id must be non-negative");
+    if (settings.fixed_batch_size > 0) {
+      cuopt_expects(climber_id < settings.fixed_batch_size,
+                    error_type_t::ValidationError,
+                    "new_bounds climber_id must be less than fixed_batch_size");
+    }
+    if (climber_id != last_climber_id) {
+      cuopt_expects(climber_id > last_climber_id,
+                    error_type_t::ValidationError,
+                    "new_bounds climber_id entries must be sorted ascending and grouped");
+      last_climber_id = climber_id;
+    }
+    cuopt_expects(var_idx >= 0 && var_idx < problem.get_n_variables(),
+                  error_type_t::ValidationError,
+                  "new_bounds variable_index must be in [0, n_variables)");
+    cuopt_expects(!std::isnan(lower) && !std::isnan(upper),
+                  error_type_t::ValidationError,
+                  "new_bounds lower and upper bounds must not be NaN");
+    cuopt_expects(lower <= upper,
+                  error_type_t::ValidationError,
+                  "new_bounds lower bound must be less than or equal to upper bound");
+    cuopt_expects(seen_bounds.insert({climber_id, var_idx}).second,
+                  error_type_t::ValidationError,
+                  "new_bounds cannot contain duplicate (climber_id, variable_index) entries");
+  }
+}
+
+// Returns the batch size implied by per-climber variable-bound overrides.
+template <typename i_t, typename f_t>
+static size_t new_bounds_batch_size(const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds)
+{
+  cuopt_assert(!new_bounds.empty(), "Batch size should be greater than 0");
+  i_t max_climber_id = 0;
+  for (const auto& new_bound : new_bounds) {
+    const auto climber_id = std::get<0>(new_bound);
+    cuopt_assert(climber_id >= 0, "new_bounds climber_id must be non-negative");
+    max_climber_id = std::max(max_climber_id, climber_id);
+  }
+  return static_cast<size_t>(max_climber_id) + 1;
+}
+
+template <typename i_t, typename f_t>
+static void validate_splitting_new_bounds(
+  const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds, size_t batch_size)
+{
+  cuopt_expects(new_bounds.size() == batch_size,
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path requires exactly one new_bounds entry per climber");
+  for (size_t i = 0; i < batch_size; ++i) {
+    cuopt_expects(std::get<0>(new_bounds[i]) == static_cast<i_t>(i),
+                  error_type_t::ValidationError,
+                  "run_batch_pdlp splitting path requires new_bounds sorted by climber_id with no "
+                  "missing climbers");
+  }
+}
+
+template <typename i_t, typename f_t>
+static size_t max_memory_batch_size(const optimization_problem_t<i_t, f_t>& problem,
+                                    bool per_climber_objectives,
+                                    bool per_climber_constraint_bounds,
+                                    bool collect_solutions,
+                                    size_t memory_max_batch_size)
+{
+  size_t st_free_mem, st_total_mem;
+  RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
+  const double free_mem  = static_cast<double>(st_free_mem);
+  const double total_mem = static_cast<double>(st_total_mem);
+
+  while (memory_max_batch_size > 0) {
+    const double mem_est = batch_pdlp_memory_estimator(problem,
+                                                       memory_max_batch_size,
+                                                       per_climber_objectives,
+                                                       per_climber_constraint_bounds,
+                                                       collect_solutions);
+    if (mem_est <= free_mem) { break; }
+#ifdef BATCH_VERBOSE_MODE
+    std::cout << "Memory estimate: " << mem_est << std::endl;
+    std::cout << "Memory max batch size: " << memory_max_batch_size << std::endl;
+    std::cout << "Free memory: " << free_mem << std::endl;
+    std::cout << "Total memory: " << total_mem << std::endl;
+    std::cout << "--------------------------------" << std::endl;
+#endif
+    memory_max_batch_size--;
+  }
+  return memory_max_batch_size;
+}
+
+// Splitting-path helper: strong-branching flow.
+// By default will try to run with the full batch size
+// If the memory is too high, it will use the optimal batch size heuristic and split the batch into
+// sub-batches
+template <typename i_t, typename f_t>
+static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
+  optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
   rmm::cuda_stream_view stream = problem.get_handle_ptr()->get_stream();
+  const i_t n_vars             = problem.get_n_variables();
+  const i_t n_constraints      = problem.get_n_constraints();
 
-  rmm::device_uvector<f_t> initial_primal(0, stream);
-  rmm::device_uvector<f_t> initial_dual(0, stream);
-  f_t initial_step_size      = std::numeric_limits<f_t>::signaling_NaN();
-  f_t initial_primal_weight  = std::numeric_limits<f_t>::signaling_NaN();
-  i_t initial_pdlp_iteration = -1;
+  // Splitting path only supports un-expanded problems + per-climber variable-bound overrides.
+  cuopt_expects(problem.get_objective_coefficients().size() == static_cast<size_t>(n_vars),
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path requires un-expanded objective_coefficients "
+                "(size == n_variables). Set fixed_batch_size and pre-expand on the "
+                "optimization_problem_t to use the fixed path for per-climber problem data.");
+  cuopt_expects(problem.get_constraint_lower_bounds().size() == static_cast<size_t>(n_constraints),
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path requires un-expanded constraint_lower_bounds "
+                "(size == n_constraints).");
+  cuopt_expects(problem.get_constraint_upper_bounds().size() == static_cast<size_t>(n_constraints),
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path requires un-expanded constraint_upper_bounds "
+                "(size == n_constraints).");
+  cuopt_expects(problem.get_batch_objective_offsets().size() == 0,
+                error_type_t::ValidationError,
+                "run_batch_pdlp splitting path does not support per-climber objective offsets. "
+                "Use the fixed path (set fixed_batch_size) instead.");
 
   cuopt_assert(settings.new_bounds.size() > 0, "Batch size should be greater than 0");
-  const size_t max_batch_size  = settings.new_bounds.size();
+  const size_t max_batch_size  = new_bounds_batch_size(settings.new_bounds);
   size_t memory_max_batch_size = max_batch_size;
+  validate_splitting_new_bounds(settings.new_bounds, max_batch_size);
 
-  // Check if we don't hit the limit using max_batch_size
   const bool collect_solutions = settings.generate_batch_primal_dual_solution;
+  // Strong branching never expands per-climber objectives or constraint bounds.
   const double memory_estimate =
-    batch_pdlp_memory_estimator(problem, max_batch_size, collect_solutions);
+    batch_pdlp_memory_estimator(problem,
+                                max_batch_size,
+                                /*per_climber_objectives=*/false,
+                                /*per_climber_constraint_bounds=*/false,
+                                collect_solutions);
   size_t st_free_mem, st_total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&st_free_mem, &st_total_mem));
   const double free_mem  = static_cast<double>(st_free_mem);
@@ -948,25 +1251,17 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   std::cout << "Total memory: " << total_mem << std::endl;
 #endif
 
+  bool use_optimal_batch_size = false;
+  // If the memory estimate is too high, we need to use the optimal batch size heuristic
   if (memory_estimate > free_mem) {
     use_optimal_batch_size = true;
-    // Decrement batch size iteratively until we find a batch size that fits
-    while (memory_max_batch_size > 1) {
-      const double memory_estimate =
-        batch_pdlp_memory_estimator(problem, memory_max_batch_size, collect_solutions);
-      if (memory_estimate <= free_mem) { break; }
-#ifdef BATCH_VERBOSE_MODE
-      std::cout << "Memory estimate: " << memory_estimate << std::endl;
-      std::cout << "Memory max batch size: " << memory_max_batch_size << std::endl;
-      std::cout << "Free memory: " << free_mem << std::endl;
-      std::cout << "Total memory: " << total_mem << std::endl;
-      std::cout << "--------------------------------" << std::endl;
-#endif
-      memory_max_batch_size--;
-    }
-    const double min_estimate =
-      batch_pdlp_memory_estimator(problem, memory_max_batch_size, collect_solutions);
-    if (min_estimate > free_mem) {
+    memory_max_batch_size  = max_memory_batch_size(problem,
+                                                  /*per_climber_objectives=*/false,
+                                                  /*per_climber_constraint_bounds=*/false,
+                                                  collect_solutions,
+                                                  memory_max_batch_size);
+    // Can't even fit one PDLP
+    if (memory_max_batch_size == 0) {
       return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
                                                        stream);
     }
@@ -975,38 +1270,9 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
   size_t optimal_batch_size = use_optimal_batch_size
                                 ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
                                 : max_batch_size;
-  if (settings.sub_batch_size > 0) { optimal_batch_size = settings.sub_batch_size; }
+  if (settings.fixed_batch_size > 0) { optimal_batch_size = settings.fixed_batch_size; }
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
                "Optimal batch size should be between 1 and max batch size");
-
-  const bool warm_start_from_settings = settings.has_initial_primal_solution() ||
-                                        settings.has_initial_dual_solution() ||
-                                        settings.get_initial_step_size().has_value() ||
-                                        settings.get_initial_primal_weight().has_value() ||
-                                        settings.get_initial_pdlp_iteration().has_value();
-
-  if (warm_start_from_settings) {
-#ifdef BATCH_VERBOSE_MODE
-    std::cout << "Using warm start from settings" << std::endl;
-#endif
-    if (settings.has_initial_primal_solution() && pdlp_primal_dual_init) {
-      initial_primal = rmm::device_uvector<f_t>(settings.get_initial_primal_solution(),
-                                                settings.get_initial_primal_solution().stream());
-    }
-    if (settings.has_initial_dual_solution() && pdlp_primal_dual_init) {
-      initial_dual = rmm::device_uvector<f_t>(settings.get_initial_dual_solution(),
-                                              settings.get_initial_dual_solution().stream());
-    }
-    if (settings.get_initial_step_size().has_value() && pdlp_primal_dual_init) {
-      initial_step_size = *settings.get_initial_step_size();
-    }
-    if (settings.get_initial_primal_weight().has_value() && primal_weight_init) {
-      initial_primal_weight = *settings.get_initial_primal_weight();
-    }
-    if (settings.get_initial_pdlp_iteration().has_value() && use_initial_pdlp_iterations) {
-      initial_pdlp_iteration = *settings.get_initial_pdlp_iteration();
-    }
-  }
 
   rmm::device_uvector<f_t> full_primal_solution(
     (collect_solutions) ? problem.get_n_variables() * max_batch_size : 0, stream);
@@ -1020,47 +1286,35 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
     full_info;
   std::vector<pdlp_termination_status_t> full_status;
 
-  pdlp_solver_settings_t<i_t, f_t> batch_settings     = settings;
-  const auto original_new_bounds                      = batch_settings.new_bounds;
-  batch_settings.method                               = cuopt::linear_programming::method_t::PDLP;
-  batch_settings.presolver                            = presolver_t::None;
-  batch_settings.pdlp_solver_mode                     = pdlp_solver_mode_t::Stable3;
-  batch_settings.detect_infeasibility                 = false;
-  batch_settings.iteration_limit                      = batch_iteration_limit;
-  batch_settings.inside_mip                           = true;
-  batch_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
-  batch_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
-  batch_settings.tolerances.absolute_primal_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;
-  batch_settings.tolerances.absolute_gap_tolerance    = pdlp_tolerance;
-  batch_settings.tolerances.relative_gap_tolerance    = pdlp_tolerance;
-  if (initial_primal.size() > 0) {
-    batch_settings.set_initial_primal_solution(
-      initial_primal.data(), initial_primal.size(), initial_primal.stream());
-  }
-  if (initial_dual.size() > 0) {
-    batch_settings.set_initial_dual_solution(
-      initial_dual.data(), initial_dual.size(), initial_dual.stream());
-  }
-  if (!std::isnan(initial_step_size)) { batch_settings.set_initial_step_size(initial_step_size); }
-  if (initial_pdlp_iteration != -1) {
-    batch_settings.set_initial_pdlp_iteration(initial_pdlp_iteration);
-  }
-  if (!std::isnan(initial_primal_weight)) {
-    batch_settings.set_initial_primal_weight(initial_primal_weight);
-  }
+  pdlp_solver_settings_t<i_t, f_t> batch_settings = settings;
+  const auto original_new_bounds                  = batch_settings.new_bounds;
+  apply_batch_settings_overrides(settings, batch_settings);
 
   for (size_t i = 0; i < max_batch_size; i += optimal_batch_size) {
     const size_t current_batch_size = std::min(optimal_batch_size, max_batch_size - i);
-    // Only take the new bounds from [i, i + current_batch_size)
-    batch_settings.new_bounds = std::vector<std::tuple<i_t, f_t, f_t>>(
-      original_new_bounds.begin() + i, original_new_bounds.begin() + i + current_batch_size);
+    batch_settings.new_bounds.clear();
+    for (size_t c = 0; c < current_batch_size; ++c) {
+      const auto& new_bound = original_new_bounds[i + c];
+      batch_settings.new_bounds.emplace_back(static_cast<i_t>(c),
+                                             std::get<1>(new_bound),
+                                             std::get<2>(new_bound),
+                                             std::get<3>(new_bound));
+    }
 
     if (!settings.shared_sb_solved.empty()) {
       batch_settings.shared_sb_solved = settings.shared_sb_solved.subspan(i, current_batch_size);
     }
 
-    auto sol = solve_lp(problem, batch_settings);
+    auto sol = solve_lp(problem,
+                        batch_settings,
+                        /*problem_checking=*/false,
+                        /*use_pdlp_solver_mode=*/true,
+                        /*is_batch_mode=*/true);
+
+    // solve_lp swallows cuopt::logic_error and surfaces it via error_status on the returned
+    // solution. If we kept aggregating, the final batched solution we build below would be
+    // constructed without forwarding that error_status, silently dropping the error
+    if (sol.get_error_status().get_error_type() != error_type_t::Success) { return sol; }
 
     if (collect_solutions) {
       raft::copy(full_primal_solution.data() + i * problem.get_n_variables(),
@@ -1094,9 +1348,58 @@ optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
 }
 
 template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
+  optimization_problem_t<i_t, f_t>& problem, pdlp_solver_settings_t<i_t, f_t> const& settings)
+{
+  validate_new_bounds(problem, settings);
+
+  // Fixed path: caller has pre-sized the batch (via fixed_batch_size) and pre-expanded any
+  // per-climber problem fields directly on the optimization_problem_t. One solve_lp, no memory
+  // heuristics.
+  if (settings.fixed_batch_size > 0) { return run_batch_pdlp_fixed(problem, settings); }
+  // Splitting path: strong-branching flow. Auto-picks batch size and sub-batches based on memory.
+  return run_batch_pdlp_splitting(problem, settings);
+}
+
+// At this stage, the problem shouldn't already be expanded
+// The results of this function should be used as the settings.fixed_batch_size, to expand the
+// problem fields and call run_batch_pdlp
+template <typename i_t, typename f_t>
+size_t compute_optimal_batch_size(const optimization_problem_t<i_t, f_t>& problem,
+                                  bool per_climber_objectives,
+                                  bool per_climber_constraint_bounds,
+                                  bool collect_solutions)
+{
+  // Find the maximum batch size that can be used without exceeding the free memory
+
+  // Since we decerement iteratively, we don't want to use std::numeric_limits<size_t>::max()
+  // Even if 20K fits in memory it will never be an optimal batch size,  it's just to have a
+  // reasonable upper bound
+  constexpr size_t max_batch_size    = 20000;
+  const size_t memory_max_batch_size = max_memory_batch_size(problem,
+                                                             per_climber_objectives,
+                                                             per_climber_constraint_bounds,
+                                                             collect_solutions,
+                                                             max_batch_size);
+#ifdef BATCH_VERBOSE_MODE
+  std::cout << "Memory max batch size: " << memory_max_batch_size << std::endl;
+#endif
+
+  // We now know the maximum batch size that can be used without exceeding the free memory
+  // Now find the optimal batch size [0, memory_max_batch_size]
+
+  const size_t optimal_batch_size = static_cast<size_t>(
+    detail::optimal_batch_size_handler(problem, static_cast<int>(memory_max_batch_size)));
+#ifdef BATCH_VERBOSE_MODE
+  std::cout << "Optimal batch size: " << optimal_batch_size << std::endl;
+#endif
+  return optimal_batch_size;
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_model,
   const std::vector<i_t>& fractional,
   const std::vector<f_t>& root_soln_x,
   pdlp_solver_settings_t<i_t, f_t> const& settings_const)
@@ -1112,15 +1415,16 @@ optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
 
   // Lower bounds can sometimes generate infeasible instances that we struggle to detect
   constexpr bool only_upper = false;
-  int batch_size            = only_upper ? fractional.size() : fractional.size() * 2;
 
   for (size_t i = 0; i < fractional.size(); ++i)
-    settings.new_bounds.push_back({fractional[i],
+    settings.new_bounds.push_back({static_cast<i_t>(i),
+                                   fractional[i],
                                    mps_model.get_variable_lower_bounds()[fractional[i]],
                                    std::floor(root_soln_x[i])});
   if (!only_upper) {
     for (size_t i = 0; i < fractional.size(); i++)
-      settings.new_bounds.push_back({fractional[i],
+      settings.new_bounds.push_back({static_cast<i_t>(i + fractional.size()),
+                                     fractional[i],
                                      std::ceil(root_soln_x[i]),
                                      mps_model.get_variable_upper_bounds()[fractional[i]]});
   }
@@ -1159,9 +1463,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Copy the settings so that we can set the concurrent halt pointer
   pdlp_solver_settings_t<i_t, f_t> settings_pdlp(settings);
 
-  // Set the concurrent halt pointer
-  global_concurrent_halt        = 0;
-  settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  // Use a local halt flag only when the caller did not provide one.
+  if (settings_pdlp.concurrent_halt == nullptr) {
+    global_concurrent_halt        = 0;
+    settings_pdlp.concurrent_halt = &global_concurrent_halt;
+  }
 
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
@@ -1184,12 +1490,20 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
   std::thread dual_simplex_thread;
+  std::exception_ptr dual_simplex_exception;
+  auto request_concurrent_halt = [&settings_pdlp]() {
+    if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
+  };
   if (!settings.inside_mip) {
-    dual_simplex_thread = std::thread(run_dual_simplex_thread<i_t, f_t>,
-                                      std::ref(dual_simplex_problem),
-                                      std::ref(settings_pdlp),
-                                      std::ref(sol_dual_simplex_ptr),
-                                      std::ref(timer));
+    dual_simplex_thread = std::thread([&]() {
+      try {
+        run_dual_simplex_thread<i_t, f_t>(
+          dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+      } catch (...) {
+        dual_simplex_exception = std::current_exception();
+        request_concurrent_halt();
+      }
+    });
   }
   // Create a thread for barrier.
   // The barrier handle is owned here so that its destructor runs on the
@@ -1199,25 +1513,28 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_barrier_ptr;
+  std::exception_ptr barrier_exception;
   auto barrier_thread = std::thread([&]() {
-    auto call_barrier_thread = [&]() {
-      rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-      barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
-      auto barrier_problem                 = dual_simplex_problem;
-      barrier_problem.handle_ptr           = barrier_handle_ptr.get();
+    try {
+      auto call_barrier_thread = [&]() {
+        rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+        barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
+        auto barrier_problem                 = dual_simplex_problem;
+        barrier_problem.handle_ptr           = barrier_handle_ptr.get();
 
-      run_barrier_thread<i_t, f_t>(std::ref(barrier_problem),
-                                   std::ref(settings_pdlp),
-                                   std::ref(sol_barrier_ptr),
-                                   std::ref(timer));
-    };
-    if (settings.num_gpus > 1) {
-      problem.handle_ptr->sync_stream();
-      raft::device_setter device_setter(1);  // Scoped variable
-      CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
-      call_barrier_thread();
-    } else {
-      call_barrier_thread();
+        run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
+      };
+      if (settings.num_gpus > 1) {
+        problem.handle_ptr->sync_stream();
+        raft::device_setter device_setter(1);  // Scoped variable
+        CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
+        call_barrier_thread();
+      } else {
+        call_barrier_thread();
+      }
+    } catch (...) {
+      barrier_exception = std::current_exception();
+      request_concurrent_halt();
     }
   });
 
@@ -1234,18 +1551,21 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   try {
     sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
   } catch (...) {
-    pdlp_exception                 = std::current_exception();
-    *settings_pdlp.concurrent_halt = 1;
-    std::rethrow_exception(pdlp_exception);
+    pdlp_exception = std::current_exception();
+    request_concurrent_halt();
   }
 
   // Wait for dual simplex thread to finish
-  if (!settings.inside_mip) { dual_simplex_thread.join(); }
+  if (dual_simplex_thread.joinable()) { dual_simplex_thread.join(); }
 
-  barrier_thread.join();
+  if (barrier_thread.joinable()) { barrier_thread.join(); }
   // At this point, it is safe to destroy the barrier context since we're outside of any PDLP graph
   // capture.
   barrier_handle_ptr.reset();
+
+  if (pdlp_exception) { std::rethrow_exception(pdlp_exception); }
+  if (dual_simplex_exception) { std::rethrow_exception(dual_simplex_exception); }
+  if (barrier_exception) { std::rethrow_exception(barrier_exception); }
 
   // copy the dual simplex solution to the device
   auto sol_dual_simplex =
@@ -1396,8 +1716,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       raft::common::nvtx::range fun_scope("Check problem representation");
       // This is required as user might forget to set some fields
       problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
-      // In batch PDLP for strong branching, the initial solutions will be by design out of bounds
-      if (settings.new_bounds.size() == 0)
+      // In batch PDLP for strong branching, the initial solutions will be by design out of bounds.
+      // Batch mode also disables this check: fixed_batch_size > 0 means the caller has already
+      // expanded per-climber fields on the problem, which would fail single-problem size checks.
+      if (settings.new_bounds.size() == 0 && settings.fixed_batch_size == 0)
         problem_checking_t<i_t, f_t>::check_initial_solution_representation(op_problem, settings);
     }
 
@@ -1416,6 +1738,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
                                                        op_problem.get_handle_ptr()->get_stream());
     }
+    validate_new_bounds(op_problem, settings);
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);
@@ -1606,7 +1929,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
 template <typename i_t, typename f_t>
 cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
-  raft::handle_t const* handle_ptr, const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model)
+  raft::handle_t const* handle_ptr,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& data_model)
 {
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
@@ -1641,11 +1965,10 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   }
   if (data_model.get_variable_types().size() != 0) {
     std::vector<var_t> enum_variable_types(data_model.get_variable_types().size());
-    std::transform(
-      data_model.get_variable_types().cbegin(),
-      data_model.get_variable_types().cend(),
-      enum_variable_types.begin(),
-      [](const auto val) -> var_t { return val == 'I' ? var_t::INTEGER : var_t::CONTINUOUS; });
+    std::transform(data_model.get_variable_types().cbegin(),
+                   data_model.get_variable_types().cend(),
+                   enum_variable_types.begin(),
+                   detail::char_to_var_type);
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 
@@ -1691,7 +2014,7 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode)
@@ -1786,51 +2109,60 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   return std::make_unique<gpu_lp_solution_t<i_t, f_t>>(std::move(gpu_solution));
 }
 
-#define INSTANTIATE(F_TYPE)                                                            \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                      \
-    optimization_problem_t<int, F_TYPE>& op_problem,                                   \
-    pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
-    bool problem_checking,                                                             \
-    bool use_pdlp_solver_mode,                                                         \
-    bool is_batch_mode);                                                               \
-                                                                                       \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                      \
-    raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,            \
-    pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
-    bool problem_checking,                                                             \
-    bool use_pdlp_solver_mode);                                                        \
-                                                                                       \
-  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(             \
-    cpu_optimization_problem_t<int, F_TYPE>&,                                          \
-    pdlp_solver_settings_t<int, F_TYPE> const&,                                        \
-    bool,                                                                              \
-    bool,                                                                              \
-    bool);                                                                             \
-                                                                                       \
-  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(             \
-    optimization_problem_interface_t<int, F_TYPE>*,                                    \
-    pdlp_solver_settings_t<int, F_TYPE> const&,                                        \
-    bool,                                                                              \
-    bool,                                                                              \
-    bool);                                                                             \
-                                                                                       \
-  template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(          \
-    detail::problem_t<int, F_TYPE>& problem,                                           \
-    pdlp_solver_settings_t<int, F_TYPE> const& settings,                               \
-    const timer_t& timer,                                                              \
-    bool is_batch_mode);                                                               \
-                                                                                       \
-  template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(              \
-    raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,            \
-    const std::vector<int>& fractional,                                                \
-    const std::vector<F_TYPE>& root_soln_x,                                            \
-    pdlp_solver_settings_t<int, F_TYPE> const& settings);                              \
-                                                                                       \
-  template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem( \
-    raft::handle_t const* handle_ptr,                                                  \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& data_model);               \
+#define INSTANTIATE(F_TYPE)                                                                      \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                                \
+    optimization_problem_t<int, F_TYPE>& op_problem,                                             \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
+    bool problem_checking,                                                                       \
+    bool use_pdlp_solver_mode,                                                                   \
+    bool is_batch_mode);                                                                         \
+                                                                                                 \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp(                                \
+    raft::handle_t const* handle_ptr,                                                            \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,          \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
+    bool problem_checking,                                                                       \
+    bool use_pdlp_solver_mode);                                                                  \
+                                                                                                 \
+  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(                       \
+    cpu_optimization_problem_t<int, F_TYPE>&,                                                    \
+    pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
+    bool,                                                                                        \
+    bool,                                                                                        \
+    bool);                                                                                       \
+                                                                                                 \
+  template std::unique_ptr<lp_solution_interface_t<int, F_TYPE>> solve_lp(                       \
+    optimization_problem_interface_t<int, F_TYPE>*,                                              \
+    pdlp_solver_settings_t<int, F_TYPE> const&,                                                  \
+    bool,                                                                                        \
+    bool,                                                                                        \
+    bool);                                                                                       \
+                                                                                                 \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(                    \
+    detail::problem_t<int, F_TYPE>& problem,                                                     \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
+    const timer_t& timer,                                                                        \
+    bool is_batch_mode);                                                                         \
+                                                                                                 \
+  template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(                        \
+    raft::handle_t const* handle_ptr,                                                            \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,          \
+    const std::vector<int>& fractional,                                                          \
+    const std::vector<F_TYPE>& root_soln_x,                                                      \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings);                                        \
+                                                                                                 \
+  template optimization_problem_solution_t<int, F_TYPE> run_batch_pdlp(                          \
+    optimization_problem_t<int, F_TYPE>& problem,                                                \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings);                                        \
+                                                                                                 \
+  template size_t compute_optimal_batch_size(const optimization_problem_t<int, F_TYPE>& problem, \
+                                             bool per_climber_objectives,                        \
+                                             bool per_climber_constraint_bounds,                 \
+                                             bool collect_solutions);                            \
+                                                                                                 \
+  template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(           \
+    raft::handle_t const* handle_ptr,                                                            \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& data_model);             \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT

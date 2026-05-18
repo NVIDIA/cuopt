@@ -3,7 +3,7 @@ Resources
 =====================
 
 
-`Sample Notebooks <https://github.com/NVIDIA/cuopt-examples/>`_
+`Sample Notebooks <https://github.com/NVIDIA/cuopt-examples>`_
 ----------------------------------------------------------------------------------
 
 
@@ -24,11 +24,11 @@ cuOpt Examples and Tutorials Videos
 ------------------------------------------------------------------------------------------------------------------------
 Please note that you need to choose a `Runtime` as `GPU` in order to run the notebooks.
 
-`File a Bug <https://github.com/NVIDIA/cuopt/issues>`_
------------------------------------------------------------------
+`File a Bug <https://github.com/NVIDIA/cuopt/issues/new?template=bug_report.md>`_
+---------------------------------------------------------------------------------
 
-`Join Devloper Forum <https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514>`_
--------------------------------------------------------------------------------------------------
+`Ask a Question <https://github.com/NVIDIA/cuopt/issues/new?template=submit-question.md>`_
+------------------------------------------------------------------------------------------
 
 `Blogs <https://developer.nvidia.com/blog/recent-posts/?products=cuOpt>`_
 ----------------------------------------------------------------------------

@@ -11,7 +11,6 @@ source rapids-init-pip
 
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
 CUOPT_SH_CLIENT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
 LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
@@ -20,7 +19,6 @@ LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" r
 # use these wheels for cuopt packages
 cat > "${PIP_CONSTRAINT}" <<EOF
 cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${CUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
-cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser-*.whl)
 cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client-*.whl)
 libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 EOF
@@ -38,7 +36,6 @@ rapids-pip-retry install \
     --prefer-binary \
     --constraint "${PIP_CONSTRAINT}" \
     --constraint "${PIP_CONSTRAINT}" \
-    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
@@ -63,20 +60,41 @@ cd -
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
+RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+export RAPIDS_TESTS_DIR
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
+EXITCODE=0
+FAILED_STEPS=()
+trap "EXITCODE=1" ERR
+set +e
+
 # Run CLI tests
-timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh
+timeout 10m bash ./python/libcuopt/libcuopt/tests/test_cli.sh || FAILED_STEPS+=("cuopt_cli")
 
 # Run Python tests
-
-# Due to race condition in certain cases UCX might not be able to cleanup properly, so we set the number of threads to 1
-export OMP_NUM_THREADS=1
-
-timeout 30m ./ci/run_cuopt_pytests.sh --verbose --capture=no
+timeout 30m ./ci/run_cuopt_pytests.sh \
+  --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt.xml" \
+  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt (wheel)")
 
 # run thirdparty integration tests for only nightly builds
 if [[ "${RAPIDS_BUILD_TYPE}" == "nightly" ]]; then
-    ./ci/thirdparty-testing/run_jump_tests.sh
-    ./ci/thirdparty-testing/run_cvxpy_tests.sh
-    ./ci/thirdparty-testing/run_pulp_tests.sh
-    ./ci/thirdparty-testing/run_pyomo_tests.sh
+    ./ci/thirdparty-testing/run_jump_tests.sh || FAILED_STEPS+=("thirdparty jump")
+    ./ci/thirdparty-testing/run_cvxpy_tests.sh || FAILED_STEPS+=("thirdparty cvxpy")
+    ./ci/thirdparty-testing/run_pulp_tests.sh || FAILED_STEPS+=("thirdparty pulp")
+    ./ci/thirdparty-testing/run_pyomo_tests.sh || FAILED_STEPS+=("thirdparty pyomo")
 fi
+
+# Generate nightly test report
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "wheel-python" --with-python-version
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
+
+exit ${EXITCODE}

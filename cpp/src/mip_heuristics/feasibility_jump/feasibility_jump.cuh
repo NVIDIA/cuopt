@@ -216,8 +216,6 @@ class fj_t {
     std::atomic<bool>& preemption_flag,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
-  bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                 f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
