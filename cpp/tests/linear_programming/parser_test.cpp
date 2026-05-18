@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -25,6 +26,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace cuopt::linear_programming::io {
@@ -1039,6 +1041,31 @@ TEST(qps_parser, test_qps_files)
 // MPS Round-Trip Tests (Read -> Write -> Read -> Compare)
 // ================================================================================================
 
+// RAII temp file path: builds a unique path under temp_directory_path() and
+// removes it on scope exit, so write/parse/compare can throw without leaking
+// the file and parallel test runs don't collide on a shared name. The file
+// is not created at construction; it appears when the writer writes to
+// `path()`.
+struct temp_file_t {
+  std::filesystem::path p;
+  explicit temp_file_t(const std::string& suffix)
+  {
+    static std::atomic<unsigned long> counter{0};
+    const auto pid = static_cast<unsigned long>(::getpid());
+    const auto n   = counter.fetch_add(1, std::memory_order_relaxed);
+    p              = std::filesystem::temp_directory_path() /
+        ("cuopt_test_" + std::to_string(pid) + "_" + std::to_string(n) + suffix);
+  }
+  ~temp_file_t()
+  {
+    std::error_code ec;
+    std::filesystem::remove(p, ec);
+  }
+  temp_file_t(const temp_file_t&)            = delete;
+  temp_file_t& operator=(const temp_file_t&) = delete;
+  std::string string() const { return p.string(); }
+};
+
 // Helper function to compare two data models
 template <typename i_t, typename f_t>
 void compare_data_models(const mps_data_model_t<i_t, f_t>& original,
@@ -1164,23 +1191,20 @@ TEST(mps_roundtrip, linear_programming_basic)
 {
   std::string input_file =
     cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/good-mps-1.mps";
-  std::string temp_file = "/tmp/mps_roundtrip_lp_test.mps";
+  temp_file_t temp_file(".mps");
 
   // Read original
   auto original = parse_mps<int, double>(input_file, true);
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
 
   // Compare
   compare_data_models(original, reloaded);
-
-  // Cleanup
-  std::filesystem::remove(temp_file);
 }
 
 TEST(mps_roundtrip, linear_programming_with_bounds)
@@ -1191,23 +1215,20 @@ TEST(mps_roundtrip, linear_programming_with_bounds)
 
   std::string input_file =
     cuopt::test::get_rapids_dataset_root_dir() + "/linear_programming/lp_model_with_var_bounds.mps";
-  std::string temp_file = "/tmp/mps_roundtrip_lp_bounds_test.mps";
+  temp_file_t temp_file(".mps");
 
   // Read original
   auto original = parse_mps<int, double>(input_file, false);
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
 
   // Compare
   compare_data_models(original, reloaded);
-
-  // Cleanup
-  std::filesystem::remove(temp_file);
 }
 
 TEST(mps_roundtrip, quadratic_programming_qp_test_1)
@@ -1218,7 +1239,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
 
   std::string input_file =
     cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps";
-  std::string temp_file = "/tmp/mps_roundtrip_qp_test_1.mps";
+  temp_file_t temp_file(".mps");
 
   // Read original
   auto original = parse_mps<int, double>(input_file, false);
@@ -1226,17 +1247,14 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
   compare_data_models(original, reloaded);
-
-  // Cleanup
-  std::filesystem::remove(temp_file);
 }
 
 TEST(mps_roundtrip, quadratic_programming_qp_test_2)
@@ -1247,7 +1265,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
 
   std::string input_file =
     cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps";
-  std::string temp_file = "/tmp/mps_roundtrip_qp_test_2.mps";
+  temp_file_t temp_file(".mps");
 
   // Read original
   auto original = parse_mps<int, double>(input_file, false);
@@ -1255,17 +1273,14 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
   compare_data_models(original, reloaded);
-
-  // Cleanup
-  std::filesystem::remove(temp_file);
 }
 
 // ================================================================================================
@@ -1278,50 +1293,44 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
 
 TEST_F(good_mps_1_test, lp_roundtrip)
 {
-  std::string temp_file = "/tmp/lp_roundtrip_lp_basic.mps";
+  temp_file_t temp_file(".mps");
 
   auto original = parse_lp_file("linear_programming/good-mps-1.lp");
 
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
-
-  std::filesystem::remove(temp_file);
 }
 
 TEST_F(up_low_bounds_test, lp_roundtrip)
 {
-  std::string temp_file = "/tmp/lp_roundtrip_lp_bounds.mps";
+  temp_file_t temp_file(".mps");
 
   auto original = parse_lp_file("linear_programming/lp_model_with_var_bounds.lp");
 
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
-
-  std::filesystem::remove(temp_file);
 }
 
 TEST_F(mip_with_bounds_test, lp_roundtrip)
 {
-  std::string temp_file = "/tmp/lp_roundtrip_mip_basic.mps";
+  temp_file_t temp_file(".mps");
 
   auto original = parse_lp_file("mixed_integer_programming/good-mip-mps-1.lp");
 
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
-
-  std::filesystem::remove(temp_file);
 }
 
 // ================================================================================================
@@ -2489,27 +2498,15 @@ End
 namespace {
 
 // Writes `content` to a temp file with the given suffix, parses it via
-// parse_problem, removes the file, and returns the resulting model.
+// parse_problem, and returns the resulting model. temp_file_t removes the
+// file on every scope exit (including when parse_problem throws).
 mps_data_model_t<int, double> dispatch_parse(const std::string& content, const std::string& suffix)
 {
-  std::filesystem::path tmp = std::filesystem::temp_directory_path() /
-                              (std::string{"cuopt_dispatch_test_"} + std::to_string(::getpid()) +
-                               "_" + std::to_string(std::rand()) + suffix);
+  temp_file_t tmp(suffix);
   {
-    std::ofstream out(tmp);
+    std::ofstream out(tmp.string());
     out << content;
   }
-  // Scope guard: remove the temp file even if parse_problem throws.
-  // std::error_code is passed so the destructor does not throw during stack
-  // unwinding when a parse exception is propagating.
-  struct cleanup_t {
-    const std::filesystem::path& path;
-    ~cleanup_t()
-    {
-      std::error_code ec;
-      std::filesystem::remove(path, ec);
-    }
-  } cleanup{tmp};
   return parse_problem<int, double>(tmp.string());
 }
 
@@ -2881,24 +2878,21 @@ TEST(mps_roundtrip, qcqp_p0033_qc1)
 {
   if (!file_exists("qcqp/p0033_qc1.mps")) { GTEST_SKIP() << "Test file not found"; }
 
-  std::string input_file  = cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps";
-  std::string temp_file   = "/tmp/mps_roundtrip_p0033_qc1.mps";
-  std::string temp_file_2 = "/tmp/mps_roundtrip_p0033_qc1_r2.mps";
+  std::string input_file = cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps";
+  temp_file_t temp_file(".mps");
+  temp_file_t temp_file_2(".mps");
 
   auto original = parse_mps<int, double>(input_file, false);
   ASSERT_TRUE(original.has_quadratic_objective());
   ASSERT_TRUE(original.has_quadratic_constraints());
 
   mps_writer_t<int, double> writer(original);
-  writer.write(temp_file);
+  writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file, false);
+  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
   mps_writer_t<int, double> writer_r2(reloaded);
-  writer_r2.write(temp_file_2);
-  auto reloaded_2 = parse_mps<int, double>(temp_file_2, false);
+  writer_r2.write(temp_file_2.string());
+  auto reloaded_2 = parse_mps<int, double>(temp_file_2.string(), false);
   compare_data_models(reloaded, reloaded_2);
-
-  std::filesystem::remove(temp_file);
-  std::filesystem::remove(temp_file_2);
 }
 }  // namespace cuopt::linear_programming::io
