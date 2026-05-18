@@ -110,8 +110,8 @@ def test_quadratic_constraint_api():
         quadratic_col_indices=np.array([0, 1, 2], dtype=np.int32),
     )
     qcs = dm.get_quadratic_constraints()
-    assert qcs[1]["constraint_row_type"] == "L"
-    assert qcs[1]["quadratic_values"][0] == pytest.approx(-1.0)
+    assert qcs[1]["constraint_row_type"] == "G"
+    assert qcs[1]["quadratic_values"][0] == pytest.approx(1.0)
     with pytest.raises(ValueError, match="Equality quadratic"):
         dm.add_quadratic_constraint(
             constraint_row_index=2,
@@ -140,7 +140,7 @@ def test_quadratic_constraint_problem_solve():
 
 
 def test_quadratic_constraint_problem_solve_ge_sense():
-    """>= quadratic rows normalize via DataModel on export."""
+    """>= quadratic rows are converted to <= form when building SOCP for the barrier."""
     prob = Problem()
     x0 = prob.addVariable(lb=0.0, name="x0")
     x1 = prob.addVariable(lb=0.0, name="x1")
@@ -153,7 +153,7 @@ def test_quadratic_constraint_problem_solve_ge_sense():
 
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1.0, rel=1e-3, abs=1e-3)
-    assert prob.model.get_quadratic_constraints()[0]["constraint_row_type"] == "L"
+    assert prob.model.get_quadratic_constraints()[0]["constraint_row_type"] == "G"
 
 
 def test_rotated_second_order_cone_min_tail():

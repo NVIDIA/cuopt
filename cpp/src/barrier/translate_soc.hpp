@@ -25,6 +25,21 @@
 
 namespace cuopt::linear_programming::detail {
 
+/** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
+template <typename qc_t>
+void normalize_quadratic_constraint_g_to_l(qc_t& qc)
+{
+  if (qc.constraint_row_type != 'G') { return; }
+  for (auto& v : qc.linear_values) {
+    v = -v;
+  }
+  for (auto& v : qc.quadratic_values) {
+    v = -v;
+  }
+  qc.rhs_value           = -qc.rhs_value;
+  qc.constraint_row_type = 'L';
+}
+
 /**
  * @brief Expand QCMATRIX second-order cone (and rotated / affine variants) into the
  *        canonical slack form expected by the simplex/PDLP path: extra variables, equality
@@ -96,10 +111,15 @@ void apply_soc_qcmatrix_conversion_for_simplex(
   std::vector<f_t> qc_soc_uniform_scale(qcs.size(), f_t(1));
 
   for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
-    const auto& qc = qcs[qc_i];
-    cuopt_expects(qc.constraint_row_type == 'L',
+    auto qc = qcs[qc_i];
+    cuopt_expects(qc.constraint_row_type != 'E',
                   error_type_t::ValidationError,
-                  "Only <= quadratic constraints are supported for SOC conversion");
+                  "Equality quadratic constraints are not supported for SOC conversion");
+    cuopt_expects(qc.constraint_row_type == 'L' || qc.constraint_row_type == 'G',
+                  error_type_t::ValidationError,
+                  "Quadratic constraint '%s' ROWS type must be 'L' (<=) or 'G' (>=)",
+                  qc.constraint_row_name.c_str());
+    normalize_quadratic_constraint_g_to_l(qc);
     cuopt_expects(qc.rhs_value < tol && qc.rhs_value > -tol,
                   error_type_t::ValidationError,
                   "SOC conversion currently requires rhs = 0 for quadratic constraints");

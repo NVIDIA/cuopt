@@ -155,10 +155,9 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
                      error_type_t::ValidationError,
                      "constraint_row_index must be non-negative");
 
-  mps_parser_expects(constraint_row_type == 'L',
+  mps_parser_expects(constraint_row_type == 'L' || constraint_row_type == 'G',
                      error_type_t::ValidationError,
-                     "Quadratic constraint ROWS type must be 'L' (less-or-equal); got '%c'. "
-                     "Only 'L' is supported for convex quadratic constraints.",
+                     "Quadratic constraint ROWS type must be 'L' (<=) or 'G' (>=); got '%c'.",
                      constraint_row_type);
 
   mps_parser_expects(linear_values.size() == linear_indices.size(),

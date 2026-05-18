@@ -7,6 +7,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
+from libc.stddef cimport size_t
 from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector

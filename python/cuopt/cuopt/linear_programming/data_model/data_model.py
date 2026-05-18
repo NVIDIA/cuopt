@@ -344,8 +344,9 @@ class DataModel(data_model_wrapper.DataModel):
             ``linear^T x + x^T Q x {sense} rhs_value``.
         sense : str, optional
             MPS row type: ``'L'`` (default, ``<=``) or ``'G'`` (``>=``), same values as
-            :meth:`set_row_types`. ``'G'`` is converted to ``'L'`` by negating coefficients and
-            rhs. Equality (``'E'``) is not supported.
+            :meth:`set_row_types`. Rows are stored with the given sense; ``'G'`` is converted to
+            ``'L'`` when the barrier solver builds second-order cones from QCMATRIX data.
+            Equality (``'E'``) is not supported.
 
         Notes
         -----
@@ -364,13 +365,6 @@ class DataModel(data_model_wrapper.DataModel):
                 f"Invalid sense {sense!r}; use 'L' or 'G' like set_row_types "
                 "(equality 'E' is not supported)."
             )
-        if sense == "G":
-            if linear_values is not None:
-                linear_values = -np.asarray(linear_values, dtype=np.float64)
-            if quadratic_values is not None:
-                quadratic_values = -np.asarray(quadratic_values, dtype=np.float64)
-            rhs_value = -float(rhs_value)
-            sense = "L"
         super().add_quadratic_constraint(
             constraint_row_index,
             constraint_row_name,

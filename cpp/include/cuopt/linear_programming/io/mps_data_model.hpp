@@ -263,8 +263,9 @@ class mps_data_model_t {
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param quadratic_values, quadratic_row_indices, quadratic_col_indices COO triplets; same
    *        length; may all be empty if Q is empty. Stored sorted by (row, col).
-   * @param constraint_row_type MPS ROWS type; must be 'L'. 'G' and 'E' quadratic rows are not
-   *        supported.
+   * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
+   *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
+   *        not supported.
    */
   void append_quadratic_constraint(i_t constraint_row_index,
                                    const std::string& constraint_row_name,

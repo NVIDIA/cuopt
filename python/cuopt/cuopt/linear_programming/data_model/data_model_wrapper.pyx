@@ -127,11 +127,14 @@ cdef class DataModel:
                 "quadratic_col_indices must have the same length"
             )
         row_type = str(constraint_row_type)
-        if row_type != "L":
+        if row_type == "E":
             raise ValueError(
-                "constraint_row_type must be 'L' for quadratic constraints; "
-                "use DataModel.add_quadratic_constraint(sense='G') to normalize "
-                "'>=' rows."
+                "Equality quadratic constraints are not supported; use two inequality "
+                "constraints or build the model with Problem.addQuadraticConstraint."
+            )
+        if row_type not in ("L", "G"):
+            raise ValueError(
+                f"Invalid constraint_row_type {row_type!r}; use 'L' or 'G' like set_row_types."
             )
         self.quadratic_constraints.append(
             {
