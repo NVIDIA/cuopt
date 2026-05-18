@@ -1338,9 +1338,12 @@ class Constraint:
 
     def compute_slack(self):
         # Computes the constraint Slack in the current solution.
-        lhs = 0.0
-        for var in self.vars:
-            lhs += var.Value * self.vindex_coeff_dict[var.index]
+        index_to_var = {var.index: var for var in self.vars}
+        lhs = sum(
+            index_to_var[v_idx].Value * coeff
+            for v_idx, coeff in self.vindex_coeff_dict.items()
+        )
+        
         return self.RHS - lhs
 
 
