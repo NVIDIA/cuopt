@@ -125,7 +125,12 @@ cuopt_int_t solve_mps_file(const char* filename)
 
     // Get and print solution variables
     solution_values =
-      (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+      (cuopt_float_t*)malloc((size_t)num_variables * sizeof(cuopt_float_t));
+    if (solution_values == NULL) {
+      printf("Error allocating solution buffer\n");
+      status = CUOPT_OUT_OF_MEMORY;
+      goto DONE;
+    }
     status = cuOptGetPrimalSolution(solution, solution_values);
     if (status != CUOPT_SUCCESS) {
       printf("Error getting solution values: %d\n", status);
