@@ -36,24 +36,11 @@ defaults:
   run:
     shell: bash
 
-permissions:
-  actions: read
-  checks: none
-  contents: read
-  deployments: none
-  discussions: none
-  id-token: write
-  issues: none
-  packages: read
-  pages: none
-  pull-requests: read
-  repository-projects: none
-  security-events: none
-  statuses: none
-
 jobs:
   compute-matrix:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container:
       image: rapidsai/ci-conda:26.06-latest
     outputs:
@@ -111,6 +98,8 @@ jobs:
   build-images:
     name: Build images
     needs: compute-matrix
+    permissions:
+      contents: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix: ${{ fromJson(needs.compute-matrix.outputs.MATRIX) }}
@@ -127,6 +116,8 @@ jobs:
   build-cuopt-multiarch-manifest:
     name: Build cuopt multiarch manifest
     needs: [build-images, compute-matrix]
+    permissions:
+      contents: read
     strategy:
       matrix:
         CUDA_VER: ${{ fromJson(needs.compute-matrix.outputs.MATRIX).cuda_ver }}
@@ -171,6 +162,8 @@ jobs:
   test-images:
     name: Test images
     needs: [build-cuopt-multiarch-manifest, compute-matrix]
+    permissions:
+      contents: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
     strategy:
       matrix:
