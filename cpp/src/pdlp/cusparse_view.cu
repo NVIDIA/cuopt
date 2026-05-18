@@ -153,87 +153,6 @@ cusparse_dn_mat_descr_wrapper_t<f_t>::operator cusparseDnMatDescr_t() const
   return descr_;
 }
 
-#if CUDA_VER_13_2_UP
-cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t()
-  : descr_(nullptr), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_descr_wrapper_t::~cusparse_spmvop_descr_wrapper_t()
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyDescr(descr_)); }
-}
-
-cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t(
-  const cusparse_spmvop_descr_wrapper_t& other)
-  : descr_(other.descr_), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_descr_wrapper_t& cusparse_spmvop_descr_wrapper_t::operator=(
-  cusparse_spmvop_descr_wrapper_t&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyDescr(descr_)); }
-  descr_                  = other.descr_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
-                                             cusparseOperation_t opA,
-                                             cusparseSpMatDescr_t matA,
-                                             cusparseDnVecDescr_t vecX,
-                                             cusparseDnVecDescr_t vecY,
-                                             cusparseDnVecDescr_t vecZ,
-                                             cudaDataType computeType,
-                                             rmm::device_uvector<uint8_t>& buffer)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyDescr(descr_)); }
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createDescr(
-    handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
-  need_destruction_ = true;
-}
-
-cusparse_spmvop_descr_wrapper_t::operator cusparseSpMVOpDescr_t() const { return descr_; }
-
-cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t()
-  : plan_(nullptr), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_plan_wrapper_t::~cusparse_spmvop_plan_wrapper_t()
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseSpMVOp_destroyPlan(plan_)); }
-}
-
-cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t(
-  const cusparse_spmvop_plan_wrapper_t& other)
-  : plan_(other.plan_), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_plan_wrapper_t& cusparse_spmvop_plan_wrapper_t::operator=(
-  cusparse_spmvop_plan_wrapper_t&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyPlan(plan_)); }
-  plan_                   = other.plan_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-void cusparse_spmvop_plan_wrapper_t::create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseSpMVOp_destroyPlan(plan_)); }
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_createPlan(handle, descr, &plan_, nullptr, 0));
-  need_destruction_ = true;
-}
-
-cusparse_spmvop_plan_wrapper_t::operator cusparseSpMVOpPlan_t() const { return plan_; }
-
-#endif
-
 #if CUDA_VER_12_4_UP
 struct dynamic_load_runtime {
   static void* get_cusparse_runtime_handle()
@@ -348,6 +267,153 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
   CUSPARSE_CHECK(cusparseSetStream(handle, stream));
   RAFT_CUSPARSE_TRY(cusparseSpMM_preprocess(
     handle, opA, opB, alpha, matA, matB, beta, matC, float_type, alg, externalBuffer));
+}
+#endif
+
+#if CUDA_VER_13_2_UP
+// SpMVOp symbols. resolved at runtime via dlsym
+using cusparseSpMVOp_destroyDescr_sig = cusparse_sig<cusparseSpMVOpDescr_t>;
+using cusparseSpMVOp_destroyPlan_sig  = cusparse_sig<cusparseSpMVOpPlan_t>;
+using cusparseSpMVOp_bufferSize_sig   = cusparse_sig<cusparseHandle_t,
+                                                     cusparseOperation_t,
+                                                     cusparseSpMatDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cudaDataType,
+                                                     size_t*>;
+using cusparseSpMVOp_createDescr_sig  = cusparse_sig<cusparseHandle_t,
+                                                     cusparseSpMVOpDescr_t*,
+                                                     cusparseOperation_t,
+                                                     cusparseSpMatDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cusparseDnVecDescr_t,
+                                                     cudaDataType,
+                                                     void*>;
+using cusparseSpMVOp_createPlan_sig =
+  cusparse_sig<cusparseHandle_t, cusparseSpMVOpDescr_t, cusparseSpMVOpPlan_t*, char*, size_t>;
+using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
+                                        cusparseSpMVOpPlan_t,
+                                        const void*,
+                                        const void*,
+                                        cusparseDnVecDescr_t,
+                                        cusparseDnVecDescr_t,
+                                        cusparseDnVecDescr_t>;
+
+cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t()
+  : descr_(nullptr), need_destruction_(false)
+{
+}
+
+cusparse_spmvop_descr_wrapper_t::~cusparse_spmvop_descr_wrapper_t()
+{
+  if (!need_destruction_) { return; }
+  static const auto destroy =
+    dynamic_load_runtime::function<cusparseSpMVOp_destroyDescr_sig>("cusparseSpMVOp_destroyDescr");
+  RAFT_CUSPARSE_TRY_NO_THROW((*destroy)(descr_));
+}
+
+cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t(
+  const cusparse_spmvop_descr_wrapper_t& other)
+  : descr_(other.descr_), need_destruction_(false)
+{
+}
+
+cusparse_spmvop_descr_wrapper_t& cusparse_spmvop_descr_wrapper_t::operator=(
+  cusparse_spmvop_descr_wrapper_t&& other)
+{
+  if (need_destruction_) {
+    static const auto destroy = dynamic_load_runtime::function<cusparseSpMVOp_destroyDescr_sig>(
+      "cusparseSpMVOp_destroyDescr");
+    RAFT_CUSPARSE_TRY((*destroy)(descr_));
+  }
+  descr_                  = other.descr_;
+  need_destruction_       = other.need_destruction_;
+  other.need_destruction_ = false;
+  return *this;
+}
+
+void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
+                                             cusparseOperation_t opA,
+                                             cusparseSpMatDescr_t matA,
+                                             cusparseDnVecDescr_t vecX,
+                                             cusparseDnVecDescr_t vecY,
+                                             cusparseDnVecDescr_t vecZ,
+                                             cudaDataType computeType,
+                                             rmm::device_uvector<uint8_t>& buffer)
+{
+  static const auto destroy =
+    dynamic_load_runtime::function<cusparseSpMVOp_destroyDescr_sig>("cusparseSpMVOp_destroyDescr");
+  static const auto create =
+    dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
+  if (need_destruction_) { RAFT_CUSPARSE_TRY((*destroy)(descr_)); }
+  RAFT_CUSPARSE_TRY(
+    (*create)(handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
+  need_destruction_ = true;
+}
+
+cusparse_spmvop_descr_wrapper_t::operator cusparseSpMVOpDescr_t() const { return descr_; }
+
+cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t()
+  : plan_(nullptr), need_destruction_(false)
+{
+}
+
+cusparse_spmvop_plan_wrapper_t::~cusparse_spmvop_plan_wrapper_t()
+{
+  if (!need_destruction_) { return; }
+  static const auto destroy =
+    dynamic_load_runtime::function<cusparseSpMVOp_destroyPlan_sig>("cusparseSpMVOp_destroyPlan");
+  RAFT_CUSPARSE_TRY_NO_THROW((*destroy)(plan_));
+}
+
+cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t(
+  const cusparse_spmvop_plan_wrapper_t& other)
+  : plan_(other.plan_), need_destruction_(false)
+{
+}
+
+cusparse_spmvop_plan_wrapper_t& cusparse_spmvop_plan_wrapper_t::operator=(
+  cusparse_spmvop_plan_wrapper_t&& other)
+{
+  if (need_destruction_) {
+    static const auto destroy =
+      dynamic_load_runtime::function<cusparseSpMVOp_destroyPlan_sig>("cusparseSpMVOp_destroyPlan");
+    RAFT_CUSPARSE_TRY((*destroy)(plan_));
+  }
+  plan_                   = other.plan_;
+  need_destruction_       = other.need_destruction_;
+  other.need_destruction_ = false;
+  return *this;
+}
+
+void cusparse_spmvop_plan_wrapper_t::create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr)
+{
+  static const auto destroy =
+    dynamic_load_runtime::function<cusparseSpMVOp_destroyPlan_sig>("cusparseSpMVOp_destroyPlan");
+  static const auto create =
+    dynamic_load_runtime::function<cusparseSpMVOp_createPlan_sig>("cusparseSpMVOp_createPlan");
+  if (need_destruction_) { RAFT_CUSPARSE_TRY((*destroy)(plan_)); }
+  // cuOpt does not supply user-provided LTO IR; pass nullptr/0 so cuSPARSE JITs internally.
+  RAFT_CUSPARSE_TRY((*create)(handle, descr, &plan_, /*ltoIRBuf=*/nullptr, /*ltoIRSize=*/0));
+  need_destruction_ = true;
+}
+
+cusparse_spmvop_plan_wrapper_t::operator cusparseSpMVOpPlan_t() const { return plan_; }
+
+void cusparse_spmvop_run(cusparseHandle_t handle,
+                         cusparseSpMVOpPlan_t plan,
+                         const void* alpha,
+                         const void* beta,
+                         cusparseDnVecDescr_t vecX,
+                         cusparseDnVecDescr_t vecY,
+                         cusparseDnVecDescr_t vecZ,
+                         cudaStream_t stream)
+{
+  static const auto func = dynamic_load_runtime::function<cusparseSpMVOp_sig>("cusparseSpMVOp");
+  RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
+  RAFT_CUSPARSE_TRY((*func)(handle, plan, alpha, beta, vecX, vecY, vecZ));
 }
 #endif
 
@@ -1275,10 +1341,8 @@ bool is_cusparse_runtime_spmvop_supported()
 {
 #if CUDA_VER_13_2_UP
   // Probe the runtimme to ensure cusparseSpMVOp is supported
-  static const bool supported = []() {
-    dlerror();
-    return dlsym(RTLD_DEFAULT, "cusparseSpMVOp") != nullptr;
-  }();
+  static const bool supported =
+    dynamic_load_runtime::function<cusparseSpMVOp_sig>("cusparseSpMVOp").has_value();
   return supported;
 #else
   return false;
@@ -1291,17 +1355,19 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
 #if CUDA_VER_13_2_UP
   if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
+  static const auto buffer_size =
+    dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_sig>("cusparseSpMVOp_bufferSize");
   CUSPARSE_CHECK(cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
-  RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
-                                              CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                              A_T,
-                                              dual_solution,
-                                              current_AtY,
-                                              current_AtY,
-                                              CUDA_R_64F,
-                                              &buffer_size_transpose));
+  RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
+                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                   A_T,
+                                   dual_solution,
+                                   current_AtY,
+                                   current_AtY,
+                                   CUDA_R_64F,
+                                   &buffer_size_transpose));
   buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
 
   spmv_op_descr_A_t_.create(handle_ptr_->get_cusparse_handle(),
@@ -1318,14 +1384,14 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
   // Only prepare buffers for A_x if we are using reflected_halpern
   if (is_reflected) {
     size_t buffer_size_non_transpose = 0;
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp_bufferSize(handle_ptr_->get_cusparse_handle(),
-                                                CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                                A,
-                                                reflected_primal_solution,
-                                                dual_gradient,
-                                                dual_gradient,
-                                                CUDA_R_64F,
-                                                &buffer_size_non_transpose));
+    RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
+                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                     A,
+                                     reflected_primal_solution,
+                                     dual_gradient,
+                                     dual_gradient,
+                                     CUDA_R_64F,
+                                     &buffer_size_non_transpose));
     buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
 
     spmv_op_descr_A_.create(handle_ptr_->get_cusparse_handle(),

@@ -332,4 +332,18 @@ bool is_cusparse_runtime_mixed_precision_supported();
 // False if cuda version < 13.2 or runtime cuSPARSE does not export SpMVOp symbols. True otherwise.
 bool is_cusparse_runtime_spmvop_supported();
 
+#if CUDA_VER_13_2_UP
+// Dispatches to the runtime cusparseSpMVOp via dlsym so callers (e.g., pdhg.cu) never
+// reference the symbol statically. Caller must have verified
+// is_cusparse_runtime_spmvop_supported().
+void cusparse_spmvop_run(cusparseHandle_t handle,
+                         cusparseSpMVOpPlan_t plan,
+                         const void* alpha,
+                         const void* beta,
+                         cusparseDnVecDescr_t vecX,
+                         cusparseDnVecDescr_t vecY,
+                         cusparseDnVecDescr_t vecZ,
+                         cudaStream_t stream);
+#endif
+
 }  // namespace cuopt::linear_programming::detail

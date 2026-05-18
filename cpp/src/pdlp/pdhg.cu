@@ -449,14 +449,14 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
 {
 #if CUDA_VER_13_2_UP
   if (is_cusparse_runtime_spmvop_supported()) {
-    RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
-                                     cusparse_view_.spmv_op_plan_A_t_,
-                                     reusable_device_scalar_value_1_.data(),
-                                     reusable_device_scalar_value_0_.data(),
-                                     cusparse_view_.dual_solution,
-                                     cusparse_view_.current_AtY,
-                                     cusparse_view_.current_AtY));
+    cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
+                        cusparse_view_.spmv_op_plan_A_t_,
+                        reusable_device_scalar_value_1_.data(),
+                        reusable_device_scalar_value_0_.data(),
+                        cusparse_view_.dual_solution,
+                        cusparse_view_.current_AtY,
+                        cusparse_view_.current_AtY,
+                        stream_view_.value());
     return;
   }
 #endif
@@ -477,14 +477,14 @@ void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
 {
 #if CUDA_VER_13_2_UP
   if (is_cusparse_runtime_spmvop_supported()) {
-    RAFT_CUSPARSE_TRY(cusparseSetStream(handle_ptr_->get_cusparse_handle(), stream_view_.value()));
-    RAFT_CUSPARSE_TRY(cusparseSpMVOp(handle_ptr_->get_cusparse_handle(),
-                                     cusparse_view_.spmv_op_plan_A_,
-                                     reusable_device_scalar_value_1_.data(),
-                                     reusable_device_scalar_value_0_.data(),
-                                     cusparse_view_.reflected_primal_solution,
-                                     cusparse_view_.dual_gradient,
-                                     cusparse_view_.dual_gradient));
+    cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
+                        cusparse_view_.spmv_op_plan_A_,
+                        reusable_device_scalar_value_1_.data(),
+                        reusable_device_scalar_value_0_.data(),
+                        cusparse_view_.reflected_primal_solution,
+                        cusparse_view_.dual_gradient,
+                        cusparse_view_.dual_gradient,
+                        stream_view_.value());
     return;
   }
 #endif
