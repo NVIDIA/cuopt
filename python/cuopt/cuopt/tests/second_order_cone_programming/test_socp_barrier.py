@@ -122,6 +122,26 @@ def test_quadratic_constraint_api():
         )
     dm.clear_quadratic_constraints()
 
+def test_quadratic_constraint_duplicate_terms_merged():
+    """Duplicate linear/Q terms in a quadratic constraint are summed on export."""
+    prob = Problem()
+    x = prob.addVariable(lb=0.0)
+    y = prob.addVariable(lb=0.0)
+    c = prob.addConstraint(2 * x * x - y + 5 * x * x + 3 * y <= 18.0)
+    assert c.is_quadratic
+    assert c.rhs_value == pytest.approx(18.0)
+    linear = dict(zip(c.linear_indices.tolist(), c.linear_values.tolist()))
+    assert linear == {y.index: 2.0}
+    quad = list(
+        zip(
+            c.quadratic_row_indices.tolist(),
+            c.quadratic_col_indices.tolist(),
+            c.quadratic_values.tolist(),
+        )
+    )
+    assert quad == [(x.index, x.index, 7.0)]
+
+
 def test_quadratic_constraint_problem_solve():
     """Problem.addConstraint + solve (Lorentz via expression)."""
     prob = Problem()
@@ -137,6 +157,24 @@ def test_quadratic_constraint_problem_solve():
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1.0, rel=1e-3, abs=1e-3)
     assert len(prob.getQuadraticConstraints()) == 1
+
+
+def test_quadratic_constraint_duplicate_terms_solve():
+    """Duplicate Q terms merge to the same Lorentz row (-x0^2 + x1^2 + x2^2 <= 0)."""
+    prob = Problem()
+    x0 = prob.addVariable(lb=0.0, name="x0")
+    x1 = prob.addVariable(lb=0.0, name="x1")
+    x2 = prob.addVariable(lb=0.0, name="x2")
+    prob.addConstraint(x1 == 1.0)
+    prob.addConstraint(
+        -4 * x0 * x0 + 3 * x0 * x0 + x1 * x1 + x2 * x2 <= 0, name="soc"
+    )
+    prob.setObjective(x0)
+
+    solution = prob.solve(_barrier_settings())
+
+    assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_primal_objective() == pytest.approx(1.0, rel=1e-3, abs=1e-3)
 
 
 def test_quadratic_constraint_problem_solve_ge_sense():

@@ -317,8 +317,9 @@ class Variable:
 class QuadraticExpression:
     """
     QuadraticExpressions contain quadratic terms, linear terms, and a constant.
-    QuadraticExpressions can be used to create quadratic objectives in
-    the Problem.
+    Use them for quadratic objectives (``Problem.setObjective``) or quadratic
+    constraints via ``<=`` or ``>=`` comparisons passed to
+    :py:meth:`Problem.addConstraint` (equality is not supported).
     QuadraticExpressions can be added and subtracted with other
     QuadraticExpressions, LinearExpressions, and Variables, and can also
     be multiplied and divided by scalars.
@@ -868,23 +869,55 @@ class QuadraticExpression:
 
 
 def _quadratic_expression_to_qcmatrix(expr, rhs):
-    """Build QCMATRIX COO data for ``expr <= rhs`` (constant moved to rhs)."""
+    """Build QCMATRIX COO data for a quadratic row ``expr`` sense ``rhs``.
+
+    Used for both ``<=`` (``LE``) and ``>=`` (``GE``); row sense is stored on
+    ``Constraint.Sense``, not in this helper. The constant term is moved to
+    ``rhs_value``.
+
+    Duplicate linear variable indices and duplicate Q (row, col) triplets are
+    merged by summing coefficients, matching linear ``Constraint`` behavior.
+    """
     rhs_value = float(rhs) - expr.constant
+
+    linear_coeff = {}
+    for var, coeff in zip(expr.vars, expr.coefficients):
+        if coeff == 0.0:
+            continue
+        idx = var.index
+        linear_coeff[idx] = linear_coeff.get(idx, 0.0) + coeff
+
     linear_indices = []
     linear_values = []
-    for var, coeff in zip(expr.vars, expr.coefficients):
+    for idx in sorted(linear_coeff):
+        coeff = linear_coeff[idx]
         if coeff != 0.0:
-            linear_indices.append(var.index)
+            linear_indices.append(idx)
             linear_values.append(coeff)
-    quadratic_row_indices = [var.index for var in expr.qvars1]
-    quadratic_col_indices = [var.index for var in expr.qvars2]
-    quadratic_values = list(expr.qcoefficients)
+
+    quad_coeff = {}
+    for var1, var2, coeff in zip(expr.qvars1, expr.qvars2, expr.qcoefficients):
+        if coeff == 0.0:
+            continue
+        key = (var1.index, var2.index)
+        quad_coeff[key] = quad_coeff.get(key, 0.0) + coeff
     if expr.qmatrix is not None:
         q_coo = expr.qmatrix.tocoo()
         for row, col, value in zip(q_coo.row, q_coo.col, q_coo.data):
-            quadratic_row_indices.append(expr.qvars[row].index)
-            quadratic_col_indices.append(expr.qvars[col].index)
+            if value == 0.0:
+                continue
+            key = (expr.qvars[row].index, expr.qvars[col].index)
+            quad_coeff[key] = quad_coeff.get(key, 0.0) + value
+
+    quadratic_row_indices = []
+    quadratic_col_indices = []
+    quadratic_values = []
+    for (row, col), value in sorted(quad_coeff.items()):
+        if value != 0.0:
+            quadratic_row_indices.append(row)
+            quadratic_col_indices.append(col)
             quadratic_values.append(value)
+
     return (
         linear_values,
         linear_indices,

@@ -187,6 +187,7 @@ def ParseMps(mps_file_path, fixed_mps_formats):
             quadratic_values=quadratic_values,
             quadratic_row_indices=quadratic_row_indices,
             quadratic_col_indices=quadratic_col_indices,
+            sense=chr(qc.constraint_row_type),
         )
 
     return data_model

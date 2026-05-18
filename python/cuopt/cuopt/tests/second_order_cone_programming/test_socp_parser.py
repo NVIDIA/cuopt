@@ -92,6 +92,44 @@ def test_socp_mps_write_parse_solve(tmp_path):
     assert solution.get_primal_objective() == pytest.approx(1.0, rel=1e-3, abs=1e-3)
 
 
+def test_socp_mps_write_parse_preserves_ge_sense(tmp_path):
+    """writeMPS -> ParseMps preserves QCMATRIX row sense ('G' for >=)."""
+    dm = data_model.DataModel()
+
+    A_values = np.array([1.0], dtype=np.float64)
+    A_indices = np.array([1], dtype=np.int32)
+    A_offsets = np.array([0, 1], dtype=np.int32)
+    dm.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+
+    dm.set_constraint_lower_bounds(np.array([1.0], dtype=np.float64))
+    dm.set_constraint_upper_bounds(np.array([1.0], dtype=np.float64))
+
+    dm.set_objective_coefficients(np.array([1.0, 0.0, 0.0], dtype=np.float64))
+    dm.set_variable_lower_bounds(np.array([0.0, 0.0, 0.0], dtype=np.float64))
+    dm.set_variable_upper_bounds(
+        np.array([np.inf, np.inf, np.inf], dtype=np.float64)
+    )
+
+    # x0^2 - x1^2 - x2^2 >= 0  (MPS row type 'G')
+    dm.add_quadratic_constraint(
+        constraint_row_index=1,
+        constraint_row_name="soc_ge",
+        sense="G",
+        quadratic_values=np.array([1.0, -1.0, -1.0], dtype=np.float64),
+        quadratic_row_indices=np.array([0, 1, 2], dtype=np.int32),
+        quadratic_col_indices=np.array([0, 1, 2], dtype=np.int32),
+    )
+
+    mps_file = tmp_path / "socp_ge.mps"
+    dm.writeMPS(str(mps_file))
+
+    dm2 = mps_parser.ParseMps(str(mps_file))
+    qcs = dm2.get_quadratic_constraints()
+    assert len(qcs) == 1
+    assert qcs[0]["constraint_row_name"] == "soc_ge"
+    assert qcs[0]["constraint_row_type"] == "G"
+
+
 def test_parse_qcmatrix_dataset_mps():
     """Parse external QCQP MPS with QCMATRIX when dataset is available."""
     mps_path = os.path.join(RAPIDS_DATASET_ROOT_DIR, "qcqp", "QC_Test_1.mps")
