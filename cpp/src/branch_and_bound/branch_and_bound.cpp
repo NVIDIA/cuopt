@@ -1641,7 +1641,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   }
 
   worker->calculate_num_diving_workers(
-    bfs_worker_pool_.num_workers(), diving_worker_pool_.num_workers(), settings_.diving_settings);
+    bfs_worker_pool_.num_workers(), diving_worker_pool_.num_workers(), diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol &&
@@ -1652,9 +1652,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
         diving_settings.guided_diving == 0) {
       if (has_solver_space_incumbent()) {
         diving_settings.guided_diving = 1;
-        worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
-                                             diving_worker_pool_.num_workers(),
-                                             settings_.diving_settings);
+        worker->calculate_num_diving_workers(
+          bfs_worker_pool_.num_workers(), diving_worker_pool_.num_workers(), diving_settings);
       }
     }
 
