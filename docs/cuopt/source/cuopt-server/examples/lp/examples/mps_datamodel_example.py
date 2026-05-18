@@ -4,7 +4,7 @@
 LP DataModel from MPS Parser Example
 
 This example demonstrates how to:
-- Parse an MPS file using cuopt.linear_programming.io
+- Parse an MPS file using cuopt.linear_programming.ParseMps
 - Create a DataModel from the parsed MPS
 - Solve using the DataModel via the server
 - Extract detailed solution information
