@@ -12,6 +12,7 @@
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 
 #include <pdlp/cusparse_view.hpp>
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdhg.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -32,6 +33,7 @@
 
 #include <optional>
 #include <unordered_set>
+#include "distributed_pdlp/multi_gpu_engine.hpp"
 
 namespace cuopt::linear_programming::detail {
 /**
@@ -237,6 +239,8 @@ class pdlp_solver_t {
   primal_quality_adapter_t best_primal_quality_so_far_;
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
+
+  multi_gpu_engine_t<i_t, f_t> multi_gpu_engine;
 };
 
 }  // namespace cuopt::linear_programming::detail
