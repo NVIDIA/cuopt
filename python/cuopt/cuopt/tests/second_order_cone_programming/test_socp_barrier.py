@@ -112,7 +112,7 @@ def test_quadratic_constraint_api():
     qcs = dm.get_quadratic_constraints()
     assert qcs[1]["constraint_row_type"] == "G"
     assert qcs[1]["quadratic_values"][0] == pytest.approx(1.0)
-    with pytest.raises(ValueError, match="Equality quadratic"):
+    with pytest.raises(ValueError, match="Equality constraints are not supported"):
         dm.add_quadratic_constraint(
             constraint_row_index=2,
             sense="E",
@@ -123,13 +123,13 @@ def test_quadratic_constraint_api():
     dm.clear_quadratic_constraints()
 
 def test_quadratic_constraint_problem_solve():
-    """Problem.addQuadraticConstraint + solve (Lorentz via expression)."""
+    """Problem.addConstraint + solve (Lorentz via expression)."""
     prob = Problem()
     x0 = prob.addVariable(lb=0.0, name="x0")
     x1 = prob.addVariable(lb=0.0, name="x1")
     x2 = prob.addVariable(lb=0.0, name="x2")
     prob.addConstraint(x1 == 1.0)
-    prob.addQuadraticConstraint(-x0 * x0 + x1 * x1 + x2 * x2 <= 0, name="soc")
+    prob.addConstraint(-x0 * x0 + x1 * x1 + x2 * x2 <= 0, name="soc")
     prob.setObjective(x0)
 
     solution = prob.solve(_barrier_settings())
@@ -146,7 +146,7 @@ def test_quadratic_constraint_problem_solve_ge_sense():
     x1 = prob.addVariable(lb=0.0, name="x1")
     x2 = prob.addVariable(lb=0.0, name="x2")
     prob.addConstraint(x1 == 1.0)
-    prob.addQuadraticConstraint(x0 * x0 - x1 * x1 - x2 * x2 >= 0, name="soc")
+    prob.addConstraint(x0 * x0 - x1 * x1 - x2 * x2 >= 0, name="soc")
     prob.setObjective(x0)
 
     solution = prob.solve(_barrier_settings())

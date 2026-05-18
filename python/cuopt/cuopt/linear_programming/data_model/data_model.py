@@ -356,10 +356,7 @@ class DataModel(data_model_wrapper.DataModel):
         if hasattr(sense, "value"):
             sense = sense.value
         if sense == "E":
-            raise ValueError(
-                "Equality quadratic constraints are not supported; use two inequality "
-                "constraints or build the model with Problem.addQuadraticConstraint."
-            )
+            raise ValueError("Equality constraints are not supported.")
         if sense not in ("L", "G"):
             raise ValueError(
                 f"Invalid sense {sense!r}; use 'L' or 'G' like set_row_types "

@@ -282,6 +282,8 @@ class Variable:
                 # var1 <= var2   -> var1 - var2 <= 0
                 expr = self - other
                 return Constraint(expr, LE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, LE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -294,6 +296,8 @@ class Variable:
                 # var1 >= var2   ->  var1 - var2 >= 0
                 expr = self - other
                 return Constraint(expr, GE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, GE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -838,9 +842,9 @@ class QuadraticExpression:
     def __le__(self, other):
         match other:
             case int() | float():
-                return QuadraticConstraint(self, LE, float(other))
+                return Constraint(self, LE, float(other))
             case Variable() | LinearExpression() | QuadraticExpression():
-                return QuadraticConstraint(self - other, LE, 0.0)
+                return Constraint(self - other, LE, 0.0)
             case _:
                 raise ValueError(
                     "Can't compare QuadraticExpression with type %s"
@@ -850,9 +854,9 @@ class QuadraticExpression:
     def __ge__(self, other):
         match other:
             case int() | float():
-                return QuadraticConstraint(self, GE, float(other))
+                return Constraint(self, GE, float(other))
             case Variable() | LinearExpression() | QuadraticExpression():
-                return QuadraticConstraint(self - other, GE, 0.0)
+                return Constraint(self - other, GE, 0.0)
             case _:
                 raise ValueError(
                     "Can't compare QuadraticExpression with type %s"
@@ -860,10 +864,7 @@ class QuadraticExpression:
                 )
 
     def __eq__(self, other):
-        raise ValueError(
-            "Quadratic equality constraints are not supported; "
-            "use addQuadraticConstraint with QCMATRIX data or two inequality constraints."
-        )
+        raise ValueError("Equality constraints are not supported.")
 
 
 def _quadratic_expression_to_qcmatrix(expr, rhs):
@@ -892,49 +893,6 @@ def _quadratic_expression_to_qcmatrix(expr, rhs):
         quadratic_col_indices,
         rhs_value,
     )
-
-
-class QuadraticConstraint:
-    """
-    Quadratic constraint in QCMATRIX form.
-
-    Created from :py:class:`QuadraticExpression` comparisons or
-    :py:meth:`Problem.addQuadraticConstraint`. Row sense (``<=`` / ``>=``) is
-    normalized when the problem is exported to :class:`~cuopt.linear_programming.data_model.DataModel`.
-    """
-
-    def __init__(self, expr=None, sense=LE, rhs=0.0, name="", **qcmatrix):
-        self.Sense = sense
-        self.ConstraintName = name
-        self.index = -1
-        if expr is not None:
-            (
-                linear_values,
-                linear_indices,
-                quadratic_values,
-                quadratic_row_indices,
-                quadratic_col_indices,
-                rhs_value,
-            ) = _quadratic_expression_to_qcmatrix(expr, rhs)
-        else:
-            linear_values = list(qcmatrix.get("linear_values", []))
-            linear_indices = list(qcmatrix.get("linear_indices", []))
-            quadratic_values = list(qcmatrix.get("quadratic_values", []))
-            quadratic_row_indices = list(qcmatrix.get("quadratic_row_indices", []))
-            quadratic_col_indices = list(qcmatrix.get("quadratic_col_indices", []))
-            rhs_value = float(qcmatrix.get("rhs_value", 0.0))
-
-        self.linear_values = np.array(linear_values, dtype=np.float64)
-        self.linear_indices = np.array(linear_indices, dtype=np.int32)
-        self.quadratic_values = np.array(quadratic_values, dtype=np.float64)
-        self.quadratic_row_indices = np.array(
-            quadratic_row_indices, dtype=np.int32
-        )
-        self.quadratic_col_indices = np.array(quadratic_col_indices, dtype=np.int32)
-        self.rhs_value = rhs_value
-
-    def getConstraintName(self):
-        return self.ConstraintName
 
 
 class LinearExpression:
@@ -1244,6 +1202,8 @@ class LinearExpression:
                 # expr1 <= expr2   -> expr1 - expr2 <= 0
                 expr = self - other
                 return Constraint(expr, LE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, LE, 0.0)
 
     def __ge__(self, other):
         match other:
@@ -1253,6 +1213,8 @@ class LinearExpression:
                 # expr1 >= expr2   ->  expr1 - expr2 >= 0
                 expr = self - other
                 return Constraint(expr, GE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, GE, 0.0)
 
     def __eq__(self, other):
         match other:
@@ -1266,16 +1228,15 @@ class LinearExpression:
 
 class Constraint:
     """
-    cuOpt constraint object containing a linear expression,
-    the sense of the constraint, and the right-hand side of
-    the constraint.
-    Constraints are associated with a problem and can be
-    created using :py:meth:`Problem.addConstraint`.
+    cuOpt constraint object containing a linear or quadratic (QCMATRIX)
+    expression, the sense of the constraint, and the right-hand side.
+    Constraints are associated with a problem and can be created using
+    :py:meth:`Problem.addConstraint`.
 
     Parameters
     ----------
-    expr : LinearExpression
-        Linear expression corresponding to a problem.
+    expr : LinearExpression or QuadraticExpression
+        Expression corresponding to the constraint.
     sense : enum
         Sense of the constraint. Either LE for <=,
         GE for >= or EQ for == .
@@ -1291,7 +1252,9 @@ class Constraint:
     Sense : LE, GE or EQ
         Row sense. LE for <=, GE for >= or EQ for == .
     RHS : float
-        Constraint right-hand side value.
+        Constraint right-hand side value (linear rows).
+    is_quadratic : bool
+        True when the row is exported as a QCMATRIX quadratic constraint.
     Slack : float
         Computed LHS - RHS with current solution.
     DualValue : float
@@ -1299,10 +1262,41 @@ class Constraint:
     """
 
     def __init__(self, expr, sense, rhs, name=""):
+        self.index = -1
+        self.Sense = sense
+        self.ConstraintName = name
+        self.DualValue = float("nan")
+        self.Slack = float("nan")
+
+        if isinstance(expr, QuadraticExpression):
+            self.is_quadratic = True
+            (
+                linear_values,
+                linear_indices,
+                quadratic_values,
+                quadratic_row_indices,
+                quadratic_col_indices,
+                rhs_value,
+            ) = _quadratic_expression_to_qcmatrix(expr, rhs)
+            self.linear_values = np.array(linear_values, dtype=np.float64)
+            self.linear_indices = np.array(linear_indices, dtype=np.int32)
+            self.quadratic_values = np.array(quadratic_values, dtype=np.float64)
+            self.quadratic_row_indices = np.array(
+                quadratic_row_indices, dtype=np.int32
+            )
+            self.quadratic_col_indices = np.array(
+                quadratic_col_indices, dtype=np.int32
+            )
+            self.rhs_value = rhs_value
+            self.RHS = rhs_value
+            self.vindex_coeff_dict = {}
+            self.vars = expr.vars
+            return
+
+        self.is_quadratic = False
         self.vindex_coeff_dict = {}
         nz = len(expr)
         self.vars = expr.vars
-        self.index = -1
         for i in range(nz):
             v_idx = expr.vars[i].index
             v_coeff = expr.coefficients[i]
@@ -1311,11 +1305,7 @@ class Constraint:
                 if v_idx in self.vindex_coeff_dict
                 else v_coeff
             )
-        self.Sense = sense
         self.RHS = rhs - expr.getConstant()
-        self.ConstraintName = name
-        self.DualValue = float("nan")
-        self.Slack = float("nan")
 
     def __len__(self):
         return len(self.vindex_coeff_dict)
@@ -1408,7 +1398,6 @@ class Problem:
         self.Name = model_name
         self.vars = []
         self.constrs = []
-        self.quadratic_constrs = []
         self.ObjSense = MINIMIZE
         self.ObjConstant = 0.0
         self.Status = -1
@@ -1496,6 +1485,8 @@ class Problem:
                 "values": [],
             }
             for constr in self.constrs:
+                if constr.is_quadratic:
+                    continue
                 csr_dict["column_indices"].extend(
                     list(constr.vindex_coeff_dict.keys())
                 )
@@ -1515,6 +1506,8 @@ class Problem:
 
         else:
             for constr in self.constrs:
+                if constr.is_quadratic:
+                    continue
                 self.rhs.append(constr.RHS)
                 self.row_sense.append(constr.Sense)
 
@@ -1558,22 +1551,26 @@ class Problem:
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
 
-        for i, qc in enumerate(self.quadratic_constrs):
-            row_index = len(self.constrs) + i
-            row_name = qc.ConstraintName
+        linear_constr_count = sum(1 for c in self.constrs if not c.is_quadratic)
+        quad_index = 0
+        for constr in self.constrs:
+            if not constr.is_quadratic:
+                continue
+            row_name = constr.ConstraintName
             if row_name == "":
-                row_name = "Q" + str(qc.index)
+                row_name = "Q" + str(constr.index)
             dm.add_quadratic_constraint(
-                constraint_row_index=row_index,
+                constraint_row_index=linear_constr_count + quad_index,
                 constraint_row_name=row_name,
-                linear_values=qc.linear_values,
-                linear_indices=qc.linear_indices,
-                rhs_value=qc.rhs_value,
-                quadratic_values=qc.quadratic_values,
-                quadratic_row_indices=qc.quadratic_row_indices,
-                quadratic_col_indices=qc.quadratic_col_indices,
-                sense=qc.Sense,
+                linear_values=constr.linear_values,
+                linear_indices=constr.linear_indices,
+                rhs_value=constr.rhs_value,
+                quadratic_values=constr.quadratic_values,
+                quadratic_row_indices=constr.quadratic_row_indices,
+                quadratic_col_indices=constr.quadratic_col_indices,
+                sense=constr.Sense,
             )
+            quad_index += 1
 
         self.model = dm
 
@@ -1641,15 +1638,15 @@ class Problem:
     def addConstraint(self, constr, name=""):
         """
         Adds a constraint to the problem defined by constraint object
-        and name. A constraint is generated using LinearExpression,
-        Sense and RHS.
+        and name. A constraint is generated using LinearExpression or
+        QuadraticExpression comparisons (``<=``, ``>=``, or ``==``).
 
         Parameters
         ----------
         constr : :py:class:`Constraint`
-            Constructed using LinearExpressions (See Examples)
+            Constructed using expression comparisons (see Examples).
         name : string
-            Name of the variable. Optional.
+            Name of the constraint. Optional.
 
         Examples
         --------
@@ -1659,6 +1656,7 @@ class Problem:
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
+        >>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
         """
         if self.solved:
             self.reset_solved_values()  # Reset all solved values
@@ -1670,30 +1668,6 @@ class Problem:
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
-        return constr
-
-    def addQuadraticConstraint(self, constr, name=""):
-        """
-        Add a quadratic (QCMATRIX) constraint to the problem.
-
-        Parameters
-        ----------
-        constr : :py:class:`QuadraticConstraint`
-            Constructed using :py:class:`QuadraticExpression` comparisons.
-        name : str, optional
-            Name of the constraint.
-        """
-        if self.solved:
-            self.reset_solved_values()
-        match constr:
-            case QuadraticConstraint():
-                constr.index = len(self.quadratic_constrs)
-                constr.ConstraintName = name
-                self.quadratic_constrs.append(constr)
-            case _:
-                raise ValueError(
-                    "addQuadraticConstraint requires a QuadraticConstraint object"
-                )
         return constr
 
     def updateConstraint(self, constr, coeffs=[], rhs=None):
@@ -1722,6 +1696,10 @@ class Problem:
         """
         self.reset_solved_values()
         if isinstance(constr, Constraint):
+            if constr.is_quadratic:
+                raise ValueError(
+                    "updateConstraint applies to linear constraints only"
+                )
             if isinstance(coeffs, dict):
                 coeffs = coeffs.items()
             for var, coeff in coeffs:
@@ -1960,13 +1938,13 @@ class Problem:
     @property
     def NumConstraints(self):
         # Returns number of contraints in the problem.
-        return len(self.constrs) + len(self.quadratic_constrs)
+        return len(self.constrs)
 
     def getQuadraticConstraints(self):
         """
-        Returns all quadratic constraints in the problem.
+        Returns all quadratic (QCMATRIX) constraints in the problem.
         """
-        return self.quadratic_constrs
+        return [c for c in self.constrs if c.is_quadratic]
 
     @property
     def NumNZs(self):
@@ -2014,6 +1992,8 @@ class Problem:
             return self.dict_to_object(self.constraint_csr_matrix)
         csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
         for constr in self.constrs:
+            if constr.is_quadratic:
+                continue
             csr_dict["column_indices"].extend(
                 list(constr.vindex_coeff_dict.keys())
             )
@@ -2090,10 +2070,14 @@ class Problem:
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
-        for i, constr in enumerate(self.constrs):
-            if dual_sol is not None and len(dual_sol) > 0:
-                constr.DualValue = dual_sol[i]
+        linear_row = 0
+        for constr in self.constrs:
+            if constr.is_quadratic:
+                continue
+            if dual_sol is not None and len(dual_sol) > linear_row:
+                constr.DualValue = dual_sol[linear_row]
             constr.Slack = constr.compute_slack()
+            linear_row += 1
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):

@@ -128,10 +128,7 @@ cdef class DataModel:
             )
         row_type = str(constraint_row_type)
         if row_type == "E":
-            raise ValueError(
-                "Equality quadratic constraints are not supported; use two inequality "
-                "constraints or build the model with Problem.addQuadraticConstraint."
-            )
+            raise ValueError("Equality constraints are not supported.")
         if row_type not in ("L", "G"):
             raise ValueError(
                 f"Invalid constraint_row_type {row_type!r}; use 'L' or 'G' like set_row_types."
