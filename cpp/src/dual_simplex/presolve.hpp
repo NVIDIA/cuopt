@@ -133,9 +133,9 @@ struct folding_info_t {
 // Stores the bounding constraint and coefficient for dual correction in uncrush.
 template <typename i_t, typename f_t>
 struct bounded_free_var_t {
-  i_t variable;    // j: the originally-free variable
-  i_t constraint;  // i*: the constraint that implied the bound
-  f_t coefficient; // a_{i*,j}: the coefficient of x_j in constraint i*
+  i_t variable;     // j: the originally-free variable
+  i_t constraint;   // i*: the constraint that implied the bound
+  f_t coefficient;  // a_{i*,j}: the coefficient of x_j in constraint i*
 };
 
 template <typename i_t, typename f_t>

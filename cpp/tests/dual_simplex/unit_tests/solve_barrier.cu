@@ -194,11 +194,11 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   const raft::handle_t handle{};
   init_handler(&handle);
 
-  auto path = cuopt::test::get_rapids_dataset_root_dir() +
-              "/quadratic_programming/min_x_squared.mps";
-  auto mps_data = cuopt::mps_parser::parse_mps<int, double>(path);
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/min_x_squared.mps";
+  auto mps_data = cuopt::linear_programming::io::parse_mps<int, double>(path);
 
-  auto settings    = cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 
   auto solution = cuopt::linear_programming::solve_lp(&handle, mps_data, settings);
 

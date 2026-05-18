@@ -934,38 +934,38 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
           if (lower_inf_i == 1) {
             const f_t new_upper = 1.0 / a_ij * (rhs - lower_activity_i);
             if (new_upper < max_bound) {
-              problem.upper[j]            = new_upper;
-              upper_bound_constraint[j]   = i;
-              upper_bound_coefficient[j]  = a_ij;
-              bounded                     = true;
+              problem.upper[j]           = new_upper;
+              upper_bound_constraint[j]  = i;
+              upper_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
           if (upper_inf_i == 1) {
             const f_t new_lower = 1.0 / a_ij * (rhs - upper_activity_i);
             if (new_lower > -max_bound) {
-              problem.lower[j]            = new_lower;
-              lower_bound_constraint[j]   = i;
-              lower_bound_coefficient[j]  = a_ij;
-              bounded                     = true;
+              problem.lower[j]           = new_lower;
+              lower_bound_constraint[j]  = i;
+              lower_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
         } else if (a_ij < 0) {
           if (lower_inf_i == 1) {
             const f_t new_lower = 1.0 / a_ij * (rhs - lower_activity_i);
             if (new_lower > -max_bound) {
-              problem.lower[j]            = new_lower;
-              lower_bound_constraint[j]   = i;
-              lower_bound_coefficient[j]  = a_ij;
-              bounded                     = true;
+              problem.lower[j]           = new_lower;
+              lower_bound_constraint[j]  = i;
+              lower_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
           if (upper_inf_i == 1) {
             const f_t new_upper = 1.0 / a_ij * (rhs - upper_activity_i);
             if (new_upper < max_bound) {
-              problem.upper[j]            = new_upper;
-              upper_bound_constraint[j]   = i;
-              upper_bound_coefficient[j]  = a_ij;
-              bounded                     = true;
+              problem.upper[j]           = new_upper;
+              upper_bound_constraint[j]  = i;
+              upper_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
         }
