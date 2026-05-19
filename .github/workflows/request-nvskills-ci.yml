@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Triggered when a maintainer/admin comments `/nvskills-ci` on a PR
+# touching skills/. The bot pushes a signature commit that must remain
+# in the PR before merge. Fork-based PRs are not supported.
+
 name: Request NVSkills CI
 
 on:
