@@ -282,6 +282,8 @@ class pdlp_solver_settings_t {
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
+  bool barrier_iterative_refinement{true};
+  f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
   /**
    * @brief Stop the solver as soon as a primal feasible iterate is encountered.
