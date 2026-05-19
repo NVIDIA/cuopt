@@ -6,6 +6,11 @@ description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUD
 
 # cuOpt Developer Skill
 
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itself, not for using it.
 
 **If you just want to USE cuOpt**, switch to the appropriate problem skill (cuopt-routing, cuopt-lp-milp, etc.)
