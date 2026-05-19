@@ -184,6 +184,21 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
     }
   }
 
+  void ensure_positive(f_t epsilon_adjust, const std::vector<i_t>& mask)
+  {
+    f_t min_x   = inf;
+    const i_t n = this->size();
+    for (i_t i = 0; i < n; i++) {
+      if (mask[i]) { min_x = std::min(min_x, (*this)[i]); }
+    }
+    if (min_x <= 0.0) {
+      const f_t delta_x = -min_x + epsilon_adjust;
+      for (i_t i = 0; i < n; i++) {
+        if (mask[i]) { (*this)[i] += delta_x; }
+      }
+    }
+  }
+
   void bound_away_from_zero(f_t epsilon_adjust)
   {
     const i_t n = this->size();

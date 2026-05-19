@@ -373,27 +373,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  // Clear variable pairs for QP
-  if (barrier_lp.Q.n > 0) {
-    const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    for (i_t k = 0; k < num_free_variables; k++) {
-      i_t u = presolve_info.free_variable_pairs[2 * k];
-      i_t v = presolve_info.free_variable_pairs[2 * k + 1];
-
-      const i_t row_start_u = barrier_lp.Q.row_start[u];
-      const i_t row_end_u   = barrier_lp.Q.row_start[u + 1];
-      const i_t row_start_v = barrier_lp.Q.row_start[v];
-      const i_t row_end_v   = barrier_lp.Q.row_start[v + 1];
-      if (row_end_u - row_start_u == 0 && row_end_v - row_start_v == 0) {
-        settings.log.printf("Free variable pair %d-%d has no quadratic term\n", u, v);
-      }
-    }
-  }
-
   barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
-  barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
-  lp_status_t barrier_status =
-    barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
+  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;

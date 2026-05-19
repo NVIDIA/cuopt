@@ -352,8 +352,12 @@ void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_soluti
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
-  detail::problem_t<i_t, f_t>& problem,
   const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  raft::handle_t const* handle_ptr,
+  std::string const& objective_name,
+  std::vector<std::string> const& var_names,
+  std::vector<std::string> const& row_names,
+  bool maximize,
   dual_simplex::lp_status_t status,
   f_t duration,
   f_t norm_user_objective,
@@ -378,18 +382,18 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   };
 
   rmm::device_uvector<f_t> final_primal_solution =
-    cuopt::device_copy(solution.x, problem.handle_ptr->get_stream());
+    cuopt::device_copy(solution.x, handle_ptr->get_stream());
   rmm::device_uvector<f_t> final_dual_solution =
-    cuopt::device_copy(solution.y, problem.handle_ptr->get_stream());
+    cuopt::device_copy(solution.y, handle_ptr->get_stream());
   rmm::device_uvector<f_t> final_reduced_cost =
-    cuopt::device_copy(solution.z, problem.handle_ptr->get_stream());
-  problem.handle_ptr->sync_stream();
+    cuopt::device_copy(solution.z, handle_ptr->get_stream());
+  handle_ptr->sync_stream();
 
   // Negate dual variables and reduced costs for maximization problems
-  if (problem.maximize) {
+  if (maximize) {
     adjust_dual_solution_and_reduced_cost(
-      final_dual_solution, final_reduced_cost, problem.handle_ptr->get_stream());
-    problem.handle_ptr->sync_stream();
+      final_dual_solution, final_reduced_cost, handle_ptr->get_stream());
+    handle_ptr->sync_stream();
   }
 
   // Should be filled with more information from dual simplex
@@ -417,9 +421,9 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
   auto sol = optimization_problem_solution_t<i_t, f_t>(final_primal_solution,
                                                        final_dual_solution,
                                                        final_reduced_cost,
-                                                       problem.objective_name,
-                                                       problem.var_names,
-                                                       problem.row_names,
+                                                       objective_name,
+                                                       var_names,
+                                                       row_names,
                                                        std::move(info),
                                                        {termination_status});
 
@@ -431,8 +435,54 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
                    sol.get_termination_status_string().c_str());
   }
 
-  problem.handle_ptr->sync_stream();
+  handle_ptr->sync_stream();
   return sol;
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
+  detail::problem_t<i_t, f_t>& problem,
+  const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  dual_simplex::lp_status_t status,
+  f_t duration,
+  f_t norm_user_objective,
+  f_t norm_rhs,
+  method_t method)
+{
+  return convert_dual_simplex_sol(solution,
+                                  problem.handle_ptr,
+                                  problem.objective_name,
+                                  problem.var_names,
+                                  problem.row_names,
+                                  problem.maximize,
+                                  status,
+                                  duration,
+                                  norm_user_objective,
+                                  norm_rhs,
+                                  method);
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  const dual_simplex::lp_solution_t<i_t, f_t>& solution,
+  dual_simplex::lp_status_t status,
+  f_t duration,
+  f_t norm_user_objective,
+  f_t norm_rhs,
+  method_t method)
+{
+  return convert_dual_simplex_sol(solution,
+                                  op_problem.get_handle_ptr(),
+                                  op_problem.get_objective_name(),
+                                  op_problem.get_variable_names(),
+                                  op_problem.get_row_names(),
+                                  op_problem.get_sense(),
+                                  status,
+                                  duration,
+                                  norm_user_objective,
+                                  norm_rhs,
+                                  method);
 }
 
 template <typename i_t, typename f_t>
@@ -457,6 +507,8 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.barrier                         = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
+  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
@@ -493,7 +545,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -567,7 +619,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 {
   // Convert data structures to dual simplex format and back
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   auto sol_dual_simplex = run_dual_simplex(dual_simplex_problem, settings, timer);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
@@ -627,25 +679,27 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
     static_cast<float>(settings.tolerances.primal_infeasible_tolerance);
   fs.tolerances.dual_infeasible_tolerance =
     static_cast<float>(settings.tolerances.dual_infeasible_tolerance);
-  fs.detect_infeasibility    = settings.detect_infeasibility;
-  fs.strict_infeasibility    = settings.strict_infeasibility;
-  fs.iteration_limit         = settings.iteration_limit;
-  fs.time_limit              = static_cast<float>(settings.time_limit);
-  fs.pdlp_solver_mode        = settings.pdlp_solver_mode;
-  fs.log_to_console          = settings.log_to_console;
-  fs.log_file                = settings.log_file;
-  fs.per_constraint_residual = settings.per_constraint_residual;
-  fs.save_best_primal_so_far = settings.save_best_primal_so_far;
-  fs.first_primal_feasible   = settings.first_primal_feasible;
-  fs.all_primal_feasible     = settings.all_primal_feasible;
-  fs.eliminate_dense_columns = settings.eliminate_dense_columns;
-  fs.pdlp_precision          = pdlp_precision_t::DefaultPrecision;
-  fs.method                  = method_t::PDLP;
-  fs.inside_mip              = settings.inside_mip;
-  fs.hyper_params            = settings.hyper_params;
-  fs.presolver               = settings.presolver;
-  fs.num_gpus                = settings.num_gpus;
-  fs.concurrent_halt         = settings.concurrent_halt;
+  fs.detect_infeasibility         = settings.detect_infeasibility;
+  fs.strict_infeasibility         = settings.strict_infeasibility;
+  fs.iteration_limit              = settings.iteration_limit;
+  fs.time_limit                   = static_cast<float>(settings.time_limit);
+  fs.pdlp_solver_mode             = settings.pdlp_solver_mode;
+  fs.log_to_console               = settings.log_to_console;
+  fs.log_file                     = settings.log_file;
+  fs.per_constraint_residual      = settings.per_constraint_residual;
+  fs.save_best_primal_so_far      = settings.save_best_primal_so_far;
+  fs.first_primal_feasible        = settings.first_primal_feasible;
+  fs.all_primal_feasible          = settings.all_primal_feasible;
+  fs.eliminate_dense_columns      = settings.eliminate_dense_columns;
+  fs.barrier_iterative_refinement = settings.barrier_iterative_refinement;
+  fs.barrier_step_scale           = settings.barrier_step_scale;
+  fs.pdlp_precision               = pdlp_precision_t::DefaultPrecision;
+  fs.method                       = method_t::PDLP;
+  fs.inside_mip                   = settings.inside_mip;
+  fs.hyper_params                 = settings.hyper_params;
+  fs.presolver                    = settings.presolver;
+  fs.num_gpus                     = settings.num_gpus;
+  fs.concurrent_halt              = settings.concurrent_halt;
 
   detail::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
@@ -1484,7 +1538,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Otherwise, CUDA API calls to the problem stream may occur in both threads and throw graph
   // capture off
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(problem.handle_ptr, problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
   // Create a thread for dual simplex
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
@@ -1680,6 +1734,53 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f_t>& op_problem,
+                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                                   bool problem_checking)
+{
+  try {
+    print_version_info();
+    // Create log stream for file logging and add it to default logger
+    init_logger_t log(settings.log_file, settings.log_to_console);
+
+    // Init libraries before to not include it in solve time
+    init_handler(op_problem.get_handle_ptr());
+
+    auto qp_timer = cuopt::timer_t(settings.time_limit);
+
+    raft::common::nvtx::range fun_scope("Running QP solver");
+    if (settings.user_problem_file != "") {
+      CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
+      op_problem.write_to_mps(settings.user_problem_file);
+    }
+    // Convert data structures to dual simplex format and back
+    dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
+      cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
+    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qp_timer);
+    auto solution         = convert_dual_simplex_sol(op_problem,
+                                             std::get<0>(sol_dual_simplex),
+                                             std::get<1>(sol_dual_simplex),
+                                             std::get<2>(sol_dual_simplex),
+                                             std::get<3>(sol_dual_simplex),
+                                             std::get<4>(sol_dual_simplex),
+                                             method_t::Barrier);
+    if (settings.sol_file != "") {
+      CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
+      solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
+    }
+    return solution;
+  } catch (const cuopt::logic_error& e) {
+    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    return optimization_problem_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
+  } catch (const std::bad_alloc& e) {
+    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    return optimization_problem_solution_t<i_t, f_t>{
+      cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
+  }
+}
+
+template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   optimization_problem_t<i_t, f_t>& op_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings_const,
@@ -1687,6 +1788,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
+  if (op_problem.has_quadratic_objective()) {
+    return solve_qp(op_problem, settings_const, problem_checking);
+  }
+
   try {
     if (!settings_const.inside_mip) print_version_info();
 
@@ -1694,21 +1799,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Create log stream for file logging and add it to default logger
     init_logger_t log(settings.log_file, settings.log_to_console);
 
-    // Init libraies before to not include it in solve time
+    // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
-
-    if (op_problem.has_quadratic_objective()) {
-      CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
-      settings.method    = method_t::Barrier;
-      settings.presolver = presolver_t::None;
-      // check for sense of the problem
-      if (op_problem.get_sense()) {
-        CUOPT_LOG_ERROR("Quadratic problems must be minimized");
-        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
-                                                         op_problem.get_handle_ptr()->get_stream());
-      }
-    }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
@@ -1742,7 +1835,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
     detail::problem_t<i_t, f_t> problem(op_problem);
-
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
       settings.presolver = presolver_t::PSLP;
