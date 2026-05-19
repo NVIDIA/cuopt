@@ -162,9 +162,10 @@ struct presolve_info_t {
 
   // Variables that were negated to handle -inf < x_j <= u_j
   std::vector<i_t> negated_variables;
-
   // Originally-free variables that received implied bounds, with the constraint used
   std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
+  // Free variable indices for QP augmented system (not split, handled natively)
+  std::vector<i_t> free_variable_indices;
 };
 
 template <typename i_t, typename f_t>
