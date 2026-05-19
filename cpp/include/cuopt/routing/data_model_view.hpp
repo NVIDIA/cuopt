@@ -611,7 +611,13 @@ class data_model_view_t {
    * @brief Get raft handle object containing GPU resource objects
    * @return Handle object
    */
-  raft::handle_t* get_handle_ptr() const noexcept;
+  raft::handle_t* get_handle_ptr() noexcept;
+
+  /**
+   * @brief Get raft handle object containing GPU resource objects
+   * @return Handle object
+   */
+  raft::handle_t const* get_handle_ptr() const noexcept;
 
  private:
   raft::handle_t* handle_ptr_{nullptr};

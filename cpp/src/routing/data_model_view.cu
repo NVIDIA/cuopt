@@ -732,7 +732,13 @@ raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_vehicle_fixed_cost
 }
 
 template <typename i_t, typename f_t>
-raft::handle_t* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
+raft::handle_t* data_model_view_t<i_t, f_t>::get_handle_ptr() noexcept
+{
+  return handle_ptr_;
+}
+
+template <typename i_t, typename f_t>
+raft::handle_t const* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
 }
