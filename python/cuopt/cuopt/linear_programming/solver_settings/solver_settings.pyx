@@ -485,7 +485,8 @@ cdef class SolverSettings:
         """Load parameters from a cuOpt config file.
 
         Loads into the current C++ object, then refreshes :attr:`settings_dict`
-        from C++ for every name in :data:`solver_params`. That keeps
+        from C++ for every name returned by :func:`get_solver_parameter_names`.
+        That keeps
         :meth:`get_parameter` aligned with what :meth:`set_c_solver_settings` will
         replay on the next :func:`~cuopt.linear_programming.solver.Solve` (see
         reset-replay invariant on :meth:`set_c_solver_settings`).
