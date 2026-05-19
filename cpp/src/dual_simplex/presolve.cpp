@@ -13,6 +13,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <numeric>
@@ -850,8 +851,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
 
     i_t removed_free_variables = 0;
-
-    if (constraints_to_check.size() > 0) {
+    if (!constraints_to_check.empty()) {
       // Check if the constraints are feasible
       csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
       problem.A.to_compressed_row(Arow);
@@ -973,15 +973,14 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       }
     }
 
-    i_t new_free_variables = 0;
+    free_variables = 0;
     for (i_t j = 0; j < problem.num_cols; j++) {
-      if (problem.lower[j] == -inf && problem.upper[j] == inf) { new_free_variables++; }
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
     }
     if (removed_free_variables != 0) {
-      settings.log.printf("Bounded %d free variables\n", removed_free_variables);
+      settings.log.printf("Bounded %d free variable row(s) in presolve\n",
+                          static_cast<int>(removed_free_variables));
     }
-    assert(new_free_variables == free_variables - removed_free_variables);
-    free_variables = new_free_variables;
   }
 
   // The original problem may have a variable without a lower bound
@@ -1139,7 +1138,17 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
   problem.Q.check_matrix("Before free variable expansion");
 
-  if (settings.barrier_presolve && free_variables > 0) {
+  // For QPs, keep free variables as-is rather than
+  // splitting x = v - w. The barrier solver handles them natively with a
+  // static regularizer on the diagonal instead of z/x complementarity terms.
+  if (settings.barrier_presolve && free_variables > 0 && problem.Q.n > 0) {
+    presolve_info.free_variable_indices.clear();
+    for (i_t j = 0; j < problem.num_cols; j++) {
+      if (problem.lower[j] == -inf && problem.upper[j] == inf) {
+        presolve_info.free_variable_indices.push_back(j);
+      }
+    }
+  } else if (settings.barrier_presolve && free_variables > 0) {
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
