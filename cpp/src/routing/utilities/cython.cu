@@ -162,7 +162,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
  * @param solver Composable solver object
  */
 std::unique_ptr<dataset_ret_t> call_generate_dataset(
-  raft::handle_t const& handle, routing::generator::dataset_params_t<int, float> const& params)
+  raft::handle_t& handle, routing::generator::dataset_params_t<int, float> const& params)
 {
   auto data           = routing::generator::generate_dataset<int, float>(handle, params);
   auto [x_pos, y_pos] = data.get_coordinates();
