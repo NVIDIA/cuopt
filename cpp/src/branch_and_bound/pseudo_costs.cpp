@@ -1099,8 +1099,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 // such that they can be scheduled dynamically to the threads.
 #pragma omp taskloop num_tasks(n) default(shared)
       for (i_t k = 0; k < n; ++k) {
-        i_t start = std::floor(k * fractional.size() / n);
-        i_t end   = std::floor((k + 1) * fractional.size() / n);
+        auto [start, end] = calculate_index_range(k, fractional.size(), n);
 
         constexpr bool verbose = false;
         if (verbose) {

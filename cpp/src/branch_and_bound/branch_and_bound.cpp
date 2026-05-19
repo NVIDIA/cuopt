@@ -1444,7 +1444,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   // Stack holds at most 2 entries: the preferred child + its sibling.
   // The sibling is evicted to the queue before a new pair of children is added.
-  circular_deque_t<mip_node_t<i_t, f_t>*> stack(4);
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(2);
   stack.push_front(start_node);
 
   worker->recompute_basis  = true;
@@ -1727,7 +1727,11 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
   worker->recompute_bounds = true;
 
   search_tree_t<i_t, f_t> dive_tree(std::move(worker->start_node));
-  circular_deque_t<mip_node_t<i_t, f_t>*> stack(2 * diving_backtrack_limit + 4);
+
+  // Since we are perform a DFS with a limit amount of backtracking, the
+  // stack can hold at most `diving_backtrack_limit` + 2 siblings nodes of the
+  // current level
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(diving_backtrack_limit + 2);
   stack.push_front(&dive_tree.root);
 
   branch_and_bound_stats_t<i_t, f_t> dive_stats;

@@ -7,11 +7,27 @@
 
 #pragma once
 
+#include <cmath>
+#include <utility>
+
+namespace cuopt {
+
+// Split `total` entries across `n` blocks and return the [start, end) range for `k`-th block.
+// Useful for splitting work across OpenMP tasks/threads/workers.
+template <typename i_t>
+std::pair<i_t, i_t> calculate_index_range(i_t k, double total, double n)
+{
+  i_t start = std::floor(k * total / n);
+  i_t end   = std::floor((k + 1) * total / n);
+  return {start, end};
+}
+
+}  // namespace cuopt
+
 #ifdef _OPENMP
 
 #include <omp.h>
 #include <memory>
-#include <utility>
 
 namespace cuopt {
 

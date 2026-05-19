@@ -217,13 +217,12 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     for (size_t i = 1, k = 0; i < num_search_strategies; ++i) {
       if (is_search_strategy_enabled(search_strategies[i], has_incumbent, settings)) {
         // Calculate the number of workers for a given diving heuristic
-        i_t start            = std::floor((double)k * total_diving_workers / num_active);
-        i_t end              = std::floor((double)(k + 1) * total_diving_workers / num_active);
-        i_t workers_per_type = end - start;
+        auto [type_start, type_end] = calculate_index_range(k, total_diving_workers, num_active);
+        i_t workers_per_type        = type_end - type_start;
 
         // Calculate the number of diving workers allocated to this (best-first) worker
-        start = std::floor((double)this->worker_id * workers_per_type / num_bfs_workers);
-        end   = std::floor((double)(this->worker_id + 1) * workers_per_type / num_bfs_workers);
+        auto [start, end] =
+          calculate_index_range(this->worker_id, workers_per_type, num_bfs_workers);
         max_diving_workers[i] = end - start;
         total_max_diving_workers += max_diving_workers[i];
         ++k;
