@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -58,67 +58,66 @@ class dataset_t {
 };
 
 template <typename i_t, typename f_t>
-detail::order_info_t<i_t, f_t> generate_order_info(raft::handle_t const& handle,
+detail::order_info_t<i_t, f_t> generate_order_info(raft::handle_t& handle,
                                                    dataset_params_t<i_t, f_t> const& params);
 
 template <typename i_t, typename f_t>
 detail::fleet_order_constraints_t<i_t> generate_fleet_order_constraints(
-  raft::handle_t const& handle, dataset_params_t<i_t, f_t> const& params);
+  raft::handle_t& handle, dataset_params_t<i_t, f_t> const& params);
 
 template <typename i_t, typename f_t>
 detail::fleet_info_t<i_t, f_t> generate_fleet_info(
-  raft::handle_t const& handle,
+  raft::handle_t& handle,
   dataset_params_t<i_t, f_t> const& params,
   detail::order_info_t<i_t, f_t> const& order_info);
 
 template <typename i_t, typename f_t>
-coordinates_t<f_t> generate_coordinates(raft::handle_t const&, dataset_params_t<i_t, f_t> const&);
+coordinates_t<f_t> generate_coordinates(raft::handle_t&, dataset_params_t<i_t, f_t> const&);
 
 template <typename i_t, typename f_t>
-d_mdarray_t<f_t> generate_matrices(raft::handle_t const&,
+d_mdarray_t<f_t> generate_matrices(raft::handle_t&,
                                    dataset_params_t<i_t, f_t> const&,
                                    coordinates_t<f_t> const&);
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<demand_i_t> generate_demands(raft::handle_t const& handle,
+rmm::device_uvector<demand_i_t> generate_demands(raft::handle_t& handle,
                                                  dataset_params_t<i_t, f_t> const& params);
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<cap_i_t> generate_vehicle_capacities(raft::handle_t const& handle,
+rmm::device_uvector<cap_i_t> generate_vehicle_capacities(raft::handle_t& handle,
                                                          dataset_params_t<i_t, f_t> const& params,
                                                          size_t fleet_size);
 
 template <typename i_t, typename f_t>
-time_window_t<i_t> generate_time_windows(raft::handle_t const& handle,
+time_window_t<i_t> generate_time_windows(raft::handle_t& handle,
                                          dataset_params_t<i_t, f_t> const& params);
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<bool> generate_drop_return_trips(raft::handle_t const& handle,
+rmm::device_uvector<bool> generate_drop_return_trips(raft::handle_t& handle,
                                                      dataset_params_t<i_t, f_t> const& params,
                                                      size_t fleet_size);
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<bool> generate_skip_first_trips(raft::handle_t const& handle,
+rmm::device_uvector<bool> generate_skip_first_trips(raft::handle_t& handle,
                                                     dataset_params_t<i_t, f_t> const& params,
                                                     size_t fleet_size);
 
 template <typename i_t, typename f_t>
 vehicle_time_window_t<i_t> generate_vehicle_time_windows(
-  raft::handle_t const& handle,
+  raft::handle_t& handle,
   dataset_params_t<i_t, f_t> const& params,
   detail::order_info_t<i_t, f_t> const& order_info,
-  detail::fleet_order_constraints_t<i_t> const& fleet_order_constraints,
   size_t fleet_size);
 
 template <typename i_t, typename f_t>
 std::vector<break_dimension_t<i_t>> generate_vehicle_breaks(
-  raft::handle_t const& handle,
+  raft::handle_t& handle,
   dataset_params_t<i_t, f_t> const& params,
   detail::order_info_t<i_t, f_t> const& order_info,
   size_t fleet_size);
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<uint8_t> generate_vehicle_types(raft::handle_t const& handle,
+rmm::device_uvector<uint8_t> generate_vehicle_types(raft::handle_t& handle,
                                                     dataset_params_t<i_t, f_t> const& params,
                                                     size_t fleet_size);
 
@@ -131,7 +130,7 @@ rmm::device_uvector<uint8_t> generate_vehicle_types(raft::handle_t const& handle
  * @return dataset_t holding matrices, orders and vehicle info.
  */
 template <typename i_t, typename f_t>
-dataset_t<i_t, f_t> generate_dataset(raft::handle_t const& handle,
+dataset_t<i_t, f_t> generate_dataset(raft::handle_t& handle,
                                      dataset_params_t<i_t, f_t> const& params);
 }  // namespace generator
 }  // namespace routing
