@@ -9,7 +9,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
-import cuopt.linear_programming.mps_parser as mps_parser
+import cuopt.linear_programming.io as mps_parser
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
