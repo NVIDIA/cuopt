@@ -21,9 +21,13 @@
 
 #include <cuopt/version_config.hpp>
 
+#include <algorithm>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 using namespace cuopt::linear_programming::io;
@@ -81,6 +85,101 @@ solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
 {
   return static_cast<solver_settings_handle_t*>(settings);
 }
+
+namespace {
+
+using triplet_key_t = std::pair<cuopt_int_t, cuopt_int_t>;
+
+struct triplet_key_cmp_t {
+  bool operator()(const triplet_key_t& a, const triplet_key_t& b) const
+  {
+    return a.first < b.first || (a.first == b.first && a.second < b.second);
+  }
+};
+
+void accumulate_csr_triplets(const std::vector<cuopt_int_t>& offsets,
+                             const std::vector<cuopt_int_t>& indices,
+                             const std::vector<cuopt_float_t>& values,
+                             std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets)
+{
+  if (offsets.size() < 2) { return; }
+  const cuopt_int_t num_rows = static_cast<cuopt_int_t>(offsets.size()) - 1;
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    for (cuopt_int_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+      triplets[{row, indices[k]}] += values[k];
+    }
+  }
+}
+
+void accumulate_coordinate_triplets(
+  cuopt_int_t num_entries,
+  const cuopt_int_t* row_index,
+  const cuopt_int_t* col_index,
+  const cuopt_float_t* coeff,
+  std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets)
+{
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    triplets[{row_index[k], col_index[k]}] += coeff[k];
+  }
+}
+
+void triplets_to_csr(const std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets,
+                     cuopt_int_t num_rows,
+                     std::vector<cuopt_int_t>& offsets,
+                     std::vector<cuopt_int_t>& indices,
+                     std::vector<cuopt_float_t>& values)
+{
+  offsets.assign(num_rows + 1, 0);
+  indices.clear();
+  values.clear();
+  if (triplets.empty()) { return; }
+
+  std::vector<std::vector<std::pair<cuopt_int_t, cuopt_float_t>>> row_entries(num_rows);
+  for (const auto& [key, val] : triplets) {
+    const cuopt_int_t row = key.first;
+    const cuopt_int_t col = key.second;
+    if (row < 0 || row >= num_rows) {
+      throw raft::exception("Quadratic matrix row index out of range");
+    }
+    row_entries[row].emplace_back(col, val);
+  }
+
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    auto& entries = row_entries[row];
+    std::sort(entries.begin(), entries.end());
+    for (const auto& [col, val] : entries) {
+      indices.push_back(col);
+      values.push_back(val);
+    }
+    offsets[row + 1] = static_cast<cuopt_int_t>(values.size());
+  }
+}
+
+void coordinate_triplets_to_csr(cuopt_int_t num_entries,
+                                const cuopt_int_t* row_index,
+                                const cuopt_int_t* col_index,
+                                const cuopt_float_t* coeff,
+                                cuopt_int_t num_rows,
+                                std::vector<cuopt_int_t>& offsets,
+                                std::vector<cuopt_int_t>& indices,
+                                std::vector<cuopt_float_t>& values)
+{
+  std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t> triplets;
+  accumulate_coordinate_triplets(num_entries, row_index, col_index, coeff, triplets);
+  triplets_to_csr(triplets, num_rows, offsets, indices, values);
+}
+
+constexpr char k_deprecated_quadratic_problem_msg[] =
+  "cuOptCreateQuadraticProblem is deprecated. Use cuOptCreateProblem to set up the linear "
+  "problem, then cuOptAddQuadraticObjective to specify the quadratic objective terms. "
+  "For ranged constraints, use cuOptCreateRangedProblem instead of cuOptCreateProblem.";
+
+constexpr char k_deprecated_quadratic_ranged_problem_msg[] =
+  "cuOptCreateQuadraticRangedProblem is deprecated. Use cuOptCreateRangedProblem to set up the "
+  "linear problem, then cuOptAddQuadraticObjective to specify the quadratic objective terms. "
+  "For QCQP models, call cuOptAddQuadraticConstraint for each quadratic constraint.";
+
+}  // namespace
 
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
@@ -306,6 +405,8 @@ cuopt_int_t cuOptCreateQuadraticProblem(
     return CUOPT_INVALID_ARGUMENT;
   }
 
+  CUOPT_LOG_WARN("%s", k_deprecated_quadratic_problem_msg);
+
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   try {
@@ -373,6 +474,8 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
     return CUOPT_INVALID_ARGUMENT;
   }
 
+  CUOPT_LOG_WARN("%s", k_deprecated_quadratic_ranged_problem_msg);
+
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   try {
@@ -404,6 +507,132 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
     *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
   } catch (const raft::exception& e) {
     delete problem_and_stream;
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptAddQuadraticObjective(cuOptOptimizationProblem problem,
+                                       cuopt_int_t num_entries,
+                                       const cuopt_int_t* row_index,
+                                       const cuopt_int_t* col_index,
+                                       const cuopt_float_t* coeff)
+{
+  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_entries <= 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (row_index == nullptr || col_index == nullptr || coeff == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
+  problem_and_stream_view_t* problem_and_stream = static_cast<problem_and_stream_view_t*>(problem);
+  auto* op_problem                              = problem_and_stream->get_problem();
+  const cuopt_int_t num_variables               = op_problem->get_n_variables();
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    if (row_index[k] < 0 || row_index[k] >= num_variables || col_index[k] < 0 ||
+        col_index[k] >= num_variables) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
+
+  try {
+    std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t> triplets;
+    if (op_problem->has_quadratic_objective()) {
+      accumulate_csr_triplets(op_problem->get_quadratic_objective_offsets(),
+                              op_problem->get_quadratic_objective_indices(),
+                              op_problem->get_quadratic_objective_values(),
+                              triplets);
+    }
+    accumulate_coordinate_triplets(num_entries, row_index, col_index, coeff, triplets);
+
+    std::vector<cuopt_int_t> Q_offsets;
+    std::vector<cuopt_int_t> Q_indices;
+    std::vector<cuopt_float_t> Q_values;
+    triplets_to_csr(triplets, num_variables, Q_offsets, Q_indices, Q_values);
+    if (Q_values.empty()) { return CUOPT_INVALID_ARGUMENT; }
+
+    op_problem->set_quadratic_objective_matrix(Q_values.data(),
+                                               static_cast<cuopt_int_t>(Q_values.size()),
+                                               Q_indices.data(),
+                                               static_cast<cuopt_int_t>(Q_indices.size()),
+                                               Q_offsets.data(),
+                                               static_cast<cuopt_int_t>(Q_offsets.size()));
+  } catch (const raft::exception&) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
+                                        cuopt_int_t quad_num_entries,
+                                        const cuopt_int_t* row_index,
+                                        const cuopt_int_t* col_index,
+                                        const cuopt_float_t* coeff,
+                                        cuopt_int_t num_lin_entries,
+                                        const cuopt_int_t* linear_index,
+                                        const cuopt_float_t* linear_coeff,
+                                        char sense,
+                                        cuopt_float_t rhs)
+{
+  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (quad_num_entries <= 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (row_index == nullptr || col_index == nullptr || coeff == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  if (num_lin_entries < 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_lin_entries > 0 && (linear_index == nullptr || linear_coeff == nullptr)) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  if (sense != CUOPT_LESS_THAN && sense != CUOPT_GREATER_THAN) { return CUOPT_INVALID_ARGUMENT; }
+
+  problem_and_stream_view_t* problem_and_stream = static_cast<problem_and_stream_view_t*>(problem);
+  auto* op_problem                              = problem_and_stream->get_problem();
+  const cuopt_int_t num_variables               = op_problem->get_n_variables();
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  for (cuopt_int_t k = 0; k < quad_num_entries; ++k) {
+    if (row_index[k] < 0 || row_index[k] >= num_variables || col_index[k] < 0 ||
+        col_index[k] >= num_variables) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
+  for (cuopt_int_t k = 0; k < num_lin_entries; ++k) {
+    if (linear_index[k] < 0 || linear_index[k] >= num_variables) { return CUOPT_INVALID_ARGUMENT; }
+  }
+
+  try {
+    std::vector<cuopt_int_t> Q_offsets;
+    std::vector<cuopt_int_t> Q_indices;
+    std::vector<cuopt_float_t> Q_values;
+    coordinate_triplets_to_csr(
+      quad_num_entries, row_index, col_index, coeff, num_variables, Q_offsets, Q_indices, Q_values);
+    if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
+
+    using quadratic_constraint_t =
+      optimization_problem_interface_t<cuopt_int_t, cuopt_float_t>::quadratic_constraint_t;
+
+    std::vector<quadratic_constraint_t> constraints(op_problem->get_quadratic_constraints());
+    const cuopt_int_t constraint_row_index =
+      op_problem->get_n_constraints() + static_cast<cuopt_int_t>(constraints.size());
+
+    quadratic_constraint_t qc;
+    qc.constraint_row_index = constraint_row_index;
+    qc.constraint_row_type  = sense;
+    qc.rhs_value            = rhs;
+    qc.quadratic_values     = std::move(Q_values);
+    qc.quadratic_indices    = std::move(Q_indices);
+    qc.quadratic_offsets    = std::move(Q_offsets);
+    qc.linear_values.reserve(num_lin_entries);
+    qc.linear_indices.reserve(num_lin_entries);
+    for (cuopt_int_t k = 0; k < num_lin_entries; ++k) {
+      qc.linear_indices.push_back(linear_index[k]);
+      qc.linear_values.push_back(linear_coeff[k]);
+    }
+
+    constraints.push_back(std::move(qc));
+    op_problem->set_quadratic_constraints(std::move(constraints));
+  } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
   }
   return CUOPT_SUCCESS;
