@@ -896,7 +896,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 
-#pragma omp taskloop num_tasks(num_tasks) default(shared)
+#pragma omp taskloop num_tasks(num_tasks) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
     for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
       size_t n                   = step_end - step_start;
       auto [begin, end]          = calculate_index_range(task_id, n, num_tasks);

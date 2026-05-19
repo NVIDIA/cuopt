@@ -1077,7 +1077,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           strong_branch_up);
   } else {
     if (effective_batch_pdlp != 0) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_HIGH_TASK_PRIORITY)
       batch_pdlp_strong_branching_task(settings,
                                        effective_batch_pdlp,
                                        start_time,
@@ -1097,7 +1097,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
-#pragma omp taskloop num_tasks(n) default(shared)
+#pragma omp taskloop num_tasks(n) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
       for (i_t k = 0; k < n; ++k) {
         auto [start, end] = calculate_index_range(k, fractional.size(), n);
 
@@ -1507,14 +1507,12 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
-  const int num_tasks     = std::max(max_num_tasks, 1);
-  const int task_priority = reliability_branching_settings.task_priority;
+  const int num_tasks = std::max(max_num_tasks, 1);
   // If both batch PDLP and DS are used we double the max number of candidates
   const i_t max_num_candidates = use_pdlp ? 2 * reliability_branching_settings.max_num_candidates
                                           : reliability_branching_settings.max_num_candidates;
   const i_t num_candidates     = std::min<size_t>(unreliable_list.size(), max_num_candidates);
 
-  assert(task_priority > 0);
   assert(max_num_candidates > 0);
   assert(num_candidates > 0);
   assert(num_tasks > 0);
@@ -1605,7 +1603,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   std::atomic<int> concurrent_halt{0};
 
   if (use_pdlp) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_HIGH_TASK_PRIORITY)
     batch_pdlp_reliability_branching_task(settings.log,
                                           rb_mode,
                                           num_candidates,
@@ -1640,7 +1638,8 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t dual_simplex_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) default(shared)
+#pragma omp taskloop if (num_tasks > 1) priority(CUOPT_HIGH_TASK_PRIORITY) \
+  num_tasks(num_tasks) default(shared)
     for (i_t i = 0; i < num_candidates; ++i) {
       auto [score, j] = unreliable_list[i];
 

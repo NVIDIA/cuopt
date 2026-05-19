@@ -1635,7 +1635,8 @@ bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
   idle_worker->init(start_nodes);
   idle_worker->set_active();
 
-#pragma omp task affinity(*idle_worker) priority(99) default(none) firstprivate(idle_worker)
+#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
+  firstprivate(idle_worker)
   best_first_search_with(idle_worker);
 
   return idle_worker;
@@ -1733,7 +1734,7 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
   // Since we are perform a DFS with a limit amount of backtracking, the
   // stack can hold at most `diving_backtrack_limit` + 2 siblings nodes of the
   // current level
-  circular_deque_t<mip_node_t<i_t, f_t>*> stack(diving_backtrack_limit + 2);
+  circular_deque_t<mip_node_t<i_t, f_t>*> stack(diving_backtrack_limit + 4);
   stack.push_front(&dive_tree.root);
 
   branch_and_bound_stats_t<i_t, f_t> dive_stats;
@@ -1791,7 +1792,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 
     // Remove nodes that we can no longer backtrack to (i.e., from the current node, we can only
     // backtrack to a node that is has a depth of at most 5 levels lower than the current node).
-    if (stack.size() > 1 && stack.front()->depth - stack.back()->depth > diving_backtrack_limit) {
+    while (stack.size() > 1 &&
+           stack.front()->depth - stack.back()->depth > diving_backtrack_limit) {
       stack.pop_back();
     }
 
@@ -1852,7 +1854,8 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
       assert(bfs_worker->total_active_diving_workers.load() <=
              bfs_worker->total_max_diving_workers);
 
-#pragma omp task affinity(*diving_worker) default(none) firstprivate(diving_worker)
+#pragma omp task affinity(*diving_worker) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
+  firstprivate(diving_worker)
       dive_with(diving_worker);
 
       return true;
@@ -1895,7 +1898,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   lp_status_t root_status;
 
 // Launch a task for solving the root LP relaxation via dual simplex.
-#pragma omp task default(shared) depend(out : root_status)
+#pragma omp task default(shared) depend(out : root_status) priority(CUOPT_CRITICAL_TASK_PRIORITY)
   {
     root_status = solve_linear_program_with_advanced_basis(original_lp_,
                                                            exploration_stats_.start_time,
@@ -2368,7 +2371,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     tolerances_for_clique.absolute_mip_gap            = settings_.absolute_mip_gap_tol;
     tolerances_for_clique.relative_mip_gap            = settings_.relative_mip_gap_tol;
 
-#pragma omp task depend(out : *clique_signal) firstprivate(tolerances_for_clique)
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) depend(out : *clique_signal) \
+  firstprivate(tolerances_for_clique)
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
@@ -2555,7 +2559,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     cut_pass_result_t cut_pass_result;
     if (root_cut_cpufj_task) {
-#pragma omp task shared(root_cut_cpufj_task) default(none) depend(out : *root_cut_cpufj_task)
+#pragma omp task shared(root_cut_cpufj_task) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
+  depend(out : *root_cut_cpufj_task)
       detail::run_fj_cpu_task(*root_cut_cpufj_task,
                               std::numeric_limits<f_t>::infinity(),
                               std::numeric_limits<f_t>::infinity());
@@ -2745,6 +2750,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.diving_settings.coefficient_diving != 0) {
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
   }
+
   if (settings_.deterministic) {
     settings_.log.printf(
       " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node "
