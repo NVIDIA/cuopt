@@ -295,7 +295,10 @@ nitpick_ignore = [
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.is_integer"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_count"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_length"),
-    ("py:obj", "data_model.DataModel.set_data_model_view"),
+    (
+        "py:obj",
+        "cuopt.linear_programming.data_model.DataModel.set_data_model_view",
+    ),
     (
         "py:obj",
         "cuopt.linear_programming.solver_settings.SolverSettings.to_base_type",

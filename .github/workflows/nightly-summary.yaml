@@ -49,16 +49,23 @@ on:
         required: false
       CUOPT_SLACK_CHANNEL_ID:
         required: false
+      CUOPT_SLACK_MENTION_ID:
+        required: false
+
+permissions: {}
 
 jobs:
   nightly-summary:
+    permissions:
+      contents: read
     runs-on: linux-amd64-cpu4
     container:
       image: python:3.14-slim
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.sha }}
+          persist-credentials: false
       - name: Install dependencies
         run: |
           apt-get update && apt-get install -y --no-install-recommends curl
@@ -70,6 +77,7 @@ jobs:
           CUOPT_S3_URI: ${{ secrets.CUOPT_S3_URI }}
           CUOPT_SLACK_BOT_TOKEN: ${{ secrets.CUOPT_SLACK_BOT_TOKEN }}
           CUOPT_SLACK_CHANNEL_ID: ${{ secrets.CUOPT_SLACK_CHANNEL_ID }}
+          CUOPT_SLACK_MENTION_ID: ${{ secrets.CUOPT_SLACK_MENTION_ID }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SERVER_URL: ${{ github.server_url }}

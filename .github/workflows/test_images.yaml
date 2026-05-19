@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,9 +43,12 @@ jobs:
     steps:
       - name: Trim versions
         id: trim
+        env:
+          CUDA_VER: ${{ inputs.CUDA_VER }}
+          PYTHON_VER: ${{ inputs.PYTHON_VER }}
         run: |
-          CUDA_SHORT=$(echo "${{ inputs.CUDA_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
-          PYTHON_SHORT=$(echo "${{ inputs.PYTHON_VER }}" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+          CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
+          PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')
 
           echo "CUDA_SHORT=$CUDA_SHORT" >> $GITHUB_OUTPUT
           echo "PYTHON_SHORT=$PYTHON_SHORT" >> $GITHUB_OUTPUT
@@ -58,10 +61,11 @@ jobs:
       image: "nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-py${{ needs.prepare.outputs.PYTHON_SHORT }}"
     steps:
       - name: Checkout code repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           ref: ${{ inputs.sha }}
+          persist-credentials: false
       - name: Test cuopt
         run: |
           bash ./ci/docker/test_image.sh

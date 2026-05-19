@@ -7,11 +7,11 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -205,7 +205,7 @@ std::vector<T> read_vector_from_file(const std::string& filename)
 }
 
 template <typename i_t, typename f_t>
-void write_problem_info(const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& op_problem,
+void write_problem_info(const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& op_problem,
                         const std::string& filename)
 {
   std::ofstream file(filename);
@@ -274,8 +274,8 @@ void mps_file_to_binary(const std::filesystem::path& filename)
 
   std::string p = std::string(filename);
 
-  cuopt::mps_parser::mps_data_model_t<int, double> op_problem =
-    cuopt::mps_parser::parse_mps<int, double>(p);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(p);
 
   auto filename_string = filename.filename().string();
 

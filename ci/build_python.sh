@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -26,8 +26,6 @@ for package_name in cuopt cuopt_server; do
   sed -i "/^__git_commit__/ s/= .*/= \"${git_commit}\"/g" "${package_dir}/${package_name}/${package_name}/_version.py"
 done
 
-sed -i "/^__git_commit__/ s/= .*/= \"${git_commit}\"/g" "${package_dir}/cuopt/cuopt/linear_programming/cuopt_mps_parser/_version.py"
-
 # populates `RATTLER_CHANNELS` array and `RATTLER_ARGS` array
 source rapids-rattler-channel-string
 
@@ -43,21 +41,11 @@ RATTLER_CHANNELS=("--channel" "${CPP_CHANNEL}" "${RATTLER_CHANNELS[@]}")
 
 sccache --zero-stats
 
-rapids-logger "Building mps-parser"
+rapids-logger "Building cuopt"
 
 # --no-build-id allows for caching with `sccache`
 # more info is available at
 # https://rattler.build/latest/tips_and_tricks/#using-sccache-or-ccache-with-rattler-build
-rattler-build build --recipe conda/recipes/mps-parser \
-                    --test skip \
-                    "${RATTLER_ARGS[@]}" \
-                    "${RATTLER_CHANNELS[@]}"
-
-sccache --show-adv-stats
-sccache --zero-stats
-
-rapids-logger "Building cuopt"
-
 rattler-build build --recipe conda/recipes/cuopt \
                     --test skip \
                     "${RATTLER_ARGS[@]}" \

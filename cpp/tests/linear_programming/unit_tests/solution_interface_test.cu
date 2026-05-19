@@ -18,11 +18,11 @@
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -368,7 +368,7 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
 // This test legitimately uses the MPS parser since it tests that pipeline
 TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem)
 {
-  auto mps_data = cuopt::mps_parser::parse_mps<int, double>(lp_file_);
+  auto mps_data = cuopt::linear_programming::io::parse_mps<int, double>(lp_file_);
   raft::handle_t handle;
 
   auto problem = mps_data_model_to_optimization_problem(&handle, mps_data);

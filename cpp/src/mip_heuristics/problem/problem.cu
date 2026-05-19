@@ -278,7 +278,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     deterministic(problem_.deterministic),
     handle_ptr(problem_.handle_ptr),
     integer_fixed_problem(problem_.integer_fixed_problem),
-    integer_fixed_variable_map(problem_.n_variables, handle_ptr->get_stream()),
+    integer_fixed_variable_map((!no_deep_copy) ? 0 : problem_.n_variables,
+                               handle_ptr->get_stream()),
     n_variables(problem_.n_variables),
     n_constraints(problem_.n_constraints),
     n_binary_vars(problem_.n_binary_vars),
@@ -342,10 +343,7 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
       (!no_deep_copy)
         ? rmm::device_uvector<f_t>(problem_.combined_bounds, handle_ptr->get_stream())
         : rmm::device_uvector<f_t>(problem_.combined_bounds.size(), handle_ptr->get_stream())),
-    variable_types(
-      (!no_deep_copy)
-        ? rmm::device_uvector<var_t>(problem_.variable_types, handle_ptr->get_stream())
-        : rmm::device_uvector<var_t>(problem_.variable_types.size(), handle_ptr->get_stream())),
+    variable_types((!no_deep_copy) ? 0 : problem_.variable_types.size(), handle_ptr->get_stream()),
     integer_indices((!no_deep_copy) ? 0 : problem_.integer_indices.size(),
                     handle_ptr->get_stream()),
     binary_indices((!no_deep_copy) ? 0 : problem_.binary_indices.size(), handle_ptr->get_stream()),
@@ -354,7 +352,8 @@ problem_t<i_t, f_t>::problem_t(const problem_t<i_t, f_t>& problem_, bool no_deep
     is_binary_variable((!no_deep_copy) ? 0 : problem_.is_binary_variable.size(),
                        handle_ptr->get_stream()),
     related_variables(problem_.related_variables, handle_ptr->get_stream()),
-    related_variables_offsets(problem_.related_variables_offsets, handle_ptr->get_stream()),
+    related_variables_offsets((!no_deep_copy) ? 0 : problem_.related_variables_offsets.size(),
+                              handle_ptr->get_stream()),
     var_names(problem_.var_names),
     row_names(problem_.row_names),
     objective_name(problem_.objective_name),
@@ -476,6 +475,7 @@ void csr_to_csc_transpose(const i_t* csr_offsets,
   // Copy sorted results back
   raft::copy(csc_indices, row_ind_sorted.data(), nnz, stream);
   raft::copy(csc_values, val_sorted.data(), nnz, stream);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 }
 
 template <typename i_t, typename f_t>
@@ -568,8 +568,15 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
                    "A_indices must be set before calling the solver.");
     }
   }
-  cuopt_assert(objective_coefficients.size() == n_variables,
-               "objective_coefficients size mismatch");
+  if (n_variables == 0) {
+    cuopt_assert(objective_coefficients.is_empty(),
+                 "objective_coefficients must be empty when n_variables is 0.");
+  } else {
+    cuopt_assert(!objective_coefficients.is_empty(),
+                 "objective_coefficients must be set when n_variables > 0.");
+    cuopt_assert(objective_coefficients.size() % static_cast<size_t>(n_variables) == 0,
+                 "objective_coefficients size must be a multiple of n_variables");
+  }
 
   // Check CSR validity
   check_csr_representation(
@@ -594,8 +601,6 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
 
   // Check variable bounds are set and with the correct size
   if (!empty) { cuopt_assert(!variable_bounds.is_empty(), "Variable bounds must be set."); }
-  cuopt_assert(variable_bounds.size() == objective_coefficients.size(),
-               "Sizes for vectors related to the variables are not the same.");
   cuopt_assert(variable_bounds.size() == (std::size_t)n_variables,
                "Sizes for vectors related to the variables are not the same.");
 
@@ -608,15 +613,18 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   }
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert(constraint_lower_bounds.size() == (size_t)n_constraints,
+  cuopt_assert(n_constraints == 0 ? constraint_lower_bounds.size() == 0
+                                  : constraint_lower_bounds.size() % (size_t)n_constraints == 0,
                "Sizes for vectors related to the constraints are not the same.");
-  cuopt_assert((offsets.size() - 1) == constraint_lower_bounds.size(),
+  cuopt_assert((offsets.size() - 1) == (size_t)n_constraints,
                "Sizes for vectors related to the constraints are not the same.");
 
   // Check combined bounds
-  cuopt_assert(combined_bounds.size() == (size_t)n_constraints,
+  // To handle batch case (% 0 is not allowed)
+  cuopt_assert(n_constraints == 0
+                 ? combined_bounds.size() == 0
+                 : combined_bounds.size() % static_cast<size_t>(n_constraints) == 0,
                "Sizes for vectors related to the constraints are not the same.");
-
   // Check the validity of bounds
   cuopt_expects(thrust::all_of(handle_ptr->get_thrust_policy(),
                                thrust::make_counting_iterator<i_t>(0),

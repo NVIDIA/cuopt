@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
 #include <dual_simplex/presolve.hpp>
@@ -14,10 +15,12 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <limits>
+
 namespace cuopt::linear_programming {
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, const optimization_problem_interface_t<i_t, f_t>& problem)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
@@ -91,7 +94,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
 }
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, detail::problem_t<i_t, f_t>& model)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
@@ -182,6 +185,111 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_simplex_problem(
   user_problem.Q_offsets = model.Q_offsets;
   user_problem.Q_indices = model.Q_indices;
   user_problem.Q_values  = model.Q_values;
+
+  return user_problem;
+}
+
+template <typename i_t, typename f_t>
+static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
+  raft::handle_t const* handle_ptr, optimization_problem_t<i_t, f_t>& model)
+{
+  dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+
+  i_t const m  = model.get_n_constraints();
+  i_t const n  = model.get_n_variables();
+  i_t const nz = model.get_nnz();
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = model.get_objective_coefficients_host();
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.x         = model.get_constraint_matrix_values_host();
+  csr_A.j         = model.get_constraint_matrix_indices_host();
+  csr_A.row_start = model.get_constraint_matrix_offsets_host();
+  if (m == 0) {
+    csr_A.row_start.resize(1);
+    csr_A.row_start[0] = 0;
+  }
+  csr_A.to_compressed_col(user_problem.A);
+
+  user_problem.rhs.resize(m);
+  user_problem.row_sense.resize(m);
+  user_problem.range_rows.clear();
+  user_problem.range_value.clear();
+
+  auto model_constraint_sense = model.get_row_types_host();
+  auto model_constraint_rhs   = model.get_constraint_bounds_host();
+
+  if (!model_constraint_sense.empty()) {
+    for (i_t i = 0; i < m; ++i) {
+      user_problem.row_sense[i] = model_constraint_sense[i];
+      user_problem.rhs[i]       = model_constraint_rhs[i];
+    }
+  } else {
+    auto model_constraint_lower_bounds = model.get_constraint_lower_bounds_host();
+    auto model_constraint_upper_bounds = model.get_constraint_upper_bounds_host();
+
+    for (i_t i = 0; i < m; ++i) {
+      const f_t constraint_lower_bound = model_constraint_lower_bounds[i];
+      const f_t constraint_upper_bound = model_constraint_upper_bounds[i];
+      if (constraint_lower_bound == constraint_upper_bound) {
+        user_problem.row_sense[i] = 'E';
+        user_problem.rhs[i]       = constraint_lower_bound;
+      } else if (constraint_upper_bound == std::numeric_limits<f_t>::infinity()) {
+        user_problem.row_sense[i] = 'G';
+        user_problem.rhs[i]       = constraint_lower_bound;
+      } else if (constraint_lower_bound == -std::numeric_limits<f_t>::infinity()) {
+        user_problem.row_sense[i] = 'L';
+        user_problem.rhs[i]       = constraint_upper_bound;
+      } else {
+        user_problem.row_sense[i] = 'E';
+        user_problem.rhs[i]       = constraint_lower_bound;
+        user_problem.range_rows.push_back(i);
+        const f_t bound_difference = constraint_upper_bound - constraint_lower_bound;
+        user_problem.range_value.push_back(bound_difference);
+      }
+    }
+  }
+  user_problem.num_range_rows = static_cast<i_t>(user_problem.range_rows.size());
+
+  user_problem.lower = model.get_variable_lower_bounds_host();
+  user_problem.upper = model.get_variable_upper_bounds_host();
+
+  user_problem.problem_name = model.get_problem_name();
+  if (!model.get_row_names().empty()) {
+    user_problem.row_names.resize(m);
+    for (i_t ii = 0; ii < m; ++ii) {
+      user_problem.row_names[ii] = model.get_row_names()[static_cast<std::size_t>(ii)];
+    }
+  }
+  if (!model.get_variable_names().empty()) {
+    user_problem.col_names.resize(n);
+    for (i_t j = 0; j < n; ++j) {
+      if (static_cast<std::size_t>(j) < model.get_variable_names().size()) {
+        user_problem.col_names[j] = model.get_variable_names()[static_cast<std::size_t>(j)];
+      } else {
+        user_problem.col_names[j] = "_CUOPT_x" + std::to_string(static_cast<int>(j));
+      }
+    }
+  }
+
+  user_problem.obj_constant = model.get_objective_offset();
+  user_problem.obj_scale    = model.get_objective_scaling_factor();
+
+  user_problem.var_types.resize(n);
+  auto model_variable_types = model.get_variable_types_host();
+  for (i_t j = 0; j < n; ++j) {
+    user_problem.var_types[j] =
+      model_variable_types.empty() ||
+          model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
+        ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
+        : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
+  }
+
+  user_problem.Q_offsets = model.get_quadratic_objective_offsets();
+  user_problem.Q_indices = model.get_quadratic_objective_indices();
+  user_problem.Q_values  = model.get_quadratic_objective_values();
 
   return user_problem;
 }

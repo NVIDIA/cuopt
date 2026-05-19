@@ -9,6 +9,7 @@
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdhg.hpp>
+#include <pdlp/swap_and_resize_helper.cuh>
 
 #include <mip_heuristics/solution/solution.cuh>
 
@@ -16,6 +17,9 @@
 
 #include <rmm/cuda_stream_view.hpp>
 #include <rmm/device_uvector.hpp>
+
+#include <limits>
+#include <vector>
 
 namespace cuopt::linear_programming::detail {
 
@@ -51,6 +55,7 @@ class pdlp_initial_scaling_strategy_t {
                                   rmm::device_uvector<i_t>& A_T_indices,
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                                  i_t original_batch_size,
                                   bool running_mip = false);
 
   void scale_problem();
@@ -75,6 +80,10 @@ class pdlp_initial_scaling_strategy_t {
 
   f_t get_h_bound_rescaling() const;
   f_t get_h_objective_rescaling() const;
+  const rmm::device_uvector<f_t>& get_bound_rescaling_vector() const;
+  const rmm::device_uvector<f_t>& get_objective_rescaling_vector() const;
+  void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
+  void resize_context(i_t new_size);
 
   void bound_objective_rescaling();
 
@@ -100,11 +109,12 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<f_t> iteration_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> iteration_variable_scaling_;
 
-  rmm::device_scalar<f_t> bound_rescaling_;
-  rmm::device_scalar<f_t> objective_rescaling_;
+  i_t original_batch_size_;
+  rmm::device_uvector<f_t> bound_rescaling_;
+  rmm::device_uvector<f_t> objective_rescaling_;
   // Since we need it on the host
-  f_t h_bound_rescaling     = std::numeric_limits<f_t>::signaling_NaN();
-  f_t h_objective_rescaling = std::numeric_limits<f_t>::signaling_NaN();
+  std::vector<f_t> h_bound_rescaling_;
+  std::vector<f_t> h_objective_rescaling_;
 
   rmm::device_uvector<f_t> cummulative_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> cummulative_variable_scaling_;

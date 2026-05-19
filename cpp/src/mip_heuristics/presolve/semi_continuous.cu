@@ -44,7 +44,7 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
                                                 const std::vector<i_t>& sc_indices)
 {
   auto user_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
 
   dual_simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
   std::vector<i_t> new_slacks;

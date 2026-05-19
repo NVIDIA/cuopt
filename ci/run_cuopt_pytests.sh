@@ -46,8 +46,11 @@ fi
 
 echo "CRASH: pytest process died from $(signal_name ${rc}) (exit code ${rc})"
 
-# For non-nightly builds, fail immediately — no crash isolation
+# For non-nightly builds, fail immediately — no crash isolation. But
+# still write a synthetic crash XML so nightly_report.py reports the
+# failure (pytest didn't finalize JUnit on a mid-run crash).
 if [ "${IS_NIGHTLY}" != "nightly" ]; then
+    write_pytest_crash_marker "${xml_file}" "pytest-cuopt" "${rc}"
     exit ${rc}
 fi
 
