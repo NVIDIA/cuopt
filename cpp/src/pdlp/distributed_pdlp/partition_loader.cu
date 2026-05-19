@@ -5,17 +5,37 @@
 
 #include <pdlp/distributed_pdlp/partition_loader.hpp>
 
+#include <cuopt/error.hpp>
+
+#include <fstream>
 #include <set>
 #include <utility>
 
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-std::vector<int> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
-  std::string file)
+std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
+  std::string const& file)
 {
-  // returns a vector with all the values separated by a \n
-  return {};  // TODO: implement
+  std::ifstream part_file(file);
+  cuopt_expects(part_file.is_open(),
+                error_type_t::ValidationError,
+                "Failed to open partition file: " + file);
+
+  // One integer per line; operator>> skips whitespace so blank lines and
+  // trailing newlines are tolerated.
+  std::vector<i_t> parts;
+  i_t part = 0;
+  while (part_file >> part) {
+    parts.push_back(part);
+  }
+
+  // We must have hit EOF cleanly; any other state means a malformed token.
+  cuopt_expects(part_file.eof(),
+                error_type_t::ValidationError,
+                "Malformed partition file (expected one integer per line): " + file);
+
+  return parts;
 }
 
 template <typename i_t, typename f_t>

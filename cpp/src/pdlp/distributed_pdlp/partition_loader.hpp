@@ -14,7 +14,10 @@ namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 struct partition_loader_t {
-  static std::vector<int> parse_distributed_pdlp_partition_file(std::string file);
+  // Read a Metis-style partition file: one part-id per line (whitespace-tolerant),
+  // ASCII integers in [0, nb_parts). Returns a flat vector of length
+  // nb_cstr + nb_vars, indexed as in create_rank_data_from_parts (cstrs first, then vars).
+  static std::vector<i_t> parse_distributed_pdlp_partition_file(std::string const& file);
 
   static std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     const std::vector<i_t>& parts,
