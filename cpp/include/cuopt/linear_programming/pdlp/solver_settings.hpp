@@ -287,6 +287,8 @@ class pdlp_solver_settings_t {
   bool dual_postsolve{true};
   int num_gpus{1};
   std::string multi_gpu_partition_file{""};
+  // Set to true inside the shards
+  bool is_distributed_sub_pdlp{false};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination

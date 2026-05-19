@@ -45,14 +45,23 @@ partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
   const std::vector<i_t>& A_row_offsets,
   const std::vector<i_t>& A_col_indices,
   const std::vector<f_t>& A_values,
+  const std::vector<f_t>& A_values_scaled,
   const std::vector<i_t>& A_t_row_offsets,
   const std::vector<i_t>& A_t_col_indices,
   const std::vector<f_t>& A_t_values,
+  const std::vector<f_t>& A_t_values_scaled,
   i_t nb_parts,
   i_t nb_cstr,
   i_t nb_vars,
   i_t nnz)
 {
+  cuopt_expects(A_values.size() == A_values_scaled.size(),
+                error_type_t::ValidationError,
+                "A_values and A_values_scaled must have the same length");
+  cuopt_expects(A_t_values.size() == A_t_values_scaled.size(),
+                error_type_t::ValidationError,
+                "A_t_values and A_t_values_scaled must have the same length");
+
   std::vector<rank_data_t<i_t, f_t>> rank_data(nb_parts, rank_data_t<i_t, f_t>(nb_parts));
   std::vector<i_t> cstr_parts(parts.begin(), parts.begin() + nb_cstr);
   std::vector<i_t> var_parts(parts.begin() + nb_cstr, parts.begin() + nb_cstr + nb_vars);
@@ -74,17 +83,22 @@ partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
     std::vector<i_t> local_A_row_offsets;
     std::vector<i_t> local_A_col_indices;
     std::vector<f_t> local_A_values;
+    std::vector<f_t> local_A_values_scaled;
 
     i_t local_A_nnz = 0;
     local_A_row_offsets.push_back(local_A_nnz);
 
-    // For each owned constraint, build local matrix A
+    // For each owned constraint, build local matrix A. We walk both the
+    // unscaled and scaled global value arrays in lockstep so the produced
+    // local arrays share identical (offsets, col_indices) and differ only
+    // in values.
     for (auto owned_cstr : rd.owned_cstr_indices) {
       i_t cstr_len = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
       i_t row_start = A_row_offsets[owned_cstr];
       for (i_t v = 0; v < cstr_len; v++) {
         local_A_col_indices.push_back(A_col_indices[row_start + v]);
-        local_A_values.push_back(A_values[row_start + v]);
+        local_A_values       .push_back(A_values       [row_start + v]);
+        local_A_values_scaled.push_back(A_values_scaled[row_start + v]);
       }
       local_A_nnz += cstr_len;
       local_A_row_offsets.push_back(local_A_nnz);
@@ -111,14 +125,16 @@ partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
       rank_data[peer].var_send_per_peer[rank] = std::move(needed_var_from_peer);
     }
 
-    rd.h_A_row_offsets = std::move(local_A_row_offsets);
-    rd.h_A_col_indices = std::move(local_A_col_indices);
-    rd.h_A_values = std::move(local_A_values);
+    rd.h_A_row_offsets    = std::move(local_A_row_offsets);
+    rd.h_A_col_indices    = std::move(local_A_col_indices);
+    rd.h_A_values         = std::move(local_A_values);
+    rd.h_A_values_scaled  = std::move(local_A_values_scaled);
 
     // ---- A_t side ----
     std::vector<i_t> local_A_t_row_offsets;
     std::vector<i_t> local_A_t_col_indices;
     std::vector<f_t> local_A_t_values;
+    std::vector<f_t> local_A_t_values_scaled;
     i_t local_A_t_nnz = 0;
     local_A_t_row_offsets.push_back(local_A_t_nnz);
 
@@ -126,8 +142,9 @@ partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
       i_t var_len = A_t_row_offsets[owned_var + 1] - A_t_row_offsets[owned_var];
       i_t row_start = A_t_row_offsets[owned_var];
       for (i_t v = 0; v < var_len; v++) {
-        local_A_t_col_indices.push_back(A_t_col_indices[row_start + v]);
-        local_A_t_values.push_back(A_t_values[row_start + v]);
+        local_A_t_col_indices  .push_back(A_t_col_indices [row_start + v]);
+        local_A_t_values       .push_back(A_t_values      [row_start + v]);
+        local_A_t_values_scaled.push_back(A_t_values_scaled[row_start + v]);
       }
       local_A_t_nnz += var_len;
       local_A_t_row_offsets.push_back(local_A_t_nnz);
@@ -154,9 +171,10 @@ partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
       rank_data[peer].cstr_send_per_peer[rank] = std::move(needed_cstr_from_peer);
     }
 
-    rd.h_A_t_row_offsets = std::move(local_A_t_row_offsets);
-    rd.h_A_t_col_indices = std::move(local_A_t_col_indices);
-    rd.h_A_t_values = std::move(local_A_t_values);
+    rd.h_A_t_row_offsets    = std::move(local_A_t_row_offsets);
+    rd.h_A_t_col_indices    = std::move(local_A_t_col_indices);
+    rd.h_A_t_values         = std::move(local_A_t_values);
+    rd.h_A_t_values_scaled  = std::move(local_A_t_values_scaled);
 
     rd.total_var_size  = rd.owned_var_size  + needed_vars.size();
     rd.total_cstr_size = rd.owned_cstr_size + needed_cstrs.size();

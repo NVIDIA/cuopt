@@ -45,18 +45,29 @@
    // Out-of-line (in shard.cu) because pdlp_solver_t is incomplete here.
    ~pdlp_shard_t();
  
-   pdlp_shard_t(int device_id,
-                rank_data_t<i_t, f_t>&& rd,
-                ncclComm_t raw_comm,
-                std::vector<f_t> const& h_global_obj,
-                std::vector<f_t> const& h_global_var_lower,
-                std::vector<f_t> const& h_global_var_upper,
-                std::vector<f_t> const& h_global_cstr_lower,
-                std::vector<f_t> const& h_global_cstr_upper,
-                bool maximize,
-                f_t  objective_offset,
-                f_t  objective_scaling_factor,
-                pdlp_solver_settings_t<i_t, f_t> const& settings);
+  // sub worker for distributed pdlp. Owns its own view on scaled problem and unscaled problem
+  // Owns necessary multi-gpu data (rank_data, device_id, nccl_comm)
+  pdlp_shard_t(int device_id,
+               rank_data_t<i_t, f_t>&& rd,
+               ncclComm_t raw_comm,
+               std::vector<f_t> const& h_global_obj,
+               std::vector<f_t> const& h_global_var_lower,
+               std::vector<f_t> const& h_global_var_upper,
+               std::vector<f_t> const& h_global_cstr_lower,
+               std::vector<f_t> const& h_global_cstr_upper,
+               std::vector<f_t> const& h_global_obj_scaled,
+               std::vector<f_t> const& h_global_var_lower_scaled,
+               std::vector<f_t> const& h_global_var_upper_scaled,
+               std::vector<f_t> const& h_global_cstr_lower_scaled,
+               std::vector<f_t> const& h_global_cstr_upper_scaled,
+               std::vector<f_t> const& h_global_cummulative_cstr_scaling,
+               std::vector<f_t> const& h_global_cummulative_var_scaling,
+               f_t h_bound_rescaling,
+               f_t h_objective_rescaling,
+               bool maximize,
+               f_t  objective_offset,
+               f_t  objective_scaling_factor,
+               pdlp_solver_settings_t<i_t, f_t> const& settings);
  
    pdlp_shard_t(const pdlp_shard_t&)            = delete;
    pdlp_shard_t& operator=(const pdlp_shard_t&) = delete;

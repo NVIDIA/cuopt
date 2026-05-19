@@ -810,6 +810,42 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::get_variable_scaling_vector() const
 }
 
 template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_cummulative_scaling(
+  const std::vector<f_t>& h_cummulative_constraint_matrix_scaling,
+  const std::vector<f_t>& h_cummulative_variable_scaling)
+{
+  cuopt_expects(static_cast<i_t>(h_cummulative_constraint_matrix_scaling.size()) == dual_size_h_,
+                error_type_t::ValidationError,
+                "set_cummulative_scaling: host constraint scaling vector size mismatch");
+  cuopt_expects(static_cast<i_t>(h_cummulative_variable_scaling.size()) == primal_size_h_,
+                error_type_t::ValidationError,
+                "set_cummulative_scaling: host variable scaling vector size mismatch");
+
+  raft::copy(cummulative_constraint_matrix_scaling_.data(),
+             h_cummulative_constraint_matrix_scaling.data(),
+             h_cummulative_constraint_matrix_scaling.size(),
+             stream_view_);
+  raft::copy(cummulative_variable_scaling_.data(),
+             h_cummulative_variable_scaling.data(),
+             h_cummulative_variable_scaling.size(),
+             stream_view_);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_h_bound_rescaling(f_t value)
+{
+  h_bound_rescaling = value;
+  bound_rescaling_.set_value_async(value, stream_view_);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_h_objective_rescaling(f_t value)
+{
+  h_objective_rescaling = value;
+  objective_rescaling_.set_value_async(value, stream_view_);
+}
+
+template <typename i_t, typename f_t>
 typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t
 pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
 {

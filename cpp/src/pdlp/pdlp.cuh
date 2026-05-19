@@ -33,7 +33,6 @@
 
 #include <optional>
 #include <unordered_set>
-#include "distributed_pdlp/multi_gpu_engine.hpp"
 
 namespace cuopt::linear_programming::detail {
 /**
@@ -107,6 +106,13 @@ class pdlp_solver_t {
 
   void compute_initial_step_size();
   void compute_initial_primal_weight();
+
+  // Needed by multi-GPU to mutate them
+  problem_t<i_t, f_t>& get_op_problem_scaled() { return op_problem_scaled_; }
+  detail::pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy()
+  {
+    return initial_scaling_strategy_;
+  }
 
  private:
   void print_termination_criteria(const timer_t& timer, bool is_average = false);

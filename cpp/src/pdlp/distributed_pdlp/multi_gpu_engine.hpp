@@ -16,24 +16,29 @@
  
  namespace cuopt::linear_programming::detail {
  
- template <typename i_t, typename f_t>
- struct multi_gpu_engine_t {
-   // Constructs one shard per partition. Caller is responsible for:
-   //   - rank_data[i] being correctly populated for rank i
-   //   - the host vectors holding the (already scaled) global problem data
-   //   - sub_solver_settings being the per-shard PDLP config (num_gpus=1,
-   //     multi_gpu_partition_file="", scaling disabled).
-   multi_gpu_engine_t(
-     std::vector<rank_data_t<i_t, f_t>>&&      rank_data,
-     std::vector<f_t> const&                   h_global_obj,
-     std::vector<f_t> const&                   h_global_var_lower,
-     std::vector<f_t> const&                   h_global_var_upper,
-     std::vector<f_t> const&                   h_global_cstr_lower,
-     std::vector<f_t> const&                   h_global_cstr_upper,
-     bool                                      maximize,
-     f_t                                       objective_offset,
-     f_t                                       objective_scaling_factor,
-     pdlp_solver_settings_t<i_t, f_t> const&   sub_solver_settings);
+template <typename i_t, typename f_t>
+struct multi_gpu_engine_t {
+  // Constructs shards from rank_data
+  multi_gpu_engine_t(
+    std::vector<rank_data_t<i_t, f_t>>&&      rank_data,
+    std::vector<f_t> const&                   h_global_obj,
+    std::vector<f_t> const&                   h_global_var_lower,
+    std::vector<f_t> const&                   h_global_var_upper,
+    std::vector<f_t> const&                   h_global_cstr_lower,
+    std::vector<f_t> const&                   h_global_cstr_upper,
+    std::vector<f_t> const&                   h_global_obj_scaled,
+    std::vector<f_t> const&                   h_global_var_lower_scaled,
+    std::vector<f_t> const&                   h_global_var_upper_scaled,
+    std::vector<f_t> const&                   h_global_cstr_lower_scaled,
+    std::vector<f_t> const&                   h_global_cstr_upper_scaled,
+    std::vector<f_t> const&                   h_global_cummulative_cstr_scaling,
+    std::vector<f_t> const&                   h_global_cummulative_var_scaling,
+    f_t                                       h_bound_rescaling,
+    f_t                                       h_objective_rescaling,
+    bool                                      maximize,
+    f_t                                       objective_offset,
+    f_t                                       objective_scaling_factor,
+    pdlp_solver_settings_t<i_t, f_t> const&   sub_solver_settings);
  
    multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;
    multi_gpu_engine_t& operator=(const multi_gpu_engine_t&) = delete;
