@@ -248,8 +248,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     const auto& qc = quadratic_constraints[q];
     std::string row_name =
       qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
-    // Quadratic rows are currently restricted to MPS 'L' (<=).
-    mps_file << " L  " << row_name << "\n";
+    char const type = qc.constraint_row_type;
+    mps_file << " " << type << "  " << row_name << "\n";
   }
 
   // COLUMNS section
