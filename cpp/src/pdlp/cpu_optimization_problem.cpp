@@ -12,8 +12,8 @@
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>
@@ -691,7 +691,7 @@ template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
   // Data is already in host memory, so we can directly create a view and write
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(maximize_);
@@ -775,7 +775,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 // ==============================================================================

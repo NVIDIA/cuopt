@@ -13,16 +13,13 @@ ARGS=$*
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
-LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
    libcuopt         - build the cuopt C++ code
    cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
-   libmps_parser    - build the libmps_parser C++ code
-   cuopt_mps_parser - build the cuopt_mps_parser python package
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
@@ -55,19 +52,18 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libmps_parser', 'libcuopt', 'cuopt', 'cuopt_mps_parser', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
+ default action (no args) is to build and install 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
  Set env var LIBCUOPT_BUILD_DIR to override libcuopt build dir.
 "
-CUOPT_MPS_PARSER_BUILD_DIR=${REPODIR}/python/cuopt/cuopt/linear_programming/build
 PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/libcuopt/build
 CUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
 CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
-BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${LIBMPS_PARSER_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${CUOPT_MPS_PARSER_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
+BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
@@ -283,10 +279,6 @@ if ! contains_string "DFIND_CUOPT_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
     EXTRA_CMAKE_ARGS+=("-DFIND_CUOPT_CPP=ON")
 fi
 
-if ! contains_string "DFIND_MPS_PARSER_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
-    EXTRA_CMAKE_ARGS+=("-DFIND_MPS_PARSER_CPP=ON")
-fi
-
 # If clean given, run it prior to any other steps
 if hasArg clean; then
     # If the dirs to clean are mounted dirs in a container, the
@@ -344,23 +336,6 @@ else
     else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
         echo "Building for the architecture of the GPU in the system..."
-    fi
-fi
-
-################################################################################
-# Configure, build, and install libmps_parser
-if buildAll || hasArg libmps_parser; then
-    mkdir -p "${LIBMPS_PARSER_BUILD_DIR}"
-    cd "${LIBMPS_PARSER_BUILD_DIR}"
-    cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
-          -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
-          "${CACHE_ARGS[@]}" \
-          "${REPODIR}"/cpp/libmps_parser/
-
-    if hasArg -n; then
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" ${VERBOSE_FLAG}
-    else
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG}
     fi
 fi
 
@@ -426,14 +401,6 @@ if buildAll || hasArg cuopt; then
     cd "${REPODIR}"/python/cuopt
 
     # $EXTRA_CMAKE_ARGS gets concatenated into a string with [*] and then we find/replace spaces with semi-colons
-    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
-fi
-
-# Build and install the cuopt MPS parser Python package
-if buildAll || hasArg cuopt_mps_parser; then
-    cd "${REPODIR}"/python/cuopt/cuopt/linear_programming
-
     SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
         python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi

@@ -6,16 +6,16 @@
 /* clang-format on */
 
 #include <algorithm>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <utilities/copy_helpers.hpp>
 
 namespace cuopt::linear_programming::test {
 
 static void test_variable_bounds(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& problem,
   const rmm::device_uvector<double>& solution,
   const cuopt::linear_programming::mip_solver_settings_t<int, double> settings)
 {
@@ -43,7 +43,7 @@ static void test_variable_bounds(
 }
 
 static void test_variable_bounds(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& problem,
   const std::vector<double>& solution,
   const cuopt::linear_programming::mip_solver_settings_t<int, double> settings)
 {
@@ -94,7 +94,7 @@ struct violation {
 };
 
 static void test_constraint_sanity_per_row(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& solution,
   double abs_tolerance,
   double rel_tolerance)
@@ -128,7 +128,7 @@ static void test_constraint_sanity_per_row(
 }
 
 static void test_constraint_sanity_per_row(
-  const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& solution,
   double abs_tolerance,
   double rel_tolerance)
@@ -167,8 +167,8 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute(test_instance);
-  cuopt::mps_parser::mps_data_model_t<int, double> problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   mip_solver_settings_t<int, double> settings;
   settings.time_limit                  = time_limit;
