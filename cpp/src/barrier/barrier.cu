@@ -65,6 +65,29 @@ namespace cuopt::linear_programming::dual_simplex {
     cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.value());
 }
 
+// out[i] = is_free[i] ? 0 : a[i] * b[i]
+[[maybe_unused]] static void pairwise_multiply_skip_free(
+  float* a, float* b, int* is_free, float* out, int size, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(a, b, is_free),
+    out,
+    size,
+    [] __host__ __device__(float x_j, float d_j, int free_j) { return free_j ? 0.f : x_j * d_j; },
+    stream.value());
+}
+
+[[maybe_unused]] static void pairwise_multiply_skip_free(
+  double* a, double* b, int* is_free, double* out, int size, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(a, b, is_free),
+    out,
+    size,
+    [] __host__ __device__(double x_j, double d_j, int free_j) { return free_j ? 0.0 : x_j * d_j; },
+    stream.value());
+}
+
 [[maybe_unused]] static void axpy(
   float alpha, float* x, float beta, float* y, float* out, int size, rmm::cuda_stream_view stream)
 {
@@ -1638,14 +1661,21 @@ class iteration_data_t {
     // y1 <- alpha ( -D * x_1 + A^T x_2) + beta * y1
 
     rmm::device_uvector<f_t> d_r1(n, handle_ptr->get_stream());
+    thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin(), n, f_t(0));
 
-    // diag.pairwise_product(x1, r1);
-    // r1 <- D * x_1
-    pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), n, stream_view_);
+    // r1 <- D * x_1 on linear indices; barrier D is zero on native free variables
+    const i_t linear_n = has_soc ? cone_start() : n;
+    if (n_free_vars > 0) {
+      pairwise_multiply_skip_free(
+        d_x1.data(), d_diag_.data(), d_is_free_.data(), d_r1.data(), linear_n, stream_view_);
+    } else {
+      pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), linear_n, stream_view_);
+    }
+    RAFT_CHECK_CUDA(stream_view_);
+
+    // r1 <- D * x_1 + H x_1  (cone Hessian block H = S^T S; accumulate_cone_hessian_matvec)
     if (has_soc) {
       const i_t m_c = cone_entry_count();
-      thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin() + cone_start(), m_c, f_t(0));
-      // r1 <- D * x_1 + H x_1  (cone Hessian block H = S^T S; accumulate_cone_hessian_matvec)
       accumulate_cone_hessian_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
                                      cones(),
                                      raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
@@ -1660,7 +1690,7 @@ class iteration_data_t {
     }
 
     // y1 <- - alpha * r1 + beta * y1
-    // y1.axpy(-alpha, r1, beta);
+    // flip the sign of r1 = (Q x1 + D x1 + H x1)
     axpy(-alpha, d_r1.data(), beta, d_y1.data(), d_y1.data(), n, stream_view_);
 
     // matrix_transpose_vector_multiply(A, alpha, x2, 1.0, y1);
