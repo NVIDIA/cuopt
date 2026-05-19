@@ -120,7 +120,7 @@ std::vector<std::unique_ptr<vehicle_routing_ret_t>> call_batch_solve(
     data_models[i]->get_handle_ptr()->sync_stream();
 
     // Set new non blocking stream for current data model
-    raft::resource::set_cuda_stream(*(data_models[i]->get_handle_ptr()), stream_pool.get_stream(i));
+    raft::resource::set_cuda_stream(*data_models[i]->get_handle_ptr(), stream_pool.get_stream(i));
     auto routing_solution = cuopt::routing::solve(*data_models[i], *settings);
 
     // Make sure current solve is finished
