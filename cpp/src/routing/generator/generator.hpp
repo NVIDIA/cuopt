@@ -107,7 +107,6 @@ vehicle_time_window_t<i_t> generate_vehicle_time_windows(
   raft::handle_t& handle,
   dataset_params_t<i_t, f_t> const& params,
   detail::order_info_t<i_t, f_t> const& order_info,
-  detail::fleet_order_constraints_t<i_t> const& fleet_order_constraints,
   size_t fleet_size);
 
 template <typename i_t, typename f_t>
