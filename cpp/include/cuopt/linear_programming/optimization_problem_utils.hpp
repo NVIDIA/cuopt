@@ -18,6 +18,11 @@ namespace cuopt::linear_programming {
 
 namespace detail {
 
+inline constexpr bool is_valid_public_var_type_code(char variable_type)
+{
+  return variable_type == 'C' || variable_type == 'I' || variable_type == 'S';
+}
+
 inline constexpr var_t char_to_var_type(char variable_type)
 {
   if (variable_type == 'I' || variable_type == 'B') { return var_t::INTEGER; }
