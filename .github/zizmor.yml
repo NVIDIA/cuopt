@@ -6,5 +6,5 @@ rules:
         # rapidsai/shared-workflows and rapidsai/shared-actions
         "rapidsai/shared-workflows/*": any
         "rapidsai/shared-actions/*": any
-        "NVIDIA/nvskills-ci/*": any
+        "NVIDIA/skills/*": any
         "*": hash-pin
