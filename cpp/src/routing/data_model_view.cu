@@ -20,7 +20,7 @@ namespace cuopt {
 namespace routing {
 
 template <typename i_t, typename f_t>
-data_model_view_t<i_t, f_t>::data_model_view_t(raft::handle_t const* handle_ptr,
+data_model_view_t<i_t, f_t>::data_model_view_t(raft::handle_t* handle_ptr,
                                                i_t num_locations,
                                                i_t const fleet_size,
                                                i_t num_orders)
@@ -732,7 +732,7 @@ raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_vehicle_fixed_cost
 }
 
 template <typename i_t, typename f_t>
-raft::handle_t const* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
+raft::handle_t* data_model_view_t<i_t, f_t>::get_handle_ptr() const noexcept
 {
   return handle_ptr_;
 }
