@@ -2952,6 +2952,67 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       }
 #endif
 
+      // Before declaring optimal, check the primal residual ||Ax - b||.
+      // If it is large and there have been LU updates since last refactorization,
+      // refactor and recompute x_B = B^{-1}(b - N*x_N). If new infeasibilities
+      // appear, continue phase 2 instead of declaring optimal.
+      if (ft.num_updates() > 0) {
+        std::vector<f_t> residual = lp.rhs;
+        matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
+        f_t primal_res = vector_norm_inf<i_t, f_t>(residual);
+        if (primal_res > settings.primal_tol) {
+          settings.log.printf(
+            "Primal residual %.2e exceeds tolerance %.2e at optimality. "
+            "Refactoring basis (iteration %d, updates %d).\n",
+            primal_res,
+            settings.primal_tol,
+            iter,
+            ft.num_updates());
+          f_t refactor_start_work = ft.work_estimate();
+          i_t refactor_status     = ft.refactor_basis(
+            lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+          if (refactor_status == CONCURRENT_HALT_RETURN) {
+            return dual::status_t::CONCURRENT_LIMIT;
+          }
+          if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
+          if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
+          refactor_work = ft.work_estimate() - refactor_start_work;
+
+          phase2::reset_basis_mark(
+            basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+          compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+
+          phase2::compute_primal_solution_from_basis(lp,
+                                                     ft,
+                                                     basic_list,
+                                                     nonbasic_list,
+                                                     vstatus,
+                                                     x,
+                                                     xB_workspace,
+                                                     phase2_work_estimate);
+
+          primal_infeasibility_squared =
+            phase2::compute_initial_primal_infeasibilities(lp,
+                                                           settings,
+                                                           basic_list,
+                                                           x,
+                                                           squared_infeasibilities,
+                                                           infeasibility_indices,
+                                                           primal_infeasibility);
+          phase2_work_estimate += 4 * m + 2 * n;
+          iterations_since_refactor = 0;
+          solve_work                = 0.0;
+
+          if (primal_infeasibility > settings.primal_tol) {
+            settings.log.printf(
+              "New infeasibilities found after recompute (primal_inf=%.2e). "
+              "Continuing phase 2.\n",
+              primal_infeasibility);
+            continue;
+          }
+        }
+      }
+
       phase2::prepare_optimality(0,
                                  primal_infeasibility,
                                  lp,
