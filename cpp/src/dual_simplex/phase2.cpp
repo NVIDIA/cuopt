@@ -2982,14 +2982,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
             basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
           compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
 
-          phase2::compute_primal_solution_from_basis(lp,
-                                                     ft,
-                                                     basic_list,
-                                                     nonbasic_list,
-                                                     vstatus,
-                                                     x,
-                                                     xB_workspace,
-                                                     phase2_work_estimate);
+          phase2::compute_primal_solution_from_basis(
+            lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, phase2_work_estimate);
 
           primal_infeasibility_squared =
             phase2::compute_initial_primal_infeasibilities(lp,

@@ -215,7 +215,7 @@ class pseudo_costs_t {
   simplex_solver_settings_t<i_t, f_t> settings;
   csr_matrix_t<i_t, f_t> Arow;
 
-  protected:
+ protected:
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_down;
   std::vector<omp_atomic_t<i_t>> pseudo_cost_num_up;

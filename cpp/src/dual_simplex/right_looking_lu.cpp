@@ -36,13 +36,10 @@ class nonzero_counts_t {
       pos_[k]      = counts_[nz].size();
       counts_[nz].push_back(k);
     }
-    work_estimate_ += 4*n;
+    work_estimate_ += 4 * n;
   }
 
-  i_t get_count(i_t k) const
-  {
-    return deg_[k];
-  }
+  i_t get_count(i_t k) const { return deg_[k]; }
 
   void update_count(i_t k, i_t new_nz)
   {
@@ -50,39 +47,36 @@ class nonzero_counts_t {
     update_count(k, old_nz, new_nz);
   }
 
-  const std::vector<i_t>& get_elements_with_count(i_t nz) const
-  {
-    return counts_[nz];
-  }
+  const std::vector<i_t>& get_elements_with_count(i_t nz) const { return counts_[nz]; }
 
   // Remove k from its current bucket without re-inserting.
   // Sets deg_[k] to -1 to mark it as removed.
   void remove_from_count(i_t k)
   {
-    const i_t old_nz = deg_[k];
-    const i_t p = pos_[k];
-    const i_t other = counts_[old_nz].back();
+    const i_t old_nz   = deg_[k];
+    const i_t p        = pos_[k];
+    const i_t other    = counts_[old_nz].back();
     counts_[old_nz][p] = other;
-    pos_[other] = p;
+    pos_[other]        = p;
     counts_[old_nz].pop_back();
     deg_[k] = -1;
     work_estimate_ += 6;
   }
 
-  f_t record_and_clear_work_estimate_() {
-    f_t tmp = work_estimate_;
+  f_t record_and_clear_work_estimate_()
+  {
+    f_t tmp        = work_estimate_;
     work_estimate_ = 0;
     return tmp;
   }
 
  private:
-
   void update_count(i_t k, i_t old_nz, i_t new_nz)
   {
-    const i_t p = pos_[k];
-    const i_t other = counts_[old_nz].back();
+    const i_t p        = pos_[k];
+    const i_t other    = counts_[old_nz].back();
     counts_[old_nz][p] = other;
-    pos_[other] = p;
+    pos_[other]        = p;
     counts_[old_nz].pop_back();
     deg_[k] = new_nz;
     pos_[k] = counts_[new_nz].size();
@@ -103,8 +97,7 @@ class nonzero_counts_t {
 template <typename i_t, typename f_t>
 class trailing_matrix_t {
  public:
-  trailing_matrix_t(const csc_matrix_t<i_t, f_t>& A,
-                    const std::vector<i_t>& column_list)
+  trailing_matrix_t(const csc_matrix_t<i_t, f_t>& A, const std::vector<i_t>& column_list)
     : m_(A.m),
       n_(column_list.size()),
       Bnz_(0),
@@ -132,8 +125,7 @@ class trailing_matrix_t {
       col_realloc_hist_(std::max(m_, static_cast<i_t>(n_)) + 1, 0),
       row_realloc_hist_(std::max(m_, static_cast<i_t>(n_)) + 1, 0)
   {
-
-    work_estimate_ += 4*m_ + 2*n_ + col_realloc_hist_.size() + row_realloc_hist_.size();
+    work_estimate_ += 4 * m_ + 2 * n_ + col_realloc_hist_.size() + row_realloc_hist_.size();
 
     // Allocate 2x initial size per column/row to reduce early relocations
     i_t col_nz = 2 * Bnz_;
@@ -143,13 +135,12 @@ class trailing_matrix_t {
     c_x_.resize(col_nz);
     r_j_.resize(row_nz);
 
-
     i_t nz = 0;
     for (i_t i = 0; i < m_; i++) {
       row_start_[i] = nz;
-      row_end_[i] = nz;  // Temporary value used for initializing r_j_. Will be updated in loop
+      row_end_[i]   = nz;  // Temporary value used for initializing r_j_. Will be updated in loop
       i_t row_space = 2 * row_counts_.get_count(i);
-      row_max_[i] = nz + row_space;
+      row_max_[i]   = nz + row_space;
       nz += row_space;
     }
     assert(nz == row_nz);
@@ -157,41 +148,39 @@ class trailing_matrix_t {
 
     nz = 0;
     for (size_t k = 0; k < column_list.size(); k++) {
-      const i_t j = column_list[k];
+      const i_t j       = column_list[k];
       const i_t A_start = A.col_start[j];
-      const i_t A_end = A.col_start[j + 1];
-      const i_t len  = A_end - A_start;
-      i_t col_space = 2 * len;
-      col_max_[k] = nz + col_space;
-      col_start_[k] = nz;
-      col_end_[k] = nz + len;
+      const i_t A_end   = A.col_start[j + 1];
+      const i_t len     = A_end - A_start;
+      i_t col_space     = 2 * len;
+      col_max_[k]       = nz + col_space;
+      col_start_[k]     = nz;
+      col_end_[k]       = nz + len;
       for (i_t p = A_start; p < A_end; p++) {
         const i_t row = A.i[p];
         const f_t val = A.x[p];
-        c_i_[nz] = row;
-        c_x_[nz] = val;
+        c_i_[nz]      = row;
+        c_x_[nz]      = val;
         nz++;
         r_j_[row_end_[row]] = k;
         row_end_[row]++;
       }
-      nz += col_space - len; // Remaining capacity for this column
+      nz += col_space - len;  // Remaining capacity for this column
     }
     assert(nz == col_nz);
     work_estimate_ += 7 * n_ + 7 * Bnz_;
 
     for (i_t j = 0; j < n_; j++) {
-      f_t max_in_col = 0.0;
+      f_t max_in_col    = 0.0;
       const i_t c_start = col_start_[j];
-      const i_t c_end = col_end_[j];
+      const i_t c_end   = col_end_[j];
       for (i_t p = c_start; p < c_end; p++) {
         const f_t val = std::abs(c_x_[p]);
-        if (val > max_in_col) {
-          max_in_col = val;
-        }
+        if (val > max_in_col) { max_in_col = val; }
       }
       max_in_column_[j] = max_in_col;
     }
-    work_estimate_ += Bnz_ + 3*n_;
+    work_estimate_ += Bnz_ + 3 * n_;
   }
 
   f_t record_and_clear_work_estimate_()
@@ -204,9 +193,11 @@ class trailing_matrix_t {
     return tmp;
   }
 
-  i_t markowitz_search(f_t pivot_tol, f_t threshold_tol, i_t& pivot_i, i_t& pivot_j, f_t &pivot_val) {
-    f_t markowitz = static_cast<f_t>(m_) * static_cast<f_t>(n_); // Upper bound on markowitz criteria
-    i_t nz      = 1;
+  i_t markowitz_search(f_t pivot_tol, f_t threshold_tol, i_t& pivot_i, i_t& pivot_j, f_t& pivot_val)
+  {
+    f_t markowitz =
+      static_cast<f_t>(m_) * static_cast<f_t>(n_);  // Upper bound on markowitz criteria
+    i_t nz                 = 1;
     i_t nsearch            = 0;
     constexpr bool verbose = false;
     i_t nz_max             = std::min(m_, n_);
@@ -217,11 +208,11 @@ class trailing_matrix_t {
       for (const i_t j : col_counts_.get_elements_with_count(nz)) {
         assert(col_counts_.get_count(j) == nz);
         const f_t max_in_col = max_in_column_[j];
-        const i_t c_start = col_start_[j];
-        const i_t c_end = col_end_[j];
+        const i_t c_start    = col_start_[j];
+        const i_t c_end      = col_end_[j];
         for (i_t p = c_start; p < c_end; p++) {
-          const i_t i = c_i_[p];
-          const f_t val = c_x_[p];
+          const i_t i    = c_i_[p];
+          const f_t val  = c_x_[p];
           const i_t rdeg = row_counts_.get_count(i);
           assert(rdeg >= 0);
           const i_t Mij = (rdeg - 1) * (nz - 1);
@@ -238,7 +229,7 @@ class trailing_matrix_t {
         nsearch++;
         if (markowitz <= markowitz_lower_bound) { break; }
       }
-     work_estimate_ += 4 * (nsearch - nsearch_start);
+      work_estimate_ += 4 * (nsearch - nsearch_start);
       if (markowitz <= markowitz_lower_bound) { break; }
 
       markowitz_lower_bound = (nz - 1) * nz;
@@ -250,19 +241,22 @@ class trailing_matrix_t {
         const i_t rdeg = row_counts_.get_count(i);
         assert(rdeg == nz);
         const i_t r_start = row_start_[i];
-        const i_t r_end = row_end_[i];
+        const i_t r_end   = row_end_[i];
         for (i_t p = r_start; p < r_end; p++) {
           const i_t j = r_j_[p];
           // Look up the value from the column copy of j
-          f_t val = 0;
+          f_t val           = 0;
           const i_t c_start = col_start_[j];
-          const i_t c_end = col_end_[j];
+          const i_t c_end   = col_end_[j];
           for (i_t q = c_start; q < c_end; q++) {
-            if (c_i_[q] == i) { val = c_x_[q]; break; }
+            if (c_i_[q] == i) {
+              val = c_x_[q];
+              break;
+            }
           }
           work_estimate_ += 2 * (c_end - c_start);
           const f_t max_in_col = max_in_column_[j];
-          const i_t cdeg = col_counts_.get_count(j);
+          const i_t cdeg       = col_counts_.get_count(j);
           assert(cdeg >= 0);
           const i_t Mij = (nz - 1) * (cdeg - 1);
           if (Mij < markowitz && std::abs(val) >= threshold_tol * max_in_col &&
@@ -288,15 +282,14 @@ class trailing_matrix_t {
     return nsearch;
   }
 
-
   void update_for_pivot_removal(i_t pivot_i, i_t pivot_j)
   {
     // Iterate over the pivot row: decrement column degrees.
     // Skip the pivot column itself — it is being eliminated, not just decremented.
     const i_t r_start = row_start_[pivot_i];
-    const i_t r_end = row_end_[pivot_i];
+    const i_t r_end   = row_end_[pivot_i];
     for (i_t p = r_start; p < r_end; p++) {
-      const i_t j = r_j_[p];
+      const i_t j    = r_j_[p];
       const i_t cdeg = col_counts_.get_count(j);
       if (j != pivot_j) {
         col_counts_.update_count(j, cdeg - 1);
@@ -309,9 +302,9 @@ class trailing_matrix_t {
     // Iterate over the pivot column: decrement row degrees.
     // Skip the pivot row itself — it is being eliminated, not just decremented.
     const i_t c_start = col_start_[pivot_j];
-    const i_t c_end = col_end_[pivot_j];
+    const i_t c_end   = col_end_[pivot_j];
     for (i_t p = c_start; p < c_end; p++) {
-      const i_t i = c_i_[p];
+      const i_t i    = c_i_[p];
       const i_t rdeg = row_counts_.get_count(i);
       if (i != pivot_i) {
         row_counts_.update_count(i, rdeg - 1);
@@ -322,23 +315,20 @@ class trailing_matrix_t {
     work_estimate_ += 2 * (c_end - c_start);
   }
 
-  void schur_complement(i_t pivot_i,
-                        i_t pivot_j,
-                        f_t drop_tol,
-                        f_t pivot_val)
+  void schur_complement(i_t pivot_i, i_t pivot_j, f_t drop_tol, f_t pivot_val)
   {
     // Step 1: Cache the pivot column into dense workspaces.
     // pivot_col_val_[i] = l_i = a(i, pivot_j) / pivot_val  for each row i != pivot_i
     // pivot_col_mark_[i] = 1 if row i is in the pivot column
     // pivot_col_index_[] = sparse list of such row indices
-    i_t pivot_col_count = 0;
+    i_t pivot_col_count     = 0;
     const i_t c_pivot_start = col_start_[pivot_j];
-    const i_t c_pivot_end = col_end_[pivot_j];
+    const i_t c_pivot_end   = col_end_[pivot_j];
     for (i_t p = c_pivot_start; p < c_pivot_end; p++) {
       const i_t i = c_i_[p];
       if (i == pivot_i) { continue; }
-      const f_t li = c_x_[p] / pivot_val;
-      pivot_col_val_[i] = li;
+      const f_t li       = c_x_[p] / pivot_val;
+      pivot_col_val_[i]  = li;
       pivot_col_mark_[i] = 1;
       pivot_col_index_.push_back(i);
       pivot_col_count++;
@@ -347,7 +337,7 @@ class trailing_matrix_t {
 
     // Step 2: For each column j in the pivot row, update existing entries and insert fill.
     const i_t r_pivot_start = row_start_[pivot_i];
-    const i_t r_pivot_end = row_end_[pivot_i];
+    const i_t r_pivot_end   = row_end_[pivot_i];
     for (i_t p0 = r_pivot_start; p0 < r_pivot_end; p0++) {
       const i_t j = r_j_[p0];
       if (j == pivot_j) { continue; }
@@ -357,10 +347,10 @@ class trailing_matrix_t {
       // For each entry (i, j) that also appears in the pivot column, update it.
       // Simultaneously, unmark pivot_col_mark_[i] for matched entries, so that
       // after the scan, the still-marked entries are the fill-ins.
-      i_t n_fillin = pivot_col_count;
-      i_t n_cancel = 0;
+      i_t n_fillin      = pivot_col_count;
+      i_t n_cancel      = 0;
       const i_t c_start = col_start_[j];
-      const i_t c_end = col_end_[j];
+      const i_t c_end   = col_end_[j];
       for (i_t q = c_start; q < c_end; q++) {
         const i_t i = c_i_[q];
         if (pivot_col_mark_[i]) {
@@ -378,8 +368,7 @@ class trailing_matrix_t {
           }
         }
       }
-      work_estimate_ += 2*(c_end - c_start) + 6*(pivot_col_count - n_fillin);
-
+      work_estimate_ += 2 * (c_end - c_start) + 6 * (pivot_col_count - n_fillin);
 
       // Step 2b: Remove cancellations (entries that became zero).
       if (n_cancel > 0) {
@@ -400,23 +389,19 @@ class trailing_matrix_t {
                 break;
               }
             }
-            work_estimate_ += 2*(row_end_[dead_row] - r_start) + 4;
+            work_estimate_ += 2 * (row_end_[dead_row] - r_start) + 4;
             // Update row degree
             const i_t rdeg = row_counts_.get_count(dead_row);
             row_counts_.update_count(dead_row, rdeg - 1);
-
           }
         }
-        work_estimate_ += 2*(new_end - col_start_[j]);
+        work_estimate_ += 2 * (new_end - col_start_[j]);
         i_t old_count = col_end_[j] - col_start_[j];
-        col_end_[j] = new_end;
+        col_end_[j]   = new_end;
         i_t new_count = new_end - col_start_[j];
         // Update column degree for cancellations
-        if (new_count != old_count) {
-          col_counts_.update_count(j, new_count);
-        }
+        if (new_count != old_count) { col_counts_.update_count(j, new_count); }
       }
-
 
       // Step 2c: Insert fill-in entries. We know exactly how many there are.
       if (n_fillin > 0) {
@@ -428,7 +413,7 @@ class trailing_matrix_t {
         for (i_t k = 0; k < pivot_col_count; k++) {
           const i_t i = pivot_col_index_[k];
           if (pivot_col_mark_[i]) {
-            const f_t val = pivot_col_val_[i] * uj;
+            const f_t val     = pivot_col_val_[i] * uj;
             const f_t abs_val = std::abs(val);
             if (abs_val < drop_tol) {
               // Skip this fill-in but still need to unmark
@@ -457,9 +442,7 @@ class trailing_matrix_t {
       // Step 2d: Update column degree bucket once for this column.
       {
         i_t new_cdeg = col_end_[j] - col_start_[j];
-        if (new_cdeg != col_counts_.get_count(j)) {
-          col_counts_.update_count(j, new_cdeg);
-        }
+        if (new_cdeg != col_counts_.get_count(j)) { col_counts_.update_count(j, new_cdeg); }
       }
 
       // Step 2e: Reset all pivot column marks back to 1 for the next column.
@@ -469,16 +452,16 @@ class trailing_matrix_t {
       for (i_t k = 0; k < pivot_col_count; k++) {
         pivot_col_mark_[pivot_col_index_[k]] = 1;
       }
-      work_estimate_ += 2*pivot_col_count;
+      work_estimate_ += 2 * pivot_col_count;
     }
 
     // Step 3: Clear the pivot column workspaces.
     for (i_t k = 0; k < pivot_col_count; k++) {
-      const i_t i = pivot_col_index_[k];
-      pivot_col_val_[i] = 0;
+      const i_t i        = pivot_col_index_[k];
+      pivot_col_val_[i]  = 0;
       pivot_col_mark_[i] = 0;
     }
-    work_estimate_ += 2*pivot_col_count;
+    work_estimate_ += 2 * pivot_col_count;
     pivot_col_index_.clear();
   }
 
@@ -489,11 +472,11 @@ class trailing_matrix_t {
   void cache_pivot_row(i_t pivot_i)
   {
     const i_t r_start = row_start_[pivot_i];
-    const i_t r_end = row_end_[pivot_i];
+    const i_t r_end   = row_end_[pivot_i];
     for (i_t p = r_start; p < r_end; p++) {
-      const i_t j = r_j_[p];
+      const i_t j       = r_j_[p];
       const i_t c_start = col_start_[j];
-      const i_t c_end = col_end_[j];
+      const i_t c_end   = col_end_[j];
       i_t q;
       for (q = c_start; q < c_end; q++) {
         if (c_i_[q] == pivot_i) {
@@ -501,7 +484,7 @@ class trailing_matrix_t {
           break;
         }
       }
-      work_estimate_ += 2 *(q - c_start);
+      work_estimate_ += 2 * (q - c_start);
     }
     work_estimate_ += 3 * (r_end - r_start) + 2;
   }
@@ -510,7 +493,7 @@ class trailing_matrix_t {
   {
     // Iterate over the pivot row
     const i_t r_pivot_start = row_start_[pivot_i];
-    const i_t r_pivot_end = row_end_[pivot_i];
+    const i_t r_pivot_end   = row_end_[pivot_i];
     for (i_t p = r_pivot_start; p < r_pivot_end; p++) {
       const i_t j = r_j_[p];
       // Clear the cached pivot row value for this column
@@ -525,28 +508,25 @@ class trailing_matrix_t {
           // Swap with the last element in the column
           i_t other_i = c_i_[col_end_[j] - 1];
           f_t other_x = c_x_[col_end_[j] - 1];
-          c_i_[q] = other_i;
-          c_x_[q] = other_x;
+          c_i_[q]     = other_i;
+          c_x_[q]     = other_x;
           // Update col_end_[j]
           col_end_[j]--;
           q--;
           continue;
         } else {
           const f_t val = std::abs(c_x_[q]);
-          if (val > max_in_col) {
-            max_in_col = val;
-          }
+          if (val > max_in_col) { max_in_col = val; }
         }
       }
-      work_estimate_ += 3*(prev_col_end - col_start_[j]) + 7;
+      work_estimate_ += 3 * (prev_col_end - col_start_[j]) + 7;
       max_in_column_[j] = max_in_col;
     }
-    work_estimate_ += 4*(r_pivot_end - r_pivot_start);
-
+    work_estimate_ += 4 * (r_pivot_end - r_pivot_start);
 
     // Iterate over the pivot column
     const i_t c_start = col_start_[pivot_j];
-    const i_t c_end = col_end_[pivot_j];
+    const i_t c_end   = col_end_[pivot_j];
     for (i_t p = c_start; p < c_end; p++) {
       const i_t i = c_i_[p];
       // Remove pivot_j from each row i in the pivot column
@@ -562,9 +542,9 @@ class trailing_matrix_t {
           break;
         }
       }
-      work_estimate_ += 2*(q - row_start_[i]) + 4;
+      work_estimate_ += 2 * (q - row_start_[i]) + 4;
     }
-    work_estimate_ += 4*(c_end - c_start);
+    work_estimate_ += 4 * (c_end - c_start);
 
     // Mark pivot column and pivot row as empty so garbage collection skips them
     col_end_[pivot_j] = col_start_[pivot_j];
@@ -575,7 +555,7 @@ class trailing_matrix_t {
   {
     // U(k, :)
     const i_t r_pivot_start = row_start_[pivot_i];
-    const i_t r_pivot_end = row_end_[pivot_i];
+    const i_t r_pivot_end   = row_end_[pivot_i];
     for (i_t p = r_pivot_start; p < r_pivot_end; p++) {
       const i_t j = r_j_[p];
       if (j != pivot_j) {
@@ -591,7 +571,7 @@ class trailing_matrix_t {
   {
     // L(:, k)
     const i_t c_pivot_start = col_start_[pivot_j];
-    const i_t c_pivot_end = col_end_[pivot_j];
+    const i_t c_pivot_end   = col_end_[pivot_j];
     for (i_t p = c_pivot_start; p < c_pivot_end; p++) {
       const i_t i = c_i_[p];
       if (i != pivot_i) {
@@ -614,24 +594,24 @@ class trailing_matrix_t {
       new_c_x.reserve(c_x_.size() - unused_col_nz_);
       for (i_t j = 0; j < n_; j++) {
         const i_t new_start = static_cast<i_t>(new_c_i.size());
-        const i_t c_start = col_start_[j];
-        const i_t c_end = col_end_[j];
-        const i_t col_size = c_end - c_start;
+        const i_t c_start   = col_start_[j];
+        const i_t c_end     = col_end_[j];
+        const i_t col_size  = c_end - c_start;
         for (i_t p = c_start; p < c_end; p++) {
           new_c_i.push_back(c_i_[p]);
           new_c_x.push_back(c_x_[p]);
         }
         col_start_[j] = new_start;
-        col_end_[j] = static_cast<i_t>(new_c_i.size());
+        col_end_[j]   = static_cast<i_t>(new_c_i.size());
         // Reserve space equal to current size (doubling strategy)
         for (i_t s = 0; s < col_size; s++) {
           new_c_i.push_back(kNone);
           new_c_x.push_back(0.0);
         }
-        work_estimate_ += 4*col_size;
+        work_estimate_ += 4 * col_size;
         col_max_[j] = static_cast<i_t>(new_c_i.size());
       }
-      work_estimate_ += 6*n_;
+      work_estimate_ += 6 * n_;
       c_i_ = std::move(new_c_i);
       c_x_ = std::move(new_c_x);
 
@@ -644,23 +624,23 @@ class trailing_matrix_t {
       new_r_j.reserve(r_j_.size() - unused_row_nz_);
       for (i_t i = 0; i < m_; i++) {
         const i_t new_start = static_cast<i_t>(new_r_j.size());
-        const i_t r_start = row_start_[i];
-        const i_t r_end = row_end_[i];
-        const i_t row_size = r_end - r_start;
+        const i_t r_start   = row_start_[i];
+        const i_t r_end     = row_end_[i];
+        const i_t row_size  = r_end - r_start;
         for (i_t p = r_start; p < r_end; p++) {
           new_r_j.push_back(r_j_[p]);
         }
         row_start_[i] = new_start;
-        row_end_[i] = static_cast<i_t>(new_r_j.size());
+        row_end_[i]   = static_cast<i_t>(new_r_j.size());
         // Reserve space equal to current size (doubling strategy)
         for (i_t s = 0; s < row_size; s++) {
           new_r_j.push_back(kNone);
         }
         row_max_[i] = static_cast<i_t>(new_r_j.size());
-        work_estimate_ += 2*row_size;
+        work_estimate_ += 2 * row_size;
       }
-      work_estimate_ += 6*m_;
-      r_j_ = std::move(new_r_j);
+      work_estimate_ += 6 * m_;
+      r_j_           = std::move(new_r_j);
       unused_row_nz_ = 0;
     }
   }
@@ -697,7 +677,6 @@ class trailing_matrix_t {
   }
 
  private:
-
   // Ensure column j has space for at least `needed` additional entries.
   // If not, relocate the column to the end of c_i_/c_x_ with enough space.
   // Returns true if the column was relocated (invalidating any cached positions).
@@ -712,24 +691,24 @@ class trailing_matrix_t {
     col_realloc_hist_[shortfall]++;
     // Relocate column j to the end of c_i_/c_x_
     const i_t c_start = col_start_[j];
-    const i_t c_end = col_end_[j];
-    i_t current_size = c_end - c_start;
+    const i_t c_end   = col_end_[j];
+    i_t current_size  = c_end - c_start;
     unused_col_nz_ += current_size;
     i_t new_start = c_i_.size();
     for (i_t p = c_start; p < c_end; p++) {
       c_i_.push_back(c_i_[p]);
       c_x_.push_back(c_x_[p]);
     }
-    work_estimate_ += 2*(c_end - c_start);
+    work_estimate_ += 2 * (c_end - c_start);
     col_start_[j] = new_start;
-    col_end_[j] = c_i_.size();
+    col_end_[j]   = c_i_.size();
     // Reserve space using doubling strategy to reduce future relocations
     i_t extra = std::max(current_size, needed);
     for (i_t k = 0; k < extra; k++) {
       c_i_.push_back(kNone);
       c_x_.push_back(0.0);
     }
-    work_estimate_ += 2*extra;
+    work_estimate_ += 2 * extra;
     col_max_[j] = c_i_.size();
     work_estimate_ += 10;
     return true;
@@ -748,8 +727,8 @@ class trailing_matrix_t {
     row_realloc_hist_[shortfall]++;
     // Relocate row i to the end of r_j_
     const i_t r_start = row_start_[i];
-    const i_t r_end = row_end_[i];
-    i_t current_size = r_end - r_start;
+    const i_t r_end   = row_end_[i];
+    i_t current_size  = r_end - r_start;
     unused_row_nz_ += current_size;
     i_t new_start = r_j_.size();
     for (i_t p = r_start; p < r_end; p++) {
@@ -757,7 +736,7 @@ class trailing_matrix_t {
     }
     work_estimate_ += (r_end - r_start);
     row_start_[i] = new_start;
-    row_end_[i] = r_j_.size();
+    row_end_[i]   = r_j_.size();
     // Reserve space using doubling strategy to reduce future relocations
     i_t extra = std::max(current_size, needed);
     for (i_t k = 0; k < extra; k++) {
@@ -768,29 +747,32 @@ class trailing_matrix_t {
     work_estimate_ += 9;
   }
 
-  std::vector<i_t> compute_column_degree(const csc_matrix_t<i_t, f_t>& A, const std::vector<i_t>& column_list)
+  std::vector<i_t> compute_column_degree(const csc_matrix_t<i_t, f_t>& A,
+                                         const std::vector<i_t>& column_list)
   {
     const i_t n = column_list.size();
     std::vector<i_t> Cdegree(n);
     for (i_t k = 0; k < n; k++) {
-      const i_t j         = column_list[k];
+      const i_t j       = column_list[k];
       const i_t A_start = A.col_start[j];
       const i_t A_end   = A.col_start[j + 1];
-      Cdegree[k]          = A_end - A_start;
+      Cdegree[k]        = A_end - A_start;
     }
     work_estimate_ += 4 * n;
     return Cdegree;
   }
 
-  std::vector<i_t> compute_row_degree(const csc_matrix_t<i_t, f_t>& A, const std::vector<i_t>& column_list, i_t& Bnz)
+  std::vector<i_t> compute_row_degree(const csc_matrix_t<i_t, f_t>& A,
+                                      const std::vector<i_t>& column_list,
+                                      i_t& Bnz)
   {
     std::vector<i_t> Rdegree(A.m, 0);
-    Bnz = 0;
+    Bnz         = 0;
     const i_t n = column_list.size();
     for (i_t k = 0; k < n; k++) {
-      const i_t j = column_list[k];
+      const i_t j         = column_list[k];
       const i_t col_start = A.col_start[j];
-      const i_t col_end = A.col_start[j + 1];
+      const i_t col_end   = A.col_start[j + 1];
       for (i_t p = col_start; p < col_end; ++p) {
         Rdegree[A.i[p]]++;
         Bnz++;
@@ -810,60 +792,60 @@ class trailing_matrix_t {
   std::vector<i_t> col_end_;
   std::vector<i_t> col_max_;
 
-  std::vector<i_t> c_i_;   // row indices (indexed by col_start_[j] to col_end_[j])
-  std::vector<f_t> c_x_; // coefficients (indexed by col_start_[j] to col_end_[j])
-
+  std::vector<i_t> c_i_;  // row indices (indexed by col_start_[j] to col_end_[j])
+  std::vector<f_t> c_x_;  // coefficients (indexed by col_start_[j] to col_end_[j])
 
   // The representation of the matrix by row (index only, no values)
   std::vector<i_t> row_start_;
   std::vector<i_t> row_end_;
   std::vector<i_t> row_max_;
 
-  std::vector<i_t> r_j_;   // column indices (indexed by row_start_[i] to row_end_[i])
+  std::vector<i_t> r_j_;  // column indices (indexed by row_start_[i] to row_end_[i])
 
-
-
-  std::vector<f_t> max_in_column_;  // max_in_column_[j] is absolute value of the maximum coefficient in column j
+  std::vector<f_t>
+    max_in_column_;  // max_in_column_[j] is absolute value of the maximum coefficient in column j
 
   std::vector<f_t> pivot_row_val_;  // dense workspace of size n_; caches pivot row values
 
-  std::vector<f_t> pivot_col_val_;   // dense workspace of size m_; caches L multipliers for pivot column
-  std::vector<char> pivot_col_mark_; // dense workspace of size m_; 1 if row i is in the pivot column
-  std::vector<i_t> pivot_col_index_; // sparse list of row indices in the pivot column (excl. pivot_i)
+  std::vector<f_t>
+    pivot_col_val_;  // dense workspace of size m_; caches L multipliers for pivot column
+  std::vector<char>
+    pivot_col_mark_;  // dense workspace of size m_; 1 if row i is in the pivot column
+  std::vector<i_t>
+    pivot_col_index_;  // sparse list of row indices in the pivot column (excl. pivot_i)
 
   std::vector<i_t> row_mark_;
   std::vector<i_t> col_mark_;
 
-
   nonzero_counts_t<i_t, f_t> col_counts_;
   nonzero_counts_t<i_t, f_t> row_counts_;
 
-
   i_t unused_col_nz_;
   i_t unused_row_nz_;
-
 
   i_t col_hits_;
   i_t col_miss_;
   i_t row_hits_;
   i_t row_miss_;
 
-  std::vector<i_t> col_realloc_hist_;  // col_realloc_hist_[k] = number of column relocations with shortfall k
-  std::vector<i_t> row_realloc_hist_;  // row_realloc_hist_[k] = number of row relocations with shortfall k
+  std::vector<i_t>
+    col_realloc_hist_;  // col_realloc_hist_[k] = number of column relocations with shortfall k
+  std::vector<i_t>
+    row_realloc_hist_;  // row_realloc_hist_[k] = number of row relocations with shortfall k
 };
 
 }  // namespace
 template <typename i_t, typename f_t>
 i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
-                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                     f_t tol,
-                     const std::vector<i_t>& column_list,
-                     f_t start_time,
-                     std::vector<i_t>& q,
-                     csc_matrix_t<i_t, f_t>& L,
-                     csc_matrix_t<i_t, f_t>& U,
-                     std::vector<i_t>& pinv,
-                     f_t& work_estimate)
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      f_t tol,
+                      const std::vector<i_t>& column_list,
+                      f_t start_time,
+                      std::vector<i_t>& q,
+                      csc_matrix_t<i_t, f_t>& L,
+                      csc_matrix_t<i_t, f_t>& U,
+                      std::vector<i_t>& pinv,
+                      f_t& work_estimate)
 {
   raft::common::nvtx::range scope("LU::right_looking_lu");
   const i_t n = column_list.size();
@@ -876,7 +858,6 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
   assert(U.m == n);
   assert(q.size() == n);
   assert(pinv.size() == n);
-
 
   trailing_matrix_t<i_t, f_t> trailing_matrix(A, column_list);
 
@@ -921,9 +902,9 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
     assert(pivot_i != -1 && pivot_j != -1);
 
     // Pivot
-    pinv[pivot_i]       = k;  // pivot_i is the kth pivot row
-    q[k]                = pivot_j;
-    qinv[pivot_j]       = k;
+    pinv[pivot_i] = k;  // pivot_i is the kth pivot row
+    q[k]          = pivot_j;
+    qinv[pivot_j] = k;
     assert(std::abs(pivot_val) >= pivot_tol);
     pivots++;
 
@@ -951,7 +932,6 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
     trailing_matrix.extract_column(pivot_i, pivot_j, pivot_val, L, Lnz);
     work_estimate += 4 * (Lnz - L.col_start[k]);
 
-
     trailing_matrix.update_for_pivot_removal(pivot_i, pivot_j);
 
     // A22 <- A22 - l u^T
@@ -962,7 +942,6 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
     trailing_matrix.garbage_collect();
 
     work_estimate += trailing_matrix.record_and_clear_work_estimate_();
-
   }
 
   trailing_matrix.print_stats();
@@ -1046,16 +1025,13 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
   return n;
 }
 
-
-
-
 template <typename i_t, typename f_t>
 i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
-                                          const simplex_solver_settings_t<i_t, f_t>& settings,
-                                          f_t tol,
-                                          f_t start_time,
-                                          std::vector<i_t>& q,
-                                          std::vector<i_t>& pinv)
+                                           const simplex_solver_settings_t<i_t, f_t>& settings,
+                                           f_t tol,
+                                           f_t start_time,
+                                           std::vector<i_t>& q,
+                                           std::vector<i_t>& pinv)
 {
   // Factorize PAQ = LU, where A is m x n with m >= n, and P and Q are permutation matrices
   // We return the inverser row permutation vector pinv and the column permutation vector q
@@ -1098,9 +1074,9 @@ i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
       break;
     }
     // Pivot
-    pinv[pivot_i]       = k;  // pivot_i is the kth pivot row
-    q[k]                = pivot_j;
-    qinv[pivot_j]       = k;
+    pinv[pivot_i] = k;  // pivot_i is the kth pivot row
+    q[k]          = pivot_j;
+    qinv[pivot_j] = k;
     assert(std::abs(pivot_val) >= pivot_tol);
     pivots++;
 
@@ -1155,8 +1131,6 @@ i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-
-
 template int right_looking_lu2<int, double>(const csc_matrix_t<int, double>& A,
                                             const simplex_solver_settings_t<int, double>& settings,
                                             double tol,
@@ -1167,8 +1141,6 @@ template int right_looking_lu2<int, double>(const csc_matrix_t<int, double>& A,
                                             csc_matrix_t<int, double>& U,
                                             std::vector<int>& pinv,
                                             double& work_estimate);
-
-
 
 template int right_looking_lu_row_permutation_only2<int, double>(
   const csc_matrix_t<int, double>& A,
