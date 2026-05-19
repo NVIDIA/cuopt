@@ -67,7 +67,6 @@ struct rins_thread_t : public cpu_worker_thread_base_t<rins_thread_t<i_t, f_t>> 
 template <typename i_t, typename f_t>
 class rins_t {
  public:
-  ~rins_t();
   rins_t(mip_solver_context_t<i_t, f_t>& context,
          diversity_manager_t<i_t, f_t>& dm,
          rins_settings_t settings = rins_settings_t());
@@ -90,7 +89,6 @@ class rins_t {
   raft::handle_t rins_handle;
 
   std::vector<f_t> lp_optimal_solution;
-  std::vector<f_t> incumbent_solution_snapshot;
 
   f_t fixrate{0.5};
   i_t total_calls{0};

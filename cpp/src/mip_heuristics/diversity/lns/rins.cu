@@ -27,12 +27,6 @@
 
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
-rins_t<i_t, f_t>::~rins_t()
-{
-  stop_rins();
-}
-
-template <typename i_t, typename f_t>
 rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
                          diversity_manager_t<i_t, f_t>& dm_,
                          rins_settings_t settings_)
@@ -64,35 +58,31 @@ void rins_t<i_t, f_t>::new_best_incumbent_callback(const std::vector<f_t>& solut
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objective)
 {
-  if (!enabled.load()) return;
+  if (!enabled) return;
 
   node_count++;
 
   if (node_count - node_count_at_last_improvement < settings.nodes_after_later_improvement) return;
 
-  if (node_count - node_count_at_last_rins <= settings.node_freq) { return; }
-
-  std::lock_guard<std::mutex> lock(rins_mutex);
-  if (!enabled.load() || !rins_thread) { return; }
-  if (!rins_thread->cpu_thread_done.load()) { return; }
-
-  {
-    std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
-    if (dm.population.current_size() == 0 || !dm.population.is_feasible()) { return; }
-
-    auto& best_feasible_ref = dm.population.best_feasible();
-    if (!best_feasible_ref.get_feasible()) { return; }
-
-    incumbent_solution_snapshot = best_feasible_ref.get_host_assignment();
-    lp_optimal_solution         = solution;
+  if (node_count - node_count_at_last_rins > settings.node_freq) {
+    // opportunistic early test w/ atomic to avoid having to take the lock
+    if (!rins_thread->cpu_thread_done) return;
+    std::lock_guard<std::mutex> lock(rins_mutex);
+    bool population_ready = false;
+    if (rins_thread->cpu_thread_done) {
+      std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
+      population_ready = dm.population.current_size() > 0 && dm.population.is_feasible();
+    }
+    if (population_ready) {
+      lp_optimal_solution = solution;
+      rins_thread->start_cpu_solver();
+    }
   }
-  rins_thread->start_cpu_solver();
 }
 
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::enable()
 {
-  std::lock_guard<std::mutex> lock(rins_mutex);
   rins_thread           = std::make_unique<rins_thread_t<i_t, f_t>>();
   rins_thread->rins_ptr = this;
   seed                  = cuopt::seed_generator::get_seed();
@@ -104,13 +94,9 @@ void rins_t<i_t, f_t>::enable()
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::stop_rins()
 {
-  std::unique_ptr<rins_thread_t<i_t, f_t>> local_thread;
-  {
-    std::lock_guard<std::mutex> lock(rins_mutex);
-    enabled      = false;
-    local_thread = std::move(rins_thread);
-  }
-  if (local_thread) { local_thread->request_termination(); }
+  enabled = false;
+  if (rins_thread) rins_thread->request_termination();
+  rins_thread.reset();
 }
 
 template <typename i_t, typename f_t>
@@ -118,6 +104,7 @@ void rins_t<i_t, f_t>::run_rins()
 {
   if (total_calls == 0) RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
 
+  cuopt_assert(lp_optimal_solution.size() == problem_copy->n_variables, "Assignment size mismatch");
   cuopt_assert(problem_copy->handle_ptr == &rins_handle, "Handle mismatch");
   // Do not make assertions based on problem_ptr. The original problem may have been modified within
   // the FP loop relaxing integers cuopt_assert(problem_copy->n_variables ==
@@ -130,11 +117,20 @@ void rins_t<i_t, f_t>::run_rins()
 
   solution_t<i_t, f_t> best_sol(*problem_copy);
   rins_handle.sync_stream();
-  // Use the launch-time snapshot to keep the incumbent and problem model consistent.
-  best_sol.copy_new_assignment(incumbent_solution_snapshot);
-  best_sol.handle_ptr  = &rins_handle;
-  best_sol.problem_ptr = problem_copy.get();
-  best_sol.compute_feasibility();
+  // copy the best from the population into a solution_t in the RINS stream
+  {
+    std::lock_guard<std::recursive_mutex> lock(dm.population.write_mutex);
+    if (!dm.population.is_feasible()) return;
+    cuopt_assert(dm.population.current_size() > 0, "No solutions in population");
+    auto& best_feasible_ref = dm.population.best_feasible();
+    cuopt_assert(best_feasible_ref.assignment.size() == best_sol.assignment.size(),
+                 "Assignment size mismatch");
+    cuopt_assert(best_feasible_ref.get_feasible(), "Best feasible is not feasible");
+    expand_device_copy(best_sol.assignment, best_feasible_ref.assignment, rins_handle.get_stream());
+    best_sol.handle_ptr  = &rins_handle;
+    best_sol.problem_ptr = problem_copy.get();
+    best_sol.compute_feasibility();
+  }
   cuopt_assert(best_sol.handle_ptr == &rins_handle, "Handle mismatch");
 
   cuopt_assert(best_sol.get_feasible(), "Best solution is not feasible");
