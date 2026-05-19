@@ -1259,16 +1259,17 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     problem.Q.n > 0 || !problem.second_order_cone_dims.empty();
   if (settings.barrier_presolve && free_variables > 0 && keep_native_free_variables) {
     presolve_info.free_variable_pairs.clear();
-    presolve_info.free_variable_indices.clear();
+    presolve_info.native_free_linear_indices.clear();
     // Only linear decision variables can be "native" free variables; cone/stack columns
     // are unbounded by construction and must not be counted here.
     for (i_t j = 0; j < linear_var_count(problem); j++) {
       if (problem.lower[j] == -inf && problem.upper[j] == inf) {
-        presolve_info.free_variable_indices.push_back(j);
+        presolve_info.native_free_linear_indices.push_back(j);
       }
     }
-    settings.log.printf("Keeping %d free variables for augmented-system barrier (QP/SOCP)\n",
-                        free_variables);
+    settings.log.printf(
+      "Keeping %d native free linear variables for augmented-system barrier (QP/SOCP)\n",
+      free_variables);
   } else if (settings.barrier_presolve && free_variables > 0) {
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w

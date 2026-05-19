@@ -357,9 +357,9 @@ TEST(barrier, presolve_keeps_native_free_variables_before_cones)
   EXPECT_EQ(presolved_lp.cone_var_start, 2);
   EXPECT_EQ(presolved_lp.second_order_cone_dims, std::vector<int>({3}));
   EXPECT_TRUE(presolve_info.free_variable_pairs.empty());
-  ASSERT_EQ(presolve_info.free_variable_indices.size(), 2);
-  EXPECT_EQ(presolve_info.free_variable_indices[0], 0);
-  EXPECT_EQ(presolve_info.free_variable_indices[1], 1);
+  ASSERT_EQ(presolve_info.native_free_linear_indices.size(), 2);
+  EXPECT_EQ(presolve_info.native_free_linear_indices[0], 0);
+  EXPECT_EQ(presolve_info.native_free_linear_indices[1], 1);
   EXPECT_EQ(presolved_lp.lower[0], -inf);
   EXPECT_EQ(presolved_lp.lower[1], -inf);
   EXPECT_EQ(presolved_lp.upper[0], inf);

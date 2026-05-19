@@ -157,7 +157,7 @@ struct presolve_info_t {
   std::vector<i_t> negated_variables;
 
   // Free variable indices for QP/SOCP augmented barrier (not split, handled natively)
-  std::vector<i_t> free_variable_indices;
+  std::vector<i_t> native_free_linear_indices;
 };
 
 template <typename i_t, typename f_t>
