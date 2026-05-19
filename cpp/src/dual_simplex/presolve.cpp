@@ -13,6 +13,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -964,8 +965,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
 
     i_t removed_free_variables = 0;
-
-    if (constraints_to_check.size() > 0) {
+    if (!constraints_to_check.empty()) {
       // Check if the constraints are feasible
       csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
       problem.A.to_compressed_row(Arow);
@@ -1087,15 +1087,10 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       }
     }
 
-    i_t new_free_variables = 0;
-    for (i_t j = 0; j < linear_var_count(problem); j++) {
-      if (problem.lower[j] == -inf && problem.upper[j] == inf) { new_free_variables++; }
-    }
     if (removed_free_variables != 0) {
-      settings.log.printf("Bounded %d free variables\n", removed_free_variables);
+      settings.log.printf("Bounded %d free variable row(s) in presolve\n",
+                          static_cast<int>(removed_free_variables));
     }
-    assert(new_free_variables == free_variables - removed_free_variables);
-    free_variables = new_free_variables;
   }
   // The original problem may have a variable without a lower bound
   // but a finite upper bound

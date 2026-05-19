@@ -97,6 +97,7 @@ class iteration_data_t {
  public:
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
+                   const std::vector<i_t>& free_variable_indices,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
@@ -232,6 +233,18 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
+    // Set up free variable tracking for QPs
+    if (!free_variable_indices.empty()) {
+      n_free_vars = free_variable_indices.size();
+      std::vector<i_t> is_free_host(lp.num_cols, 0);
+      for (i_t j : free_variable_indices) {
+        is_free_host[j] = 1;
+      }
+      d_is_free_.resize(lp.num_cols, stream_view_);
+      raft::copy(d_is_free_.data(), is_free_host.data(), lp.num_cols, stream_view_);
+      settings.log.printf("Free variables (QP)  : %d\n", n_free_vars);
+    }
+
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     if (has_Q) {
@@ -326,9 +339,12 @@ class iteration_data_t {
       n_dense_columns = 0;
     } else {
       f_t start_column_density = tic();
-      // Ignore Q matrix for now
-      find_dense_columns(
-        lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+
+      // Do not look for dense columns if Q is not diagonal
+      if (!has_Q || Q_diagonal) {
+        find_dense_columns(
+          lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+      }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 #ifdef PRINT_INFO
       for (i_t j : dense_columns_unordered) {
@@ -415,21 +431,25 @@ class iteration_data_t {
         A_dense.from_sparse(lp.A, j, k++);
       }
     }
-    original_A_values = AD.x;
-    d_original_A_values.resize(original_A_values.size(), handle_ptr->get_stream());
-    raft::copy(d_original_A_values.data(), AD.x.data(), AD.x.size(), handle_ptr->get_stream());
+
     AD.transpose(AT);
 
-    device_AD.copy(AD, handle_ptr->get_stream());
-    // For efficient scaling of AD col we form the col index array
-    device_AD.form_col_index(handle_ptr->get_stream());
-    device_A_x_values.resize(original_A_values.size(), handle_ptr->get_stream());
-    raft::copy(
-      device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
-    csr_matrix_t<i_t, f_t> host_A_CSR(1, 1, 1);  // Sizes will be set by to_compressed_row()
-    AD.to_compressed_row(host_A_CSR);
-    device_A.copy(host_A_CSR, lp.handle_ptr->get_stream());
-    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
+    if (!use_augmented) {
+      device_AD.copy(AD, handle_ptr->get_stream());
+      d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
+      raft::copy(d_original_A_values.data(),
+                 device_AD.x.data(),
+                 device_AD.x.size(),
+                 handle_ptr->get_stream());
+      // For efficient scaling of AD col we form the col index array
+      device_AD.form_col_index(handle_ptr->get_stream());
+      device_A_x_values.resize(device_AD.x.size(), handle_ptr->get_stream());
+      raft::copy(
+        device_A_x_values.data(), device_AD.x.data(), device_AD.x.size(), handle_ptr->get_stream());
+      device_AD.to_compressed_row(device_A, handle_ptr->get_stream());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
@@ -1696,7 +1716,6 @@ class iteration_data_t {
   pinned_dense_vector_t<i_t, f_t> inv_diag;
   pinned_dense_vector_t<i_t, f_t> inv_sqrt_diag;
 
-  std::vector<f_t> original_A_values;
   rmm::device_uvector<f_t> d_original_A_values;
 
   csc_matrix_t<i_t, f_t> AD;
@@ -2010,7 +2029,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
         data_.chol->solve(b, x);
       }
     } op(data);
-    iterative_refinement(op, rhs, soln);
+
+    if (settings.barrier_iterative_refinement) {
+      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln);
+    }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.x[k] = soln[k];
@@ -2249,6 +2271,12 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   data.w.ensure_positive(epsilon_adjust);
   if (has_soc) {
     data.x.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
+  } else if (has_free) {
+    std::vector<i_t> nonnegative_variables(data.x.size(), 1);
+    for (i_t j : presolve_info.free_variable_indices) {
+      nonnegative_variables[j] = 0;
+    }
+    data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
   } else {
     data.x.ensure_positive(epsilon_adjust);
   }
@@ -2862,6 +2890,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   }
 
   if (use_augmented) {
+    raft::common::nvtx::range fun_scope("Barrier: GPU augmented solve");
     // r1 <- dual_rhs -complementarity_xz_rhs ./ x +  E * ((complementarity_wv_rhs - v .* bound_rhs)
     // ./ w)
 
@@ -2889,27 +2918,31 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data_.chol->solve(b, x);
       }
     } op(data);
-    auto solve_err = iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
-    if (solve_err > 1e-1) {
-      settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
-    }
+    if (settings.barrier_iterative_refinement) {
+      const f_t solve_err =
+        iterative_refinement<i_t, f_t, op_t>(op, d_augmented_rhs, d_augmented_soln);
+      if (solve_err > 1e-1) {
+        settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
+      }
 
-    // Adaptive regularization: increase/decrease by 10x based on IR quality
-    {
-      constexpr f_t min_perturb = 1e-8;
-      constexpr f_t max_perturb = 1e-1;
-      if (solve_err > 1e-2) {
-        f_t old_dp     = dual_perturb;
-        dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
-        primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
-        settings.log.printf("  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
-      } else if (solve_err < 1e-4) {
-        f_t old_dp     = dual_perturb;
-        dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
-        primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
-        if (old_dp != dual_perturb) {
+      // Adaptive regularization: increase/decrease by 10x based on IR quality
+      {
+        constexpr f_t min_perturb = 1e-8;
+        constexpr f_t max_perturb = 1e-1;
+        if (solve_err > 1e-2) {
+          f_t old_dp     = dual_perturb;
+          dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
+          primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
           settings.log.printf(
-            "  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+            "  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+        } else if (solve_err < 1e-4) {
+          f_t old_dp     = dual_perturb;
+          dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
+          primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
+          if (old_dp != dual_perturb) {
+            settings.log.printf(
+              "  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
+          }
         }
       }
     }
@@ -3512,7 +3545,6 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
     stream_view_);
 
   complementarity_aff_sum = complementarity_xz_aff_sum + complementarity_wv_aff_sum;
-
   const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu_aff             = complementarity_aff_sum / mu_denom;
   sigma              = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
@@ -3916,7 +3948,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
 
 template <typename i_t, typename f_t>
 lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
-  const barrier_solver_settings_t<i_t, f_t>& options,
   iteration_data_t<i_t, f_t>& data,
   f_t start_time,
   i_t iter,
@@ -3929,6 +3960,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
   f_t& relative_complementarity_residual,
   lp_solution_t<i_t, f_t>& solution)
 {
+  raft::common::nvtx::range fun_scope("Barrier: check_for_suboptimal_solution");
   if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
       relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
       relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol &&
@@ -4007,10 +4039,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 }
 
 template <typename i_t, typename f_t>
-lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
-                                              const barrier_solver_settings_t<i_t, f_t>& options,
-                                              lp_solution_t<i_t, f_t>& solution)
+lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
 {
+  settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
     raft::common::nvtx::range fun_scope("Barrier: solve");
 
@@ -4044,18 +4075,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
-    iteration_data_t<i_t, f_t> data(lp, num_upper_bounds, Q, settings);
-    // Set up native free variable tracking (QP / SOCP augmented barrier)
-    if (!presolve_info.free_variable_indices.empty()) {
-      data.n_free_vars = presolve_info.free_variable_indices.size();
-      std::vector<i_t> is_free_host(n, 0);
-      for (i_t j : presolve_info.free_variable_indices) {
-        is_free_host[j] = 1;
-      }
-      data.d_is_free_.resize(n, stream_view_);
-      raft::copy(data.d_is_free_.data(), is_free_host.data(), n, stream_view_);
-      settings.log.printf("Native free variables (QP/SOCP): %d\n", data.n_free_vars);
-    }
+    iteration_data_t<i_t, f_t> data(
+      lp, num_upper_bounds, presolve_info.free_variable_indices, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;
@@ -4252,8 +4273,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
       if (status < 0) {
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -4298,8 +4318,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       // Sync to make sure all the async copies to host done inside are finished
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       if (status < 0) {
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -4324,9 +4343,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       compute_final_direction(data);
       f_t step_primal, step_dual;
-      compute_primal_dual_step_length(data, options.step_scale, step_primal, step_dual);
+      compute_primal_dual_step_length(data, settings.barrier_step_scale, step_primal, step_dual);
 
-      compute_next_iterate(data, options.step_scale, step_primal, step_dual);
+      compute_next_iterate(data, settings.barrier_step_scale, step_primal, step_dual);
 
       compute_residual_norms(
         data, primal_residual_norm, dual_residual_norm, complementarity_residual_norm);
@@ -4375,8 +4394,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
 
       if (primal_objective != primal_objective || dual_objective != dual_objective) {
         settings.log.printf("Numerical error in objective\n");
-        return check_for_suboptimal_solution(options,
-                                             data,
+        return check_for_suboptimal_solution(data,
                                              start_time,
                                              iter,
                                              primal_objective,
@@ -4408,7 +4426,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
       if (converged) {
         settings.log.printf("\n");
         settings.log.printf(
-          "Optimal solution found in %d iterations and %.2fs\n", iter, toc(start_time));
+          "Optimal solution found in %d iterations and %.3fs\n", iter, toc(start_time));
         settings.log.printf("Objective %+.8e\n", compute_user_objective(lp, primal_objective));
         settings.log.printf("Primal infeasibility (abs/rel): %8.2e/%8.2e\n",
                             primal_residual_norm,
@@ -4442,8 +4460,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
             data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
             data.relative_complementarity_residual_save <
               settings.barrier_relaxed_complementarity_tol) {
-          return check_for_suboptimal_solution(options,
-                                               data,
+          return check_for_suboptimal_solution(data,
                                                start_time,
                                                iter,
                                                primal_objective,
@@ -4480,7 +4497,6 @@ template class barrier_solver_t<int, double>;
 template class sparse_cholesky_base_t<int, double>;
 template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
-template class barrier_solver_settings_t<int, double>;
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

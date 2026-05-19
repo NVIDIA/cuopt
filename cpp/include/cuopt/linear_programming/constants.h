@@ -20,36 +20,38 @@
 #define CUOPT_INSTANTIATE_INT64  0
 
 /* @brief LP/MIP parameter string constants */
-#define CUOPT_ABSOLUTE_DUAL_TOLERANCE                "absolute_dual_tolerance"
-#define CUOPT_RELATIVE_DUAL_TOLERANCE                "relative_dual_tolerance"
-#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE              "absolute_primal_tolerance"
-#define CUOPT_RELATIVE_PRIMAL_TOLERANCE              "relative_primal_tolerance"
-#define CUOPT_ABSOLUTE_GAP_TOLERANCE                 "absolute_gap_tolerance"
-#define CUOPT_RELATIVE_GAP_TOLERANCE                 "relative_gap_tolerance"
-#define CUOPT_INFEASIBILITY_DETECTION                "infeasibility_detection"
-#define CUOPT_STRICT_INFEASIBILITY                   "strict_infeasibility"
-#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE            "primal_infeasible_tolerance"
-#define CUOPT_DUAL_INFEASIBLE_TOLERANCE              "dual_infeasible_tolerance"
-#define CUOPT_ITERATION_LIMIT                        "iteration_limit"
-#define CUOPT_TIME_LIMIT                             "time_limit"
-#define CUOPT_WORK_LIMIT                             "work_limit"
-#define CUOPT_PDLP_SOLVER_MODE                       "pdlp_solver_mode"
-#define CUOPT_METHOD                                 "method"
-#define CUOPT_PER_CONSTRAINT_RESIDUAL                "per_constraint_residual"
-#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR                "save_best_primal_so_far"
-#define CUOPT_FIRST_PRIMAL_FEASIBLE                  "first_primal_feasible"
-#define CUOPT_LOG_FILE                               "log_file"
-#define CUOPT_LOG_TO_CONSOLE                         "log_to_console"
-#define CUOPT_CROSSOVER                              "crossover"
-#define CUOPT_FOLDING                                "folding"
-#define CUOPT_AUGMENTED                              "augmented"
-#define CUOPT_DUALIZE                                "dualize"
-#define CUOPT_ORDERING                               "ordering"
-#define CUOPT_BARRIER_DUAL_INITIAL_POINT             "barrier_dual_initial_point"
+#define CUOPT_ABSOLUTE_DUAL_TOLERANCE              "absolute_dual_tolerance"
+#define CUOPT_RELATIVE_DUAL_TOLERANCE              "relative_dual_tolerance"
+#define CUOPT_ABSOLUTE_PRIMAL_TOLERANCE            "absolute_primal_tolerance"
+#define CUOPT_RELATIVE_PRIMAL_TOLERANCE            "relative_primal_tolerance"
+#define CUOPT_ABSOLUTE_GAP_TOLERANCE               "absolute_gap_tolerance"
+#define CUOPT_RELATIVE_GAP_TOLERANCE               "relative_gap_tolerance"
+#define CUOPT_INFEASIBILITY_DETECTION              "infeasibility_detection"
+#define CUOPT_STRICT_INFEASIBILITY                 "strict_infeasibility"
+#define CUOPT_PRIMAL_INFEASIBLE_TOLERANCE          "primal_infeasible_tolerance"
+#define CUOPT_DUAL_INFEASIBLE_TOLERANCE            "dual_infeasible_tolerance"
+#define CUOPT_ITERATION_LIMIT                      "iteration_limit"
+#define CUOPT_TIME_LIMIT                           "time_limit"
+#define CUOPT_WORK_LIMIT                           "work_limit"
+#define CUOPT_PDLP_SOLVER_MODE                     "pdlp_solver_mode"
+#define CUOPT_METHOD                               "method"
+#define CUOPT_PER_CONSTRAINT_RESIDUAL              "per_constraint_residual"
+#define CUOPT_SAVE_BEST_PRIMAL_SO_FAR              "save_best_primal_so_far"
+#define CUOPT_FIRST_PRIMAL_FEASIBLE                "first_primal_feasible"
+#define CUOPT_LOG_FILE                             "log_file"
+#define CUOPT_LOG_TO_CONSOLE                       "log_to_console"
+#define CUOPT_CROSSOVER                            "crossover"
+#define CUOPT_FOLDING                              "folding"
+#define CUOPT_AUGMENTED                            "augmented"
+#define CUOPT_DUALIZE                              "dualize"
+#define CUOPT_ORDERING                             "ordering"
+#define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
 #define CUOPT_BARRIER_RELATIVE_FEASIBILITY_TOLERANCE "barrier_relative_feasibility_tolerance"
 #define CUOPT_BARRIER_RELATIVE_OPTIMALITY_TOLERANCE  "barrier_relative_optimality_tolerance"
 #define CUOPT_BARRIER_RELATIVE_COMPLEMENTARITY_TOLERANCE \
   "barrier_relative_complementarity_tolerance"
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
+#define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
 #define CUOPT_PRESOLVE                             "presolve"
@@ -78,6 +80,7 @@
 #define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
+
 #define CUOPT_SOLUTION_FILE            "solution_file"
 #define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
 #define CUOPT_NUM_GPUS                 "num_gpus"
@@ -189,5 +192,8 @@
 #define CUOPT_MIP_SCALING_OFF          0
 #define CUOPT_MIP_SCALING_ON           1
 #define CUOPT_MIP_SCALING_NO_OBJECTIVE 2
+
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
 
 #endif  // CUOPT_CONSTANTS_H
