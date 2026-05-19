@@ -2739,26 +2739,16 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // diag = z ./ x on the linear (non-cone) coordinates; cone block is overwritten below.
     if (has_native_free_linear) {
       if (use_augmented) {
-        // Augmented KKT: D = 0 on native free vars (matrix regularization is dual_perturb only).
-        if (data.Q.n > 0 && data.Q_diagonal) {
-          cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(
-              data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data(), data.d_Q_diag_.data()),
-            data.d_diag_.data(),
-            linear_size,
-            [] HD(f_t z_j, f_t x_j, i_t is_native_free_linear, f_t /*q_jj*/) {
-              if (!is_native_free_linear) return z_j / x_j;
-              return f_t(0);
-            },
-            stream_view_.value());
-        } else {
-          cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data()),
-            data.d_diag_.data(),
-            linear_size,
-            [] HD(f_t z_j, f_t x_j, i_t is_native_free_linear) { return is_native_free_linear ? f_t(0) : (z_j / x_j); },
-            stream_view_.value());
-        }
+        // Augmented KKT: D = 0 on native free linear vars (Q curvature is in the KKT block, not D).
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(
+            data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data()),
+          data.d_diag_.data(),
+          linear_size,
+          [] HD(f_t z_j, f_t x_j, i_t is_native_free_linear) {
+            return is_native_free_linear ? f_t(0) : (z_j / x_j);
+          },
+          stream_view_.value());
       } else {
         constexpr f_t free_var_reg = 1e-7;
         if (data.Q.n > 0 && data.Q_diagonal) {
