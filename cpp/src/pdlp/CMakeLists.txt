@@ -29,6 +29,9 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/termination_strategy/convergence_information.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/optimal_batch_size_handler/optimal_batch_size_handler.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/ping_pong_graph.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/shard.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/multi_gpu_engine.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partition_loader.cu
 )
 
 # C and Python adapter files

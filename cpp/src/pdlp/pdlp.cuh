@@ -63,6 +63,11 @@ class pdlp_solver_t {
   pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode = false);
+  
+  // Distributed Solver Constructor
+  pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
+    pdlp_solver_settings_t<i_t, f_t> const& settings,
+    int num_gpus);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
 
@@ -240,7 +245,10 @@ class pdlp_solver_t {
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
 
-  multi_gpu_engine_t<i_t, f_t> multi_gpu_engine;
+  // std::optional because multi_gpu_engine_t is non-default-constructible
+  // (collectively bootstraps NCCL, owns RMM resources). Stays nullopt in
+  // single-GPU mode; emplaced by the multi-GPU ctor.
+  std::optional<multi_gpu_engine_t<i_t, f_t>> multi_gpu_engine;
 };
 
 }  // namespace cuopt::linear_programming::detail

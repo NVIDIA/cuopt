@@ -709,6 +709,17 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     }
   }
 #endif
+  if (settings.hyper_params.use_distributed_pdlp) {
+    cuopt_expects(settings.num_gpus > 1,
+                  error_type_t::ValidationError,
+                  "use_distributed_pdlp requires settings.num_gpus > 1");
+    cuopt_expects(!is_batch_mode,
+                  error_type_t::ValidationError,
+                  "Distributed PDLP does not support batch mode");
+    // Multi-GPU ctor; dispatched by 3rd-arg TYPE (int num_gpus, not bool batch).
+    detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, settings.num_gpus);
+    return solver.run_solver(timer);
+  }
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
