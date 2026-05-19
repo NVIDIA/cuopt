@@ -271,7 +271,7 @@ def _non_default_solver_param_value(name, current):
             return 7200.0
         if abs(current) < 1e-30:
             return 1e-2
-        return current * 2.0 if abs(current) < 1.0 else current * 0.5
+        return current * 2.0 if abs(current) < 0.5 else current * 0.5
     if isinstance(current, int):
         if int(current) > 1:
             return int(current) - 1
