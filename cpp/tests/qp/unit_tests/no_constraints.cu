@@ -5,11 +5,11 @@
 
 #include <utilities/common_utils.hpp>
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>

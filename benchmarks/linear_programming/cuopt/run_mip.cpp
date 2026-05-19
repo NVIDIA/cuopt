@@ -8,11 +8,11 @@
 #include "mip_test_instances.hpp"
 
 #include <cstdio>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
@@ -166,12 +166,13 @@ int run_single_file(std::string file_path,
   }
 
   constexpr bool input_mps_strict = false;
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
     CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
     try {
-      mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
+      mps_data_model =
+        cuopt::linear_programming::io::parse_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
       parsing_failed = true;

@@ -529,7 +529,7 @@ std::pair<f_t, dual::status_t> trial_branching(const lp_problem_t<i_t, f_t>& ori
 }  // namespace
 
 template <typename i_t, typename f_t>
-static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
+static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
   const dual_simplex::lp_problem_t<i_t, f_t>& lp,
   const std::vector<i_t>& new_slacks,
   const std::vector<f_t>& root_soln,
@@ -548,7 +548,7 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   // subject to  lb <= A*x <= ub
   //             l <= x <= u
 
-  cuopt::mps_parser::mps_data_model_t<i_t, f_t> mps_model;
+  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> mps_model;
   int m = lp.num_rows;
   int n = lp.num_cols - new_slacks.size();
   original_root_soln_x.resize(n);
@@ -755,7 +755,7 @@ static void batch_pdlp_strong_branching_task(
     constexpr int warm_start_iteration_limit         = 500000;
     ws_settings.iteration_limit                      = warm_start_iteration_limit;
     ws_settings.time_limit                           = warm_start_remaining_time;
-    constexpr f_t pdlp_tolerance                     = 1e-5;
+    constexpr f_t pdlp_tolerance                     = 1e-4;
     ws_settings.tolerances.relative_dual_tolerance   = pdlp_tolerance;
     ws_settings.tolerances.absolute_dual_tolerance   = pdlp_tolerance;
     ws_settings.tolerances.relative_primal_tolerance = pdlp_tolerance;

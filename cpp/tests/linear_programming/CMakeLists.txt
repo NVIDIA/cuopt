@@ -16,6 +16,12 @@ ConfigureTest(PDLP_TEST
     LABELS numopt)
 
 # ##################################################################################################
+# - MPS parser tests -------------------------------------------------------------------------------
+ConfigureTest(MPS_PARSER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser_test.cpp
+    LABELS numopt)
+
+# ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
 # The C API tests require a separate library to be linked against. So we don't use the ConfigureTest macro.
 
@@ -42,14 +48,13 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     target_include_directories(C_API_TEST
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../libmps_parser/src"
+        "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )
 
     target_link_libraries(C_API_TEST
         PRIVATE
-        mps_parser
         cuopt
         cuopttestutils
         c_api_tester

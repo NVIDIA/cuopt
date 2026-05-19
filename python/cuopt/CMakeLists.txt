@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 4.0 FATAL_ERROR)
 
 include(../../cmake/rapids_config.cmake)
 include(rapids-cuda)
@@ -24,7 +24,6 @@ set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 find_package(cuopt "${RAPIDS_VERSION}")
-find_package(mps_parser "${RAPIDS_VERSION}")
 
 include(rapids-cython-core)
 rapids_cython_init()

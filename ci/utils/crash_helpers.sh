@@ -5,13 +5,19 @@
 # Shared helpers for crash detection and JUnit XML crash markers.
 # Source this from test runner scripts (run_ctests.sh, run_cuopt_pytests.sh, etc.)
 
-# Convert exit code > 128 to a human-readable signal name.
+# Convert an abnormal exit code to a human-readable description.
+# Handles GNU coreutils 'timeout' (124) and signal deaths (> 128).
 signal_name() {
-    local sig=$(($1 - 128))
-    case "${sig}" in
-        6)  echo "SIGABRT" ;;
-        11) echo "SIGSEGV (segfault)" ;;
-        *)  echo "signal ${sig}" ;;
+    case "$1" in
+        124) echo "timeout (killed by 'timeout' command)" ;;
+        *)
+            local sig=$(($1 - 128))
+            case "${sig}" in
+                6)  echo "SIGABRT" ;;
+                11) echo "SIGSEGV (segfault)" ;;
+                *)  echo "signal ${sig}" ;;
+            esac
+            ;;
     esac
 }
 
@@ -58,6 +64,32 @@ ${detail}
   </testsuite>
 </testsuites>
 XMLEOF
+}
+
+# Synthesize a JUnit XML crash record for a pytest invocation that died
+# from a signal mid-run. Without this marker, nightly_report.py — which
+# classifies tests purely from XML files — sees no failure and reports
+# "All tests passed." even though the runner exited non-zero.
+#
+# Written to <junitxml>-crash.xml so any partial XML pytest may have
+# emitted is preserved alongside it.
+#
+# Usage: write_pytest_crash_marker <junitxml_path> <suite_name> <rc>
+write_pytest_crash_marker() {
+    local junitxml_path="$1"
+    local suite_name="$2"
+    local rc="$3"
+
+    if [ -z "${junitxml_path}" ]; then
+        return
+    fi
+
+    local sig
+    sig=$(signal_name "${rc}")
+    local crash_xml="${junitxml_path%.xml}-crash.xml"
+    write_crash_xml "${crash_xml}" "${suite_name}" "PROCESS_CRASH" \
+        "${suite_name} crashed with ${sig} (exit code ${rc})" \
+        "pytest process terminated by ${sig} mid-run. The JUnit XML was not finalized; the test that triggered the crash is unknown — inspect the run log for the last test invoked."
 }
 
 # Isolate crashing pytest tests by retrying individually.
