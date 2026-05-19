@@ -83,4 +83,4 @@ The user may specify a time limit to the solver. By default the solver runs unti
 Node Limit
 --------------
 
-The user may specify a maximum number of branch-and-bound nodes via ``node_limit``. The solver stops once this limit is reached and returns the current best feasible solution, if any. Due to the parallel nature of the solver, it may explore a small number of additional nodes past the limit. If both ``time_limit`` and ``node_limit`` are set, the solver stops at whichever limit is hit first. By default there is no node limit.
+The user may specify a maximum number of branch-and-bound nodes via ``node_limit``. The solver stops once this limit is reached and returns the current best feasible solution, if any. If both ``time_limit`` and ``node_limit`` are set, the solver stops at whichever limit is hit first. By default there is no node limit.

@@ -110,12 +110,10 @@ TEST(mip_solve, node_limit_test)
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
   const auto status                    = solution.get_termination_status();
-  EXPECT_TRUE(status == mip_termination_status_t::FeasibleFound ||
-              status == mip_termination_status_t::Optimal);
+  EXPECT_TRUE(status == mip_termination_status_t::FeasibleFound);
   // for now keep a 100% error rate
   EXPECT_NEAR(expect_obj, solution.get_objective_value(), expect_obj);
-  EXPECT_GE(solution.get_num_nodes(), settings.node_limit);
-  EXPECT_LE(solution.get_num_nodes(), settings.node_limit + settings.num_cpu_threads - 1);
+  EXPECT_EQ(solution.get_num_nodes(), settings.node_limit);
   test_variable_bounds(problem, solution.get_solution(), settings);
 }
 
