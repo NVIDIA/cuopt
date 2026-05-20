@@ -120,10 +120,13 @@ mps_data_model_t<i_t, f_t> parse_lp_from_string(std::string_view lp_contents);
  * want both formats to "just work" without an explicit format flag.
  *
  * @param[in] path Path to the input file.
+ * @param[in] fixed_mps_format If the MPS/QPS reader should use fixed format;
+ *             ignored for LP inputs. False by default.
  * @return mps_data_model_t The parsed problem.
  */
 template <typename i_t, typename f_t>
-inline mps_data_model_t<i_t, f_t> parse_problem(const std::string& path)
+inline mps_data_model_t<i_t, f_t> parse_problem(const std::string& path,
+                                                bool fixed_mps_format = false)
 {
   std::string lower(path);
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
@@ -131,7 +134,7 @@ inline mps_data_model_t<i_t, f_t> parse_problem(const std::string& path)
   });
   if (lower.ends_with(".mps") || lower.ends_with(".mps.gz") || lower.ends_with(".mps.bz2") ||
       lower.ends_with(".qps") || lower.ends_with(".qps.gz") || lower.ends_with(".qps.bz2")) {
-    return parse_mps<i_t, f_t>(path);
+    return parse_mps<i_t, f_t>(path, fixed_mps_format);
   }
   if (lower.ends_with(".lp") || lower.ends_with(".lp.gz") || lower.ends_with(".lp.bz2")) {
     return parse_lp<i_t, f_t>(path);

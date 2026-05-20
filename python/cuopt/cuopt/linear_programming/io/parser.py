@@ -10,114 +10,40 @@ from cuopt.linear_programming.io.utilities import (
 
 
 @catch_io_exception
-def ParseMps(mps_file_path, fixed_mps_format=False):
-    """
-    Reads the equation from the input text file which is MPS formatted
+def ParseProblem(file_path: str, fixed_mps_format: bool = False) -> DataModel:
+    """Read an optimization problem from a file, dispatching on extension.
 
-    See Also
-    --------
-    ParseLp : parses LP format files (for users with .lp inputs).
+    Dispatches to the MPS/QPS or LP parser based on the filename suffix
+    (case-insensitive), matching the C++ ``parse_problem`` entry point:
 
-    Notes
-    -----
-    Read this link http://lpsolve.sourceforge.net/5.5/mps-format.htm for more
-    details on both free and fixed MPS format.
+    - ``.mps``, ``.mps.gz``, ``.mps.bz2``, ``.qps``, ``.qps.gz``, ``.qps.bz2``
+      → MPS/QPS reader
+    - ``.lp``, ``.lp.gz``, ``.lp.bz2`` → LP reader
 
     Parameters
     ----------
-    mps_file_path : str
-        Path to MPS formatted file
+    file_path : str
+        Path to an MPS, QPS, or LP file (optionally ``.gz`` / ``.bz2``
+        compressed).
     fixed_mps_format : bool
-        If MPS file should be parsed as fixed, false by default
-
-    Returns
-    -------
-    data_model: DataModel
-        A fully formed LP problem which represents the given MPS file
-
-    Examples
-    --------
-    >>> from cuopt import linear_programming
-    >>>
-    >>> data_model = linear_programming.ParseMps(mps_file_path)
-    >>>
-    >>> # Build a solver setting object & lower the accuracy from 1e-4 to 1e-2
-    >>> solver_settings = linear_programming.SolverSettings()
-    >>> solver_settings.set_optimality_tolerance(1e-2)
-    >>>
-    >>> # Call solve
-    >>> solution = linear_programming.Solve(data_model, solver_settings)
-    >>>
-    >>> # Print solution
-    >>> print(solution.get_primal_solution())
-    """
-
-    return parser_wrapper.ParseMps(mps_file_path, fixed_mps_format)
-
-
-@catch_io_exception
-def ParseLp(lp_file_path: str) -> DataModel:
-    """Read an optimization problem from a file in LP format.
-
-    The LP format is a human-readable alternative to MPS and supports LP,
-    MIP, and QP, plus semi-continuous variables (declared via a
-    Semi-Continuous section; finite upper bound required) and
-    quadratic constraints (QCQP; ``<=`` only).
-
-    Quadratic terms live in ``[ ... ]`` blocks. The objective bracket must
-    be followed by ``/ 2`` (the file states coefficients in the
-    ``0.5 x^T Q x`` convention); a constraint bracket must NOT be followed
-    by ``/ 2`` (coefficients are at face value, ``x^T Q x``). Only squared
-    (``x^2``) and product (``x * y``) terms are allowed inside the
-    bracket; bare linear terms must be written outside it.
-
-    This function parses the dialect in which the objective and constraints
-    are written as algebraic expressions over named variables (it does not
-    implement the alternative tableau-style LP dialect used by some
-    open-source readers).
-
-    Parameters
-    ----------
-    lp_file_path : str
-        Path to LP-formatted file. May end in ``.lp``, ``.lp.gz``, or
-        ``.lp.bz2``; compressed inputs are decompressed at read time
-        via zlib / libbz2 when those libraries are available.
+        If the MPS/QPS reader should parse as fixed MPS format. Ignored for
+        LP inputs. False by default.
 
     Returns
     -------
     data_model : DataModel
-        A fully formed LP/MIP/QP problem representing the contents of
-        ``lp_file_path``.
+        A fully formed LP/MILP/QP problem.
 
     Raises
     ------
-    InputValidationError
-        Raised when ``lp_file_path`` is malformed or uses unsupported
-        syntax. Examples include unsupported sections (SOS, PWL
-        objective, user cuts, general constraints), bare linear terms
-        inside a quadratic ``[ ... ]`` bracket, an objective bracket
-        not followed by ``/ 2``, a constraint bracket followed by
-        ``/ 2``, a semi-continuous variable without a finite upper
-        bound, and similar input-level errors raised by the underlying
-        C++ parser. Exceptions propagated from
-        :func:`parser_wrapper.ParseLp` are translated to this type by
-        :func:`catch_io_exception`.
-    InputRuntimeError
-        Raised for non-validation runtime errors that the C++ parser
-        flags during file I/O or parsing.
-    OutOfMemoryError
-        Raised when the parser cannot allocate memory for the
-        resulting data model.
-
-    Examples
-    --------
-    >>> from cuopt import linear_programming
-    >>>
-    >>> data_model = linear_programming.ParseLp(lp_file_path)
-    >>> solver_settings = linear_programming.SolverSettings()
-    >>> solution = linear_programming.Solve(data_model, solver_settings)
+    InputValidationError, InputRuntimeError, OutOfMemoryError
+        Parser errors from the underlying C++ readers (via
+        :func:`catch_io_exception`).
+    RuntimeError
+        If the file extension is not one of the supported suffixes (raised by
+        the C++ ``parse_problem`` dispatch).
     """
-    return parser_wrapper.ParseLp(lp_file_path)
+    return parser_wrapper.ParseProblem(file_path, fixed_mps_format)
 
 
 def toDict(model, json=False):

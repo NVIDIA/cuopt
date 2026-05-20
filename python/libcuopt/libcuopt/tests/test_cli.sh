@@ -22,6 +22,12 @@ cuopt_cli --help | grep "Usage: cuopt_cli" > /dev/null || (echo "Expected usage 
 
 cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
 
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp | grep -q "Status: " || (echo "Expected solution not found for .lp" && exit 1)
+
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp.gz | grep -q "Status: " || (echo "Expected solution not found for .lp.gz" && exit 1)
+
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp.bz2 | grep -q "Status: " || (echo "Expected solution not found for .lp.bz2" && exit 1)
+
 # Add a for mixed integer programming test with options
 
 cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/mip/sample.mps --mip-absolute-gap 0.01 --time-limit 10 | grep -q "Solution objective" || (echo "Expected solution objective not found" && exit 1)

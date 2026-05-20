@@ -180,18 +180,7 @@ def _parse_file_to_data_model(problem_input, solver_config):
         log.debug("Received mps_parser DataModel object")
     else:
         t0 = time.time()
-        kind = (
-            _client_parseable_extension(problem_input)
-            if isinstance(problem_input, str)
-            else None
-        )
-        if kind == "lp":
-            model = mps_parser.ParseLp(problem_input)
-        else:
-            # MPS, QPS, and any unrecognized extension fall through to the
-            # MPS parser, which accepts both .mps and .qps (and their .gz /
-            # .bz2 variants) via the underlying C++ parse_mps().
-            model = mps_parser.ParseMps(problem_input)
+        model = mps_parser.ParseProblem(problem_input)
         parse_time = time.time() - t0
         log.debug(f"file parsing time was {parse_time}")
     problem_data = mps_parser.toDict(model, json=use_zlib)
