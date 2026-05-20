@@ -121,19 +121,15 @@ struct a_eax {
     use_virtual_depot_node = false;
     if (single_depot_node.has_value()) { return true; }
 
-    single_depot_node = get_path_tsp_virtual_depot(a, b);
+    single_depot_node      = get_path_tsp_virtual_depot(a, b);
     use_virtual_depot_node = single_depot_node.has_value();
     return single_depot_node.has_value();
   }
 
   std::optional<detail::NodeInfo<>> get_path_tsp_virtual_depot(Solution const& a, Solution const& b)
   {
-    if (!a.problem->is_tsp || a.routes.size() != 1 || b.routes.size() != 1) {
-      return std::nullopt;
-    }
-    if (a.problem->data_view_ptr->get_vehicle_locations().first == nullptr) {
-      return std::nullopt;
-    }
+    if (!a.problem->is_tsp || a.routes.size() != 1 || b.routes.size() != 1) { return std::nullopt; }
+    if (a.problem->data_view_ptr->get_vehicle_locations().first == nullptr) { return std::nullopt; }
     if (a.routes[0].is_empty() || b.routes[0].is_empty()) { return std::nullopt; }
 
     auto a_start_depot = a.pred[a.routes[0].start.node()];
