@@ -6,9 +6,9 @@ repos:
     rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
-        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
+        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
       - id: trailing-whitespace
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
       - id: check-json

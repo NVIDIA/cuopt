@@ -125,6 +125,19 @@ TEST(c_api, test_ranged_problem)
   EXPECT_NEAR(objective, 32.0, 1e-3);
 }
 
+TEST(c_api, test_semi_continuous_problem)
+{
+  cuopt_int_t termination_status   = CUOPT_TERMINATION_STATUS_NO_TERMINATION;
+  cuopt_float_t objective          = 0.0;
+  cuopt_float_t solution_values[2] = {0.0, 0.0};
+  ASSERT_EQ(test_semi_continuous_problem(&termination_status, &objective, solution_values),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, 0.0, 1e-6);
+  EXPECT_NEAR(solution_values[0], 0.0, 1e-6);
+  EXPECT_NEAR(solution_values[1], 1.0, 1e-6);
+}
+
 TEST(c_api, test_invalid_bounds)
 {
   // Test LP codepath
