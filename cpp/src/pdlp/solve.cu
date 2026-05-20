@@ -1559,32 +1559,14 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   auto request_concurrent_halt = [&settings_pdlp]() {
     if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
   };
-  // Construct the barrier raft::handle_t + cuDSS warmup on the main thread BEFORE any capture
-  // begins, so cuBLAS / cuSPARSE / cuSolverDn / cuDSS first-use synchronous init can't
-  // invalidate PDLP's graph capture. Mirrors the existing destruction-side fix below.
-  auto warmup_cudss = []() {
-    cudssHandle_t cudss_warmup_handle = nullptr;
-    cudssStatus_t cudss_warmup_status = CUDSS_STATUS_SUCCESS;
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssCreate(&cudss_warmup_handle), cudss_warmup_status, "cudssCreate (warmup)");
-    CUDSS_CALL_AND_CHECK_EXIT(
-      cudssDestroy(cudss_warmup_handle), cudss_warmup_status, "cudssDestroy (warmup)");
-  };
-
+  // Owned at parent scope so its destructor runs on the dispatching thread after the taskgroup
+  // joins every spawned task — cublasDestroy internally calls cudaDeviceSynchronize, which is
+  // globally forbidden while any stream is in graph capture mode. Construction happens inside
+  // the barrier task body below: capture invalidation caused by another thread's first-use
+  // library init is now recovered by manual_cuda_graph_t::run, so the previous main-thread
+  // preflight (eager handle construction + cuDSS warmup) is no longer needed.
   std::unique_ptr<raft::handle_t> barrier_handle_ptr;
-  if (enable_barrier) {
-    if (settings.num_gpus > 1) {
-      // Bind handle + cuDSS module load to device 1 (the barrier's GPU).
-      problem.handle_ptr->sync_stream();
-      raft::device_setter device_setter(1);
-      CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
-      barrier_handle_ptr = std::make_unique<raft::handle_t>();
-      warmup_cudss();
-    } else {
-      barrier_handle_ptr = std::make_unique<raft::handle_t>();
-      warmup_cudss();
-    }
-  } else {
+  if (!enable_barrier) {
     CUOPT_LOG_DEBUG("MIP: skipping concurrent barrier, %d threads available < %d required.",
                     available_threads,
                     CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
@@ -1610,11 +1592,14 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         {
           try {
             auto call_barrier_thread = [&]() {
+              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+              barrier_handle_ptr         = std::make_unique<raft::handle_t>(barrier_stream);
               auto barrier_problem       = dual_simplex_problem;
               barrier_problem.handle_ptr = barrier_handle_ptr.get();
               run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
             };
             if (settings.num_gpus > 1) {
+              problem.handle_ptr->sync_stream();
               raft::device_setter device_setter(1);  // Scoped variable
               CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
               call_barrier_thread();
