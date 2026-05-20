@@ -59,9 +59,7 @@ struct a_eax {
     raft::common::nvtx::range fun_scope("eax");
     // THIS IS TEMPORARY UNTIL EMPTY ROUTES ARE FIXED
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;
-    single_depot_node      = a.problem->get_single_depot();
-    use_virtual_depot_node = false;
-    if (!single_depot_node.has_value()) { use_virtual_depot_node = try_set_path_tsp_depot(a, b); }
+    if (!set_recombination_depot(a, b)) { return false; }
 
     // different routes from a & b > 1. Set min routes
     if (a.routes.size() != b.routes.size() || !single_depot_node.has_value()) return false;
@@ -117,11 +115,26 @@ struct a_eax {
     return node;
   }
 
-  bool try_set_path_tsp_depot(Solution const& a, Solution const& b)
+  bool set_recombination_depot(Solution const& a, Solution const& b)
   {
-    if (!a.problem->is_tsp || a.routes.size() != 1 || b.routes.size() != 1) { return false; }
-    if (a.problem->data_view_ptr->get_vehicle_locations().first == nullptr) { return false; }
-    if (a.routes[0].is_empty() || b.routes[0].is_empty()) { return false; }
+    single_depot_node      = a.problem->get_single_depot();
+    use_virtual_depot_node = false;
+    if (single_depot_node.has_value()) { return true; }
+
+    single_depot_node = get_path_tsp_virtual_depot(a, b);
+    use_virtual_depot_node = single_depot_node.has_value();
+    return single_depot_node.has_value();
+  }
+
+  std::optional<detail::NodeInfo<>> get_path_tsp_virtual_depot(Solution const& a, Solution const& b)
+  {
+    if (!a.problem->is_tsp || a.routes.size() != 1 || b.routes.size() != 1) {
+      return std::nullopt;
+    }
+    if (a.problem->data_view_ptr->get_vehicle_locations().first == nullptr) {
+      return std::nullopt;
+    }
+    if (a.routes[0].is_empty() || b.routes[0].is_empty()) { return std::nullopt; }
 
     auto a_start_depot = a.pred[a.routes[0].start.node()];
     auto a_end_depot   = a.succ[a.routes[0].end.node()];
@@ -130,25 +143,23 @@ struct a_eax {
 
     if (!a_start_depot.is_depot() || !a_end_depot.is_depot() || !b_start_depot.is_depot() ||
         !b_end_depot.is_depot()) {
-      return false;
+      return std::nullopt;
     }
 
     if (a_start_depot.node() != a_end_depot.node() ||
         a_start_depot.node() != b_start_depot.node() ||
         a_start_depot.node() != b_end_depot.node()) {
-      return false;
+      return std::nullopt;
     }
 
     if (a_start_depot.location() != b_start_depot.location() ||
         a_end_depot.location() != b_end_depot.location()) {
-      return false;
+      return std::nullopt;
     }
 
     // Fixed start/end TSP is a path. EAX works on closed tours, so represent
     // the two endpoint depots as one virtual depot vertex during recombination.
-    single_depot_node =
-      detail::NodeInfo<>{a_start_depot.node(), a_start_depot.location(), node_type_t::DEPOT};
-    return true;
+    return detail::NodeInfo<>{a_start_depot.node(), a_start_depot.location(), node_type_t::DEPOT};
   }
 
   void fill_eset(Solution& a, const Solution& b)
