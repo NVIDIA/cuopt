@@ -23,11 +23,8 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <map>
 #include <memory>
 #include <string>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 using namespace cuopt::linear_programming::io;
@@ -88,73 +85,6 @@ solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
 
 namespace {
 
-using triplet_key_t = std::pair<cuopt_int_t, cuopt_int_t>;
-
-struct triplet_key_cmp_t {
-  bool operator()(const triplet_key_t& a, const triplet_key_t& b) const
-  {
-    return a.first < b.first || (a.first == b.first && a.second < b.second);
-  }
-};
-
-void accumulate_csr_triplets(const std::vector<cuopt_int_t>& offsets,
-                             const std::vector<cuopt_int_t>& indices,
-                             const std::vector<cuopt_float_t>& values,
-                             std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets)
-{
-  if (offsets.size() < 2) { return; }
-  const cuopt_int_t num_rows = static_cast<cuopt_int_t>(offsets.size()) - 1;
-  for (cuopt_int_t row = 0; row < num_rows; ++row) {
-    for (cuopt_int_t k = offsets[row]; k < offsets[row + 1]; ++k) {
-      triplets[{row, indices[k]}] += values[k];
-    }
-  }
-}
-
-void accumulate_coordinate_triplets(
-  cuopt_int_t num_entries,
-  const cuopt_int_t* row_index,
-  const cuopt_int_t* col_index,
-  const cuopt_float_t* coeff,
-  std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets)
-{
-  for (cuopt_int_t k = 0; k < num_entries; ++k) {
-    triplets[{row_index[k], col_index[k]}] += coeff[k];
-  }
-}
-
-void triplets_to_csr(const std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t>& triplets,
-                     cuopt_int_t num_rows,
-                     std::vector<cuopt_int_t>& offsets,
-                     std::vector<cuopt_int_t>& indices,
-                     std::vector<cuopt_float_t>& values)
-{
-  offsets.assign(num_rows + 1, 0);
-  indices.clear();
-  values.clear();
-  if (triplets.empty()) { return; }
-
-  std::vector<std::vector<std::pair<cuopt_int_t, cuopt_float_t>>> row_entries(num_rows);
-  for (const auto& [key, val] : triplets) {
-    const cuopt_int_t row = key.first;
-    const cuopt_int_t col = key.second;
-    if (row < 0 || row >= num_rows) {
-      throw raft::exception("Quadratic matrix row index out of range");
-    }
-    row_entries[row].emplace_back(col, val);
-  }
-
-  for (cuopt_int_t row = 0; row < num_rows; ++row) {
-    auto& entries = row_entries[row];
-    std::sort(entries.begin(), entries.end());
-    for (const auto& [col, val] : entries) {
-      indices.push_back(col);
-      values.push_back(val);
-    }
-    offsets[row + 1] = static_cast<cuopt_int_t>(values.size());
-  }
-}
-
 void coordinate_triplets_to_csr(cuopt_int_t num_entries,
                                 const cuopt_int_t* row_index,
                                 const cuopt_int_t* col_index,
@@ -164,19 +94,70 @@ void coordinate_triplets_to_csr(cuopt_int_t num_entries,
                                 std::vector<cuopt_int_t>& indices,
                                 std::vector<cuopt_float_t>& values)
 {
-  std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t> triplets;
-  accumulate_coordinate_triplets(num_entries, row_index, col_index, coeff, triplets);
-  triplets_to_csr(triplets, num_rows, offsets, indices, values);
+  offsets.assign(num_rows + 1, 0);
+  indices.clear();
+  values.clear();
+  if (num_entries <= 0) { return; }
+
+  const size_t nnz = static_cast<size_t>(num_entries);
+  std::vector<cuopt_int_t> perm(nnz);
+  for (size_t k = 0; k < nnz; ++k) {
+    perm[k] = static_cast<cuopt_int_t>(k);
+  }
+
+  const auto triplet_less = [row_index, col_index](cuopt_int_t a, cuopt_int_t b) {
+    const cuopt_int_t row_a = row_index[a];
+    const cuopt_int_t row_b = row_index[b];
+    if (row_a != row_b) { return row_a < row_b; }
+    return col_index[a] < col_index[b];
+  };
+  std::sort(perm.begin(), perm.end(), triplet_less);
+
+  indices.reserve(nnz);
+  values.reserve(nnz);
+  std::vector<cuopt_int_t> entry_rows;
+  entry_rows.reserve(nnz);
+
+  cuopt_int_t last_row = -1;
+  cuopt_int_t last_col = -1;
+  for (size_t i = 0; i < nnz; ++i) {
+    const cuopt_int_t idx = perm[i];
+    const cuopt_int_t row = row_index[idx];
+    const cuopt_int_t col = col_index[idx];
+    if (row < 0 || row >= num_rows) {
+      throw raft::exception("Quadratic matrix row index out of range");
+    }
+
+    if (i > 0 && row == last_row && col == last_col) {
+      values.back() += coeff[idx];
+    } else {
+      indices.push_back(col);
+      values.push_back(coeff[idx]);
+      entry_rows.push_back(row);
+      last_row = row;
+      last_col = col;
+    }
+  }
+
+  const size_t unique_nnz = entry_rows.size();
+  size_t e                = 0;
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    offsets[row] = static_cast<cuopt_int_t>(e);
+    while (e < unique_nnz && entry_rows[e] == row) {
+      ++e;
+    }
+  }
+  offsets[num_rows] = static_cast<cuopt_int_t>(e);
 }
 
 constexpr char k_deprecated_quadratic_problem_msg[] =
   "cuOptCreateQuadraticProblem is deprecated. Use cuOptCreateProblem to set up the linear "
-  "problem, then cuOptAddQuadraticObjective to specify the quadratic objective terms. "
+  "problem, then cuOptSetQuadraticObjective to specify the quadratic objective terms. "
   "For ranged constraints, use cuOptCreateRangedProblem instead of cuOptCreateProblem.";
 
 constexpr char k_deprecated_quadratic_ranged_problem_msg[] =
   "cuOptCreateQuadraticRangedProblem is deprecated. Use cuOptCreateRangedProblem to set up the "
-  "linear problem, then cuOptAddQuadraticObjective to specify the quadratic objective terms. "
+  "linear problem, then cuOptSetQuadraticObjective to specify the quadratic objective terms. "
   "For QCQP models, call cuOptAddQuadraticConstraint for each quadratic constraint.";
 
 }  // namespace
@@ -522,7 +503,7 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
   return CUOPT_SUCCESS;
 }
 
-cuopt_int_t cuOptAddQuadraticObjective(cuOptOptimizationProblem problem,
+cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
                                        cuopt_int_t num_entries,
                                        const cuopt_int_t* row_index,
                                        const cuopt_int_t* col_index,
@@ -547,19 +528,11 @@ cuopt_int_t cuOptAddQuadraticObjective(cuOptOptimizationProblem problem,
   }
 
   try {
-    std::map<triplet_key_t, cuopt_float_t, triplet_key_cmp_t> triplets;
-    if (op_problem->has_quadratic_objective()) {
-      accumulate_csr_triplets(op_problem->get_quadratic_objective_offsets(),
-                              op_problem->get_quadratic_objective_indices(),
-                              op_problem->get_quadratic_objective_values(),
-                              triplets);
-    }
-    accumulate_coordinate_triplets(num_entries, row_index, col_index, coeff, triplets);
-
     std::vector<cuopt_int_t> Q_offsets;
     std::vector<cuopt_int_t> Q_indices;
     std::vector<cuopt_float_t> Q_values;
-    triplets_to_csr(triplets, num_variables, Q_offsets, Q_indices, Q_values);
+    coordinate_triplets_to_csr(
+      num_entries, row_index, col_index, coeff, num_variables, Q_offsets, Q_indices, Q_values);
     if (Q_values.empty()) { return CUOPT_INVALID_ARGUMENT; }
 
     op_problem->set_quadratic_objective_matrix(Q_values.data(),

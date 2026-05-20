@@ -21,8 +21,8 @@ extern "C" {
  * @brief A ``cuOptOptimizationProblem`` object contains a representation of
  * an LP, MIP, QP, or QCQP. It is created by ``cuOptCreateProblem``,
  * ``cuOptCreateRangedProblem``, or the quadratic create functions. Quadratic objectives and
- * constraints may be added incrementally via ``cuOptAddQuadraticObjective`` and
- * ``cuOptAddQuadraticConstraint``. It is passed to ``cuOptSolve`` and destroyed with
+ * quadratic objectives and constraints may be set via ``cuOptSetQuadraticObjective`` and
+ * added via ``cuOptAddQuadraticConstraint``. It is passed to ``cuOptSolve`` and destroyed with
  * ``cuOptDestroyProblem``.
  */
 typedef void* cuOptOptimizationProblem;
@@ -259,7 +259,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 /** @brief Create an optimization problem of the form
  *
  * @deprecated Use ``cuOptCreateProblem`` to set up the linear problem, then
- *             ``cuOptAddQuadraticObjective`` to specify the quadratic objective terms.
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
  *
  * @verbatim
  *                minimize/maximize  c^T x + x^T Q x + offset
@@ -334,7 +334,7 @@ cuopt_int_t cuOptCreateQuadraticProblem(
 /** @brief Create an optimization problem of the form *
  *
  * @deprecated Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
- *             ``cuOptAddQuadraticObjective`` to specify the quadratic objective terms.
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
  *             For QCQP models, use ``cuOptAddQuadraticConstraint`` for each quadratic constraint.
  *
  * @verbatim
@@ -418,12 +418,13 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
   const cuopt_float_t* variable_upper_bounds,
   cuOptOptimizationProblem* problem_ptr);
 
-/** @brief Add a quadratic term x^T Q x to the objective of an existing problem.
+/** @brief Set the quadratic objective term x^T Q x on an existing problem.
  *
  * The matrix Q is specified in coordinate (triplet) format. This function may be called
  * after ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` to build a QP or QCQP model
  * without using ``cuOptCreateQuadraticProblem`` or ``cuOptCreateQuadraticRangedProblem``.
- * Multiple calls accumulate entries into Q (duplicate (row, col) indices are summed).
+ * Each call replaces any previously set quadratic objective. Duplicate (row, col) indices
+ * in the triplet arrays are summed.
  *
  * @param[in] problem The optimization problem created by ``cuOptCreateProblem`` or
  *            ``cuOptCreateRangedProblem``.
@@ -434,7 +435,7 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
  *
  * @return A status code indicating success or failure.
  */
-cuopt_int_t cuOptAddQuadraticObjective(cuOptOptimizationProblem problem,
+cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
                                        cuopt_int_t num_entries,
                                        const cuopt_int_t* row_index,
                                        const cuopt_int_t* col_index,

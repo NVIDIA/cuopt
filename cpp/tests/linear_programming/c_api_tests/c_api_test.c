@@ -1371,9 +1371,9 @@ cuopt_int_t test_quadratic_problem(cuopt_int_t* termination_status_ptr,
     goto DONE;
   }
 
-  status = cuOptAddQuadraticObjective(problem, 2, Q_row_index, Q_col_index, Q_coeff);
+  status = cuOptSetQuadraticObjective(problem, 2, Q_row_index, Q_col_index, Q_coeff);
   if (status != CUOPT_SUCCESS) {
-    printf("Error adding quadratic objective: %d\n", status);
+    printf("Error setting quadratic objective: %d\n", status);
     goto DONE;
   }
 
@@ -1464,9 +1464,9 @@ cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr,
     goto DONE;
   }
 
-  status = cuOptAddQuadraticObjective(problem, 2, Q_row_index, Q_col_index, Q_coeff);
+  status = cuOptSetQuadraticObjective(problem, 2, Q_row_index, Q_col_index, Q_coeff);
   if (status != CUOPT_SUCCESS) {
-    printf("Error adding quadratic objective: %d\n", status);
+    printf("Error setting quadratic objective: %d\n", status);
     goto DONE;
   }
 
