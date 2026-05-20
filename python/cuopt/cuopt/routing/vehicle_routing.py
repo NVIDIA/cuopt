@@ -1601,6 +1601,30 @@ def BatchSolve(data_model_list, solver_settings=None):
 
 
 @catch_cuopt_exception
-def solve_batch(data_model_list, solver_settings=None):
-    """Alias for :func:`BatchSolve` using snake_case naming."""
+def solve_batch(
+    data_model_list: list[DataModel],
+    solver_settings: SolverSettings | None = None,
+) -> list:
+    """
+    Snake-case alias for :func:`BatchSolve`.
+
+    Parameters
+    ----------
+    data_model_list : list[DataModel]
+        Routing data models to solve in batch.
+    solver_settings : SolverSettings, optional
+        Solver settings to apply. Defaults are used when None.
+
+    Returns
+    -------
+    list
+        Batch routing solutions returned by the backend batch solver.
+
+    Raises
+    ------
+    ValueError
+        If ``data_model_list`` is not a non-empty list of ``DataModel``.
+    Exception
+        Propagated as cuOpt exceptions via ``catch_cuopt_exception``.
+    """
     return BatchSolve(data_model_list, solver_settings)

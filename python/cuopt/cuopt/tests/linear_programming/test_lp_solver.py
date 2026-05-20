@@ -536,6 +536,12 @@ def test_parser_and_solve_batch_alias():
             batch_solutions[i].get_termination_status()
             == alias_solutions[i].get_termination_status()
         )
+        assert batch_solutions[i].get_primal_objective() == pytest.approx(
+            alias_solutions[i].get_primal_objective()
+        )
+        assert batch_solutions[i].get_dual_objective() == pytest.approx(
+            alias_solutions[i].get_dual_objective()
+        )
 
 
 def test_warm_start():

@@ -89,6 +89,12 @@ def test_solve_batch_alias_matches_batch_solve():
             batch_solution.get_vehicle_count()
             == alias_solution.get_vehicle_count()
         )
+        assert batch_solution.get_total_objective() == pytest.approx(
+            alias_solution.get_total_objective()
+        )
+        assert batch_solution.get_route().to_pandas().equals(
+            alias_solution.get_route().to_pandas()
+        )
 
 
 def test_solve_batch_alias_input_validation():

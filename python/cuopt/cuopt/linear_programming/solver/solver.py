@@ -189,6 +189,28 @@ def BatchSolve(data_model_list, solver_settings=None):
 
 
 @catch_cuopt_exception
-def solve_batch(data_model_list, solver_settings=None):
-    """Alias for :func:`BatchSolve` using snake_case naming."""
+def solve_batch(
+    data_model_list: list,
+    solver_settings: SolverSettings | None = None,
+) -> tuple[list, float]:
+    """
+    Snake-case alias for :func:`BatchSolve`.
+
+    Parameters
+    ----------
+    data_model_list : list
+        List of LP data models to solve in batch.
+    solver_settings : SolverSettings, optional
+        Solver configuration. If None, default settings are used.
+
+    Returns
+    -------
+    tuple[list, float]
+        Batch solutions and total batch solve time in seconds.
+
+    Raises
+    ------
+    Exception
+        Propagated as cuOpt exceptions via ``catch_cuopt_exception``.
+    """
     return BatchSolve(data_model_list, solver_settings)
