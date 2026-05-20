@@ -271,7 +271,8 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 #endif
 
 #if CUDA_VER_13_2_UP
-// SpMVOp symbols. resolved at runtime via dlsym
+// SpMVOp symbols. Resolved at runtime via dlsym, because the runtime minor version might not match
+// the compiled minor version. We can go back to direct linking once CUDA 14 is adopted
 using cusparseSpMVOp_destroyDescr_sig = cusparse_sig<cusparseSpMVOpDescr_t>;
 using cusparseSpMVOp_destroyPlan_sig  = cusparse_sig<cusparseSpMVOpPlan_t>;
 using cusparseSpMVOp_bufferSize_sig   = cusparse_sig<cusparseHandle_t,
