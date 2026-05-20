@@ -241,7 +241,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // Allow the user to disable the probing-cache step of cuOpt's internal presolve
   // independently of the higher-level presolver setting.
   if (!context.settings.probing) {
-    CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_PROBING);
+    CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
     run_probing_cache = false;
   }
   if (run_probing_cache) {

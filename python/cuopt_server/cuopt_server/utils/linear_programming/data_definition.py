@@ -524,7 +524,7 @@ class SolverConfig(BaseModel):
         "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
         "Default is 1 for MIP problems and 2 for LP problems.",
     )
-    probing: Optional[bool] = Field(
+    mip_probing: Optional[bool] = Field(
         default=None,
         description="Enable or disable the cuOpt-internal probing-cache step of "  # noqa
         "MIP presolve. True (default) runs probing as part of presolve; False "  # noqa
