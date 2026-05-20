@@ -30,7 +30,7 @@ Check the help with 'cuopt_sh -h' for more detailed information.
 
       data:   cuOpt problem data file or a request id to repoll. If the -f option is used, this indicates the path of a file accessible to the server.
         -id:  space separated list of reqIds to use as initial solutions for VRP problems. The list is terminated by the next option flag or the end of line.
-	-wid: reqId of a solution to use as a warmstart for a single LP problem. Not enabled when multiple LP problems are passed.
+	-wid: reqId of a solution to use as a warmstart for a single LP problem. Not enabled for batch LP problems.
 	-ca:  caches a problem on the server so that it may be run multiple times by reqId. Problem is not solved, only cached.
         -f:   Indicates that the DATA argument is the relative path of a cuOpt data file under the server's data directory.
 	-d:   Deletes a cached problem or aborts a running or queued solution.

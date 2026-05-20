@@ -1,6 +1,6 @@
 #! /usr/bin/python3
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -231,14 +231,6 @@ def solve(args):
         elif args.type == "LP":
             if args.init_ids:
                 raise Exception("Initial ids are not supported for LP")
-            if (
-                isinstance(cuopt_problem_data, list)
-                and len(cuopt_problem_data) > 1
-                and args.warmstart_id
-            ):
-                raise Exception(
-                    "Warmstart id is only supported for a single LP problem"
-                )
 
             def log_callback(name):
                 def print_log(log):
@@ -359,8 +351,9 @@ def main():
         " "
         "For LP: "
         "A single problem file in mps/json format or file_name."
-        "Multiple mps files may be passed for LP; they are solved "
-        "sequentially (batch mode is deprecated).",
+        "Batch mode is supported in case of mps files only for LP and"
+        "not for MILP, where a list of mps"
+        "files can be shared to be solved in parallel.",
     )
     parser.add_argument(
         "-id",
@@ -380,7 +373,7 @@ def main():
         default=None,
         help="reqId of a solution to use as a warmstart data for a "
         "single LP problem. This allows to restart PDLP with a "
-        "previous solution context. Not enabled when multiple LP problems are passed.",
+        "previous solution context. Not enabled for Batch LP problem",
     )
     parser.add_argument(
         "-ca",

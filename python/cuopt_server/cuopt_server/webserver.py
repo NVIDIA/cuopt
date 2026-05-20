@@ -931,7 +931,7 @@ async def postrequest(
         default=None,
         description="If set, the warmstart data in solution identified by id "
         "will be used by the solver as warmstart data for this request. "
-        "Enabled for single LP problem. Batch LP is deprecated.",
+        "Enabled for single LP problem, not enabled for Batch LP",
     ),
     validation_only: Optional[bool] = Query(
         default=False,

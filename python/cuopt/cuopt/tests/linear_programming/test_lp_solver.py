@@ -478,11 +478,11 @@ def test_parser_and_batch_solver():
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_optimality_tolerance(1e-4)
 
-    # Call BatchSolve (deprecated; use sequential Solve instead)
+    # Call BatchSolve
     batch_solution, solve_time = solver.BatchSolve(data_model_list, settings)
 
     # Call Solve on each individual data model object
-    individual_solutions = []
+    individual_solutions = [] * nb_solves
     for i in range(nb_solves):
         individual_solution = solver.Solve(
             cuopt_mps_parser.ParseMps(file_path), settings
@@ -494,16 +494,6 @@ def test_parser_and_batch_solver():
         assert (
             batch_solution[i].get_termination_status()
             == individual_solutions[i].get_termination_status()
-        )
-        assert batch_solution[i].get_primal_objective() == pytest.approx(
-            individual_solutions[i].get_primal_objective(), rel=1e-6, abs=1e-8
-        )
-        assert np.array(
-            batch_solution[i].get_primal_solution()
-        ) == pytest.approx(
-            np.array(individual_solutions[i].get_primal_solution()),
-            rel=1e-5,
-            abs=1e-7,
         )
 
 
@@ -581,7 +571,7 @@ def test_batch_solver_warm_start():
 
     settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
 
-    # Should raise an exception (BatchSolve does not support warmstart)
+    # Should raise an exception
     with pytest.raises(Exception):
         solver.BatchSolve(data_model_list, settings)
 

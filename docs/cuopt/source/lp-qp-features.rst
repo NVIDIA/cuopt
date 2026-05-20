@@ -131,7 +131,7 @@ Logging Callback in the Service
 
 In the cuOpt service API, the ``log_file`` value in ``solver_configs`` is ignored.
 
-If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-multiple-lps>` on the self-hosted page.
+If however you set the ``solver_logs`` flag on the ``/cuopt/request`` REST API call, users can fetch the log file content from the webserver at ``/cuopt/logs/{id}``. Using the logging callback feature through the cuOpt client is shown in :ref:`Examples <generic-example-with-normal-and-batch-mode>` on the self-hosted page.
 
 
 Infeasibility Detection
@@ -155,7 +155,7 @@ The user may specify a time limit to the solver. By default the solver runs unti
 Batch Mode
 ----------
 
-Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-multiple-lps>` example in thin client.
+Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
 
 PDLP Precision Modes
 --------------------

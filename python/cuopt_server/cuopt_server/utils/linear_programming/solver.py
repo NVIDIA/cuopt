@@ -341,29 +341,23 @@ def solve(
         sol = None
         total_solve_time = None
         if type(LP_data) is list:
-            if len(LP_data) == 0:
-                raise HTTPException(
-                    status_code=400, detail="LP_data list cannot be empty"
-                )
             is_batch = True
+            data_model_list = []
             warnings = [
-                "LP batch mode is deprecated. Multiple problems are now solved "
-                "sequentially. Implement your own parallelism if needed."
+                "LP batch mode is deprecated and will be removed in a future release. "
+                "Use sequential Solve() calls or implement your own parallelism."
             ]
-            sol = []
-            total_solve_time = 0.0
             for i_data in LP_data:
                 i_warnings, data_model = create_data_model(i_data)
+                data_model_list.append(data_model)
                 warnings.extend(i_warnings)
-                cswarnings, solver_settings = create_solver(
-                    i_data, warmstart_data
-                )
-                warnings.extend(cswarnings)
-                i_sol = linear_programming.Solve(
-                    data_model, solver_settings=solver_settings
-                )
-                total_solve_time += i_sol.get_solve_time()
-                sol.append(i_sol)
+            cswarnings, solver_settings = create_solver(
+                LP_data[0], warmstart_data
+            )
+            warnings.extend(cswarnings)
+            sol, total_solve_time = linear_programming.BatchSolve(
+                data_model_list, solver_settings
+            )
         else:
             warnings, data_model = create_data_model(LP_data)
             cswarnings, solver_settings = create_solver(
@@ -395,7 +389,7 @@ def solve(
                 if i_sol.get_error_status() != ErrorStatus.Success:
                     res.append(
                         {
-                            "status": i_sol.get_error_status().name,
+                            "status": i_sol.get_error_status(),
                             "solution": i_sol.get_error_message(),
                         }
                     )

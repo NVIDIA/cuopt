@@ -721,6 +721,8 @@ class CuOptServiceSelfHostClient:
         Parameters
         ----------
         cuopt_data_models :
+            Note - Batch mode is only supported in LP and not in MILP
+
             File path to mps or json/dict/DataModel returned by
             cuopt_mps_parser/list[mps file paths]/list[dict]/list[DataModel].
 
@@ -728,8 +730,9 @@ class CuOptServiceSelfHostClient:
             /DataModel returned by cuopt_mps_parser/ path to json file/
             dictionary.
 
-            For multiple problems, a list of paths/dicts/DataModels may be
-            passed; they are solved sequentially (LP batch mode is deprecated).
+            For batch problem, input should be either a list of paths to mps
+            files/ a list of DataModel returned by cuopt_mps_parser/ a
+            list of dictionaries.
 
             To use a cached cuopt problem data, input should be a uuid
             identifying the reqId of the cached data.

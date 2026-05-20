@@ -2,7 +2,7 @@
 LP Python Examples
 ===============================
 
-The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and with multiple problems (solved sequentially; batch mode is deprecated).
+The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
 
 The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
 
@@ -15,10 +15,10 @@ If you want to run server locally, please run the following command in a termina
     export port=5000
     python -m cuopt_server.cuopt_service --ip $ip --port $port
 
-.. _generic-example-with-normal-and-multiple-lps:
+.. _generic-example-with-normal-and-batch-mode:
 
-Generic Example With Normal Mode and Multiple LPs (Batch Deprecated)
----------------------------------------------------------------------
+Genric Example With Normal Mode and Batch Mode
+------------------------------------------------
 
 :download:`basic_lp_example.py <lp/examples/basic_lp_example.py>`
 
@@ -402,12 +402,7 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    export port=5000
    cuopt_sh data.json -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
 
-For solving multiple ``mps`` files, you can send them together (they will be
-solved sequentially). This multi-file mode works only for ``mps`` in the case of
-CLI.
-
-.. note::
-   LP batch mode is deprecated. Multiple problems are now solved sequentially.
+In the case of batch mode, you can send a bunch of ``mps`` files at once, and acquire results. The batch mode works only for ``mps`` in the case of CLI:
 
 .. note::
    Batch mode is not available for MILP problems.
