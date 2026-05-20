@@ -496,10 +496,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     
     multi_gpu_engine->distributed_transform(
       std::make_tuple(
-        [](auto& s) -> auto& { return s.pdhg_solver_.get_primal_solution().data();},
-        [](auto& s) -> auto& { return s.get_op_problem_scaled().variable_bounds.data();}),
-      [](auto& s) -> auto& { return s.pdhg_solver_.get_primal_solution().data(); },  
-      [](auto& s) -> auto { return s.pdhg_solver_.get_primal_solution().size(); },  
+        [](auto& s) { return s.pdhg_solver_.get_primal_solution().data();},
+        [](auto& s) { return s.get_op_problem_scaled().variable_bounds.data();}),
+      [](auto& s) { return s.pdhg_solver_.get_primal_solution().data(); },  
+      [](auto& s) { return s.pdhg_solver_.get_primal_solution().size(); },  
       clamp<f_t, f_t2>()
     );
   }
