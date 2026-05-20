@@ -62,11 +62,11 @@ class pdlp_solver_t {
   pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode = false);
-  
+
   // Distributed Solver Constructor
   pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
-    pdlp_solver_settings_t<i_t, f_t> const& settings,
-    int num_gpus);
+                pdlp_solver_settings_t<i_t, f_t> const& settings,
+                int num_gpus);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
 

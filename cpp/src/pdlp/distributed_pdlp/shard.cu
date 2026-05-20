@@ -22,28 +22,27 @@ template <typename i_t, typename f_t>
 pdlp_shard_t<i_t, f_t>::~pdlp_shard_t() = default;
 
 template <typename i_t, typename f_t>
-pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
-  int device_id,
-  rank_data_t<i_t, f_t>&& rd,
-  ncclComm_t raw_comm,
-  std::vector<f_t> const& h_global_obj,
-  std::vector<f_t> const& h_global_var_lower,
-  std::vector<f_t> const& h_global_var_upper,
-  std::vector<f_t> const& h_global_cstr_lower,
-  std::vector<f_t> const& h_global_cstr_upper,
-  std::vector<f_t> const& h_global_obj_scaled,
-  std::vector<f_t> const& h_global_var_lower_scaled,
-  std::vector<f_t> const& h_global_var_upper_scaled,
-  std::vector<f_t> const& h_global_cstr_lower_scaled,
-  std::vector<f_t> const& h_global_cstr_upper_scaled,
-  std::vector<f_t> const& h_global_cummulative_cstr_scaling,
-  std::vector<f_t> const& h_global_cummulative_var_scaling,
-  f_t                                      h_bound_rescaling,
-  f_t                                      h_objective_rescaling,
-  bool                                     maximize,
-  f_t                                      objective_offset,
-  f_t                                      objective_scaling_factor,
-  pdlp_solver_settings_t<i_t, f_t> const&  settings)
+pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
+                                     rank_data_t<i_t, f_t>&& rd,
+                                     ncclComm_t raw_comm,
+                                     std::vector<f_t> const& h_global_obj,
+                                     std::vector<f_t> const& h_global_var_lower,
+                                     std::vector<f_t> const& h_global_var_upper,
+                                     std::vector<f_t> const& h_global_cstr_lower,
+                                     std::vector<f_t> const& h_global_cstr_upper,
+                                     std::vector<f_t> const& h_global_obj_scaled,
+                                     std::vector<f_t> const& h_global_var_lower_scaled,
+                                     std::vector<f_t> const& h_global_var_upper_scaled,
+                                     std::vector<f_t> const& h_global_cstr_lower_scaled,
+                                     std::vector<f_t> const& h_global_cstr_upper_scaled,
+                                     std::vector<f_t> const& h_global_cummulative_cstr_scaling,
+                                     std::vector<f_t> const& h_global_cummulative_var_scaling,
+                                     f_t h_bound_rescaling,
+                                     f_t h_objective_rescaling,
+                                     bool maximize,
+                                     f_t objective_offset,
+                                     f_t objective_scaling_factor,
+                                     pdlp_solver_settings_t<i_t, f_t> const& settings)
   : device_id(device_id),
     stream(),
     handle(stream.view()),
@@ -53,22 +52,27 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
     sub_problem(std::nullopt),
     sub_pdlp(nullptr)
 {
-  assert(raft::device_setter::get_current_device() == device_id && "Right device must be set before building the shard");
+  assert(raft::device_setter::get_current_device() == device_id &&
+         "Right device must be set before building the shard");
 
   // ---- 1. Gather per-shard host slices using rank_data's index maps. ----
   // All vectors are sized to TOTAL (owned + halo). Owned slots get real
   // values; halo slots keep defaults because they should not be accessed
-  std::vector<f_t> h_obj              (rank_data.total_var_size,   f_t{0});
-  std::vector<f_t> h_var_lower        (rank_data.total_var_size,  -std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_var_upper        (rank_data.total_var_size,   std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_cstr_lower       (rank_data.total_cstr_size, -std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_cstr_upper       (rank_data.total_cstr_size,  std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_obj(rank_data.total_var_size, f_t{0});
+  std::vector<f_t> h_var_lower(rank_data.total_var_size, -std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_var_upper(rank_data.total_var_size, std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_cstr_lower(rank_data.total_cstr_size, -std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_cstr_upper(rank_data.total_cstr_size, std::numeric_limits<f_t>::infinity());
 
-  std::vector<f_t> h_obj_scaled       (rank_data.total_var_size,   f_t{0});
-  std::vector<f_t> h_var_lower_scaled (rank_data.total_var_size,  -std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_var_upper_scaled (rank_data.total_var_size,   std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_cstr_lower_scaled(rank_data.total_cstr_size, -std::numeric_limits<f_t>::infinity());
-  std::vector<f_t> h_cstr_upper_scaled(rank_data.total_cstr_size,  std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_obj_scaled(rank_data.total_var_size, f_t{0});
+  std::vector<f_t> h_var_lower_scaled(rank_data.total_var_size,
+                                      -std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_var_upper_scaled(rank_data.total_var_size,
+                                      std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_cstr_lower_scaled(rank_data.total_cstr_size,
+                                       -std::numeric_limits<f_t>::infinity());
+  std::vector<f_t> h_cstr_upper_scaled(rank_data.total_cstr_size,
+                                       std::numeric_limits<f_t>::infinity());
 
   for (i_t i = 0; i < rank_data.owned_var_size; ++i) {
     const auto g          = rank_data.local_to_global_var[i];
@@ -89,7 +93,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
 
   // Get local scaling factors
   std::vector<f_t> h_cstr_scaling_local(rank_data.total_cstr_size, f_t{1});
-  std::vector<f_t> h_var_scaling_local (rank_data.total_var_size,  f_t{1});
+  std::vector<f_t> h_var_scaling_local(rank_data.total_var_size, f_t{1});
   for (i_t i = 0; i < rank_data.owned_cstr_size; ++i) {
     h_cstr_scaling_local[i] = h_global_cummulative_cstr_scaling[rank_data.local_to_global_cstr[i]];
   }
@@ -99,15 +103,17 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
 
   // ---- 2. Build optimization_problem_t on this shard's device (UNSCALED). ----
   opt_problem.emplace(&handle);
-  opt_problem->set_csr_constraint_matrix(
-    rank_data.h_A_values     .data(), static_cast<i_t>(rank_data.h_A_values     .size()),
-    rank_data.h_A_col_indices.data(), static_cast<i_t>(rank_data.h_A_col_indices.size()),
-    rank_data.h_A_row_offsets.data(), static_cast<i_t>(rank_data.h_A_row_offsets.size()));
+  opt_problem->set_csr_constraint_matrix(rank_data.h_A_values.data(),
+                                         static_cast<i_t>(rank_data.h_A_values.size()),
+                                         rank_data.h_A_col_indices.data(),
+                                         static_cast<i_t>(rank_data.h_A_col_indices.size()),
+                                         rank_data.h_A_row_offsets.data(),
+                                         static_cast<i_t>(rank_data.h_A_row_offsets.size()));
 
   // Primal axis: TOTAL (owned + halo). Halo slots have neutral defaults.
-  opt_problem->set_objective_coefficients(h_obj      .data(), rank_data.total_var_size);
-  opt_problem->set_variable_lower_bounds (h_var_lower.data(), rank_data.total_var_size);
-  opt_problem->set_variable_upper_bounds (h_var_upper.data(), rank_data.total_var_size);
+  opt_problem->set_objective_coefficients(h_obj.data(), rank_data.total_var_size);
+  opt_problem->set_variable_lower_bounds(h_var_lower.data(), rank_data.total_var_size);
+  opt_problem->set_variable_upper_bounds(h_var_upper.data(), rank_data.total_var_size);
 
   // Dual axis: TOTAL (owned + halo). Halo slots have ±inf so trivially satisfied.
   opt_problem->set_constraint_lower_bounds(h_cstr_lower.data(), rank_data.total_cstr_size);
@@ -126,18 +132,21 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
   // in multi-GPU: A_local is owned_cstr x total_var, and A_t_local is the
   // pre-sliced owned_var x total_cstr matrix we built during partitioning.
   auto stream_view = handle.get_stream();
-  sub_problem->reverse_offsets     .resize(rank_data.h_A_t_row_offsets.size(), stream_view);
-  sub_problem->reverse_constraints .resize(rank_data.h_A_t_col_indices.size(), stream_view);
-  sub_problem->reverse_coefficients.resize(rank_data.h_A_t_values     .size(), stream_view);
+  sub_problem->reverse_offsets.resize(rank_data.h_A_t_row_offsets.size(), stream_view);
+  sub_problem->reverse_constraints.resize(rank_data.h_A_t_col_indices.size(), stream_view);
+  sub_problem->reverse_coefficients.resize(rank_data.h_A_t_values.size(), stream_view);
   raft::copy(sub_problem->reverse_offsets.data(),
              rank_data.h_A_t_row_offsets.data(),
-             rank_data.h_A_t_row_offsets.size(), stream_view);
+             rank_data.h_A_t_row_offsets.size(),
+             stream_view);
   raft::copy(sub_problem->reverse_constraints.data(),
              rank_data.h_A_t_col_indices.data(),
-             rank_data.h_A_t_col_indices.size(), stream_view);
+             rank_data.h_A_t_col_indices.size(),
+             stream_view);
   raft::copy(sub_problem->reverse_coefficients.data(),
              rank_data.h_A_t_values.data(),
-             rank_data.h_A_t_values.size(), stream_view);
+             rank_data.h_A_t_values.size(),
+             stream_view);
   handle.sync_stream(stream_view);
 
   // ---- 5. Build sub_pdlp (single-GPU mode; multi_gpu flags cleared by caller). ----
@@ -150,16 +159,22 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
   auto& scaled = sub_pdlp->get_op_problem_scaled();
   raft::copy(scaled.coefficients.data(),
              rank_data.h_A_values_scaled.data(),
-             rank_data.h_A_values_scaled.size(), stream_view);
+             rank_data.h_A_values_scaled.size(),
+             stream_view);
   raft::copy(scaled.reverse_coefficients.data(),
              rank_data.h_A_t_values_scaled.data(),
-             rank_data.h_A_t_values_scaled.size(), stream_view);
-  raft::copy(scaled.objective_coefficients.data(),
-             h_obj_scaled.data(), h_obj_scaled.size(), stream_view);
+             rank_data.h_A_t_values_scaled.size(),
+             stream_view);
+  raft::copy(
+    scaled.objective_coefficients.data(), h_obj_scaled.data(), h_obj_scaled.size(), stream_view);
   raft::copy(scaled.constraint_lower_bounds.data(),
-             h_cstr_lower_scaled.data(), h_cstr_lower_scaled.size(), stream_view);
+             h_cstr_lower_scaled.data(),
+             h_cstr_lower_scaled.size(),
+             stream_view);
   raft::copy(scaled.constraint_upper_bounds.data(),
-             h_cstr_upper_scaled.data(), h_cstr_upper_scaled.size(), stream_view);
+             h_cstr_upper_scaled.data(),
+             h_cstr_upper_scaled.size(),
+             stream_view);
 
   using f_t2 = typename type_2<f_t>::type;
   std::vector<f_t2> h_var_bounds_scaled_packed(rank_data.total_var_size);
@@ -169,14 +184,15 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(
   }
   raft::copy(scaled.variable_bounds.data(),
              h_var_bounds_scaled_packed.data(),
-             h_var_bounds_scaled_packed.size(), stream_view);
+             h_var_bounds_scaled_packed.size(),
+             stream_view);
 
   combine_constraint_bounds<i_t, f_t>(scaled, scaled.combined_bounds);
 
   // Inject master-scaled buffers inside sub_pdlp.initil_strategy
   auto& scaling = sub_pdlp->get_initial_scaling_strategy();
   scaling.set_cummulative_scaling(h_cstr_scaling_local, h_var_scaling_local);
-  scaling.set_h_bound_rescaling   (h_bound_rescaling);
+  scaling.set_h_bound_rescaling(h_bound_rescaling);
   scaling.set_h_objective_rescaling(h_objective_rescaling);
 
   handle.sync_stream(stream_view);

@@ -333,23 +333,28 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
       settings.multi_gpu_partition_file);
   } else {
-    cuopt_expects(false, error_type_t::NotImplemented,
+    cuopt_expects(false,
+                  error_type_t::NotImplemented,
                   "Metis partitioning inside cuopt not implemented yet; "
                   "provide a --parts file via settings.multi_gpu_partition_file");
   }
 
-  // always compute initial step size before scaling and primal_weight after scaling to do like cuPDLPx
-  assert(settings_.hyper_params.compute_initial_primal_weight_before_scaling && "compute_initial_primal_weight_before_scaling must be true in distributed mode");
-  assert(!settings_.hyper_params.compute_initial_step_size_before_scaling && "compute_initial_step_size_before_scaling must be false in distributed mode");
-  
+  // always compute initial step size before scaling and primal_weight after scaling to do like
+  // cuPDLPx
+  assert(settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
+         "compute_initial_primal_weight_before_scaling must be true in distributed mode");
+  assert(!settings_.hyper_params.compute_initial_step_size_before_scaling &&
+         "compute_initial_step_size_before_scaling must be false in distributed mode");
+
   compute_initial_primal_weight();
-  
+
   // scale globally before dispatching to shards
   initial_scaling_strategy_.scale_problem();
-  
-  compute_initial_step_size();
 
-  const f_t initial_step_size_global = get_step_size_h(0);
+  compute_initial_step_size();
+  step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
+
+  const f_t initial_step_size_global     = get_step_size_h(0);
   const f_t initial_primal_weight_global = get_primal_weight_h(0);
 
   // 4. Copy both scaled and unscaled pb
@@ -359,54 +364,61 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   i_t const nnz     = op_problem_scaled_.nnz;
 
   // Shared topology (taken from the scaled problem, but identical on both).
-  std::vector<i_t> h_A_row_offsets  (n_cstr + 1);
-  std::vector<i_t> h_A_col_indices  (nnz);
+  std::vector<i_t> h_A_row_offsets(n_cstr + 1);
+  std::vector<i_t> h_A_col_indices(nnz);
   std::vector<i_t> h_A_t_row_offsets(n_vars + 1);
   std::vector<i_t> h_A_t_col_indices(nnz);
-  raft::copy(h_A_row_offsets  .data(), op_problem_scaled_.offsets            .data(), n_cstr + 1, stream);
-  raft::copy(h_A_col_indices  .data(), op_problem_scaled_.variables          .data(), nnz,        stream);
-  raft::copy(h_A_t_row_offsets.data(), op_problem_scaled_.reverse_offsets    .data(), n_vars + 1, stream);
-  raft::copy(h_A_t_col_indices.data(), op_problem_scaled_.reverse_constraints.data(), nnz,        stream);
+  raft::copy(h_A_row_offsets.data(), op_problem_scaled_.offsets.data(), n_cstr + 1, stream);
+  raft::copy(h_A_col_indices.data(), op_problem_scaled_.variables.data(), nnz, stream);
+  raft::copy(
+    h_A_t_row_offsets.data(), op_problem_scaled_.reverse_offsets.data(), n_vars + 1, stream);
+  raft::copy(h_A_t_col_indices.data(), op_problem_scaled_.reverse_constraints.data(), nnz, stream);
 
   // Paired value arrays for A and A_T.
-  std::vector<f_t> h_A_values        (nnz);
-  std::vector<f_t> h_A_values_scaled (nnz);
-  std::vector<f_t> h_A_t_values      (nnz);
+  std::vector<f_t> h_A_values(nnz);
+  std::vector<f_t> h_A_values_scaled(nnz);
+  std::vector<f_t> h_A_t_values(nnz);
   std::vector<f_t> h_A_t_values_scaled(nnz);
-  raft::copy(h_A_values        .data(), problem_ptr->coefficients         .data(), nnz, stream);
-  raft::copy(h_A_t_values      .data(), problem_ptr->reverse_coefficients .data(), nnz, stream);
-  raft::copy(h_A_values_scaled .data(), op_problem_scaled_.coefficients        .data(), nnz, stream);
-  raft::copy(h_A_t_values_scaled.data(), op_problem_scaled_.reverse_coefficients.data(), nnz, stream);
+  raft::copy(h_A_values.data(), problem_ptr->coefficients.data(), nnz, stream);
+  raft::copy(h_A_t_values.data(), problem_ptr->reverse_coefficients.data(), nnz, stream);
+  raft::copy(h_A_values_scaled.data(), op_problem_scaled_.coefficients.data(), nnz, stream);
+  raft::copy(
+    h_A_t_values_scaled.data(), op_problem_scaled_.reverse_coefficients.data(), nnz, stream);
 
   using f_t2 = typename type_2<f_t>::type;
 
-  std::vector<f_t>  h_obj             (n_vars);
-  std::vector<f_t>  h_obj_scaled      (n_vars);
-  std::vector<f_t2> h_var_bounds_packed       (n_vars);
+  std::vector<f_t> h_obj(n_vars);
+  std::vector<f_t> h_obj_scaled(n_vars);
+  std::vector<f_t2> h_var_bounds_packed(n_vars);
   std::vector<f_t2> h_var_bounds_scaled_packed(n_vars);
-  std::vector<f_t>  h_cstr_lower      (n_cstr);
-  std::vector<f_t>  h_cstr_upper      (n_cstr);
-  std::vector<f_t>  h_cstr_lower_scaled(n_cstr);
-  std::vector<f_t>  h_cstr_upper_scaled(n_cstr);
+  std::vector<f_t> h_cstr_lower(n_cstr);
+  std::vector<f_t> h_cstr_upper(n_cstr);
+  std::vector<f_t> h_cstr_lower_scaled(n_cstr);
+  std::vector<f_t> h_cstr_upper_scaled(n_cstr);
 
-  raft::copy(h_obj                     .data(), problem_ptr->objective_coefficients.data(), n_vars, stream);
-  raft::copy(h_obj_scaled              .data(), op_problem_scaled_.objective_coefficients.data(), n_vars, stream);
-  raft::copy(h_var_bounds_packed       .data(), problem_ptr->variable_bounds.data(),       n_vars, stream);
-  raft::copy(h_var_bounds_scaled_packed.data(), op_problem_scaled_.variable_bounds.data(), n_vars, stream);
-  raft::copy(h_cstr_lower              .data(), problem_ptr->constraint_lower_bounds.data(),       n_cstr, stream);
-  raft::copy(h_cstr_upper              .data(), problem_ptr->constraint_upper_bounds.data(),       n_cstr, stream);
-  raft::copy(h_cstr_lower_scaled       .data(), op_problem_scaled_.constraint_lower_bounds.data(), n_cstr, stream);
-  raft::copy(h_cstr_upper_scaled       .data(), op_problem_scaled_.constraint_upper_bounds.data(), n_cstr, stream);
+  raft::copy(h_obj.data(), problem_ptr->objective_coefficients.data(), n_vars, stream);
+  raft::copy(h_obj_scaled.data(), op_problem_scaled_.objective_coefficients.data(), n_vars, stream);
+  raft::copy(h_var_bounds_packed.data(), problem_ptr->variable_bounds.data(), n_vars, stream);
+  raft::copy(
+    h_var_bounds_scaled_packed.data(), op_problem_scaled_.variable_bounds.data(), n_vars, stream);
+  raft::copy(h_cstr_lower.data(), problem_ptr->constraint_lower_bounds.data(), n_cstr, stream);
+  raft::copy(h_cstr_upper.data(), problem_ptr->constraint_upper_bounds.data(), n_cstr, stream);
+  raft::copy(
+    h_cstr_lower_scaled.data(), op_problem_scaled_.constraint_lower_bounds.data(), n_cstr, stream);
+  raft::copy(
+    h_cstr_upper_scaled.data(), op_problem_scaled_.constraint_upper_bounds.data(), n_cstr, stream);
 
   // 5. Get full scaling factors on host
   std::vector<f_t> h_cummulative_cstr_scaling(n_cstr);
-  std::vector<f_t> h_cummulative_var_scaling (n_vars);
+  std::vector<f_t> h_cummulative_var_scaling(n_vars);
   raft::copy(h_cummulative_cstr_scaling.data(),
              initial_scaling_strategy_.get_constraint_matrix_scaling_vector().data(),
-             n_cstr, stream);
+             n_cstr,
+             stream);
   raft::copy(h_cummulative_var_scaling.data(),
              initial_scaling_strategy_.get_variable_scaling_vector().data(),
-             n_vars, stream);
+             n_vars,
+             stream);
   const f_t h_bound_rescaling     = initial_scaling_strategy_.get_h_bound_rescaling();
   const f_t h_objective_rescaling = initial_scaling_strategy_.get_h_objective_rescaling();
 
@@ -414,7 +426,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
 
   // Unpack interleaved {lower, upper} into separate vectors for both
   // versions, so the shard ctor's slicing loop is uniform.
-  std::vector<f_t> h_var_lower (n_vars), h_var_upper (n_vars);
+  std::vector<f_t> h_var_lower(n_vars), h_var_upper(n_vars);
   std::vector<f_t> h_var_lower_scaled(n_vars), h_var_upper_scaled(n_vars);
   for (i_t i = 0; i < n_vars; ++i) {
     h_var_lower[i]        = h_var_bounds_packed[i].x;
@@ -425,35 +437,58 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
 
   // 6. Build per-rank data and meta-data.
   std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
-    partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
-      parts,
-      h_A_row_offsets,   h_A_col_indices,
-      h_A_values,        h_A_values_scaled,
-      h_A_t_row_offsets, h_A_t_col_indices,
-      h_A_t_values,      h_A_t_values_scaled,
-      settings.num_gpus, n_cstr, n_vars, nnz);
+    partition_loader_t<i_t, f_t>::create_rank_data_from_parts(parts,
+                                                              h_A_row_offsets,
+                                                              h_A_col_indices,
+                                                              h_A_values,
+                                                              h_A_values_scaled,
+                                                              h_A_t_row_offsets,
+                                                              h_A_t_col_indices,
+                                                              h_A_t_values,
+                                                              h_A_t_values_scaled,
+                                                              settings.num_gpus,
+                                                              n_cstr,
+                                                              n_vars,
+                                                              nnz);
 
   // 7. Build the per-shard PDLP settings:
-  pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
-  sub_pdlp_settings.num_gpus                                              = 1;
-  sub_pdlp_settings.multi_gpu_partition_file                              = "";
-  sub_pdlp_settings.is_distributed_sub_pdlp                               = true;
-  sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations            = 0;
-  sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling   = 0.0;
-  sub_pdlp_settings.set_initial_step_size    (initial_step_size_global);
-  sub_pdlp_settings.set_initial_primal_weight(initial_primal_weight_global);
+  pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
+  sub_pdlp_settings.num_gpus                                            = 1;
+  sub_pdlp_settings.multi_gpu_partition_file                            = "";
+  sub_pdlp_settings.is_distributed_sub_pdlp                             = true;
+  sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
+  sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 
   // 8. Construct the engine, creates NCCL comms and shards
-  multi_gpu_engine.emplace(
-    std::move(sub_pdlp_rank_data),
-    h_obj,        h_var_lower,        h_var_upper,        h_cstr_lower,        h_cstr_upper,
-    h_obj_scaled, h_var_lower_scaled, h_var_upper_scaled, h_cstr_lower_scaled, h_cstr_upper_scaled,
-    h_cummulative_cstr_scaling, h_cummulative_var_scaling,
-    h_bound_rescaling, h_objective_rescaling,
-    op_problem_scaled_.maximize,
-    op_problem_scaled_.objective_offset,
-    op_problem_scaled_.presolve_data.objective_scaling_factor,
-    sub_pdlp_settings);
+  multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data),
+                           h_obj,
+                           h_var_lower,
+                           h_var_upper,
+                           h_cstr_lower,
+                           h_cstr_upper,
+                           h_obj_scaled,
+                           h_var_lower_scaled,
+                           h_var_upper_scaled,
+                           h_cstr_lower_scaled,
+                           h_cstr_upper_scaled,
+                           h_cummulative_cstr_scaling,
+                           h_cummulative_var_scaling,
+                           h_bound_rescaling,
+                           h_objective_rescaling,
+                           op_problem_scaled_.maximize,
+                           op_problem_scaled_.objective_offset,
+                           op_problem_scaled_.presolve_data.objective_scaling_factor,
+                           sub_pdlp_settings);
+
+  for (auto& shard : multi_gpu_engine.shards) {
+    raft::device_setter guard(shard->device_id);
+    auto& sub = *shard->sub_pdlp;
+    raft::copy(sub.step_size_.data(), step_size_.data(), 1, shard->stream);
+    raft::copy(sub.primal_weight_.data(), primal_weight_.data(), 1, shard->stream);
+    raft::copy(sub.best_primal_weight_.data(), best_primal_weight_.data(), 1, shard->stream);
+    raft::copy(sub.primal_step_size_.data(), primal_step_size_.data(), 1, shard->stream);
+    raft::copy(sub.dual_step_size_.data(), dual_step_size_.data(), 1, shard->stream);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2392,219 +2427,215 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   std::cout << "Starting PDLP loop:" << std::endl;
 #endif
 
-  // TODO handle that properly
-  if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
-      !settings_.get_initial_step_size().has_value())
-    compute_initial_step_size();
-  if (settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
-      !settings_.get_initial_primal_weight().has_value())
-    compute_initial_primal_weight();
+  // In distributed mode, skip all setup, it is done before
+  if (!settings_.hyper_params.use_distributed_pdlp) {
+    // TODO handle that properly
+    if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
+        !settings_.get_initial_step_size().has_value())
+      compute_initial_step_size();
+    if (settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
+        !settings_.get_initial_primal_weight().has_value())
+      compute_initial_primal_weight();
 
-  // Skip the in-loop scaling pass in both distributed roles:
-  //   - The master pdlp_solver_t scaled op_problem_scaled_ in its multi-GPU
-  //     ctor before shipping data to the shards (multi_gpu_engine present).
-  //   - Each per-shard pdlp_solver_t received already-scaled
-  //     op_problem_scaled_ + injected scaling state from the master, so it
-  //     must not re-apply scale_problem() (is_distributed_sub_pdlp set).
-  if (!multi_gpu_engine.has_value() && !settings_.is_distributed_sub_pdlp) {
     initial_scaling_strategy_.scale_problem();
-  }
 
-  // Update FP32 matrix copies for mixed precision SpMV after scaling
-  pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
+    // Update FP32 matrix copies for mixed precision SpMV after scaling
+    pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
 
-  if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
-      !settings_.get_initial_step_size().has_value())
-    compute_initial_step_size();
-  if (!settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
-      !settings_.get_initial_primal_weight().has_value())
-    compute_initial_primal_weight();
+    if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
+        !settings_.get_initial_step_size().has_value())
+      compute_initial_step_size();
+    if (!settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
+        !settings_.get_initial_primal_weight().has_value())
+      compute_initial_primal_weight();
 
 #ifdef PDLP_DEBUG_MODE
-  std::cout << "Initial Scaling done" << std::endl;
+    std::cout << "Initial Scaling done" << std::endl;
 #endif
-
-  // Needs to be performed here before the below line to make sure the initial primal_weight / step
-  // size are used as previous point when potentially updating them in this next call
-  if (settings_.get_initial_step_size().has_value() || initial_step_size_.has_value()) {
-    if (initial_step_size_.has_value())
-      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                 step_size_.begin(),
-                                 step_size_.end(),
-                                 initial_step_size_.value());
-    else
-      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                 step_size_.begin(),
-                                 step_size_.end(),
-                                 settings_.get_initial_step_size().value());
-  }
-  if (settings_.get_initial_primal_weight().has_value() || initial_primal_weight_.has_value()) {
-    if (initial_primal_weight_.has_value()) {
-      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                 primal_weight_.begin(),
-                                 primal_weight_.end(),
-                                 initial_primal_weight_.value());
-      if (is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params))
+    // Needs to be performed here before the below line to make sure the initial primal_weight /
+    // step size are used as previous point when potentially updating them in this next call
+    if (settings_.get_initial_step_size().has_value() || initial_step_size_.has_value()) {
+      if (initial_step_size_.has_value())
         thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                   best_primal_weight_.begin(),
-                                   best_primal_weight_.end(),
-                                   initial_primal_weight_.value());
-    } else {
-      thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                 primal_weight_.begin(),
-                                 primal_weight_.end(),
-                                 settings_.get_initial_primal_weight().value());
-      if (is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params))
+                                   step_size_.begin(),
+                                   step_size_.end(),
+                                   initial_step_size_.value());
+      else
         thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
-                                   best_primal_weight_.begin(),
-                                   best_primal_weight_.end(),
-                                   settings_.get_initial_primal_weight().value());
+                                   step_size_.begin(),
+                                   step_size_.end(),
+                                   settings_.get_initial_step_size().value());
     }
-  }
-  if (initial_k_.has_value()) {
-    pdhg_solver_.total_pdhg_iterations_ = initial_k_.value();
-    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(initial_k_.value(), stream_view_);
-  }
-  if (settings_.get_initial_pdlp_iteration().has_value()) {
-    total_pdlp_iterations_ = settings_.get_initial_pdlp_iteration().value();
-    // This is meaningless in batch mode since pdhg step is never used, set it just to avoid
-    // assertions
-    pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_,
-                                                               stream_view_);
-    pdhg_solver_.total_pdhg_iterations_ = total_pdlp_iterations_;
-    // Reset the fixed point error since at this pdlp iteration it is expected to already be
-    // initialized to some value
-    std::fill(restart_strategy_.initial_fixed_point_error_.begin(),
-              restart_strategy_.initial_fixed_point_error_.end(),
-              f_t(0.0));
-    std::fill(restart_strategy_.fixed_point_error_.begin(),
-              restart_strategy_.fixed_point_error_.end(),
-              f_t(0.0));
-  }
+    if (settings_.get_initial_primal_weight().has_value() || initial_primal_weight_.has_value()) {
+      if (initial_primal_weight_.has_value()) {
+        thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                   primal_weight_.begin(),
+                                   primal_weight_.end(),
+                                   initial_primal_weight_.value());
+        if (is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params))
+          thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                     best_primal_weight_.begin(),
+                                     best_primal_weight_.end(),
+                                     initial_primal_weight_.value());
+      } else {
+        thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                   primal_weight_.begin(),
+                                   primal_weight_.end(),
+                                   settings_.get_initial_primal_weight().value());
+        if (is_cupdlpx_restart<i_t, f_t>(settings_.hyper_params))
+          thrust::uninitialized_fill(handle_ptr_->get_thrust_policy(),
+                                     best_primal_weight_.begin(),
+                                     best_primal_weight_.end(),
+                                     settings_.get_initial_primal_weight().value());
+      }
+    }
+    if (initial_k_.has_value()) {
+      pdhg_solver_.total_pdhg_iterations_ = initial_k_.value();
+      pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(initial_k_.value(), stream_view_);
+    }
+    if (settings_.get_initial_pdlp_iteration().has_value()) {
+      total_pdlp_iterations_ = settings_.get_initial_pdlp_iteration().value();
+      // This is meaningless in batch mode since pdhg step is never used, set it just to avoid
+      // assertions
+      pdhg_solver_.get_d_total_pdhg_iterations().set_value_async(total_pdlp_iterations_,
+                                                                 stream_view_);
+      pdhg_solver_.total_pdhg_iterations_ = total_pdlp_iterations_;
+      // Reset the fixed point error since at this pdlp iteration it is expected to already be
+      // initialized to some value
+      std::fill(restart_strategy_.initial_fixed_point_error_.begin(),
+                restart_strategy_.initial_fixed_point_error_.end(),
+                f_t(0.0));
+      std::fill(restart_strategy_.fixed_point_error_.begin(),
+                restart_strategy_.fixed_point_error_.end(),
+                f_t(0.0));
+    }
 
-  // Only the primal_weight_ and step_size_ variables are initialized during the initial phase
-  // The associated primal/dual step_size (computed using the two firstly mentionned) are not
-  // initialized. This calls ensures the latter
-  // In the event of a given primal and dual solutions and if the option is toggled, calling the
-  // update primal_weight and step_size will also update the associated primal_step_size_,
-  // dual_step_size_.
-  // In summary: the below call is only mandatory at the beginning when
-  // computing/setting the initial primal weight and step size and if they are not recomputed later.
-  step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
+    // Only the primal_weight_ and step_size_ variables are initialized during the initial phase
+    // The associated primal/dual step_size (computed using the two firstly mentionned) are not
+    // initialized. This calls ensures the latter
+    // In the event of a given primal and dual solutions and if the option is toggled, calling the
+    // update primal_weight and step_size will also update the associated primal_step_size_,
+    // dual_step_size_.
+    // In summary: the below call is only mandatory at the beginning when
+    // computing/setting the initial primal weight and step size and if they are not recomputed
+    // later.
+    step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
 
 #ifdef CUPDLP_DEBUG_MODE
-  if (initial_primal_.size() != 0 || initial_dual_.size() != 0) {
-    std::cout << "Initial primal and dual solution before scaling" << std::endl;
-    if (initial_primal_.size() != 0) { print("initial_primal_", initial_primal_); }
-    if (initial_dual_.size() != 0) { print("initial_dual_", initial_dual_); }
-  }
+    if (initial_primal_.size() != 0 || initial_dual_.size() != 0) {
+      std::cout << "Initial primal and dual solution before scaling" << std::endl;
+      if (initial_primal_.size() != 0) { print("initial_primal_", initial_primal_); }
+      if (initial_dual_.size() != 0) { print("initial_dual_", initial_dual_); }
+    }
 #endif
 
-  // If there is an initial primal or dual we should update the restart info as if there was a step
-  // that has happend
-  if (initial_primal_.size() != 0 || initial_dual_.size() != 0) {
-    update_primal_dual_solutions(
-      (initial_primal_.size() != 0) ? std::make_optional(&initial_primal_) : std::nullopt,
-      (initial_dual_.size() != 0) ? std::make_optional(&initial_dual_) : std::nullopt);
-  }
+    // If there is an initial primal or dual we should update the restart info as if there was a
+    // step that has happend
+    if (initial_primal_.size() != 0 || initial_dual_.size() != 0) {
+      update_primal_dual_solutions(
+        (initial_primal_.size() != 0) ? std::make_optional(&initial_primal_) : std::nullopt,
+        (initial_dual_.size() != 0) ? std::make_optional(&initial_dual_) : std::nullopt);
+    }
 
 #ifdef CUPDLP_DEBUG_MODE
-  std::cout << "Solution before projection" << std::endl;
-  print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
-  print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
-  print("pdhg_solver_.get_potential_next_primal_solution()",
-        pdhg_solver_.get_potential_next_primal_solution());
-  print("pdhg_solver_.get_potential_next_dual_solution()",
-        pdhg_solver_.get_potential_next_dual_solution());
-  print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
-        restart_strategy_.last_restart_duality_gap_.primal_solution_);
-  print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
-        restart_strategy_.last_restart_duality_gap_.dual_solution_);
+    std::cout << "Solution before projection" << std::endl;
+    print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
+    print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
+    print("pdhg_solver_.get_potential_next_primal_solution()",
+          pdhg_solver_.get_potential_next_primal_solution());
+    print("pdhg_solver_.get_potential_next_dual_solution()",
+          pdhg_solver_.get_potential_next_dual_solution());
+    print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
+          restart_strategy_.last_restart_duality_gap_.primal_solution_);
+    print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
+          restart_strategy_.last_restart_duality_gap_.dual_solution_);
 #endif
 
-  // Project initial primal solution
-  if (settings_.hyper_params.project_initial_primal) {
-    using f_t2 = typename type_2<f_t>::type;
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
-                            problem_wrap_container(op_problem_scaled_.variable_bounds)),
-      pdhg_solver_.get_primal_solution().data(),
-      pdhg_solver_.get_primal_solution().size(),
-      clamp<f_t, f_t2>(),
-      stream_view_.value());
-
-    pdhg_solver_.refine_initial_primal_projection();
-
-    if (!settings_.hyper_params.never_restart_to_average) {
-      cuopt_expects(!batch_mode_,
-                    cuopt::error_type_t::ValidationError,
-                    "Restart to average not supported in batch mode");
+    // Project initial primal solution
+    if (settings_.hyper_params.project_initial_primal) {
+      using f_t2 = typename type_2<f_t>::type;
       cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
-                              op_problem_scaled_.variable_bounds.data()),
-        unscaled_primal_avg_solution_.data(),
-        primal_size_h_,
+        cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                              problem_wrap_container(op_problem_scaled_.variable_bounds)),
+        pdhg_solver_.get_primal_solution().data(),
+        pdhg_solver_.get_primal_solution().size(),
         clamp<f_t, f_t2>(),
         stream_view_.value());
+
+      pdhg_solver_.refine_initial_primal_projection();
+
+      if (!settings_.hyper_params.never_restart_to_average) {
+        cuopt_expects(!batch_mode_,
+                      cuopt::error_type_t::ValidationError,
+                      "Restart to average not supported in batch mode");
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(unscaled_primal_avg_solution_.data(),
+                                op_problem_scaled_.variable_bounds.data()),
+          unscaled_primal_avg_solution_.data(),
+          primal_size_h_,
+          clamp<f_t, f_t2>(),
+          stream_view_.value());
+      }
     }
-  }
 
 #ifdef CUPDLP_DEBUG_MODE
-  std::cout << "Solution after projection" << std::endl;
-  print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
-  print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
-  print("pdhg_solver_.get_potential_next_primal_solution()",
-        pdhg_solver_.get_potential_next_primal_solution());
-  print("pdhg_solver_.get_potential_next_dual_solution()",
-        pdhg_solver_.get_potential_next_dual_solution());
-  print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
-        restart_strategy_.last_restart_duality_gap_.primal_solution_);
-  print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
-        restart_strategy_.last_restart_duality_gap_.dual_solution_);
+    std::cout << "Solution after projection" << std::endl;
+    print("pdhg_solver_.get_primal_solution()", pdhg_solver_.get_primal_solution());
+    print("pdhg_solver_.get_dual_solution()", pdhg_solver_.get_dual_solution());
+    print("pdhg_solver_.get_potential_next_primal_solution()",
+          pdhg_solver_.get_potential_next_primal_solution());
+    print("pdhg_solver_.get_potential_next_dual_solution()",
+          pdhg_solver_.get_potential_next_dual_solution());
+    print("restart_strategy_.last_restart_duality_gap_.primal_solution_",
+          restart_strategy_.last_restart_duality_gap_.primal_solution_);
+    print("restart_strategy_.last_restart_duality_gap_.dual_solution_",
+          restart_strategy_.last_restart_duality_gap_.dual_solution_);
 #endif
 
-  // Need to to tranpose primal solution to row format as there might be initial values or clamping
-  // Value may not be all 0
-  if (batch_mode_) {
-    rmm::device_uvector<f_t> dummy(0, stream_view_);
-    transpose_primal_dual_to_row(
-      pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
-    if (settings_.hyper_params.use_reflected_primal_dual) {
-      transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
-                                   pdhg_solver_.get_potential_next_dual_solution(),
-                                   dummy);
-      transpose_primal_dual_to_row(restart_strategy_.last_restart_duality_gap_.primal_solution_,
-                                   restart_strategy_.last_restart_duality_gap_.dual_solution_,
-                                   dummy);
+    // Need to to tranpose primal solution to row format as there might be initial values or
+    // clamping Value may not be all 0
+    if (batch_mode_) {
+      rmm::device_uvector<f_t> dummy(0, stream_view_);
+      transpose_primal_dual_to_row(
+        pdhg_solver_.get_primal_solution(), pdhg_solver_.get_dual_solution(), dummy);
+      if (settings_.hyper_params.use_reflected_primal_dual) {
+        transpose_primal_dual_to_row(pdhg_solver_.get_potential_next_primal_solution(),
+                                     pdhg_solver_.get_potential_next_dual_solution(),
+                                     dummy);
+        transpose_primal_dual_to_row(restart_strategy_.last_restart_duality_gap_.primal_solution_,
+                                     restart_strategy_.last_restart_duality_gap_.dual_solution_,
+                                     dummy);
+      }
     }
-  }
 
-  if (verbose) {
-    std::cout << "primal_size_h_ " << primal_size_h_ << " dual_size_h_ " << dual_size_h_ << " nnz "
-              << problem_ptr->nnz << std::endl;
-    std::cout << "Problem before scaling" << std::endl;
-    print_problem_info<f_t>(
-      problem_ptr->coefficients, problem_ptr->objective_coefficients, problem_ptr->combined_bounds);
-    std::cout << "Problem after scaling" << std::endl;
-    print_problem_info<f_t>(op_problem_scaled_.coefficients,
-                            op_problem_scaled_.objective_coefficients,
-                            op_problem_scaled_.combined_bounds);
-    raft::print_device_vector("Initial step_size", step_size_.data(), 1, std::cout);
-    raft::print_device_vector("Initial primal_weight", primal_weight_.data(), 1, std::cout);
-    raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
-    raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
-  }
+    if (verbose) {
+      std::cout << "primal_size_h_ " << primal_size_h_ << " dual_size_h_ " << dual_size_h_
+                << " nnz " << problem_ptr->nnz << std::endl;
+      std::cout << "Problem before scaling" << std::endl;
+      print_problem_info<f_t>(problem_ptr->coefficients,
+                              problem_ptr->objective_coefficients,
+                              problem_ptr->combined_bounds);
+      std::cout << "Problem after scaling" << std::endl;
+      print_problem_info<f_t>(op_problem_scaled_.coefficients,
+                              op_problem_scaled_.objective_coefficients,
+                              op_problem_scaled_.combined_bounds);
+      raft::print_device_vector("Initial step_size", step_size_.data(), 1, std::cout);
+      raft::print_device_vector("Initial primal_weight", primal_weight_.data(), 1, std::cout);
+      raft::print_device_vector("Initial primal_step_size", primal_step_size_.data(), 1, std::cout);
+      raft::print_device_vector("Initial dual_step_size", dual_step_size_.data(), 1, std::cout);
+    }
 #ifdef CUPDLP_DEBUG_MODE
-  raft::print_device_vector("Initial step_size", step_size_.data(), step_size_.size(), std::cout);
-  raft::print_device_vector(
-    "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
+    raft::print_device_vector("Initial step_size", step_size_.data(), step_size_.size(), std::cout);
+    raft::print_device_vector(
+      "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
 
-  bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
+    bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
-  if (!inside_mip_) {
-    CUOPT_LOG_INFO(
-      "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
+    if (!inside_mip_) {
+      CUOPT_LOG_INFO(
+        "   Iter    Primal Obj.      Dual Obj.    Gap        Primal Res.  Dual Res.   Time");
+    }
   }
   while (true) {
 #ifdef CUPDLP_DEBUG_MODE
