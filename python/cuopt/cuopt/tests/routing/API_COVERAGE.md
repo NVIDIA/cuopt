@@ -112,6 +112,7 @@ Summary of which APIs from `assignment.py` and `vehicle_routing.py` are exercise
 |-----|---------|--------|
 | `Solve(data_model, solver_settings)` | Yes | All routing tests that run the solver |
 | `BatchSolve(data_model_list, solver_settings)` | Yes | test_batch_solve |
+| `solve_batch(data_model_list, solver_settings)` | Yes | test_batch_solve |
 
 ---
 

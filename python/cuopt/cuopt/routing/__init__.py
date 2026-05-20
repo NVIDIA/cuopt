@@ -9,5 +9,11 @@ from cuopt.routing.utils import (
     update_routes_and_vehicles,
 )
 from cuopt.routing.utils_wrapper import DatasetDistribution
-from cuopt.routing.vehicle_routing import BatchSolve, DataModel, Solve, SolverSettings
+from cuopt.routing.vehicle_routing import (
+    BatchSolve,
+    DataModel,
+    Solve,
+    SolverSettings,
+    solve_batch,
+)
 from cuopt.routing.vehicle_routing_wrapper import ErrorStatus, Objective

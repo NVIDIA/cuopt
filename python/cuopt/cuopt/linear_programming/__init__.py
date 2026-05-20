@@ -6,7 +6,7 @@ from cuopt.linear_programming.data_model import DataModel
 from cuopt.linear_programming.mps_parser import ParseMps
 from cuopt.linear_programming.problem import Problem
 from cuopt.linear_programming.solution import Solution
-from cuopt.linear_programming.solver import BatchSolve, Solve
+from cuopt.linear_programming.solver import BatchSolve, Solve, solve_batch
 from cuopt.linear_programming.solver_settings import (
     PDLPSolverMode,
     SolverMethod,

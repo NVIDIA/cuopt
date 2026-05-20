@@ -3,6 +3,7 @@
 
 import cudf
 import numpy as np
+import pytest
 
 from cuopt import routing
 
@@ -65,3 +66,31 @@ def test_batch_solve_varying_sizes():
         assert solution.get_vehicle_count() == 1, (
             f"TSP {i} (size {tsp_sizes[i]}) used multiple vehicles"
         )
+
+
+def test_solve_batch_alias_matches_batch_solve():
+    data_models = []
+    for n_locations in [5, 7, 9]:
+        cost_matrix = create_tsp_cost_matrix(n_locations)
+        dm = routing.DataModel(n_locations, 1)
+        dm.add_cost_matrix(cost_matrix)
+        data_models.append(dm)
+
+    settings = routing.SolverSettings()
+    settings.set_time_limit(3.0)
+
+    batch_solutions = routing.BatchSolve(data_models, settings)
+    alias_solutions = routing.solve_batch(data_models, settings)
+
+    assert len(batch_solutions) == len(alias_solutions)
+    for batch_solution, alias_solution in zip(batch_solutions, alias_solutions):
+        assert batch_solution.get_status() == alias_solution.get_status()
+        assert (
+            batch_solution.get_vehicle_count()
+            == alias_solution.get_vehicle_count()
+        )
+
+
+def test_solve_batch_alias_input_validation():
+    with pytest.raises(ValueError, match="data_model_list must be a list"):
+        routing.solve_batch(None)

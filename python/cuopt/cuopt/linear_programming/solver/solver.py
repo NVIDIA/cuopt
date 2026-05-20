@@ -186,3 +186,9 @@ def BatchSolve(data_model_list, solver_settings=None):
         solver_settings = SolverSettings()
 
     return solver_wrapper.BatchSolve(data_model_list, solver_settings)
+
+
+@catch_cuopt_exception
+def solve_batch(data_model_list, solver_settings=None):
+    """Alias for :func:`BatchSolve` using snake_case naming."""
+    return BatchSolve(data_model_list, solver_settings)

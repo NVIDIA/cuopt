@@ -507,6 +507,37 @@ def test_parser_and_batch_solver():
         )
 
 
+def test_parser_and_solve_batch_alias():
+    data_model_list = []
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
+
+    nb_solves = 3
+
+    for i in range(nb_solves):
+        data_model_list.append(mps_parser.ParseMps(file_path))
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
+    settings.set_optimality_tolerance(1e-4)
+
+    batch_solutions, batch_solve_time = solver.BatchSolve(
+        data_model_list, settings
+    )
+    alias_solutions, alias_solve_time = solver.solve_batch(
+        data_model_list, settings
+    )
+
+    assert len(batch_solutions) == len(alias_solutions)
+    assert batch_solve_time == pytest.approx(alias_solve_time)
+    for i in range(nb_solves):
+        assert (
+            batch_solutions[i].get_termination_status()
+            == alias_solutions[i].get_termination_status()
+        )
+
+
 def test_warm_start():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
     data_model_obj = mps_parser.ParseMps(file_path)
