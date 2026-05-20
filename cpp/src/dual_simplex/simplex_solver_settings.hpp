@@ -84,6 +84,8 @@ struct simplex_solver_settings_t {
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
+      barrier_iterative_refinement(true),
+      barrier_step_scale(0.9),
       num_gpus(1),
       folding(-1),
       augmented(0),
@@ -164,7 +166,9 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
+  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
+  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  f_t barrier_step_scale;             // step scale for barrier method
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system

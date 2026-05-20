@@ -153,6 +153,9 @@ struct presolve_info_t {
 
   // Variables that were negated to handle -inf < x_j <= u_j
   std::vector<i_t> negated_variables;
+
+  // Free variable indices for QP augmented system (not split, handled natively)
+  std::vector<i_t> free_variable_indices;
 };
 
 template <typename i_t, typename f_t>

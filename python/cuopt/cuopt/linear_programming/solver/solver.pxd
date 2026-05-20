@@ -16,80 +16,11 @@ from pylibraft.common.handle cimport *
 from rmm.librmm.device_buffer cimport device_buffer
 
 from cuopt.linear_programming.data_model.data_model cimport data_model_view_t
-
-
-cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
-    cdef cppclass base_solution_callback_t
-
-cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
-    ctypedef enum pdlp_solver_mode_t "cuopt::linear_programming::pdlp_solver_mode_t": # noqa
-        Stable1 "cuopt::linear_programming::pdlp_solver_mode_t::Stable1" # noqa
-        Stable2 "cuopt::linear_programming::pdlp_solver_mode_t::Stable2" # noqa
-        Methodical1 "cuopt::linear_programming::pdlp_solver_mode_t::Methodical1" # noqa
-        Fast1 "cuopt::linear_programming::pdlp_solver_mode_t::Fast1" # noqa
-        Stable3 "cuopt::linear_programming::pdlp_solver_mode_t::Stable3" # noqa
-
-    ctypedef enum method_t "cuopt::linear_programming::method_t": # noqa
-        Concurrent "cuopt::linear_programming::method_t::Concurrent" # noqa
-        PDLP "cuopt::linear_programming::method_t::PDLP" # noqa
-        DualSimplex "cuopt::linear_programming::method_t::DualSimplex" # noqa
-        Barrier "cuopt::linear_programming::method_t::Barrier" # noqa
-        Unset "cuopt::linear_programming::method_t::Unset" # noqa
-
-cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
-
-    cdef cppclass solver_settings_t[i_t, f_t]:
-        solver_settings_t() except +
-
-        void set_pdlp_warm_start_data(
-            const f_t* current_primal_solution,
-            const f_t* current_dual_solution,
-            const f_t* initial_primal_average,
-            const f_t* initial_dual_average,
-            const f_t* current_ATY,
-            const f_t* sum_primal_solutions,
-            const f_t* sum_dual_solutions,
-            const f_t* last_restart_duality_gap_primal_solution,
-            const f_t* last_restart_duality_gap_dual_solution,
-            i_t primal_size,
-            i_t dual_size,
-            f_t initial_primal_weight_,
-            f_t initial_step_size_,
-            i_t total_pdlp_iterations_,
-            i_t total_pdhg_iterations_,
-            f_t last_candidate_kkt_score_,
-            f_t last_restart_kkt_score_,
-            f_t sum_solution_weight_,
-            i_t iterations_since_last_restart_) except +
-
-        void set_parameter_from_string(
-            const string& name,
-            const string& value
-        ) except +
-
-        string get_parameter_as_string(const string& name) except +
-
-        vector[string] get_parameter_names() except +
-
-        # LP settings
-        void set_initial_pdlp_primal_solution(
-            const f_t* initial_primal_solution,
-            i_t size
-        ) except +
-        void set_initial_pdlp_dual_solution(
-            const f_t* initial_dual_solution,
-            i_t size
-        ) except +
-
-        # MIP settings
-        void add_initial_mip_solution(
-            const f_t* initial_solution,
-            i_t size
-        ) except +
-        void set_mip_callback(
-            base_solution_callback_t* callback,
-            void* user_data
-        ) except +
+from cuopt.linear_programming.solver_settings.solver_settings cimport (
+    method_t,
+    pdlp_solver_mode_t,
+    solver_settings_t,
+)
 
 
 cdef extern from "cuopt/linear_programming/optimization_problem.hpp" namespace "cuopt::linear_programming": # noqa

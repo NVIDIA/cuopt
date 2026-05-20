@@ -1441,8 +1441,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 {
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(worker->start_node);
-  worker->recompute_basis  = true;
-  worker->recompute_bounds = true;
+  bool requeue_pending_nodes = false;
+  worker->recompute_basis    = true;
+  worker->recompute_bounds   = true;
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
@@ -1488,8 +1489,11 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       break;
     } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
       stack.push_front(node_ptr);
+      requeue_pending_nodes = true;
       break;
     } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
+      stack.push_front(node_ptr);
+      requeue_pending_nodes = true;
       break;
     }
 
@@ -1546,11 +1550,11 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
   abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
-  if (stack.size() > 0 &&
-      (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol)) {
-    // If the solver converged according to the gap rules, but we still have nodes to explore
-    // in the stack, then we should add all the pending nodes back to the heap so the lower
-    // bound of the solver is set to the correct value.
+  if (stack.size() > 0 && (requeue_pending_nodes || rel_gap <= settings_.relative_mip_gap_tol ||
+                           abs_gap <= settings_.absolute_mip_gap_tol)) {
+    // If the solver exits early without consuming the local stack, or converged according to
+    // the gap rules while nodes are still pending, put those nodes back into the global queue
+    // before returning.
     while (!stack.empty()) {
       auto node = stack.front();
       stack.pop_front();
