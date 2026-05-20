@@ -60,6 +60,7 @@ class pdhg_solver_t {
     const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs, i_t new_size);
   void resize_context(i_t new_size);
   ping_pong_graph_t<i_t>& get_graph_all();
+  ping_pong_graph_t<i_t>& get_graph_all_non_major();
 
   rmm::device_uvector<i_t>& get_new_bounds_climber_id() { return new_bounds_climber_id_; }
   rmm::device_uvector<i_t>& get_new_bounds_idx() { return new_bounds_idx_; }
@@ -89,7 +90,8 @@ class pdhg_solver_t {
     rmm::device_uvector<f_t>& primal_step_size,
     rmm::device_uvector<f_t>& dual_step_size,
     const rmm::device_uvector<f_t>& bound_rescaling,  // Only used in batch mode
-    bool should_major);
+    bool should_major,
+    i_t total_pdlp_iterations);
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
@@ -127,8 +129,15 @@ class pdhg_solver_t {
 
   // Different graphs for each case
   // Either compute the whole next primal step
-  // Or skip the SpMV (most cases) if it was done at the previous iteration
+  // Or skip the SpMV (most cases) if it was done at the previous iteration.
+  // The reflected primal/dual path branches on `should_major`, and the two branches build
+  // different graph topologies. They get separate ping-pong caches so each branch can key its
+  // 2-slot cache on `total_pdlp_iterations` parity (the swap state of the primal/dual buffers
+  // baked into the captured graph) without colliding with the other branch's topology.
+  // graph_all serves the non-reflected path and the major reflected branch (mutually exclusive
+  // at runtime); graph_all_non_major serves the non-major reflected branch.
   ping_pong_graph_t<i_t> graph_all;
+  ping_pong_graph_t<i_t> graph_all_non_major;
   ping_pong_graph_t<i_t> graph_prim_proj_gradient_dual;
 
   // Needed for faster graph launch
