@@ -841,8 +841,6 @@ struct OX {
       auto start_depot_node_info  = A.problem->start_depot_node_infos_h[vehicle_id];
       auto return_depot_node_info = A.problem->return_depot_node_infos_h[vehicle_id];
       auto cuopt_weights          = get_cuopt_cost(weights);
-      double optimal_vehicle_fixed_cost =
-        dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST) ? vehicle_info.fixed_cost : 0.;
 
       // Here we have to use the vehicle type 'veh'
       HelperNodes[2] =
@@ -868,7 +866,8 @@ struct OX {
                                                                           cuopt_weights,
                                                                           objective_cost_t{},
                                                                           infeasible_cost_t{});
-          graph[i].emplace_back(j, optimal_vehicle_fixed_cost + cost, veh);
+          // cost includes vehicle_info.fixed_cost via vehicle_fixed_cost_node_t::get_cost
+          graph[i].emplace_back(j, cost, veh);
           if (j + 1 == offspring.size()) break;
 
           HelperNodes[!b] =

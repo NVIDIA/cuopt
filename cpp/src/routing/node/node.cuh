@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -95,13 +95,8 @@ class node_t {
     double delta =
       infeasible_cost_t::dot(weights, infeasible_cost_t::nominal_diff(new_inf_cost, old_inf_cost));
     if (include_objective) {
-      // it's a copy
-      auto obj_weights = dimensions_info.objective_weights;
-      // In moves evalutation this function compares fragments (nodes) with routes. Resulting
-      // in a corrupted delta because fragments do not have a vehicle cost. This leads to non
-      // improving moves being picked.
-      obj_weights[objective_t::VEHICLE_FIXED_COST] = 0.;
-      delta += objective_cost_t::dot(obj_weights, new_obj_cost - old_obj_cost);
+      delta +=
+        objective_cost_t::dot(dimensions_info.objective_weights, new_obj_cost - old_obj_cost);
     }
 
     return delta;
@@ -140,13 +135,8 @@ class node_t {
     double delta =
       infeasible_cost_t::dot(weights, infeasible_cost_t::nominal_diff(new_inf_cost, old_inf_cost));
     if (include_objective) {
-      // it's a copy
-      auto obj_weights = dimensions_info.objective_weights;
-      // In moves evalutation this function compares fragments (nodes) with routes. Resulting
-      // in a corrupted delta because fragments do not have a vehicle cost. This leads to non
-      // improving moves being picked.
-      obj_weights[objective_t::VEHICLE_FIXED_COST] = 0.;
-      delta += objective_cost_t::dot(obj_weights, new_obj_cost - old_obj_cost);
+      delta +=
+        objective_cost_t::dot(dimensions_info.objective_weights, new_obj_cost - old_obj_cost);
     }
 
     return delta;
