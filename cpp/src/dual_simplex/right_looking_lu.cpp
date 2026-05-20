@@ -835,16 +835,16 @@ class trailing_matrix_t {
 
 }  // namespace
 template <typename i_t, typename f_t>
-i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
-                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                      f_t tol,
-                      const std::vector<i_t>& column_list,
-                      f_t start_time,
-                      std::vector<i_t>& q,
-                      csc_matrix_t<i_t, f_t>& L,
-                      csc_matrix_t<i_t, f_t>& U,
-                      std::vector<i_t>& pinv,
-                      f_t& work_estimate)
+i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
+                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                     f_t tol,
+                     const std::vector<i_t>& column_list,
+                     f_t start_time,
+                     std::vector<i_t>& q,
+                     csc_matrix_t<i_t, f_t>& L,
+                     csc_matrix_t<i_t, f_t>& U,
+                     std::vector<i_t>& pinv,
+                     f_t& work_estimate)
 {
   raft::common::nvtx::range scope("LU::right_looking_lu");
   const i_t n = column_list.size();
@@ -1025,12 +1025,12 @@ i_t right_looking_lu2(const csc_matrix_t<i_t, f_t>& A,
 }
 
 template <typename i_t, typename f_t>
-i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
-                                           const simplex_solver_settings_t<i_t, f_t>& settings,
-                                           f_t tol,
-                                           f_t start_time,
-                                           std::vector<i_t>& q,
-                                           std::vector<i_t>& pinv)
+i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
+                                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                                          f_t tol,
+                                          f_t start_time,
+                                          std::vector<i_t>& q,
+                                          std::vector<i_t>& pinv)
 {
   // Factorize PAQ = LU, where A is m x n with m >= n, and P and Q are permutation matrices
   // We return the inverser row permutation vector pinv and the column permutation vector q
@@ -1130,18 +1130,18 @@ i_t right_looking_lu_row_permutation_only2(const csc_matrix_t<i_t, f_t>& A,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int right_looking_lu2<int, double>(const csc_matrix_t<int, double>& A,
-                                            const simplex_solver_settings_t<int, double>& settings,
-                                            double tol,
-                                            const std::vector<int>& column_list,
-                                            double start_time,
-                                            std::vector<int>& q,
-                                            csc_matrix_t<int, double>& L,
-                                            csc_matrix_t<int, double>& U,
-                                            std::vector<int>& pinv,
-                                            double& work_estimate);
+template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
+                                           const simplex_solver_settings_t<int, double>& settings,
+                                           double tol,
+                                           const std::vector<int>& column_list,
+                                           double start_time,
+                                           std::vector<int>& q,
+                                           csc_matrix_t<int, double>& L,
+                                           csc_matrix_t<int, double>& U,
+                                           std::vector<int>& pinv,
+                                           double& work_estimate);
 
-template int right_looking_lu_row_permutation_only2<int, double>(
+template int right_looking_lu_row_permutation_only<int, double>(
   const csc_matrix_t<int, double>& A,
   const simplex_solver_settings_t<int, double>& settings,
   double tol,

@@ -3569,7 +3569,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       PHASE2_NVTX_RANGE("DualSimplex::basis_update");
       iterations_since_refactor++;
       bool should_refactor =
-        (ft.num_updates() > 100 && solve_work > refactor_work) || (ft.num_updates() > 1000);
+        (ft.num_updates() > settings.refactor_frequency && solve_work > refactor_work) ||
+        (ft.num_updates() > 10 * settings.refactor_frequency);
       // settings.log.printf("Solve work %e refactor work %e iterations since refactor %d\n",
       // solve_work, refactor_work, iterations_since_refactor);
       if (!should_refactor) {

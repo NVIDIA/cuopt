@@ -380,16 +380,16 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
         }
         work_estimate += 3 * Sdim;
 
-        Srank = right_looking_lu2(S,
-                                  settings,
-                                  settings.threshold_partial_pivoting_tol,
-                                  identity,
-                                  start_time,
-                                  S_col_perm,
-                                  SL,
-                                  SU,
-                                  S_perm_inv,
-                                  work_estimate);
+        Srank = right_looking_lu(S,
+                                 settings,
+                                 settings.threshold_partial_pivoting_tol,
+                                 identity,
+                                 start_time,
+                                 S_col_perm,
+                                 SL,
+                                 SU,
+                                 S_perm_inv,
+                                 work_estimate);
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
           return CONCURRENT_HALT_RETURN;
         }
@@ -620,8 +620,8 @@ i_t factorize_basis(const csc_matrix_t<i_t, f_t>& A,
   q.resize(m);
   work_estimate += m;
   f_t fact_start = tic();
-  rank           = right_looking_lu2(
-    A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
+  rank =
+    right_looking_lu(A, settings, medium_tol, basic_list, start_time, q, L, U, pinv, work_estimate);
   if (rank < 0) {
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;

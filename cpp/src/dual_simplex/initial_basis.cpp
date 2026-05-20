@@ -135,7 +135,7 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
         if (Snz > 0) {
           // Factorize S
           S_pivots =
-            right_looking_lu_row_permutation_only2(S, settings, 1e-12, start_time, S_q, S_p_inv);
+            right_looking_lu_row_permutation_only(S, settings, 1e-12, start_time, S_q, S_p_inv);
           if (S_pivots < 0) {
             settings.log.printf("Aborting: right looking LU factorization\n");
             return S_pivots;
@@ -180,7 +180,7 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
   }
 
   if (need_factorization) {
-    pivots = right_looking_lu_row_permutation_only2(C, settings, 1e-12, start_time, q, pinv);
+    pivots = right_looking_lu_row_permutation_only(C, settings, 1e-12, start_time, q, pinv);
   }
 
   f_t factorization_time = toc(factorization_start);

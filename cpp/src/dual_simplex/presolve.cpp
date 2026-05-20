@@ -444,7 +444,7 @@ i_t find_dependent_rows(lp_problem_t<i_t, f_t>& problem,
   std::vector<i_t> pinv(n);
   std::vector<i_t> q(m);
 
-  i_t pivots = right_looking_lu_row_permutation_only2(C, settings, 1e-13, tic(), q, pinv);
+  i_t pivots = right_looking_lu_row_permutation_only(C, settings, 1e-13, tic(), q, pinv);
   if (pivots == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (pivots == TIME_LIMIT_RETURN) { return TIME_LIMIT_RETURN; }
   if (pivots < m) {
