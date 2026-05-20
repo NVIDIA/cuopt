@@ -4,6 +4,12 @@ LP Python Examples
 
 The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
 
+.. note::
+   LP batch mode is deprecated and will be removed in a future release. Prefer
+   sequential ``cuopt.linear_programming.Solve`` calls. Server and CLI batch
+   paths still use batch solve today; check response ``warnings`` or logs for the
+   deprecation notice.
+
 The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
 
 If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
@@ -403,6 +409,10 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
    cuopt_sh data.json -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
 
 In the case of batch mode, you can send a bunch of ``mps`` files at once, and acquire results. The batch mode works only for ``mps`` in the case of CLI:
+
+.. note::
+   LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
+   :doc:`../../lp-qp-features`.
 
 .. note::
    Batch mode is not available for MILP problems.
