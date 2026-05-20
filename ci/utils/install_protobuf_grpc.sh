@@ -118,6 +118,13 @@ if [ "${SKIP_DEPS}" = false ]; then
             elif [[ "${VERSION_ID%%.*}" == "9" ]]; then
                 dnf config-manager --set-enabled crb || true
                 dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
+            elif [[ "$ID" == "fedora" ]]; then
+                # Fedora 36+ ships OpenSSL 3.x as the default 'openssl-devel'.
+                dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
+            else
+                echo "ERROR: ${PRETTY_NAME:-$ID $VERSION_ID} is not a supported RHEL-family release for OpenSSL 3 builds." >&2
+                echo "Supported: Rocky/RHEL/CentOS/Alma 8 or 9, or Fedora. Re-run with --skip-deps to bypass." >&2
+                exit 1
             fi
         elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
             # The default 'libssl-dev' package is OpenSSL 3.x on Ubuntu 22.04+
