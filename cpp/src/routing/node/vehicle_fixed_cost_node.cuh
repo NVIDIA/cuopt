@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -62,11 +62,16 @@ class vehicle_fixed_cost_node_t {
 
   template <bool is_device = true>
   HDI void get_cost([[maybe_unused]] const vehicle_fixed_cost_node_t& prev_node,
-                    [[maybe_unused]] const VehicleInfo<f_t, is_device>& vehicle_info,
+                    const VehicleInfo<f_t, is_device>& vehicle_info,
                     [[maybe_unused]] const vehicle_fixed_cost_dimension_info_t& dim_info,
-                    [[maybe_unused]] objective_cost_t& obj_cost,
+                    objective_cost_t& obj_cost,
                     [[maybe_unused]] infeasible_cost_t& inf_cost) const noexcept
   {
+    // This get_cost is only invoked when the VEHICLE_FIXED_COST dimension is enabled (via
+    // loop_over_dimensions). A fragment that has reached this point represents a route that
+    // will be active after the move (at least one service node), so it carries this vehicle's
+    // fixed cost — mirroring vehicle_fixed_cost_route_t::compute_cost on a populated route.
+    obj_cost[objective_t::VEHICLE_FIXED_COST] = vehicle_info.fixed_cost;
   }
 };
 

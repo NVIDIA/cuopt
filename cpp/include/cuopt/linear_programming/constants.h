@@ -137,8 +137,9 @@
 #define CUOPT_EQUAL        'E'
 
 /* @brief The variable type constants */
-#define CUOPT_CONTINUOUS 'C'
-#define CUOPT_INTEGER    'I'
+#define CUOPT_CONTINUOUS      'C'
+#define CUOPT_INTEGER         'I'
+#define CUOPT_SEMI_CONTINUOUS 'S'
 
 /* @brief The infinity constant */
 #ifdef __cplusplus
