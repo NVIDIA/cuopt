@@ -4,6 +4,10 @@ version: "26.06.00"
 description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python.
 ---
 
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
 
 # cuOpt Routing — Python API
 

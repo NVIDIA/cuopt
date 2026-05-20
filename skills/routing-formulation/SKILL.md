@@ -4,6 +4,10 @@ version: "26.06.00"
 description: Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface.
 ---
 
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
 
 # Routing Formulation
 

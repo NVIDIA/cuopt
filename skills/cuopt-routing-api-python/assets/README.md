@@ -1,3 +1,8 @@
+<!--
+  SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 # Assets — reference routing models
 
 Routing reference implementations (Python). Use as reference when building new applications; do not edit in place.
