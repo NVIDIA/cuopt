@@ -37,6 +37,7 @@
 
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/omp_helpers.hpp>
 #include <utilities/version_info.hpp>
 
 #include <barrier/sparse_cholesky.cuh>
@@ -56,11 +57,12 @@
 
 #include <thrust/iterator/counting_iterator.h>
 
+#include <omp.h>
+
 #include <algorithm>
 #include <cmath>
 #include <exception>
 #include <set>
-#include <thread>
 #include <tuple>
 
 #define CUOPT_LOG_CONDITIONAL_INFO(condition, ...) \
@@ -1526,10 +1528,18 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
+  // Stand-alone LP always runs all three concurrently. MIP gates the barrier so we don't
+  // overshoot num_cpu_threads (need 1 PDLP + 1 dual simplex + 1 barrier).
+  const int available_threads = omp_in_parallel() ? omp_get_num_threads() : omp_get_max_threads();
+  const bool enable_barrier =
+    !settings.inside_mip || available_threads >= CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT;
+
   if (settings.num_gpus > 1) {
     int device_count = raft::device_setter::get_device_count();
-    CUOPT_LOG_CONDITIONAL_INFO(
-      !settings.inside_mip, "Running PDLP and Barrier on %d GPUs", device_count);
+    CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip,
+                               "Running PDLP%s on %d GPUs",
+                               enable_barrier ? " and Barrier" : "",
+                               device_count);
     cuopt_expects(
       device_count > 1, error_type_t::RuntimeError, "Multi-GPU mode requires at least 2 GPUs");
   }
@@ -1539,82 +1549,114 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // capture off
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
-  // Create a thread for dual simplex
+  // Dual simplex / barrier results — written by tasks, read after the taskgroup barrier.
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
-  std::thread dual_simplex_thread;
   std::exception_ptr dual_simplex_exception;
   auto request_concurrent_halt = [&settings_pdlp]() {
     if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
   };
-  if (!settings.inside_mip) {
-    dual_simplex_thread = std::thread([&]() {
-      try {
-        run_dual_simplex_thread<i_t, f_t>(
-          dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
-      } catch (...) {
-        dual_simplex_exception = std::current_exception();
-        request_concurrent_halt();
-      }
-    });
-  }
-  // Create a thread for barrier.
-  // The barrier handle is owned here so that its destructor runs on the
-  // main thread after PDLP finishes. cublasDestroy internally calls cudaDeviceSynchronize, which
-  // is globally forbidden while any stream is in graph capture mode.
+  // Owned at parent scope so its destructor runs on the dispatching thread after the taskgroup
+  // joins every spawned task — cublasDestroy internally calls cudaDeviceSynchronize, which is
+  // globally forbidden while any stream is in graph capture mode. Construction happens inside
+  // the barrier task body below: capture invalidation caused by another thread's first-use
+  // library init is now recovered by manual_cuda_graph_t::run, so the previous main-thread
+  // preflight (eager handle construction + cuDSS warmup) is no longer needed.
   std::unique_ptr<raft::handle_t> barrier_handle_ptr;
+  if (!enable_barrier) {
+    CUOPT_LOG_DEBUG("MIP: skipping concurrent barrier, %d threads available < %d required.",
+                    available_threads,
+                    CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
+  }
+
+  // Dispatch barrier + dual simplex as OMP tasks (not std::threads) so they consume slots from
+  // the upstream MIP OMP team and respect num_cpu_threads. PDLP runs synchronously on the
+  // dispatching thread; the taskgroup implicit barrier joins the tasks.
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_barrier_ptr;
   std::exception_ptr barrier_exception;
-  auto barrier_thread = std::thread([&]() {
-    try {
-      auto call_barrier_thread = [&]() {
-        rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
-        barrier_handle_ptr                   = std::make_unique<raft::handle_t>(barrier_stream);
-        auto barrier_problem                 = dual_simplex_problem;
-        barrier_problem.handle_ptr           = barrier_handle_ptr.get();
-
-        run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
-      };
-      if (settings.num_gpus > 1) {
-        problem.handle_ptr->sync_stream();
-        raft::device_setter device_setter(1);  // Scoped variable
-        CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
-        call_barrier_thread();
-      } else {
-        call_barrier_thread();
-      }
-    } catch (...) {
-      barrier_exception = std::current_exception();
-      request_concurrent_halt();
-    }
-  });
-
-  if (settings.num_gpus > 1) {
-    CUOPT_LOG_DEBUG("PDLP device: %d", raft::device_setter::get_current_device());
-  }
-
-  // Run pdlp in the main thread.
-  // Must join all spawned threads before leaving this scope, even on exception,
-  // because destroying a joinable std::thread calls std::terminate().
   std::exception_ptr pdlp_exception;
   optimization_problem_solution_t<i_t, f_t> sol_pdlp{pdlp_termination_status_t::NumericalError,
                                                      problem.handle_ptr->get_stream()};
-  try {
-    sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
-  } catch (...) {
-    pdlp_exception = std::current_exception();
-    request_concurrent_halt();
+
+  auto dispatch_concurrent_solvers = [&]() {
+#pragma omp taskgroup
+    {
+      // Barrier task — always on for stand-alone LP, gated on enable_barrier for MIP.
+      if (enable_barrier) {
+#pragma omp task default(shared)
+        {
+          try {
+            auto call_barrier_thread = [&]() {
+              rmm::cuda_stream_view barrier_stream = rmm::cuda_stream_per_thread;
+              barrier_handle_ptr         = std::make_unique<raft::handle_t>(barrier_stream);
+              auto barrier_problem       = dual_simplex_problem;
+              barrier_problem.handle_ptr = barrier_handle_ptr.get();
+              run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
+            };
+            if (settings.num_gpus > 1) {
+              problem.handle_ptr->sync_stream();
+              raft::device_setter device_setter(1);  // Scoped variable
+              CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
+              call_barrier_thread();
+            } else {
+              call_barrier_thread();
+            }
+          } catch (...) {
+            barrier_exception = std::current_exception();
+            request_concurrent_halt();
+          }
+        }
+      }
+
+      // Dual simplex task — skipped from MIP (B&B already drives it separately).
+      if (!settings.inside_mip) {
+#pragma omp task default(shared)
+        {
+          try {
+            run_dual_simplex_thread<i_t, f_t>(
+              dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+          } catch (...) {
+            dual_simplex_exception = std::current_exception();
+            request_concurrent_halt();
+          }
+        }
+      }
+
+      if (settings.num_gpus > 1) {
+        CUOPT_LOG_DEBUG("PDLP device: %d", raft::device_setter::get_current_device());
+      }
+
+      // PDLP runs synchronously on the dispatcher, concurrently with the queued tasks.
+      try {
+        sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
+      } catch (...) {
+        pdlp_exception = std::current_exception();
+        request_concurrent_halt();
+      }
+      // Implicit taskgroup barrier joins all spawned tasks below.
+    }
+  };
+
+  if (omp_in_parallel()) {
+    // Reuse the upstream OMP team (e.g. solve_mip's outer parallel region).
+    dispatch_concurrent_solvers();
+  } else {
+    // Stand-alone LP: stand up a local team sized for 1 dispatcher + 1 per spawned task.
+    const int num_workers = 1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
+#pragma omp parallel num_threads(num_workers) default(shared)
+    {
+#pragma omp single
+      {
+        dispatch_concurrent_solvers();
+      }
+    }
   }
 
-  // Wait for dual simplex thread to finish
-  if (dual_simplex_thread.joinable()) { dual_simplex_thread.join(); }
-
-  if (barrier_thread.joinable()) { barrier_thread.join(); }
-  // At this point, it is safe to destroy the barrier context since we're outside of any PDLP graph
-  // capture.
+  // Destroy on the dispatching thread, post-join: cublasDestroy → cudaDeviceSynchronize must
+  // not fire during any graph capture.
   barrier_handle_ptr.reset();
 
   if (pdlp_exception) { std::rethrow_exception(pdlp_exception); }
@@ -1634,14 +1676,17 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       : optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::ConcurrentLimit,
                                                   problem.handle_ptr->get_stream()};
 
-  // copy the barrier solution to the device
-  auto sol_barrier = convert_dual_simplex_sol(problem,
-                                              std::get<0>(*sol_barrier_ptr),
-                                              std::get<1>(*sol_barrier_ptr),
-                                              std::get<2>(*sol_barrier_ptr),
-                                              std::get<3>(*sol_barrier_ptr),
-                                              std::get<4>(*sol_barrier_ptr),
-                                              method_t::Barrier);
+  // copy the barrier solution to the device (sentinel when the barrier task was skipped).
+  auto sol_barrier = enable_barrier ? convert_dual_simplex_sol(problem,
+                                                               std::get<0>(*sol_barrier_ptr),
+                                                               std::get<1>(*sol_barrier_ptr),
+                                                               std::get<2>(*sol_barrier_ptr),
+                                                               std::get<3>(*sol_barrier_ptr),
+                                                               std::get<4>(*sol_barrier_ptr),
+                                                               method_t::Barrier)
+                                    : optimization_problem_solution_t<i_t, f_t>{
+                                        pdlp_termination_status_t::ConcurrentLimit,
+                                        problem.handle_ptr->get_stream()};
 
   f_t end_time = timer.elapsed_time();
   CUOPT_LOG_CONDITIONAL_INFO(!settings.inside_mip, "Concurrent time: %.3fs", end_time);
