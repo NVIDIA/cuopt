@@ -592,29 +592,18 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
       quad_num_entries, row_index, col_index, coeff, num_variables, Q_offsets, Q_indices, Q_values);
     if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
 
-    using quadratic_constraint_t =
-      optimization_problem_interface_t<cuopt_int_t, cuopt_float_t>::quadratic_constraint_t;
-
-    std::vector<quadratic_constraint_t> constraints(op_problem->get_quadratic_constraints());
-    const cuopt_int_t constraint_row_index =
-      op_problem->get_n_constraints() + static_cast<cuopt_int_t>(constraints.size());
-
-    quadratic_constraint_t qc;
-    qc.constraint_row_index = constraint_row_index;
-    qc.constraint_row_type  = sense;
-    qc.rhs_value            = rhs;
-    qc.quadratic_values     = std::move(Q_values);
-    qc.quadratic_indices    = std::move(Q_indices);
-    qc.quadratic_offsets    = std::move(Q_offsets);
-    qc.linear_values.reserve(num_lin_entries);
-    qc.linear_indices.reserve(num_lin_entries);
-    for (cuopt_int_t k = 0; k < num_lin_entries; ++k) {
-      qc.linear_indices.push_back(linear_index[k]);
-      qc.linear_values.push_back(linear_coeff[k]);
-    }
-
-    constraints.push_back(std::move(qc));
-    op_problem->set_quadratic_constraints(std::move(constraints));
+    op_problem->add_quadratic_constraint(sense,
+                                         rhs,
+                                         Q_values.data(),
+                                         static_cast<cuopt_int_t>(Q_values.size()),
+                                         Q_indices.data(),
+                                         static_cast<cuopt_int_t>(Q_indices.size()),
+                                         Q_offsets.data(),
+                                         static_cast<cuopt_int_t>(Q_offsets.size()),
+                                         linear_coeff,
+                                         num_lin_entries,
+                                         linear_index,
+                                         num_lin_entries);
   } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
   }
