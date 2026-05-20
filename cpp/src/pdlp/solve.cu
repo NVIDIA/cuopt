@@ -1754,6 +1754,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     auto qp_timer = cuopt::timer_t(settings.time_limit);
 
     raft::common::nvtx::range fun_scope("Running QP solver");
+    if (op_problem.has_quadratic_constraints()) {
+      CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+                     static_cast<int>(op_problem.get_quadratic_constraints().size()));
+    }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);

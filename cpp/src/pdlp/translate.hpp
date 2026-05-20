@@ -222,7 +222,6 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
     csr_A.row_start.resize(1);
     csr_A.row_start[0] = 0;
   }
-  csr_A.to_compressed_col(user_problem.A);
 
   user_problem.rhs.resize(m);
   user_problem.row_sense.resize(m);
@@ -301,6 +300,13 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();
   user_problem.Q_indices = model.get_quadratic_objective_indices();
   user_problem.Q_values  = model.get_quadratic_objective_values();
+
+  if (model.has_quadratic_constraints()) {
+    detail::apply_soc_qcmatrix_conversion_for_simplex<i_t, f_t>(
+      static_cast<int>(n), model.get_quadratic_constraints(), csr_A, user_problem);
+  }
+
+  csr_A.to_compressed_col(user_problem.A);
 
   return user_problem;
 }
