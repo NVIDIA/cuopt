@@ -104,6 +104,19 @@ class cusparse_spmvop_descr_wrapper_t {
   operator cusparseSpMVOpDescr_t() const;
 
  private:
+  // Forwards to cusparseSpMVOp_{create,destroy}Descr resolved via dlsym (cached on first call).
+  // This is needed because the cusparseSpMVOp_{create,destroy}Descr symbols might not be defined in current runtime.
+  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
+                                       cusparseSpMVOpDescr_t* descr,
+                                       cusparseOperation_t opA,
+                                       cusparseSpMatDescr_t matA,
+                                       cusparseDnVecDescr_t vecX,
+                                       cusparseDnVecDescr_t vecY,
+                                       cusparseDnVecDescr_t vecZ,
+                                       cudaDataType computeType,
+                                       void* buffer);
+  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpDescr_t descr);
+
   cusparseSpMVOpDescr_t descr_;
   bool need_destruction_;
 };
@@ -122,6 +135,15 @@ class cusparse_spmvop_plan_wrapper_t {
   operator cusparseSpMVOpPlan_t() const;
 
  private:
+  // Forwards to cusparseSpMVOp_{create,destroy}Plan resolved via dlsym (cached on first call).
+  // This is needed because the cusparseSpMVOp_{create,destroy}Plan symbols might not be defined in current runtime.
+  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
+                                       cusparseSpMVOpDescr_t descr,
+                                       cusparseSpMVOpPlan_t* plan,
+                                       char* ltoIRBuf,
+                                       size_t ltoIRSize);
+  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpPlan_t plan);
+
   cusparseSpMVOpPlan_t plan_;
   bool need_destruction_;
 };
