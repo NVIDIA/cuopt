@@ -306,7 +306,11 @@ def _non_default_solver_param_value(name, current):
         lo, hi = _float_bounds_for_param(name)
         if lo is not None and hi is not None:
             return _other_float_in_range(current, lo, hi)
-        return float(current) * 2.0 if abs(current) < 1.0 else float(current) * 0.5
+        return (
+            float(current) * 2.0
+            if abs(current) < 1.0
+            else float(current) * 0.5
+        )
     if isinstance(current, int):
         if int(current) > 1:
             return int(current) - 1
