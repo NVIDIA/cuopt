@@ -756,15 +756,20 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 {
   bool send_solution = false;
 
+  const bool log_diving_type = settings_.diving_settings.log_diving_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
-                      feasible_solution_symbol(thread_type),
+                      feasible_solution_symbol(thread_type, log_diving_type),
                       compute_user_objective(original_lp_, leaf_objective));
 
   mutex_upper_.lock();
   if (improves_incumbent(leaf_objective)) {
     incumbent_.set_incumbent_solution(leaf_objective, leaf_solution);
     upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
-    report(feasible_solution_symbol(thread_type), leaf_objective, get_lower_bound(), leaf_depth, 0);
+    report(feasible_solution_symbol(thread_type, log_diving_type),
+           leaf_objective,
+           get_lower_bound(),
+           leaf_depth,
+           0);
     send_solution = true;
   }
 
@@ -1630,7 +1635,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
 
-  diving_heuristics_settings_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  mip_diving_hyper_params_t diving_settings = settings_.diving_settings;
   if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
     diving_settings.guided_diving = 0;
   }
@@ -3435,7 +3440,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
-      report(feasible_solution_symbol(worker_type),
+      report(feasible_solution_symbol(worker_type, settings_.diving_settings.log_diving_type),
              sol->objective,
              deterministic_lower,
              sol->depth,

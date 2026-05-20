@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
 
@@ -19,36 +20,6 @@
 #include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
-
-template <typename i_t, typename f_t>
-struct diving_heuristics_settings_t {
-  // -1 automatic, 0 disabled, 1 enabled
-  i_t line_search_diving   = -1;
-  i_t pseudocost_diving    = -1;
-  i_t guided_diving        = -1;
-  i_t coefficient_diving   = -1;
-  i_t farkas_diving        = -1;
-  i_t vector_length_diving = -1;
-
-  // The minimum depth to start diving from.
-  i_t min_node_depth = 10;
-
-  // The maximum number of nodes when performing a dive.
-  i_t node_limit = 500;
-
-  // The maximum number of dual simplex iteration allowed
-  // in a single dive. This set in terms of the total number of
-  // iterations in the best-first threads.
-  f_t iteration_limit_factor = 0.05;
-
-  // The maximum backtracking allowed.
-  i_t backtrack_limit = 5;
-
-  // For the Farkas diving to be effective, the coefficients in the objective function
-  // must have distinct values. The low tolerance here disables Farkas diving for
-  // set covering/partitioning, where all coefficients have the same value.
-  f_t farkas_obj_dynamism_tol = 1E-4;
-};
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -217,7 +188,7 @@ struct simplex_solver_settings_t {
   // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+  mip_diving_hyper_params_t diving_settings;  // Settings for the diving heuristics
 
   // In B&B, indicate the chance in which a worker can steal a node from another worker.
   // -1 - automatic (0.05)

@@ -31,9 +31,8 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<f_t> last_log             = 0.0;
 };
 
-template <typename f_t, typename i_t>
-bool is_search_strategy_enabled(search_strategy_t strategy,
-                                diving_heuristics_settings_t<i_t, f_t> settings)
+inline bool is_search_strategy_enabled(search_strategy_t strategy,
+                                       const mip_diving_hyper_params_t& settings)
 {
   switch (strategy) {
     case BEST_FIRST: return true;
@@ -203,7 +202,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // of workers allows the solver to be more deterministic.
   void calculate_num_diving_workers(i_t num_bfs_workers,
                                     i_t total_diving_workers,
-                                    const diving_heuristics_settings_t<i_t, f_t>& settings)
+                                    const mip_diving_hyper_params_t& settings)
   {
     i_t num_active = 0;
     for (i_t i = 1; i < num_search_strategies; ++i) {
