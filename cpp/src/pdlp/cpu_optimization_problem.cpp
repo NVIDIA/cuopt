@@ -9,6 +9,7 @@
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <cuopt/linear_programming/io/writer.hpp>
@@ -176,13 +177,16 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
   // Auto-detect problem category based on variable types (matching original optimization_problem_t)
-  i_t n_integer = std::count_if(
-    variable_types_.begin(), variable_types_.end(), [](auto val) { return val == var_t::INTEGER; });
+  i_t n_discrete = std::count_if(variable_types_.begin(), variable_types_.end(), [](auto val) {
+    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+  });
   // By default it is LP
-  if (n_integer == size) {
+  if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
+  } else if (n_discrete > 0) {
     problem_category_ = problem_category_t::MIP;
+  } else {
+    problem_category_ = problem_category_t::LP;
   }
 }
 
@@ -749,7 +753,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     var_types_char.resize(variable_types_.size());
 
     for (size_t i = 0; i < var_types_char.size(); ++i) {
-      var_types_char[i] = (variable_types_[i] == var_t::INTEGER) ? 'I' : 'C';
+      var_types_char[i] = detail::var_type_to_char(variable_types_[i]);
     }
 
     data_model_view.set_variable_types(var_types_char.data(), var_types_char.size());

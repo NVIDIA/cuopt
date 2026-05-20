@@ -1496,6 +1496,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
+      stack.push_front(node_ptr);
       break;
     }
 
@@ -1504,7 +1505,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       break;
     }
 
-    if (lp_status == dual::status_t::ITERATION_LIMIT) { break; }
+    if (lp_status == dual::status_t::ITERATION_LIMIT) {
+      stack.push_front(node_ptr);
+      break;
+    }
 
     auto [node_status, round_dir] =
       update_tree(node_ptr, search_tree_, worker, lp_status, settings_.log);
@@ -1555,16 +1559,13 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
   abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
-  if (stack.size() > 0 &&
-      (rel_gap <= settings_.relative_mip_gap_tol || abs_gap <= settings_.absolute_mip_gap_tol)) {
-    // If the solver converged according to the gap rules, but we still have nodes to explore
-    // in the stack, then we should add all the pending nodes back to the heap so the lower
-    // bound of the solver is set to the correct value.
-    while (!stack.empty()) {
-      auto node = stack.front();
-      stack.pop_front();
-      node_queue_.push(node);
-    }
+  // If the solver exits early without consuming the local stack, or converged according to
+  // the gap rules while nodes are still pending, put those nodes back into the global queue
+  // before returning.
+  while (!stack.empty()) {
+    auto node = stack.front();
+    stack.pop_front();
+    node_queue_.push(node);
   }
 
   if (settings_.num_threads > 1) {
