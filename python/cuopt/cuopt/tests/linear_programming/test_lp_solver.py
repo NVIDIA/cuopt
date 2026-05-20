@@ -229,12 +229,44 @@ def _assert_solver_param_equal(name, expected, got):
         assert g == exp, (name, got, expected)
 
 
+def _other_float_in_range(current, lo, hi):
+    """Pick a float in [lo, hi] that differs from *current* (for bounded C++ params)."""
+    cur = float(current)
+    candidates = (
+        lo,
+        hi,
+        lo + 0.25 * (hi - lo),
+        hi - 0.25 * (hi - lo),
+        min(hi, max(lo, cur * 0.5)),
+        min(hi, max(lo, cur * 2.0)),
+    )
+    for candidate in candidates:
+        if abs(candidate - cur) > max(1e-15, 1e-9 * max(abs(cur), 1.0)):
+            return candidate
+    return lo if abs(cur - hi) < abs(cur - lo) else hi
+
+
+def _float_bounds_for_param(name):
+    """Return (min, max) for float params with tight C++ validation, or (None, None)."""
+    if name == "barrier_step_scale":
+        return 0.5, 0.9999
+    if name in ("mip_cut_min_orthogonality",):
+        return 0.0, 1.0
+    if name.endswith("_time_ratio") or name.endswith("_fix_rate"):
+        return 0.0, 1.0
+    if "tolerance" in name or name.endswith("tolerance"):
+        return 0.0, 0.1
+    return None, None
+
+
 def _non_default_solver_param_value(name, current):
     """Pick a valid but non-default value for each registered solver parameter."""
     if name.startswith("mip_hyper"):
         return current
     if name in ("user_problem_file", "solution_file"):
         return ""
+    if name == "num_gpus":
+        return 2 if int(current) == 1 else 1
     if name == "time_limit":
         return 3600.0
     if name == "iteration_limit":
@@ -271,7 +303,10 @@ def _non_default_solver_param_value(name, current):
             return 7200.0
         if abs(current) < 1e-30:
             return 1e-2
-        return current * 2.0 if abs(current) < 1.0 else current * 0.5
+        lo, hi = _float_bounds_for_param(name)
+        if lo is not None and hi is not None:
+            return _other_float_in_range(current, lo, hi)
+        return float(current) * 2.0 if abs(current) < 1.0 else float(current) * 0.5
     if isinstance(current, int):
         if int(current) > 1:
             return int(current) - 1
