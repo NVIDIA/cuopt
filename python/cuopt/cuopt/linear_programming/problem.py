@@ -17,18 +17,21 @@ import warnings
 
 class VType(str, Enum):
     """
-    The type of a variable is either continuous or integer.
+    The type of a variable is continuous, integer, or semi-continuous.
     Variable Types can be directly used as a constant.
     CONTINUOUS is  VType.CONTINUOUS
     INTEGER is VType.INTEGER
+    SEMI_CONTINUOUS is VType.SEMI_CONTINUOUS
     """
 
     CONTINUOUS = "C"
     INTEGER = "I"
+    SEMI_CONTINUOUS = "S"
 
 
 CONTINUOUS = VType.CONTINUOUS
 INTEGER = VType.INTEGER
+SEMI_CONTINUOUS = VType.SEMI_CONTINUOUS
 
 
 class CType(str, Enum):
@@ -90,7 +93,7 @@ class Variable:
     ----------
     VariableName : str
         Name of the Variable.
-    VariableType : CONTINUOUS or INTEGER
+    VariableType : CONTINUOUS, INTEGER, or SEMI_CONTINUOUS
         Variable type.
     LB : float
         Lower Bound of the Variable.
@@ -173,7 +176,7 @@ class Variable:
     def setVariableType(self, val):
         """
         Sets the variable type of the variable.
-        Variable types can be either CONTINUOUS or INTEGER.
+        Variable types can be CONTINUOUS, INTEGER, or SEMI_CONTINUOUS.
         """
         self.VariableType = val
 
@@ -1500,7 +1503,8 @@ class Problem:
         ub : float
             Upper bound of the variable. Defaults to infinity.
         vtype : enum :py:class:`VType`
-            vtype.CONTINUOUS or vtype.INTEGER. Defaults to CONTINUOUS.
+            vtype.CONTINUOUS, vtype.INTEGER, or vtype.SEMI_CONTINUOUS.
+            Defaults to CONTINUOUS.
         name : string
             Name of the variable. Optional.
 
@@ -1835,7 +1839,7 @@ class Problem:
     def IsMIP(self):
         # Returns if the problem is a MIP problem.
         for var in self.vars:
-            if var.VariableType == "I":
+            if var.VariableType in ("I", "S", b"I", b"S"):
                 return True
         return False
 
