@@ -91,6 +91,7 @@ class manual_cuda_graph_t {
     guard.capture_active = false;
 
     if (end_err == cudaErrorStreamCaptureInvalidated) {
+      CUOPT_LOG_INFO("Capture got invalidated by a concurrent synchronous CUDA call");
       // Capture got invalidated by a concurrent synchronous CUDA call on
       // another thread (cudaMalloc / cudaDeviceSynchronize / library
       // first-use). The recorded work has NOT been issued to the device.

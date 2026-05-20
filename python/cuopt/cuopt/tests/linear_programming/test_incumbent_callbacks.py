@@ -22,14 +22,6 @@ if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.getcwd()
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
-_SWATH1_GRAPH_CAPTURE_SKIP = pytest.mark.skip(
-    reason=(
-        "Temporarily disabled: swath1 incumbent callback tests can abort "
-        "nondeterministically in CI while MIP root relaxation uses concurrent "
-        "PDLP CUDA graph capture."
-    )
-)
-
 
 def _run_incumbent_solver_callback(file_name, include_set_callback):
     # Callback for incumbent solution
@@ -112,7 +104,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
 @pytest.mark.parametrize(
     "file_name",
     [
-        pytest.param("/mip/swath1.mps", marks=_SWATH1_GRAPH_CAPTURE_SKIP),
+        ("/mip/swath1.mps"),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
@@ -123,7 +115,7 @@ def test_incumbent_get_callback(file_name):
 @pytest.mark.parametrize(
     "file_name",
     [
-        pytest.param("/mip/swath1.mps", marks=_SWATH1_GRAPH_CAPTURE_SKIP),
+        ("/mip/swath1.mps"),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
