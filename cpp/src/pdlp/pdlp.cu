@@ -480,7 +480,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                            op_problem_scaled_.presolve_data.objective_scaling_factor,
                            sub_pdlp_settings);
 
-  for (auto& shard : multi_gpu_engine.shards) {
+  for (auto& shard : multi_gpu_engine->shards) {
     raft::device_setter guard(shard->device_id);
     auto& sub = *shard->sub_pdlp;
     raft::copy(sub.step_size_.data(), step_size_.data(), 1, shard->stream);
@@ -2441,6 +2441,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   std::cout << "Starting PDLP loop:" << std::endl;
 #endif
 
+  bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
+
   // In distributed mode, skip all setup, it is done before
   if (!settings_.hyper_params.use_distributed_pdlp) {
     // TODO handle that properly
@@ -2644,7 +2646,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       "Initial primal_weight", primal_weight_.data(), primal_weight_.size(), std::cout);
 #endif
 
-    bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
     if (!inside_mip_) {
       CUOPT_LOG_INFO(
