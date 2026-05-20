@@ -1797,9 +1797,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
-  // Pure QP (quadratic objective without quadratic constraints) takes the dedicated solve_qp
-  // path. When the problem also has quadratic constraints we MUST stay in solve_lp's main path so the
-  // SOC-aware translation runs. Since solve_qp currently silently drops quadratic constraints
   if (op_problem.has_quadratic_objective()) {
     return solve_qp(op_problem, settings_const, problem_checking);
   }
