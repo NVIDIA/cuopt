@@ -502,6 +502,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       [](auto& s) -> auto { return s.pdhg_solver_.get_primal_solution().size(); },  
       clamp<f_t, f_t2>()
     );
+  }
 }
 
 template <typename i_t, typename f_t>
