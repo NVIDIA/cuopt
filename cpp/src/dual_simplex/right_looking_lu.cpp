@@ -320,7 +320,7 @@ class trailing_matrix_t {
     // Step 1: Cache the pivot column into dense workspaces.
     // pivot_col_val_[i] = l_i = a(i, pivot_j) / pivot_val  for each row i != pivot_i
     // pivot_col_mark_[i] = 1 if row i is in the pivot column
-    // pivot_col_index_[] = sparse list of such row indices
+    // pivot_col_index_ = list of i such that pivot_col_mark[i] == 1
     i_t pivot_col_count     = 0;
     const i_t c_pivot_start = col_start_[pivot_j];
     const i_t c_pivot_end   = col_end_[pivot_j];
@@ -647,7 +647,7 @@ class trailing_matrix_t {
 
   void print_stats()
   {
-#if 0
+#ifdef PRINT_STATS
     printf("Column hits: %.1f%%, Column misses: %.1f%%, Row hits: %.1f%%, Row misses: %.1f%%\n",
            100.0 * static_cast<f_t>(col_hits_) / static_cast<f_t>(col_hits_ + col_miss_),
            100.0 * static_cast<f_t>(col_miss_) / static_cast<f_t>(col_hits_ + col_miss_),
