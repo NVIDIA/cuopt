@@ -308,7 +308,6 @@ void local_search_t<i_t, f_t, REQUEST>::run_best_local_search(solution_t<i_t, f_
       perform_moves(sol, move_candidates);
       cuopt_func_call(sol.check_cost_coherence(move_candidates.weights));
       sol.global_runtime_checks(should_all_nodes_be_served, false, "run_best_local_search_end");
-      // with very big weights 1. epsilon is not enough
       cuopt_func_call(sol.compute_cost());
       cuopt_func_call(cost_after =
                         sol.get_cost(move_candidates.include_objective, move_candidates.weights));
