@@ -8,17 +8,23 @@
   cpu_problem.set_objective_scaling_factor(pb_problem.objective_scaling_factor());
   cpu_problem.set_objective_offset(pb_problem.objective_offset());
 
-  if (pb_problem.a_values_size() > 0) {
+  if (pb_problem.a_offsets_size() > 0) {
     std::vector<f_t> A_values(pb_problem.a_values().begin(), pb_problem.a_values().end());
     std::vector<i_t> A_indices(pb_problem.a_indices().begin(), pb_problem.a_indices().end());
     std::vector<i_t> A_offsets(pb_problem.a_offsets().begin(), pb_problem.a_offsets().end());
+    if (A_values.size() != A_indices.size()) {
+      throw std::invalid_argument("set_csr_constraint_matrix: values/indices size mismatch");
+    }
     cpu_problem.set_csr_constraint_matrix(A_values.data(), static_cast<i_t>(A_values.size()), A_indices.data(), static_cast<i_t>(A_indices.size()), A_offsets.data(), static_cast<i_t>(A_offsets.size()));
   }
 
-  if (pb_problem.q_values_size() > 0) {
+  if (pb_problem.q_offsets_size() > 0) {
     std::vector<f_t> Q_values(pb_problem.q_values().begin(), pb_problem.q_values().end());
     std::vector<i_t> Q_indices(pb_problem.q_indices().begin(), pb_problem.q_indices().end());
     std::vector<i_t> Q_offsets(pb_problem.q_offsets().begin(), pb_problem.q_offsets().end());
+    if (Q_values.size() != Q_indices.size()) {
+      throw std::invalid_argument("set_quadratic_objective_matrix: values/indices size mismatch");
+    }
     cpu_problem.set_quadratic_objective_matrix(Q_values.data(), static_cast<i_t>(Q_values.size()), Q_indices.data(), static_cast<i_t>(Q_indices.size()), Q_offsets.data(), static_cast<i_t>(Q_offsets.size()));
   }
 

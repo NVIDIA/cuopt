@@ -16,10 +16,10 @@
   auto _solve_time = static_cast<f_t>(h.solve_time());
   auto _solved_by = static_cast<method_t>(h.solved_by());
 
-  auto _ws_detect = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION);
-  if (!_ws_detect.empty()) {
+  bool _ws_present = arrays.count(cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION) != 0 || arrays.count(cuopt::remote::RESULT_WS_CURRENT_DUAL_SOLUTION) != 0 || arrays.count(cuopt::remote::RESULT_WS_INITIAL_PRIMAL_AVERAGE) != 0 || arrays.count(cuopt::remote::RESULT_WS_INITIAL_DUAL_AVERAGE) != 0 || arrays.count(cuopt::remote::RESULT_WS_CURRENT_ATY) != 0 || arrays.count(cuopt::remote::RESULT_WS_SUM_PRIMAL_SOLUTIONS) != 0 || arrays.count(cuopt::remote::RESULT_WS_SUM_DUAL_SOLUTIONS) != 0 || arrays.count(cuopt::remote::RESULT_WS_LAST_RESTART_DUALITY_GAP_PRIMAL_SOLUTION) != 0 || arrays.count(cuopt::remote::RESULT_WS_LAST_RESTART_DUALITY_GAP_DUAL_SOLUTION) != 0;
+  if (_ws_present) {
     cpu_pdlp_warm_start_data_t<i_t, f_t> ws;
-    ws.current_primal_solution_ = std::move(_ws_detect);
+    ws.current_primal_solution_ = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_CURRENT_PRIMAL_SOLUTION);
     ws.current_dual_solution_ = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_CURRENT_DUAL_SOLUTION);
     ws.initial_primal_average_ = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_INITIAL_PRIMAL_AVERAGE);
     ws.initial_dual_average_ = bytes_to_typed<f_t>(arrays, cuopt::remote::RESULT_WS_INITIAL_DUAL_AVERAGE);

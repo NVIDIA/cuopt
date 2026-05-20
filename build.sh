@@ -369,6 +369,11 @@ fi
 # Regenerate gRPC codegen .inc files from the field registry (explicit target only)
 if hasArg codegen; then
     echo "Regenerating codegen .inc files from field_registry.yaml..."
+    # Remove previously generated files so artifacts no longer emitted by the
+    # generator do not linger and cause verify_grpc_codegen.sh to fail.
+    if [ -d "${REPODIR}"/cpp/src/grpc/codegen/generated ]; then
+        find "${REPODIR}"/cpp/src/grpc/codegen/generated -mindepth 1 -maxdepth 1 -type f -delete
+    fi
     python "${REPODIR}"/cpp/src/grpc/codegen/generate_conversions.py \
         --registry "${REPODIR}"/cpp/src/grpc/codegen/field_registry.yaml \
         --output-dir "${REPODIR}"/cpp/src/grpc/codegen/generated
