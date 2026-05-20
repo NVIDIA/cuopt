@@ -225,7 +225,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.06-latest"
+      container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     permissions:
@@ -312,7 +312,7 @@ jobs:
       contents: read
     runs-on: linux-amd64-cpu4
     container:
-      image: python:3.14-slim
+      image: python:26.08-slim
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
