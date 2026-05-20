@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (user/developer), and REST server.",
-    "version": "26.06.00"
+    "version": "26.08.00"
   },
   "plugins": [
     {
