@@ -88,12 +88,15 @@ def Solve(data_model, solver_settings=None):
         if len(set(map(type, var_types))) == 1:
             # Homogeneous - use appropriate check
             if isinstance(var_types[0], bytes):
-                return b"I" in var_types
+                return b"I" in var_types or b"S" in var_types
             else:
-                return "I" in var_types
+                return "I" in var_types or "S" in var_types
         else:
             # Mixed types - fallback to comprehensive check
-            return any(vt == "I" or vt == b"I" for vt in var_types)
+            return any(
+                vt == "I" or vt == b"I" or vt == "S" or vt == b"S"
+                for vt in var_types
+            )
 
     s = solver_wrapper.Solve(
         data_model,
