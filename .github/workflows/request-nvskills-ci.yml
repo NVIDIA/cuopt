@@ -17,6 +17,7 @@ jobs:
     if: >
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
         startsWith(github.event.comment.body, '/nvskills-ci')) ||
       (github.event_name == 'push' &&
         github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'nv-nvskill-ci[bot]') &&
