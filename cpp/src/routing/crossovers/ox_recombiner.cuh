@@ -232,7 +232,11 @@ struct OX {
 
     if (genome_A.size() < 2) { return false; }
 
-    fill_offspring(A, routesA);
+    if (use_linear_ox_for_path_tsp(A, routes_number)) {
+      fill_path_offspring();
+    } else {
+      fill_offspring(A, routesA);
+    }
 
     // FIXME: Guard to avoid crash on large sizes.
     if (get_allocated_bytes(n_buckets, offspring.size(), max_route_len) * 1e-9 >= gb_limit) {
@@ -719,6 +723,52 @@ struct OX {
         genome.push_back(start);
         start = S.succ[start].node();
       }
+    }
+  }
+
+  bool use_linear_ox_for_path_tsp(Solution const& S, int n_routes) const
+  {
+    if (!S.problem->is_tsp || n_routes != 1) { return false; }
+    if (S.problem->data_view_ptr->get_vehicle_locations().first == nullptr) { return false; }
+
+    // With distinct vehicle start/end locations the TSP is a fixed path, not a cycle.
+    // Classic OX may wrap across the end/start boundary or rotate the child, which is
+    // only neutral for a closed tour.
+    return !S.problem->get_single_depot().has_value();
+  }
+
+  void fill_path_offspring()
+  {
+    helper.clear();
+    offspring.clear();
+    offspring_tmp.clear();
+    offspring_tmp.assign(genome_A.size(), -1);
+
+    int genome_size = static_cast<int>(genome_A.size());
+    int i           = next_random() % genome_size;
+    int max_length  = std::min(genome_size - i, std::max(1, 3 * max_route_len));
+    int j           = i + (next_random() % max_length);
+
+    for (int k = i; k <= j; ++k) {
+      offspring_tmp[k] = genome_B[k];
+      helper.insert(genome_B[k]);
+    }
+
+    auto a_it = genome_A.begin();
+    for (auto& node : offspring_tmp) {
+      if (node != -1) { continue; }
+      while (a_it != genome_A.end() && helper.count(*a_it) > 0) {
+        ++a_it;
+      }
+      cuopt_assert(a_it != genome_A.end(), "Invalid OX path offspring");
+      node = *a_it;
+      helper.insert(node);
+      ++a_it;
+    }
+
+    offspring.assign(genome_A.size() + 1, 0);
+    for (size_t k = 0; k < offspring_tmp.size(); ++k) {
+      offspring[k + 1] = offspring_tmp[k];
     }
   }
 
