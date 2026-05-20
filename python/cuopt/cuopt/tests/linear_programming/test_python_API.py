@@ -16,6 +16,7 @@ from cuopt.linear_programming.problem import (
     INTEGER,
     MAXIMIZE,
     MINIMIZE,
+    SEMI_CONTINUOUS,
     CType,
     Problem,
     VType,
@@ -157,6 +158,28 @@ def test_model():
     assert y.getValue() == pytest.approx(45.5)
 
     assert prob.ObjValue == pytest.approx(5 * x.Value + 3 * y.Value + 70)
+
+
+def test_semi_continuous_variable():
+    prob = Problem("Semi-continuous")
+    x = prob.addVariable(lb=5.0, ub=10.0, vtype=SEMI_CONTINUOUS, name="x")
+    y = prob.addVariable(lb=0.0, ub=1.0, vtype=CONTINUOUS, name="y")
+
+    prob.addConstraint(x + y == 1.0)
+    prob.setObjective(x, sense=MINIMIZE)
+
+    assert x.getVariableType() == VType.SEMI_CONTINUOUS
+    assert prob.IsMIP
+
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 10)
+
+    prob.solve(settings)
+
+    assert prob.Status.name == "Optimal"
+    assert prob.ObjValue == pytest.approx(0.0)
+    assert x.Value == pytest.approx(0.0)
+    assert y.Value == pytest.approx(1.0)
 
 
 def test_linear_expression():
