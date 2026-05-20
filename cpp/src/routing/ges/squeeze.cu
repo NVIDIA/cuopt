@@ -157,7 +157,7 @@ i_t guided_ejection_search_t<i_t, f_t, REQUEST>::try_multiple_feasible_insertion
     i_t perturbation_count = std::max(const_1, std::min(100 / solution_ptr->n_routes, const_2));
     for (i_t i = 0; i < perturbation_count; ++i) {
       solution_ptr->global_runtime_checks(false, true, "try_multiple_insert_with_perturbation_1");
-      local_search_ptr_->run_random_local_search(*solution_ptr, false);
+  local_search_ptr_->run_random_local_search(*solution_ptr, true, 1000);
     }
   }
 
@@ -243,14 +243,16 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::squeeze_all_and_save()
   double total_excess = solution_ptr->get_total_excess(ls_weights_after_squeeze);
   local_search_ptr_->set_active_weights(ls_weights_after_squeeze, include_objective);
 
-  local_search_ptr_->start_timer(remaining_time());
-
+  // Use work estimate instead of time limit for determinism
   solution_ptr->global_runtime_checks(true, false, "squeeze_all_and_save_before_ls");
   const bool consider_unserviced = false;
-  const bool enable_time_limit   = true;
+  const bool use_work_estimate = true;
+  // Derive work_estimate_limit from remaining_time (fallback to default if not available)
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
-    *solution_ptr, consider_unserviced, enable_time_limit, enable_cycle_finder);
+    *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);
 
   // reset the weights
   total_excess = solution_ptr->get_total_excess(original_weights);
@@ -337,13 +339,14 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_feasible(
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights,
                                         include_objective);
 
-  local_search_ptr_->start_timer(remaining_time());
-
+  // Use work estimate instead of time limit for determinism
   const bool consider_unserviced = false;
-  const bool enable_time_limit   = true;
+  const bool use_work_estimate = true;
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
-    *solution_ptr, consider_unserviced, enable_time_limit, enable_cycle_finder);
+    *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);
   // check if solution is feasible at the end
   bool feasibilized = solution_ptr->is_feasible();
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights,
@@ -398,15 +401,16 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_squeeze_breaks_feasible()
 
   if (solution_ptr->is_feasible()) { return true; }
 
-  local_search_ptr_->start_timer(remaining_time());
-
+  // Use work estimate instead of time limit for determinism
   auto original_incl_objective = local_search_ptr_->move_candidates.include_objective;
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights, false);
   const bool consider_unserviced = false;
-  const bool enable_time_limit   = true;
+  const bool use_work_estimate = true;
+  int work_estimate_limit = static_cast<int>(remaining_time() * 1000); // TODO: tune factor
+  if (work_estimate_limit <= 0) work_estimate_limit = 10000;
   const bool enable_cycle_finder = false;
   local_search_ptr_->run_best_local_search(
-    *solution_ptr, consider_unserviced, enable_time_limit, enable_cycle_finder);
+    *solution_ptr, consider_unserviced, use_work_estimate, work_estimate_limit, enable_cycle_finder);
 
   local_search_ptr_->set_active_weights(local_search_ptr_->move_candidates.weights,
                                         original_incl_objective);

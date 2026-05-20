@@ -108,9 +108,12 @@ class local_search_t {
 
   void run_best_local_search(solution_t<i_t, f_t, REQUEST>& sol,
                              const bool consider_unserviced,
-                             const bool time_limit_enabled,
+                             const bool use_work_estimate,
+                             const i_t work_estimate_limit,
                              const bool run_cycle_finder);
-  void run_random_local_search(solution_t<i_t, f_t, REQUEST>& sol, bool time_limit_enabled = true);
+  void run_random_local_search(solution_t<i_t, f_t, REQUEST>& sol,
+                               bool use_work_estimate = false,
+                               i_t work_estimate_limit = std::numeric_limits<i_t>::max());
 
   void perturb_solution(solution_t<i_t, f_t, REQUEST>& sol, i_t perturb_count = -1);
   void perform_moves(solution_t<i_t, f_t, REQUEST>& solution,
@@ -166,6 +169,12 @@ class local_search_t {
   }
 
   i_t max_iterations = std::numeric_limits<i_t>::max();
+  i_t work_counter = 0;
+  i_t work_limit = std::numeric_limits<i_t>::max();
+  bool use_work_estimate = false;
+  void reset_work_counter() { work_counter = 0; }
+  bool check_work_estimate() const { return use_work_estimate && work_counter >= work_limit; }
+  void increment_work_counter(i_t inc = 1) { work_counter += inc; }
   // move candidates
   move_candidates_t<i_t, f_t> move_candidates;
   // hvrp

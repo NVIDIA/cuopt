@@ -420,7 +420,7 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::try_single_insert_with_perturb
   i_t perturbation_count = std::max(const_1, std::min(100 / solution_ptr->n_routes, const_2));
   for (i_t i = 0; i < perturbation_count; ++i) {
     solution_ptr->global_runtime_checks(false, false, "try_single_insert_with_perturbation");
-    local_search_ptr_->run_random_local_search(*solution_ptr, false);
+    local_search_ptr_->run_random_local_search(*solution_ptr, true, 1000);
   }
   auto n_found_candidates = find_single_insertion(request);
   if (n_found_candidates != 0) { return perform_insertion(request); }
