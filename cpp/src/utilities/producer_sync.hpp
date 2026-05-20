@@ -71,7 +71,7 @@ class producer_sync_t {
     return registration_complete_;
   }
 
-  /**
+  /** WARNING: Do not use this within OpenMP. This will cause a deadlock!
    * Wait until:
    * 1. registration_complete() has been called, AND
    * 2. All registered producers have work units >= target_work_units

@@ -10,7 +10,6 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <math_optimization/solution_writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/utilities/span.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/util/cudart_utils.hpp>
@@ -19,6 +18,7 @@
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/scatter.h>
+#include <span>
 
 namespace cuopt::linear_programming {
 
@@ -61,12 +61,30 @@ void pdlp_solver_settings_t<i_t, f_t>::set_initial_dual_solution(const f_t* init
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_step_size(f_t initial_step_size)
 {
+  cuopt_expects(initial_step_size > f_t(0),
+                error_type_t::ValidationError,
+                "Initial step size must be greater than 0");
+  cuopt_expects(!std::isinf(initial_step_size),
+                error_type_t::ValidationError,
+                "Initial step size must be finite");
+  cuopt_expects(!std::isnan(initial_step_size),
+                error_type_t::ValidationError,
+                "Initial step size must be a number");
   initial_step_size_ = std::make_optional(initial_step_size);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_initial_primal_weight(f_t initial_primal_weight)
 {
+  cuopt_expects(initial_primal_weight > f_t(0),
+                error_type_t::ValidationError,
+                "Initial primal weight must be greater than 0");
+  cuopt_expects(!std::isinf(initial_primal_weight),
+                error_type_t::ValidationError,
+                "Initial primal weight must be finite");
+  cuopt_expects(!std::isnan(initial_primal_weight),
+                error_type_t::ValidationError,
+                "Initial primal weight must be a number");
   initial_primal_weight_ = std::make_optional(initial_primal_weight);
 }
 
@@ -278,23 +296,22 @@ void pdlp_solver_settings_t<i_t, f_t>::set_pdlp_warm_start_data(
                 "last_restart_duality_gap_dual_solution cannot be null");
 
   pdlp_warm_start_data_view_.current_primal_solution_ =
-    cuopt::mps_parser::span<f_t const>(current_primal_solution, primal_size);
+    std::span<f_t const>(current_primal_solution, primal_size);
   pdlp_warm_start_data_view_.current_dual_solution_ =
-    cuopt::mps_parser::span<f_t const>(current_dual_solution, dual_size);
+    std::span<f_t const>(current_dual_solution, dual_size);
   pdlp_warm_start_data_view_.initial_primal_average_ =
-    cuopt::mps_parser::span<f_t const>(initial_primal_average, primal_size);
+    std::span<f_t const>(initial_primal_average, primal_size);
   pdlp_warm_start_data_view_.initial_dual_average_ =
-    cuopt::mps_parser::span<f_t const>(initial_dual_average, dual_size);
-  pdlp_warm_start_data_view_.current_ATY_ =
-    cuopt::mps_parser::span<f_t const>(current_ATY, primal_size);
+    std::span<f_t const>(initial_dual_average, dual_size);
+  pdlp_warm_start_data_view_.current_ATY_ = std::span<f_t const>(current_ATY, primal_size);
   pdlp_warm_start_data_view_.sum_primal_solutions_ =
-    cuopt::mps_parser::span<f_t const>(sum_primal_solutions, primal_size);
+    std::span<f_t const>(sum_primal_solutions, primal_size);
   pdlp_warm_start_data_view_.sum_dual_solutions_ =
-    cuopt::mps_parser::span<f_t const>(sum_dual_solutions, dual_size);
+    std::span<f_t const>(sum_dual_solutions, dual_size);
   pdlp_warm_start_data_view_.last_restart_duality_gap_primal_solution_ =
-    cuopt::mps_parser::span<f_t const>(last_restart_duality_gap_primal_solution, primal_size);
+    std::span<f_t const>(last_restart_duality_gap_primal_solution, primal_size);
   pdlp_warm_start_data_view_.last_restart_duality_gap_dual_solution_ =
-    cuopt::mps_parser::span<f_t const>(last_restart_duality_gap_dual_solution, dual_size);
+    std::span<f_t const>(last_restart_duality_gap_dual_solution, dual_size);
   pdlp_warm_start_data_view_.initial_primal_weight_         = initial_primal_weight;
   pdlp_warm_start_data_view_.initial_step_size_             = initial_step_size;
   pdlp_warm_start_data_view_.total_pdlp_iterations_         = total_pdlp_iterations;
@@ -346,6 +363,21 @@ template <typename i_t, typename f_t>
 std::optional<f_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_primal_weight() const
 {
   return initial_primal_weight_;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_settings_t<i_t, f_t>::set_initial_pdlp_iteration(i_t initial_pdlp_iteration)
+{
+  cuopt_expects(initial_pdlp_iteration >= 0,
+                error_type_t::ValidationError,
+                "Initial pdlp iteration must be greater than or equal to 0");
+  initial_pdlp_iteration_ = std::make_optional(initial_pdlp_iteration);
+}
+
+template <typename i_t, typename f_t>
+std::optional<i_t> pdlp_solver_settings_t<i_t, f_t>::get_initial_pdlp_iteration() const
+{
+  return initial_pdlp_iteration_;
 }
 
 template <typename i_t, typename f_t>

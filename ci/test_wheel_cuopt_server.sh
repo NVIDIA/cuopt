@@ -9,15 +9,23 @@ source rapids-init-pip
 
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
 CUOPT_SERVER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
 CUOPT_SH_CLIENT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
 
-# echo to expand wildcard before adding `[extra]` requires for pip
+# generate constraints (possibly pinning to oldest support versions of dependencies)
+rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+# notes:
+#
+#   * echo to expand wildcard before adding `[test]` requires for pip
+#   * just providing --constraint="${PIP_CONSTRAINT}" to be explicit, and because
+#     that environment variable is ignored if any other --constraint are passed via the CLI
+#
 rapids-pip-retry install \
-    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
+    --prefer-binary \
+    --constraint "${PIP_CONSTRAINT}" \
     "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]" \
     "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
@@ -29,7 +37,31 @@ rapids-pip-retry install \
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 
-timeout 30m ./ci/run_cuopt_server_pytests.sh --verbose --capture=no
+RAPIDS_TESTS_DIR=${RAPIDS_TESTS_DIR:-"${PWD}/test-results"}
+mkdir -p "${RAPIDS_TESTS_DIR}"
+
+EXITCODE=0
+FAILED_STEPS=()
+trap "EXITCODE=1" ERR
+set +e
+
+timeout 30m ./ci/run_cuopt_server_pytests.sh \
+  --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
+  --verbose --capture=no || FAILED_STEPS+=("pytest cuopt-server (wheel)")
 
 # Run documentation tests
-./ci/test_doc_examples.sh
+./ci/test_doc_examples.sh || FAILED_STEPS+=("doc examples")
+
+# Generate nightly test report
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "wheel-server" --with-python-version
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
+
+exit ${EXITCODE}

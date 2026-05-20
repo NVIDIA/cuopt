@@ -7,14 +7,16 @@
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
+#include <utilities/sparse_matrix_helpers.hpp>
 
 #include <raft/core/copy.hpp>
 #include <raft/core/cuda_support.hpp>
@@ -66,7 +68,6 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
     variable_types_(0, stream_view_)
 {
   raft::common::nvtx::range fun_scope("optimization problem construction");
-  CUOPT_LOG_INFO("optimization_problem_t constructor: Using GPU backend");
 }
 
 template <typename i_t, typename f_t>
@@ -84,6 +85,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     c_{other.get_objective_coefficients(), stream_view_},
     objective_scaling_factor_{other.get_objective_scaling_factor()},
     objective_offset_{other.get_objective_offset()},
+    batch_objective_offsets_{other.get_batch_objective_offsets()},
     Q_offsets_{other.get_quadratic_objective_offsets()},
     Q_indices_{other.get_quadratic_objective_indices()},
     Q_values_{other.get_quadratic_objective_values()},
@@ -97,7 +99,8 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     problem_name_{other.get_problem_name()},
     problem_category_{other.get_problem_category()},
     var_names_{other.get_variable_names()},
-    row_names_{other.get_row_names()}
+    row_names_{other.get_row_names()},
+    quadratic_constraints_{other.get_quadratic_constraints()}
 {
 }
 
@@ -168,6 +171,12 @@ void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_batch_objective_offsets(const std::vector<f_t>& offsets)
+{
+  batch_objective_offsets_ = offsets;
+}
+
+template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   const f_t* Q_values,
   i_t size_values,
@@ -189,88 +198,20 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
     size_offsets >= 1, error_type_t::ValidationError, "Q_offsets must have at least 1 element");
   cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
 
-  // Replace Q with Q + Q^T
-  i_t qn    = size_offsets - 1;  // Number of variables
-  i_t q_nnz = size_indices;
-  // Construct H = Q + Q^T in triplet form first
-  std::vector<i_t> H_i;
-  std::vector<i_t> H_j;
-  std::vector<f_t> H_x;
-
-  H_i.reserve(2 * q_nnz);
-  H_j.reserve(2 * q_nnz);
-  H_x.reserve(2 * q_nnz);
-
-  for (i_t i = 0; i < qn; ++i) {
-    i_t row_start = Q_offsets[i];
-    i_t row_end   = Q_offsets[i + 1];
-    for (i_t p = row_start; p < row_end; ++p) {
-      i_t j = Q_indices[p];
-      f_t x = Q_values[p];
-      // Add H(i,j)
-      H_i.push_back(i);
-      H_j.push_back(j);
-      if (i == j) { H_x.push_back(2 * x); }
-      if (i != j) {
-        H_x.push_back(x);
-        // Add H(j,i)
-        H_i.push_back(j);
-        H_j.push_back(i);
-        H_x.push_back(x);
-      }
-    }
-  }
-  // Convert H to CSR format
-  // Get row counts
-  i_t H_nz = H_x.size();
-  std::vector<i_t> H_row_counts(qn, 0);
-  for (i_t k = 0; k < H_nz; ++k) {
-    H_row_counts[H_i[k]]++;
-  }
-  std::vector<i_t> H_cumulative_counts(qn + 1, 0);
-  for (i_t k = 0; k < qn; ++k) {
-    H_cumulative_counts[k + 1] = H_cumulative_counts[k] + H_row_counts[k];
-  }
-  std::vector<i_t> H_row_starts = H_cumulative_counts;
-  std::vector<i_t> H_indices(H_nz);
-  std::vector<f_t> H_values(H_nz);
-  for (i_t k = 0; k < H_nz; ++k) {
-    i_t p        = H_cumulative_counts[H_i[k]]++;
-    H_indices[p] = H_j[k];
-    H_values[p]  = H_x[k];
-  }
-
-  // H_row_starts, H_indices, H_values are the CSR representation of H
-  // But this contains duplicate entries
-
-  std::vector<i_t> workspace(qn, -1);
-  Q_offsets_.resize(qn + 1);
-  std::fill(Q_offsets_.begin(), Q_offsets_.end(), 0);
-  Q_indices_.resize(H_nz);
-  Q_values_.resize(H_nz);
-  i_t nz = 0;
-  for (i_t i = 0; i < qn; ++i) {
-    i_t q               = nz;  // row i will start at q
-    const i_t row_start = H_row_starts[i];
-    const i_t row_end   = H_row_starts[i + 1];
-    for (i_t p = row_start; p < row_end; ++p) {
-      i_t j = H_indices[p];
-      if (workspace[j] >= q) {
-        Q_values_[workspace[j]] += H_values[p];  // H(i,j) is duplicate
-      } else {
-        workspace[j]   = nz;  // record where column j occurs
-        Q_indices_[nz] = j;   // keep H(i,j)
-        Q_values_[nz]  = H_values[p];
-        nz++;
-      }
-    }
-    Q_offsets_[i] = q;  // record start of row i
-  }
-
-  Q_offsets_[qn] = nz;  // finalize Q
-  Q_indices_.resize(nz);
-  Q_values_.resize(nz);
+  // Symmetrize Q to H = Q + Q^T (same algorithm as cuopt::symmetrize_csr in
+  // sparse_matrix_helpers.hpp)
+  const i_t qn = size_offsets - 1;
+  cuopt::symmetrize_csr<i_t, f_t>(
+    Q_values, Q_indices, Q_offsets, qn, Q_values_, Q_indices_, Q_offsets_);
   // FIX ME:: check for positive semi definite matrix
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -309,14 +250,17 @@ void optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* variable_
   variable_types_.resize(size, stream_view_);
   raft::copy(variable_types_.data(), variable_types, size, stream_view_);
 
-  // Auto-detect problem category based on variable types
-  i_t n_integer = thrust::count_if(handle_ptr_->get_thrust_policy(),
-                                   variable_types_.begin(),
-                                   variable_types_.end(),
-                                   [] __device__(auto val) { return val == var_t::INTEGER; });
-  if (n_integer == size) {
+  // Auto-detect problem category based on variable types.
+  // SEMI_CONTINUOUS vars will be reformulated into binary + continuous before solving,
+  // so a problem with only SC vars is treated as MIP.
+  i_t n_discrete = thrust::count_if(
+    handle_ptr_->get_thrust_policy(),
+    variable_types_.begin(),
+    variable_types_.end(),
+    [] __device__(auto val) { return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS; });
+  if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
+  } else if (n_discrete > 0) {
     problem_category_ = problem_category_t::MIP;
   } else {
     problem_category_ = problem_category_t::LP;
@@ -497,6 +441,19 @@ f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 }
 
 template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_batch_objective_offsets()
+  const noexcept
+{
+  return batch_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_batch_objective_offsets() noexcept
+{
+  return batch_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& optimization_problem_t<i_t, f_t>::get_variable_lower_bounds() const
 {
   return variable_lower_bounds_;
@@ -622,6 +579,19 @@ template <typename i_t, typename f_t>
 bool optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
 {
   return !Q_values_.empty();
+}
+
+template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
 }
 
 template <typename i_t, typename f_t>
@@ -794,7 +764,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -878,13 +848,29 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
 
     // Convert enum types to char types
     for (size_t i = 0; i < variable_types.size(); ++i) {
-      variable_types[i] = (enum_variable_types[i] == var_t::INTEGER) ? 'I' : 'C';
+      variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
     }
 
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  if (!Q_values_.empty()) {
+    // Only the symmetrized matrix is stored in the optimization_problem_t
+    const bool is_symmetrized = true;
+    data_model_view.set_quadratic_objective_matrix(Q_values_.data(),
+                                                   static_cast<i_t>(Q_values_.size()),
+                                                   Q_indices_.data(),
+                                                   static_cast<i_t>(Q_indices_.size()),
+                                                   Q_offsets_.data(),
+                                                   static_cast<i_t>(Q_offsets_.size()),
+                                                   is_symmetrized);
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
+  }
+
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>
@@ -1096,6 +1082,7 @@ bool optimization_problem_t<i_t, f_t>::is_equivalent(
   if (n_constraints_ != other.n_constraints_) { return false; }
   if (objective_scaling_factor_ != other.objective_scaling_factor_) { return false; }
   if (objective_offset_ != other.objective_offset_) { return false; }
+  if (batch_objective_offsets_ != other.batch_objective_offsets_) { return false; }
   if (problem_category_ != other.problem_category_) { return false; }
   if (A_.size() != other.A_.size()) { return false; }
 
@@ -1537,6 +1524,11 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
   other.set_maximize(maximize_);
   other.set_objective_offset(static_cast<other_f_t>(objective_offset_));
   other.set_objective_scaling_factor(static_cast<other_f_t>(objective_scaling_factor_));
+  if (!batch_objective_offsets_.empty()) {
+    std::vector<other_f_t> converted(batch_objective_offsets_.begin(),
+                                     batch_objective_offsets_.end());
+    other.set_batch_objective_offsets(converted);
+  }
 
   if (A_.size() > 0) {
     auto other_A = gpu_cast<f_t, other_f_t>(A_, stream);
@@ -1546,36 +1538,43 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
                                     static_cast<i_t>(A_indices_.size()),
                                     A_offsets_.data(),
                                     static_cast<i_t>(A_offsets_.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (c_.size() > 0) {
     auto other_c = gpu_cast<f_t, other_f_t>(c_, stream);
     other.set_objective_coefficients(other_c.data(), static_cast<i_t>(other_c.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (b_.size() > 0) {
     auto other_b = gpu_cast<f_t, other_f_t>(b_, stream);
     other.set_constraint_bounds(other_b.data(), static_cast<i_t>(other_b.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_lower_bounds_.size() > 0) {
     auto other_clb = gpu_cast<f_t, other_f_t>(constraint_lower_bounds_, stream);
     other.set_constraint_lower_bounds(other_clb.data(), static_cast<i_t>(other_clb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_upper_bounds_.size() > 0) {
     auto other_cub = gpu_cast<f_t, other_f_t>(constraint_upper_bounds_, stream);
     other.set_constraint_upper_bounds(other_cub.data(), static_cast<i_t>(other_cub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_lower_bounds_.size() > 0) {
     auto other_vlb = gpu_cast<f_t, other_f_t>(variable_lower_bounds_, stream);
     other.set_variable_lower_bounds(other_vlb.data(), static_cast<i_t>(other_vlb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_upper_bounds_.size() > 0) {
     auto other_vub = gpu_cast<f_t, other_f_t>(variable_upper_bounds_, stream);
     other.set_variable_upper_bounds(other_vub.data(), static_cast<i_t>(other_vub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_types_.size() > 0) {

@@ -17,6 +17,9 @@
 #include <rmm/device_uvector.hpp>
 
 #include <atomic>
+#include <tuple>
+
+#include <cuda/std/span>
 
 namespace cuopt::linear_programming {
 
@@ -50,9 +53,11 @@ enum pdlp_solver_mode_t : int {
  * @brief Enum representing the different methods that can be used to solve the
  * linear programming problem.
  *
- * Concurrent: Use both PDLP and DualSimplex in parallel.
+ * Concurrent: Use PDLP, Barrier and DualSimplex in parallel.
  * PDLP: Use the PDLP method.
  * DualSimplex: Use the dual simplex method.
+ * Barrier: Use the barrier method
+ * Unset: The value was not set.
  *
  * @note Default method is Concurrent.
  */
@@ -60,8 +65,21 @@ enum method_t : int {
   Concurrent  = CUOPT_METHOD_CONCURRENT,
   PDLP        = CUOPT_METHOD_PDLP,
   DualSimplex = CUOPT_METHOD_DUAL_SIMPLEX,
-  Barrier     = CUOPT_METHOD_BARRIER
+  Barrier     = CUOPT_METHOD_BARRIER,
+  Unset       = CUOPT_METHOD_UNSET
 };
+
+/// Returns the corresponding string from the enum `method_t`.
+inline std::string method_to_string(method_t method)
+{
+  switch (method) {
+    case method_t::DualSimplex: return "Dual Simplex";
+    case method_t::PDLP: return "PDLP";
+    case method_t::Barrier: return "Barrier";
+    case method_t::Concurrent: return "Concurrent";
+    default: return "Unset";
+  }
+}
 
 /**
  * @brief Enum representing the PDLP precision modes.
@@ -147,6 +165,12 @@ class pdlp_solver_settings_t {
    * @param[in] initial_primal_weight Initial primal weight.
    */
   void set_initial_primal_weight(f_t initial_primal_weight);
+  /**
+   * @brief Set an initial pdlp iteration.
+   *
+   * @param[in] initial_pdlp_iteration Initial pdlp iteration.
+   */
+  void set_initial_pdlp_iteration(i_t initial_pdlp_iteration);
 
   /**
    * @brief Set the pdlp warm start data. This allows to restart PDLP with a
@@ -213,6 +237,8 @@ class pdlp_solver_settings_t {
   std::optional<f_t> get_initial_step_size() const;
   // TODO batch mode: tmp
   std::optional<f_t> get_initial_primal_weight() const;
+  // TODO batch mode: tmp
+  std::optional<i_t> get_initial_pdlp_iteration() const;
 
   const rmm::device_uvector<f_t>& get_initial_primal_solution() const;
   const rmm::device_uvector<f_t>& get_initial_dual_solution() const;
@@ -245,6 +271,7 @@ class pdlp_solver_settings_t {
   std::string log_file{""};
   std::string sol_file{""};
   std::string user_problem_file{""};
+  std::string presolve_file{""};
   bool per_constraint_residual{false};
   bool crossover{false};
   bool cudss_deterministic{false};
@@ -255,8 +282,28 @@ class pdlp_solver_settings_t {
   i_t barrier_dual_initial_point{-1};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
+  bool barrier_iterative_refinement{true};
+  f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
+  /**
+   * @brief Stop the solver as soon as a primal feasible iterate is encountered.
+   *
+   * In non-batch mode the solver returns the first primal feasible iterate (without waiting for
+   * optimality / dual feasibility). In batch mode the whole batch stops the moment any climber
+   * reaches primal feasibility; every climber returns its current iterate with its current
+   * termination status. Can be composed with `per_constraint_residual`.
+   * Mutually exclusive with `all_primal_feasible`.
+   */
   bool first_primal_feasible{false};
+  /**
+   * @brief Batch-only: stop only once every climber has reached (at least) primal feasibility.
+   *
+   * Each climber is individually ejected from the batch the first time it becomes primal
+   * feasible and its per-climber solution is captured. The solver returns when all climbers
+   * have been captured. Setting this in non-batch mode is a validation error. Setting it
+   * together with `first_primal_feasible` is a validation error.
+   */
+  bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
@@ -264,14 +311,21 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Shared strong branching solved flags for cooperative DS + PDLP
+  cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
-  // Holds the information of new variable lower and upper bounds for each climber in the format:
-  // (variable index, new lower bound, new upper bound)
-  // For each entry in the vector, a new version of the problem (climber) will be solved
-  // concurrently i.e. if new_bounds.size() == 2, then 2 versions of the problem with updated bounds
-  // will be solved concurrently
-  std::vector<std::tuple<i_t, f_t, f_t>> new_bounds;
+  // Holds per-climber variable-bound overrides in the format:
+  // (climber id, variable index, new lower bound, new upper bound).
+  // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly
+  // on the optimization_problem_t instead.
+  std::vector<std::tuple<i_t, i_t, f_t, f_t>> new_bounds;
+  // By default to save memory and speed we don't store and copy each climber's primal and dual
+  // solutions We only retrieve termination statistics and the objective values
+  bool generate_batch_primal_dual_solution{false};
+  // Used to force batch PDLP to solve a subbatch of the problems at a time
+  // The 0 default value will make the solver use its heuristic to determine the subbatch size
+  i_t fixed_batch_size{0};
 
  private:
   /** Initial primal solution */
@@ -284,6 +338,9 @@ class pdlp_solver_settings_t {
   /** Initial primal weight */
   // TODO batch mode: tmp
   std::optional<f_t> initial_primal_weight_;
+  /** Initial pdlp iteration */
+  // TODO batch mode: tmp
+  std::optional<i_t> initial_pdlp_iteration_;
   /** GPU-backed warm start data (device_uvector), used by C++ API and local GPU solves */
   pdlp_warm_start_data_t<i_t, f_t> pdlp_warm_start_data_;
   /** Warm start data as spans over external memory, used by Cython/Python interface */

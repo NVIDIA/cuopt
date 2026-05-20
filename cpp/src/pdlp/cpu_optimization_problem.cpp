@@ -9,10 +9,11 @@
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>
@@ -30,7 +31,6 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 cpu_optimization_problem_t<i_t, f_t>::cpu_optimization_problem_t()
 {
-  CUOPT_LOG_DEBUG("cpu_optimization_problem_t constructor: Using CPU backend");
 }
 
 // ==============================================================================
@@ -123,6 +123,8 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
     cuopt_expects(Q_offsets != nullptr, error_type_t::ValidationError, "Q_offsets cannot be null");
   }
 
+  // Store raw CSR Q; symmetrization (H = Q + Q^T) is applied in optimization_problem_t setter on
+  // GPU.
   Q_values_.resize(size_values);
   Q_indices_.resize(size_indices);
   Q_offsets_.resize(size_offsets);
@@ -130,6 +132,14 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_objective_matrix(
   std::copy(Q_values, Q_values + size_values, Q_values_.begin());
   std::copy(Q_indices, Q_indices + size_indices, Q_indices_.begin());
   std::copy(Q_offsets, Q_offsets + size_offsets, Q_offsets_.begin());
+}
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
+  std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>
+    constraints)
+{
+  quadratic_constraints_ = std::move(constraints);
 }
 
 template <typename i_t, typename f_t>
@@ -167,13 +177,16 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
   // Auto-detect problem category based on variable types (matching original optimization_problem_t)
-  i_t n_integer = std::count_if(
-    variable_types_.begin(), variable_types_.end(), [](auto val) { return val == var_t::INTEGER; });
+  i_t n_discrete = std::count_if(variable_types_.begin(), variable_types_.end(), [](auto val) {
+    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
+  });
   // By default it is LP
-  if (n_integer == size) {
+  if (n_discrete == size) {
     problem_category_ = problem_category_t::IP;
-  } else if (n_integer > 0) {
+  } else if (n_discrete > 0) {
     problem_category_ = problem_category_t::MIP;
+  } else {
+    problem_category_ = problem_category_t::LP;
   }
 }
 
@@ -493,6 +506,19 @@ bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_objective() const
   return !Q_values_.empty();
 }
 
+template <typename i_t, typename f_t>
+const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
+cpu_optimization_problem_t<i_t, f_t>::get_quadratic_constraints() const
+{
+  return quadratic_constraints_;
+}
+
+template <typename i_t, typename f_t>
+bool cpu_optimization_problem_t<i_t, f_t>::has_quadratic_constraints() const
+{
+  return !quadratic_constraints_.empty();
+}
+
 // ==============================================================================
 // Host Getters (return references to CPU memory)
 // ==============================================================================
@@ -610,7 +636,7 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t con
   // Set objective coefficients
   if (!c_.empty()) { gpu_problem->set_objective_coefficients(c_.data(), c_.size()); }
 
-  // Set quadratic objective if present
+  // Set quadratic objective if present (GPU setter symmetrizes once: H = Q + Q^T)
   if (!Q_values_.empty()) {
     gpu_problem->set_quadratic_objective_matrix(Q_values_.data(),
                                                 Q_values_.size(),
@@ -618,6 +644,12 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t con
                                                 Q_indices_.size(),
                                                 Q_offsets_.data(),
                                                 Q_offsets_.size());
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    gpu_problem->set_quadratic_constraints(
+      std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>(
+        quadratic_constraints_));
   }
 
   // Set variable bounds
@@ -659,7 +691,7 @@ template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
   // Data is already in host memory, so we can directly create a view and write
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(maximize_);
@@ -721,13 +753,29 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     var_types_char.resize(variable_types_.size());
 
     for (size_t i = 0; i < var_types_char.size(); ++i) {
-      var_types_char[i] = (variable_types_[i] == var_t::INTEGER) ? 'I' : 'C';
+      var_types_char[i] = detail::var_type_to_char(variable_types_[i]);
     }
 
     data_model_view.set_variable_types(var_types_char.data(), var_types_char.size());
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  if (!Q_values_.empty()) {
+    // cpu optimization problem stores the raw CSR matrix, so we need to symmetrize it
+    const bool is_symmetrized = false;
+    data_model_view.set_quadratic_objective_matrix(Q_values_.data(),
+                                                   static_cast<i_t>(Q_values_.size()),
+                                                   Q_indices_.data(),
+                                                   static_cast<i_t>(Q_indices_.size()),
+                                                   Q_offsets_.data(),
+                                                   static_cast<i_t>(Q_offsets_.size()),
+                                                   false);
+  }
+
+  if (!quadratic_constraints_.empty()) {
+    data_model_view.set_quadratic_constraints(quadratic_constraints_);
+  }
+
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 // ==============================================================================

@@ -317,7 +317,7 @@ def solve(
                 sol.get_dual_objective
             )
             solution["solver_time"] = sol.get_solve_time()
-            solution["solved_by_pdlp"] = sol.get_solved_by_pdlp()
+            solution["solved_by"] = sol.get_solved_by().name
             solution["vars"] = sol.get_vars()
             solution["lp_statistics"] = {} if lp_stats is None else lp_stats
             solution["reduced_cost"] = reduced_cost

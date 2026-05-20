@@ -120,16 +120,17 @@ lp_status_t solve_linear_program_advanced(const lp_problem_t<i_t, f_t>& original
   std::vector<i_t> basic_list(m);
   std::vector<i_t> nonbasic_list;
   basis_update_mpf_t<i_t, f_t> ft(m, settings.refactor_frequency);
-  return solve_linear_program_with_advanced_basis(original_lp,
-                                                  start_time,
-                                                  settings,
-                                                  original_solution,
-                                                  ft,
-                                                  basic_list,
-                                                  nonbasic_list,
-                                                  vstatus,
-                                                  edge_norms,
-                                                  work_unit_context);
+  lp_status_t result = solve_linear_program_with_advanced_basis(original_lp,
+                                                                start_time,
+                                                                settings,
+                                                                original_solution,
+                                                                ft,
+                                                                basic_list,
+                                                                nonbasic_list,
+                                                                vstatus,
+                                                                edge_norms,
+                                                                work_unit_context);
+  return result;
 }
 
 template <typename i_t, typename f_t>
@@ -212,15 +213,20 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual::status_t::NUMERICAL ||
-      phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (phase1_status == dual::status_t::NUMERICAL) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
+  }
+  if (phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
   if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
   if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
-  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
+    original_solution.iterations = iter;
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
   phase1_obj = phase1_solution.objective;
   if (phase1_obj > -settings.primal_tol) {
     settings.log.printf("Dual feasible solution found.\n");
@@ -307,12 +313,15 @@ lp_status_t solve_linear_program_with_advanced_basis(
     if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
     if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
     if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
-    if (status == dual::status_t::CONCURRENT_LIMIT) { lp_status = lp_status_t::CONCURRENT_LIMIT; }
+    if (status == dual::status_t::CONCURRENT_LIMIT) {
+      original_solution.iterations = iter;
+      return lp_status_t::CONCURRENT_LIMIT;
+    }
     if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
     if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
   } else {
-    // Dual infeasible -> Primal unbounded
+    // Dual infeasible -> Primal unbounded or infeasible
     settings.log.printf("Dual infeasible\n");
     original_solution.objective = -inf;
     if (lp.obj_scale == 1.0) {
@@ -323,7 +332,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       original_solution.user_objective = inf;
     }
     original_solution.iterations = iter;
-    return lp_status_t::UNBOUNDED;
+    return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
   return lp_status;
 }
@@ -364,27 +373,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  // Clear variable pairs for QP
-  if (barrier_lp.Q.n > 0) {
-    const i_t num_free_variables = presolve_info.free_variable_pairs.size() / 2;
-    for (i_t k = 0; k < num_free_variables; k++) {
-      i_t u = presolve_info.free_variable_pairs[2 * k];
-      i_t v = presolve_info.free_variable_pairs[2 * k + 1];
-
-      const i_t row_start_u = barrier_lp.Q.row_start[u];
-      const i_t row_end_u   = barrier_lp.Q.row_start[u + 1];
-      const i_t row_start_v = barrier_lp.Q.row_start[v];
-      const i_t row_end_v   = barrier_lp.Q.row_start[v + 1];
-      if (row_end_u - row_start_u == 0 && row_end_v - row_start_v == 0) {
-        settings.log.printf("Free variable pair %d-%d has no quadratic term\n", u, v);
-      }
-    }
-  }
-
   barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
-  barrier_solver_settings_t<i_t, f_t> barrier_solver_settings;
-  lp_status_t barrier_status =
-    barrier_solver.solve(start_time, barrier_solver_settings, barrier_solution);
+  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
@@ -579,6 +569,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     solution.iterations         = barrier_solution.iterations;
   }
 
+  if (barrier_status == lp_status_t::CONCURRENT_LIMIT) { return lp_status_t::CONCURRENT_LIMIT; }
+
   // If we aren't doing crossover, we're done
   if (!settings.crossover || barrier_lp.Q.n > 0) { return barrier_status; }
 
@@ -679,6 +671,10 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   std::vector<f_t> edge_norms;
   lp_status_t status = solve_linear_program_advanced(
     original_lp, start_time, settings, lp_solution, vstatus, edge_norms);
+  if (status == lp_status_t::CONCURRENT_LIMIT) {
+    solution.iterations = lp_solution.iterations;
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
   uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
   uncrush_dual_solution(
     user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
@@ -706,7 +702,8 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
     mip_status_t mip_status = branch_and_bound.solve(mip_solution);
     if (mip_status == mip_status_t::OPTIMAL) {
@@ -745,7 +742,8 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    branch_and_bound_t branch_and_bound(problem, settings, tic());
+    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     branch_and_bound.set_initial_guess(guess);
     mip_status_t mip_status = branch_and_bound.solve(solution);
     if (mip_status == mip_status_t::OPTIMAL) {

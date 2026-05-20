@@ -84,6 +84,8 @@ struct simplex_solver_settings_t {
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
+      barrier_iterative_refinement(true),
+      barrier_step_scale(0.9),
       num_gpus(1),
       folding(-1),
       augmented(0),
@@ -100,11 +102,15 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      implied_bound_cuts(-1),
       clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
+      mip_batch_pdlp_strong_branching(0),
+      mip_batch_pdlp_reliability_branching(0),
+      strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
       reliability_branching(-1),
       inside_mip(0),
@@ -160,7 +166,9 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
+  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
+  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  f_t barrier_step_scale;             // step scale for barrier method
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
@@ -180,6 +188,7 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
@@ -187,8 +196,16 @@ struct simplex_solver_settings_t {
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
   f_t cut_min_orthogonality;       // minimum orthogonality for cuts
-  i_t mip_batch_pdlp_strong_branching{0};  // 0 if not using batch PDLP for strong branching, 1 if
-                                           // using batch PDLP for strong branching
+  i_t
+    mip_batch_pdlp_strong_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch PDLP only
+  i_t mip_batch_pdlp_reliability_branching;  // 0 = DS only, 1 = cooperative DS + PDLP, 2 = batch
+                                             // PDLP only
+  // Set the maximum number of simplex iterations allowed per trial branch when applying
+  // strong branching to the root node.
+  // -1 - Automatic (iteration limit = 200)
+  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
+  // >1 - Set as the iteration limit in dual simplex
+  i_t strong_branching_simplex_iteration_limit;
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
 

@@ -7,11 +7,11 @@
 
 #include "../utilities/pdlp_test_utilities.cuh"
 
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mps_parser/mps_data_model.hpp>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
@@ -108,7 +108,7 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   constexpr double expected_obj = -464.75314;  // Known optimal objective for afiro
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, true);
 
   // Store original problem data for later verification
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -137,7 +137,7 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get the postsolved primal solution
   auto h_primal_solution = host_copy(solution.get_primal_solution(), handle_.get_stream());
@@ -168,7 +168,7 @@ TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, true);
 
   const int orig_n_vars        = mps_data_model.get_n_variables();
   const int orig_n_constraints = mps_data_model.get_n_constraints();
@@ -181,7 +181,7 @@ TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get postsolved solutions
   auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());
@@ -204,7 +204,7 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   constexpr double tolerance = 1e-4;
 
   auto path           = make_path_absolute("linear_programming/ex10/ex10.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, false);
 
   // Store original problem dimensions
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -231,7 +231,7 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());
 
@@ -254,7 +254,7 @@ TEST(pslp_presolve, compare_with_no_presolve)
   constexpr double obj_tolerance = 1e-3;
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, true);
 
   // Solve without presolve
   auto settings_no_presolve      = pdlp_solver_settings_t<int, double>{};
@@ -285,8 +285,8 @@ TEST(pslp_presolve, compare_with_no_presolve)
     solve_lp(&handle_, mps_data_model, settings_pslp);
 
   // Both should be optimal
-  EXPECT_EQ((int)solution_no_presolve.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
-  EXPECT_EQ((int)solution_pslp.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution_no_presolve.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution_pslp.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Objective values should match
   double obj_no_presolve =
@@ -324,7 +324,7 @@ TEST(pslp_presolve, postsolve_reduced_costs)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, true);
 
   const int orig_n_vars = mps_data_model.get_n_variables();
 
@@ -336,7 +336,7 @@ TEST(pslp_presolve, postsolve_reduced_costs)
   optimization_problem_solution_t<int, double> solution =
     solve_lp(&handle_, mps_data_model, solver_settings);
 
-  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL);
+  EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
   // Get postsolved reduced costs
   auto h_reduced_costs = host_copy(solution.get_reduced_cost(), handle_.get_stream());
@@ -357,8 +357,9 @@ TEST(pslp_presolve, postsolve_multiple_problems)
   };
 
   for (const auto& [name, expected_obj] : instances) {
-    auto path           = make_path_absolute("linear_programming/" + name + ".mps");
-    auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, name == "afiro_original");
+    auto path = make_path_absolute("linear_programming/" + name + ".mps");
+    auto mps_data_model =
+      cuopt::linear_programming::io::parse_mps<int, double>(path, name == "afiro_original");
 
     const int orig_n_vars        = mps_data_model.get_n_variables();
     const int orig_n_constraints = mps_data_model.get_n_constraints();
@@ -370,7 +371,7 @@ TEST(pslp_presolve, postsolve_multiple_problems)
     optimization_problem_solution_t<int, double> solution =
       solve_lp(&handle_, mps_data_model, solver_settings);
 
-    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERIMINATION_STATUS_OPTIMAL)
+    EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL)
       << "Problem " << name << " should be optimal";
 
     auto h_primal = host_copy(solution.get_primal_solution(), handle_.get_stream());

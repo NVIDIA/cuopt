@@ -9,12 +9,13 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/error.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver_context.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 
@@ -67,8 +68,8 @@ static fj_state_t run_fj(std::string test_instance,
   std::cout << "Running: " << test_instance << std::endl;
 
   auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
@@ -77,16 +78,7 @@ static fj_state_t run_fj(std::string test_instance,
   // run the problem constructor of MIP, so that we do bounds standardization
   detail::problem_t<int, double> problem(op_problem);
   problem.preprocess_problem();
-  detail::pdhg_solver_t<int, double> pdhg_solver(problem.handle_ptr, problem);
-  detail::pdlp_initial_scaling_strategy_t<int, double> scaling(&handle_,
-                                                               problem,
-                                                               10,
-                                                               1.0,
-                                                               pdhg_solver,
-                                                               problem.reverse_coefficients,
-                                                               problem.reverse_offsets,
-                                                               problem.reverse_constraints,
-                                                               true);
+  detail::mip_scaling_strategy_t<int, double> scaling(problem);
 
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 30.;

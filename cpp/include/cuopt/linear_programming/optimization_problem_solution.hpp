@@ -90,9 +90,9 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     return result;
   }
 
-  f_t get_objective_value(i_t id = 0) const override { return solution_.get_objective_value(id); }
+  f_t get_objective_value(i_t id) const override { return solution_.get_objective_value(id); }
 
-  f_t get_dual_objective_value(i_t id = 0) const override
+  f_t get_dual_objective_value(i_t id) const override
   {
     return solution_.get_dual_objective_value(id);
   }
@@ -122,9 +122,9 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
     return solution_.get_additional_termination_information(id).number_of_steps_taken;
   }
 
-  bool is_solved_by_pdlp(i_t id = 0) const override
+  method_t solved_by(i_t id = 0) const override
   {
-    return solution_.get_additional_termination_information(id).solved_by_pdlp;
+    return solution_.get_additional_termination_information(id).solved_by;
   }
 
   const pdlp_warm_start_data_t<i_t, f_t>& get_pdlp_warm_start_data() const override
@@ -338,7 +338,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                            get_l2_dual_residual(),
                                                            get_gap(),
                                                            get_num_iterations(),
-                                                           is_solved_by_pdlp(),
+                                                           solved_by(),
                                                            std::move(cpu_ws));
     }
 
@@ -353,7 +353,7 @@ class gpu_lp_solution_t : public lp_solution_interface_t<i_t, f_t> {
                                                          get_l2_dual_residual(),
                                                          get_gap(),
                                                          get_num_iterations(),
-                                                         is_solved_by_pdlp());
+                                                         solved_by());
   }
 
   /**

@@ -13,15 +13,13 @@ ARGS=$*
 # script, and that this script resides in the repo dir!
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
-LIBMPS_PARSER_BUILD_DIR=${LIBMPS_PARSER_BUILD_DIR:=${REPODIR}/cpp/libmps_parser/build}
 
-VALIDARGS="clean libcuopt libmps_parser cuopt_mps_parser cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
    libcuopt         - build the cuopt C++ code
-   libmps_parser    - build the libmps_parser C++ code
-   cuopt_mps_parser - build the cuopt_mps_parser python package
+   cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
@@ -43,6 +41,7 @@ HELP="$0 [<target> ...] [<flag> ...]
    --skip-c-python-adapters - skip building C and Python adapter files (cython_solve.cu and cuopt_c.cpp)
    --skip-tests-build  - disable building of all tests
    --skip-routing-build - skip building routing components
+   --skip-grpc-build    - skip building gRPC and protobuf components (auto-enabled with -tsan)
    --skip-fatbin-write      - skip the fatbin write
    --host-lineinfo           - build with debug line information for host code
    --cache-tool=<tool> - pass the build cache tool (eg: ccache, sccache, distcc) that will be used
@@ -53,19 +52,18 @@ HELP="$0 [<target> ...] [<flag> ...]
    --show_depr_warn - show cmake deprecation warnings
    -h               - print this text
 
- default action (no args) is to build and install 'libcuopt' then 'cuopt' then 'docs' targets
+ default action (no args) is to build and install 'libcuopt', 'cuopt', 'cuopt_server', and 'cuopt_sh_client' targets (pass 'docs' explicitly to build documentation)
 
  libcuopt build dir is: ${LIBCUOPT_BUILD_DIR}
 
  Set env var LIBCUOPT_BUILD_DIR to override libcuopt build dir.
 "
-CUOPT_MPS_PARSER_BUILD_DIR=${REPODIR}/python/cuopt/cuopt/linear_programming/build
 PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/libcuopt/build
 CUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
 CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
 DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
-BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${LIBMPS_PARSER_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${CUOPT_MPS_PARSER_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
+BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
@@ -83,6 +81,7 @@ BUILD_MSAN=0
 SKIP_C_PYTHON_ADAPTERS=0
 SKIP_TESTS_BUILD=0
 SKIP_ROUTING_BUILD=0
+SKIP_GRPC_BUILD=0
 WRITE_FATBIN=1
 HOST_LINEINFO=0
 CACHE_ARGS=()
@@ -237,6 +236,7 @@ if hasArg -fsanitize; then
 fi
 if hasArg -tsan; then
     BUILD_TSAN=1
+    SKIP_GRPC_BUILD=1
 fi
 if hasArg -msan; then
     BUILD_MSAN=1
@@ -249,6 +249,9 @@ if hasArg --skip-tests-build; then
 fi
 if hasArg --skip-routing-build; then
     SKIP_ROUTING_BUILD=1
+fi
+if hasArg --skip-grpc-build; then
+    SKIP_GRPC_BUILD=1
 fi
 if hasArg --skip-fatbin-write; then
     WRITE_FATBIN=0
@@ -274,10 +277,6 @@ function contains_string {
 # Append `-DFIND_CUOPT_CPP=ON` to CMAKE_ARGS unless a user specified the option.
 if ! contains_string "DFIND_CUOPT_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
     EXTRA_CMAKE_ARGS+=("-DFIND_CUOPT_CPP=ON")
-fi
-
-if ! contains_string "DFIND_MPS_PARSER_CPP" "${EXTRA_CMAKE_ARGS[@]}"; then
-    EXTRA_CMAKE_ARGS+=("-DFIND_MPS_PARSER_CPP=ON")
 fi
 
 # If clean given, run it prior to any other steps
@@ -341,25 +340,8 @@ else
 fi
 
 ################################################################################
-# Configure, build, and install libmps_parser
-if buildAll || hasArg libmps_parser; then
-    mkdir -p "${LIBMPS_PARSER_BUILD_DIR}"
-    cd "${LIBMPS_PARSER_BUILD_DIR}"
-    cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
-          -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
-          "${CACHE_ARGS[@]}" \
-          "${REPODIR}"/cpp/libmps_parser/
-
-    if hasArg -n; then
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" ${VERBOSE_FLAG}
-    else
-        cmake --build "${LIBMPS_PARSER_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG}
-    fi
-fi
-
-################################################################################
-# Configure, build, and install libcuopt
-if buildAll || hasArg libcuopt; then
+# Configure and build libcuopt (and optionally just the gRPC server)
+if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
     cd "${LIBCUOPT_BUILD_DIR}"
     cmake -DDEFINE_ASSERT=${DEFINE_ASSERT} \
@@ -378,6 +360,7 @@ if buildAll || hasArg libcuopt; then
           -DSKIP_C_PYTHON_ADAPTERS=${SKIP_C_PYTHON_ADAPTERS} \
           -DBUILD_TESTS=$((1 - ${SKIP_TESTS_BUILD})) \
           -DSKIP_ROUTING_BUILD=${SKIP_ROUTING_BUILD} \
+          -DSKIP_GRPC_BUILD=${SKIP_GRPC_BUILD} \
           -DWRITE_FATBIN=${WRITE_FATBIN} \
           -DHOST_LINEINFO=${HOST_LINEINFO} \
           -DPARALLEL_LEVEL="${PARALLEL_LEVEL}" \
@@ -386,7 +369,10 @@ if buildAll || hasArg libcuopt; then
           "${EXTRA_CMAKE_ARGS[@]}" \
           "${REPODIR}"/cpp
     JFLAG="${PARALLEL_LEVEL:+-j${PARALLEL_LEVEL}}"
-    if hasArg -n; then
+    if hasArg cuopt_grpc_server && ! hasArg libcuopt && ! buildAll; then
+        # Build only the gRPC server (ninja resolves libcuopt as a dependency)
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} ${JFLAG}
+    elif hasArg -n; then
         # Manual make invocation to start its jobserver
         make ${JFLAG} -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
     else
@@ -419,14 +405,6 @@ if buildAll || hasArg cuopt; then
         python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build and install the cuopt MPS parser Python package
-if buildAll || hasArg cuopt_mps_parser; then
-    cd "${REPODIR}"/python/cuopt/cuopt/linear_programming
-
-    SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX};-DCMAKE_LIBRARY_PATH=${LIBCUOPT_BUILD_DIR};-DCMAKE_CUDA_ARCHITECTURES=${CUOPT_CMAKE_CUDA_ARCHITECTURES};${EXTRA_CMAKE_ARGS[*]// /;}" \
-        python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
-fi
-
 # Build and install the cuopt_server Python package
 if buildAll || hasArg cuopt_server; then
     cd "${REPODIR}"/python/cuopt_server
@@ -439,8 +417,8 @@ if buildAll || hasArg cuopt_sh_client; then
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build the docs
-if buildAll || hasArg docs; then
+# Build the docs (opt-in; pass 'docs' explicitly to build)
+if hasArg docs; then
     cd "${REPODIR}"/cpp/doxygen
     doxygen Doxyfile
 

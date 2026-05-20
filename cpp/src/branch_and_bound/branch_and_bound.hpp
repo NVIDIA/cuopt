@@ -8,12 +8,12 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/deterministic_workers.hpp>
-#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/worker.hpp>
+#include <branch_and_bound/worker_pool.hpp>
 
 #include <cuts/cuts.hpp>
 
@@ -29,6 +29,8 @@
 #include <utilities/producer_sync.hpp>
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
+
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
 #include <omp.h>
 
@@ -77,6 +79,7 @@ class branch_and_bound_t {
   branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
+                     const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
                      std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
@@ -88,7 +91,8 @@ class branch_and_bound_t {
                                     const std::vector<f_t>& reduced_costs,
                                     f_t objective,
                                     f_t user_objective,
-                                    i_t iterations)
+                                    i_t iterations,
+                                    method_t method)
   {
     if (!is_root_solution_set) {
       root_crossover_soln_.x              = primal;
@@ -98,6 +102,7 @@ class branch_and_bound_t {
       root_crossover_soln_.objective      = objective;
       root_crossover_soln_.user_objective = user_objective;
       root_crossover_soln_.iterations     = iterations;
+      root_relax_solved_by                = method;
       root_crossover_solution_set_.store(true, std::memory_order_release);
     }
   }
@@ -115,11 +120,18 @@ class branch_and_bound_t {
 
   void set_concurrent_lp_root_solve(bool enable) { enable_concurrent_lp_root_solve_ = enable; }
 
+  // Seed the global upper bound from an external source (e.g., early FJ during presolve).
+  // `bound` must be in B&B's internal objective space.
+  void set_initial_upper_bound(f_t bound);
+
+  f_t get_upper_bound() const { return upper_bound_.load(); }
+  bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
+
   // Repair a low-quality solution from the heuristics.
   bool repair_solution(const std::vector<f_t>& leaf_edge_norms,
                        const std::vector<f_t>& potential_solution,
                        f_t& repaired_obj,
-                       std::vector<f_t>& repaired_solution) const;
+                       std::vector<f_t>& repaired_solution);
 
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
@@ -148,9 +160,9 @@ class branch_and_bound_t {
  private:
   const user_problem_t<i_t, f_t>& original_problem_;
   const simplex_solver_settings_t<i_t, f_t> settings_;
+  const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
-  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
-  std::atomic<bool> signal_extend_cliques_{false};
+  omp_atomic_t<bool> signal_extend_cliques_{false};
 
   work_limit_context_t work_unit_context_{"B&B"};
 
@@ -179,11 +191,22 @@ class branch_and_bound_t {
   // Mutex for upper bound
   omp_mutex_t mutex_upper_;
 
-  // Global variable for upper bound
+  // Global upper bound in B&B's internal objective space.
+  // A finite value implies an incumbent exists somewhere (solver-space in incumbent_, or
+  // original-space in the mip_solver_context_t), but does NOT imply incumbent_.has_incumbent.
   omp_atomic_t<f_t> upper_bound_;
 
-  // Global variable for incumbent. The incumbent should be updated with the upper bound
+  // Solver-space incumbent tracked directly by B&B.
   mip_solution_t<i_t, f_t> incumbent_;
+
+  // Whether obj should replace the stored incumbent. Must be called under mutex_upper_.
+  // Compares against the stored incumbent's objective, NOT against upper_bound_, because
+  // set_initial_upper_bound can set a tighter bound from an OG-space solution that has no
+  // corresponding solver-space incumbent (e.g. papilo can't crush it back).
+  bool improves_incumbent(f_t obj) const
+  {
+    return !incumbent_.has_incumbent || obj < incumbent_.objective;
+  }
 
   // Structure with the general info of the solver.
   branch_and_bound_stats_t<i_t, f_t> exploration_stats_;
@@ -198,12 +221,14 @@ class branch_and_bound_t {
   f_t root_objective_;
   lp_solution_t<i_t, f_t> root_relax_soln_;
   lp_solution_t<i_t, f_t> root_crossover_soln_;
+  method_t root_relax_solved_by{Unset};
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
+  std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts
@@ -243,6 +268,31 @@ class branch_and_bound_t {
               i_t node_depth,
               i_t node_int_infeas,
               double work_time = -1);
+
+  enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
+  struct cut_pass_result_t {
+    cut_pass_action_t action{cut_pass_action_t::CONTINUE};
+    mip_status_t status{mip_status_t::UNSET};
+  };
+
+  cut_pass_result_t do_cut_pass(i_t cut_pass,
+                                mip_solution_t<i_t, f_t>& solution,
+                                i_t& num_fractional,
+                                std::vector<i_t>& fractional,
+                                cut_generation_t<i_t, f_t>& cut_generation,
+                                basis_update_mpf_t<i_t, f_t>& basis_update,
+                                std::vector<i_t>& basic_list,
+                                std::vector<i_t>& nonbasic_list,
+                                variable_bounds_t<i_t, f_t>& variable_bounds,
+                                cut_pool_t<i_t, f_t>& cut_pool,
+                                cut_info_t<i_t, f_t>& cut_info,
+                                simplex_solver_settings_t<i_t, f_t>& lp_settings,
+                                i_t original_rows,
+                                f_t& last_upper_bound,
+                                f_t& last_objective,
+                                f_t root_relax_objective,
+                                i_t& cut_pool_size,
+                                const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
   void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
@@ -292,7 +342,7 @@ class branch_and_bound_t {
 
   // Policy-based tree update shared between opportunistic and deterministic codepaths.
   template <typename WorkerT, typename Policy>
-  std::pair<node_status_t, rounding_direction_t> update_tree_impl(
+  std::pair<node_status_t, branch_direction_t> update_tree_impl(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
@@ -300,7 +350,7 @@ class branch_and_bound_t {
     Policy& policy);
 
   // Opportunistic tree update wrapper.
-  std::pair<node_status_t, rounding_direction_t> update_tree(
+  std::pair<node_status_t, branch_direction_t> update_tree(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,

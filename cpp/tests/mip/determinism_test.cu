@@ -9,9 +9,9 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -56,7 +56,7 @@ class DeterministicBBTest : public ::testing::Test {
 TEST_F(DeterministicBBTest, reproducible_objective)
 {
   auto path    = make_path_absolute("/mip/gen-ip054.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -88,7 +88,7 @@ TEST_F(DeterministicBBTest, reproducible_objective)
 TEST_F(DeterministicBBTest, reproducible_infeasibility)
 {
   auto path    = make_path_absolute("/mip/stein9inf.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -120,7 +120,7 @@ TEST_F(DeterministicBBTest, reproducible_infeasibility)
 TEST_F(DeterministicBBTest, reproducible_high_contention)
 {
   auto path    = make_path_absolute("/mip/gen-ip054.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -155,7 +155,7 @@ TEST_F(DeterministicBBTest, reproducible_high_contention)
 TEST_F(DeterministicBBTest, reproducible_solution_vector)
 {
   auto path    = make_path_absolute("/mip/swath1.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -188,7 +188,7 @@ TEST_P(DeterministicBBInstanceTest, deterministic_across_runs)
 {
   auto [instance_path, num_threads, time_limit, work_limit] = GetParam();
   auto path                                                 = make_path_absolute(instance_path);
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
 
   // Get a random seed for each run
@@ -233,10 +233,10 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple("/mip/gen-ip054.mps", 128, 120.0, 1),
     std::make_tuple("/mip/bb_optimality.mps", 4, 60.0, 4),
     std::make_tuple("/mip/neos5.mps", 16, 60.0, 1),
-    std::make_tuple("/mip/seymour1.mps", 16, 60.0, 1),
+    std::make_tuple("/mip/pk1.mps", 16, 60.0, 1),
     // too heavy for CI
     // std::make_tuple("/mip/n2seq36q.mps", 16, 60.0, 4),
-    std::make_tuple("/mip/gmu-35-50.mps", 32, 60.0, 3)),
+    std::make_tuple("/mip/gmu-35-50.mps", 32, 60.0, 2)),
   [](const ::testing::TestParamInfo<DeterministicBBInstanceTest::ParamType>& info) {
     const auto& path = std::get<0>(info.param);
     int threads      = std::get<1>(info.param);

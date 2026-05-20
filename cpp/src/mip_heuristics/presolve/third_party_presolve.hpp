@@ -27,8 +27,18 @@ struct papilo_postsolve_deleter {
   void operator()(papilo::PostsolveStorage<f_t>* ptr) const;
 };
 
+enum class third_party_presolve_status_t {
+  INFEASIBLE,
+  UNBOUNDED,
+  UNBNDORINFEAS,
+  OPTIMAL,
+  REDUCED,
+  UNCHANGED,
+};
+
 template <typename i_t, typename f_t>
 struct third_party_presolve_result_t {
+  third_party_presolve_status_t status;
   optimization_problem_t<i_t, f_t> reduced_problem;
   std::vector<i_t> implied_integer_indices;
   std::vector<i_t> reduced_to_original_map;
@@ -48,15 +58,14 @@ class third_party_presolve_t {
   third_party_presolve_t(third_party_presolve_t&&)                 = delete;
   third_party_presolve_t& operator=(third_party_presolve_t&&)      = delete;
 
-  std::optional<third_party_presolve_result_t<i_t, f_t>> apply(
-    optimization_problem_t<i_t, f_t> const& op_problem,
-    problem_category_t category,
-    cuopt::linear_programming::presolver_t presolver,
-    bool dual_postsolve,
-    f_t absolute_tolerance,
-    f_t relative_tolerance,
-    double time_limit,
-    i_t num_cpu_threads = 0);
+  third_party_presolve_result_t<i_t, f_t> apply(optimization_problem_t<i_t, f_t> const& op_problem,
+                                                problem_category_t category,
+                                                cuopt::linear_programming::presolver_t presolver,
+                                                bool dual_postsolve,
+                                                f_t absolute_tolerance,
+                                                f_t relative_tolerance,
+                                                double time_limit,
+                                                i_t num_cpu_threads = 0);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,
             rmm::device_uvector<f_t>& dual_solution,
@@ -74,7 +83,7 @@ class third_party_presolve_t {
   ~third_party_presolve_t();
 
  private:
-  std::optional<third_party_presolve_result_t<i_t, f_t>> apply_pslp(
+  third_party_presolve_result_t<i_t, f_t> apply_pslp(
     optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit);
 
   void undo_pslp(rmm::device_uvector<f_t>& primal_solution,

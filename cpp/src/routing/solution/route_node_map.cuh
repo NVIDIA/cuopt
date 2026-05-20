@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,7 @@
 #pragma once
 
 #include <thrust/pair.h>
+#include <thrust/tuple.h>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <rmm/device_uvector.hpp>

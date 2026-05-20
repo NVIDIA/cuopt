@@ -7,6 +7,7 @@
 
 #include <cuopt/error.hpp>
 
+#include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
@@ -17,10 +18,12 @@
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
-saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handle_ptr,
-                                                     const i_t primal_size,
-                                                     const i_t dual_size,
-                                                     const size_t batch_size)
+saddle_point_state_t<i_t, f_t>::saddle_point_state_t(
+  raft::handle_t const* handle_ptr,
+  const i_t primal_size,
+  const i_t dual_size,
+  const size_t batch_size,
+  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
   : primal_size_{primal_size},
     dual_size_{dual_size},
     primal_solution_{batch_size * primal_size, handle_ptr->get_stream()},
@@ -28,7 +31,9 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handl
     delta_primal_{batch_size * primal_size, handle_ptr->get_stream()},
     delta_dual_{batch_size * dual_size, handle_ptr->get_stream()},
     // Primal gradient is only used in trust region restart mode which does not support batch mode
-    primal_gradient_{static_cast<size_t>(primal_size), handle_ptr->get_stream()},
+    primal_gradient_{
+      !is_cupdlpx_restart<i_t, f_t>(hyper_params) ? static_cast<size_t>(primal_size) : 0,
+      handle_ptr->get_stream()},
     dual_gradient_{batch_size * dual_size, handle_ptr->get_stream()},
     current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
     next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}

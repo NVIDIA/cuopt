@@ -208,6 +208,10 @@ class cusparse_view_t {
 
   // Update FP32 matrix copies after scaling (must be called after scale_problem())
   void update_mixed_precision_matrices();
+
+  // Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
+  // so the duplicated row/column buffers can be freed.
+  void redirect_cusparse_csr_structure_pointers(const problem_t<i_t, f_t>& original_problem);
 };
 
 // Mixed precision SpMV: FP32 matrix with FP64 vectors and FP64 compute type

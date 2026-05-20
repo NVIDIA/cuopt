@@ -11,8 +11,8 @@
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -38,8 +38,8 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute(test_instance.file);
-  cuopt::mps_parser::mps_data_model_t<int, double> problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   // set the time limit depending on we are in assert mode or not
 #ifdef ASSERT_MODE
@@ -68,6 +68,26 @@ TEST(mip_solve, run_small_tests)
   for (const auto& test_instance : test_instances) {
     test_miplib_file(test_instance, settings);
   }
+}
+
+// See https://github.com/NVIDIA/cuopt/pull/1111
+TEST(mip_solve, low_thread_count_test)
+{
+  mip_solver_settings_t<int, double> settings;
+  settings.num_cpu_threads = 2;
+  settings.time_limit      = 30;
+
+  const raft::handle_t handle_{};
+
+  auto path = make_path_absolute("mip/dominating_set.mps");
+  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+  handle_.sync_stream();
+
+  mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), 3.0, 1e-14);
+  test_variable_bounds(problem, solution.get_solution(), settings);
 }
 
 }  // namespace cuopt::linear_programming::test

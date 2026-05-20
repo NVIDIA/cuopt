@@ -70,9 +70,7 @@ extensions = [
     "sphinx_design",
     "sphinx_markdown_tables",
     "sphinx.ext.doctest",
-    "IPython.sphinxext.ipython_console_highlighting",
-    "IPython.sphinxext.ipython_directive",
-    "myst_nb",
+    "myst_parser",
     "sphinx.ext.autosectionlabel",
     "swagger_plugin_for_sphinx",
 ]
@@ -91,9 +89,6 @@ swagger = [
     },
 ]
 
-nbsphinx_execute = "never"
-ipython_mplbackend = "str"
-
 # Add any files to exclude from the build
 exclude_patterns = ["hidden"]
 
@@ -103,8 +98,7 @@ templates_path = ["_templates"]
 # The suffix(es) of source filenames.
 source_suffix = {
     ".rst": "restructuredtext",
-    ".md": "myst-nb",
-    ".ipynb": "myst-nb",
+    ".md": "markdown",
 }
 
 # The master toctree document.
@@ -301,7 +295,10 @@ nitpick_ignore = [
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.is_integer"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_count"),
     ("py:obj", "cuopt_sh_client.PDLPSolverMode.bit_length"),
-    ("py:obj", "data_model.DataModel.set_data_model_view"),
+    (
+        "py:obj",
+        "cuopt.linear_programming.data_model.DataModel.set_data_model_view",
+    ),
     (
         "py:obj",
         "cuopt.linear_programming.solver_settings.SolverSettings.to_base_type",

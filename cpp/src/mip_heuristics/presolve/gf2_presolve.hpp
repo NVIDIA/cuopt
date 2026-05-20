@@ -10,6 +10,7 @@
 #if !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"  // ignore boost error for pip wheel build
+#pragma GCC diagnostic ignored "-Wnarrowing"
 #endif
 #include <papilo/Config.hpp>
 #include <papilo/core/PresolveMethod.hpp>

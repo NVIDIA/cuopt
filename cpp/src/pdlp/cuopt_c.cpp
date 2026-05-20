@@ -17,7 +17,7 @@
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
-#include <mps_parser/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-using namespace cuopt::mps_parser;
+using namespace cuopt::linear_programming::io;
 using namespace cuopt::linear_programming;
 
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
@@ -172,6 +172,11 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
       variable_types == nullptr) {
     return CUOPT_INVALID_ARGUMENT;
   }
+  for (int j = 0; j < num_variables; j++) {
+    if (!detail::is_valid_public_var_type_code(variable_types[j])) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
 
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
@@ -195,8 +200,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
     // Set variable types (problem category is auto-detected)
     std::vector<var_t> variable_types_host(num_variables);
     for (int j = 0; j < num_variables; j++) {
-      variable_types_host[j] =
-        variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+      variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
     }
     problem->set_variable_types(variable_types_host.data(), num_variables);
 
@@ -232,6 +236,13 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
       variable_upper_bounds == nullptr) {
     return CUOPT_INVALID_ARGUMENT;
   }
+  if (variable_types != nullptr) {
+    for (int j = 0; j < num_variables; j++) {
+      if (!detail::is_valid_public_var_type_code(variable_types[j])) {
+        return CUOPT_INVALID_ARGUMENT;
+      }
+    }
+  }
 
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
@@ -257,8 +268,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
     std::vector<var_t> variable_types_host(num_variables);
     if (variable_types != nullptr) {
       for (int j = 0; j < num_variables; j++) {
-        variable_types_host[j] =
-          variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+        variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
       }
     } else {
       // Default to all continuous
@@ -614,8 +624,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 
   // Convert var_t enum to C API char values
   for (size_t j = 0; j < variable_types_host.size(); j++) {
-    variable_types_ptr[j] =
-      variable_types_host[j] == var_t::INTEGER ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
+    variable_types_ptr[j] = detail::var_type_to_char(variable_types_host[j]);
   }
   return CUOPT_SUCCESS;
 }

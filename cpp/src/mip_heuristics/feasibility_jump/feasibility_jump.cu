@@ -23,6 +23,7 @@
 
 #include <thrust/copy.h>
 #include <thrust/count.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 #include <cub/cub.cuh>
@@ -705,7 +706,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
 
-    if (use_graph) { cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal); }
+    if (use_graph) {
+      RAFT_CUDA_TRY(cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal));
+    }
     for (i_t i = 0; i < (use_graph ? iterations_per_graph : 1); ++i) {
       {
         // related varialbe array has to be dynamically computed each iteration
@@ -718,52 +721,52 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
           load_balancing_score_update(climber_stream, climber_idx);
         } else {
           if (is_binary_pb) {
-            cudaLaunchCooperativeKernel(
+            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
               (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
               grid_resetmoves_bin,
               blocks_resetmoves_bin,
               reset_moves_args,
               0,
-              climber_stream);
+              climber_stream));
           } else {
-            cudaLaunchCooperativeKernel(
+            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
               (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
               grid_resetmoves,
               blocks_resetmoves,
               reset_moves_args,
               0,
-              climber_stream);
+              climber_stream));
           }
         }
 #if FJ_DEBUG_LOAD_BALANCING
         if (use_load_balancing) {
-          cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
-                                      grid_resetmoves_bin,
-                                      blocks_resetmoves_bin,
-                                      reset_moves_args,
-                                      0,
-                                      climber_stream);
-          cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
-                                      512,
-                                      128,
-                                      kernel_args,
-                                      0,
-                                      climber_stream);
+          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
+                                                    grid_resetmoves_bin,
+                                                    blocks_resetmoves_bin,
+                                                    reset_moves_args,
+                                                    0,
+                                                    climber_stream));
+          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
+                                                    512,
+                                                    128,
+                                                    kernel_args,
+                                                    0,
+                                                    climber_stream));
         }
 #endif
 
-        cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
-                         grid_lift_move,
-                         blocks_lift_move,
-                         kernel_args,
-                         0,
-                         climber_stream);
-        cudaLaunchKernel((void*)update_breakthrough_moves_kernel<i_t, f_t>,
-                         grid_lift_move,
-                         blocks_lift_move,
-                         kernel_args,
-                         0,
-                         climber_stream);
+        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
+                                       grid_lift_move,
+                                       blocks_lift_move,
+                                       kernel_args,
+                                       0,
+                                       climber_stream));
+        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_breakthrough_moves_kernel<i_t, f_t>,
+                                       grid_lift_move,
+                                       blocks_lift_move,
+                                       kernel_args,
+                                       0,
+                                       climber_stream));
       }
 
       // compaction kernel
@@ -776,44 +779,49 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  pb_ptr->n_variables,
                                  climber_stream);
 
-      cudaLaunchKernel((void*)select_variable_kernel<i_t, f_t>,
-                       dim3(1),
-                       dim3(256),
-                       kernel_args,
-                       0,
-                       climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)select_variable_kernel<i_t, f_t>,
+                                     dim3(1),
+                                     dim3(256),
+                                     kernel_args,
+                                     0,
+                                     climber_stream));
 
-      cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
-                                  grid_update_weights,
-                                  blocks_update_weights,
-                                  kernel_args,
-                                  0,
-                                  climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
+                                                grid_update_weights,
+                                                blocks_update_weights,
+                                                kernel_args,
+                                                0,
+                                                climber_stream));
       raft::copy(data.break_condition.data(), data.temp_break_condition.data(), 1, climber_stream);
-      cudaLaunchKernel((void*)update_assignment_kernel<i_t, f_t>,
-                       grid_setval,
-                       blocks_setval,
-                       update_assignment_args,
-                       0,
-                       climber_stream);
-      cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
-                       1,
-                       blocks_update_changed_constraints,
-                       kernel_args,
-                       0,
-                       climber_stream);
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_assignment_kernel<i_t, f_t>,
+                                     grid_setval,
+                                     blocks_setval,
+                                     update_assignment_args,
+                                     0,
+                                     climber_stream));
+      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
+                                     1,
+                                     blocks_update_changed_constraints,
+                                     kernel_args,
+                                     0,
+                                     climber_stream));
     }
 
     if (use_graph) {
-      cudaStreamEndCapture(climber_stream, &graph);
-      cudaGraphInstantiate(&graph_instance, graph);
+      RAFT_CUDA_TRY(cudaStreamEndCapture(climber_stream, &graph));
+      try {
+        RAFT_CUDA_TRY(cudaGraphInstantiate(&graph_instance, graph));
+      } catch (...) {
+        RAFT_CUDA_TRY(cudaGraphDestroy(graph));
+        throw;
+      }
       RAFT_CHECK_CUDA(climber_stream);
-      cudaGraphDestroy(graph);
+      RAFT_CUDA_TRY(cudaGraphDestroy(graph));
       graph_created = true;
     }
   }
 
-  if (use_graph) cudaGraphLaunch(graph_instance, climber_stream);
+  if (use_graph) RAFT_CUDA_TRY(cudaGraphLaunch(graph_instance, climber_stream));
 }
 
 template <typename i_t, typename f_t>
@@ -879,7 +887,7 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
     // every now and then, ensure external solutions are added to the population
     // this is done here because FJ is called within FP and also after recombiners
     // so FJ is one of the most inner and most frequent functions to be called
-    if (steps % 10000 == 0) {
+    if (steps % 10000 == 0 && context.diversity_manager_ptr != nullptr) {
       context.diversity_manager_ptr->get_population_pointer()
         ->add_external_solutions_to_population();
     }
@@ -932,6 +940,22 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
       // FIRST_FEASIBLE mode, we can remove the following too.
       bool is_feasible = solution.compute_feasibility();
       solution.handle_ptr->sync_stream();
+
+      // Invoke improvement callback if we have a better feasible solution
+      if (is_feasible && improvement_callback) {
+        f_t user_obj = solution.get_user_objective();
+        if (solution.h_obj < last_reported_objective_) {
+          last_reported_objective_ = solution.h_obj;
+          // Copy assignment to host for callback
+          std::vector<f_t> h_assignment(solution.assignment.size());
+          raft::copy(h_assignment.data(),
+                     solution.assignment.data(),
+                     solution.assignment.size(),
+                     climber_stream);
+          climber_stream.synchronize();
+          improvement_callback(user_obj, h_assignment);
+        }
+      }
 
       if (limit_reached) { break; }
 
@@ -1059,8 +1083,9 @@ i_t fj_t<i_t, f_t>::solve(solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("fj_solve");
   timer_t timer(settings.time_limit);
-  handle_ptr = const_cast<raft::handle_t*>(solution.handle_ptr);
-  pb_ptr     = solution.problem_ptr;
+  handle_ptr               = const_cast<raft::handle_t*>(solution.handle_ptr);
+  pb_ptr                   = solution.problem_ptr;
+  last_reported_objective_ = std::numeric_limits<f_t>::infinity();
   if (settings.mode != fj_mode_t::ROUNDING) {
     cuopt_func_call(solution.test_variable_bounds(true));
     cuopt_assert(solution.test_number_all_integer(), "All integers must be rounded");

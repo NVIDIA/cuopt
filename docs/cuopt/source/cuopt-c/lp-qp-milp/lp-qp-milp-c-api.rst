@@ -81,6 +81,7 @@ These constants are used to define the the variable type in the :c:func:`cuOptCr
 
 .. doxygendefine:: CUOPT_CONTINUOUS
 .. doxygendefine:: CUOPT_INTEGER
+.. doxygendefine:: CUOPT_SEMI_CONTINUOUS
 
 Infinity Constant
 -----------------
@@ -266,13 +267,14 @@ Termination Status Constants
 These constants define the termination status received from the :c:func:`cuOptGetTerminationStatus` function.
 
 .. LP/MIP termination status constants
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_NO_TERMINATION
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_OPTIMAL
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_INFEASIBLE
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_UNBOUNDED
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_ITERATION_LIMIT
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_TIME_LIMIT
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_NUMERICAL_ERROR
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_PRIMAL_FEASIBLE
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_FEASIBLE_FOUND
-.. doxygendefine:: CUOPT_TERIMINATION_STATUS_CONCURRENT_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_NO_TERMINATION
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_OPTIMAL
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_INFEASIBLE
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_UNBOUNDED
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_ITERATION_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_TIME_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE

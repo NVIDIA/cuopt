@@ -8,11 +8,18 @@ ConfigureTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
-)# ##################################################################################################
+    LABELS numopt)
+# ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
 ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
-)
+    LABELS numopt)
+
+# ##################################################################################################
+# - MPS parser tests -------------------------------------------------------------------------------
+ConfigureTest(MPS_PARSER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser_test.cpp
+    LABELS numopt)
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
@@ -41,14 +48,13 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     target_include_directories(C_API_TEST
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../libmps_parser/src"
+        "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/c_api_tests"
     )
 
     target_link_libraries(C_API_TEST
         PRIVATE
-        mps_parser
         cuopt
         cuopttestutils
         c_api_tester
@@ -64,6 +70,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
     endif()
 
     add_test(NAME C_API_TEST COMMAND C_API_TEST)
+    set_tests_properties(C_API_TEST PROPERTIES LABELS "numopt")
 
     install(
         TARGETS C_API_TEST
@@ -71,4 +78,10 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
         DESTINATION bin/gtests/libcuopt
         EXCLUDE_FROM_ALL
     )
+endif()
+
+# ##################################################################################################
+# - gRPC Tests -------------------------------------------------------------------------------------
+if(CUOPT_ENABLE_GRPC)
+    add_subdirectory(grpc)
 endif()

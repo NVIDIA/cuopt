@@ -15,6 +15,8 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
+#include <thrust/iterator/transform_output_iterator.h>
+
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
@@ -23,6 +25,14 @@
 #include <raft/linalg/ternary_op.cuh>
 #include <raft/linalg/unary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
+
+#include <thrust/device_ptr.h>
+#include <thrust/extrema.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/transform_output_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/tuple.h>
 
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
@@ -71,11 +81,11 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
       (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
     homogenous_dual_upper_bounds_{
       (!infeasibility_detection) ? 0 : static_cast<size_t>(dual_size_h_), stream_view_},
-    primal_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params))
+    primal_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params) && infeasibility_detection)
                     ? static_cast<size_t>(dual_size_h_ * climber_strategies.size())
                     : 0,
                   stream_view_},
-    dual_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params))
+    dual_slack_{(is_cupdlpx_restart<i_t, f_t>(hyper_params) && infeasibility_detection)
                   ? static_cast<size_t>(primal_size_h_ * climber_strategies.size())
                   : 0,
                 stream_view_},

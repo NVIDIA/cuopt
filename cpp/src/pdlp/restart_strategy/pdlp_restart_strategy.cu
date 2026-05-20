@@ -29,6 +29,7 @@
 #include <raft/linalg/unary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
 
+#include <thrust/device_ptr.h>
 #include <thrust/device_vector.h>
 #include <thrust/extrema.h>
 #include <thrust/for_each.h>
@@ -39,6 +40,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/logical.h>
 #include <thrust/sort.h>
+#include <thrust/tuple.h>
 
 #include <cub/cub.cuh>
 
@@ -87,8 +89,8 @@ pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
     restart_triggered_{0, stream_view_},
     candidate_is_avg_{0, stream_view_},
     avg_duality_gap_{handle_ptr_,
-                     is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : primal_size,
-                     is_cupdlpx_restart<i_t, f_t>(hyper_params) ? 0 : dual_size,
+                     hyper_params.never_restart_to_average ? 0 : primal_size,
+                     hyper_params.never_restart_to_average ? 0 : dual_size,
                      climber_strategies,
                      hyper_params},
     current_duality_gap_{handle_ptr_,
@@ -691,6 +693,12 @@ void pdlp_restart_strategy_t<i_t, f_t>::should_cupdlpx_restart(i_t total_number_
 {
   std::fill(should_restart.begin(), should_restart.end(), 0);
 
+#ifdef CUPDLP_DEBUG_MODE
+  // Print the current stats of initial fixed point error and fixed point error
+  print("initial_fixed_point_error", initial_fixed_point_error_);
+  print("fixed_point_error", fixed_point_error_);
+#endif
+
   if (total_number_of_iterations == hyper_params_.major_iteration) {
 #ifdef CUPDLP_DEBUG_MODE
     printf("forced restart at first major\n");
@@ -842,9 +850,9 @@ __global__ void kernel_compute_next_cupdlpx_primal_weight(
   if (index >= batch_size) { return; }
 
   const f_t relative_l2_dual_residual_value =
-    view.l2_dual_residual[index] / (f_t(1.0) + view.l2_norm_primal_linear_objective);
+    view.l2_dual_residual[index] / (f_t(1.0) + view.l2_norm_primal_linear_objective[index]);
   const f_t relative_l2_primal_residual_value =
-    view.l2_primal_residual[index] / (f_t(1.0) + view.l2_norm_primal_right_hand_side);
+    view.l2_primal_residual[index] / (f_t(1.0) + view.l2_norm_primal_right_hand_side[index]);
 
   cupdlpx_new_primal_weight_computation<f_t>(view.primal_distance[index],
                                              view.dual_distance[index],
@@ -2436,9 +2444,9 @@ pdlp_restart_strategy_t<i_t, f_t>::make_cupdlpx_restart_view(
   v.l2_dual_residual   = make_span(current_convergence_information.get_l2_dual_residual());
   v.l2_primal_residual = make_span(current_convergence_information.get_l2_primal_residual());
   v.l2_norm_primal_linear_objective =
-    current_convergence_information.get_relative_dual_tolerance_factor();
+    make_span(current_convergence_information.get_l2_norm_primal_linear_objective());
   v.l2_norm_primal_right_hand_side =
-    current_convergence_information.get_relative_primal_tolerance_factor();
+    make_span(current_convergence_information.get_l2_norm_primal_right_hand_side());
   v.step_size                     = make_span(step_size);
   v.primal_weight                 = make_span(primal_weight);
   v.primal_weight_error_sum       = make_span(primal_weight_error_sum_);

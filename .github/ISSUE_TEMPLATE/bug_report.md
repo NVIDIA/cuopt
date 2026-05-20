@@ -11,7 +11,7 @@ assignees: ''
 A clear and concise description of what the bug is.
 
 **Steps/Code to reproduce bug**
-Follow this guide http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports to craft a minimal bug report. This helps us reproduce the issue you're having and resolve the issue more quickly.
+Follow the [RAPIDS issue guidelines](https://docs.rapids.ai/contributing/issues/) (search existing issues first, then describe the problem so it can be understood and reproduced). Use the cuOpt issue template that best fits; the RAPIDS page describes general practices. Provide clear steps (and code or data) so we can reproduce the issue and resolve it more quickly.
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.

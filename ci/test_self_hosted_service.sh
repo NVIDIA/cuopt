@@ -9,14 +9,22 @@ source rapids-init-pip
 
 # Download the cuopt built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
 CUOPT_SERVER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_server_${RAPIDS_PY_CUDA_SUFFIX}" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
 LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
 
-# echo to expand wildcard before adding `[extra]` requires for pip
+# generate constraints (possibly pinning to oldest support versions of dependencies)
+rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
+
+# notes:
+#
+#   * echo to expand wildcard before adding `[test]` requires for pip
+#   * just providing --constraint="${PIP_CONSTRAINT}" to be explicit, and because
+#     that environment variable is ignored if any other --constraint are passed via the CLI
+#
 rapids-pip-retry install \
-    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
+    --prefer-binary \
+    --constraint "${PIP_CONSTRAINT}" \
     "${CUOPT_WHEELHOUSE}"/cuopt*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl \
     "$(echo "${CUOPT_SERVER_WHEELHOUSE}"/cuopt_server*.whl)[test]"
@@ -69,7 +77,7 @@ DELAY=10
 
 sleep $DELAY
 
-server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health)
+server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health) # NOSONAR — self-signed cert generated locally by this script for CI; not a real TLS endpoint.
 
 EXITCODE=0
 

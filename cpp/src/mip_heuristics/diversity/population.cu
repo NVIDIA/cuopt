@@ -10,6 +10,7 @@
 
 #include <thrust/for_each.h>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/utils.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/copy_helpers.hpp>
@@ -265,10 +266,6 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
   f_t user_bound     = context.stats.get_solution_bound();
   solution_t<i_t, f_t> temp_sol(sol);
   problem_ptr->post_process_assignment(temp_sol.assignment);
-  if (context.settings.mip_scaling) {
-    rmm::device_uvector<f_t> dummy(0, temp_sol.handle_ptr->get_stream());
-    context.scaling.unscale_solutions(temp_sol.assignment, dummy);
-  }
   if (problem_ptr->has_papilo_presolve_data()) {
     problem_ptr->papilo_uncrush_assignment(temp_sol.assignment);
   }
@@ -283,6 +280,13 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
              temp_sol.assignment.size(),
              temp_sol.handle_ptr->get_stream());
   temp_sol.handle_ptr->sync_stream();
+  if (detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+        context.settings)) {
+    detail::strip_semi_continuous_auxiliaries_from_assignment(
+      user_assignment_vec,
+      detail::mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+        context.settings));
+  }
   callback->get_solution(user_assignment_vec.data(),
                          user_objective_vec.data(),
                          user_bound_vec.data(),
@@ -308,10 +312,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
         invoke_get_solution_callback(sol, get_sol_callback);
       }
     }
-    // save the best objective here, because we might not have been able to return the solution to
-    // the user because of the unscaling that causes infeasibility.
-    // This prevents an issue of repaired, or a fully feasible solution being reported in the call
-    // back in next run.
+    // Save the best objective here even if callback handling later exits early.
+    // This prevents older solutions from being reported as "new best" in subsequent callbacks.
     best_feasible_objective = sol.get_objective();
   }
 
@@ -320,6 +322,13 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       auto set_sol_callback       = static_cast<internals::set_solution_callback_t*>(callback);
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
+      const bool has_semi_continuous_callback_translation =
+        detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+          context.settings);
+      if (has_semi_continuous_callback_translation) {
+        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
+          get_semi_continuous_original_num_variables(context.settings);
+      }
       rmm::device_uvector<f_t> incumbent_assignment(callback_num_variables,
                                                     sol.handle_ptr->get_stream());
       solution_t<i_t, f_t> outside_sol(sol);
@@ -339,12 +348,19 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       // asserts
       if (outside_sol_objective == inf) { return; }
       d_outside_sol_objective.set_value_async(outside_sol_objective, sol.handle_ptr->get_stream());
+      if (has_semi_continuous_callback_translation) {
+        detail::append_semi_continuous_auxiliaries_to_assignment(
+          h_incumbent_assignment,
+          detail::mip_solver_settings_accessor<i_t, f_t>::
+            get_semi_continuous_binary_to_original_indices(context.settings),
+          context.settings.get_tolerances());
+      }
+      incumbent_assignment.resize(h_incumbent_assignment.size(), sol.handle_ptr->get_stream());
       raft::copy(incumbent_assignment.data(),
                  h_incumbent_assignment.data(),
                  incumbent_assignment.size(),
                  sol.handle_ptr->get_stream());
 
-      if (context.settings.mip_scaling) { context.scaling.scale_solutions(incumbent_assignment); }
       bool is_valid = problem_ptr->pre_process_assignment(incumbent_assignment);
       if (!is_valid) { return; }
       cuopt_assert(outside_sol.assignment.size() == incumbent_assignment.size(),

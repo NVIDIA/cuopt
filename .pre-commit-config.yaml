@@ -6,9 +6,9 @@ repos:
     rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
-        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
+        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
       - id: trailing-whitespace
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
       - id: check-json
@@ -37,7 +37,7 @@ repos:
             notebooks
           )
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v20.1.4
+    rev: v20.1.8
     hooks:
       - id: clang-format
         files: \.(cu|cuh|h|hpp|cpp|inl)$
@@ -99,6 +99,10 @@ repos:
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
             ^gemini-extension[.]json$
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.24.1
+    hooks:
+      - id: zizmor
   - repo: local
     hooks:
       - id: update-versions

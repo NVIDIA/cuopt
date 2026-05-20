@@ -42,6 +42,16 @@ Python (cuopt)
 
    Python Overview <cuopt-python/index.rst>
 
+====================================
+gRPC remote execution
+====================================
+.. toctree::
+   :maxdepth: 2
+   :caption: gRPC remote execution
+   :name: gRPC remote execution
+
+   gRPC overview <cuopt-grpc/index.rst>
+
 ===============================
 Server (cuopt-server)
 ===============================

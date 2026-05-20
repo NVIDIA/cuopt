@@ -13,6 +13,7 @@
 #include <dual_simplex/vector_math.hpp>
 
 #include <thrust/execution_policy.h>
+#include <thrust/extrema.h>
 #include <thrust/fill.h>
 #include <thrust/inner_product.h>
 #include <thrust/reduce.h>
@@ -177,6 +178,7 @@ f_t iterative_refinement_gmres(T& op,
 
   bool show_info = false;
 
+  f_t stop_ratio = 5.0;
   f_t bnorm      = std::max(1.0, vector_norm_inf<f_t>(b));
   f_t rel_res    = 1.0;
   int outer_iter = 0;
@@ -360,10 +362,21 @@ f_t iterative_refinement_gmres(T& op,
                      l2_residual);
     }
 
+    f_t improvement_ratio = best_residual / residual;
     // Track best solution
-    if (residual < best_residual) {
+    if (improvement_ratio >= stop_ratio) {
       best_residual = residual;
       raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
+    } else if (improvement_ratio < stop_ratio && improvement_ratio > 1.0) {
+      best_residual = residual;
+      raft::copy(x_sav.data(), x.data(), x.size(), x.stream());
+      // Residual decreased, but not enough, continue
+      if (show_info) {
+        CUOPT_LOG_INFO("GMRES IR: improvement ratio %e is less than %e, breaking early",
+                       improvement_ratio,
+                       stop_ratio);
+      }
+      break;
     } else {
       // Residual increased or stagnated, restore best and stop
       if (show_info) {

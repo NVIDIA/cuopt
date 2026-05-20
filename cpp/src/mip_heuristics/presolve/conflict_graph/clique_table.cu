@@ -146,6 +146,10 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     std::pair<i_t, i_t> constraint_range = A.get_constraint_range(i);
     if (constraint_range.second - constraint_range.first < 2) {
       CUOPT_LOG_DEBUG("Constraint %d has less than 2 variables, skipping", i);
+      if (problem.row_sense[i] == 'E' && ranged_constraint_counter < problem.num_range_rows &&
+          problem.range_rows[ranged_constraint_counter] == i) {
+        ranged_constraint_counter++;
+      }
       continue;
     }
     bool all_binary = true;
@@ -158,7 +162,13 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
       }
     }
     // if all variables are binary, convert the constraint to a knapsack constraint
-    if (!all_binary) { continue; }
+    if (!all_binary) {
+      if (problem.row_sense[i] == 'E' && ranged_constraint_counter < problem.num_range_rows &&
+          problem.range_rows[ranged_constraint_counter] == i) {
+        ranged_constraint_counter++;
+      }
+      continue;
+    }
     knapsack_constraint_t<i_t, f_t> knapsack_constraint;
 
     knapsack_constraint.cstr_idx = i;
@@ -1026,7 +1036,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
                           bool modify_problem,
-                          std::atomic<bool>* signal_extend)
+                          omp_atomic_t<bool>* signal_extend)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
@@ -1131,7 +1141,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,      \
     cuopt::timer_t & timer,                                               \
     bool modify_problem,                                                  \
-    std::atomic<bool>* signal_extend);                                    \
+    omp_atomic_t<bool>* signal_extend);                                   \
   template void build_clique_table<int, F_TYPE>(                          \
     const dual_simplex::user_problem_t<int, F_TYPE>& problem,             \
     clique_table_t<int, F_TYPE>& clique_table,                            \

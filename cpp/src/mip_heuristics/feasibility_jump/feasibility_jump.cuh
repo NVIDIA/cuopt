@@ -19,10 +19,16 @@
 
 #include <utilities/event_handler.cuh>
 
+#include <functional>
+
 #define FJ_DEBUG_LOAD_BALANCING 0
 #define FJ_SINGLE_STEP          0
 
 namespace cuopt::linear_programming::detail {
+
+template <typename f_t>
+using fj_improvement_callback_t =
+  std::function<void(f_t objective, const std::vector<f_t>& assignment)>;
 
 static constexpr int TPB_resetmoves                 = raft::WarpSize * 4;
 static constexpr int TPB_heavyvars                  = raft::WarpSize * 16;
@@ -210,8 +216,6 @@ class fj_t {
     std::atomic<bool>& preemption_flag,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
-  bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                 f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
@@ -628,6 +632,9 @@ class fj_t {
   std::vector<std::unique_ptr<climber_data_t>> climbers;
   rmm::device_uvector<typename climber_data_t::view_t> climber_views;
   fj_settings_t settings;
+
+  fj_improvement_callback_t<f_t> improvement_callback;
+  f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};
 };
 
 }  // namespace cuopt::linear_programming::detail
