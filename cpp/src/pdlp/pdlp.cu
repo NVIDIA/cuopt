@@ -334,9 +334,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       settings.multi_gpu_partition_file);
   } else {
     cuopt_expects(false,
-                  error_type_t::NotImplemented,
-                  "Metis partitioning inside cuopt not implemented yet; "
-                  "provide a --parts file via settings.multi_gpu_partition_file");
+      error_type_t::RuntimeError,
+      "Metis partitioning inside cuopt not implemented yet; "
+      "provide a --parts file via settings.multi_gpu_partition_file");
   }
 
   // always compute initial step size before scaling and primal_weight after scaling to do like
@@ -501,7 +501,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       [](auto& s) -> auto& { return s.pdhg_solver_.get_primal_solution().data(); },  
       [](auto& s) -> auto { return s.pdhg_solver_.get_primal_solution().size(); },  
       clamp<f_t, f_t2>()
-    )
+    );
 }
 
 template <typename i_t, typename f_t>
