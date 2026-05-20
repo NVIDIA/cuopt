@@ -1754,16 +1754,30 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     }
   }
 
-  // Dual correction for originally-free variables that received implied bounds.
-  // Barrier produced (u, w) with w_j != 0 satisfying A^T u + w = c + Qx.
-  // We need corrected (y, z) with z_j = 0: set du = w_j / a_{i*,j}, then
-  // y_{i*} += du and z_k -= a_{i*,k} * du for all k in constraint i*.
+  // Dual correction for originally free variables that received implied bounds.
+  // Barrier produced (y, z) with z_j != 0 satisfying A^T y + z = c + Qx.
+  // We need corrected (y_bar, z_bar) with z_bar_j = 0 for all j in F_b where
+  // F_b = { j | x_j was initially free and is now bounded }
+  //
+  // For a given j_f in F_b, let i* be the constraint that implied the bound on x_j_f.
+  // Compute the scalar delta_u = z_j_f / a_{i*,j_f}.
+  // Set y_bar = y + delta_u e_i* and
+  // Let R_i* = { j | a_{i*, j} != 0 }
+  // z_bar_j = z_j - delta_u a_{i*,j} for all j in R_i*.
+  // z_bar_j = z_j                    for all j not in R_i*.
+  //
+  // Then you can show that A^T y_bar + z_bar = c + Qx and
+  // z_bar_{j_f} = 0.
   if (!presolve_info.bounded_free_variables.empty()) {
     settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n",
                         static_cast<i_t>(presolve_info.bounded_free_variables.size()));
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
-    for (const auto& bfv : presolve_info.bounded_free_variables) {
-      const f_t w_j = input_z[bfv.variable];
+    // Traverse in reverse order, to ensure that all z_j = 0 after the correction
+    for (auto it = presolve_info.bounded_free_variables.rbegin();
+         it != presolve_info.bounded_free_variables.rend();
+         ++it) {
+      const auto& bfv = *it;
+      const f_t w_j   = input_z[bfv.variable];
       if (w_j == 0.0) { continue; }
       const f_t du = w_j / bfv.coefficient;
       input_y[bfv.constraint] += du;
