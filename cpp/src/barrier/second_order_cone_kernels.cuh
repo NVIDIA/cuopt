@@ -997,7 +997,7 @@ std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
  * where `o` is the SOC Jordan product and `e = (1, 0, ..., 0)` per cone.
  * The reduced KKT solve needs the cone target
  *
- *   q = -W * p,  where p = lambda \ d and lambda = W^{-T} z.
+ *   q = W * (-p),  where p = lambda \ d and lambda = W^{-T} z.
  *
  * On return, `out` holds `q`. Internally, `out` is reused for `W^{-T} dz_aff` and
  * then `d`; `scratch.temp_cone` is reused for `W dx_aff`, then `-p`.

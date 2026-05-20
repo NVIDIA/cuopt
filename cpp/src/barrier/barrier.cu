@@ -2607,115 +2607,42 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   const i_t cone_var_start = data.cone_start();
   const i_t linear_size    = data.linear_xz_size(lp.num_cols);
 
-  auto fill_linear_target = [&](raft::device_span<f_t> target,
-                                raft::device_span<const f_t> xz_rhs,
-                                raft::device_span<const f_t> x) {
-    if (target.empty()) return;
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(xz_rhs.data(), x.data()),
-      target.data(),
-      target.size(),
-      [] HD(f_t complementarity_xz_rhs, f_t x_val) { return complementarity_xz_rhs / x_val; },
-      stream_view_.value());
-    RAFT_CHECK_CUDA(stream_view_);
-  };
-
-  auto recover_linear_dz = [&](raft::device_span<const f_t> target,
-                               raft::device_span<const f_t> z,
-                               raft::device_span<const f_t> dx_span,
-                               raft::device_span<const f_t> x,
-                               raft::device_span<f_t> dz_span) {
+  // Linear (orthant) block only; SOC uses recover_cone_dz_from_target.
+  auto recover_linear_orthant_dz = [&](raft::device_span<const f_t> target,
+                                       raft::device_span<const f_t> z,
+                                       raft::device_span<const f_t> dx_span,
+                                       raft::device_span<const f_t> x,
+                                       raft::device_span<f_t> dz_span) {
     if (dz_span.empty()) return;
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(target.data(), z.data(), dx_span.data(), x.data()),
-      dz_span.data(),
-      dz_span.size(),
-      [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val) {
-        return target_val - (z_val * dx_val) / x_val;
-      },
-      stream_view_.value());
-    RAFT_CHECK_CUDA(stream_view_);
-  };
-
-  {
-    raft::common::nvtx::range fun_scope("Barrier: GPU allocation and copies");
-
-    // TMP allocation and copy should happen only once where it's written in a first place
-    data.d_bound_rhs_.resize(data.bound_rhs.size(), stream_view_);
-    raft::copy(
-      data.d_bound_rhs_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream_view_);
-    data.d_x_.resize(data.x.size(), stream_view_);
-    raft::copy(data.d_x_.data(), data.x.data(), data.x.size(), stream_view_);
-    data.d_z_.resize(data.z.size(), stream_view_);
-    raft::copy(data.d_z_.data(), data.z.data(), data.z.size(), stream_view_);
-    data.d_w_.resize(data.w.size(), stream_view_);
-    raft::copy(data.d_w_.data(), data.w.data(), data.w.size(), stream_view_);
-    data.d_v_.resize(data.v.size(), stream_view_);
-    raft::copy(data.d_v_.data(), data.v.data(), data.v.size(), stream_view_);
-    data.d_upper_bounds_.resize(data.upper_bounds.size(), stream_view_);
-    raft::copy(data.d_upper_bounds_.data(),
-               data.upper_bounds.data(),
-               data.upper_bounds.size(),
-               stream_view_);
-    data.d_dy_.resize(dy.size(), stream_view_);
-    raft::copy(data.d_dy_.data(), dy.data(), dy.size(), stream_view_);
-    data.d_dx_.resize(dx.size(), stream_view_);
-    raft::copy(data.d_h_.data(), data.primal_rhs.data(), data.primal_rhs.size(), stream_view_);
-    raft::copy(data.d_dual_rhs_.data(), data.dual_rhs.data(), data.dual_rhs.size(), stream_view_);
-    data.d_dz_.resize(dz.size(), stream_view_);
-    data.d_dv_.resize(dv.size(), stream_view_);
-    data.d_dw_.resize(data.bound_rhs.size(), stream_view_);
-    raft::copy(data.d_dw_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream_view_);
-    data.d_dw_residual_.resize(data.n_upper_bounds, stream_view_);
-    data.d_wv_residual_.resize(data.d_complementarity_wv_rhs_.size(), stream_view_);
-    data.d_xz_residual_.resize(data.d_complementarity_xz_rhs_.size(), stream_view_);
-    data.d_primal_residual_.resize(lp.rhs.size(), stream_view_);
-    raft::copy(data.d_primal_residual_.data(), lp.rhs.data(), lp.rhs.size(), stream_view_);
-    data.d_bound_residual_.resize(data.bound_residual.size(), stream_view_);
-    data.d_upper_.resize(lp.upper.size(), stream_view_);
-    raft::copy(data.d_upper_.data(), lp.upper.data(), lp.upper.size(), stream_view_);
-  }
-
-  // 1) Update NT-scaling in gpu_compute_search_direction
-  // 2) Compute the complementarity part for soc constraints
-  if (has_soc) {
-    auto& cones = data.cones();
-    cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
-    cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
-
-    if (!data.cone_combined_step_) { launch_nt_scaling(cones, stream_view_); }
-
-    cuopt_assert(cone_var_start + m_c == lp.num_cols, "barrier expects [linear | cone] layout");
-    fill_linear_target(
-      raft::device_span<f_t>(data.d_complementarity_target_.data(), linear_size),
-      raft::device_span<const f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
-      raft::device_span<const f_t>(data.d_x_.data(), linear_size));
-
-    auto cone_target =
-      raft::device_span<f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c);
-    if (data.cone_combined_step_) {
-      compute_combined_cone_rhs_term(
-        raft::device_span<const f_t>(data.d_dx_aff_.data() + cone_var_start, m_c),
-        raft::device_span<const f_t>(data.d_dz_aff_.data() + cone_var_start, m_c),
-        cones,
-        data.cone_sigma_mu_,
-        cone_target,
-        stream_view_);
+    if (has_native_free_linear) {
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(
+          target.data(), z.data(), dx_span.data(), x.data(), data.d_is_native_free_linear_.data()),
+        dz_span.data(),
+        dz_span.size(),
+        [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val, i_t is_native_free_linear) {
+          if (is_native_free_linear) return f_t(0);
+          return target_val - (z_val * dx_val) / x_val;
+        },
+        stream_view_.value());
     } else {
       cub::DeviceTransform::Transform(
-        cones.z.data(),
-        cone_target.data(),
-        m_c,
-        [] HD(f_t z_val) { return -z_val; },
+        cuda::std::make_tuple(target.data(), z.data(), dx_span.data(), x.data()),
+        dz_span.data(),
+        dz_span.size(),
+        [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val) {
+          return target_val - (z_val * dx_val) / x_val;
+        },
         stream_view_.value());
-      RAFT_CUDA_TRY(cudaPeekAtLastError());
     }
     RAFT_CHECK_CUDA(stream_view_);
-  } else {
-    fill_linear_target(cuopt::make_span(data.d_complementarity_target_),
-                       cuopt::make_span(data.d_complementarity_xz_rhs_),
-                       cuopt::make_span(data.d_x_));
-  }
+  };
+
+  copy_step_rhs_to_device<i_t, f_t>(data, stream_view_);
+  data.d_dx_.resize(dx.size(), stream_view_);
+  data.d_dy_.resize(dy.size(), stream_view_);
+  data.d_dz_.resize(dz.size(), stream_view_);
+  data.d_dv_.resize(dv.size(), stream_view_);
 
   // Solves the linear system
   //
@@ -2732,6 +2659,13 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   //  S \delta xa + S^-T \delta za = - \lambda
   //  \delta za = -S^T (S \delta xa + \lambda) = - S^T S \delta xa -S^T \lambda=  - S^T S \delta xa
   //  - z
+  if (has_soc && !data.cone_combined_step_) {
+    auto& cones = data.cones();
+    cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
+    cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
+    launch_nt_scaling(cones, stream_view_);
+  }
+
   max_residual = 0.0;
   {
     raft::common::nvtx::range fun_scope("Barrier: GPU diag, inv diag and sqrt inv diag formation");
@@ -3252,29 +3186,12 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         stream_view_);
     }
 
-    if (linear_dz_size > 0) {
-      if (has_native_free_linear) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(data.d_complementarity_target_.data(),
-                                data.d_z_.data(),
-                                data.d_dx_.data(),
-                                data.d_x_.data(),
-                                data.d_is_native_free_linear_.data()),
-          data.d_dz_.data(),
-          linear_dz_size,
-          [] HD(f_t target, f_t z, f_t dx, f_t x, i_t is_native_free_linear) {
-            return is_native_free_linear ? f_t(0) : (target - (z * dx) / x);
-          },
-          stream_view_.value());
-      } else {
-        recover_linear_dz(
-          raft::device_span<const f_t>(data.d_complementarity_target_.data(), linear_dz_size),
-          raft::device_span<const f_t>(data.d_z_.data(), linear_dz_size),
-          raft::device_span<const f_t>(data.d_dx_.data(), linear_dz_size),
-          raft::device_span<const f_t>(data.d_x_.data(), linear_dz_size),
-          raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size));
-      }
-    }
+    recover_linear_orthant_dz(
+      raft::device_span<const f_t>(data.d_complementarity_target_.data(), linear_dz_size),
+      raft::device_span<const f_t>(data.d_z_.data(), linear_dz_size),
+      raft::device_span<const f_t>(data.d_dx_.data(), linear_dz_size),
+      raft::device_span<const f_t>(data.d_x_.data(), linear_dz_size),
+      raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size));
     RAFT_CHECK_CUDA(stream_view_);
     raft::copy(dz.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
   }
@@ -3465,11 +3382,151 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   return 0;
 }
 
+// One-time host → device sync of the primal-dual iterate after initial_point (host-only).
+template <typename i_t, typename f_t>
+void copy_host_iterate_to_device(iteration_data_t<i_t, f_t>& data, rmm::cuda_stream_view stream)
+{
+  raft::common::nvtx::range fun_scope("Barrier: copy_host_iterate_to_device");
+
+  data.d_x_.resize(data.x.size(), stream);
+  data.d_z_.resize(data.z.size(), stream);
+  raft::copy(data.d_x_.data(), data.x.data(), data.x.size(), stream);
+  raft::copy(data.d_z_.data(), data.z.data(), data.z.size(), stream);
+
+  data.d_w_.resize(data.w.size(), stream);
+  data.d_v_.resize(data.v.size(), stream);
+  raft::copy(data.d_w_.data(), data.w.data(), data.w.size(), stream);
+  raft::copy(data.d_v_.data(), data.v.data(), data.v.size(), stream);
+
+  data.d_y_.resize(data.y.size(), stream);
+  raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream);
+
+  data.d_upper_bounds_.resize(data.upper_bounds.size(), stream);
+  raft::copy(data.d_upper_bounds_.data(),
+             data.upper_bounds.data(),
+             data.upper_bounds.size(),
+             stream);
+}
+
+// One-time static problem data (constant across barrier iterations).
+template <typename i_t, typename f_t>
+void copy_static_problem_data_to_device(const lp_problem_t<i_t, f_t>& lp,
+                                        iteration_data_t<i_t, f_t>& data,
+                                        rmm::cuda_stream_view stream)
+{
+  raft::common::nvtx::range fun_scope("Barrier: copy_static_problem_data_to_device");
+
+  data.d_primal_residual_.resize(lp.rhs.size(), stream);
+  raft::copy(data.d_primal_residual_.data(), lp.rhs.data(), lp.rhs.size(), stream);
+
+  data.d_upper_.resize(lp.upper.size(), stream);
+  raft::copy(data.d_upper_.data(), lp.upper.data(), lp.upper.size(), stream);
+
+  data.d_bound_residual_.resize(data.bound_residual.size(), stream);
+  data.d_dw_residual_.resize(data.n_upper_bounds, stream);
+}
+
+// Per Mehrotra step: affine/corrector RHS only (iterate stays on device from initial sync / next_iterate).
+template <typename i_t, typename f_t>
+void copy_step_rhs_to_device(iteration_data_t<i_t, f_t>& data, rmm::cuda_stream_view stream)
+{
+  raft::common::nvtx::range fun_scope("Barrier: copy_step_rhs_to_device");
+
+  data.d_bound_rhs_.resize(data.bound_rhs.size(), stream);
+  raft::copy(
+    data.d_bound_rhs_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream);
+
+  raft::copy(data.d_h_.data(), data.primal_rhs.data(), data.primal_rhs.size(), stream);
+  raft::copy(data.d_dual_rhs_.data(), data.dual_rhs.data(), data.dual_rhs.size(), stream);
+
+  data.d_dw_.resize(data.bound_rhs.size(), stream);
+  raft::copy(data.d_dw_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream);
+
+  data.d_xz_residual_.resize(data.d_complementarity_xz_rhs_.size(), stream);
+  data.d_wv_residual_.resize(data.d_complementarity_wv_rhs_.size(), stream);
+}
+
+template <typename i_t, typename f_t>
+void fill_linear_complementarity_target(iteration_data_t<i_t, f_t>& data,
+                                        raft::device_span<f_t> target,
+                                        raft::device_span<const f_t> xz_rhs,
+                                        raft::device_span<const f_t> x,
+                                        rmm::cuda_stream_view stream)
+{
+  if (target.empty()) return;
+  const bool has_native_free_linear = data.n_native_free_linear > 0;
+  if (has_native_free_linear) {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(xz_rhs.data(), x.data(), data.d_is_native_free_linear_.data()),
+      target.data(),
+      target.size(),
+      [] HD(f_t complementarity_xz_rhs, f_t x_val, i_t is_native_free_linear) {
+        if (is_native_free_linear) return f_t(0);
+        return complementarity_xz_rhs / x_val;
+      },
+      stream.value());
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(xz_rhs.data(), x.data()),
+      target.data(),
+      target.size(),
+      [] HD(f_t complementarity_xz_rhs, f_t x_val) { return complementarity_xz_rhs / x_val; },
+      stream.value());
+  }
+  RAFT_CHECK_CUDA(stream);
+}
+
+template <typename i_t, typename f_t>
+void fill_affine_cone_complementarity_target(iteration_data_t<i_t, f_t>& data,
+                                             i_t cone_var_start,
+                                             i_t m_c,
+                                             rmm::cuda_stream_view stream)
+{
+  if (m_c == 0) return;
+  auto& cones = data.cones();
+  cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
+  cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
+  auto cone_target =
+    raft::device_span<f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c);
+  cub::DeviceTransform::Transform(
+    cones.z.data(),
+    cone_target.data(),
+    m_c,
+    [] HD(f_t z_val) { return -z_val; },
+    stream.value());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+  RAFT_CHECK_CUDA(stream);
+}
+
+template <typename i_t, typename f_t>
+void fill_corrector_cone_complementarity_target(iteration_data_t<i_t, f_t>& data,
+                                                i_t cone_var_start,
+                                                i_t m_c,
+                                                f_t sigma_mu,
+                                                rmm::cuda_stream_view stream)
+{
+  if (m_c == 0) return;
+  auto& cones = data.cones();
+  cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
+  cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
+  auto cone_target =
+    raft::device_span<f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c);
+  compute_combined_cone_rhs_term(raft::device_span<const f_t>(data.d_dx_aff_.data() + cone_var_start, m_c),
+                                 raft::device_span<const f_t>(data.d_dz_aff_.data() + cone_var_start, m_c),
+                                 cones,
+                                 sigma_mu,
+                                 cone_target,
+                                 stream);
+}
+
 template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_affine_rhs(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_affine_rhs");
+  const bool has_soc    = data.has_cones();
   const i_t linear_size = data.linear_xz_size(lp.num_cols);
+  const i_t cone_var_start = data.cone_start();
+  const i_t m_c            = data.cone_entry_count();
 
   data.primal_rhs          = data.primal_residual;
   data.bound_rhs           = data.bound_residual;
@@ -3477,32 +3534,35 @@ void barrier_solver_t<i_t, f_t>::compute_affine_rhs(iteration_data_t<i_t, f_t>& 
   data.cone_combined_step_ = false;
   data.cone_sigma_mu_      = f_t(0);
 
-  raft::copy(data.d_complementarity_wv_rhs_.data(),
-             data.d_complementarity_wv_residual_.data(),
-             data.d_complementarity_wv_residual_.size(),
-             stream_view_);
-
-  auto negate_linear_rhs = [&](raft::device_span<f_t> out, raft::device_span<const f_t> residual) {
+  auto negate_complementarity_rhs = [&](raft::device_span<f_t> out,
+                                        raft::device_span<const f_t> residual) {
     if (out.empty()) return;
     cub::DeviceTransform::Transform(
       residual.data(),
       out.data(),
       out.size(),
-      [] HD(f_t xz_rhs) { return -xz_rhs; },
+      [] HD(f_t rhs) { return -rhs; },
       stream_view_.value());
   };
-  negate_linear_rhs(
+  // xz -> -x .* z
+  negate_complementarity_rhs(
     raft::device_span<f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
     raft::device_span<const f_t>(data.d_complementarity_xz_residual_.data(), linear_size));
-  RAFT_CHECK_CUDA(stream_view_);
   // w.*v -> -w .* v
-  cub::DeviceTransform::Transform(
-    data.d_complementarity_wv_rhs_.data(),
-    data.d_complementarity_wv_rhs_.data(),
-    data.d_complementarity_wv_rhs_.size(),
-    [] HD(f_t wv_rhs) { return -wv_rhs; },
-    stream_view_.value());
+  negate_complementarity_rhs(cuopt::make_span(data.d_complementarity_wv_rhs_),
+                             cuopt::make_span(data.d_complementarity_wv_residual_));
   RAFT_CHECK_CUDA(stream_view_);
+
+  fill_linear_complementarity_target<i_t, f_t>(
+    data,
+    raft::device_span<f_t>(data.d_complementarity_target_.data(), linear_size),
+    raft::device_span<const f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
+    raft::device_span<const f_t>(data.d_x_.data(), linear_size),
+    stream_view_);
+  if (has_soc) {
+    cuopt_assert(cone_var_start + m_c == lp.num_cols, "barrier expects [linear | cone] layout");
+    fill_affine_cone_complementarity_target<i_t, f_t>(data, cone_var_start, m_c, stream_view_);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -3637,6 +3697,22 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
                      raft::device_span<const f_t>(data.d_dx_aff_.data(), linear_size),
                      raft::device_span<const f_t>(data.d_dz_aff_.data(), linear_size));
   RAFT_CHECK_CUDA(stream_view_);
+
+  const i_t cone_var_start = data.cone_start();
+  const i_t m_c            = data.cone_entry_count();
+
+  fill_linear_complementarity_target<i_t, f_t>(
+    data,
+    raft::device_span<f_t>(data.d_complementarity_target_.data(), linear_size),
+    raft::device_span<const f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
+    raft::device_span<const f_t>(data.d_x_.data(), linear_size),
+    stream_view_);
+  if (has_soc) {
+    cuopt_assert(cone_var_start + m_c == lp.num_cols, "barrier expects [linear | cone] layout");
+    fill_corrector_cone_complementarity_target<i_t, f_t>(
+      data, cone_var_start, m_c, new_mu, stream_view_);
+  }
+
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(data.d_dw_aff_.data(), data.d_dv_aff_.data()),
     data.d_complementarity_wv_rhs_.data(),
@@ -3656,10 +3732,7 @@ template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_final_direction");
-  // TODO Nicolas: Redundant copies
-  data.d_y_.resize(data.y.size(), stream_view_);
   data.d_dy_aff_.resize(data.dy_aff.size(), stream_view_);
-  raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream_view_);
   raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
 #ifdef FINITE_CHECK
@@ -4165,6 +4238,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       settings.log.printf("Unable to compute initial point\n");
       return lp_status_t::NUMERICAL_ISSUES;
     }
+
+    copy_host_iterate_to_device<i_t, f_t>(data, stream_view_);
+    copy_static_problem_data_to_device<i_t, f_t>(lp, data, stream_view_);
+
     compute_residuals<PinnedHostAllocator<f_t>>(data.w, data.x, data.y, data.v, data.z, data);
 
     f_t primal_residual_norm =
@@ -4306,7 +4383,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
-      // Update NT-scaling in gpu_compute_search_direction
       i_t status = gpu_compute_search_direction(data,
                                                 data.dw_aff,
                                                 data.dx_aff,
