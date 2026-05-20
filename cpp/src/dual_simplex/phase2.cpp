@@ -1483,7 +1483,7 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     if (k == basic_leaving_index) {
       const f_t w              = scaled_delta_xB.x[h];
       const f_t w_squared      = w * w;
-      delta_y_steepest_edge[j] = (1.0 / w_squared) * dy_norm_squared;
+      delta_y_steepest_edge[entering_index] = (1.0 / w_squared) * dy_norm_squared;
     } else {
       const f_t wk = -scaled_delta_xB.x[h];
       f_t new_val  = delta_y_steepest_edge[j] + wk * (2.0 * v[k] / wr + wk * omegar);
@@ -1513,43 +1513,6 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   }
   work_estimate += 2 * v_nz;
 
-  return 0;
-}
-
-// Compute steepest edge info for entering variable
-template <typename i_t, typename f_t>
-i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t>& settings,
-                                        i_t m,
-                                        const basis_update_mpf_t<i_t, f_t>& ft,
-                                        i_t basic_leaving_index,
-                                        i_t entering_index,
-                                        i_t leaving_index,
-                                        std::vector<f_t>& steepest_edge_norms)
-{
-#if 0
-  sparse_vector_t<i_t, f_t> es_sparse(m, 1);
-  es_sparse.i[0] = basic_leaving_index;
-  es_sparse.x[0] = -1.0;
-  sparse_vector_t<i_t, f_t> delta_ys_sparse(m, 0);
-  ft.b_transpose_solve(es_sparse, delta_ys_sparse);
-  steepest_edge_norms[entering_index] = delta_ys_sparse.norm2_squared();
-
-  if (std::abs(steepest_edge_norms[entering_index] - steepest_edge_norms[leaving_index]) > 1e-1) {
-  settings.log.printf("Steepest edge norm %e for entering %d. Leaving %d norm %e. Diff %e\n",
-                      steepest_edge_norms[entering_index],
-                      entering_index,
-                      leaving_index,
-                      steepest_edge_norms[leaving_index],
-                      std::abs(steepest_edge_norms[entering_index] - steepest_edge_norms[leaving_index]));
-  }
-#endif
-  steepest_edge_norms[entering_index] = steepest_edge_norms[leaving_index];
-#ifdef STEEPEST_EDGE_DEBUG
-  settings.log.printf("Steepest edge norm %e for entering j %d at i %d\n",
-                      steepest_edge_norms[entering_index],
-                      entering_index,
-                      basic_leaving_index);
-#endif
   return 0;
 }
 
@@ -3623,12 +3586,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 6);
 #endif
       if (should_refactor) {
-        settings.log.printf(
-          "Refactoring basis. Iteration %d solve work %e refactor work %e updates %d\n",
-          iter,
-          solve_work,
-          refactor_work,
-          ft.num_updates());
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
         bool should_recompute_x = true;  // Needed for numerically difficult problems like cbs-cta
@@ -3702,10 +3659,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     }
     timers.lu_factorization_time += timers.stop_timer();
 
-    timers.start_timer();
-    phase2::compute_steepest_edge_norm_entering(
-      settings, m, ft, basic_leaving_index, entering_index, leaving_index, delta_y_steepest_edge);
-    timers.se_entering_time += timers.stop_timer();
 
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))
