@@ -135,7 +135,7 @@ class branch_and_bound_t {
 
   f_t get_lower_bound();
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
-  std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
+  omp_atomic_t<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
   lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings,
                                     lp_solution_t<i_t, f_t>& root_relax_soln,
@@ -227,8 +227,8 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> root_lp_current_lower_bound_;
   omp_atomic_t<bool> solving_root_relaxation_{false};
   bool enable_concurrent_lp_root_solve_{false};
-  std::atomic<int> root_concurrent_halt_{0};
-  std::atomic<int> node_concurrent_halt_{0};
+  omp_atomic_t<int> root_concurrent_halt_{0};
+  omp_atomic_t<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts

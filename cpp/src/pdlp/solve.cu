@@ -37,6 +37,7 @@
 
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/omp_helpers.hpp>
 #include <utilities/version_info.hpp>
 
 #include <barrier/sparse_cholesky.cuh>
@@ -327,7 +328,7 @@ void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings)
     set_Stable3(settings.hyper_params);
 }
 
-std::atomic<int> global_concurrent_halt{0};
+omp_atomic_t<int> global_concurrent_halt{0};
 
 template <typename f_t>
 void adjust_dual_solution_and_reduced_cost(rmm::device_uvector<f_t>& dual_solution,
@@ -1553,9 +1554,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
   std::exception_ptr dual_simplex_exception;
-  // TODO: concurrent_halt is std::atomic<int>* across ~25 sites in dual_simplex / barrier /
-  // branch_and_bound / pdlp. Could be converted to int* + `#pragma omp atomic` (all-or-nothing,
-  // mixing OMP atomic with non-atomic on the same var is UB). Functionally equivalent today.
   auto request_concurrent_halt = [&settings_pdlp]() {
     if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
   };

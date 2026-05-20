@@ -21,6 +21,15 @@
 
 #include <cuda/std/span>
 
+namespace cuopt {
+// Forward decl: solver_settings_t exposes a pointer to omp_atomic_t<int> (concurrent_halt) for
+// inter-thread coordination across the solver pipeline. The full definition lives in
+// utilities/omp_helpers.hpp and is included only by implementation files that read or write
+// that flag — so external consumers of this public header don't need OpenMP.
+template <typename T>
+class omp_atomic_t;
+}  // namespace cuopt
+
 namespace cuopt::linear_programming {
 
 // Forward declare solver_settings_t for friend class
@@ -309,8 +318,9 @@ class pdlp_solver_settings_t {
   int num_gpus{1};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
-  // For concurrent termination
-  std::atomic<int>* concurrent_halt{nullptr};
+  // For concurrent termination. Owned by the caller; nullptr disables cooperative halt. Driven
+  // through omp_atomic_t<int> so all reads/writes go through `#pragma omp atomic`.
+  cuopt::omp_atomic_t<int>* concurrent_halt{nullptr};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;

@@ -9,6 +9,7 @@
 
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
 #include <omp.h>
 #include <algorithm>
@@ -224,8 +225,8 @@ struct simplex_solver_settings_t {
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   std::function<void(f_t)> dual_simplex_objective_callback;  // Called with current dual obj
   mutable logger_t log;
-  std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
-                                      // continue, 1 if solver should halt
+  cuopt::omp_atomic_t<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
+                                              // continue, 1 if solver should halt
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

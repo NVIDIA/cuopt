@@ -696,7 +696,7 @@ static void batch_pdlp_strong_branching_task(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   i_t effective_batch_pdlp,
   f_t start_time,
-  std::atomic<int>& concurrent_halt,
+  omp_atomic_t<int>& concurrent_halt,
   const lp_problem_t<i_t, f_t>& original_lp,
   const std::vector<i_t>& new_slacks,
   const std::vector<f_t>& root_soln,
@@ -891,7 +891,7 @@ static void batch_pdlp_reliability_branching_task(
   i_t rb_mode,
   i_t num_candidates,
   f_t start_time,
-  std::atomic<int>& concurrent_halt,
+  omp_atomic_t<int>& concurrent_halt,
   const lp_problem_t<i_t, f_t>& original_lp,
   const std::vector<i_t>& new_slacks,
   const std::vector<f_t>& solution,
@@ -1051,7 +1051,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   shared_strong_branching_context_t<i_t, f_t> shared_ctx(2 * fractional.size());
   shared_strong_branching_context_view_t<i_t, f_t> sb_view(shared_ctx.solved);
 
-  std::atomic<int> concurrent_halt{0};
+  omp_atomic_t<int> concurrent_halt{0};
 
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
@@ -1604,7 +1604,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   std::vector<f_t> pdlp_obj_down(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
 
-  std::atomic<int> concurrent_halt{0};
+  omp_atomic_t<int> concurrent_halt{0};
 
   if (use_pdlp) {
 #pragma omp task default(shared)

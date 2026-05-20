@@ -25,6 +25,7 @@
 #include <mip_heuristics/local_search/local_search.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
+#include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
 
 #include <cstdint>
@@ -100,7 +101,7 @@ class diversity_manager_t {
   // mutex for the simplex solution update
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
-  std::atomic<int> global_concurrent_halt{0};
+  cuopt::omp_atomic_t<int> global_concurrent_halt{0};
 
   rins_t<i_t, f_t> rins;
 

@@ -280,13 +280,17 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
 #if CUDSS_VERSION_MAJOR >= 0 && CUDSS_VERSION_MINOR >= 7
     if (settings_.concurrent_halt != nullptr) {
-      CUDSS_CALL_AND_CHECK_EXIT(cudssDataSet(handle,
-                                             solverData,
-                                             CUDSS_DATA_USER_HOST_INTERRUPT,
-                                             (void*)settings_.concurrent_halt,
-                                             sizeof(int)),
-                                status,
-                                "cudssDataSet for interrupt");
+      // cuDSS polls the int directly via this raw pointer; pass the address of the underlying
+      // int rather than the omp_atomic_t<int> wrapper. omp_atomic_t<int> is standard-layout
+      // around a single int, so this is the same address — explicit for clarity.
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssDataSet(handle,
+                     solverData,
+                     CUDSS_DATA_USER_HOST_INTERRUPT,
+                     static_cast<void*>(&settings_.concurrent_halt->underlying()),
+                     sizeof(int)),
+        status,
+        "cudssDataSet for interrupt");
     }
 
     if (settings_.cudss_deterministic) {
