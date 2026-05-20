@@ -656,23 +656,22 @@ class trailing_matrix_t {
 
     printf("Column reallocation histogram (shortfall -> count):\n");
     for (size_t k = 0; k < col_realloc_hist_.size(); k++) {
-      if (col_realloc_hist_[k] > 0) {
-        printf("  %4zu: %d\n", k, col_realloc_hist_[k]);
-      }
+      if (col_realloc_hist_[k] > 0) { printf("  %4zu: %d\n", k, col_realloc_hist_[k]); }
     }
 
     printf("Row reallocation histogram (shortfall -> count):\n");
     for (size_t k = 0; k < row_realloc_hist_.size(); k++) {
-      if (row_realloc_hist_[k] > 0) {
-        printf("  %4zu: %d\n", k, row_realloc_hist_[k]);
-      }
+      if (row_realloc_hist_[k] > 0) { printf("  %4zu: %d\n", k, row_realloc_hist_[k]); }
     }
 
     f_t ci_mb = static_cast<f_t>(c_i_.size() * sizeof(i_t)) / (1024.0 * 1024.0);
     f_t cx_mb = static_cast<f_t>(c_x_.size() * sizeof(f_t)) / (1024.0 * 1024.0);
     f_t rj_mb = static_cast<f_t>(r_j_.size() * sizeof(i_t)) / (1024.0 * 1024.0);
     printf("Memory: c_i_ = %.2f MB, c_x_ = %.2f MB, r_j_ = %.2f MB, total = %.2f MB\n",
-           ci_mb, cx_mb, rj_mb, ci_mb + cx_mb + rj_mb);
+           ci_mb,
+           cx_mb,
+           rj_mb,
+           ci_mb + cx_mb + rj_mb);
 #endif
   }
 

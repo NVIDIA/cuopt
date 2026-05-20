@@ -1481,8 +1481,8 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     const i_t k = scaled_delta_xB.i[h];
     const i_t j = basic_list[k];
     if (k == basic_leaving_index) {
-      const f_t w              = scaled_delta_xB.x[h];
-      const f_t w_squared      = w * w;
+      const f_t w                           = scaled_delta_xB.x[h];
+      const f_t w_squared                   = w * w;
       delta_y_steepest_edge[entering_index] = (1.0 / w_squared) * dy_norm_squared;
     } else {
       const f_t wk = -scaled_delta_xB.x[h];
@@ -3658,7 +3658,6 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
     }
     timers.lu_factorization_time += timers.stop_timer();
-
 
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))
