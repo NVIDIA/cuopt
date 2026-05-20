@@ -151,10 +151,10 @@ __global__ void find_sliding_moves_tsp(
   auto nodes_to_consider                   = move_candidates.viables.get_viable_to_pickups(
     node_info.node(), sol.get_num_requests(), max_neighbors, exclude_self_in_neighbors);
 
-  auto n_reverse_types = 2;
+  auto n_reverse_types              = 2;
   auto start_depot_insertion_choice = nodes_to_consider.size();
   auto n_insertion_pos              = start_depot_insertion_choice + 1;
-  auto total_permut    = route_max_window_size * n_reverse_types *
+  auto total_permut                 = route_max_window_size * n_reverse_types *
                       n_insertion_pos;  // forward, backward at every node pos
   for (i_t tid = threadIdx.x; tid < total_permut; tid += blockDim.x) {
     auto insertion_choice = tid % n_insertion_pos;
