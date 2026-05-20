@@ -13,7 +13,7 @@ Each node stores accumulated state (`fwd_X`, `bwd_X`) so that combining any two 
 - No recomputation is needed when a move splits a route at any point
 
 ### The combine invariant
-`combine(node[k], node[k+1])` must return the **same value for every split point `k`** in a route. This is the fundamental correctness contract. Violating it breaks local search delta evaluation (the solver computes `cost_after - cost_before` using combine; if combine is inconsistent, deltas are wrong).
+`combine(node[k], node[k+1])` must return the **same value for every split point `k`** in a route (within floating-point tolerance — small differences from order of operations are acceptable; large gaps indicate a bug). This is the fundamental correctness contract. Violating it breaks local search delta evaluation (the solver computes `cost_after - cost_before` using combine; if combine is materially inconsistent, deltas are wrong).
 
 ### Why boundaries double-count
 `fwd_excess[k]` accumulates violations from `[0..k]`. `bwd_excess[k+1]` accumulates violations from `[k+1..n]`. At the join point `k → k+1`, both sides have already "seen" the in-transit state at that boundary — so their sum overcounts the boundary contribution once. The correction term `excess(fwd_state[k])` subtracts the double-counted boundary:
@@ -60,6 +60,12 @@ next.fwd_excess = this.fwd_excess + positional_excess   // depot nodes: no posit
 Mirror of forward, applied in reverse direction. Backward demand direction is opposite to forward (e.g. a pickup that adds +1 forward subtracts -1 backward).
 
 **Step 4 — Derive `combine(prev, next)`**
+
+`combine` is the **core cost computation for every local search move**: operators evaluate candidate edits by differencing combined fragment costs (`cost_after - cost_before`). It is called extremely often, so **keep it as fast as possible**.
+
+- **Typical dimensions** (capacity, distance, simple time windows, etc.): `combine` is **O(1)** — only prefix/suffix scalars and a boundary correction. This is what all current VRP operators assume.
+- **Richer dimensions** can be **much more expensive** — e.g. **O(log n)** in route size `n` when the join cost needs a non-trivial lookup (time-dependent travel times, multiple time windows, profile queries). Prefer precomputed tables or cached state so `combine` stays hot-path friendly; if it must be superlinear, document it and expect fewer applicable operators or higher move-evaluation cost.
+
 Write out the invariant formula and verify it equals the total route cost for a complete route:
 ```
 total = prev.fwd_excess + next.bwd_excess - boundary_correction(prev.fwd_state)
@@ -67,14 +73,17 @@ total = prev.fwd_excess + next.bwd_excess - boundary_correction(prev.fwd_state)
 where `boundary_correction` removes the double-counted overlap at the join point.
 
 **Step 5 — Derive `get_cost(prev, this)` from combine**
-`get_cost` is called on the `next` node with `prev` passed in. It is identical to `combine` — just substitute `this` for `next`:
+
+`get_cost` is on the **same hot path as `combine`**: local search operators call it constantly when scoring edges and fragments. It must stay **as fast as `combine`** — same **O(1)** target for typical dimensions, same risk of **O(log n)** or worse for time-dependent travel, multiple time windows, etc. **Do not** put a separate heavy computation here.
+
+`get_cost` is called on the `next` node with `prev` passed in. It must be identical to `combine` — substitute `this` for `next`:
 ```
 get_cost(prev, this) == combine(prev, this)
 ```
-Do **not** derive independently. Any deviation will cause coherence assertion failures.
+Implement by **delegating to `combine`** (or inlining the same formula). Do **not** derive an independent formula; any deviation breaks coherence assertions and can hide a slower code path.
 
 **Step 6 — Write `compute_cost(n_nodes)`**
-Must equal `combine(last_service_node, fresh_return_depot)` exactly:
+Must equal `combine(last_service_node, fresh_return_depot)` within the same floating-point tolerance:
 ```
 compute_cost = fwd_excess[n_nodes] - boundary_correction(fwd_state[n_nodes])
 ```
