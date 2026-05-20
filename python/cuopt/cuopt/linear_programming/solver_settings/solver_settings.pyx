@@ -1,12 +1,56 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
+
+# cython: profile=False
+# distutils: language = c++
+# cython: embedsignature = True
+# cython: language_level = 3
+
+"""Cython extension: LP/MIP ``SolverSettings`` backed by ``solver_settings_t``."""
 
 from enum import IntEnum, auto
 
-from cuopt.linear_programming.solver.solver_parameters import (
-    solver_params,
-    get_solver_setting,
-)
+from cuopt.utilities import get_data_ptr
+
+from libcpp.memory cimport unique_ptr
+from libc.stdint cimport uintptr_t
+from libcpp.string cimport string
+from libcpp.vector cimport vector
+
+
+def get_solver_setting(name):
+    """Return the default string form of solver parameter *name* from a fresh C++ settings object."""
+    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
+
+    unique_solver_settings.reset(new solver_settings_t[int, double]())
+
+    cdef solver_settings_t[int, double]* c_solver_settings = (
+        unique_solver_settings.get()
+    )
+    return c_solver_settings.get_parameter_as_string(
+        name.encode('utf-8')
+    ).decode('utf-8')
+
+
+cpdef get_solver_parameter_names():
+    """Return all registered solver parameter names (same order as the C++ layer)."""
+    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
+    unique_solver_settings.reset(new solver_settings_t[int, double]())
+    cdef solver_settings_t[int, double]* c_solver_settings = (
+        unique_solver_settings.get()
+    )
+    cdef vector[string] parameter_names = c_solver_settings.get_parameter_names()
+
+    cdef list py_parameter_names = []
+    cdef size_t i
+    for i in range(parameter_names.size()):
+        # std::string -> Python str
+        py_parameter_names.append(parameter_names[i].decode("utf-8"))
+    return py_parameter_names
+
+
+solver_params = get_solver_parameter_names()
+for param in solver_params: globals()["CUOPT_"+param.upper()] = param
 
 
 class SolverMethod(IntEnum):
@@ -67,8 +111,9 @@ class PDLPSolverMode(IntEnum):
         return "%d" % self.value
 
 
-class SolverSettings:
+cdef class SolverSettings:
     def __init__(self):
+        self.c_solver_settings.reset(new solver_settings_t[int, double]())
         self.settings_dict = {}
         self.pdlp_warm_start_data = None
         self.mip_callbacks = []
@@ -300,6 +345,166 @@ class SolverSettings:
 
         """
         return self.pdlp_warm_start_data
+
+    def set_c_solver_settings(self):
+        """Replay Python-side state into the C++ ``solver_settings_t`` object.
+
+        Reset-replay invariant
+        ----------------------
+        ``Solve`` and ``BatchSolve`` call ``c_solver_settings.reset(new ...)``
+        in ``solver_wrapper`` immediately before this method. Every solve therefore
+        uses a **new** C++ settings object that is filled from Python, not from
+        whatever was left in C++ after the previous solve.
+
+        Source of truth on the Python object:
+
+        * ``settings_dict`` — solver parameters (use :meth:`set_parameter` /
+          :meth:`get_parameter`, not direct C++ mutation).
+        * ``pdlp_warm_start_data`` — PDLP warm start (see :meth:`set_pdlp_warm_start_data`).
+        * ``mip_callbacks`` — MIP callbacks (see :meth:`set_mip_callback`).
+
+        Any change made only on ``c_solver_settings`` without updating these Python
+        attributes is **discarded** on the next solve.
+
+        :meth:`load_parameters_from_file` loads into C++ then mirrors every
+        parameter back into ``settings_dict`` so :meth:`get_parameter` and the next
+        replay stay consistent.
+        """
+        # All cdef declarations must precede other statements in this function.
+        cdef solver_settings_t[int, double]* c_solver_settings
+        cdef uintptr_t c_current_primal_solution
+        cdef uintptr_t c_current_dual_solution
+        cdef uintptr_t c_initial_primal_average
+        cdef uintptr_t c_initial_dual_average
+        cdef uintptr_t c_current_ATY
+        cdef uintptr_t c_sum_primal_solutions
+        cdef uintptr_t c_sum_dual_solutions
+        cdef uintptr_t c_last_restart_duality_gap_primal_solution
+        cdef uintptr_t c_last_restart_duality_gap_dual_solution
+
+        c_solver_settings = self.c_solver_settings.get()
+
+        for name, value in self.settings_dict.items():
+            c_solver_settings.set_parameter_from_string(
+                name.encode('utf-8'),
+                str(value).encode('utf-8')
+            )
+
+        if self.get_pdlp_warm_start_data() is not None:
+            warm_start_data = self.get_pdlp_warm_start_data()
+            c_current_primal_solution = (
+                get_data_ptr(
+                    warm_start_data.current_primal_solution # noqa
+                )
+            )
+            c_current_dual_solution = (
+                get_data_ptr(
+                    warm_start_data.current_dual_solution
+                )
+            )
+            c_initial_primal_average = (
+                get_data_ptr(
+                    warm_start_data.initial_primal_average # noqa
+                )
+            )
+            c_initial_dual_average = (
+                get_data_ptr(
+                    warm_start_data.initial_dual_average
+                )
+            )
+            c_current_ATY = (
+                get_data_ptr(
+                    warm_start_data.current_ATY
+                )
+            )
+            c_sum_primal_solutions = (
+                get_data_ptr(
+                    warm_start_data.sum_primal_solutions
+                )
+            )
+            c_sum_dual_solutions = (
+                get_data_ptr(
+                    warm_start_data.sum_dual_solutions
+                )
+            )
+            c_last_restart_duality_gap_primal_solution = (
+                get_data_ptr(
+                    warm_start_data.last_restart_duality_gap_primal_solution # noqa
+                )
+            )
+            c_last_restart_duality_gap_dual_solution = (
+                get_data_ptr(
+                    warm_start_data.last_restart_duality_gap_dual_solution # noqa
+                )
+            )
+            c_solver_settings.set_pdlp_warm_start_data(
+                <const double *> c_current_primal_solution,
+                <const double *> c_current_dual_solution,
+                <const double *> c_initial_primal_average,
+                <const double *> c_initial_dual_average,
+                <const double *> c_current_ATY,
+                <const double *> c_sum_primal_solutions,
+                <const double *> c_sum_dual_solutions,
+                <const double *> c_last_restart_duality_gap_primal_solution,
+                <const double *> c_last_restart_duality_gap_dual_solution,
+                warm_start_data.last_restart_duality_gap_primal_solution.shape[0], # Primal size # noqa
+                warm_start_data.last_restart_duality_gap_dual_solution.shape[0], # Dual size # noqa
+                warm_start_data.initial_primal_weight,
+                warm_start_data.initial_step_size,
+                warm_start_data.total_pdlp_iterations,
+                warm_start_data.total_pdhg_iterations,
+                warm_start_data.last_candidate_kkt_score,
+                warm_start_data.last_restart_kkt_score,
+                warm_start_data.sum_solution_weight,
+                warm_start_data.iterations_since_last_restart # noqa
+            )
+
+    def dump_parameters_to_file(self, path, hyperparameters_only=True):
+        """Apply ``settings_dict`` / warm start to C++, then dump parameters to *path*.
+
+        Calls :meth:`set_c_solver_settings` then the C++ ``solver_settings_t::dump_parameters_to_file``.
+
+        Parameters
+        ----------
+        path : str
+            Output path (e.g. file path or ``/dev/stdout``).
+        hyperparameters_only : bool, optional
+            Forwarded to C++; when ``True``, dump hyperparameter subset only.
+
+        Returns
+        -------
+        bool
+            ``True`` if the C++ layer reports success.
+        """
+        self.set_c_solver_settings()
+        cdef solver_settings_t[int, double]* c_ss = self.c_solver_settings.get()
+        cdef string c_path = path.encode("utf-8")
+        return c_ss.dump_parameters_to_file(c_path, hyperparameters_only)
+
+    def load_parameters_from_file(self, path):
+        """Load parameters from a cuOpt config file.
+
+        Loads into the current C++ object, then refreshes :attr:`settings_dict`
+        from C++ for each registered parameter name. That keeps
+        :meth:`get_parameter` aligned with what :meth:`set_c_solver_settings` will
+        replay on the next solve (see reset-replay invariant on
+        :meth:`set_c_solver_settings`).
+
+        Parameters
+        ----------
+        path : str
+            Path to a parameter file with ``name = value`` lines (see C++
+            ``solver_settings_t::load_parameters_from_file``).
+        """
+        cdef solver_settings_t[int, double]* c_ss = self.c_solver_settings.get()
+        cdef string c_path = path.encode("utf-8")
+        cdef string c_name
+        cdef string c_val
+        c_ss.load_parameters_from_file(c_path)
+        for name in solver_params:
+            c_name = name.encode("utf-8")
+            c_val = c_ss.get_parameter_as_string(c_name)
+            self.settings_dict[name] = self.to_base_type(c_val.decode("utf-8"))
 
     def toDict(self):
         solver_config = {}
