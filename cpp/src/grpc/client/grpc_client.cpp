@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <future>
 #include <iomanip>
@@ -133,6 +134,11 @@ grpc_client_t::~grpc_client_t()
   // std::thread alive — a joinable thread's destructor calls std::terminate.
   // We inline a noexcept variant of stop_log_streaming() here so that on any
   // failure we still detach the thread before its destructor runs.
+  //
+  // fprintf to stderr is used instead of CUOPT_LOG_ERROR because the project
+  // logger can allocate, and a secondary bad_alloc raised from inside one of
+  // these catch handlers would escape the destructor and re-introduce
+  // std::terminate — defeating the purpose of catching at all.
   stop_logs_.store(true);
   try {
     std::lock_guard<std::mutex> lk(log_context_mutex_);
@@ -140,12 +146,14 @@ grpc_client_t::~grpc_client_t()
       static_cast<grpc::ClientContext*>(active_log_context_)->TryCancel();
     }
   } catch (const std::exception& e) {
-    CUOPT_LOG_ERROR(
-      "grpc_client_t destructor: TryCancel/lock failed (%s); proceeding to "
-      "join/detach.",
-      e.what());
+    std::fprintf(stderr,
+                 "grpc_client_t destructor: TryCancel/lock failed (%s); proceeding to "
+                 "join/detach.\n",
+                 e.what());
   } catch (...) {
-    // Best-effort cancel; fall through to join/detach the thread.
+    std::fprintf(stderr,
+                 "grpc_client_t destructor: TryCancel/lock failed (unknown exception); "
+                 "proceeding to join/detach.\n");
   }
   std::unique_ptr<std::thread> t;
   std::swap(t, log_thread_);
@@ -153,20 +161,33 @@ grpc_client_t::~grpc_client_t()
     try {
       t->join();
     } catch (const std::exception& e) {
-      CUOPT_LOG_ERROR("grpc_client_t destructor: log-thread join failed (%s); detaching.",
-                      e.what());
+      std::fprintf(
+        stderr, "grpc_client_t destructor: log-thread join failed (%s); detaching.\n", e.what());
       // join failed (e.g., std::system_error). Detach so the local
       // unique_ptr's destructor doesn't terminate on the joinable thread.
       try {
         t->detach();
       } catch (const std::exception& e2) {
-        CUOPT_LOG_ERROR(
-          "grpc_client_t destructor: detach also failed (%s); thread may "
-          "terminate the process on unique_ptr destruction.",
-          e2.what());
+        std::fprintf(stderr,
+                     "grpc_client_t destructor: detach also failed (%s); thread may "
+                     "terminate the process on unique_ptr destruction.\n",
+                     e2.what());
       } catch (...) {
+        std::fprintf(stderr,
+                     "grpc_client_t destructor: detach also failed (unknown exception); "
+                     "thread may terminate the process on unique_ptr destruction.\n");
       }
     } catch (...) {
+      std::fprintf(stderr,
+                   "grpc_client_t destructor: log-thread join failed (unknown exception); "
+                   "detaching.\n");
+      try {
+        t->detach();
+      } catch (...) {
+        std::fprintf(stderr,
+                     "grpc_client_t destructor: detach also failed; thread may "
+                     "terminate the process on unique_ptr destruction.\n");
+      }
     }
   }
 }

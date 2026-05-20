@@ -13,10 +13,10 @@
 #include <dual_simplex/types.hpp>
 
 #include <utilities/hashing.hpp>
-#include <utilities/logger.hpp>
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <list>
 #include <memory>
 #include <vector>
@@ -62,11 +62,17 @@ class mip_node_t {
 
       // scope-exit ensure destruction of all detached leaves
     } catch (const std::exception& e) {
-      CUOPT_LOG_ERROR(
-        "mip_node_t destructor: iterative teardown failed (%s); falling back to "
-        "recursive unique_ptr destruction.",
-        e.what());
+      // fprintf to stderr is allocation-free and cannot throw; using the
+      // project logger here would risk a secondary bad_alloc that would
+      // escape the destructor and re-introduce std::terminate.
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (%s); falling back to "
+                   "recursive unique_ptr destruction.\n",
+                   e.what());
     } catch (...) {
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (unknown exception); "
+                   "falling back to recursive unique_ptr destruction.\n");
     }
   }
 
