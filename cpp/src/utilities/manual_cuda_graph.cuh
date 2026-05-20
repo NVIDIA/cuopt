@@ -32,6 +32,10 @@ namespace cuopt {
 //   the sticky error, re-executes `work` eagerly so the current iteration
 //   still produces correct results, and leaves itself uninitialized so the
 //   next `run` call retries capture.
+//   IMPORTANT: because `work` is invoked a second time on recovery, any
+//   host-side mutations inside the callable will run twice -- keep `work`
+//   host-idempotent or move host bookkeeping (counters, flags, hash updates,
+//   etc.) outside the callable.
 //
 // Not thread-safe per instance: a single manual_cuda_graph_t must be driven
 // from one thread at a time. Multiple instances on per-thread streams,
@@ -88,8 +92,12 @@ class manual_cuda_graph_t {
     }
     RAFT_CUDA_TRY(end_err);
 
-    RAFT_CUDA_TRY(cudaGraphInstantiate(&instance_, captured));
-    RAFT_CUDA_TRY(cudaGraphDestroy(captured));
+    // Destroy the source graph regardless of whether instantiation succeeded:
+    // on failure cudaGraphInstantiate leaves instance_ at nullptr per the API
+    // contract, and the source graph is unconditionally not needed any more.
+    cudaError_t inst_err = cudaGraphInstantiate(&instance_, captured);
+    RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(captured));
+    RAFT_CUDA_TRY(inst_err);
 
     RAFT_CUDA_TRY(cudaGraphLaunch(instance_, stream.value()));
   }
