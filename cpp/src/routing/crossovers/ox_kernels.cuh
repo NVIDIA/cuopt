@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -174,8 +174,6 @@ __global__ void calculate_edge_costs_kernel(
     const auto& dimensions_info = solution.problem.dimensions_info;
 
     double cost = 0.;
-    double optimal_vehicle_fixed_cost =
-      dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST) ? vehicle_info.fixed_cost : 0.;
 
     node_t<i_t, f_t, REQUEST> helper_nodes[3] = {node_t<i_t, f_t, REQUEST>(dimensions_info),
                                                  node_t<i_t, f_t, REQUEST>(dimensions_info),
@@ -198,7 +196,8 @@ __global__ void calculate_edge_costs_kernel(
       cost = node_t<i_t, f_t, REQUEST>::cost_combine(
         helper_nodes[b], helper_nodes[2], vehicle_info, true, weights, d_zero_cost, d_zero_cost);
 
-      row_value[row_n_edges] = optimal_vehicle_fixed_cost + cost;
+      // cost includes vehicle_info.fixed_cost via vehicle_fixed_cost_node_t::get_cost
+      row_value[row_n_edges] = cost;
       row_edge[row_n_edges]  = j;
       ++row_n_edges;
 
