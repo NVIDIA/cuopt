@@ -105,7 +105,8 @@ class cusparse_spmvop_descr_wrapper_t {
 
  private:
   // Forwards to cusparseSpMVOp_{create,destroy}Descr resolved via dlsym (cached on first call).
-  // This is needed because the cusparseSpMVOp_{create,destroy}Descr symbols might not be defined in current runtime.
+  // This is needed because the cusparseSpMVOp_{create,destroy}Descr symbols might not be defined in
+  // current runtime.
   static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
                                        cusparseSpMVOpDescr_t* descr,
                                        cusparseOperation_t opA,
@@ -136,7 +137,8 @@ class cusparse_spmvop_plan_wrapper_t {
 
  private:
   // Forwards to cusparseSpMVOp_{create,destroy}Plan resolved via dlsym (cached on first call).
-  // This is needed because the cusparseSpMVOp_{create,destroy}Plan symbols might not be defined in current runtime.
+  // This is needed because the cusparseSpMVOp_{create,destroy}Plan symbols might not be defined in
+  // current runtime.
   static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
                                        cusparseSpMVOpDescr_t descr,
                                        cusparseSpMVOpPlan_t* plan,
