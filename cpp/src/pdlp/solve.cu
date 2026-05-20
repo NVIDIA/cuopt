@@ -1571,39 +1571,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // invalidated by another thread's synchronous CUDA calls. The very first use of a freshly
   // constructed raft::handle_t triggers cuBLAS / cuSPARSE / cuSolverDn context creation, which
   // under the hood performs synchronous cudaMalloc / cudaDeviceSynchronize for workspace and
-  // module loading. If that lands inside the PDLP capture window, cudaStreamEndCapture later
-  // fails with cudaErrorStreamCaptureInvalidated (observed crash site:
-  // ping_pong_graph.cu:57 -> compute_next_primal_dual_solution).
-  //
-  // By constructing the handle here, on the main thread, all of that first-use library init is
-  // paid before any capture begins. raft::handle_t's default constructor uses
-  // rmm::cuda_stream_per_thread, so when the barrier thread later submits work through this same
-  // handle, the per-thread default stream sentinel is resolved by the CUDA runtime to the
-  // BARRIER thread's PTDS — which is a different physical stream from the main thread's PTDS.
-  // PDLP (main thread) and barrier therefore still run concurrently on independent streams, as
-  // intended.
-  //
-  // Symmetric note: the destruction side of the same hazard is handled below — the handle is
-  // reset on the main thread after both spawned threads have been joined, so that
-  // cublasDestroy -> cudaDeviceSynchronize cannot fire while a capture is active either.
-  // ---------------------------------------------------------------------------------------------
-  // The construction and the cuDSS first-use warmup are performed under the same scoped
-  // device_setter so that everything (raft::handle_t internal contexts, cuDSS library module
-  // load) gets bound to the barrier's GPU when num_gpus > 1.
-  //
-  // cuDSS warmup rationale, per the cuDSS docs
-  // (https://docs.nvidia.com/cuda/cudss/general.html#cuda-graphs-support):
-  //   - cuDSS default device allocations use cudaMalloc/cudaFree, which is incompatible with
-  //     CUDA graph capture. cuopt already sets a cudssDeviceMemHandler that routes through
-  //     cudaMallocAsync/cudaFreeAsync (see sparse_cholesky.cuh:243-247), so steady-state
-  //     factorization and solve phases are graph-capture safe.
-  //   - cudssCreate/cudssDestroy are documented as host-only ("allocates light hardware
-  //     resources on the host"), so they do not themselves enqueue device work.
-  // The residual concern they do address is the CUDA driver's lazy module-load for the cuDSS
-  // library, which is paid on the first cudssCreate of the process and is implicitly
-  // synchronous. Doing cudssCreate + cudssDestroy here forces that first-call cost to settle on
-  // the main thread, outside any PDLP capture window. The warmup is essentially free for
-  // subsequent runs because module load is amortized across the process.
+  // module loading.
   auto warmup_cudss = []() {
     cudssHandle_t cudss_warmup_handle = nullptr;
     cudssStatus_t cudss_warmup_status = CUDSS_STATUS_SUCCESS;
@@ -1629,28 +1597,11 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     warmup_cudss();
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Spawn the barrier thread and gate run_pdlp on a "barrier ready" handshake.
-  //
-  // Why the handshake (defense in depth on top of the construction move above):
-  //   With raft::handle_t already constructed on the main thread, the barrier thread no longer
-  //   issues synchronous library-init calls during the PDLP capture window. The promise/future
-  //   handshake adds a robustness guarantee on top of that: PDLP does not enter its first
-  //   capture until the barrier thread has actually been scheduled by the OS, has set its CUDA
-  //   device context (relevant in num_gpus > 1), and is about to call run_barrier_thread. This
-  //   eliminates the race in which the barrier thread is dispatched late and any residual
-  //   first-touch CUDA work on the barrier side would otherwise land inside the capture window.
-  //
-  // The promise is set unconditionally — including from the catch block — so the main thread
-  // never blocks indefinitely on barrier_ready_f if barrier setup itself throws.
-  // ---------------------------------------------------------------------------------------------
   std::promise<void> barrier_ready;
   std::future<void> barrier_ready_f = barrier_ready.get_future();
   // Only ever set the promise once: both the happy path and the catch block call
   // signal_barrier_ready, and the second call must be a no-op (std::promise::set_value throws
-  // on a second invocation). Both calls happen from the same (barrier) thread, so a plain bool
-  // would suffice, but std::atomic<bool> makes the contract explicit and survives any future
-  // refactor that signals from a different thread.
+  // on a second invocation).
   std::atomic<bool> barrier_ready_set{false};
   auto signal_barrier_ready = [&barrier_ready, &barrier_ready_set]() {
     if (!barrier_ready_set.exchange(true)) { barrier_ready.set_value(); }
@@ -1665,16 +1616,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       auto call_barrier_thread = [&]() {
         auto barrier_problem       = dual_simplex_problem;
         barrier_problem.handle_ptr = barrier_handle_ptr.get();
-
-        // Signal readiness now that:
-        //   - The barrier raft::handle_t has been constructed on the main thread (so no further
-        //     concurrent cuBLAS / cuSPARSE / cuSolverDn first-use init can race with PDLP).
-        //   - The barrier thread has its CUDA device context set (num_gpus > 1 path scopes
-        //     device_setter around this call).
-        //   - cuDSS first-call library load has been settled on the main thread by the warmup.
-        // The subsequent cuDSS create + analysis inside run_barrier_thread runs on the barrier
-        // thread's PTDS and uses async device allocations via cudssDeviceMemHandler, so it does
-        // not invalidate PDLP's capture on the main thread's PTDS.
         signal_barrier_ready();
 
         run_barrier_thread<i_t, f_t>(barrier_problem, settings_pdlp, sol_barrier_ptr, timer);
