@@ -2766,6 +2766,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     }
   }
 
+  // Track whether we (re)factorize on this call.
+  const bool did_factorize = !data.has_factorization;
+
   // Form A*D*A' or the augmented system and factorize it
   if (!data.has_factorization) {
     raft::common::nvtx::range fun_scope("Barrier: ADAT");
@@ -2910,8 +2913,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
       }
 
-      // Adaptive regularization: increase/decrease by 10x based on IR quality
-      {
+      // Adaptive regularization: increase/decrease based on IR quality.
+      // Only adapt on calls where we actually (re)factorized — the affine step.
+      if (did_factorize) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
         if (solve_err > 1e-2) {
@@ -4360,11 +4364,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
     const i_t iteration_limit = settings.iteration_limit;
 
-    // Separate adaptive regularization for affine and centering steps
-    f_t affine_dual_perturb      = 1e-8;
-    f_t affine_primal_perturb    = 1e-8;
-    f_t centering_dual_perturb   = 1e-8;
-    f_t centering_primal_perturb = 1e-8;
+    // Adaptive regularization for the augmented system.
+    f_t dual_perturb   = 1e-8;
+    f_t primal_perturb = 1e-8;
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
@@ -4378,8 +4380,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         return lp_status_t::CONCURRENT_LIMIT;
       }
 
-      // Compute the affine step (use adaptive regularization — system is ill-conditioned near
-      // boundary)
+      // Compute the affine step. This is the call that (re)factorizes the
+      // augmented system, so the IR residual here drives the adaptation of
+      // dual_perturb / primal_perturb for the next iteration's matrix.
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
@@ -4389,8 +4392,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                                 data.dy_aff,
                                                 data.dv_aff,
                                                 data.dz_aff,
-                                                affine_dual_perturb,
-                                                affine_primal_perturb,
+                                                dual_perturb,
+                                                primal_perturb,
                                                 max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
@@ -4426,7 +4429,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
       compute_cc_rhs(data, new_mu);
 
-      // Centering step: use its own adaptive regularization
+      // Corrector / centering step: reuses the factorization built by the
+      // affine call above, so the perturbation is fixed for this solve
       f_t max_corrector_residual = 0.0;
 
       status = gpu_compute_search_direction(data,
@@ -4435,8 +4439,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                             data.dy,
                                             data.dv,
                                             data.dz,
-                                            centering_dual_perturb,
-                                            centering_primal_perturb,
+                                            dual_perturb,
+                                            primal_perturb,
                                             max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
