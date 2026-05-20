@@ -2003,7 +2003,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #endif
   // Make sure (w, x, v, z) > 0
   if (data.n_free_vars > 0) {
-    std::vector<i_t> nonnegative_variables(data.w.size(), 1);
+    std::vector<i_t> nonnegative_variables(data.x.size(), 1);
     for (i_t j : presolve_info.free_variable_indices) {
       nonnegative_variables[j] = 0;
     }
