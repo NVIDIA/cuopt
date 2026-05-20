@@ -489,6 +489,19 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     raft::copy(sub.primal_step_size_.data(), primal_step_size_.data(), 1, shard->stream);
     raft::copy(sub.dual_step_size_.data(), dual_step_size_.data(), 1, shard->stream);
   }
+
+  // Project initial primal solution
+  if (settings_.hyper_params.project_initial_primal) {
+    using f_t2 = typename type_2<f_t>::type;
+    
+    multi_gpu_engine->distributed_transform(
+      std::make_tuple(
+        [](auto& s) -> auto& { return s.pdhg_solver_.get_primal_solution().data();},
+        [](auto& s) -> auto& { return s.get_op_problem_scaled().variable_bounds.data();}),
+      [](auto& s) -> auto& { return s.pdhg_solver_.get_primal_solution().data(); },  
+      [](auto& s) -> auto { return s.pdhg_solver_.get_primal_solution().size(); },  
+      clamp<f_t, f_t2>()
+    )
 }
 
 template <typename i_t, typename f_t>

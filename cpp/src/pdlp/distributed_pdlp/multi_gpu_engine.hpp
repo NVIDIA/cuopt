@@ -42,6 +42,53 @@ struct multi_gpu_engine_t {
   multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;
   multi_gpu_engine_t& operator=(const multi_gpu_engine_t&) = delete;
 
+
+
+  template <typename Fn>
+  void for_each_shard(Fn&& fn)
+  {
+    for (auto& s : shards) {
+      raft::device_setter guard(s->device_id);   
+      fn(*s);                                     
+    }
+  }
+
+  template <typename... InAccess,
+          typename OutAccess,
+          typename SizeAccess,
+          typename Op>
+  void distributed_transform(std::tuple<InAccess...> in_accessors,
+                            OutAccess                out,
+                            SizeAccess               sz,
+                            Op                       op)
+  {
+    for_each_shard([&](auto& shard) {
+      auto& sub = *shard.sub_pdlp;
+      // turns the Tuple of lambdas into a tuple of rmm::device_uvector
+      auto cub_inputs = std::apply(
+        [&sub](auto&... acc) { return cuda::std::make_tuple(acc(sub)...); },
+        in_accessors);
+
+      cub::DeviceTransform::Transform(cub_inputs,
+                                      out(sub),
+                                      sz(sub),
+                                      op,
+                                      shard.stream.view());
+    });
+  }
+  // --- 2) convenience: single input accessor (delegates) ---
+  template <typename InAccess,
+  typename OutAccess,
+  typename SizeAccess,
+  typename Op>
+  void distributed_transform(InAccess   in,
+                  OutAccess  out,
+                  SizeAccess sz,
+                  Op         op)
+  {
+  distributed_transform(std::make_tuple(in), out, sz, op);
+  }
+
   // Engine-level stream for fork/join orchestration (master side).
   rmm::cuda_stream stream;
 
