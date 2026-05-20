@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 
 #include <raft/core/error.hpp>
