@@ -1527,21 +1527,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
-  // Decide upfront whether to spawn the barrier task.
-  //
-  // Stand-alone LP (inside_mip == false): always run all three solvers concurrently
-  // (PDLP + dual simplex + barrier). The user invoked the LP solver directly with
-  // method=Concurrent, so spawning every available solver is the contract — even if the host
-  // is core-starved.
-  //
-  // MIP path (inside_mip == true): only spawn the barrier when at least
-  // CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT threads are visible at the OMP level
-  // (1 dispatcher running PDLP + 1 dual simplex + 1 barrier). Below that, the barrier would
-  // overshoot the MIP solver's configured num_cpu_threads budget and would only contend with
-  // the other workers without giving us a genuine third concurrent solver path.
-  //
-  // The "visible" thread count for the MIP gate uses the current OMP team size, because we
-  // are always called from inside solve_mip's outer `#pragma omp parallel`.
+  // Stand-alone LP always runs all three concurrently. MIP gates the barrier so we don't
+  // overshoot num_cpu_threads (need 1 PDLP + 1 dual simplex + 1 barrier).
   const int available_threads = omp_in_parallel() ? omp_get_num_threads() : omp_get_max_threads();
   const bool enable_barrier =
     !settings.inside_mip || available_threads >= CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT;
@@ -1561,65 +1548,20 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   // capture off
   dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
-  // Storage for the dual simplex and barrier worker results and exceptions. The workers are
-  // launched below as OMP tasks (rather than raw std::threads) so they participate in the
-  // upstream OMP thread budget; see the dispatch block at the bottom of this function.
+  // Dual simplex / barrier results — written by tasks, read after the taskgroup barrier.
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_dual_simplex_ptr;
   std::exception_ptr dual_simplex_exception;
-  // TODO: concurrent_halt is std::atomic<int>* across the cuopt codebase (~25 read/write sites
-  // in dual_simplex / barrier / branch_and_bound / pdlp). Now that this dispatcher uses OMP
-  // tasks, it would be more idiomatic to make this flag an `int*` accessed via
-  // `#pragma omp atomic read` / `#pragma omp atomic write` (mixing OMP atomic with non-atomic
-  // access to the same variable is UB, so the conversion has to be done everywhere at once).
-  // Functionally equivalent today; revisit if the cuopt threading model fully moves to OMP.
+  // TODO: concurrent_halt is std::atomic<int>* across ~25 sites in dual_simplex / barrier /
+  // branch_and_bound / pdlp. Could be converted to int* + `#pragma omp atomic` (all-or-nothing,
+  // mixing OMP atomic with non-atomic on the same var is UB). Functionally equivalent today.
   auto request_concurrent_halt = [&settings_pdlp]() {
     if (settings_pdlp.concurrent_halt != nullptr) { settings_pdlp.concurrent_halt->store(1); }
   };
-  // ---------------------------------------------------------------------------------------------
-  // Construct the barrier raft::handle_t on the main thread, BEFORE spawning the barrier thread
-  // and BEFORE entering run_pdlp.
-  //
-  // Why: run_pdlp captures CUDA graphs (ping_pong_graph_t) on problem.handle_ptr->get_stream()
-  // in cudaStreamCaptureModeThreadLocal. ThreadLocal mode only suppresses the *error* returned
-  // for disallowed actions on OTHER threads; it does NOT prevent the capture from being
-  // invalidated by another thread's synchronous CUDA calls. The very first use of a freshly
-  // constructed raft::handle_t triggers cuBLAS / cuSPARSE / cuSolverDn context creation, which
-  // under the hood performs synchronous cudaMalloc / cudaDeviceSynchronize for workspace and
-  // module loading. If that lands inside the PDLP capture window, cudaStreamEndCapture later
-  // fails with cudaErrorStreamCaptureInvalidated (observed crash site:
-  // ping_pong_graph.cu:57 -> compute_next_primal_dual_solution).
-  //
-  // By constructing the handle here, on the main thread, all of that first-use library init is
-  // paid before any capture begins. raft::handle_t's default constructor uses
-  // rmm::cuda_stream_per_thread, so when the barrier thread later submits work through this same
-  // handle, the per-thread default stream sentinel is resolved by the CUDA runtime to the
-  // BARRIER thread's PTDS — which is a different physical stream from the main thread's PTDS.
-  // PDLP (main thread) and barrier therefore still run concurrently on independent streams, as
-  // intended.
-  //
-  // Symmetric note: the destruction side of the same hazard is handled below — the handle is
-  // reset on the main thread after both spawned threads have been joined, so that
-  // cublasDestroy -> cudaDeviceSynchronize cannot fire while a capture is active either.
-  // ---------------------------------------------------------------------------------------------
-  // The construction and the cuDSS first-use warmup are performed under the same scoped
-  // device_setter so that everything (raft::handle_t internal contexts, cuDSS library module
-  // load) gets bound to the barrier's GPU when num_gpus > 1.
-  //
-  // cuDSS warmup rationale, per the cuDSS docs
-  // (https://docs.nvidia.com/cuda/cudss/general.html#cuda-graphs-support):
-  //   - cuDSS default device allocations use cudaMalloc/cudaFree, which is incompatible with
-  //     CUDA graph capture. cuopt already sets a cudssDeviceMemHandler that routes through
-  //     cudaMallocAsync/cudaFreeAsync (see sparse_cholesky.cuh:243-247), so steady-state
-  //     factorization and solve phases are graph-capture safe.
-  //   - cudssCreate/cudssDestroy are documented as host-only ("allocates light hardware
-  //     resources on the host"), so they do not themselves enqueue device work.
-  // The residual concern they do address is the CUDA driver's lazy module-load for the cuDSS
-  // library, which is paid on the first cudssCreate of the process and is implicitly
-  // synchronous. Doing cudssCreate + cudssDestroy here forces that first-call cost to settle on
-  // the main thread, outside any PDLP capture window. The warmup is essentially free for
-  // subsequent runs because module load is amortized across the process.
+  // Construct the barrier raft::handle_t + cuDSS warmup on the main thread BEFORE any capture
+  // begins, so cuBLAS / cuSPARSE / cuSolverDn / cuDSS first-use synchronous init can't
+  // invalidate PDLP's graph capture. Mirrors the existing destruction-side fix below.
   auto warmup_cudss = []() {
     cudssHandle_t cudss_warmup_handle = nullptr;
     cudssStatus_t cudss_warmup_status = CUDSS_STATUS_SUCCESS;
@@ -1632,11 +1574,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   std::unique_ptr<raft::handle_t> barrier_handle_ptr;
   if (enable_barrier) {
     if (settings.num_gpus > 1) {
-      // Multi-GPU: construct the barrier handle on device 1 so its underlying contexts
-      // (cuBLAS / cuSPARSE / cuSolverDn workspaces) are bound to the barrier's GPU rather than
-      // the main one. The cuDSS warmup must also run with device 1 current, since the cuDSS
-      // module load is per-device and the barrier solver will use cuDSS on device 1 from the
-      // barrier thread.
+      // Bind handle + cuDSS module load to device 1 (the barrier's GPU).
       problem.handle_ptr->sync_stream();
       raft::device_setter device_setter(1);
       CUOPT_LOG_DEBUG("Barrier device: %d", device_setter.get_current_device());
@@ -1647,46 +1585,14 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       warmup_cudss();
     }
   } else {
-    // Only reachable from the MIP path: stand-alone LP forces enable_barrier == true above.
-    CUOPT_LOG_DEBUG(
-      "MIP: skipping concurrent barrier, %d threads available in the upstream OMP team < %d "
-      "required (PDLP + dual simplex + barrier).",
-      available_threads,
-      CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
+    CUOPT_LOG_DEBUG("MIP: skipping concurrent barrier, %d threads available < %d required.",
+                    available_threads,
+                    CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT);
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Dispatch the three concurrent root-solve workers (PDLP, barrier, optional dual simplex) as
-  // OpenMP tasks rather than raw std::threads.
-  //
-  // Why OMP tasks instead of std::thread:
-  //   - The MIP solver opens an OMP parallel region in solve_mip (cpp/src/mip_heuristics/
-  //     solve.cu) sized to settings.num_cpu_threads, and runs all heuristics — including this
-  //     concurrent root LP solve — inside that team via diversity_manager_t::run_solver.
-  //     Spawning std::threads here creates extra OS threads OUTSIDE the OMP thread budget, so
-  //     the actual parallelism overshoots whatever the user configured. Submitting OMP tasks
-  //     instead lets the barrier and dual simplex workers consume slots from the upstream
-  //     team alongside B&B and CPU FJ tasks, respecting the global thread limit.
-  //   - When inside the MIP outer parallel region (omp_in_parallel() == true), the current
-  //     thread is the master inside an `omp masked` block; the other team members are parked
-  //     at the outer parallel-end barrier and pick up these tasks at the next task-scheduling
-  //     point.
-  //   - When called stand-alone (pure LP), we stand up a small local `#pragma omp parallel`
-  //     because `#pragma omp task` outside of a parallel region runs synchronously on the
-  //     spawning thread and offers no concurrency. We use `#pragma omp single` so exactly one
-  //     thread dispatches and runs PDLP; the rest of the team waits at single's implicit
-  //     barrier (a task-scheduling point) and picks up the queued tasks.
-  //
-  // The previous std::promise / std::future "barrier ready" handshake has been removed: it
-  // only added value when the barrier thread could itself perform synchronous CUDA library
-  // init (cuBLAS / cuSPARSE / cuSolverDn / cuDSS first use) inside the PDLP capture window.
-  // With raft::handle_t already constructed on the main thread above, and the cuDSS first-call
-  // module load already settled by the warmup, the barrier task no longer has any first-use
-  // library init left to race with capture. Keeping a wait() here in the OMP model would also
-  // be hazardous: std::future::wait() is not an OMP task-scheduling point, so if no team
-  // member picks up the barrier task before the dispatcher reaches wait(), the dispatcher
-  // would block on a future that nothing is making progress on.
-  // ---------------------------------------------------------------------------------------------
+  // Dispatch barrier + dual simplex as OMP tasks (not std::threads) so they consume slots from
+  // the upstream MIP OMP team and respect num_cpu_threads. PDLP runs synchronously on the
+  // dispatching thread; the taskgroup implicit barrier joins the tasks.
   std::unique_ptr<
     std::tuple<dual_simplex::lp_solution_t<i_t, f_t>, dual_simplex::lp_status_t, f_t, f_t, f_t>>
     sol_barrier_ptr;
@@ -1698,10 +1604,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
   auto dispatch_concurrent_solvers = [&]() {
 #pragma omp taskgroup
     {
-      // Barrier task — always spawned in the stand-alone LP path; in the MIP path only
-      // spawned when at least CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT threads are
-      // visible in the upstream OMP team (see enable_barrier above), so we don't overshoot
-      // the MIP solver's num_cpu_threads budget.
+      // Barrier task — always on for stand-alone LP, gated on enable_barrier for MIP.
       if (enable_barrier) {
 #pragma omp task default(shared)
         {
@@ -1725,8 +1628,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         }
       }
 
-      // Dual simplex task — only spawned when this is not a sub-LP call from MIP, because
-      // MIP already drives dual simplex separately through B&B.
+      // Dual simplex task — skipped from MIP (B&B already drives it separately).
       if (!settings.inside_mip) {
 #pragma omp task default(shared)
         {
@@ -1744,32 +1646,22 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         CUOPT_LOG_DEBUG("PDLP device: %d", raft::device_setter::get_current_device());
       }
 
-      // PDLP runs synchronously in the dispatching thread, concurrently with the queued tasks.
+      // PDLP runs synchronously on the dispatcher, concurrently with the queued tasks.
       try {
         sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
       } catch (...) {
         pdlp_exception = std::current_exception();
         request_concurrent_halt();
       }
-
-      // Implicit taskgroup barrier here: waits for the barrier task (and dual simplex task,
-      // when spawned) to finish before we exit this lambda. The dispatching thread acts as a
-      // task-scheduling point during the wait, so it may execute pending tasks itself if no
-      // other worker has picked them up — which guarantees forward progress.
+      // Implicit taskgroup barrier joins all spawned tasks below.
     }
   };
 
   if (omp_in_parallel()) {
-    // Inside an upstream OMP parallel region (e.g. solve_mip): reuse the existing team so the
-    // spawned tasks count against the configured thread budget and run alongside whatever
-    // else (B&B, CPU FJ) the upstream pipeline is dispatching.
+    // Reuse the upstream OMP team (e.g. solve_mip's outer parallel region).
     dispatch_concurrent_solvers();
   } else {
-    // Stand-alone LP path: there is no upstream OMP team, so `#pragma omp task` would have no
-    // workers to run on. Bring up a small local team. Sizing:
-    //   - 1 dispatching thread (the `single`) that also runs PDLP synchronously
-    //   - +1 worker for the dual simplex task (only when !inside_mip)
-    //   - +1 worker for the barrier task (only when enable_barrier)
+    // Stand-alone LP: stand up a local team sized for 1 dispatcher + 1 per spawned task.
     const int num_workers = 1 + (settings.inside_mip ? 0 : 1) + (enable_barrier ? 1 : 0);
 #pragma omp parallel num_threads(num_workers) default(shared)
     {
@@ -1780,11 +1672,8 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     }
   }
 
-  // After dispatch returns, all spawned tasks have completed. It is safe to destroy the
-  // barrier context now since we are outside of any PDLP graph capture. (cublasDestroy and
-  // similar library teardown paths internally call cudaDeviceSynchronize, which is globally
-  // forbidden while any stream is in graph capture mode — keeping the destruction on the
-  // dispatching thread, post-join, mirrors the construction-side guarantee above.)
+  // Destroy on the dispatching thread, post-join: cublasDestroy → cudaDeviceSynchronize must
+  // not fire during any graph capture.
   barrier_handle_ptr.reset();
 
   if (pdlp_exception) { std::rethrow_exception(pdlp_exception); }
@@ -1804,8 +1693,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       : optimization_problem_solution_t<i_t, f_t>{pdlp_termination_status_t::ConcurrentLimit,
                                                   problem.handle_ptr->get_stream()};
 
-  // copy the barrier solution to the device (or synthesize a sentinel when the barrier task
-  // was skipped due to insufficient threads — see enable_barrier above)
+  // copy the barrier solution to the device (sentinel when the barrier task was skipped).
   auto sol_barrier = enable_barrier ? convert_dual_simplex_sol(problem,
                                                                std::get<0>(*sol_barrier_ptr),
                                                                std::get<1>(*sol_barrier_ptr),
