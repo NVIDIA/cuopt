@@ -341,8 +341,7 @@ def test_read_write_mps_and_relaxation():
 
 def test_problem_read_mps_and_lp():
     mps_path = (
-        RAPIDS_DATASET_ROOT_DIR
-        + "/linear_programming/good-mps-free-var.mps"
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
     )
     lp_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.lp"
@@ -357,8 +356,7 @@ def test_problem_read_mps_and_lp():
 
 def test_problem_read_mps_deprecated():
     mps_path = (
-        RAPIDS_DATASET_ROOT_DIR
-        + "/linear_programming/good-mps-free-var.mps"
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
     )
     with pytest.warns(DeprecationWarning, match="readMPS is deprecated"):
         problem = Problem.readMPS(mps_path)

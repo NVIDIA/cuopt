@@ -15,7 +15,7 @@ format is dispatched automatically from the file extension
 Any other extension (including no extension) is rejected with an error
 listing the supported suffixes. See ``parse_problem`` in
 ``cuopt/linear_programming/io/parser.hpp`` (and the Python
-:func:`~cuopt.linear_programming.ParseProblem` wrapper).
+:func:`~cuopt.linear_programming.io.ParseProblem` wrapper).
 
 The ``good-mps-1`` fixtures under ``datasets/linear_programming/`` include
 plain and compressed ``.mps`` / ``.lp`` files used in parser and CLI tests;
