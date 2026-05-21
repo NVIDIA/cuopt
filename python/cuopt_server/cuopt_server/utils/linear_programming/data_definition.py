@@ -470,7 +470,7 @@ class SolverConfig(BaseModel):
     )
     num_cpu_threads: Optional[int] = Field(
         default=None,
-        description="Set the number of CPU threads to use for branch and bound.",  # noqa
+        description="Set the number of CPU threads to use in the MIP solver",  # noqa
     )
     num_gpus: Optional[int] = Field(
         default=None,
@@ -523,6 +523,15 @@ class SolverConfig(BaseModel):
         description="Set presolve mode: 0 to disable presolve, 1 for Papilo presolve for MIP or LPs, "  # noqa
         "2 for PSLP LP presolve. Presolve can reduce problem size and improve solve time. "  # noqa
         "Default is 1 for MIP problems and 2 for LP problems.",
+    )
+    mip_probing: Optional[bool] = Field(
+        default=None,
+        description="Enable or disable the cuOpt-internal probing-cache step of "  # noqa
+        "MIP presolve. True (default) runs probing as part of presolve; False "  # noqa
+        "skips probing while leaving the rest of presolve untouched. Has no "  # noqa
+        "effect if presolve is disabled (presolve=0) or when running in "  # noqa
+        "deterministic mode (probing is already skipped). LP-only solves "  # noqa
+        "ignore this setting.",
     )
     dual_postsolve: Optional[bool] = Field(
         default=None,

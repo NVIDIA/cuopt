@@ -7,8 +7,8 @@
 
 #include <utilities/common_utils.hpp>
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <mip_heuristics/problem/problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/error.hpp>
 
@@ -24,14 +24,14 @@
 
 namespace cuopt::linear_programming {
 
-cuopt::mps_parser::mps_data_model_t<int, double> read_from_mps(const std::string& file,
-                                                               bool fixed_mps_format = true)
+cuopt::linear_programming::io::mps_data_model_t<int, double> read_from_mps(
+  const std::string& file, bool fixed_mps_format = true)
 {
   std::string rel_file{};
   // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
-  return cuopt::mps_parser::parse_mps<int, double>(rel_file, fixed_mps_format);
+  return cuopt::linear_programming::io::parse_mps<int, double>(rel_file, fixed_mps_format);
 }
 
 TEST(optimization_problem_t, good_mps_file_1)
@@ -451,6 +451,32 @@ TEST(optimization_problem_t, test_variable_invalidity_size)
 
   op_problem_1.set_variable_upper_bounds(A_host, 1);
   EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem_1)));
+}
+
+TEST(optimization_problem_t, test_semi_continuous_equal_bounds_validity)
+{
+  raft::handle_t handle;
+
+  auto op_problem    = optimization_problem_t<int, double>(&handle);
+  double A_host[]    = {1.0};
+  int indices[]      = {0};
+  int offsets[]      = {0, 1};
+  double row_lb[]    = {0.0};
+  double row_ub[]    = {10.0};
+  double objective[] = {1.0};
+  double var_lb[]    = {5.0};
+  double var_ub[]    = {5.0};
+  var_t var_types[]  = {var_t::SEMI_CONTINUOUS};
+
+  op_problem.set_csr_constraint_matrix(A_host, 1, indices, 1, offsets, 2);
+  op_problem.set_constraint_lower_bounds(row_lb, 1);
+  op_problem.set_constraint_upper_bounds(row_ub, 1);
+  op_problem.set_objective_coefficients(objective, 1);
+  op_problem.set_variable_lower_bounds(var_lb, 1);
+  op_problem.set_variable_upper_bounds(var_ub, 1);
+  op_problem.set_variable_types(var_types, 1);
+
+  EXPECT_NO_THROW((problem_checking_t<int, double>::check_problem_representation(op_problem)));
 }
 
 TEST(optimization_problem_t, test_constraints_invalidity_size)

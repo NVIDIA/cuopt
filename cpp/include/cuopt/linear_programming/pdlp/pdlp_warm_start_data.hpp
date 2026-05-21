@@ -9,7 +9,7 @@
 
 #include <rmm/device_uvector.hpp>
 
-#include <mps_parser/utilities/span.hpp>
+#include <span>
 
 namespace cuopt::linear_programming {
 
@@ -68,7 +68,7 @@ struct pdlp_warm_start_data_t {
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
   pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
-  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) = default;
+  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) noexcept = default;
 
   // Check if warmstart data is populated (same sentinel check as release/26.02)
   bool is_populated() const { return last_restart_duality_gap_dual_solution_.size() > 0; }
@@ -80,15 +80,15 @@ struct pdlp_warm_start_data_t {
 
 template <typename i_t, typename f_t>
 struct pdlp_warm_start_data_view_t {
-  cuopt::mps_parser::span<f_t const> current_primal_solution_;
-  cuopt::mps_parser::span<f_t const> current_dual_solution_;
-  cuopt::mps_parser::span<f_t const> initial_primal_average_;
-  cuopt::mps_parser::span<f_t const> initial_dual_average_;
-  cuopt::mps_parser::span<f_t const> current_ATY_;
-  cuopt::mps_parser::span<f_t const> sum_primal_solutions_;
-  cuopt::mps_parser::span<f_t const> sum_dual_solutions_;
-  cuopt::mps_parser::span<f_t const> last_restart_duality_gap_primal_solution_;
-  cuopt::mps_parser::span<f_t const> last_restart_duality_gap_dual_solution_;
+  std::span<f_t const> current_primal_solution_;
+  std::span<f_t const> current_dual_solution_;
+  std::span<f_t const> initial_primal_average_;
+  std::span<f_t const> initial_dual_average_;
+  std::span<f_t const> current_ATY_;
+  std::span<f_t const> sum_primal_solutions_;
+  std::span<f_t const> sum_dual_solutions_;
+  std::span<f_t const> last_restart_duality_gap_primal_solution_;
+  std::span<f_t const> last_restart_duality_gap_dual_solution_;
   f_t initial_primal_weight_{-1};
   f_t initial_step_size_{-1};
   i_t total_pdlp_iterations_{-1};

@@ -238,6 +238,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // Don't run probing cache in deterministic mode yet as neither B&B nor CPUFJ need it
   // and it doesn't make use of work units yet
   if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
+  // Allow the user to disable the probing-cache step of cuOpt's internal presolve
+  // independently of the higher-level presolver setting.
+  if (!context.settings.probing) {
+    CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
+    run_probing_cache = false;
+  }
   if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
     const f_t max_time_on_probing = diversity_config.max_time_on_probing;
@@ -599,22 +605,20 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-  rins.enable();
+
+  if (omp_get_num_threads() > CUOPT_MIP_RINS_REQUIRED_THREAD_COUNT) { rins.enable(); }
 
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
-    rins.stop_rins();
     population.add_external_solutions_to_population();
     return population.best_feasible();
   }
   if (check_b_b_preemption()) {
-    rins.stop_rins();
     population.add_external_solutions_to_population();
     return population.best_feasible();
   }
 
   run_fp_alone();
-  rins.stop_rins();
   population.add_external_solutions_to_population();
   return population.best_feasible();
 };

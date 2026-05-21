@@ -8,7 +8,7 @@ General FAQ
 .. dropdown:: Where can I find cuOpt container images?
 
     There are two options:
-    - NVIDIA docker hub (https://hub.docker.com/r/nvidia/)
+    - NVIDIA Docker Hub (https://hub.docker.com/r/nvidia/cuopt)
     - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
 
 .. dropdown:: How to get a NVAIE license?
@@ -298,7 +298,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuopt-examples/blob/branch-23.10/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt and the resulting cost matrix passed in.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 
@@ -344,6 +344,9 @@ Linear Programming FAQs
 
 .. dropdown:: How small and how many problems can I give when using the batch mode?
 
+    LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
+    :doc:`lp-qp-features`.
+
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
 .. dropdown:: Can the solver run on dense problems?
@@ -364,7 +367,7 @@ Linear Programming FAQs
     - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
     - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using ``set_optimality_tolerance`` until you have reached your lowest possible acceptable accuracy.
     - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
-    - Batch mode: In case you know upfront that you need to solve multiple LP problems, instead of solving them sequentially, you should use the batch mode which can solve multiple LPs in parallel.
+    - Batch mode: Deprecated for LP; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). While available, batch mode can solve multiple LPs in parallel.
     - Presolve: Presolve can reduce problem size and improve solve time.
 
 .. dropdown:: What solver mode should I choose?

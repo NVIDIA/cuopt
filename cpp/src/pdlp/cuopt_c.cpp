@@ -17,7 +17,7 @@
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
-#include <mps_parser/parser.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-using namespace cuopt::mps_parser;
+using namespace cuopt::linear_programming::io;
 using namespace cuopt::linear_programming;
 
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
@@ -101,19 +101,27 @@ cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
 
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr)
 {
+  // Validate C-API inputs before any allocation. A null/empty filename or a
+  // null out-pointer cannot succeed and must not leave the user with a
+  // partially-constructed problem_and_stream_view_t.
+  if (filename == nullptr || filename[0] == '\0' || problem_ptr == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   std::string filename_str(filename);
-  bool input_mps_strict = false;
   std::unique_ptr<mps_data_model_t<cuopt_int_t, cuopt_float_t>> mps_data_model_ptr;
   try {
+    // Dispatches on file extension; see parse_problem for the enumerated rules.
     mps_data_model_ptr = std::make_unique<mps_data_model_t<cuopt_int_t, cuopt_float_t>>(
-      parse_mps<cuopt_int_t, cuopt_float_t>(filename_str, input_mps_strict));
+      parse_problem<cuopt_int_t, cuopt_float_t>(filename_str));
   } catch (const std::exception& e) {
-    CUOPT_LOG_INFO("Error parsing MPS file: %s", e.what());
+    CUOPT_LOG_INFO("Error parsing input file: %s", e.what());
     delete problem_and_stream;
-    *problem_ptr = nullptr;
-    if (std::string(e.what()).find("Error opening MPS file") != std::string::npos) {
+    *problem_ptr        = nullptr;
+    std::string err_msg = e.what();
+    if (err_msg.find("Error opening input file") != std::string::npos) {
       return CUOPT_MPS_FILE_ERROR;
     } else {
       return CUOPT_MPS_PARSE_ERROR;
@@ -172,6 +180,11 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
       variable_types == nullptr) {
     return CUOPT_INVALID_ARGUMENT;
   }
+  for (int j = 0; j < num_variables; j++) {
+    if (!detail::is_valid_public_var_type_code(variable_types[j])) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
 
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
@@ -195,8 +208,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
     // Set variable types (problem category is auto-detected)
     std::vector<var_t> variable_types_host(num_variables);
     for (int j = 0; j < num_variables; j++) {
-      variable_types_host[j] =
-        variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+      variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
     }
     problem->set_variable_types(variable_types_host.data(), num_variables);
 
@@ -232,6 +244,13 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
       variable_upper_bounds == nullptr) {
     return CUOPT_INVALID_ARGUMENT;
   }
+  if (variable_types != nullptr) {
+    for (int j = 0; j < num_variables; j++) {
+      if (!detail::is_valid_public_var_type_code(variable_types[j])) {
+        return CUOPT_INVALID_ARGUMENT;
+      }
+    }
+  }
 
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
@@ -257,8 +276,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
     std::vector<var_t> variable_types_host(num_variables);
     if (variable_types != nullptr) {
       for (int j = 0; j < num_variables; j++) {
-        variable_types_host[j] =
-          variable_types[j] == CUOPT_CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+        variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
       }
     } else {
       // Default to all continuous
@@ -614,8 +632,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
 
   // Convert var_t enum to C API char values
   for (size_t j = 0; j < variable_types_host.size(); j++) {
-    variable_types_ptr[j] =
-      variable_types_host[j] == var_t::INTEGER ? CUOPT_INTEGER : CUOPT_CONTINUOUS;
+    variable_types_ptr[j] = detail::var_type_to_char(variable_types_host[j]);
   }
   return CUOPT_SUCCESS;
 }
