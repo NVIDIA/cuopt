@@ -16,9 +16,9 @@ ConfigureTest(PDLP_TEST
     LABELS numopt)
 
 # ##################################################################################################
-# - MPS parser tests -------------------------------------------------------------------------------
+# - MPS / LP parser tests --------------------------------------------------------------------------
 ConfigureTest(MPS_PARSER_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/parser_test.cpp
     LABELS numopt)
 
 # ##################################################################################################

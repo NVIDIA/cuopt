@@ -130,79 +130,136 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
+void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
                      const sparse_vector_t<i_t, f_t>& delta_y,
                      i_t leaving_index,
                      i_t direction,
-                     const std::vector<i_t>& nonbasic_mark,
+                     const std::vector<i_t>& nonbasic_end,
                      std::vector<i_t>& delta_z_mark,
                      std::vector<i_t>& delta_z_indices,
                      std::vector<f_t>& delta_z,
                      f_t& work_estimate)
 {
   // delta_zN = - N'*delta_y
-  const i_t nz_delta_y   = delta_y.i.size();
-  size_t nnz_processed   = 0;
-  size_t nonbasic_marked = 0;
+  const i_t nz_delta_y = delta_y.i.size();
+  size_t nnz_processed = 0;
   for (i_t k = 0; k < nz_delta_y; k++) {
     const i_t i         = delta_y.i[k];
     const f_t delta_y_i = delta_y.x[k];
     if (std::abs(delta_y_i) < 1e-12) { continue; }
-    const i_t row_start = A_transpose.col_start[i];
-    const i_t row_end   = A_transpose.col_start[i + 1];
+    const i_t row_start = Arow.row_start[i];
+    const i_t row_end   = nonbasic_end[i] + 1;
     nnz_processed += row_end - row_start;
     for (i_t p = row_start; p < row_end; ++p) {
-      const i_t j = A_transpose.i[p];
-      if (nonbasic_mark[j] >= 0) {
-        delta_z[j] -= delta_y_i * A_transpose.x[p];
-        nonbasic_marked++;
-        if (!delta_z_mark[j]) {
-          delta_z_mark[j] = 1;
-          delta_z_indices.push_back(j);
-        }
+      const i_t j = Arow.j[p];
+      delta_z[j] -= delta_y_i * Arow.x[p];
+      if (!delta_z_mark[j]) {
+        delta_z_mark[j] = 1;
+        delta_z_indices.push_back(j);
       }
     }
   }
   work_estimate += 4 * nz_delta_y;
-  work_estimate += 2 * nnz_processed;
-  work_estimate += 3 * nonbasic_marked;
+  work_estimate += 4 * nnz_processed;
   work_estimate += 2 * delta_z_indices.size();
 
   // delta_zB = sigma*ei
   delta_z[leaving_index] = direction;
+}
 
-#ifdef CHECK_CHANGE_IN_REDUCED_COST
-  const i_t m = A_transpose.n;
-  const i_t n = A_transpose.m;
-  std::vector<f_t> delta_y_dense(m);
-  delta_y.to_dense(delta_y_dense);
-  std::vector<f_t> delta_z_check(n);
-  std::vector<i_t> delta_z_mark_check(n, 0);
-  std::vector<i_t> delta_z_indices_check;
-  phase2::compute_reduced_cost_update(lp,
-                                      basic_list,
-                                      nonbasic_list,
-                                      delta_y_dense,
-                                      leaving_index,
-                                      direction,
-                                      delta_z_mark_check,
-                                      delta_z_indices_check,
-                                      delta_z_check,
-                                      work_estimate);
-  f_t error_check = 0.0;
-  for (i_t k = 0; k < n; ++k) {
-    const f_t diff = std::abs(delta_z[k] - delta_z_check[k]);
-    if (diff > 1e-6) {
-      printf("delta_z error %d transpose %e no transpose %e diff %e\n",
-             k,
-             delta_z[k],
-             delta_z_check[k],
-             diff);
+template <typename i_t, typename f_t>
+void compute_initial_nonbasic_end(const std::vector<i_t>& basic_mark,
+                                  csr_matrix_t<i_t, f_t>& Arow,
+                                  std::vector<i_t>& nonbasic_end)
+{
+  i_t m = Arow.m;
+  // Swap coefficients so that all coefficients for nonbasic variables in row i
+  // appear from Arow.row_start[i] to nonbasic_end[i]
+  for (i_t i = 0; i < m; i++) {
+    i_t lo = Arow.row_start[i];
+    i_t hi = Arow.row_start[i + 1] - 1;
+    while (lo <= hi) {
+      const i_t j = Arow.j[lo];
+      if (basic_mark[j] >= 0) {
+        // Swap coefficients
+        std::swap(Arow.j[lo], Arow.j[hi]);
+        std::swap(Arow.x[lo], Arow.x[hi]);
+        hi--;
+      } else {
+        lo++;
+      }
     }
-    error_check = std::max(error_check, diff);
+    nonbasic_end[i] = hi;
   }
-  if (error_check > 1e-6) { printf("delta_z error %e\n", error_check); }
-#endif
+}
+
+template <typename i_t, typename f_t>
+void update_Arow(i_t leaving,
+                 i_t entering,
+                 const csc_matrix_t<i_t, f_t>& A,
+                 std::vector<i_t>& row_mark,
+                 std::vector<i_t>& nonbasic_end,
+                 csr_matrix_t<i_t, f_t>& Arow,
+                 f_t& work_estimate)
+{
+  // Update the Arow matrix to reflect the new basis. So
+  // that the coefficients for all nonbasic variables in row i
+  // appear in Arow.row_start[i] to nonbasic_end[i].
+  // Swap the coefficients for the leaving and entering variables
+  // The leaving variable is now nonbasic, the entering variable is now basic
+  row_mark.clear();
+  const i_t col_start_enter = A.col_start[entering];
+  const i_t col_end_enter   = A.col_start[entering + 1];
+  for (i_t p = col_start_enter; p < col_end_enter; p++) {
+    const i_t i = A.i[p];
+    row_mark.push_back(i);
+  }
+  work_estimate += 2 * (col_end_enter - col_start_enter);
+
+  // Move the coefficients for the entering variable to the end of the nonbasics
+  // And decrement the nonbasic count for the row
+  for (i_t i : row_mark) {
+    const i_t row_start = Arow.row_start[i];
+    const i_t nb_end    = nonbasic_end[i];
+    for (i_t p = row_start; p <= nb_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == entering) {
+        std::swap(Arow.j[p], Arow.j[nb_end]);
+        std::swap(Arow.x[p], Arow.x[nb_end]);
+        nonbasic_end[i]--;
+        break;
+      }
+    }
+    work_estimate += nb_end - row_start;
+  }
+  work_estimate += 2 * row_mark.size();
+
+  row_mark.clear();
+  const i_t col_start_leave = A.col_start[leaving];
+  const i_t col_end_leave   = A.col_start[leaving + 1];
+  for (i_t p = col_start_leave; p < col_end_leave; p++) {
+    const i_t i = A.i[p];
+    row_mark.push_back(i);
+  }
+  work_estimate += 2 * (col_end_leave - col_start_leave);
+
+  // Move the coefficient for the leaving variable to the end of the nonbasics
+  // And increment the nonbasic count for the row
+  for (i_t i : row_mark) {
+    const i_t nb_end  = nonbasic_end[i];
+    const i_t row_end = Arow.row_start[i + 1];
+    for (i_t p = nb_end + 1; p < row_end; p++) {
+      const i_t j = Arow.j[p];
+      if (j == leaving) {
+        std::swap(Arow.j[p], Arow.j[nb_end + 1]);
+        std::swap(Arow.x[p], Arow.x[nb_end + 1]);
+        nonbasic_end[i]++;
+        break;
+      }
+    }
+    work_estimate += row_end - nb_end;
+  }
+  work_estimate += 2 * row_mark.size();
 }
 
 namespace phase2 {
@@ -807,7 +864,7 @@ void update_single_primal_infeasibility(const std::vector<f_t>& lower,
 }
 
 template <typename i_t, typename f_t>
-void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
+bool update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                    const simplex_solver_settings_t<i_t, f_t>& settings,
                                    const std::vector<i_t>& basic_list,
                                    const std::vector<f_t>& x,
@@ -819,6 +876,7 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                    f_t& primal_inf,
                                    f_t& work_estimate)
 {
+  bool became_feasible = false;
   const f_t primal_tol = settings.primal_tol;
   const i_t nz         = basic_change_list.size();
   for (i_t k = 0; k < nz; ++k) {
@@ -831,8 +889,10 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
       const f_t old_val          = squared_infeasibilities[j];
       squared_infeasibilities[j] = 0.0;
       primal_inf                 = std::max(0.0, primal_inf - old_val);
+      if (old_val != 0.0) { became_feasible = true; }
       continue;
     }
+    const f_t old_val = squared_infeasibilities[j];
     update_single_primal_infeasibility(lp.lower,
                                        lp.upper,
                                        x,
@@ -841,8 +901,10 @@ void update_primal_infeasibilities(const lp_problem_t<i_t, f_t>& lp,
                                        infeasibility_indices,
                                        j,
                                        primal_inf);
+    if (old_val != 0.0 && squared_infeasibilities[j] == 0.0) { became_feasible = true; }
   }
   work_estimate += 8 * nz;
+  return became_feasible;
 }
 
 template <typename i_t, typename f_t>
@@ -850,33 +912,14 @@ void clean_up_infeasibilities(std::vector<f_t>& squared_infeasibilities,
                               std::vector<i_t>& infeasibility_indices,
                               f_t& work_estimate)
 {
-  bool needs_clean_up  = false;
-  const i_t initial_nz = infeasibility_indices.size();
-  for (i_t k = 0; k < initial_nz; ++k) {
-    const i_t j              = infeasibility_indices[k];
-    const f_t squared_infeas = squared_infeasibilities[j];
-    if (squared_infeas == 0.0) { needs_clean_up = true; }
+  i_t write   = 0;
+  const i_t n = infeasibility_indices.size();
+  for (i_t k = 0; k < n; ++k) {
+    const i_t j = infeasibility_indices[k];
+    if (squared_infeasibilities[j] != 0.0) { infeasibility_indices[write++] = j; }
   }
-  work_estimate += 2 * initial_nz;
-
-  if (needs_clean_up) {
-    i_t num_cleans = 0;
-    work_estimate += 2 * infeasibility_indices.size();
-    for (size_t k = 0; k < infeasibility_indices.size(); ++k) {
-      const i_t j              = infeasibility_indices[k];
-      const f_t squared_infeas = squared_infeasibilities[j];
-      if (squared_infeas == 0.0) {
-        const i_t new_j          = infeasibility_indices.back();
-        infeasibility_indices[k] = new_j;
-        infeasibility_indices.pop_back();
-        if (squared_infeasibilities[new_j] == 0.0) {
-          k--;
-        }  // Decrement k so that we process the same index again
-        num_cleans++;
-      }
-    }
-    work_estimate += 4 * num_cleans;
-  }
+  infeasibility_indices.resize(write);
+  work_estimate += 3 * n;
 }
 
 template <typename i_t, typename f_t>
@@ -1438,9 +1481,9 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
     const i_t k = scaled_delta_xB.i[h];
     const i_t j = basic_list[k];
     if (k == basic_leaving_index) {
-      const f_t w              = scaled_delta_xB.x[h];
-      const f_t w_squared      = w * w;
-      delta_y_steepest_edge[j] = (1.0 / w_squared) * dy_norm_squared;
+      const f_t w                           = scaled_delta_xB.x[h];
+      const f_t w_squared                   = w * w;
+      delta_y_steepest_edge[entering_index] = (1.0 / w_squared) * dy_norm_squared;
     } else {
       const f_t wk = -scaled_delta_xB.x[h];
       f_t new_val  = delta_y_steepest_edge[j] + wk * (2.0 * v[k] / wr + wk * omegar);
@@ -1470,31 +1513,6 @@ i_t update_steepest_edge_norms(const simplex_solver_settings_t<i_t, f_t>& settin
   }
   work_estimate += 2 * v_nz;
 
-  return 0;
-}
-
-// Compute steepest edge info for entering variable
-template <typename i_t, typename f_t>
-i_t compute_steepest_edge_norm_entering(const simplex_solver_settings_t<i_t, f_t>& settings,
-                                        i_t m,
-                                        const basis_update_mpf_t<i_t, f_t>& ft,
-                                        i_t basic_leaving_index,
-                                        i_t entering_index,
-                                        std::vector<f_t>& steepest_edge_norms)
-{
-  sparse_vector_t<i_t, f_t> es_sparse(m, 1);
-  es_sparse.i[0] = basic_leaving_index;
-  es_sparse.x[0] = -1.0;
-  sparse_vector_t<i_t, f_t> delta_ys_sparse(m, 0);
-  ft.b_transpose_solve(es_sparse, delta_ys_sparse);
-  steepest_edge_norms[entering_index] = delta_ys_sparse.norm2_squared();
-
-#ifdef STEEPEST_EDGE_DEBUG
-  settings.log.printf("Steepest edge norm %e for entering j %d at i %d\n",
-                      steepest_edge_norms[entering_index],
-                      entering_index,
-                      basic_leaving_index);
-#endif
   return 0;
 }
 
@@ -2408,6 +2426,7 @@ class phase2_timers_t {
       se_norms_time(0),
       se_entering_time(0),
       lu_update_time(0),
+      lu_factorization_time(0),
       perturb_time(0),
       vector_time(0),
       objective_time(0),
@@ -2431,8 +2450,9 @@ class phase2_timers_t {
   {
     if (!record_time) { return; }
     const f_t total_time = bfrt_time + pricing_time + btran_time + ftran_time + flip_time +
-                           delta_z_time + lu_update_time + se_norms_time + se_entering_time +
-                           perturb_time + vector_time + objective_time + update_infeasibility_time;
+                           delta_z_time + lu_update_time + lu_factorization_time + se_norms_time +
+                           se_entering_time + perturb_time + vector_time + objective_time +
+                           update_infeasibility_time;
     // clang-format off
     settings.log.printf("BFRT time       %.2fs %4.1f%\n", bfrt_time, 100.0 * bfrt_time / total_time);
     settings.log.printf("Pricing time    %.2fs %4.1f%\n", pricing_time, 100.0 * pricing_time / total_time);
@@ -2441,6 +2461,7 @@ class phase2_timers_t {
     settings.log.printf("Flip time       %.2fs %4.1f%\n", flip_time, 100.0 * flip_time / total_time);
     settings.log.printf("Delta_z time    %.2fs %4.1f%\n", delta_z_time, 100.0 * delta_z_time / total_time);
     settings.log.printf("LU update time  %.2fs %4.1f%\n", lu_update_time, 100.0 * lu_update_time / total_time);
+    settings.log.printf("LU factor time  %.2fs %4.1f%\n", lu_factorization_time, 100.0 * lu_factorization_time / total_time);
     settings.log.printf("SE norms time   %.2fs %4.1f%\n", se_norms_time, 100.0 * se_norms_time / total_time);
     settings.log.printf("SE enter time   %.2fs %4.1f%\n", se_entering_time, 100.0 * se_entering_time / total_time);
     settings.log.printf("Perturb time    %.2fs %4.1f%\n", perturb_time, 100.0 * perturb_time / total_time);
@@ -2459,6 +2480,7 @@ class phase2_timers_t {
   f_t se_norms_time;
   f_t se_entering_time;
   f_t lu_update_time;
+  f_t lu_factorization_time;
   f_t perturb_time;
   f_t vector_time;
   f_t objective_time;
@@ -2560,6 +2582,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::bound_info(lp, settings);
   phase2_work_estimate += 2 * n;
 
+  f_t refactor_work = 0.0;
+  f_t solve_work    = 0.0;
+
   if (initialize_basis) {
     PHASE2_NVTX_RANGE("DualSimplex::init_basis");
     std::vector<i_t> superbasic_list;
@@ -2572,8 +2597,10 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     assert(superbasic_list.size() == 0);
     assert(nonbasic_list.size() == n - m);
 
-    i_t refactor_status = ft.refactor_basis(
+    f_t refactor_start_work = ft.work_estimate();
+    i_t refactor_status     = ft.refactor_basis(
       lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+    refactor_work = ft.work_estimate() - refactor_start_work;
     if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
     if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
     if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
@@ -2738,13 +2765,18 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
   phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
 #endif
 
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
+  lp.A.to_compressed_row(Arow);
+  phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     return dual::status_t::CONCURRENT_LIMIT;
   }
 
-  csc_matrix_t<i_t, f_t> A_transpose(1, 1, 0);
-  lp.A.transpose(A_transpose);
-  phase2_work_estimate += 2 * lp.A.col_start[lp.A.n];
+  std::vector<i_t> nonbasic_end(m);
+  std::vector<i_t> row_mark;
+  row_mark.reserve(m);
+  compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+  phase2_work_estimate += lp.A.col_start[lp.A.n];
 
   if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
     return dual::status_t::CONCURRENT_LIMIT;
@@ -2792,6 +2824,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                         0.0,
                         toc(start_time));
   }
+  i_t iterations_since_refactor = 0;
 
   while (iter < iter_limit) {
     PHASE2_NVTX_RANGE("DualSimplex::phase2_main_loop");
@@ -2882,6 +2915,61 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       }
 #endif
 
+      // Before declaring optimal, check the primal residual ||Ax - b||.
+      // If it is large and there have been LU updates since last refactorization,
+      // refactor and recompute x_B = B^{-1}(b - N*x_N). If new infeasibilities
+      // appear, continue phase 2 instead of declaring optimal.
+      if (ft.num_updates() > 0) {
+        std::vector<f_t> residual = lp.rhs;
+        matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
+        f_t primal_res = vector_norm_inf<i_t, f_t>(residual);
+        if (primal_res > settings.primal_tol) {
+          settings.log.printf(
+            "Primal residual %.2e exceeds tolerance %.2e at optimality. "
+            "Refactoring basis (iteration %d, updates %d).\n",
+            primal_res,
+            settings.primal_tol,
+            iter,
+            ft.num_updates());
+          f_t refactor_start_work = ft.work_estimate();
+          i_t refactor_status     = ft.refactor_basis(
+            lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
+          if (refactor_status == CONCURRENT_HALT_RETURN) {
+            return dual::status_t::CONCURRENT_LIMIT;
+          }
+          if (refactor_status == TIME_LIMIT_RETURN) { return dual::status_t::TIME_LIMIT; }
+          if (refactor_status > 0) { return dual::status_t::NUMERICAL; }
+          refactor_work = ft.work_estimate() - refactor_start_work;
+
+          phase2::reset_basis_mark(
+            basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+          compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
+
+          phase2::compute_primal_solution_from_basis(
+            lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, phase2_work_estimate);
+
+          primal_infeasibility_squared =
+            phase2::compute_initial_primal_infeasibilities(lp,
+                                                           settings,
+                                                           basic_list,
+                                                           x,
+                                                           squared_infeasibilities,
+                                                           infeasibility_indices,
+                                                           primal_infeasibility);
+          phase2_work_estimate += 4 * m + 2 * n;
+          iterations_since_refactor = 0;
+          solve_work                = 0.0;
+
+          if (primal_infeasibility > settings.primal_tol) {
+            settings.log.printf(
+              "New infeasibilities found after recompute (primal_inf=%.2e). "
+              "Continuing phase 2.\n",
+              primal_infeasibility);
+            continue;
+          }
+        }
+      }
+
       phase2::prepare_optimality(0,
                                  primal_infeasibility,
                                  lp,
@@ -2914,11 +3002,14 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     timers.start_timer();
     delta_y_sparse.clear();
     UTsol_sparse.clear();
+    f_t btran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::btran");
       phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
     }
     timers.btran_time += timers.stop_timer();
+    solve_work += (ft.work_estimate() - btran_start_work);
+
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual::status_t::CONCURRENT_LIMIT;
     }
@@ -2953,11 +3044,11 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       PHASE2_NVTX_RANGE("DualSimplex::delta_z");
       if (use_transpose) {
         sparse_delta_z++;
-        compute_delta_z(A_transpose,
+        compute_delta_z(Arow,
                         delta_y_sparse,
                         leaving_index,
                         direction,
-                        nonbasic_mark,
+                        nonbasic_end,
                         delta_z_mark,
                         delta_z_indices,
                         delta_z,
@@ -3295,6 +3386,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     utilde_sparse.clear();
     scaled_delta_xB_sparse.clear();
     rhs_sparse.from_csc_column(lp.A, entering_index);
+    f_t ftran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::ftran");
       if (phase2::compute_delta_x(lp,
@@ -3316,7 +3408,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
         return dual::status_t::NUMERICAL;
       }
     }
-
+    solve_work += (ft.work_estimate() - ftran_start_work);
     timers.ftran_time += timers.stop_timer();
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual::status_t::CONCURRENT_LIMIT;
@@ -3330,6 +3422,7 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
 
     timers.start_timer();
+    f_t se_norms_start_work        = ft.work_estimate();
     const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
                                                                         basic_list,
                                                                         ft,
@@ -3351,6 +3444,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
     assert(steepest_edge_status == 0);
     timers.se_norms_time += timers.stop_timer();
+    solve_work += (ft.work_estimate() - se_norms_start_work);
+
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       return dual::status_t::CONCURRENT_LIMIT;
     }
@@ -3388,42 +3483,48 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 #ifdef CHECK_BASIC_INFEASIBILITIES
     phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 2);
 #endif
-    phase2::update_primal_infeasibilities(lp,
-                                          settings,
-                                          basic_list,
-                                          x,
-                                          entering_index,
-                                          leaving_index,
-                                          delta_xB_0_sparse.i,
-                                          squared_infeasibilities,
-                                          infeasibility_indices,
-                                          primal_infeasibility_squared,
-                                          phase2_work_estimate);
+    bool needs_cleanup = phase2::update_primal_infeasibilities(lp,
+                                                               settings,
+                                                               basic_list,
+                                                               x,
+                                                               entering_index,
+                                                               leaving_index,
+                                                               delta_xB_0_sparse.i,
+                                                               squared_infeasibilities,
+                                                               infeasibility_indices,
+                                                               primal_infeasibility_squared,
+                                                               phase2_work_estimate);
     // Update primal infeasibilities due to changes in basic variables
     // from the leaving and entering variables
-    phase2::update_primal_infeasibilities(lp,
-                                          settings,
-                                          basic_list,
-                                          x,
-                                          entering_index,
-                                          leaving_index,
-                                          scaled_delta_xB_sparse.i,
-                                          squared_infeasibilities,
-                                          infeasibility_indices,
-                                          primal_infeasibility_squared,
-                                          phase2_work_estimate);
+    needs_cleanup |= phase2::update_primal_infeasibilities(lp,
+                                                           settings,
+                                                           basic_list,
+                                                           x,
+                                                           entering_index,
+                                                           leaving_index,
+                                                           scaled_delta_xB_sparse.i,
+                                                           squared_infeasibilities,
+                                                           infeasibility_indices,
+                                                           primal_infeasibility_squared,
+                                                           phase2_work_estimate);
     // Update the entering variable
-    phase2::update_single_primal_infeasibility(lp.lower,
-                                               lp.upper,
-                                               x,
-                                               settings.primal_tol,
-                                               squared_infeasibilities,
-                                               infeasibility_indices,
-                                               entering_index,
-                                               primal_infeasibility_squared);
+    {
+      const f_t old_val = squared_infeasibilities[entering_index];
+      phase2::update_single_primal_infeasibility(lp.lower,
+                                                 lp.upper,
+                                                 x,
+                                                 settings.primal_tol,
+                                                 squared_infeasibilities,
+                                                 infeasibility_indices,
+                                                 entering_index,
+                                                 primal_infeasibility_squared);
+      needs_cleanup |= (old_val != 0.0 && squared_infeasibilities[entering_index] == 0.0);
+    }
 
-    phase2::clean_up_infeasibilities(
-      squared_infeasibilities, infeasibility_indices, phase2_work_estimate);
+    if (needs_cleanup) {
+      phase2::clean_up_infeasibilities(
+        squared_infeasibilities, infeasibility_indices, phase2_work_estimate);
+    }
 
 #if CHECK_PRIMAL_INFEASIBILITIES
     phase2::check_primal_infeasibilities(
@@ -3455,6 +3556,9 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     basic_mark[leaving_index]              = -1;
     basic_mark[entering_index]             = basic_leaving_index;
 
+    update_Arow(
+      leaving_index, entering_index, lp.A, row_mark, nonbasic_end, Arow, phase2_work_estimate);
+
 #ifdef CHECK_BASIC_INFEASIBILITIES
     phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
 #endif
@@ -3463,13 +3567,20 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
     // Refactor or update the basis factorization
     {
       PHASE2_NVTX_RANGE("DualSimplex::basis_update");
-      bool should_refactor = ft.num_updates() > settings.refactor_frequency;
+      iterations_since_refactor++;
+      bool should_refactor =
+        (ft.num_updates() > settings.refactor_frequency && solve_work > refactor_work) ||
+        (ft.num_updates() > 10 * settings.refactor_frequency);
+      // settings.log.printf("Solve work %e refactor work %e iterations since refactor %d\n",
+      // solve_work, refactor_work, iterations_since_refactor);
       if (!should_refactor) {
         i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
 #ifdef CHECK_UPDATE
         phase2::check_update(lp, settings, ft, basic_list, basic_leaving_index);
 #endif
         should_refactor = recommend_refactor == 1;
+        timers.lu_update_time += timers.stop_timer();
+        timers.start_timer();
       }
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
@@ -3478,7 +3589,8 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
       if (should_refactor) {
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
         num_refactors++;
-        bool should_recompute_x = true;  // Need for numerically difficult problems like cbs-cta
+        bool should_recompute_x = true;  // Needed for numerically difficult problems like cbs-cta
+        f_t refactor_start_work = ft.work_estimate();
         i_t refactor_status     = ft.refactor_basis(
           lp.A, settings, lp.lower, lp.upper, start_time, basic_list, nonbasic_list, vstatus);
         if (refactor_status == CONCURRENT_HALT_RETURN) { return dual::status_t::CONCURRENT_LIMIT; }
@@ -3511,9 +3623,11 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
 
           settings.log.printf("Successfully repaired basis. Iteration %d\n", iter);
         }
+        refactor_work = ft.work_estimate() - refactor_start_work;
 
         phase2::reset_basis_mark(
           basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+        compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
         if (should_recompute_x) {
           std::vector<f_t> unperturbed_x(n);
           phase2_work_estimate += n;
@@ -3537,17 +3651,14 @@ dual::status_t dual_phase2_with_advanced_basis(i_t phase,
                                                          infeasibility_indices,
                                                          primal_infeasibility);
         phase2_work_estimate += 4 * m + 2 * n;
+        iterations_since_refactor = 0;
+        solve_work                = 0.0;
       }
 #ifdef CHECK_BASIC_INFEASIBILITIES
       phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
 #endif
     }
-    timers.lu_update_time += timers.stop_timer();
-
-    timers.start_timer();
-    phase2::compute_steepest_edge_norm_entering(
-      settings, m, ft, basic_leaving_index, entering_index, delta_y_steepest_edge);
-    timers.se_entering_time += timers.stop_timer();
+    timers.lu_factorization_time += timers.stop_timer();
 
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))
@@ -3676,15 +3787,19 @@ template void compute_reduced_cost_update<int, double>(const lp_problem_t<int, d
                                                        std::vector<double>& delta_z,
                                                        double& work_estimate);
 
-template void compute_delta_z<int, double>(const csc_matrix_t<int, double>& A_transpose,
+template void compute_delta_z<int, double>(const csr_matrix_t<int, double>& Arow,
                                            const sparse_vector_t<int, double>& delta_y,
                                            int leaving_index,
                                            int direction,
-                                           const std::vector<int>& nonbasic_mark,
+                                           const std::vector<int>& nonbasic_end,
                                            std::vector<int>& delta_z_mark,
                                            std::vector<int>& delta_z_indices,
                                            std::vector<double>& delta_z,
                                            double& work_estimate);
+
+template void compute_initial_nonbasic_end<int, double>(const std::vector<int>& basic_mark,
+                                                        csr_matrix_t<int, double>& Arow,
+                                                        std::vector<int>& nonbasic_end);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

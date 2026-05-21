@@ -108,8 +108,7 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
 template <typename i_t, typename f_t>
 void fj_t<i_t, f_t>::reset_cuda_graph()
 {
-  if (graph_created) cudaGraphExecDestroy(graph_instance);
-  graph_created = false;
+  step_graph_.reset();
 }
 
 template <typename i_t, typename f_t>
@@ -682,18 +681,23 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
   // Load-balanced codepath not updated yet to handle rounding mode
   if (settings.mode == fj_mode_t::ROUNDING) { use_load_balancing = false; }
 
-  cudaGraph_t graph;
   void* kernel_args[]            = {&v};
   bool force_reset               = false;
   void* reset_moves_args[]       = {&v, &force_reset};
   bool ignore_load_balancing     = false;
   void* update_assignment_args[] = {&v, &ignore_load_balancing};
-  if (!graph_created || !use_graph) {
-    // CUB temp storage initialization
-    size_t compaction_temp_storage_bytes = 0;
-    auto valid_move_iterator             = thrust::make_transform_iterator(
-      thrust::counting_iterator<i_t>(0),
-      cuda::proclaim_return_type<i_t>([v] __device__(i_t i) -> i_t { return v.admits_move(i); }));
+
+  // CUB temp storage probe + resize is intentionally done OUTSIDE the
+  // captured region: the resize would allocate, which is forbidden during
+  // capture, and the probe itself is a pure size calculation. We only need
+  // to (re)compute it on first capture for graph mode, and every time for
+  // eager mode -- the temp-storage size depends on n_variables only and is
+  // stable across iterations otherwise.
+  size_t compaction_temp_storage_bytes = 0;
+  auto valid_move_iterator             = thrust::make_transform_iterator(
+    thrust::counting_iterator<i_t>(0),
+    cuda::proclaim_return_type<i_t>([v] __device__(i_t i) -> i_t { return v.admits_move(i); }));
+  if (!step_graph_.is_initialized() || !use_graph) {
     cub::DeviceSelect::Flagged((void*)nullptr,
                                compaction_temp_storage_bytes,
                                thrust::counting_iterator<i_t>(0),
@@ -705,10 +709,9 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
     if (compaction_temp_storage_bytes > data.cub_storage_bytes.size()) {
       data.cub_storage_bytes.resize(compaction_temp_storage_bytes, climber_stream);
     }
+  }
 
-    if (use_graph) {
-      RAFT_CUDA_TRY(cudaStreamBeginCapture(climber_stream, cudaStreamCaptureModeThreadLocal));
-    }
+  auto step_body = [&]() {
     for (i_t i = 0; i < (use_graph ? iterations_per_graph : 1); ++i) {
       {
         // related varialbe array has to be dynamically computed each iteration
@@ -806,22 +809,13 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                      0,
                                      climber_stream));
     }
+  };
 
-    if (use_graph) {
-      RAFT_CUDA_TRY(cudaStreamEndCapture(climber_stream, &graph));
-      try {
-        RAFT_CUDA_TRY(cudaGraphInstantiate(&graph_instance, graph));
-      } catch (...) {
-        RAFT_CUDA_TRY(cudaGraphDestroy(graph));
-        throw;
-      }
-      RAFT_CHECK_CUDA(climber_stream);
-      RAFT_CUDA_TRY(cudaGraphDestroy(graph));
-      graph_created = true;
-    }
+  if (use_graph) {
+    step_graph_.run(climber_stream, step_body);
+  } else {
+    step_body();
   }
-
-  if (use_graph) RAFT_CUDA_TRY(cudaGraphLaunch(graph_instance, climber_stream));
 }
 
 template <typename i_t, typename f_t>

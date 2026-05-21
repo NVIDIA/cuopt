@@ -87,6 +87,7 @@ cache:
       - libcudss-dev >=0.7
       - libcurand-dev
       - libcusparse-dev
+      - libnvjitlink-dev
       - libboost-devel
       - tbb-devel
       - zlib
@@ -125,6 +126,7 @@ outputs:
         - libcublas
         - libcudss-dev >=0.7
         - libcusparse-dev
+        - libnvjitlink-dev
         - openssl
         - c-ares
         - libuuid

@@ -66,14 +66,14 @@ template <typename i_t, typename f_t>
 objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
-  const csc_matrix_t<i_t, f_t>& A_transpose,
+  const csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<variable_status_t>& vstatus,
   i_t variable_j,
   i_t basic_j,
   const lp_solution_t<i_t, f_t>& lp_solution,
   const std::vector<i_t>& basic_list,
   const std::vector<i_t>& nonbasic_list,
-  const std::vector<i_t>& nonbasic_mark,
+  const std::vector<i_t>& nonbasic_end,
   basis_update_mpf_t<i_t, f_t>& basis_factors,
   std::vector<i_t>& workspace,
   std::vector<f_t>& delta_z,
@@ -82,7 +82,6 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   // Compute the objective estimate for the down and up branches of variable j
   assert(variable_j >= 0);
   assert(basic_j >= 0);
-
   // Down branch
   i_t direction = -1;
   sparse_vector_t<i_t, f_t> e_k(lp.num_rows, 0);
@@ -104,11 +103,11 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   std::vector<i_t> delta_z_indices;
   // delta_z starts out all zero
   if (use_transpose) {
-    compute_delta_z(A_transpose,
+    compute_delta_z(Arow,
                     delta_y,
                     variable_j,
                     direction,
-                    nonbasic_mark,
+                    nonbasic_end,
                     workspace,
                     delta_z_indices,
                     delta_z,
@@ -218,7 +217,7 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
                                            const std::vector<i_t>& basic_list,
                                            const std::vector<i_t>& nonbasic_list,
                                            const std::vector<i_t>& fractional,
-                                           const csc_matrix_t<i_t, f_t>& AT,
+                                           const csr_matrix_t<i_t, f_t>& Arow,
                                            basis_update_mpf_t<i_t, f_t>& basis_factors,
                                            std::vector<f_t>& strong_branch_down,
                                            std::vector<f_t>& strong_branch_up)
@@ -236,10 +235,11 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
     basic_map[basic_list[i]] = i;
   }
 
-  std::vector<i_t> nonbasic_mark(n, -1);
-  for (i_t i = 0; i < n - m; i++) {
-    nonbasic_mark[nonbasic_list[i]] = i;
-  }
+  // compute_initial_nonbasic_end permutes columns in place; copy so pc.Arow is unchanged
+  csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
+  std::vector<i_t> nonbasic_end(m);
+  compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
   for (i_t k = 0; k < fractional.size(); k++) {
     const i_t j = fractional[k];
@@ -248,14 +248,14 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
     objective_change_estimate_t<f_t> estimate =
       single_pivot_objective_change_estimate(lp,
                                              settings,
-                                             AT,
+                                             local_Arow,
                                              vstatus,
                                              j,
                                              basic_map[j],
                                              lp_solution,
                                              basic_list,
                                              nonbasic_list,
-                                             nonbasic_mark,
+                                             nonbasic_end,
                                              basis_factors,
                                              workspace,
                                              delta_z,
@@ -1071,7 +1071,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           basic_list,
                                           nonbasic_list,
                                           fractional,
-                                          *pc.AT,
+                                          pc.Arow,
                                           basis_factors,
                                           strong_branch_down,
                                           strong_branch_up);
@@ -1543,10 +1543,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         basic_map[worker->basic_list[i]] = i;
       }
 
-      std::vector<i_t> nonbasic_mark(n, -1);
-      for (i_t i = 0; i < n - m; i++) {
-        nonbasic_mark[worker->nonbasic_list[i]] = i;
-      }
+      // Each thread will have a different basis
+      // So we need to make a copy of Arow before we permute the columns
+      // so that nonbasic variables appear first
+      csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
+      std::vector<i_t> nonbasic_end(m);
+      compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
       for (auto& [score, j] : unreliable_list) {
         if (pseudo_cost_num_down[j] == 0 || pseudo_cost_num_up[j] == 0) {
@@ -1554,14 +1557,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           objective_change_estimate_t<f_t> estimate =
             single_pivot_objective_change_estimate(worker->leaf_problem,
                                                    settings,
-                                                   *AT,
+                                                   local_Arow,
                                                    node_ptr->vstatus,
                                                    j,
                                                    basic_map[j],
                                                    leaf_solution,
                                                    worker->basic_list,
                                                    worker->nonbasic_list,
-                                                   nonbasic_mark,
+                                                   nonbasic_end,
                                                    worker->basis_factors,
                                                    workspace,
                                                    delta_z,

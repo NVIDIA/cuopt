@@ -128,6 +128,14 @@ class mip_solver_settings_t {
   int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
   /**
+   * @brief Enable the cuOpt internal probing-cache step of presolve (MIP only).
+   *
+   * Probing is part of cuOpt's internal MIP presolve and runs only when the
+   * higher-level presolve is enabled (i.e. `presolver != presolver_t::None`).
+   * When this is `false`, probing is skipped even if presolve is otherwise on.
+   */
+  bool probing{true};
+  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:
