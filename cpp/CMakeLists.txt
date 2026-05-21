@@ -18,6 +18,16 @@ include(rapids-cuda)
 include(rapids-export)
 include(rapids-find)
 
+# Expose $CONDA_PREFIX/lib to all executables in this build so ld can resolve
+# libcuopt.so's PRIVATE transitive deps (gRPC/Protobuf/Abseil) at link time
+# without relying on conda-forge compiler activation scripts setting LDFLAGS.
+# BUILD_INTERFACE keeps this out of the installed cuopt CMake config.
+include("${rapids-cmake-dir}/cmake/support_conda_env.cmake")
+rapids_cmake_support_conda_env(conda_env MODIFY_PREFIX_PATH)
+if (TARGET conda_env)
+    link_libraries($<BUILD_INTERFACE:conda_env>)
+endif ()
+
 rapids_cuda_init_architectures(CUOPT)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
