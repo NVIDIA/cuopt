@@ -1076,12 +1076,16 @@ i_t find_candidate_columns(const lp_problem_t<i_t, f_t>& lp,
 template <typename i_t, typename f_t>
 i_t add_slacks_to_basis(const lp_problem_t<i_t, f_t>& lp,
                         const std::vector<i_t>& dependent_rows,
+                        f_t start_time,
+                        f_t time_limit,
                         std::vector<variable_status_t>& vstatus)
 {
   const i_t n   = lp.num_cols;
   i_t num_basic = 0;
   // Add a slack to the basis for each dependent row
   for (i_t i : dependent_rows) {
+    if (toc(start_time) > time_limit) { return -1; }
+
     for (i_t j = n - 1; j >= 0; --j) {
       const i_t col_start = lp.A.col_start[j];
       const i_t col_end   = lp.A.col_start[j + 1];
@@ -1242,7 +1246,11 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
 
   i_t num_basic = 0;
   if (rank < m) {
-    num_basic = add_slacks_to_basis(lp, dependent_rows, vstatus);
+    num_basic = add_slacks_to_basis(lp, dependent_rows, start_time, settings.time_limit, vstatus);
+    if (num_basic < 0) {
+      settings.log.printf("Time limit exceeded\n");
+      return crossover_status_t::TIME_LIMIT;
+    }
     settings.log.debug("num basic %d from slacks\n", num_basic);
   }
 
