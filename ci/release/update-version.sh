@@ -138,8 +138,9 @@ sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' hel
 # CI files - context-aware branch references and version updates
 for FILE in .github/workflows/*.yaml; do
   sed_runner "/shared-workflows/ s|@.*|@${RAPIDS_BRANCH_NAME}|g" "${FILE}"
-  # CI image tags of the form {rapids_version}-{something}
-  sed_runner "s/:[0-9]*\\.[0-9]*-/:${NEXT_SHORT_TAG}-/g" "${FILE}"
+  # CI image tags of the form rapidsai/<image>:{rapids_version}-{something}.
+  # Scoped to rapidsai/ so unrelated images like python:3.14-slim aren't rewritten.
+  sed_runner "/rapidsai\// s|:[0-9]*\\.[0-9]*-|:${NEXT_SHORT_TAG}-|g" "${FILE}"
 done
 
 # Documentation references - context-aware
