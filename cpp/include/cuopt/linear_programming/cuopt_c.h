@@ -424,7 +424,7 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
  * after ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` to build a QP or QCQP model
  * without using ``cuOptCreateQuadraticProblem`` or ``cuOptCreateQuadraticRangedProblem``.
  * Each call replaces any previously set quadratic objective. Duplicate (row, col) indices
- * in the triplet arrays are summed.
+ * in the triplet arrays are summed. Matrix Q must be symmetric positive semidefinite.
  *
  * @param[in] problem The optimization problem created by ``cuOptCreateProblem`` or
  *            ``cuOptCreateRangedProblem``.
