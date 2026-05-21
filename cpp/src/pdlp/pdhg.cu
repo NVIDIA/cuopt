@@ -597,29 +597,23 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
 #endif
 
     // Primal and dual steps are captured in a cuda graph since called very often
-    if (!graph_all.is_initialized(total_pdlp_iterations)) {
-      graph_all.start_capture(total_pdlp_iterations);
+    graph_all.run(total_pdlp_iterations, [&]() {
       // First compute only A_t @ y, needed later in adaptative step size
       compute_At_y();
       // Compute fused primal gradient with projection
       compute_primal_projection_with_gradient(primal_step_size);
       // Compute next dual solution
       compute_next_dual_solution(dual_step_size);
-      graph_all.end_capture(total_pdlp_iterations);
-    }
-    graph_all.launch(total_pdlp_iterations);
+    });
   } else {
 #ifdef PDLP_DEBUG_MODE
     std::cout << "    Not computing A_t * Y" << std::endl;
 #endif
     // A_t * y was already computed in previous iteration
-    if (!graph_prim_proj_gradient_dual.is_initialized(total_pdlp_iterations)) {
-      graph_prim_proj_gradient_dual.start_capture(total_pdlp_iterations);
+    graph_prim_proj_gradient_dual.run(total_pdlp_iterations, [&]() {
       compute_primal_projection_with_gradient(primal_step_size);
       compute_next_dual_solution(dual_step_size);
-      graph_prim_proj_gradient_dual.end_capture(total_pdlp_iterations);
-    }
-    graph_prim_proj_gradient_dual.launch(total_pdlp_iterations);
+    });
   }
 }
 
@@ -1060,12 +1054,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
-  // Compute next primal solution reflected
+  // Compute next primal solution reflected.
 
   if (should_major) {
-    if (!graph_all.is_initialized(should_major)) {
-      graph_all.start_capture(should_major);
-
+    graph_all.run(should_major, [&]() {
       compute_At_y();
       if (!batch_mode_) {
         cub::DeviceTransform::Transform(
@@ -1166,14 +1158,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("potential_next_dual_solution_", potential_next_dual_solution_);
       print("reflected_dual_", reflected_dual_);
 #endif
-      graph_all.end_capture(should_major);
-    }
-    graph_all.launch(should_major);
+    });
 
   } else {
-    if (!graph_all.is_initialized(should_major)) {
-      graph_all.start_capture(should_major);
-
+    graph_all.run(should_major, [&]() {
       // Compute next primal
       compute_At_y();
 
@@ -1281,9 +1269,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_dual_", reflected_dual_);
 #endif
-      graph_all.end_capture(should_major);
-    }
-    graph_all.launch(should_major);
+    });
   }
 }
 

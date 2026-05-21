@@ -129,6 +129,15 @@ struct folding_info_t {
   bool is_folded;
 };
 
+// Free variable that received an implied bound during presolve.
+// Stores the bounding constraint and coefficient for dual correction in uncrush.
+template <typename i_t, typename f_t>
+struct bounded_free_var_t {
+  i_t variable;     // j: the originally-free variable
+  i_t constraint;   // i*: the constraint that implied the bound
+  f_t coefficient;  // a_{i*,j}: the coefficient of x_j in constraint i*
+};
+
 template <typename i_t, typename f_t>
 struct presolve_info_t {
   // indices of variables in the original problem that remain in the presolved problem
@@ -153,7 +162,8 @@ struct presolve_info_t {
 
   // Variables that were negated to handle -inf < x_j <= u_j
   std::vector<i_t> negated_variables;
-
+  // Originally-free variables that received implied bounds, with the constraint used
+  std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
   // Free variable indices for QP augmented system (not split, handled natively)
   std::vector<i_t> free_variable_indices;
 };
@@ -244,6 +254,7 @@ void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
 template <typename i_t, typename f_t>
 void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const lp_problem_t<i_t, f_t>& original_problem,
                       const std::vector<f_t>& crushed_x,
                       const std::vector<f_t>& crushed_y,
                       const std::vector<f_t>& crushed_z,

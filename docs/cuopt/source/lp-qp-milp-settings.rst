@@ -66,6 +66,10 @@ Presolve
 ``CUOPT_PRESOLVE`` controls which presolver to use for presolve reductions.
 cuOpt provides presolve reductions for linear programming (LP) problems using either PSLP or Papilo, and for mixed-integer programming (MIP) problems using Papilo. By default, Papilo presolve is always enabled for MIP problems. For LP problems, PSLP presolve is always enabled by default. You can explicitly control the presolver by setting this parameter to 0 (disable presolve), 1 (Papilo), or 2 (PSLP).
 
+Probing
+^^^^^^^
+``CUOPT_MIP_PROBING`` toggles the probing-cache step of cuOpt's internal MIP presolve. The probing pass evaluates variable fixings to discover implications used later by branch-and-bound and the rounding heuristics. It is enabled by default (``true``); set it to ``false`` to skip probing while leaving the rest of presolve in place. Setting ``CUOPT_PRESOLVE=0`` already turns off the entire presolve pipeline, so ``CUOPT_MIP_PROBING`` only matters when presolve is otherwise enabled. Probing is also skipped in deterministic mode and on LP-only solves.
+
 Dual Postsolve
 ^^^^^^^^^^^^^^
 ``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled when using Papilo presolver for LP problems. Disabling dual postsolve can improve solve time at the expense of not having
