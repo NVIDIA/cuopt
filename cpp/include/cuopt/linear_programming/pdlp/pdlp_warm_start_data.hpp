@@ -68,7 +68,7 @@ struct pdlp_warm_start_data_t {
 
   // Copy constructor for when copying the solver_settings object in the PDLP object
   pdlp_warm_start_data_t(const pdlp_warm_start_data_t<i_t, f_t>& other);
-  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) = default;
+  pdlp_warm_start_data_t& operator=(pdlp_warm_start_data_t&& other) noexcept = default;
 
   // Check if warmstart data is populated (same sentinel check as release/26.02)
   bool is_populated() const { return last_restart_duality_gap_dual_solution_.size() > 0; }

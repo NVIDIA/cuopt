@@ -116,8 +116,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
   explicit optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
-  optimization_problem_t(optimization_problem_t<i_t, f_t>&&)            = default;
-  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) = default;
+  optimization_problem_t(optimization_problem_t<i_t, f_t>&&) noexcept            = default;
+  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) noexcept = default;
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
