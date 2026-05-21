@@ -366,6 +366,65 @@ TEST(barrier, presolve_keeps_native_free_variables_before_cones)
   EXPECT_EQ(presolved_lp.upper[1], inf);
 }
 
+TEST(barrier, native_free_linear_without_barrier_presolve)
+{
+  // barrier_presolve off skips bound shifts; barrier_native_free_linear still tags FR cols.
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<int, double> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 5;
+  constexpr int nz = 5;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {0.0, 0.0, 0.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 1, 2, 3, 4, 5};
+  for (int j = 0; j < n; ++j) {
+    user_problem.A.i[j] = 0;
+    user_problem.A.x[j] = 1.0;
+  }
+
+  user_problem.rhs       = {1.0};
+  user_problem.row_sense = {'E'};
+  user_problem.lower = {-inf, -inf, 0.0, 0.0, 0.0};
+  user_problem.upper.assign(n, inf);
+  user_problem.num_range_rows         = 0;
+  user_problem.cone_var_start         = 2;
+  user_problem.second_order_cone_dims = {3};
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  simplex_solver_settings_t<int, double> settings;
+  settings.barrier                   = true;
+  settings.barrier_presolve          = false;
+  settings.barrier_native_free_linear = true;
+  settings.dualize                   = 0;
+  settings.scale_columns             = false;
+
+  std::vector<int> new_slacks;
+  dualize_info_t<int, double> dualize_info;
+  lp_problem_t<int, double> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+
+  presolve_info_t<int, double> presolve_info;
+  lp_problem_t<int, double> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  ASSERT_EQ(presolve(original_lp, settings, presolved_lp, presolve_info), 0);
+
+  EXPECT_TRUE(presolve_info.removed_lower_bounds.empty());
+  EXPECT_TRUE(presolve_info.negated_variables.empty());
+  ASSERT_EQ(presolve_info.native_free_linear_indices.size(), 2);
+  EXPECT_EQ(presolve_info.native_free_linear_indices[0], 0);
+  EXPECT_EQ(presolve_info.native_free_linear_indices[1], 1);
+}
+
 TEST(barrier, uncrush_solution_removes_non_tail_free_variable_partner)
 {
   using namespace cuopt::linear_programming::dual_simplex;

@@ -382,6 +382,16 @@ lp_status_t solve_linear_program_with_advanced_basis(
   return lp_status;
 }
 
+/** SOCP barrier: skip bound-shift presolve; keep native free linear variables for augmented KKT. */
+template <typename i_t, typename f_t>
+void apply_barrier_socp_presolve_defaults(const user_problem_t<i_t, f_t>& user_problem,
+                                          simplex_solver_settings_t<i_t, f_t>& settings)
+{
+  if (user_problem.second_order_cone_dims.empty()) { return; }
+  settings.barrier_presolve           = false;
+  settings.barrier_native_free_linear = true;
+}
+
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -394,7 +404,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
-  barrier_settings.barrier_presolve                    = true;
+  apply_barrier_socp_presolve_defaults(user_problem, barrier_settings);
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
   if (!validate_barrier_cone_layout(original_lp, settings)) {

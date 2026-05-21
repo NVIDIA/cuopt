@@ -20,6 +20,7 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
+/** Number of leading linear columns; SOCP cone variables occupy [linear_cols, num_cols). */
 static i_t linear_var_count(const lp_problem_t<i_t, f_t>& problem)
 {
   return problem.second_order_cone_dims.empty() ? problem.num_cols : problem.cone_var_start;
@@ -922,8 +923,10 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     problem.Q.x = user_problem.Q_values;
   }
 
-  // Add artifical variables
-  if (!settings.barrier_presolve) {
+  // Add artificial variables for LP equality rows when not using barrier presolve.
+  // SOCP problems must keep [linear | cone] column order; slacks for inequalities are
+  // inserted before the cone block in convert_less_than_to_equal — do not append here.
+  if (!settings.barrier_presolve && problem.second_order_cone_dims.empty()) {
     add_artifical_variables(problem, user_problem.range_rows, equality_rows, new_slacks);
   }
 }
@@ -935,10 +938,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
   problem = original;
+  const i_t linear_cols = linear_var_count(problem);
   std::vector<char> row_sense(problem.num_rows, '=');
-  // Check for free variables
+  // Check for free variables (linear block only; cone columns are handled by the barrier SOC layout)
   i_t free_variables = 0;
-  for (i_t j = 0; j < linear_var_count(problem); j++) {
+  for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
@@ -949,7 +953,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     std::vector<i_t> row_marked(problem.num_rows, 0);
     current_free_variables.reserve(problem.num_cols);
     constraints_to_check.reserve(problem.num_rows);
-    for (i_t j = 0; j < linear_var_count(problem); j++) {
+    for (i_t j = 0; j < linear_cols; j++) {
       if (problem.lower[j] == -inf && problem.upper[j] == inf) {
         current_free_variables.push_back(j);
         const i_t col_start = problem.A.col_start[j];
@@ -983,6 +987,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         f_t last_free_coeff_i = 0.0;
         for (i_t p = row_start; p < row_end; p++) {
           const i_t j       = Arow.j[p];
+          if (j >= linear_cols) { continue; }
           const f_t aij     = Arow.x[p];
           const f_t lower_j = problem.lower[j];
           const f_t upper_j = problem.upper[j];
@@ -1094,9 +1099,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   // The original problem may have a variable without a lower bound
   // but a finite upper bound
-  // -inf < x_j <= u_j
+  // -inf < x_j <= u_j (linear variables only)
   i_t no_lower_bound = 0;
-  for (i_t j = 0; j < problem.num_cols; j++) {
+  for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] < inf) { no_lower_bound++; }
   }
 
@@ -1107,7 +1112,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   // Handle -inf < x_j <= u_j by substituting x'_j = -x_j, giving -u_j <= x'_j < inf
   if (settings.barrier_presolve && no_lower_bound > 0) {
     presolve_info.negated_variables.reserve(no_lower_bound);
-    for (i_t j = 0; j < problem.num_cols; j++) {
+    for (i_t j = 0; j < linear_cols; j++) {
       if (problem.lower[j] == -inf && problem.upper[j] < inf) {
         presolve_info.negated_variables.push_back(j);
 
@@ -1143,9 +1148,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
 
   // The original problem may have nonzero lower bounds
-  // 0 != l_j <= x_j <= u_j
+  // 0 != l_j <= x_j <= u_j (linear variables only)
   i_t nonzero_lower_bounds = 0;
-  for (i_t j = 0; j < problem.num_cols; j++) {
+  for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
   }
   if (settings.barrier_presolve && nonzero_lower_bounds > 0) {
@@ -1168,7 +1173,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     // so we get the constant term c_j * l_j
 
     std::vector<bool> lower_bounds_removed(problem.num_cols, false);
-    for (i_t j = 0; j < problem.num_cols; j++) {
+    for (i_t j = 0; j < linear_cols; j++) {
       if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
         lower_bounds_removed[j]               = true;
         presolve_info.removed_lower_bounds[j] = problem.lower[j];
@@ -1177,7 +1182,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
     auto old_objective = problem.objective;
     if (problem.Q.n > 0) {
-      for (i_t row = 0; row < problem.num_cols; row++) {
+      for (i_t row = 0; row < linear_cols; row++) {
         i_t row_start = problem.Q.row_start[row];
         i_t row_end   = problem.Q.row_start[row + 1];
         for (i_t p = row_start; p < row_end; p++) {
@@ -1198,7 +1203,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
 
     std::vector<f_t> kahan_compensation(problem.num_rows, 0.0);
-    for (i_t j = 0; j < problem.num_cols; j++) {
+    for (i_t j = 0; j < linear_cols; j++) {
       if (lower_bounds_removed[j]) {
         i_t col_start = problem.A.col_start[j];
         i_t col_end   = problem.A.col_start[j + 1];
@@ -1236,7 +1241,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   // Check for empty cols
   i_t num_empty_cols = 0;
   {
-    for (i_t j = 0; j < linear_var_count(problem); ++j) {
+    for (i_t j = 0; j < linear_cols; ++j) {
       if ((problem.A.col_start[j + 1] - problem.A.col_start[j]) == 0) { num_empty_cols++; }
     }
   }
@@ -1247,7 +1252,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
   // Check for free variables (exclude cone variables — they are naturally unbounded)
   free_variables = 0;
-  for (i_t j = 0; j < linear_var_count(problem); j++) {
+  for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
   problem.Q.check_matrix("Before free variable expansion");
@@ -1257,19 +1262,24 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   // static regularizer on the diagonal instead of z/x complementarity terms.
   const bool keep_native_free_variables =
     problem.Q.n > 0 || !problem.second_order_cone_dims.empty();
-  if (settings.barrier_presolve && free_variables > 0 && keep_native_free_variables) {
+  const bool register_native_free_linear =
+    (settings.barrier_native_free_linear || settings.barrier_presolve) && free_variables > 0 &&
+    keep_native_free_variables;
+  if (register_native_free_linear) {
     presolve_info.free_variable_pairs.clear();
     presolve_info.native_free_linear_indices.clear();
     // Only linear decision variables can be "native" free variables; cone/stack columns
     // are unbounded by construction and must not be counted here.
-    for (i_t j = 0; j < linear_var_count(problem); j++) {
+    i_t native_free_count = 0;
+    for (i_t j = 0; j < linear_cols; j++) {
       if (problem.lower[j] == -inf && problem.upper[j] == inf) {
         presolve_info.native_free_linear_indices.push_back(j);
+        native_free_count++;
       }
     }
     settings.log.printf(
       "Keeping %d native free linear variables for augmented-system barrier (QP/SOCP)\n",
-      free_variables);
+      native_free_count);
   } else if (settings.barrier_presolve && free_variables > 0) {
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
@@ -1284,7 +1294,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     // sum_{k != j} c_k x_k + c_j v - c_j w
 
     const i_t old_num_cols = problem.num_cols;
-    const i_t linear_cols  = linear_var_count(problem);
     const i_t new_cone_start =
       problem.second_order_cone_dims.empty() ? 0 : linear_cols + free_variables;
     const i_t num_cols = old_num_cols + free_variables;
