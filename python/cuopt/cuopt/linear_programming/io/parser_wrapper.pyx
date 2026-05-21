@@ -17,7 +17,6 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 
 from .parser cimport call_parse_problem, mps_data_model_t
-
 import warnings
 
 import numpy as np

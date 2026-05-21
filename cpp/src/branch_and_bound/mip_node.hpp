@@ -58,8 +58,8 @@ class mip_node_t {
     // scope-exit ensure destruction of all detached leaves
   }
 
-  mip_node_t(mip_node_t&&)            = default;
-  mip_node_t& operator=(mip_node_t&&) = default;
+  mip_node_t(mip_node_t&&) noexcept            = default;
+  mip_node_t& operator=(mip_node_t&&) noexcept = default;
 
   mip_node_t()
     : status(node_status_t::PENDING),

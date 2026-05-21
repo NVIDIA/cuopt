@@ -301,6 +301,11 @@ def _run_in_subprocess(func, env=None, timeout=120):
 def _impl_lp_solve_cpu_only():
     """LP solve returns correctly-sized solution vectors."""
     from cuopt import linear_programming
+<<<<<<< HEAD
+=======
+    from cuopt.linear_programming import io as mps_parser
+
+>>>>>>> origin/release/26.06
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
     dm = ParseProblem(mps_file)
@@ -329,6 +334,11 @@ def _impl_lp_solve_cpu_only():
 def _impl_lp_dual_solution_cpu_only():
     """Dual solution and reduced costs are correctly sized."""
     from cuopt import linear_programming
+<<<<<<< HEAD
+=======
+    from cuopt.linear_programming import io as mps_parser
+
+>>>>>>> origin/release/26.06
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
     dm = ParseProblem(mps_file)
@@ -360,6 +370,11 @@ def _impl_mip_solve_cpu_only():
     from cuopt.linear_programming.solver.solver_parameters import (
         CUOPT_TIME_LIMIT,
     )
+<<<<<<< HEAD
+=======
+    from cuopt.linear_programming import io as mps_parser
+
+>>>>>>> origin/release/26.06
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/mip/bb_optimality.mps"
     dm = ParseProblem(mps_file)
@@ -394,6 +409,11 @@ def _impl_warmstart_cpu_only():
         CUOPT_PRESOLVE,
     )
     from cuopt.linear_programming.solver_settings import SolverMethod
+<<<<<<< HEAD
+=======
+    from cuopt.linear_programming import io as mps_parser
+
+>>>>>>> origin/release/26.06
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
     dm = ParseProblem(mps_file)

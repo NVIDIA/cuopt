@@ -33,6 +33,7 @@
 #define CUOPT_ITERATION_LIMIT                      "iteration_limit"
 #define CUOPT_TIME_LIMIT                           "time_limit"
 #define CUOPT_WORK_LIMIT                           "work_limit"
+#define CUOPT_NODE_LIMIT                           "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                     "pdlp_solver_mode"
 #define CUOPT_METHOD                               "method"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL              "per_constraint_residual"
@@ -51,6 +52,7 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
 #define CUOPT_PRESOLVE                             "presolve"
+#define CUOPT_MIP_PROBING                          "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                       "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                 "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE               "mip_absolute_tolerance"
@@ -137,8 +139,9 @@
 #define CUOPT_EQUAL        'E'
 
 /* @brief The variable type constants */
-#define CUOPT_CONTINUOUS 'C'
-#define CUOPT_INTEGER    'I'
+#define CUOPT_CONTINUOUS      'C'
+#define CUOPT_INTEGER         'I'
+#define CUOPT_SEMI_CONTINUOUS 'S'
 
 /* @brief The infinity constant */
 #ifdef __cplusplus

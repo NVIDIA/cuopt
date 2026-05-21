@@ -63,9 +63,11 @@ import cudf
 from cuopt.linear_programming.solver_settings.solver_settings import (
     PDLPSolverMode,
     SolverMethod,
+)
+from cuopt.linear_programming.solver_settings.solver_settings cimport (
     SolverSettings,
 )
-from cuopt.utilities import InputValidationError, series_from_buf
+from cuopt.utilities import InputValidationError, get_data_ptr, series_from_buf
 
 import pyarrow as pa
 
@@ -127,17 +129,6 @@ cdef object _vector_to_numpy(const vector[double]& vec):
     return np.asarray(<double[:size]> data_ptr, dtype=np.float64).copy()
 
 
-def get_data_ptr(array):
-    if isinstance(array, cudf.Series):
-        return array.__cuda_array_interface__['data'][0]
-    elif isinstance(array, np.ndarray):
-        return array.__array_interface__['data'][0]
-    else:
-        raise Exception(
-            "get_data_ptr must be called with cudf.Series or np.ndarray"
-        )
-
-
 def type_cast(cudf_obj, np_type, name):
     if isinstance(cudf_obj, cudf.Series):
         cudf_type = cudf_obj.dtype
@@ -164,13 +155,39 @@ def type_cast(cudf_obj, np_type, name):
 
 
 cdef set_solver_setting(
-        unique_ptr[solver_settings_t[int, double]]& unique_solver_settings,
-        settings,
+        SolverSettings settings,
         DataModel data_model_obj=None,
         mip=False):
-    cdef solver_settings_t[int, double]* c_solver_settings = (
-        unique_solver_settings.get()
-    )
+    """Apply settings for one solve using the reset-replay invariant.
+
+    Discards the current C++ ``solver_settings_t`` and repopulates it from
+    Python-side state via :meth:`SolverSettings.set_c_solver_settings`. See
+    that method for the source-of-truth contract (``settings_dict``,
+    ``pdlp_warm_start_data``, ``mip_callbacks``).
+    """
+    # Reset-replay: fresh C++ object every Solve/BatchSolve; do not treat
+    # settings.c_solver_settings as long-lived state (see set_c_solver_settings).
+    settings.c_solver_settings.reset(new solver_settings_t[int, double]())
+    if settings.get_pdlp_warm_start_data() is not None:  # noqa
+        if len(data_model_obj.get_objective_coefficients()) != len(
+            settings.get_pdlp_warm_start_data().current_primal_solution
+        ):
+            raise Exception(
+                "Invalid PDLPWarmStart data. Passed problem and PDLPWarmStart " # noqa
+                "data should have the same amount of variables."
+            )
+        if len(data_model_obj.get_constraint_matrix_offsets()) - 1 != len( # noqa
+            settings.get_pdlp_warm_start_data().current_dual_solution
+        ):
+            raise Exception(
+                "Invalid PDLPWarmStart data. Passed problem and PDLPWarmStart " # noqa
+                "data should have the same amount of constraints."
+            )
+    # Replay Python state into the new C++ settings object.
+    settings.set_c_solver_settings()
+
+    cdef solver_settings_t[int, double]* c_solver_settings = settings.c_solver_settings.get()
+
     # Set initial solution on the C++ side if set on the Python side
     cdef uintptr_t c_initial_primal_solution = (
         0 if data_model_obj is None else get_data_ptr(data_model_obj.get_initial_primal_solution())  # noqa
@@ -179,15 +196,6 @@ cdef set_solver_setting(
         0 if data_model_obj is None else get_data_ptr(data_model_obj.get_initial_dual_solution())  # noqa
     )
 
-    cdef uintptr_t c_current_primal_solution
-    cdef uintptr_t c_current_dual_solution
-    cdef uintptr_t c_initial_primal_average
-    cdef uintptr_t c_initial_dual_average
-    cdef uintptr_t c_current_ATY
-    cdef uintptr_t c_sum_primal_solutions
-    cdef uintptr_t c_sum_dual_solutions
-    cdef uintptr_t c_last_restart_duality_gap_primal_solution
-    cdef uintptr_t c_last_restart_duality_gap_dual_solution
     cdef uintptr_t callback_ptr = 0
     cdef uintptr_t callback_user_data = 0
     if mip:
@@ -195,12 +203,6 @@ cdef set_solver_setting(
             c_solver_settings.add_initial_mip_solution(
                 <const double *> c_initial_primal_solution,
                 data_model_obj.get_initial_primal_solution().shape[0]
-            )
-
-        for name, value in settings.settings_dict.items():
-            c_solver_settings.set_parameter_from_string(
-                name.encode('utf-8'),
-                str(value).encode('utf-8')
             )
 
         callbacks = settings.get_mip_callbacks()
@@ -228,96 +230,6 @@ cdef set_solver_setting(
                 <const double *> c_initial_dual_solution,
                 data_model_obj.get_initial_dual_solution().shape[0]
             )
-
-        for name, value in settings.settings_dict.items():
-            c_solver_settings.set_parameter_from_string(
-                name.encode('utf-8'),
-                str(value).encode('utf-8')
-            )
-
-
-    if settings.get_pdlp_warm_start_data() is not None:  # noqa
-        if len(data_model_obj.get_objective_coefficients()) != len(
-            settings.get_pdlp_warm_start_data().current_primal_solution
-        ):
-            raise Exception(
-                "Invalid PDLPWarmStart data. Passed problem and PDLPWarmStart " # noqa
-                "data should have the same amount of variables."
-            )
-        if len(data_model_obj.get_constraint_matrix_offsets()) - 1 != len( # noqa
-            settings.get_pdlp_warm_start_data().current_dual_solution
-        ):
-            raise Exception(
-                "Invalid PDLPWarmStart data. Passed problem and PDLPWarmStart " # noqa
-                "data should have the same amount of constraints."
-            )
-        c_current_primal_solution = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().current_primal_solution # noqa
-            )
-        )
-        c_current_dual_solution = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().current_dual_solution
-            )
-        )
-        c_initial_primal_average = (
-            get_data_ptr(
-               settings.get_pdlp_warm_start_data().initial_primal_average # noqa
-            )
-        )
-        c_initial_dual_average = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().initial_dual_average
-            )
-        )
-        c_current_ATY = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().current_ATY
-            )
-        )
-        c_sum_primal_solutions = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().sum_primal_solutions
-            )
-        )
-        c_sum_dual_solutions = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().sum_dual_solutions
-            )
-        )
-        c_last_restart_duality_gap_primal_solution = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().last_restart_duality_gap_primal_solution # noqa
-            )
-        )
-        c_last_restart_duality_gap_dual_solution = (
-            get_data_ptr(
-                settings.get_pdlp_warm_start_data().last_restart_duality_gap_dual_solution # noqa
-            )
-        )
-        warm_start_data = settings.get_pdlp_warm_start_data()
-        c_solver_settings.set_pdlp_warm_start_data(
-            <const double *> c_current_primal_solution,
-            <const double *> c_current_dual_solution,
-            <const double *> c_initial_primal_average,
-            <const double *> c_initial_dual_average,
-            <const double *> c_current_ATY,
-            <const double *> c_sum_primal_solutions,
-            <const double *> c_sum_dual_solutions,
-            <const double *> c_last_restart_duality_gap_primal_solution,
-            <const double *> c_last_restart_duality_gap_dual_solution,
-            warm_start_data.last_restart_duality_gap_primal_solution.shape[0], # Primal size # noqa
-            warm_start_data.last_restart_duality_gap_dual_solution.shape[0], # Dual size # noqa
-            warm_start_data.initial_primal_weight,
-            warm_start_data.initial_step_size,
-            warm_start_data.total_pdlp_iterations,
-            warm_start_data.total_pdhg_iterations,
-            warm_start_data.last_candidate_kkt_score,
-            warm_start_data.last_restart_kkt_score,
-            warm_start_data.sum_solution_weight,
-            warm_start_data.iterations_since_last_restart # noqa
-        )
 
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
@@ -503,19 +415,16 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
             )
 
 
-def Solve(py_data_model_obj, settings, mip=False):
+def Solve(py_data_model_obj, SolverSettings settings, mip=False):
 
     cdef DataModel data_model_obj = <DataModel>py_data_model_obj
-    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
-
-    unique_solver_settings.reset(new solver_settings_t[int, double]())
 
     data_model_obj.variable_types = type_cast(
         data_model_obj.variable_types, "S1", "variable_types"
     )
 
     set_solver_setting(
-        unique_solver_settings, settings, data_model_obj, mip
+        settings, data_model_obj, mip
     )
     data_model_obj.set_data_model_view()
 
@@ -523,7 +432,7 @@ def Solve(py_data_model_obj, settings, mip=False):
     with nogil:
         sol_ret_ptr = move(call_solve(
             data_model_obj.c_data_model_view.get(),
-            unique_solver_settings.get(),
+            settings.c_solver_settings.get(),
         ))
     return create_solution(move(sol_ret_ptr), data_model_obj)
 
@@ -535,13 +444,11 @@ cdef set_and_insert_vector(
     data_model_views.push_back(data_model_obj.c_data_model_view.get())
 
 
-def BatchSolve(py_data_model_list, settings):
-    cdef unique_ptr[solver_settings_t[int, double]] unique_solver_settings
-    unique_solver_settings.reset(new solver_settings_t[int, double]())
+def BatchSolve(py_data_model_list, SolverSettings settings):
 
     if settings.get_pdlp_warm_start_data() is not None:  # noqa
         raise Exception("Cannot use warmstart data with Batch Solve")
-    set_solver_setting(unique_solver_settings, settings)
+    set_solver_setting(settings)
 
     cdef vector[data_model_view_t[int, double] *] data_model_views
 
@@ -552,7 +459,7 @@ def BatchSolve(py_data_model_list, settings):
         vector[unique_ptr[solver_ret_t]],
         double] batch_solve_result
     with nogil:
-        batch_solve_result = move(call_batch_solve(data_model_views, unique_solver_settings.get()))  # noqa
+        batch_solve_result = move(call_batch_solve(data_model_views, settings.c_solver_settings.get()))  # noqa
 
     cdef vector[unique_ptr[solver_ret_t]] c_solutions = (
         move(batch_solve_result.first)

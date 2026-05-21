@@ -111,7 +111,7 @@ class pseudo_costs_t {
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
       pseudo_cost_mutex_down(num_variables),
-      AT(std::make_shared<csc_matrix_t<i_t, f_t>>(1, 1, 1)),
+      Arow(1, 1, 1),
       pdlp_warm_cache(std::make_shared<batch_pdlp_warm_cache_t<i_t, f_t>>())
   {
   }
@@ -213,6 +213,7 @@ class pseudo_costs_t {
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
   simplex_solver_settings_t<i_t, f_t> settings;
+  csr_matrix_t<i_t, f_t> Arow;
 
  protected:
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;

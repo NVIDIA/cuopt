@@ -1041,6 +1041,117 @@ DONE:
   return status;
 }
 
+cuopt_int_t test_semi_continuous_problem(cuopt_int_t* termination_status_ptr,
+                                         cuopt_float_t* objective_ptr,
+                                         cuopt_float_t* solution_values)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  /* Minimize x with x semi-continuous and x + y = 1.
+     Since x is either 0 or in [5, 10], the optimum is x = 0, y = 1.
+     If CUOPT_SEMI_CONTINUOUS is treated as integer, this model is infeasible. */
+  cuopt_int_t num_variables              = 2;
+  cuopt_int_t num_constraints            = 1;
+  cuopt_int_t row_offsets[]              = {0, 2};
+  cuopt_int_t column_indices[]           = {0, 1};
+  cuopt_float_t values[]                 = {1.0, 1.0};
+  char constraint_sense[]                = {CUOPT_EQUAL};
+  cuopt_float_t rhs[]                    = {1.0};
+  cuopt_float_t lower_bounds[]           = {5.0, 0.0};
+  cuopt_float_t upper_bounds[]           = {10.0, 1.0};
+  char variable_types[]                  = {CUOPT_SEMI_CONTINUOUS, CUOPT_CONTINUOUS};
+  cuopt_float_t objective_coefficients[] = {1.0, 0.0};
+  char check_variable_types[2];
+  cuopt_int_t is_mip;
+  cuopt_int_t status;
+
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,
+                              objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              rhs,
+                              lower_bounds,
+                              upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating semi-continuous problem\n");
+    goto DONE;
+  }
+
+  status = cuOptGetVariableTypes(problem, check_variable_types);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting variable types for semi-continuous problem\n");
+    goto DONE;
+  }
+  if (check_variable_types[0] != CUOPT_SEMI_CONTINUOUS ||
+      check_variable_types[1] != CUOPT_CONTINUOUS) {
+    printf("Error: semi-continuous variable types were not preserved\n");
+    status = -1;
+    goto DONE;
+  }
+
+  status = cuOptIsMIP(problem, &is_mip);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting MIP flag for semi-continuous problem\n");
+    goto DONE;
+  }
+  if (!is_mip) {
+    printf("Error: semi-continuous problem was not detected as a MIP\n");
+    status = -1;
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings\n");
+    goto DONE;
+  }
+  status = cuOptSetFloatParameter(settings, CUOPT_TIME_LIMIT, 10.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting time limit\n");
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving semi-continuous problem\n");
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status\n");
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value\n");
+    goto DONE;
+  }
+
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting primal solution\n");
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
 // Test invalid bounds scenario (what MOI wrapper was producing)
 cuopt_int_t test_invalid_bounds(cuopt_int_t test_mip)
 {

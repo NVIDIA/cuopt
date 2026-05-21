@@ -19,5 +19,12 @@ std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> ca
       cuopt::linear_programming::io::parse_problem<int, double>(file_path, fixed_mps_format)));
 }
 
+std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> call_parse_lp(
+  const std::string& lp_file_path)
+{
+  return std::make_unique<cuopt::linear_programming::io::mps_data_model_t<int, double>>(
+    std::move(cuopt::linear_programming::io::parse_lp<int, double>(lp_file_path)));
+}
+
 }  // namespace cython
 }  // namespace cuopt

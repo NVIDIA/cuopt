@@ -200,6 +200,9 @@ message MIPSolverSettings {
   // Determinism and reproducibility
   int32 determinism_mode = 27;
   int32 seed = 28;
+
+  // Presolve sub-steps
+  bool probing = 29;  // default true on the C++ side; see grpc_settings_mapper.cpp
 }
 
 // LP solve request

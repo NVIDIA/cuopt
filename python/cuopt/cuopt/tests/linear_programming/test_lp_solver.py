@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import os
+from enum import IntEnum
 
 from cuopt.linear_programming import ParseProblem
 import numpy as np
@@ -13,16 +15,15 @@ from cuopt.linear_programming import (
     solver_settings,
 )
 from cuopt.linear_programming.solver.solver_parameters import (
+    solver_params,
     CUOPT_ABSOLUTE_DUAL_TOLERANCE,
     CUOPT_ABSOLUTE_GAP_TOLERANCE,
     CUOPT_ABSOLUTE_PRIMAL_TOLERANCE,
     CUOPT_DUAL_INFEASIBLE_TOLERANCE,
-    CUOPT_DUAL_POSTSOLVE,
     CUOPT_INFEASIBILITY_DETECTION,
     CUOPT_ITERATION_LIMIT,
     CUOPT_METHOD,
     CUOPT_MIP_HEURISTICS_ONLY,
-    CUOPT_PDLP_PRECISION,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
@@ -100,6 +101,7 @@ def test_parser_and_solver():
     assert solution.get_termination_reason() == "Optimal"
 
 
+<<<<<<< HEAD
 def test_very_low_tolerance():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -166,6 +168,8 @@ def test_time_limit_solver():
     assert solution.get_solve_time() <= (time_limit_seconds * 10)
 
 
+=======
+>>>>>>> origin/release/26.06
 def test_set_get_fields():
     data_model_obj = data_model.DataModel()
 
@@ -262,7 +266,128 @@ def test_set_get_fields():
     assert data_model_obj.get_sense()
 
 
-def test_solver_settings():
+def _cuopt_commented_dump_to_loadable(src_path, dst_path, param_names):
+    """Turn ``dump_parameters_to_file`` output (commented ``# name = value``) into a loadable file.
+
+    C++ ``load_parameters_from_file`` skips commented lines; the dump format is
+    intentionally commented, so tests strip the leading ``#`` for assignment lines.
+    """
+    names_by_len = sorted(param_names, key=len, reverse=True)
+    with (
+        open(src_path, encoding="utf-8") as src,
+        open(dst_path, "w", encoding="utf-8") as dst,
+    ):
+        for line in src:
+            stripped = line.strip()
+            for name in names_by_len:
+                prefix = f"# {name} = "
+                if stripped.startswith(prefix):
+                    dst.write(f"{name} = {stripped[len(prefix) :]}\n")
+                    break
+
+
+def _assert_solver_param_equal(name, expected, got):
+    """Compare get_parameter values across dump/load; enums and floats may differ in type."""
+    exp = int(expected) if isinstance(expected, IntEnum) else expected
+    g = int(got) if isinstance(got, IntEnum) else got
+    if isinstance(exp, float) and isinstance(g, float):
+        if math.isnan(exp) and math.isnan(g):
+            return
+        assert g == pytest.approx(exp), (name, got, expected)
+    else:
+        assert g == exp, (name, got, expected)
+
+
+def _other_float_in_range(current, lo, hi):
+    """Pick a float in [lo, hi] that differs from *current* (for bounded C++ params)."""
+    cur = float(current)
+    candidates = (
+        lo,
+        hi,
+        lo + 0.25 * (hi - lo),
+        hi - 0.25 * (hi - lo),
+        min(hi, max(lo, cur * 0.5)),
+        min(hi, max(lo, cur * 2.0)),
+    )
+    for candidate in candidates:
+        if abs(candidate - cur) > max(1e-15, 1e-9 * max(abs(cur), 1.0)):
+            return candidate
+    return lo if abs(cur - hi) < abs(cur - lo) else hi
+
+
+def _float_bounds_for_param(name):
+    """Return (min, max) for float params with tight C++ validation, or (None, None)."""
+    if name == "barrier_step_scale":
+        return 0.5, 0.9999
+    if name in ("mip_cut_min_orthogonality",):
+        return 0.0, 1.0
+    if name.endswith("_time_ratio") or name.endswith("_fix_rate"):
+        return 0.0, 1.0
+    if "tolerance" in name or name.endswith("tolerance"):
+        return 0.0, 0.1
+    return None, None
+
+
+def _non_default_solver_param_value(name, current):
+    """Pick a valid but non-default value for each registered solver parameter."""
+    if name.startswith("mip_hyper"):
+        return current
+    if name in ("user_problem_file", "solution_file"):
+        return ""
+    if name == "num_gpus":
+        return 2 if int(current) == 1 else 1
+    if name == "time_limit":
+        return 3600.0
+    if name == "iteration_limit":
+        return 9_999_999
+    if name == "method":
+        cur_i = int(current) if current is not None else -1
+        return (
+            SolverMethod.DualSimplex
+            if cur_i != int(SolverMethod.DualSimplex)
+            else SolverMethod.PDLP
+        )
+    if name == "pdlp_solver_mode":
+        cur_i = int(current) if current is not None else -1
+        return (
+            PDLPSolverMode.Fast1
+            if cur_i != int(PDLPSolverMode.Fast1)
+            else PDLPSolverMode.Stable2
+        )
+    if name == "presolve":
+        return 0 if int(current) == 1 else 1
+    if name == "pdlp_precision":
+        return 1 if int(current) == 0 else 0
+    if isinstance(current, bool):
+        return not current
+    if isinstance(current, str):
+        low = current.lower()
+        if low == "true":
+            return False
+        if low == "false":
+            return True
+        return current + "_x" if current else "1"
+    if isinstance(current, float):
+        if not math.isfinite(current):
+            return 7200.0
+        if abs(current) < 1e-30:
+            return 1e-2
+        lo, hi = _float_bounds_for_param(name)
+        if lo is not None and hi is not None:
+            return _other_float_in_range(current, lo, hi)
+        return (
+            float(current) * 2.0
+            if abs(current) < 1.0
+            else float(current) * 0.5
+        )
+    if isinstance(current, int):
+        if int(current) > 1:
+            return int(current) - 1
+        return int(current) + 1
+    return current
+
+
+def test_solver_settings_basic():
     settings = solver_settings.SolverSettings()
 
     tolerance_value = 1e-5
@@ -315,6 +440,51 @@ def test_solver_settings():
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
     )
+
+
+def test_solver_settings(tmp_path):
+    """Push every registered parameter to the C++ layer via set_c_solver_settings."""
+    settings = solver_settings.SolverSettings()
+    for name in list(set(solver_params)):
+        current = settings.get_parameter(name)
+        new_val = _non_default_solver_param_value(name, current)
+        settings.set_parameter(name, new_val)
+
+    expected_by_name = {
+        name: settings.get_parameter(name) for name in solver_params
+    }
+
+    dump_path = tmp_path / "solver_settings_dump.config"
+    load_path = tmp_path / "solver_settings_load.config"
+    assert settings.dump_parameters_to_file(
+        str(dump_path), hyperparameters_only=False
+    )
+    _cuopt_commented_dump_to_loadable(
+        str(dump_path), str(load_path), solver_params
+    )
+    reloaded = solver_settings.SolverSettings()
+    reloaded.load_parameters_from_file(str(load_path))
+    for name in solver_params:
+        _assert_solver_param_equal(
+            name,
+            expected_by_name[name],
+            reloaded.get_parameter(name),
+        )
+
+    reloaded.set_c_solver_settings()
+    data_model_obj = data_model.DataModel()
+    A_values = np.array([1.0, 1.0])
+    A_indices = np.array([0, 0])
+    A_offsets = np.array([0, 1, 2])
+    data_model_obj.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+    data_model_obj.set_constraint_bounds(np.array([1.0, 1.0]))
+    data_model_obj.set_objective_coefficients(np.array([1.0]))
+    data_model_obj.set_row_types(np.array(["L", "L"]))
+
+    solution = solver.Solve(data_model_obj, reloaded)
+    assert solution.get_termination_reason() == "Optimal"
+    assert solution.get_primal_objective() == pytest.approx(0.0)
+    assert solution.get_primal_solution()[0] == pytest.approx(0.0)
 
 
 def test_check_data_model_validity():
@@ -492,7 +662,7 @@ def test_parser_and_batch_solver():
     batch_solution, solve_time = solver.BatchSolve(data_model_list, settings)
 
     # Call Solve on each individual data model object
-    individual_solutions = [] * nb_solves
+    individual_solutions = []
     for i in range(nb_solves):
         individual_solution = solver.Solve(
             ParseProblem(file_path), settings
@@ -539,6 +709,7 @@ def test_warm_start():
         == iterations_first_solve
     )
 
+<<<<<<< HEAD
 
 def test_warm_start_other_problem():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
@@ -557,16 +728,13 @@ def test_warm_start_other_problem():
     data_model_obj2 = ParseProblem(file_path)
     settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
 
+=======
+>>>>>>> origin/release/26.06
     # Should raise an exception as problems are different
-    with pytest.raises(Exception):
-        solver.Solve(data_model_obj2, settings)
-
-
-def test_batch_solver_warm_start():
-    data_model_list = []
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
     )
+<<<<<<< HEAD
 
     nb_solves = 2
 
@@ -580,12 +748,21 @@ def test_batch_solver_warm_start():
     solution = solver.Solve(ParseProblem(file_path), settings)
 
     settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
+=======
+    data_model_obj_different = mps_parser.ParseMps(file_path)
+    with pytest.raises(Exception, match="Invalid PDLPWarmStart data"):
+        solver.Solve(data_model_obj_different, settings)
+>>>>>>> origin/release/26.06
 
     # Should raise an exception
-    with pytest.raises(Exception):
+    data_model_list = [data_model_obj, data_model_obj]
+    with pytest.raises(
+        Exception, match="Cannot use warmstart data with Batch Solve"
+    ):
         solver.BatchSolve(data_model_list, settings)
 
 
+<<<<<<< HEAD
 def test_dual_simplex():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
@@ -604,6 +781,9 @@ def test_dual_simplex():
 
 
 def test_barrier():
+=======
+def test_solved_by():
+>>>>>>> origin/release/26.06
     # maximize   5*xs + 20*xl
     # subject to  1*xs +  3*xl <= 200
     #             3*xs +  2*xl <= 160
@@ -633,6 +813,7 @@ def test_barrier():
     solution = solver.Solve(data_model_obj, settings)
     assert solution.get_termination_reason() == "Optimal"
     assert solution.get_primal_objective() == pytest.approx(1333.33, 2)
+    assert solution.get_solved_by() == SolverMethod.Barrier
 
 
 def test_heuristics_only():
@@ -709,6 +890,7 @@ def test_write_files():
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.DualSimplex)
     settings.set_parameter(CUOPT_USER_PROBLEM_FILE, "afiro_out.mps")
+    settings.set_parameter(CUOPT_SOLUTION_FILE, "afiro.sol")
 
     solver.Solve(data_model_obj, settings)
 
@@ -749,6 +931,7 @@ def test_unbounded_problem():
     problem.solve(settings)
 
     assert problem.Status.name == "UnboundedOrInfeasible"
+<<<<<<< HEAD
 
 
 def test_pdlp_precision_single():
@@ -789,3 +972,5 @@ def test_pdlp_precision_single_crossover():
     assert solution.get_primal_objective() == pytest.approx(
         -464.7531, rel=1e-1
     )
+=======
+>>>>>>> origin/release/26.06
