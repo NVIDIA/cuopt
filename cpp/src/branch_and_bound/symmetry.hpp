@@ -66,11 +66,11 @@ class permutation_t {
   std::vector<i_t> support_;
 };
 
-// generators_t stores a list of permutations. Can be constructed from a sparse representation.
+// group_generators_t stores a list of permutations. Can be constructed from a sparse representation.
 template <typename i_t>
-class generators_t {
+class group_generators_t {
  public:
-  generators_t() : n_(-1) {}
+  group_generators_t() : n_(-1) {}
   void add_generator(int n, const int* p, int nsupp, const int* supp)
   {
     if (n_ == -1) { n_ = n; }
@@ -141,7 +141,7 @@ class orbits_t {
     dirty_list_.reserve(n);
   }
 
-  void compute_orbits(const std::vector<i_t>& indices, const generators_t<i_t>& generators) {
+  void compute_orbits(const std::vector<i_t>& indices, const group_generators_t<i_t>& generators) {
     for (i_t i : indices) {
       const permutation_t<i_t>& perm = generators.get_generator(i);
       const std::vector<i_t>& p      = perm.dense_permutation();
@@ -154,7 +154,7 @@ class orbits_t {
   // Incrementally update orbits with a single mapping u -> v.
   void add_mapping(i_t u, i_t v) { union_sets(u, v); }
 
-  void compute_orbits(const generators_t<i_t>& generators) {
+  void compute_orbits(const group_generators_t<i_t>& generators) {
     std::vector<i_t> indices(generators.num_generators());
     std::iota(indices.begin(), indices.end(), 0);
     compute_orbits(indices, generators);
@@ -231,7 +231,7 @@ private:
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t {
-  generators_t<i_t> generators;
+  group_generators_t<i_t> generators;
   i_t num_original_vars;
   int num_generators = 0;
   std::vector<i_t> binary_variables;
@@ -242,7 +242,7 @@ struct mip_symmetry_t {
   // orbit_rep[j] = orbit representative of variable j (for j < num_original_vars).
   std::vector<i_t> orbit_rep;
 
-  generators_t<i_t> inverse_generators;
+  group_generators_t<i_t> inverse_generators;
 
 };
 
