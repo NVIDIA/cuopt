@@ -282,39 +282,6 @@ class trailing_matrix_t {
     return nsearch;
   }
 
-  void update_for_pivot_removal(i_t pivot_i, i_t pivot_j)
-  {
-    // Iterate over the pivot row: decrement column degrees.
-    // Skip the pivot column itself — it is being eliminated, not just decremented.
-    const i_t r_start = row_start_[pivot_i];
-    const i_t r_end   = row_end_[pivot_i];
-    for (i_t p = r_start; p < r_end; p++) {
-      const i_t j    = r_j_[p];
-      const i_t cdeg = col_counts_.get_count(j);
-      if (j != pivot_j) {
-        col_counts_.update_count(j, cdeg - 1);
-      } else {
-        col_counts_.remove_from_count(j);
-      }
-    }
-    work_estimate_ += 2 * (r_end - r_start);
-
-    // Iterate over the pivot column: decrement row degrees.
-    // Skip the pivot row itself — it is being eliminated, not just decremented.
-    const i_t c_start = col_start_[pivot_j];
-    const i_t c_end   = col_end_[pivot_j];
-    for (i_t p = c_start; p < c_end; p++) {
-      const i_t i    = c_i_[p];
-      const i_t rdeg = row_counts_.get_count(i);
-      if (i != pivot_i) {
-        row_counts_.update_count(i, rdeg - 1);
-      } else {
-        row_counts_.remove_from_count(i);
-      }
-    }
-    work_estimate_ += 2 * (c_end - c_start);
-  }
-
   void schur_complement(i_t pivot_i, i_t pivot_j, f_t drop_tol, f_t pivot_val)
   {
     // Step 1: Cache the pivot column into dense workspaces.
@@ -398,7 +365,7 @@ class trailing_matrix_t {
         work_estimate_ += 2 * (new_end - col_start_[j]);
         i_t old_count = col_end_[j] - col_start_[j];
         col_end_[j]   = new_end;
-        i_t new_count = new_end - col_start_[j];
+        i_t new_count = new_end - col_start_[j] - 1; // -1 for pivot row removal
         // Update column degree for cancellations
         if (new_count != old_count) { col_counts_.update_count(j, new_count); }
       }
@@ -441,7 +408,7 @@ class trailing_matrix_t {
 
       // Step 2d: Update column degree bucket once for this column.
       {
-        i_t new_cdeg = col_end_[j] - col_start_[j];
+        i_t new_cdeg = col_end_[j] - col_start_[j] - 1; // -1 for pivot row removal
         if (new_cdeg != col_counts_.get_count(j)) { col_counts_.update_count(j, new_cdeg); }
       }
 
@@ -498,6 +465,8 @@ class trailing_matrix_t {
       const i_t j = r_j_[p];
       // Clear the cached pivot row value for this column
       pivot_row_val_[j] = 0;
+      // Skip the pivot column: its storage and count will be set to 0 at the end
+      if (j == pivot_j) { continue; }
       // Remove pivot_i from each column j in the pivot row
       f_t max_in_col = 0.0;
 
@@ -524,13 +493,18 @@ class trailing_matrix_t {
     }
     work_estimate_ += 4 * (r_pivot_end - r_pivot_start);
 
-    // Iterate over the pivot column
+    // Iterate over the pivot column: decrement row degrees and remove pivot_j
+    // from each row. Skip the pivot row itself we remove it at the end.
     const i_t c_start = col_start_[pivot_j];
     const i_t c_end   = col_end_[pivot_j];
     for (i_t p = c_start; p < c_end; p++) {
       const i_t i = c_i_[p];
-      // Remove pivot_j from each row i in the pivot column
+      if (i == pivot_i) { continue; }
 
+      const i_t rdeg = row_counts_.get_count(i);
+      row_counts_.update_count(i, rdeg - 1);
+
+      // Remove pivot_j from each row i in the pivot column
       i_t q;
       for (q = row_start_[i]; q < row_end_[i]; q++) {
         const i_t j = r_j_[q];
@@ -548,7 +522,9 @@ class trailing_matrix_t {
 
     // Mark pivot column and pivot row as empty so garbage collection skips them
     col_end_[pivot_j] = col_start_[pivot_j];
+    col_counts_.update_count(pivot_j, 0);
     row_end_[pivot_i] = row_start_[pivot_i];
+    row_counts_.update_count(pivot_i, 0);
   }
 
   void extract_row(i_t pivot_i, i_t pivot_j, csr_matrix_t<i_t, f_t>& Urow, i_t& Unz)
@@ -587,7 +563,6 @@ class trailing_matrix_t {
   void garbage_collect(f_t max_unused_fraction = 0.90)
   {
     if (unused_col_nz_ > max_unused_fraction * static_cast<f_t>(c_i_.size())) {
-      printf("Garbage collected column %e\n", unused_col_nz_ / static_cast<f_t>(c_i_.size()));
       std::vector<i_t> new_c_i;
       std::vector<f_t> new_c_x;
       new_c_i.reserve(c_i_.size() - unused_col_nz_);
@@ -619,7 +594,6 @@ class trailing_matrix_t {
     }
 
     if (unused_row_nz_ > max_unused_fraction * static_cast<f_t>(r_j_.size())) {
-      printf("Garbage collected row %e\n", unused_row_nz_ / static_cast<f_t>(r_j_.size()));
       std::vector<i_t> new_r_j;
       new_r_j.reserve(r_j_.size() - unused_row_nz_);
       for (i_t i = 0; i < m_; i++) {
@@ -931,8 +905,6 @@ i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
     trailing_matrix.extract_column(pivot_i, pivot_j, pivot_val, L, Lnz);
     work_estimate += 4 * (Lnz - L.col_start[k]);
 
-    trailing_matrix.update_for_pivot_removal(pivot_i, pivot_j);
-
     // A22 <- A22 - l u^T
     trailing_matrix.schur_complement(pivot_i, pivot_j, drop_tol, pivot_val);
 
@@ -1080,8 +1052,6 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
     pivots++;
 
     trailing_matrix.cache_pivot_row(pivot_i);
-
-    trailing_matrix.update_for_pivot_removal(pivot_i, pivot_j);
 
     trailing_matrix.schur_complement(pivot_i, pivot_j, drop_tol, pivot_val);
 
