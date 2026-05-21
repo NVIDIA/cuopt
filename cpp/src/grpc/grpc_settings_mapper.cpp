@@ -229,6 +229,9 @@ void map_mip_settings_to_proto(const mip_solver_settings_t<i_t, f_t>& settings,
   // Determinism and reproducibility
   pb_settings->set_determinism_mode(settings.determinism_mode);
   pb_settings->set_seed(settings.seed);
+
+  // Presolve sub-steps
+  pb_settings->set_probing(settings.probing);
 }
 
 template <typename i_t, typename f_t>
@@ -288,6 +291,9 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
   // Determinism and reproducibility
   settings.determinism_mode = pb_settings.determinism_mode();
   settings.seed             = pb_settings.seed();
+
+  // Presolve sub-steps
+  settings.probing = pb_settings.probing();
 }
 
 // Explicit template instantiations

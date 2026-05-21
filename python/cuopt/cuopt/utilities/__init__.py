@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from cuopt.utilities.exception_handler import (
@@ -8,4 +8,4 @@ from cuopt.utilities.exception_handler import (
     catch_cuopt_exception,
 )
 from cuopt.utilities.type_casting import type_cast
-from cuopt.utilities.utils import check_solution, series_from_buf
+from cuopt.utilities.utils import check_solution, get_data_ptr, series_from_buf

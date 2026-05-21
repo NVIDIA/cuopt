@@ -65,7 +65,7 @@ export CUOPT_RESULT_DIR
 
 trap 'rm -rf "$CUOPT_DATA_DIR" "$CUOPT_RESULT_DIR"' EXIT
 # cuopt_problem_data and other small problems should be less than 1k
-export CUOPT_MAX_RESULT=1
+export CUOPT_MAX_RESULT=2
 CERT_FOLDER=$(pwd)/python/cuopt_self_hosted/cuopt_sh_client/tests/utils/certs
 export CUOPT_SSL_CERTFILE=${CERT_FOLDER}/server.crt
 export CUOPT_SSL_KEYFILE=${CERT_FOLDER}/server.key
@@ -77,7 +77,7 @@ DELAY=10
 
 sleep $DELAY
 
-server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health)
+server_status=$(curl -k -sL https://0.0.0.0:$CUOPT_SERVER_PORT/cuopt/health) # NOSONAR — self-signed cert generated locally by this script for CI; not a real TLS endpoint.
 
 EXITCODE=0
 
@@ -120,7 +120,7 @@ if [ "$doservertest" -eq 1 ]; then
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps ../../datasets/linear_programming/good-mps-1.mps
 
     # Error, local file mode is not allowed with mps
-    run_cli_test "Cannot use local file mode with MPS data" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP -f good-mps-1.mps
+    run_cli_test "Cannot use local file mode with MPS/LP data" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP -f good-mps-1.mps
 
     # Just run validator
     cp ../../datasets/cuopt_service_data/cuopt_problem_data.json "$CUOPT_DATA_DIR"

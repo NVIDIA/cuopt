@@ -326,9 +326,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
 
   cuopt_assert(!batch_mode_, "Batch mode is not supported for compute_step_sizes");
 
-  if (!graph.is_initialized(total_pdlp_iterations)) {
-    graph.start_capture(total_pdlp_iterations);
-
+  graph.run(total_pdlp_iterations, [&]() {
     // compute numerator and deminator of n_lim
     compute_interaction_and_movement(pdhg_solver.get_primal_tmp_resource(),
                                      pdhg_solver.get_cusparse_view(),
@@ -339,9 +337,7 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_step_sizes(
                                           primal_step_size.data(),
                                           dual_step_size.data(),
                                           pdhg_solver.get_d_total_pdhg_iterations().data());
-    graph.end_capture(total_pdlp_iterations);
-  }
-  graph.launch(total_pdlp_iterations);
+  });
   // Steam sync so that next call can see modification made to host var valid_step_size
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_.value()));
 }
