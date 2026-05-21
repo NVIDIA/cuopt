@@ -418,10 +418,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     }
 
     // Start symmetry detection
-    bool has_symmetry = false;
     std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
+    bool has_symmetry = false;
     if (settings.symmetry != 0) {
       detail::problem_t<i_t, f_t> problem(op_problem);
       dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;

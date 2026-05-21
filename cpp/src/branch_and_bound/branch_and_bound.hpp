@@ -341,6 +341,14 @@ class branch_and_bound_t {
                                branch_and_bound_stats_t<i_t, f_t>& stats,
                                logger_t& log);
 
+  // Apply symmetry-based bound reductions (orbital fixing and, when
+  // settings_.symmetry == 2, lexical reduction) to the current node.
+  // Tightens worker->leaf_problem bounds and updates stats. Returns false
+  // if lexical reduction proves the node infeasible.
+  bool apply_symmetry_reductions(mip_node_t<i_t, f_t>* node_ptr,
+                                 branch_and_bound_worker_t<i_t, f_t>* worker,
+                                 branch_and_bound_stats_t<i_t, f_t>& stats);
+
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
                                             const std::vector<i_t>& fractional,

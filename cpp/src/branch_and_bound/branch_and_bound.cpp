@@ -1320,6 +1320,48 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
 }
 
 template <typename i_t, typename f_t>
+bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
+  mip_node_t<i_t, f_t>* node_ptr,
+  branch_and_bound_worker_t<i_t, f_t>* worker,
+  branch_and_bound_stats_t<i_t, f_t>& stats)
+{
+  // Perform orbital fixing
+  auto* orbital_fixing = worker->orbital_fixing.get();
+  if (orbital_fixing != nullptr && !orbital_fixing->disabled()) {
+    i_t prev_fix  = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
+    i_t conflicts = orbital_fixing->orbital_fixing(symmetry_,
+                                                   settings_,
+                                                   node_ptr,
+                                                   worker->leaf_problem,
+                                                   worker->start_lower,
+                                                   worker->start_upper);
+    i_t new_fix   = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
+    if (new_fix > prev_fix) {
+      ++stats.orbital_fixing_nodes;
+      stats.orbital_fixings_applied += (new_fix - prev_fix);
+    }
+    if (conflicts > 0) { ++stats.orbital_conflict_nodes; }
+  } else if (orbital_fixing != nullptr) {
+    orbital_fixing->propagate_cumulative_fixings(node_ptr);
+  }
+
+  if (settings_.symmetry == 2 && worker->lexical_reduction != nullptr) {
+    i_t lexical_reductions_info =
+      worker->lexical_reduction->lexical_reduce(symmetry_, node_ptr, worker->leaf_problem);
+    if (lexical_reductions_info > 0) {
+      stats.lexical_reduction_nodes++;
+      stats.lexical_reduction_fixings_applied += lexical_reductions_info;
+    }
+    if (lexical_reductions_info == -1) {
+      stats.lexical_reduction_pruned_nodes++;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+template <typename i_t, typename f_t>
 dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
   branch_and_bound_worker_t<i_t, f_t>* worker,
@@ -1416,38 +1458,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   }
 
   if (feasible) {
-    // Perform orbital fixing
-    auto* of = worker->orbital_fixing.get();
-    if (of != nullptr && !of->disabled()) {
-      i_t prev_fix  = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
-      i_t conflicts = of->orbital_fixing(symmetry_,
-                                         settings_,
-                                         node_ptr,
-                                         worker->leaf_problem,
-                                         worker->start_lower,
-                                         worker->start_upper);
-      i_t new_fix   = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
-      if (new_fix > prev_fix) {
-        ++stats.orbital_fixing_nodes;
-        stats.orbital_fixings_applied += (new_fix - prev_fix);
-      }
-      if (conflicts > 0) { ++stats.orbital_conflict_nodes; }
-    } else if (of != nullptr) {
-      of->propagate_cumulative_fixings(node_ptr);
-    }
-
-    if (settings_.symmetry == 2 && worker->lexical_reduction != nullptr) {
-      i_t lexical_reductions_info =
-        worker->lexical_reduction->lexical_reduce(symmetry_, node_ptr, worker->leaf_problem);
-      if (lexical_reductions_info > 0) {
-        stats.lexical_reduction_nodes++;
-        stats.lexical_reduction_fixings_applied += lexical_reductions_info;
-      }
-      if (lexical_reductions_info == -1) {
-        feasible = false;
-        stats.lexical_reduction_pruned_nodes++;
-      }
-    }
+    feasible = apply_symmetry_reductions(node_ptr, worker, stats);
 
     if (feasible) {
       i_t node_iter     = 0;
