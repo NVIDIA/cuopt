@@ -256,209 +256,236 @@ class iteration_data_t {
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
-    // Set up native free linear variable tracking (linear columns only, j < cone_start).
-    if (!native_free_linear_indices.empty()) {
-      n_native_free_linear = native_free_linear_indices.size();
-      std::vector<i_t> is_native_free_linear_host(lp.num_cols, 0);
-      for (i_t j : native_free_linear_indices) {
-        is_native_free_linear_host[j] = 1;
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: native free linear");
+      // Set up native free linear variable tracking (linear columns only, j < cone_start).
+      if (!native_free_linear_indices.empty()) {
+        n_native_free_linear = native_free_linear_indices.size();
+        std::vector<i_t> is_native_free_linear_host(lp.num_cols, 0);
+        for (i_t j : native_free_linear_indices) {
+          is_native_free_linear_host[j] = 1;
+        }
+        d_is_native_free_linear_.resize(lp.num_cols, stream_view_);
+        raft::copy(
+          d_is_native_free_linear_.data(), is_native_free_linear_host.data(), lp.num_cols, stream_view_);
+        settings.log.printf("Native free linear (QP): %d\n", n_native_free_linear);
       }
-      d_is_native_free_linear_.resize(lp.num_cols, stream_view_);
-      raft::copy(d_is_native_free_linear_.data(), is_native_free_linear_host.data(), lp.num_cols, stream_view_);
-      settings.log.printf("Native free linear (QP): %d\n", n_native_free_linear);
     }
 
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
-    if (has_Q) {
-      Qdiag.resize(lp.num_cols, 0.0);
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: Q setup");
+      if (has_Q) {
+        Qdiag.resize(lp.num_cols, 0.0);
 
-      for (i_t j = 0; j < Q.n; j++) {
-        const i_t col_start = Q.col_start[j];
-        const i_t col_end   = Q.col_start[j + 1];
-        for (i_t p = col_start; p < col_end; p++) {
-          const i_t i = Q.i[p];
-          if (j == i) {
-            Qdiag[j] = Q.x[p];
-            break;
+        for (i_t j = 0; j < Q.n; j++) {
+          const i_t col_start = Q.col_start[j];
+          const i_t col_end   = Q.col_start[j + 1];
+          for (i_t p = col_start; p < col_end; p++) {
+            const i_t i = Q.i[p];
+            if (j == i) {
+              Qdiag[j] = Q.x[p];
+              break;
+            }
           }
         }
-      }
 
-      Q_diagonal = Q.is_diagonal();
+        Q_diagonal = Q.is_diagonal();
 
-      if (Q_diagonal) {
-        // Check to ensure that Q is positive semi-definite
-        for (i_t j = 0; j < lp.num_cols; j++) {
-          if (Qdiag[j] < 0.0) {
-            settings_.log.printf(
-              "Q is not positive semidefinite: Q(%d, %d) = %e\n", j, j, Qdiag[j]);
-            indefinite_Q = true;
-            return;
+        if (Q_diagonal) {
+          // Check to ensure that Q is positive semi-definite
+          for (i_t j = 0; j < lp.num_cols; j++) {
+            if (Qdiag[j] < 0.0) {
+              settings_.log.printf(
+                "Q is not positive semidefinite: Q(%d, %d) = %e\n", j, j, Qdiag[j]);
+              indefinite_Q = true;
+              return;
+            }
           }
+        } else if (settings.check_Q) {
+          // TODO: Check to ensure that Q is positive semi-definite
+          // This requires us to perform a Cholesky factorization.
         }
-      } else if (settings.check_Q) {
-        // TODO: Check to ensure that Q is positive semi-definite
-        // This requires us to perform a Cholesky factorization.
+
+        d_Q_diag_.resize(lp.num_cols, stream_view_);
+        raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
       }
-
-      d_Q_diag_.resize(lp.num_cols, stream_view_);
-      raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
     }
 
-    if (!lp.second_order_cone_dims.empty()) {
-      cone_var_start_ = lp.cone_var_start;
-      i_t total_cone_dim =
-        std::accumulate(lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
-      cuopt_assert(cone_var_start_ >= 0, "cone_var_start must be nonnegative");
-      cuopt_assert(cone_var_start_ + total_cone_dim <= lp.num_cols,
-                   "cone variables exceed problem dimension");
-      cuopt_assert(cone_var_start_ + total_cone_dim == lp.num_cols,
-                   "barrier expects [linear | cone] layout");
-      cones_.emplace(
-        std::span<const i_t>(lp.second_order_cone_dims.data(), lp.second_order_cone_dims.size()),
-        raft::device_span<f_t>{},
-        raft::device_span<f_t>{},
-        stream_view_);
-      cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
-      cuopt_assert(cone_entry_count() == total_cone_dim, "second-order cone entry count mismatch");
-    }
-    const i_t linear_xz_rhs_size = linear_xz_size(lp.num_cols);
-    d_complementarity_xz_rhs_.resize(linear_xz_rhs_size, stream_view_);
-
-    // Allocating GPU flag data for Form ADAT
-    RAFT_CUDA_TRY(cub::DeviceSelect::Flagged(
-      nullptr,
-      flag_buffer_size,
-      d_inv_diag_prime.data(),  // Not the actual input but just to allcoate the memory
-      thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
-      d_inv_diag_prime.data(),
-      d_num_flag.data(),
-      inv_diag.size(),
-      stream_view_));
-
-    d_flag_buffer.resize(flag_buffer_size, stream_view_);
-
-    // Create the upper bounds vector
-    n_upper_bounds = 0;
-    for (i_t j = 0; j < lp.num_cols; j++) {
-      if (lp.upper[j] < inf) { upper_bounds[n_upper_bounds++] = j; }
-    }
-    if (n_upper_bounds > 0) {
-      settings.log.printf("Upper bounds                : %d\n", n_upper_bounds);
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: SOC setup");
+      if (!lp.second_order_cone_dims.empty()) {
+        cone_var_start_ = lp.cone_var_start;
+        i_t total_cone_dim =
+          std::accumulate(lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
+        cuopt_assert(cone_var_start_ >= 0, "cone_var_start must be nonnegative");
+        cuopt_assert(cone_var_start_ + total_cone_dim <= lp.num_cols,
+                     "cone variables exceed problem dimension");
+        cuopt_assert(cone_var_start_ + total_cone_dim == lp.num_cols,
+                     "barrier expects [linear | cone] layout");
+        cones_.emplace(
+          std::span<const i_t>(lp.second_order_cone_dims.data(), lp.second_order_cone_dims.size()),
+          raft::device_span<f_t>{},
+          raft::device_span<f_t>{},
+          stream_view_);
+        cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
+        cuopt_assert(cone_entry_count() == total_cone_dim, "second-order cone entry count mismatch");
+      }
     }
 
-    // Decide if we are going to use the augmented system or not
-    n_dense_columns      = 0;
-    i_t n_dense_rows     = 0;
-    i_t max_row_nz       = 0;
-    f_t estimated_nz_AAT = 0.0;
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: complementarity buffers");
+      const i_t linear_xz_rhs_size = linear_xz_size(lp.num_cols);
+      d_complementarity_xz_rhs_.resize(linear_xz_rhs_size, stream_view_);
+
+      // Allocating GPU flag data for Form ADAT
+      RAFT_CUDA_TRY(cub::DeviceSelect::Flagged(
+        nullptr,
+        flag_buffer_size,
+        d_inv_diag_prime.data(),  // Not the actual input but just to allcoate the memory
+        thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
+        d_inv_diag_prime.data(),
+        d_num_flag.data(),
+        inv_diag.size(),
+        stream_view_));
+
+      d_flag_buffer.resize(flag_buffer_size, stream_view_);
+    }
+
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: upper bounds");
+      // Create the upper bounds vector
+      n_upper_bounds = 0;
+      for (i_t j = 0; j < lp.num_cols; j++) {
+        if (lp.upper[j] < inf) { upper_bounds[n_upper_bounds++] = j; }
+      }
+      if (n_upper_bounds > 0) {
+        settings.log.printf("Upper bounds                : %d\n", n_upper_bounds);
+      }
+    }
+
     std::vector<i_t> dense_columns_unordered;
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: dense columns and augmented");
+      // Decide if we are going to use the augmented system or not
+      n_dense_columns      = 0;
+      i_t n_dense_rows     = 0;
+      i_t max_row_nz       = 0;
+      f_t estimated_nz_AAT = 0.0;
 
-    const bool has_soc = has_cones();
-    if (has_Q || has_soc) {
-      // QP and SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
-      use_augmented   = true;
-      n_dense_columns = 0;
-    } else {
-      f_t start_column_density = tic();
-
-      // Do not look for dense columns if Q is not diagonal
-      if (!has_Q || Q_diagonal) {
-        find_dense_columns(
-          lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
-      }
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-#ifdef PRINT_INFO
-      for (i_t j : dense_columns_unordered) {
-        settings.log.printf("Dense column %6d\n", j);
-      }
-#endif
-      float64_t column_density_time = toc(start_column_density);
-      if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
-      n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
-      if (n_dense_columns > 0) {
-        settings.log.printf("Dense columns               : %d\n", n_dense_columns);
-      }
-      if (n_dense_rows > 0) {
-        settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
-      }
-      settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
-      if ((settings.augmented != 0) &&
-          (n_dense_columns > 50 || n_dense_rows > 10 ||
-           lp.A.m == 0 /* handle case with no constraints */ ||
-           (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
+      const bool has_soc = has_cones();
+      if (has_Q || has_soc) {
+        // QP and SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
         use_augmented   = true;
         n_dense_columns = 0;
+      } else {
+        f_t start_column_density = tic();
+
+        // Do not look for dense columns if Q is not diagonal
+        if (!has_Q || Q_diagonal) {
+          find_dense_columns(
+            lp.A, settings, dense_columns_unordered, n_dense_rows, max_row_nz, estimated_nz_AAT);
+        }
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+#ifdef PRINT_INFO
+        for (i_t j : dense_columns_unordered) {
+          settings.log.printf("Dense column %6d\n", j);
+        }
+#endif
+        float64_t column_density_time = toc(start_column_density);
+        if (!settings.eliminate_dense_columns) { dense_columns_unordered.clear(); }
+        n_dense_columns = static_cast<i_t>(dense_columns_unordered.size());
+        if (n_dense_columns > 0) {
+          settings.log.printf("Dense columns               : %d\n", n_dense_columns);
+        }
+        if (n_dense_rows > 0) {
+          settings.log.printf("Dense rows                  : %d\n", n_dense_rows);
+        }
+        settings.log.printf("Density estimator time      : %.2fs\n", column_density_time);
+        if ((settings.augmented != 0) &&
+            (n_dense_columns > 50 || n_dense_rows > 10 ||
+             lp.A.m == 0 /* handle case with no constraints */ ||
+             (max_row_nz > 5000 && estimated_nz_AAT > 1e10) || settings.augmented == 1)) {
+          use_augmented   = true;
+          n_dense_columns = 0;
+        }
+      }
+
+      if (use_augmented) {
+        settings.log.printf("Linear system               : augmented\n");
+      } else {
+        settings.log.printf("Linear system               : ADAT\n");
       }
     }
 
-    if (use_augmented) {
-      settings.log.printf("Linear system               : augmented\n");
-    } else {
-      settings.log.printf("Linear system               : ADAT\n");
-    }
-
-    // D = I + EET
-    diag.set_scalar(1.0);
-    if (n_upper_bounds > 0) {
-      for (i_t k = 0; k < n_upper_bounds; k++) {
-        i_t j   = upper_bounds[k];
-        diag[j] = 2.0;
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: diag and inv_diag");
+      // D = I + EET
+      diag.set_scalar(1.0);
+      if (n_upper_bounds > 0) {
+        for (i_t k = 0; k < n_upper_bounds; k++) {
+          i_t j   = upper_bounds[k];
+          diag[j] = 2.0;
+        }
       }
-    }
 
-    // D = I + EET + Q (if Q is diagonal)
-    if (has_Q && !use_augmented) {
-      // this means that Q is diagonal
-      for (i_t j = 0; j < Q.n; j++) {
-        diag[j] += Qdiag[j];
+      // D = I + EET + Q (if Q is diagonal)
+      if (has_Q && !use_augmented) {
+        // this means that Q is diagonal
+        for (i_t j = 0; j < Q.n; j++) {
+          diag[j] += Qdiag[j];
+        }
       }
-    }
 
-    inv_diag.set_scalar(1.0);
-    if (use_augmented) { diag.multiply_scalar(-1.0); }
-    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
-    // TMP diag and inv_diag should directly created and filled on the GPU
-    raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
-    inv_sqrt_diag.set_scalar(1.0);
-    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
+      inv_diag.set_scalar(1.0);
+      if (use_augmented) { diag.multiply_scalar(-1.0); }
+      if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
+      // TMP diag and inv_diag should directly created and filled on the GPU
+      raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
+      inv_sqrt_diag.set_scalar(1.0);
+      if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
+    }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
-    // Copy A into AD
-    AD = lp.A;
-    if (!use_augmented && n_dense_columns > 0) {
-      cols_to_remove.resize(lp.num_cols, 0);
-      for (i_t k : dense_columns_unordered) {
-        cols_to_remove[k] = 1;
-      }
-      d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
-      raft::copy(
-        d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
-      dense_columns.clear();
-      dense_columns.reserve(n_dense_columns);
-      for (i_t j = 0; j < lp.num_cols; j++) {
-        if (cols_to_remove[j]) { dense_columns.push_back(j); }
-      }
-      AD.remove_columns(cols_to_remove);
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
+      // Copy A into AD
+      AD = lp.A;
+      if (!use_augmented && n_dense_columns > 0) {
+        cols_to_remove.resize(lp.num_cols, 0);
+        for (i_t k : dense_columns_unordered) {
+          cols_to_remove[k] = 1;
+        }
+        d_cols_to_remove.resize(cols_to_remove.size(), stream_view_);
+        raft::copy(
+          d_cols_to_remove.data(), cols_to_remove.data(), cols_to_remove.size(), stream_view_);
+        dense_columns.clear();
+        dense_columns.reserve(n_dense_columns);
+        for (i_t j = 0; j < lp.num_cols; j++) {
+          if (cols_to_remove[j]) { dense_columns.push_back(j); }
+        }
+        AD.remove_columns(cols_to_remove);
 
-      sparse_mark.resize(lp.num_cols, 1);
-      for (i_t k : dense_columns) {
-        sparse_mark[k] = 0;
+        sparse_mark.resize(lp.num_cols, 1);
+        for (i_t k : dense_columns) {
+          sparse_mark[k] = 0;
+        }
+
+        A_dense.resize(AD.m, n_dense_columns);
+        i_t k = 0;
+        for (i_t j : dense_columns) {
+          A_dense.from_sparse(lp.A, j, k++);
+        }
       }
 
-      A_dense.resize(AD.m, n_dense_columns);
-      i_t k = 0;
-      for (i_t j : dense_columns) {
-        A_dense.from_sparse(lp.A, j, k++);
-      }
+      AD.transpose(AT);
     }
-
-    AD.transpose(AT);
 
     // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
     if (!use_augmented) {
+      raft::common::nvtx::range scope("Barrier: LP Data: device AD path");
       device_AD.copy(AD, handle_ptr->get_stream());
       d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
       raft::copy(d_original_A_values.data(),
@@ -475,22 +502,34 @@ class iteration_data_t {
     }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-    i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
-    chol =
-      std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(handle_ptr, settings, factorization_size);
-    chol->set_positive_definite(false);
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
+      i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
+      chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
+        handle_ptr, settings, factorization_size);
+      chol->set_positive_definite(false);
+    }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-    // Perform symbolic analysis
-    symbolic_status = 0;
-    if (use_augmented) {
-      // Build the sparsity pattern of the augmented system
-      form_augmented(true);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      symbolic_status = chol->analyze(device_augmented);
-    } else {
-      form_adat(true);
-      if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-      symbolic_status = chol->analyze(device_ADAT);
+    {
+      raft::common::nvtx::range scope("Barrier: LP Data: symbolic analysis");
+      // Perform symbolic analysis
+      symbolic_status = 0;
+      if (use_augmented) {
+        {
+          raft::common::nvtx::range form_scope("Barrier: LP Data: form augmented");
+          // Build the sparsity pattern of the augmented system
+          form_augmented(true);
+        }
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+        symbolic_status = chol->analyze(device_augmented);
+      } else {
+        {
+          raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
+          form_adat(true);
+        }
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
+        symbolic_status = chol->analyze(device_ADAT);
+      }
     }
   }
 
@@ -558,8 +597,9 @@ class iteration_data_t {
     std::vector<std::size_t> cone_block_offsets_host;
 
     if (first_call) {
-      // Initialize the cone block offsets
       if (has_soc) {
+        raft::common::nvtx::range scope("Barrier: augmented: SOC offsets");
+        // Initialize the cone block offsets
         const i_t n_cones = cone_count();
         cone_offsets_host.resize(n_cones + 1);
         cone_block_offsets_host.resize(n_cones + 1);
@@ -581,7 +621,9 @@ class iteration_data_t {
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
 
-      for (i_t i = 0; i < n; i++) {
+      {
+        raft::common::nvtx::range scope("Barrier: augmented: host CSR build");
+        for (i_t i = 0; i < n; i++) {
         augmented_CSR.row_start[i] = q;
 
         const bool is_cone_row = is_cone_variable(i);
@@ -667,57 +709,61 @@ class iteration_data_t {
         // AT block, we can use A in csc directly
         const i_t col_beg = A.col_start[i];
         const i_t col_end = A.col_start[i + 1];
-        for (i_t p = col_beg; p < col_end; ++p) {
-          augmented_CSR.j[q]   = A.i[p] + n;
-          augmented_CSR.x[q++] = A.x[p];
+          for (i_t p = col_beg; p < col_end; ++p) {
+            augmented_CSR.j[q]   = A.i[p] + n;
+            augmented_CSR.x[q++] = A.x[p];
+          }
         }
-      }
 
-      for (i_t k = n; k < n + m; ++k) {
-        // A block, we can use AT in csc directly
-        augmented_CSR.row_start[k] = q;
-        const i_t l                = k - n;
-        const i_t col_beg          = AT.col_start[l];
-        const i_t col_end          = AT.col_start[l + 1];
-        for (i_t p = col_beg; p < col_end; ++p) {
-          augmented_CSR.j[q]   = AT.i[p];
-          augmented_CSR.x[q++] = AT.x[p];
+        for (i_t k = n; k < n + m; ++k) {
+          // A block, we can use AT in csc directly
+          augmented_CSR.row_start[k] = q;
+          const i_t l                = k - n;
+          const i_t col_beg          = AT.col_start[l];
+          const i_t col_end          = AT.col_start[l + 1];
+          for (i_t p = col_beg; p < col_end; ++p) {
+            augmented_CSR.j[q]   = AT.i[p];
+            augmented_CSR.x[q++] = AT.x[p];
+          }
+          augmented_diagonal_indices[k] = q;
+          augmented_CSR.j[q]            = k;
+          augmented_CSR.x[q++]          = primal_perturb;
         }
-        augmented_diagonal_indices[k] = q;
-        augmented_CSR.j[q]            = k;
-        augmented_CSR.x[q++]          = primal_perturb;
-      }
-      augmented_CSR.row_start[n + m] = q;
-      augmented_CSR.nz_max           = q;
-      augmented_CSR.j.resize(q);
-      augmented_CSR.x.resize(q);
-      i_t expected_nnz = 2 * nnzA + (n - m_c) + total_block_nnz + m + off_diag_Qnz;
-      settings_.log.debug("augmented nz %d predicted %d\n", q, expected_nnz);
-      cuopt_assert(q == expected_nnz, "augmented nnz != predicted");
-      cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
-
-      device_augmented.copy(augmented_CSR, handle_ptr->get_stream());
-      d_augmented_diagonal_indices_.resize(augmented_diagonal_indices.size(),
-                                           handle_ptr->get_stream());
-      raft::copy(d_augmented_diagonal_indices_.data(),
-                 augmented_diagonal_indices.data(),
-                 augmented_diagonal_indices.size(),
-                 handle_ptr->get_stream());
-
-      if (has_soc) {
-        d_cone_csr_indices_.resize(total_block_nnz, handle_ptr->get_stream());
-        raft::copy(d_cone_csr_indices_.data(),
-                   cone_csr_indices_host.data(),
-                   total_block_nnz,
-                   handle_ptr->get_stream());
-        d_cone_Q_values_.resize(total_block_nnz, handle_ptr->get_stream());
-        raft::copy(d_cone_Q_values_.data(),
-                   cone_Q_values_host.data(),
-                   total_block_nnz,
-                   handle_ptr->get_stream());
+        augmented_CSR.row_start[n + m] = q;
+        augmented_CSR.nz_max           = q;
+        augmented_CSR.j.resize(q);
+        augmented_CSR.x.resize(q);
+        i_t expected_nnz = 2 * nnzA + (n - m_c) + total_block_nnz + m + off_diag_Qnz;
+        settings_.log.debug("augmented nz %d predicted %d\n", q, expected_nnz);
+        cuopt_assert(q == expected_nnz, "augmented nnz != predicted");
+        cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
       }
 
-      handle_ptr->sync_stream();
+      {
+        raft::common::nvtx::range scope("Barrier: augmented: device upload");
+        device_augmented.copy(augmented_CSR, handle_ptr->get_stream());
+        d_augmented_diagonal_indices_.resize(augmented_diagonal_indices.size(),
+                                             handle_ptr->get_stream());
+        raft::copy(d_augmented_diagonal_indices_.data(),
+                   augmented_diagonal_indices.data(),
+                   augmented_diagonal_indices.size(),
+                   handle_ptr->get_stream());
+
+        if (has_soc) {
+          d_cone_csr_indices_.resize(total_block_nnz, handle_ptr->get_stream());
+          raft::copy(d_cone_csr_indices_.data(),
+                     cone_csr_indices_host.data(),
+                     total_block_nnz,
+                     handle_ptr->get_stream());
+          d_cone_Q_values_.resize(total_block_nnz, handle_ptr->get_stream());
+          raft::copy(d_cone_Q_values_.data(),
+                     cone_Q_values_host.data(),
+                     total_block_nnz,
+                     handle_ptr->get_stream());
+        }
+
+        handle_ptr->sync_stream();
+      }
 #ifdef CHECK_SYMMETRY
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
       augmented.transpose(augmented_transpose);
@@ -781,43 +827,53 @@ class iteration_data_t {
     float64_t start_form_adat = tic();
     const i_t m               = AD.m;
 
-    raft::copy(device_AD.x.data(),
-               d_original_A_values.data(),
-               d_original_A_values.size(),
-               handle_ptr->get_stream());
-    if (n_dense_columns > 0) {
-      // Adjust inv_diag
-      d_inv_diag_prime.resize(AD.n, stream_view_);
-      // Copy If
-      cub::DeviceSelect::Flagged(
-        d_flag_buffer.data(),
-        flag_buffer_size,
-        d_inv_diag.data(),
-        thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
-        d_inv_diag_prime.data(),
-        d_num_flag.data(),
-        d_inv_diag.size(),
-        stream_view_);
-      RAFT_CHECK_CUDA(stream_view_);
-    } else {
-      d_inv_diag_prime.resize(inv_diag.size(), stream_view_);
-      raft::copy(d_inv_diag_prime.data(), d_inv_diag.data(), inv_diag.size(), stream_view_);
+    {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
+      raft::copy(device_AD.x.data(),
+                 d_original_A_values.data(),
+                 d_original_A_values.size(),
+                 handle_ptr->get_stream());
+    }
+    {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: inv_diag prime");
+      if (n_dense_columns > 0) {
+        // Adjust inv_diag
+        d_inv_diag_prime.resize(AD.n, stream_view_);
+        // Copy If
+        cub::DeviceSelect::Flagged(
+          d_flag_buffer.data(),
+          flag_buffer_size,
+          d_inv_diag.data(),
+          thrust::make_transform_iterator(d_cols_to_remove.data(), cuda::std::logical_not<i_t>{}),
+          d_inv_diag_prime.data(),
+          d_num_flag.data(),
+          d_inv_diag.size(),
+          stream_view_);
+        RAFT_CHECK_CUDA(stream_view_);
+      } else {
+        d_inv_diag_prime.resize(inv_diag.size(), stream_view_);
+        raft::copy(d_inv_diag_prime.data(), d_inv_diag.data(), inv_diag.size(), stream_view_);
+      }
     }
 
     cuopt_assert(static_cast<i_t>(d_inv_diag_prime.size()) == AD.n,
                  "inv_diag_prime.size() != AD.n");
 
-    thrust::for_each_n(rmm::exec_policy(stream_view_),
-                       thrust::make_counting_iterator<i_t>(0),
-                       i_t(device_AD.x.size()),
-                       [span_x       = cuopt::make_span(device_AD.x),
-                        span_scale   = cuopt::make_span(d_inv_diag_prime),
-                        span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
-                         span_x[i] *= span_scale[span_col_ind[i]];
-                       });
-    RAFT_CHECK_CUDA(stream_view_);
+    {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: scale AD");
+      thrust::for_each_n(rmm::exec_policy(stream_view_),
+                         thrust::make_counting_iterator<i_t>(0),
+                         i_t(device_AD.x.size()),
+                         [span_x       = cuopt::make_span(device_AD.x),
+                          span_scale   = cuopt::make_span(d_inv_diag_prime),
+                          span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
+                           span_x[i] *= span_scale[span_col_ind[i]];
+                         });
+      RAFT_CHECK_CUDA(stream_view_);
+    }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
     if (first_call) {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: cusparse init");
       try {
         initialize_cusparse_data<i_t, f_t>(
           handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
@@ -828,8 +884,11 @@ class iteration_data_t {
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
 
-    multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
-    handle_ptr->sync_stream();
+    {
+      raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
+      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+      handle_ptr->sync_stream();
+    }
 
     auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
     float64_t adat_time = toc(start_form_adat);
