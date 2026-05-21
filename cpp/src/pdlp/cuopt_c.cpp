@@ -99,55 +99,64 @@ void coordinate_triplets_to_csr(cuopt_int_t num_entries,
   values.clear();
   if (num_entries <= 0) { return; }
 
-  const size_t nnz = static_cast<size_t>(num_entries);
-  std::vector<cuopt_int_t> perm(nnz);
-  for (size_t k = 0; k < nnz; ++k) {
-    perm[k] = static_cast<cuopt_int_t>(k);
-  }
-
-  const auto triplet_less = [row_index, col_index](cuopt_int_t a, cuopt_int_t b) {
-    const cuopt_int_t row_a = row_index[a];
-    const cuopt_int_t row_b = row_index[b];
-    if (row_a != row_b) { return row_a < row_b; }
-    return col_index[a] < col_index[b];
-  };
-  std::sort(perm.begin(), perm.end(), triplet_less);
-
-  indices.reserve(nnz);
-  values.reserve(nnz);
-  std::vector<cuopt_int_t> entry_rows;
-  entry_rows.reserve(nnz);
-
-  cuopt_int_t last_row = -1;
-  cuopt_int_t last_col = -1;
-  for (size_t i = 0; i < nnz; ++i) {
-    const cuopt_int_t idx = perm[i];
-    const cuopt_int_t row = row_index[idx];
-    const cuopt_int_t col = col_index[idx];
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    const cuopt_int_t row = row_index[k];
     if (row < 0 || row >= num_rows) {
       throw raft::exception("Quadratic matrix row index out of range");
     }
-
-    if (i > 0 && row == last_row && col == last_col) {
-      values.back() += coeff[idx];
-    } else {
-      indices.push_back(col);
-      values.push_back(coeff[idx]);
-      entry_rows.push_back(row);
-      last_row = row;
-      last_col = col;
+    if (col_index[k] < 0 || col_index[k] >= num_rows) {
+      throw raft::exception("Quadratic matrix column index out of range");
     }
+    ++offsets[row + 1];
   }
 
-  const size_t unique_nnz = entry_rows.size();
-  size_t e                = 0;
   for (cuopt_int_t row = 0; row < num_rows; ++row) {
-    offsets[row] = static_cast<cuopt_int_t>(e);
-    while (e < unique_nnz && entry_rows[e] == row) {
-      ++e;
+    offsets[row + 1] += offsets[row];
+  }
+
+  // Group triplet indices by row (counting/bucket sort on row): O(nnz + num_rows).
+  std::vector<cuopt_int_t> perm(static_cast<size_t>(num_entries));
+  std::vector<cuopt_int_t> row_cursor(offsets.begin(), offsets.begin() + num_rows);
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    const cuopt_int_t row                        = row_index[k];
+    perm[static_cast<size_t>(row_cursor[row]++)] = k;
+  }
+
+  // Per row: sort by column, merge duplicates, emit CSR. Row grouping is O(nnz + num_rows);
+  // per-row sort is O(k log k) for k entries in that row (no global O(nnz log nnz) sort).
+  indices.reserve(static_cast<size_t>(num_entries));
+  values.reserve(static_cast<size_t>(num_entries));
+
+  const auto col_less = [col_index](cuopt_int_t a, cuopt_int_t b) {
+    return col_index[a] < col_index[b];
+  };
+
+  cuopt_int_t out_nnz = 0;
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    const cuopt_int_t start = offsets[row];
+    const cuopt_int_t end   = offsets[row + 1];
+    offsets[row]            = out_nnz;
+    if (start >= end) { continue; }
+
+    auto row_begin = perm.begin() + static_cast<ptrdiff_t>(start);
+    auto row_end   = perm.begin() + static_cast<ptrdiff_t>(end);
+    std::sort(row_begin, row_end, col_less);
+
+    cuopt_int_t last_col = -1;
+    for (auto it = row_begin; it != row_end; ++it) {
+      const cuopt_int_t idx = *it;
+      const cuopt_int_t col = col_index[idx];
+      if (it != row_begin && col == last_col) {
+        values.back() += coeff[idx];
+      } else {
+        indices.push_back(col);
+        values.push_back(coeff[idx]);
+        ++out_nnz;
+        last_col = col;
+      }
     }
   }
-  offsets[num_rows] = static_cast<cuopt_int_t>(e);
+  offsets[num_rows] = out_nnz;
 }
 
 constexpr char k_deprecated_quadratic_problem_msg[] =
