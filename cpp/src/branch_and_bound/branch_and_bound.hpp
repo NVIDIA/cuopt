@@ -169,7 +169,6 @@ class branch_and_bound_t {
   omp_atomic_t<bool> signal_extend_cliques_{false};
   mip_symmetry_t<i_t, f_t>* symmetry_;
 
-
   work_limit_context_t work_unit_context_{"B&B"};
 
   // Initial guess.

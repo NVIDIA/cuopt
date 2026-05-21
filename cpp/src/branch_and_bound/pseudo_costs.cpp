@@ -997,22 +997,22 @@ static void batch_pdlp_reliability_branching_task(
 
 template <typename i_t, typename f_t>
 void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
-                                const simplex_solver_settings_t<i_t, f_t>& settings,
-                                f_t start_time,
-                                const std::vector<i_t>& new_slacks,
-                                const std::vector<variable_type_t>& var_types,
-                                const lp_solution_t<i_t, f_t>& root_solution,
-                                const std::vector<i_t>& fractional,
-                                f_t root_obj,
-                                f_t upper_bound,
-                                const std::vector<variable_status_t>& root_vstatus,
-                                const std::vector<f_t>& edge_norms,
-                                const std::vector<i_t>& basic_list,
-                                const std::vector<i_t>& nonbasic_list,
-                                basis_update_mpf_t<i_t, f_t>& basis_factors,
-                                std::vector<f_t>& strong_branch_down,
-                                std::vector<f_t>& strong_branch_up,
-                                pseudo_costs_t<i_t, f_t>& pc)
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              f_t start_time,
+                              const std::vector<i_t>& new_slacks,
+                              const std::vector<variable_type_t>& var_types,
+                              const lp_solution_t<i_t, f_t>& root_solution,
+                              const std::vector<i_t>& fractional,
+                              f_t root_obj,
+                              f_t upper_bound,
+                              const std::vector<variable_status_t>& root_vstatus,
+                              const std::vector<f_t>& edge_norms,
+                              const std::vector<i_t>& basic_list,
+                              const std::vector<i_t>& nonbasic_list,
+                              basis_update_mpf_t<i_t, f_t>& basis_factors,
+                              std::vector<f_t>& strong_branch_down,
+                              std::vector<f_t>& strong_branch_up,
+                              pseudo_costs_t<i_t, f_t>& pc)
 {
   raft::common::nvtx::range scope("BB::strong_branching");
 
@@ -1255,7 +1255,6 @@ void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
   }
 }
 
-
 template <typename i_t, typename f_t>
 void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -1278,22 +1277,22 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> strong_branch_up;
   if (symmetry == nullptr) {
     strong_branching_reduced(original_lp,
-                               settings,
-                               start_time,
-                               new_slacks,
-                               var_types,
-                               root_solution,
-                               fractional,
-                               root_obj,
-                               upper_bound,
-                               root_vstatus,
-                               edge_norms,
-                               basic_list,
-                               nonbasic_list,
-                               basis_factors,
-                               strong_branch_down,
-                               strong_branch_up,
-                               pc);
+                             settings,
+                             start_time,
+                             new_slacks,
+                             var_types,
+                             root_solution,
+                             fractional,
+                             root_obj,
+                             upper_bound,
+                             root_vstatus,
+                             edge_norms,
+                             basic_list,
+                             nonbasic_list,
+                             basis_factors,
+                             strong_branch_down,
+                             strong_branch_up,
+                             pc);
     pc.update_pseudo_costs_from_strong_branching(
       fractional, strong_branch_down, strong_branch_up, root_solution.x);
   } else {
@@ -1322,22 +1321,22 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     }
 
     strong_branching_reduced(original_lp,
-                               settings,
-                               start_time,
-                               new_slacks,
-                               var_types,
-                               root_solution,
-                               reduced_fractional,
-                               root_obj,
-                               upper_bound,
-                               root_vstatus,
-                               edge_norms,
-                               basic_list,
-                               nonbasic_list,
-                               basis_factors,
-                               strong_branch_down,
-                               strong_branch_up,
-                               pc);
+                             settings,
+                             start_time,
+                             new_slacks,
+                             var_types,
+                             root_solution,
+                             reduced_fractional,
+                             root_obj,
+                             upper_bound,
+                             root_vstatus,
+                             edge_norms,
+                             basic_list,
+                             nonbasic_list,
+                             basis_factors,
+                             strong_branch_down,
+                             strong_branch_up,
+                             pc);
 
     // Map strong-branch results from "reduced_fractional" indexing back
     // to per-fractional indexing using each variable's orbit delegate.

@@ -301,7 +301,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     simplex_settings.time_limit = context.settings.time_limit;
     cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
       cuopt_problem_to_user_problem<i_t, f_t>(context.problem_ptr->handle_ptr,
-                                                 *context.problem_ptr);
+                                              *context.problem_ptr);
     bool has_symmetry_post = false;
     context.symmetry       = cuopt::linear_programming::dual_simplex::detect_symmetry(
       post_presolve_problem, simplex_settings, has_symmetry_post);

@@ -39,7 +39,6 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
-
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <pdlp/translate.hpp>
@@ -52,7 +51,6 @@
 #define DETECT_SYMMETRY_AFTER_PRESOLVE
 
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
-
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -614,7 +612,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
     // early_best_user_obj is in user-space.
-    // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as needed.
+    // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
+    // needed.
     auto sol = run_mip_solver(problem,
                               settings,
                               timer,
