@@ -42,10 +42,6 @@ bash ci/utils/install_cudss.sh
 
 rapids-logger "Generating build requirements"
 
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
-echo "cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser*.whl)" >> /tmp/constraints.txt
-export PIP_CONSTRAINT="/tmp/constraints.txt"
-
 rapids-dependency-file-generator \
   --output requirements \
   --file-key "py_build_${package_name}" \
@@ -75,7 +71,6 @@ EXCLUDE_ARGS=(
   --exclude "libcusparse.so.*"
   --exclude "libnvJitLink*"
   --exclude "librapids_logger.so"
-  --exclude "libmps_parser.so"
   --exclude "librmm.so"
 )
 

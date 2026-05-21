@@ -37,3 +37,4 @@
   pb_settings->set_cut_min_orthogonality(settings.cut_min_orthogonality);
   pb_settings->set_determinism_mode(settings.determinism_mode);
   pb_settings->set_seed(settings.seed);
+  pb_settings->set_probing(settings.probing);

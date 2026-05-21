@@ -546,7 +546,7 @@ mip_settings:
       field_num: 17
       type: int32
   - mip_batch_pdlp_reliability_branching:
-      field_num: 29
+      field_num: 32
       type: int32
   - strong_branching_simplex_iteration_limit:
       field_num: 30
@@ -589,6 +589,11 @@ mip_settings:
   - seed:
       field_num: 28
       type: int32
+
+    # Presolve sub-steps
+  - probing:
+      field_num: 29
+      type: bool
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)

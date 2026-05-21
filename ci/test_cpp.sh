@@ -48,14 +48,28 @@ pushd "${RAPIDS_DATASET_ROOT_DIR}"
 popd
 
 EXITCODE=0
+FAILED_STEPS=()
 trap "EXITCODE=1" ERR
 set +e
 
 # Run gtests from libcuopt-tests package
-export GTEST_OUTPUT=xml:${RAPIDS_TESTS_DIR}/
+# XML output and retry logic handled by run_ctests.sh
+export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
-timeout 50m ./ci/run_ctests.sh
+timeout 50m ./ci/run_ctests.sh || FAILED_STEPS+=("gtests (run_ctests.sh)")
+
+rapids-logger "Generate nightly test report"
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
+generate_nightly_report "cpp"
+
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+    EXITCODE=1
+    echo ""
+    echo "==================== FAILED TEST STEPS (${#FAILED_STEPS[@]}) ===================="
+    for s in "${FAILED_STEPS[@]}"; do echo "  - ${s}"; done
+    echo "================================================================"
+fi
 
 rapids-logger "Test script exiting with value: $EXITCODE"
 exit ${EXITCODE}

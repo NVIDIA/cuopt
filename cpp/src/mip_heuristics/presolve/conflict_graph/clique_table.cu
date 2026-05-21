@@ -1036,7 +1036,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
                           bool modify_problem,
-                          std::atomic<bool>* signal_extend)
+                          omp_atomic_t<bool>* signal_extend)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
@@ -1141,7 +1141,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,      \
     cuopt::timer_t & timer,                                               \
     bool modify_problem,                                                  \
-    std::atomic<bool>* signal_extend);                                    \
+    omp_atomic_t<bool>* signal_extend);                                   \
   template void build_clique_table<int, F_TYPE>(                          \
     const dual_simplex::user_problem_t<int, F_TYPE>& problem,             \
     clique_table_t<int, F_TYPE>& clique_table,                            \

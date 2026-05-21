@@ -4,6 +4,7 @@ version: "26.06.00"
 description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python.
 ---
 
+
 # cuOpt Routing — Python API
 
 Confirm problem type (TSP, VRP, PDP) and data (locations, orders, fleet, constraints) before coding.
@@ -83,9 +84,7 @@ ss.set_error_logging_mode(True)
 | Infeasible orders | Increase fleet or capacity |
 | Status != 0 with time windows | Add `add_transit_time_matrix()` |
 | Wrong cost | Check cost_matrix is symmetric |
-<!-- skill-evolution:start — WaypointMatrix.compute_waypoint_sequence mutates route_df -->
 | `compute_waypoint_sequence` alters route_df | It replaces the `location` column with waypoint ids in place — pass `route_df.copy()` if you still need cost-matrix indices (e.g. when iterating per truck) |
-<!-- skill-evolution:end -->
 
 ## Debugging
 

@@ -9,11 +9,11 @@
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
 #include <mip_heuristics/problem/load_balanced_problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -121,8 +121,8 @@ void test_multi_probe(std::string path)
   auto memory_resource = make_async();
   rmm::mr::set_current_device_resource(memory_resource);
   const raft::handle_t handle_{};
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);

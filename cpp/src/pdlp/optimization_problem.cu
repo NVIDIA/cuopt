@@ -7,12 +7,13 @@
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
@@ -84,6 +85,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     c_{other.get_objective_coefficients(), stream_view_},
     objective_scaling_factor_{other.get_objective_scaling_factor()},
     objective_offset_{other.get_objective_offset()},
+    batch_objective_offsets_{other.get_batch_objective_offsets()},
     Q_offsets_{other.get_quadratic_objective_offsets()},
     Q_indices_{other.get_quadratic_objective_indices()},
     Q_values_{other.get_quadratic_objective_values()},
@@ -166,6 +168,12 @@ template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_objective_offset(f_t objective_offset)
 {
   objective_offset_ = objective_offset;
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::set_batch_objective_offsets(const std::vector<f_t>& offsets)
+{
+  batch_objective_offsets_ = offsets;
 }
 
 template <typename i_t, typename f_t>
@@ -430,6 +438,19 @@ template <typename i_t, typename f_t>
 f_t optimization_problem_t<i_t, f_t>::get_objective_offset() const
 {
   return objective_offset_;
+}
+
+template <typename i_t, typename f_t>
+const std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_batch_objective_offsets()
+  const noexcept
+{
+  return batch_objective_offsets_;
+}
+
+template <typename i_t, typename f_t>
+std::vector<f_t>& optimization_problem_t<i_t, f_t>::get_batch_objective_offsets() noexcept
+{
+  return batch_objective_offsets_;
 }
 
 template <typename i_t, typename f_t>
@@ -743,7 +764,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -823,11 +844,15 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   std::vector<char> variable_types;
   if (get_n_variables() != 0) {
     auto enum_variable_types = cuopt::host_copy(get_variable_types(), stream);
-    variable_types.resize(enum_variable_types.size());
-
-    // Convert enum types to char types
-    for (size_t i = 0; i < variable_types.size(); ++i) {
-      variable_types[i] = (enum_variable_types[i] == var_t::INTEGER) ? 'I' : 'C';
+    if (enum_variable_types.empty()) {
+      // Variable types not set (e.g. pure LP); default to all continuous
+      variable_types.assign(get_n_variables(), 'C');
+    } else {
+      variable_types.resize(enum_variable_types.size());
+      // Convert enum types to char types
+      for (size_t i = 0; i < variable_types.size(); ++i) {
+        variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+      }
     }
 
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());
@@ -849,7 +874,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>
@@ -1061,6 +1086,7 @@ bool optimization_problem_t<i_t, f_t>::is_equivalent(
   if (n_constraints_ != other.n_constraints_) { return false; }
   if (objective_scaling_factor_ != other.objective_scaling_factor_) { return false; }
   if (objective_offset_ != other.objective_offset_) { return false; }
+  if (batch_objective_offsets_ != other.batch_objective_offsets_) { return false; }
   if (problem_category_ != other.problem_category_) { return false; }
   if (A_.size() != other.A_.size()) { return false; }
 
@@ -1502,6 +1528,11 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
   other.set_maximize(maximize_);
   other.set_objective_offset(static_cast<other_f_t>(objective_offset_));
   other.set_objective_scaling_factor(static_cast<other_f_t>(objective_scaling_factor_));
+  if (!batch_objective_offsets_.empty()) {
+    std::vector<other_f_t> converted(batch_objective_offsets_.begin(),
+                                     batch_objective_offsets_.end());
+    other.set_batch_objective_offsets(converted);
+  }
 
   if (A_.size() > 0) {
     auto other_A = gpu_cast<f_t, other_f_t>(A_, stream);
@@ -1511,36 +1542,43 @@ optimization_problem_t<i_t, other_f_t> optimization_problem_t<i_t, f_t>::convert
                                     static_cast<i_t>(A_indices_.size()),
                                     A_offsets_.data(),
                                     static_cast<i_t>(A_offsets_.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (c_.size() > 0) {
     auto other_c = gpu_cast<f_t, other_f_t>(c_, stream);
     other.set_objective_coefficients(other_c.data(), static_cast<i_t>(other_c.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (b_.size() > 0) {
     auto other_b = gpu_cast<f_t, other_f_t>(b_, stream);
     other.set_constraint_bounds(other_b.data(), static_cast<i_t>(other_b.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_lower_bounds_.size() > 0) {
     auto other_clb = gpu_cast<f_t, other_f_t>(constraint_lower_bounds_, stream);
     other.set_constraint_lower_bounds(other_clb.data(), static_cast<i_t>(other_clb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (constraint_upper_bounds_.size() > 0) {
     auto other_cub = gpu_cast<f_t, other_f_t>(constraint_upper_bounds_, stream);
     other.set_constraint_upper_bounds(other_cub.data(), static_cast<i_t>(other_cub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_lower_bounds_.size() > 0) {
     auto other_vlb = gpu_cast<f_t, other_f_t>(variable_lower_bounds_, stream);
     other.set_variable_lower_bounds(other_vlb.data(), static_cast<i_t>(other_vlb.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_upper_bounds_.size() > 0) {
     auto other_vub = gpu_cast<f_t, other_f_t>(variable_upper_bounds_, stream);
     other.set_variable_upper_bounds(other_vub.data(), static_cast<i_t>(other_vub.size()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   }
 
   if (variable_types_.size() > 0) {

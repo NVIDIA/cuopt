@@ -35,3 +35,4 @@
   settings.cut_min_orthogonality = pb_settings.cut_min_orthogonality();
   settings.determinism_mode = pb_settings.determinism_mode();
   settings.seed = pb_settings.seed();
+  settings.probing = pb_settings.probing();
