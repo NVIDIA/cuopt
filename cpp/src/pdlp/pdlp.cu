@@ -493,15 +493,16 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   // Project initial primal solution
   if (settings_.hyper_params.project_initial_primal) {
     using f_t2 = typename type_2<f_t>::type;
-    
-    multi_gpu_engine->distributed_transform(
-      std::make_tuple(
-        [](auto& s) { return s.pdhg_solver_.get_primal_solution().data();},
-        [](auto& s) { return s.get_op_problem_scaled().variable_bounds.data();}),
-      [](auto& s) { return s.pdhg_solver_.get_primal_solution().data(); },  
-      [](auto& s) { return s.pdhg_solver_.get_primal_solution().size(); },  
-      clamp<f_t, f_t2>()
-    );
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      auto& sub = *shard->sub_pdlp;
+      cub::DeviceTransform::Transform(
+        std::make_tuple(sub.pdhg_solver_.get_primal_solution().data(),
+                        sub.get_op_problem_scaled().variable_bounds.data()),
+        sub.pdhg_solver_.get_primal_solution().data(),
+        sub.pdhg_solver_.get_primal_solution().size(),
+        clamp<f_t, f_t2>(), shard->stream);
+    }
   }
 }
 
