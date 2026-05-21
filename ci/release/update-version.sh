@@ -150,7 +150,6 @@ if [[ "${RUN_CONTEXT}" == "main" ]]; then
 elif [[ "${RUN_CONTEXT}" == "release" ]]; then
   # In release context, use release branch for external documentation links (word boundaries to avoid partial matches)
   sed_runner "s|\\bmain\\b|release/${NEXT_SHORT_TAG}|g" docs/cuopt/source/faq.rst
-  sed_runner "s|\\bmain\\b|release/${NEXT_SHORT_TAG}|g" docs/cuopt/source/cuopt-python/routing/routing-example.ipynb
 fi
 
 # Update docs version switcher to include the new version
