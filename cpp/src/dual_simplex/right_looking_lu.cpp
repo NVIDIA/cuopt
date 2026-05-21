@@ -365,7 +365,7 @@ class trailing_matrix_t {
         work_estimate_ += 2 * (new_end - col_start_[j]);
         i_t old_count = col_end_[j] - col_start_[j];
         col_end_[j]   = new_end;
-        i_t new_count = new_end - col_start_[j] - 1; // -1 for pivot row removal
+        i_t new_count = new_end - col_start_[j] - 1;  // -1 for pivot row removal
         // Update column degree for cancellations
         if (new_count != old_count) { col_counts_.update_count(j, new_count); }
       }
@@ -408,7 +408,7 @@ class trailing_matrix_t {
 
       // Step 2d: Update column degree bucket once for this column.
       {
-        i_t new_cdeg = col_end_[j] - col_start_[j] - 1; // -1 for pivot row removal
+        i_t new_cdeg = col_end_[j] - col_start_[j] - 1;  // -1 for pivot row removal
         if (new_cdeg != col_counts_.get_count(j)) { col_counts_.update_count(j, new_cdeg); }
       }
 
