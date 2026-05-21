@@ -32,6 +32,28 @@ def series_from_buf(buf, dtype):
     return cudf.Series.from_pylibcudf(col)
 
 
+def get_data_ptr(array):
+    """Return the integer address of a host array buffer for C++ interop.
+
+    Parameters
+    ----------
+    array : cudf.Series or numpy.ndarray
+        Array whose underlying data pointer is passed to C++.
+
+    Returns
+    -------
+    int
+        Buffer address from ``__cuda_array_interface__`` or ``__array_interface__``.
+    """
+    if isinstance(array, cudf.Series):
+        return array.__cuda_array_interface__["data"][0]
+    if isinstance(array, np.ndarray):
+        return array.__array_interface__["data"][0]
+    raise TypeError(
+        "get_data_ptr must be called with cudf.Series or np.ndarray"
+    )
+
+
 def validate_variable_bounds(data, settings, solution):
     from cuopt.linear_programming.solver.solver_parameters import (
         CUOPT_MIP_INTEGRALITY_TOLERANCE,

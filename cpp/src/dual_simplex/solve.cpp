@@ -297,6 +297,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
       unscale_solution<i_t, f_t>(column_scales, solution.x, solution.z, unscaled_x, unscaled_z);
       uncrush_solution(presolve_info,
                        settings,
+                       original_lp,
                        unscaled_x,
                        solution.y,
                        unscaled_z,
@@ -420,6 +421,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     // Undo presolve
     uncrush_solution(presolve_info,
                      barrier_settings,
+                     original_lp,
                      unscaled_x,
                      barrier_solution.y,
                      unscaled_z,

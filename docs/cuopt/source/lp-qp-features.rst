@@ -152,10 +152,22 @@ The user may specify a time limit to the solver. By default the solver runs unti
   Note that ``time_limit`` applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.
 
 
+.. _batch-mode:
+
 Batch Mode
 ----------
 
 Users can submit a set of problems which will be solved in a batch. Problems will be solved at the same time in parallel to fully utilize the GPU. Checkout :ref:`self-hosted client <generic-example-with-normal-and-batch-mode>` example in thin client.
+
+.. warning:: Deprecated
+
+   LP batch mode (Python ``cuopt.linear_programming.BatchSolve``, server requests
+   with a list of LP problems, and multi-file ``cuopt_sh`` LP submissions) is
+   deprecated and will be removed in a future release. Prefer sequential
+   ``cuopt.linear_programming.Solve`` calls, or implement your own parallelism
+   (for example with ``concurrent.futures``). Existing batch APIs still run in
+   parallel today; callers may see a ``DeprecationWarning`` or a deprecation
+   message in server ``warnings``.
 
 PDLP Precision Modes
 --------------------

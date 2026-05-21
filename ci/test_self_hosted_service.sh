@@ -65,7 +65,7 @@ export CUOPT_RESULT_DIR
 
 trap 'rm -rf "$CUOPT_DATA_DIR" "$CUOPT_RESULT_DIR"' EXIT
 # cuopt_problem_data and other small problems should be less than 1k
-export CUOPT_MAX_RESULT=1
+export CUOPT_MAX_RESULT=2
 CERT_FOLDER=$(pwd)/python/cuopt_self_hosted/cuopt_sh_client/tests/utils/certs
 export CUOPT_SSL_CERTFILE=${CERT_FOLDER}/server.crt
 export CUOPT_SSL_KEYFILE=${CERT_FOLDER}/server.key
