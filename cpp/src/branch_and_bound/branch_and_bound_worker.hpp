@@ -40,19 +40,19 @@ enum search_strategy_t : int {
 
 template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
-  f_t start_time                         = 0.0;
-  omp_atomic_t<f_t> total_lp_solve_time  = 0.0;
-  omp_atomic_t<int64_t> nodes_explored   = 0;
-  omp_atomic_t<int64_t> nodes_unexplored = 0;
-  omp_atomic_t<int64_t> total_lp_iters   = 0;
-  omp_atomic_t<i_t> nodes_since_last_log = 0;
-  omp_atomic_t<f_t> last_log             = 0.0;
-  omp_atomic_t<int64_t> orbital_fixing_nodes = 0;
-  omp_atomic_t<int64_t> orbital_fixings_applied = 0;
-  omp_atomic_t<int64_t> orbital_conflict_nodes = 0;
-  omp_atomic_t<int64_t> lexical_reduction_nodes = 0;
+  f_t start_time                                          = 0.0;
+  omp_atomic_t<f_t> total_lp_solve_time                   = 0.0;
+  omp_atomic_t<int64_t> nodes_explored                    = 0;
+  omp_atomic_t<int64_t> nodes_unexplored                  = 0;
+  omp_atomic_t<int64_t> total_lp_iters                    = 0;
+  omp_atomic_t<i_t> nodes_since_last_log                  = 0;
+  omp_atomic_t<f_t> last_log                              = 0.0;
+  omp_atomic_t<int64_t> orbital_fixing_nodes              = 0;
+  omp_atomic_t<int64_t> orbital_fixings_applied           = 0;
+  omp_atomic_t<int64_t> orbital_conflict_nodes            = 0;
+  omp_atomic_t<int64_t> lexical_reduction_nodes           = 0;
   omp_atomic_t<int64_t> lexical_reduction_fixings_applied = 0;
-  omp_atomic_t<int64_t> lexical_reduction_pruned_nodes = 0;
+  omp_atomic_t<int64_t> lexical_reduction_pruned_nodes    = 0;
 };
 
 template <typename i_t, typename f_t>
@@ -90,7 +90,8 @@ class branch_and_bound_worker_t {
       orbital_fixing = std::make_unique<orbital_fixing_t<i_t, f_t>>(*symmetry_ptr);
     }
     if (lexical_reduction == nullptr && symmetry_ptr != nullptr) {
-      lexical_reduction = std::make_unique<lexical_reduction_t<i_t, f_t>>(symmetry_ptr->num_original_vars);
+      lexical_reduction =
+        std::make_unique<lexical_reduction_t<i_t, f_t>>(symmetry_ptr->num_original_vars);
     }
   }
 

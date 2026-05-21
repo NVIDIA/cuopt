@@ -1226,8 +1226,6 @@ void strong_branching_neccesary(const lp_problem_t<i_t, f_t>& original_lp,
         solved_by_both);
     }
   }
-
-
 }
 
 template <typename i_t, typename f_t>
@@ -1284,7 +1282,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
 
     if (necessary_fractional.size() < fractional.size()) {
       settings.log.printf("Strong branching: %d fractional variables reduced to %d by symmetry\n",
-                          (int)fractional.size(), (int)necessary_fractional.size());
+                          (int)fractional.size(),
+                          (int)necessary_fractional.size());
     }
 
     strong_branching_neccesary(original_lp,

@@ -735,17 +735,19 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
                        toc(exploration_stats_.start_time));
   if (exploration_stats_.orbital_fixing_nodes.load() > 0 ||
       exploration_stats_.orbital_conflict_nodes.load() > 0) {
-    settings_.log.printf("Orbital fixing applied at %lld nodes, %lld total variable fixings, "
-                         "%lld nodes with conflicting orbits\n",
-                         (long long)exploration_stats_.orbital_fixing_nodes.load(),
-                         (long long)exploration_stats_.orbital_fixings_applied.load(),
-                         (long long)exploration_stats_.orbital_conflict_nodes.load());
+    settings_.log.printf(
+      "Orbital fixing applied at %lld nodes, %lld total variable fixings, "
+      "%lld nodes with conflicting orbits\n",
+      (long long)exploration_stats_.orbital_fixing_nodes.load(),
+      (long long)exploration_stats_.orbital_fixings_applied.load(),
+      (long long)exploration_stats_.orbital_conflict_nodes.load());
   }
   if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
-    settings_.log.printf("Lexical reduction applied at %lld nodes, %lld total variable fixings, %lld nodes pruned\n",
-                         (long long)exploration_stats_.lexical_reduction_nodes.load(),
-                         (long long)exploration_stats_.lexical_reduction_fixings_applied.load(),
-                         (long long)exploration_stats_.lexical_reduction_pruned_nodes.load());
+    settings_.log.printf(
+      "Lexical reduction applied at %lld nodes, %lld total variable fixings, %lld nodes pruned\n",
+      (long long)exploration_stats_.lexical_reduction_nodes.load(),
+      (long long)exploration_stats_.lexical_reduction_fixings_applied.load(),
+      (long long)exploration_stats_.lexical_reduction_pruned_nodes.load());
   }
   settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
                        gap,
@@ -1404,20 +1406,22 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible            = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms  = edge_norms_;
-  if (worker->recompute_bounds && worker->orbital_fixing &&
-      worker->search_strategy == BEST_FIRST) {
+  if (worker->recompute_bounds && worker->orbital_fixing && worker->search_strategy == BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
 
   if (feasible) {
-
     // Perform orbital fixing
     auto* of = worker->orbital_fixing.get();
     if (of != nullptr && !of->disabled()) {
-      i_t prev_fix = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
-      i_t conflicts = of->orbital_fixing(symmetry_, settings_, node_ptr, worker->leaf_problem,
-                                         worker->start_lower, worker->start_upper);
-      i_t new_fix = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
+      i_t prev_fix  = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
+      i_t conflicts = of->orbital_fixing(symmetry_,
+                                         settings_,
+                                         node_ptr,
+                                         worker->leaf_problem,
+                                         worker->start_lower,
+                                         worker->start_upper);
+      i_t new_fix   = node_ptr->orbital_fix_zero.size() + node_ptr->orbital_fix_one.size();
       if (new_fix > prev_fix) {
         ++stats.orbital_fixing_nodes;
         stats.orbital_fixings_applied += (new_fix - prev_fix);
@@ -2651,13 +2655,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   node_queue_.push(search_tree_.root.get_up_child());
 
   if (symmetry_ != nullptr) {
-    i_t removed = symmetry_->generators.template prune_by_bounds<f_t>(
-      original_lp_.lower, original_lp_.upper);
+    i_t removed =
+      symmetry_->generators.template prune_by_bounds<f_t>(original_lp_.lower, original_lp_.upper);
     if (removed > 0) {
       symmetry_->num_generators = static_cast<int>(symmetry_->generators.num_generators());
       settings_.log.printf(
         "Pruned %d generators invalidated by root-level bound tightening, %d remain\n",
-        removed, symmetry_->num_generators);
+        removed,
+        symmetry_->num_generators);
     }
   }
 

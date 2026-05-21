@@ -7,13 +7,12 @@
 
 #pragma once
 
+#include <branch_and_bound/mip_node.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
-#include <branch_and_bound/mip_node.hpp>
-
 
 #include "dejavu.h"
 
@@ -28,13 +27,16 @@ template <typename i_t>
 class permutation_t {
  public:
   // Takes vectors by value so callers can std::move or copy as needed.
-  permutation_t(std::vector<i_t> p) : n_(p.size()), p_(std::move(p)) {
+  permutation_t(std::vector<i_t> p) : n_(p.size()), p_(std::move(p))
+  {
     for (i_t k = 0; k < n_; k++) {
       if (p_[k] != k) { support_.push_back(k); }
     }
   }
   permutation_t(std::vector<i_t> p, std::vector<i_t> support)
-    : n_(p.size()), p_(std::move(p)), support_(std::move(support)) {}
+    : n_(p.size()), p_(std::move(p)), support_(std::move(support))
+  {
+  }
 
   permutation_t(int n, const int* p, int nsupp, const int* supp) : n_(n)
   {
@@ -51,7 +53,8 @@ class permutation_t {
   const std::vector<i_t>& dense_permutation() const { return p_; }
   const std::vector<i_t>& support() const { return support_; }
 
-  permutation_t<i_t> inverse() const {
+  permutation_t<i_t> inverse() const
+  {
     std::vector<i_t> pinv(n_);
     for (i_t k = 0; k < n_; k++) {
       pinv[p_[k]] = k;
@@ -59,14 +62,14 @@ class permutation_t {
     return permutation_t<i_t>(std::move(pinv), support_);
   }
 
-
  private:
   i_t n_;
   std::vector<i_t> p_;
   std::vector<i_t> support_;
 };
 
-// group_generators_t stores a list of permutations. Can be constructed from a sparse representation.
+// group_generators_t stores a list of permutations. Can be constructed from a sparse
+// representation.
 template <typename i_t>
 class group_generators_t {
  public:
@@ -80,12 +83,14 @@ class group_generators_t {
       generators_.emplace_back(n, p, nsupp, supp);
     }
   }
-  void add_generator(const permutation_t<i_t>& p) {
+  void add_generator(const permutation_t<i_t>& p)
+  {
     if (n_ == -1) { n_ = p.size(); }
     if (p.size() != n_) { return; }
     generators_.emplace_back(p);
   }
-  void add_generator(std::vector<i_t> p, std::vector<i_t> support) {
+  void add_generator(std::vector<i_t> p, std::vector<i_t> support)
+  {
     const i_t n = static_cast<i_t>(p.size());
     if (n_ == -1) { n_ = n; }
     if (n != n_) { return; }
@@ -103,7 +108,7 @@ class group_generators_t {
   i_t prune_by_bounds(const std::vector<f_t>& lower, const std::vector<f_t>& upper)
   {
     i_t num_removed = 0;
-    size_t k = 0;
+    size_t k        = 0;
     while (k < generators_.size()) {
       const auto& perm = generators_[k];
       const auto& p    = perm.dense_permutation();
@@ -141,7 +146,8 @@ class orbits_t {
     dirty_list_.reserve(n);
   }
 
-  void compute_orbits(const std::vector<i_t>& indices, const group_generators_t<i_t>& generators) {
+  void compute_orbits(const std::vector<i_t>& indices, const group_generators_t<i_t>& generators)
+  {
     for (i_t i : indices) {
       const permutation_t<i_t>& perm = generators.get_generator(i);
       const std::vector<i_t>& p      = perm.dense_permutation();
@@ -154,47 +160,44 @@ class orbits_t {
   // Incrementally update orbits with a single mapping u -> v.
   void add_mapping(i_t u, i_t v) { union_sets(u, v); }
 
-  void compute_orbits(const group_generators_t<i_t>& generators) {
+  void compute_orbits(const group_generators_t<i_t>& generators)
+  {
     std::vector<i_t> indices(generators.num_generators());
     std::iota(indices.begin(), indices.end(), 0);
     compute_orbits(indices, generators);
   }
 
-  i_t find_orbit(i_t v) {
-    return find(v);
-  }
+  i_t find_orbit(i_t v) { return find(v); }
 
-  bool represents_orbit(i_t v) {
-    return find(v) == v;
-  }
+  bool represents_orbit(i_t v) { return find(v) == v; }
 
-  i_t orbit_size(i_t v) {
-    return size_[find(v)];
-  }
+  i_t orbit_size(i_t v) { return size_[find(v)]; }
 
   // Reset only the given indices back to identity (parent[j] = j, size[j] = 1).
-  void reset() {
+  void reset()
+  {
     for (i_t j : dirty_list_) {
       parent_[j] = j;
       size_[j]   = 1;
-      dirty_[j] = 0;
+      dirty_[j]  = 0;
     }
     dirty_list_.clear();
   }
 
-private:
-  void union_sets(i_t u, i_t v) {
+ private:
+  void union_sets(i_t u, i_t v)
+  {
     i_t root_u = find(u);
     i_t root_v = find(v);
-    if (root_u == root_v) return; // Already in the same set
+    if (root_u == root_v) return;  // Already in the same set
     mark_dirty(root_u);
     mark_dirty(root_v);
     if (size_[root_u] < size_[root_v]) {
-        parent_[root_u] = root_v;
-        size_[root_v] += size_[root_u];
+      parent_[root_u] = root_v;
+      size_[root_v] += size_[root_u];
     } else {
-        parent_[root_v] = root_u;
-        size_[root_u] += size_[root_v];
+      parent_[root_v] = root_u;
+      size_[root_u] += size_[root_v];
     }
   }
 
@@ -209,18 +212,18 @@ private:
       i_t next   = parent_[v];
       parent_[v] = root;
       mark_dirty(v);
-      v          = next;
+      v = next;
     }
     return root;
   }
 
-  void mark_dirty(i_t v) {
+  void mark_dirty(i_t v)
+  {
     if (dirty_[v] == 0) {
       dirty_list_.push_back(v);
       dirty_[v] = 1;
     }
   }
-
 
   i_t n_;
   std::vector<i_t> parent_;
@@ -243,7 +246,6 @@ struct mip_symmetry_t {
   std::vector<i_t> orbit_rep;
 
   group_generators_t<i_t> inverse_generators;
-
 };
 
 template <typename i_t, typename f_t>
@@ -274,26 +276,28 @@ class orbital_fixing_t {
     std::iota(surviving_generators_.begin(), surviving_generators_.end(), 0);
   }
 
-  bool disabled () const { return surviving_generators_.empty(); }
+  bool disabled() const { return surviving_generators_.empty(); }
   void disable() { surviving_generators_.clear(); }
 
   // Store the current cumulative orbital fixings into the node without
   // running the full orbital fixing computation.  Called when orbital
   // fixing is disabled (trivial stabilizer) so that children starting
   // a new plunge still inherit ancestor fixings.
-  void propagate_cumulative_fixings(mip_node_t<i_t, f_t>* node_ptr) {
+  void propagate_cumulative_fixings(mip_node_t<i_t, f_t>* node_ptr)
+  {
     node_ptr->orbital_fix_zero = cumulative_fix_zero_;
     node_ptr->orbital_fix_one  = cumulative_fix_one_;
   }
 
-  void reset(mip_symmetry_t<i_t, f_t>* symmetry, mip_node_t<i_t, f_t>* node_ptr) {
+  void reset(mip_symmetry_t<i_t, f_t>* symmetry, mip_node_t<i_t, f_t>* node_ptr)
+  {
     for (i_t j : branched_zero_) {
-        marked_b0_[j] = 0;
-        orbit_has_b0_[orb_.find_orbit(j)] = 0;
+      marked_b0_[j]                     = 0;
+      orbit_has_b0_[orb_.find_orbit(j)] = 0;
     }
     for (i_t j : branched_one_) {
-        marked_b1_[j] = 0;
-        orbit_has_b1_[orb_.find_orbit(j)] = 0;
+      marked_b1_[j]                     = 0;
+      orbit_has_b1_[orb_.find_orbit(j)] = 0;
     }
     branched_zero_.clear();
     branched_one_.clear();
@@ -301,18 +305,18 @@ class orbital_fixing_t {
 
     mip_node_t<i_t, f_t>* node = node_ptr->parent;
     while (node != nullptr && node->branch_var >= 0) {
-        i_t v = node->branch_var;
-        bool is_binary = (symmetry->is_binary[v] == 1);
-        if (is_binary) {
-          if (node->branch_var_upper == 0.0) {
-            branched_zero_.push_back(v);
-            marked_b0_[v] = 1;
-          } else if (node->branch_var_lower == 1.0) {
-            branched_one_.push_back(v);
-            marked_b1_[v] = 1;
-          }
+      i_t v          = node->branch_var;
+      bool is_binary = (symmetry->is_binary[v] == 1);
+      if (is_binary) {
+        if (node->branch_var_upper == 0.0) {
+          branched_zero_.push_back(v);
+          marked_b0_[v] = 1;
+        } else if (node->branch_var_lower == 1.0) {
+          branched_one_.push_back(v);
+          marked_b1_[v] = 1;
         }
-        node = node->parent;
+      }
+      node = node->parent;
     }
 
     surviving_generators_.resize(max_generators_);
@@ -358,8 +362,8 @@ class orbital_fixing_t {
     }
 
     // Collect binary branchings only; skip general integer branchings
-    i_t v = node_ptr->branch_var;
-    bool is_binary = (symmetry->is_binary[v] == 1);
+    i_t v                 = node_ptr->branch_var;
+    bool is_binary        = (symmetry->is_binary[v] == 1);
     bool should_recompute = start_plunge_;
     if (is_binary) {
       if (node_ptr->branch_var_upper == 0.0) {
@@ -370,7 +374,7 @@ class orbital_fixing_t {
         should_recompute = true;
       } else if (node_ptr->branch_var_lower == 1.0) {
         branched_one_.push_back(v);
-        marked_b1_[v] = 1;
+        marked_b1_[v]    = 1;
         should_recompute = true;
       }
     }
@@ -401,8 +405,8 @@ class orbital_fixing_t {
       for (size_t k = 0; k < surviving_generators_.size(); k++) {
         const i_t h                    = surviving_generators_[k];
         const permutation_t<i_t>& perm = symmetry->generators.get_generator(h);
-        const std::vector<i_t>& p = perm.dense_permutation();
-        bool stabilizes = true;
+        const std::vector<i_t>& p      = perm.dense_permutation();
+        bool stabilizes                = true;
 
         if (start_plunge_) {
           // At the start of a plunge, surviving_generators_ was reset to all generators.
@@ -427,9 +431,7 @@ class orbital_fixing_t {
           // Check the new branching variable.
           if (is_binary && node_ptr->branch_var_lower == 1.0) {
             // Branched to 1: check g(v) is also in B1
-            if (marked_b1_[p[v]] == 0) {
-              stabilizes = false;
-            }
+            if (marked_b1_[p[v]] == 0) { stabilizes = false; }
           }
           // Check B0: propagation at this node may have newly fixed variables to 1.
           // A generator that was valid at the parent may now map a B0 variable to
@@ -484,7 +486,7 @@ class orbital_fixing_t {
 
     fix_zero_.clear();
     fix_one_.clear();
-    i_t num_conflicts = 0;
+    i_t num_conflicts          = 0;
     bool stabilizer_nontrivial = false;
     for (i_t j : symmetry->binary_variables) {
       i_t o = orb_.find_orbit(j);
@@ -501,8 +503,8 @@ class orbital_fixing_t {
       stabilizer_nontrivial = true;
 
       // Only fix free variables (not already fixed by branching or propagation)
-      bool is_free = (marked_b0_[j] == 0 && marked_b1_[j] == 0 &&
-                       marked_f0_[j] == 0 && marked_f1_[j] == 0);
+      bool is_free =
+        (marked_b0_[j] == 0 && marked_b1_[j] == 0 && marked_f0_[j] == 0 && marked_f1_[j] == 0);
       if (!is_free) continue;
 
       bool has_zero_source = (orbit_has_b0_[o] == 1 || orbit_has_f0_[o] == 1);
@@ -573,18 +575,18 @@ class orbital_fixing_t {
 
   std::vector<i_t> surviving_generators_;
 
-  std::vector<i_t> orbit_has_b1_;        // orbit_has_b1_[o] = 1 if orbit o contains variables in B1
-  std::vector<i_t> orbit_has_b0_;        // orbit_has_b0_[o] = 1 if orbit o contains variables in B0
-  std::vector<i_t> orbit_has_f0_;        // orbit_has_f0_[o] = 1 if orbit o contains variables in F0
-  std::vector<i_t> orbit_has_f1_;        // orbit_has_f1_[o] = 1 if orbit o contains variables in F1
-  std::vector<i_t> marked_b0_;           // marked_b0_[v] = 1 if variable v has been branched down
-  std::vector<i_t> marked_b1_;           // marked_b1_[v] = 1 if variable v has been branched up
-  std::vector<i_t> f0_;                  // set of variables fixed to 0 by bound propagation
-  std::vector<i_t> f1_;                  // set of variables fixed to 1 by bound propagation
-  std::vector<i_t> marked_f0_;           // marked_f0_[v] = 1 if variable v is in F0
-  std::vector<i_t> marked_f1_;           // marked_f1_[v] = 1 if variable v is in F1
-  std::vector<i_t> fix_zero_;            // set of variables fixed to 0 by orbital fixing
-  std::vector<i_t> fix_one_;             // set of variables fixed to 1 by orbital fixing
+  std::vector<i_t> orbit_has_b1_;  // orbit_has_b1_[o] = 1 if orbit o contains variables in B1
+  std::vector<i_t> orbit_has_b0_;  // orbit_has_b0_[o] = 1 if orbit o contains variables in B0
+  std::vector<i_t> orbit_has_f0_;  // orbit_has_f0_[o] = 1 if orbit o contains variables in F0
+  std::vector<i_t> orbit_has_f1_;  // orbit_has_f1_[o] = 1 if orbit o contains variables in F1
+  std::vector<i_t> marked_b0_;     // marked_b0_[v] = 1 if variable v has been branched down
+  std::vector<i_t> marked_b1_;     // marked_b1_[v] = 1 if variable v has been branched up
+  std::vector<i_t> f0_;            // set of variables fixed to 0 by bound propagation
+  std::vector<i_t> f1_;            // set of variables fixed to 1 by bound propagation
+  std::vector<i_t> marked_f0_;     // marked_f0_[v] = 1 if variable v is in F0
+  std::vector<i_t> marked_f1_;     // marked_f1_[v] = 1 if variable v is in F1
+  std::vector<i_t> fix_zero_;      // set of variables fixed to 0 by orbital fixing
+  std::vector<i_t> fix_one_;       // set of variables fixed to 1 by orbital fixing
 
   // Running accumulation of orbital fixings across the current plunge.
   // Stored into node_ptr after each successful orbital_fixing() call,
@@ -609,10 +611,8 @@ class lexical_reduction_t {
     mip_node_t<i_t, f_t>* node = node_ptr;
     while (node != nullptr && node->branch_var >= 0) {
       i_t v = node->branch_var;
-      if (symmetry->is_binary[v] == 1) {
-        reverse_branched_variables_.push_back(v);
-      }
-      node               = node->parent;
+      if (symmetry->is_binary[v] == 1) { reverse_branched_variables_.push_back(v); }
+      node = node->parent;
     }
 
     bool prune      = false;
@@ -620,9 +620,10 @@ class lexical_reduction_t {
     for (size_t k = 0; k < symmetry->inverse_generators.num_generators(); k++) {
       const permutation_t<i_t>& perm = symmetry->inverse_generators.get_generator(k);
       const std::vector<i_t>& p      = perm.dense_permutation();
-      const size_t reverse_size = reverse_branched_variables_.size();
+      const size_t reverse_size      = reverse_branched_variables_.size();
       for (size_t h = reverse_size; h > 0; --h) {
-        i_t j = reverse_branched_variables_[h-1]; // This orders the variables from the root down to the current node
+        i_t j = reverse_branched_variables_[h - 1];  // This orders the variables from the root down
+                                                     // to the current node
         const i_t p_j = p[j];
         if (p_j == j) continue;
         // clang-format off
@@ -638,7 +639,9 @@ class lexical_reduction_t {
         i_t val_j = -1;
         if (problem.lower[j] == problem.upper[j]) { val_j = static_cast<i_t>(problem.lower[j]); }
         i_t val_p_j = -1;
-        if (problem.lower[p_j] == problem.upper[p_j]) { val_p_j = static_cast<i_t>(problem.lower[p_j]); }
+        if (problem.lower[p_j] == problem.upper[p_j]) {
+          val_p_j = static_cast<i_t>(problem.lower[p_j]);
+        }
         if (val_j == -1) {  // free. continue to next generator
           break;
         }
@@ -963,7 +966,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   const i_t num_original_vars = user_problem.num_cols;
 
-  auto result = std::make_unique<mip_symmetry_t<i_t, f_t>>();
+  auto result               = std::make_unique<mip_symmetry_t<i_t, f_t>>();
   result->num_original_vars = num_original_vars;
   result->is_binary.resize(num_original_vars, 0);
   for (i_t j = 0; j < num_original_vars; j++) {
@@ -979,19 +982,25 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   // Project generators incrementally inside the dejavu callback.
   // This avoids storing full-graph dense vectors (size num_vertices per generator).
-  const size_t max_generators = std::max(size_t{1}, static_cast<size_t>(64000000 / num_original_vars));
+  const size_t max_generators =
+    std::max(size_t{1}, static_cast<size_t>(64000000 / num_original_vars));
   orbits_t<i_t> orb(num_original_vars);
   int num_dejavu_generators = 0;
-  int projected_count = 0;
-  int skipped_non_binary = 0;
+  int projected_count       = 0;
+  int skipped_non_binary    = 0;
   std::vector<i_t> projected_p(num_original_vars);
   std::iota(projected_p.begin(), projected_p.end(), 0);
   std::vector<i_t> var_support;
 
-  dejavu_hook generator_hook = [&num_original_vars, &num_dejavu_generators,
-                                &projected_p, &var_support, &orb, &result, &projected_count,
-                                &skipped_non_binary, &max_generators](int n, const int* p,
-                                                                      int nsupp, const int* supp) {
+  dejavu_hook generator_hook = [&num_original_vars,
+                                &num_dejavu_generators,
+                                &projected_p,
+                                &var_support,
+                                &orb,
+                                &result,
+                                &projected_count,
+                                &skipped_non_binary,
+                                &max_generators](int n, const int* p, int nsupp, const int* supp) {
     // Check if any support element is an original variable
     bool moves_variable = false;
     for (int s = 0; s < nsupp; s++) {
@@ -1047,27 +1056,33 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   std::ostringstream grp_size_str;
   grp_size_str << d.get_automorphism_group_size();
-  settings.log.printf(
-    "Automorphism group size %s, %d dejavu generators (%d move variables)\n",
-    grp_size_str.str().c_str(), num_dejavu_generators, projected_count);
+  settings.log.printf("Automorphism group size %s, %d dejavu generators (%d move variables)\n",
+                      grp_size_str.str().c_str(),
+                      num_dejavu_generators,
+                      projected_count);
   settings.log.printf("Dejavu time %f\n", toc(dejavu_start_time));
 
   result->num_generators = result->generators.num_generators();
   if (projected_count > static_cast<int>(result->num_generators)) {
     settings.log.printf("Generator limit: kept %d/%d projected generators (limit %d)\n",
-                        result->num_generators, projected_count, (int)max_generators);
+                        result->num_generators,
+                        projected_count,
+                        (int)max_generators);
   }
-  settings.log.printf("Projected %d generators onto %d binary variables (%d skipped non-binary), "
-                      "%d stored\n",
-                      projected_count, (int)num_original_vars,
-                      skipped_non_binary, result->num_generators);
+  settings.log.printf(
+    "Projected %d generators onto %d binary variables (%d skipped non-binary), "
+    "%d stored\n",
+    projected_count,
+    (int)num_original_vars,
+    skipped_non_binary,
+    result->num_generators);
 
   // Compute orbit statistics from the incrementally built orbits.
   // All non-trivial orbits contain only binary variables (non-binary generators were excluded).
-  has_symmetry = false;
+  has_symmetry              = false;
   i_t num_nontrivial_orbits = 0;
-  i_t max_orbit_size = 0;
-  i_t total_vars_in_orbits = 0;
+  i_t max_orbit_size        = 0;
+  i_t total_vars_in_orbits  = 0;
   std::vector<i_t> orbit_histogram(num_original_vars + 1, 0);
   for (i_t j : result->binary_variables) {
     if (orb.represents_orbit(j)) {
@@ -1082,27 +1097,31 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   }
 
   if (projected_count > 0) {
-    settings.log.printf("Binary orbits: %d non-trivial, max size %d, %d/%d (%.1f%%) binary variables in orbits\n",
-                        num_nontrivial_orbits, max_orbit_size, total_vars_in_orbits, num_original_vars,
-                        100.0 * total_vars_in_orbits / num_original_vars);
+    settings.log.printf(
+      "Binary orbits: %d non-trivial, max size %d, %d/%d (%.1f%%) binary variables in orbits\n",
+      num_nontrivial_orbits,
+      max_orbit_size,
+      total_vars_in_orbits,
+      num_original_vars,
+      100.0 * total_vars_in_orbits / num_original_vars);
     settings.log.printf("Orbit histogram (size: count):");
     for (i_t sz = 2; sz <= max_orbit_size; sz++) {
-      if (orbit_histogram[sz] > 0) {
-        settings.log.printf(" %d:%d", sz, orbit_histogram[sz]);
-      }
+      if (orbit_histogram[sz] > 0) { settings.log.printf(" %d:%d", sz, orbit_histogram[sz]); }
     }
     settings.log.printf("\n");
 
-    has_symmetry = (max_orbit_size >= 4) ||
-                    (num_nontrivial_orbits >= 3 && max_orbit_size >= 2) ||
-                    (total_vars_in_orbits >= 10);
+    has_symmetry = (max_orbit_size >= 4) || (num_nontrivial_orbits >= 3 && max_orbit_size >= 2) ||
+                   (total_vars_in_orbits >= 10);
   }
 
   settings.log.printf("Total symmetry detection time %f\n", toc(start_time));
 
   if (!has_symmetry) {
-    settings.log.printf("No exploitable symmetry found (%d generators, %d non-trivial orbits, max orbit size %d)\n",
-                        projected_count, num_nontrivial_orbits, max_orbit_size);
+    settings.log.printf(
+      "No exploitable symmetry found (%d generators, %d non-trivial orbits, max orbit size %d)\n",
+      projected_count,
+      num_nontrivial_orbits,
+      max_orbit_size);
     return nullptr;
   }
 
