@@ -18,15 +18,11 @@ include(rapids-cuda)
 include(rapids-export)
 include(rapids-find)
 
-# Expose $CONDA_PREFIX/lib to all executables in this build so ld can resolve
-# libcuopt.so's PRIVATE transitive deps (gRPC/Protobuf/Abseil) at link time
-# without relying on conda-forge compiler activation scripts setting LDFLAGS.
-# BUILD_INTERFACE keeps this out of the installed cuopt CMake config.
-include("${rapids-cmake-dir}/cmake/support_conda_env.cmake")
+# Conda env support: ensures $CONDA_PREFIX include/lib paths are visible to
+# the build so libcuopt.so's PRIVATE transitive deps (gRPC/Protobuf/Abseil)
+# resolve when linking executables, without depending on conda-forge compiler
+# activation scripts setting LDFLAGS.
 rapids_cmake_support_conda_env(conda_env MODIFY_PREFIX_PATH)
-if (TARGET conda_env)
-    link_libraries($<BUILD_INTERFACE:conda_env>)
-endif ()
 
 rapids_cuda_init_architectures(CUOPT)
 
@@ -573,6 +569,7 @@ target_link_libraries(cuopt
         ${CUOPT_PRIVATE_CUDA_LIBS}
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+        $<TARGET_NAME_IF_EXISTS:conda_env>
 )
 
 
@@ -602,6 +599,10 @@ else ()
     set(_BIN_DEST "${CMAKE_INSTALL_BINDIR}")
     set(_LIB_DEST "${lib_dir}")
     set(_INCLUDE_DEST include/cuopt/)
+endif ()
+
+if (TARGET conda_env)
+    install(TARGETS conda_env EXPORT cuopt-exports)
 endif ()
 
 # adds the .so files to the runtime deb package
@@ -717,6 +718,7 @@ if (NOT BUILD_LP_ONLY)
             TBB::tbb
             PRIVATE
             argparse::argparse
+            $<TARGET_NAME_IF_EXISTS:conda_env>
     )
     # Use RUNPATH when building locally in order to allow LD_LIBRARY_PATH to override the conda env path
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
@@ -842,6 +844,7 @@ if (NOT SKIP_GRPC_BUILD)
             gRPC::grpc++
             ${UUID_LIBRARY}
             argparse::argparse
+            $<TARGET_NAME_IF_EXISTS:conda_env>
     )
 
     # Use RUNPATH when building locally

@@ -59,6 +59,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         GTest::gtest
         GTest::gtest_main
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        $<TARGET_NAME_IF_EXISTS:conda_env>
     )
     if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
       target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
