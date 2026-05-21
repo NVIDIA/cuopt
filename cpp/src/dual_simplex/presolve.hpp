@@ -158,6 +158,9 @@ struct presolve_info_t {
 
   // Free variable indices for QP/SOCP augmented barrier (not split, handled natively)
   std::vector<i_t> native_free_linear_indices;
+
+  // Linear columns where phase 1 tightened a fully free var to a one-sided bound (same x index)
+  std::vector<i_t> phase1_bounded_linear_indices;
 };
 
 template <typename i_t, typename f_t>

@@ -923,9 +923,7 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
     problem.Q.x = user_problem.Q_values;
   }
 
-  // Add artificial variables for LP equality rows when not using barrier presolve.
-  // SOCP problems must keep [linear | cone] column order; slacks for inequalities are
-  // inserted before the cone block in convert_less_than_to_equal — do not append here.
+  // Artificial vars break [linear | cone]; only for barrier_presolve-off LP-style layouts.
   if (!settings.barrier_presolve && problem.second_order_cone_dims.empty()) {
     add_artifical_variables(problem, user_problem.range_rows, equality_rows, new_slacks);
   }
@@ -939,13 +937,16 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 {
   problem = original;
   const i_t linear_cols = linear_var_count(problem);
+  const bool has_cones  = !problem.second_order_cone_dims.empty();
   std::vector<char> row_sense(problem.num_rows, '=');
+
   // Check for free variables (linear block only; cone columns are handled by the barrier SOC layout)
   i_t free_variables = 0;
   for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
   }
 
+  // Barrier presolve phase 1: bound free linear variables from equality rows.
   if (settings.barrier_presolve && free_variables > 0) {
     // Try to remove free variables
     std::vector<i_t> constraints_to_check;
@@ -970,9 +971,29 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
 
     i_t removed_free_variables = 0;
     if (!constraints_to_check.empty()) {
-      // Check if the constraints are feasible
       csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
       problem.A.to_compressed_row(Arow);
+
+      // Keep only rows safe for phase-1 bound inference: no cone columns, exactly one free linear.
+      {
+        std::vector<i_t> safe_constraints;
+        safe_constraints.reserve(constraints_to_check.size());
+        for (i_t i : constraints_to_check) {
+          bool touches_cone        = false;
+          i_t free_linear_in_row = 0;
+          for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
+            const i_t j = Arow.j[p];
+            if (j >= linear_cols) {
+              touches_cone = true;
+              continue;
+            }
+            if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_linear_in_row++; }
+          }
+          if (touches_cone || free_linear_in_row != 1) { continue; }
+          safe_constraints.push_back(i);
+        }
+        constraints_to_check.swap(safe_constraints);
+      }
 
       // The constraints are in the form:
       // sum_j a_j x_j = beta
@@ -1041,6 +1062,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         // x_j <= 1/a_ij * (rhs - upper_activity_i)
         const i_t j         = last_free_i;
         const f_t a_ij      = last_free_coeff_i;
+        if (a_ij == 0) { continue; }
         const f_t max_bound = 1e10;
         bool bounded        = false;
         if (a_ij > 0) {
@@ -1090,6 +1112,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
           problem.lower[j] = -inf;
         }
       }
+      if (!(problem.lower[j] == -inf && problem.upper[j] == inf)) {
+        presolve_info.phase1_bounded_linear_indices.push_back(j);
+      }
     }
 
     if (removed_free_variables != 0) {
@@ -1097,6 +1122,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
                           static_cast<int>(removed_free_variables));
     }
   }
+
+  // Barrier presolve phase 2: negate one-sided bounds (-inf < x <= u -> -u <= x < inf).
   // The original problem may have a variable without a lower bound
   // but a finite upper bound
   // -inf < x_j <= u_j (linear variables only)
@@ -1147,8 +1174,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
 
-  // The original problem may have nonzero lower bounds
-  // 0 != l_j <= x_j <= u_j (linear variables only)
+  // Barrier presolve phase 3: shift nonzero lower bounds to zero (cone/stack columns not shifted).
+  // 0 != l_j <= x_j <= u_j (linear variables only; cone/stack columns are not shifted)
   i_t nonzero_lower_bounds = 0;
   for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) { nonzero_lower_bounds++; }
@@ -1223,7 +1250,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
   }
 
-  // Check for empty rows
+  // Barrier presolve phase 4: remove empty rows and empty linear columns.
   i_t num_empty_rows = 0;
   {
     csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
@@ -1257,14 +1284,9 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   }
   problem.Q.check_matrix("Before free variable expansion");
 
-  // For QPs and SOCPs using the augmented system, keep free variables as-is rather than
-  // splitting x = v - w. The barrier solver handles them natively with a
-  // static regularizer on the diagonal instead of z/x complementarity terms.
-  const bool keep_native_free_variables =
-    problem.Q.n > 0 || !problem.second_order_cone_dims.empty();
-  const bool register_native_free_linear =
-    (settings.barrier_native_free_linear || settings.barrier_presolve) && free_variables > 0 &&
-    keep_native_free_variables;
+  // Barrier presolve phase 5: free linear variables — 5a native (QP/SOCP) or 5b v-w split (LP).
+  // QP/SOCP augmented system: keep free linears as-is (no x = v - w); barrier uses D = 0 on them.
+  const bool register_native_free_linear = free_variables > 0 && (problem.Q.n > 0 || has_cones);
   if (register_native_free_linear) {
     presolve_info.free_variable_pairs.clear();
     presolve_info.native_free_linear_indices.clear();
@@ -1280,7 +1302,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     settings.log.printf(
       "Keeping %d native free linear variables for augmented-system barrier (QP/SOCP)\n",
       native_free_count);
-  } else if (settings.barrier_presolve && free_variables > 0) {
+  } else if (settings.barrier_presolve && !has_cones && free_variables > 0) {
+    // Phase 5b: x_j = v - w with v, w >= 0 (LP without cones; SOCP/QP use phase 5a).
     // We have a variable x_j: with -inf < x_j < inf
     // we create new variables v and w with 0 <= v, w and x_j = v - w
     // Constraints
@@ -1918,6 +1941,11 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       input_x[j] *= -1.0;
       input_z[j] *= -1.0;
     }
+  }
+
+  if (!presolve_info.phase1_bounded_linear_indices.empty()) {
+    settings.log.printf("Post-solve: %d linear column(s) had phase-1 bound tightening (x unchanged)\n",
+                        static_cast<int>(presolve_info.phase1_bounded_linear_indices.size()));
   }
 
   assert(uncrushed_x.size() == input_x.size());

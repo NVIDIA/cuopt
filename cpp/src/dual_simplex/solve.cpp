@@ -382,16 +382,6 @@ lp_status_t solve_linear_program_with_advanced_basis(
   return lp_status;
 }
 
-/** SOCP barrier: skip bound-shift presolve; keep native free linear variables for augmented KKT. */
-template <typename i_t, typename f_t>
-void apply_barrier_socp_presolve_defaults(const user_problem_t<i_t, f_t>& user_problem,
-                                          simplex_solver_settings_t<i_t, f_t>& settings)
-{
-  if (user_problem.second_order_cone_dims.empty()) { return; }
-  settings.barrier_presolve           = false;
-  settings.barrier_native_free_linear = true;
-}
-
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -403,10 +393,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
-  simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
-  apply_barrier_socp_presolve_defaults(user_problem, barrier_settings);
   dualize_info_t<i_t, f_t> dualize_info;
-  convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
   if (!validate_barrier_cone_layout(original_lp, settings)) {
     return lp_status_t::NUMERICAL_ISSUES;
   }
@@ -416,7 +404,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
-  const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
+  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
@@ -428,12 +416,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
-  column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
+  column_scaling(presolved_lp, settings, barrier_lp, column_scales, row_scales);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, settings);
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
@@ -486,7 +474,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
     // Undo presolve
     uncrush_solution(presolve_info,
-                     barrier_settings,
+                     settings,
                      unscaled_x,
                      unscaled_y,
                      unscaled_z,
@@ -707,7 +695,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     lp_solution_t<i_t, f_t> crossover_solution(original_lp.num_rows, original_lp.num_cols);
     std::vector<variable_status_t> vstatus(original_lp.num_cols);
     crossover_status_t crossover_status = crossover(
-      original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
+      original_lp, settings, lp_solution, start_time, crossover_solution, vstatus);
     settings.log.printf("Crossover status: %d\n", crossover_status);
     if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }

@@ -286,16 +286,6 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
-  /**
-   * Internal dual_simplex presolve (bound shifts, free-var bounding/split, folding) before barrier.
-   * Default true for LP/QP barrier. Ignored for SOCP (second-order cones): barrier presolve is off.
-   */
-  bool barrier_presolve{true};
-  /**
-   * Tag linear FR variables as native free for augmented SOCP/QP barrier (no x*z complementarity).
-   * Independent of @ref barrier_presolve. Always enabled for SOCP barrier solves.
-   */
-  bool barrier_native_free_linear{true};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
   /**
