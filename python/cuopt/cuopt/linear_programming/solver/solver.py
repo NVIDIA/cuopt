@@ -160,11 +160,11 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
     >>> from cuopt.linear_programming.solver.solver_parameters import *
-    >>> from cuopt.linear_programming import mps_parser
+    >>> from cuopt.linear_programming import ParseMps
     >>>
     >>> data_models = []
     >>> for i in range(...):
-    >>>     data_models.append(mps_parser.ParseMps(...))
+    >>>     data_models.append(ParseMps(...))
     >>>
     >>> # Build a solver setting object
     >>> settings = linear_programming.SolverSettings()

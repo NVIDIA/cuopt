@@ -3,7 +3,7 @@
 
 import os
 
-from cuopt.linear_programming import mps_parser
+from cuopt.linear_programming import io as mps_parser
 import pytest
 
 from cuopt.linear_programming import solver, solver_settings

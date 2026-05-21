@@ -1441,9 +1441,8 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
 {
   std::deque<mip_node_t<i_t, f_t>*> stack;
   stack.push_front(worker->start_node);
-  bool requeue_pending_nodes = false;
-  worker->recompute_basis    = true;
-  worker->recompute_bounds   = true;
+  worker->recompute_basis  = true;
+  worker->recompute_bounds = true;
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
@@ -1454,6 +1453,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     mip_node_t<i_t, f_t>* node_ptr = stack.front();
     stack.pop_front();
+    ++exploration_stats_.nodes_being_solved;
 
     // This is based on three assumptions:
     // - The stack only contains sibling nodes, i.e., the current node and it sibling (if
@@ -1469,37 +1469,46 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
       worker->recompute_basis  = true;
       worker->recompute_bounds = true;
       --exploration_stats_.nodes_unexplored;
+      --exploration_stats_.nodes_being_solved;
       continue;
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
+      stack.push_front(node_ptr);
+      --exploration_stats_.nodes_being_solved;
       break;
     }
 
-    if (exploration_stats_.nodes_explored >= settings_.node_limit) {
+    if (exploration_stats_.nodes_explored + exploration_stats_.nodes_being_solved >
+        settings_.node_limit) {
       solver_status_ = mip_status_t::NODE_LIMIT;
+      stack.push_front(node_ptr);
+      --exploration_stats_.nodes_being_solved;
       break;
     }
 
     dual::status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
-
-    if (lp_status == dual::status_t::TIME_LIMIT) {
-      solver_status_ = mip_status_t::TIME_LIMIT;
-      break;
-    } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
-      stack.push_front(node_ptr);
-      requeue_pending_nodes = true;
-      break;
-    } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
-      stack.push_front(node_ptr);
-      requeue_pending_nodes = true;
-      break;
-    }
-
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
+    --exploration_stats_.nodes_being_solved;
+
+    if (lp_status == dual::status_t::TIME_LIMIT) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      stack.push_front(node_ptr);
+      break;
+    }
+
+    if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
+      stack.push_front(node_ptr);
+      break;
+    }
+
+    if (lp_status == dual::status_t::ITERATION_LIMIT) {
+      stack.push_front(node_ptr);
+      break;
+    }
 
     auto [node_status, round_dir] =
       update_tree(node_ptr, search_tree_, worker, lp_status, settings_.log);
@@ -1550,16 +1559,13 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(branch_and_bound_worker_t<i_t, f_
   rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
   abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
-  if (stack.size() > 0 && (requeue_pending_nodes || rel_gap <= settings_.relative_mip_gap_tol ||
-                           abs_gap <= settings_.absolute_mip_gap_tol)) {
-    // If the solver exits early without consuming the local stack, or converged according to
-    // the gap rules while nodes are still pending, put those nodes back into the global queue
-    // before returning.
-    while (!stack.empty()) {
-      auto node = stack.front();
-      stack.pop_front();
-      node_queue_.push(node);
-    }
+  // If the solver exits early without consuming the local stack, or converged according to
+  // the gap rules while nodes are still pending, put those nodes back into the global queue
+  // before returning.
+  while (!stack.empty()) {
+    auto node = stack.front();
+    stack.pop_front();
+    node_queue_.push(node);
   }
 
   if (settings_.num_threads > 1) {
@@ -1611,20 +1617,18 @@ void branch_and_bound_t<i_t, f_t>::dive_with(branch_and_bound_worker_t<i_t, f_t>
     }
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
-    if (dive_stats.nodes_explored > diving_node_limit) { break; }
+    if (dive_stats.nodes_explored >= diving_node_limit) { break; }
 
     dual::status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
+    ++dive_stats.nodes_explored;
 
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       break;
-    } else if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
-      break;
-    } else if (lp_status == dual::status_t::ITERATION_LIMIT) {
-      break;
     }
 
-    ++dive_stats.nodes_explored;
+    if (lp_status == dual::status_t::CONCURRENT_LIMIT) { break; }
+    if (lp_status == dual::status_t::ITERATION_LIMIT) { break; }
 
     auto [node_status, round_dir] = update_tree(node_ptr, dive_tree, worker, lp_status, log);
 
