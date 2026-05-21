@@ -17,9 +17,6 @@ listing the supported suffixes. See ``parse_problem`` in
 ``cuopt/linear_programming/io/parser.hpp`` (and the Python
 :func:`~cuopt.linear_programming.io.ParseProblem` wrapper).
 
-The ``good-mps-1`` fixtures under ``datasets/linear_programming/`` include
-plain and compressed ``.mps`` / ``.lp`` files used in parser and CLI tests;
-see ``good-mps-1-README.md`` in that directory.
 
 Basic Usage
 ###########
