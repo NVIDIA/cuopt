@@ -38,7 +38,7 @@ def ParseProblem(file_path: str, fixed_mps_format: bool = False) -> DataModel:
     ------
     InputValidationError, InputRuntimeError, OutOfMemoryError
         Parser errors from the underlying C++ readers (via
-        :func:`catch_io_exception`).
+        ``catch_io_exception``).
     RuntimeError
         If the file extension is not one of the supported suffixes (raised by
         the C++ ``parse_problem`` dispatch).
