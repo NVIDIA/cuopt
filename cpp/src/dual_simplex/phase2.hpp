@@ -94,14 +94,19 @@ void compute_reduced_cost_update(const lp_problem_t<i_t, f_t>& lp,
                                  f_t& work_estimate);
 
 template <typename i_t, typename f_t>
-void compute_delta_z(const csc_matrix_t<i_t, f_t>& A_transpose,
+void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
                      const sparse_vector_t<i_t, f_t>& delta_y,
                      i_t leaving_index,
                      i_t direction,
-                     const std::vector<i_t>& nonbasic_mark,
+                     const std::vector<i_t>& nonbasic_end,
                      std::vector<i_t>& delta_z_mark,
                      std::vector<i_t>& delta_z_indices,
                      std::vector<f_t>& delta_z,
                      f_t& work_estimate);
+
+template <typename i_t, typename f_t>
+void compute_initial_nonbasic_end(const std::vector<i_t>& basic_mark,
+                                  csr_matrix_t<i_t, f_t>& Arow,
+                                  std::vector<i_t>& nonbasic_end);
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -851,6 +851,13 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     }
 
     i_t removed_free_variables = 0;
+
+    // Track which constraint provided each implied bound for dual correction
+    std::vector<i_t> lower_bound_constraint(problem.num_cols, -1);
+    std::vector<f_t> lower_bound_coefficient(problem.num_cols, 0.0);
+    std::vector<i_t> upper_bound_constraint(problem.num_cols, -1);
+    std::vector<f_t> upper_bound_coefficient(problem.num_cols, 0.0);
+
     if (!constraints_to_check.empty()) {
       // Check if the constraints are feasible
       csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
@@ -928,30 +935,38 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
           if (lower_inf_i == 1) {
             const f_t new_upper = 1.0 / a_ij * (rhs - lower_activity_i);
             if (new_upper < max_bound) {
-              problem.upper[j] = new_upper;
-              bounded          = true;
+              problem.upper[j]           = new_upper;
+              upper_bound_constraint[j]  = i;
+              upper_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
           if (upper_inf_i == 1) {
             const f_t new_lower = 1.0 / a_ij * (rhs - upper_activity_i);
             if (new_lower > -max_bound) {
-              problem.lower[j] = new_lower;
-              bounded          = true;
+              problem.lower[j]           = new_lower;
+              lower_bound_constraint[j]  = i;
+              lower_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
         } else if (a_ij < 0) {
           if (lower_inf_i == 1) {
             const f_t new_lower = 1.0 / a_ij * (rhs - lower_activity_i);
             if (new_lower > -max_bound) {
-              problem.lower[j] = new_lower;
-              bounded          = true;
+              problem.lower[j]           = new_lower;
+              lower_bound_constraint[j]  = i;
+              lower_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
           if (upper_inf_i == 1) {
             const f_t new_upper = 1.0 / a_ij * (rhs - upper_activity_i);
             if (new_upper < max_bound) {
-              problem.upper[j] = new_upper;
-              bounded          = true;
+              problem.upper[j]           = new_upper;
+              upper_bound_constraint[j]  = i;
+              upper_bound_coefficient[j] = a_ij;
+              bounded                    = true;
             }
           }
         }
@@ -970,6 +985,24 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
           // Restores the -inf in the lower bound. Barrier will require an additional w variable
           problem.lower[j] = -inf;
         }
+      }
+    }
+
+    // Record bounded free variables for dual correction in uncrush.
+    // After the keep-one-bound logic, each bounded variable has exactly one finite bound.
+    for (i_t j : current_free_variables) {
+      i_t bounding_constraint  = -1;
+      f_t bounding_coefficient = 0.0;
+      if (problem.lower[j] > -inf && lower_bound_constraint[j] != -1) {
+        bounding_constraint  = lower_bound_constraint[j];
+        bounding_coefficient = lower_bound_coefficient[j];
+      } else if (problem.upper[j] < inf && upper_bound_constraint[j] != -1) {
+        bounding_constraint  = upper_bound_constraint[j];
+        bounding_coefficient = upper_bound_coefficient[j];
+      }
+      if (bounding_constraint != -1) {
+        presolve_info.bounded_free_variables.push_back(
+          {j, bounding_constraint, bounding_coefficient});
       }
     }
 
@@ -1571,6 +1604,7 @@ void uncrush_dual_solution(const user_problem_t<i_t, f_t>& user_problem,
 template <typename i_t, typename f_t>
 void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const lp_problem_t<i_t, f_t>& original_problem,
                       const std::vector<f_t>& crushed_x,
                       const std::vector<f_t>& crushed_y,
                       const std::vector<f_t>& crushed_z,
@@ -1720,6 +1754,46 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     }
   }
 
+  // Dual correction for originally free variables that received implied bounds.
+  // Barrier produced (y, z) with z_j != 0 satisfying A^T y + z = c + Qx.
+  // We need corrected (y_bar, z_bar) with z_bar_j = 0 for all j in F_b where
+  // F_b = { j | x_j was initially free and is now bounded }
+  //
+  // For a given j_f in F_b, let i* be the constraint that implied the bound on x_j_f.
+  // Compute the scalar delta_u = z_j_f / a_{i*,j_f}.
+  // Set y_bar = y + delta_u e_i* and
+  // Let R_i* = { j | a_{i*, j} != 0 }
+  // z_bar_j = z_j - delta_u a_{i*,j} for all j in R_i*.
+  // z_bar_j = z_j                    for all j not in R_i*.
+  //
+  // Then you can show that A^T y_bar + z_bar = c + Qx and
+  // z_bar_{j_f} = 0.
+  if (!presolve_info.bounded_free_variables.empty()) {
+    settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n",
+                        static_cast<i_t>(presolve_info.bounded_free_variables.size()));
+    const csc_matrix_t<i_t, f_t>& A = original_problem.A;
+    // Traverse in reverse order, to ensure that all z_j = 0 after the correction
+    for (auto it = presolve_info.bounded_free_variables.rbegin();
+         it != presolve_info.bounded_free_variables.rend();
+         ++it) {
+      const auto& bfv = *it;
+      const f_t w_j   = input_z[bfv.variable];
+      if (w_j == 0.0) { continue; }
+      const f_t du = w_j / bfv.coefficient;
+      input_y[bfv.constraint] += du;
+      for (i_t j = 0; j < A.n; j++) {
+        const i_t col_start = A.col_start[j];
+        const i_t col_end   = A.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
+          if (A.i[p] == bfv.constraint) {
+            input_z[j] -= A.x[p] * du;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   assert(uncrushed_x.size() == input_x.size());
   assert(uncrushed_y.size() == input_y.size());
   assert(uncrushed_z.size() == input_z.size());
@@ -1778,6 +1852,7 @@ template void uncrush_dual_solution<int, double>(const user_problem_t<int, doubl
 
 template void uncrush_solution<int, double>(const presolve_info_t<int, double>& presolve_info,
                                             const simplex_solver_settings_t<int, double>& settings,
+                                            const lp_problem_t<int, double>& original_problem,
                                             const std::vector<double>& crushed_x,
                                             const std::vector<double>& crushed_y,
                                             const std::vector<double>& crushed_z,

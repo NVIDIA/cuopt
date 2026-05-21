@@ -17,11 +17,13 @@
 #include <dual_simplex/user_problem.hpp>
 
 #include <cuopt/linear_programming/io/parser.hpp>
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
 TEST(dual_simplex, chess_set)
 {
+  cuopt::init_logger_t log("", true);
   namespace dual_simplex = cuopt::linear_programming::dual_simplex;
   raft::handle_t handle{};
   dual_simplex::user_problem_t<int, double> user_problem(&handle);
@@ -95,6 +97,7 @@ TEST(dual_simplex, chess_set)
 
 TEST(dual_simplex, burglar)
 {
+  cuopt::init_logger_t log("", true);
   constexpr int num_items     = 8;
   constexpr double max_weight = 102;
 
@@ -169,6 +172,7 @@ TEST(dual_simplex, burglar)
 
 TEST(dual_simplex, empty_columns)
 {
+  cuopt::init_logger_t log("", true);
   // Same as burglar problem above but with an empty column inserted
   constexpr int num_items     = 9;
   constexpr double max_weight = 102;
@@ -257,6 +261,7 @@ TEST(dual_simplex, empty_columns)
 
 TEST(dual_simplex, dual_variable_greater_than)
 {
+  cuopt::init_logger_t log("", true);
   // minimize   3*x0 + 2 * x1
   // subject to  x0 + x1  >= 1
   //             x0 + 2x1 >= 3
