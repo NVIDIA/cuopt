@@ -243,9 +243,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     auto cudss_device_count = 1;
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssCreateMg(&handle, cudss_device_count, &cudss_device_idx), status, "cudssCreateMg");
-
     CUDSS_CALL_AND_CHECK_EXIT(cudssSetStream(handle, stream), status, "cudaStreamCreate");
-
     mem_handler.ctx          = reinterpret_cast<void*>(handle_ptr_->get_workspace_resource());
     mem_handler.device_alloc = cudss_device_alloc<void>;
     mem_handler.device_free  = cudss_device_dealloc<void>;
