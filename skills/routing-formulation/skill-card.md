@@ -1,8 +1,3 @@
-<!--
-  SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-  SPDX-License-Identifier: Apache-2.0
--->
-
 ## Description: <br>
 Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface. <br>
 
@@ -13,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to understand vehicle routing problem types (TSP, VRP, PDP), identify required data inputs, and formulate routing problems before selecting a cuOpt API for implementation. <br>
+Developers and engineers use this skill to understand vehicle routing problem types (TSP, VRP, PDP), identify required data inputs, and formulate routing problems before implementation with cuOpt APIs. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>

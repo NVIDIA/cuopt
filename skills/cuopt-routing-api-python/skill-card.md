@@ -1,8 +1,3 @@
-<!--
-  SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-  SPDX-License-Identifier: Apache-2.0
--->
-
 ## Description: <br>
 Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python. <br>
 
@@ -13,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers building or solving vehicle routing problems (VRP, TSP, PDP) using the NVIDIA cuOpt Python API for GPU-accelerated optimization. <br>
+Developers and engineers building or solving vehicle routing problems (VRP, TSP, PDP) using the NVIDIA cuOpt Python API for GPU-accelerated route optimization. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -25,6 +20,8 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
+- [Routing Python Examples](resources/examples.md) <br>
+- [Routing Server Examples](resources/server_examples.md) <br>
 
 
 ## Skill Output: <br>
