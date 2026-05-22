@@ -100,14 +100,24 @@ cuopt_int_t cuOptGetVersion(cuopt_int_t* version_major,
                             cuopt_int_t* version_patch);
 
 /**
- * @brief Read an optimization problem from an MPS file.
+ * @brief Read an optimization problem from an MPS, QPS, or LP file.
  *
- * @param[in] filename - The path to the MPS file.
+ * The file format is dispatched on the filename extension
+ * (case-insensitive):
+ *   - ".lp", ".lp.gz", ".lp.bz2"                               → LP parser
+ *   - ".mps", ".mps.gz", ".mps.bz2", ".qps", ".qps.gz", ".qps.bz2" → MPS parser
+ *   - anything else (including no extension) is rejected.
  *
- * @param[out] problem_ptr - A pointer to a cuOptOptimizationProblem. On output
- *  the problem will be created and initialized with the data from the MPS file
+ * @param[in] filename - The path to the MPS, QPS, or LP file. Must be a
+ *  non-null, non-empty C string.
  *
- * @return A status code indicating success or failure.
+ * @param[out] problem_ptr - A non-null pointer to a cuOptOptimizationProblem.
+ *  On output the problem will be created and initialized with the data from
+ *  the input file.
+ *
+ * @return A status code indicating success or failure. Returns
+ *  CUOPT_INVALID_ARGUMENT if filename is null or empty, or if problem_ptr is
+ *  null.
  */
 cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* problem_ptr);
 
@@ -164,7 +174,8 @@ cuopt_int_t cuOptWriteProblem(cuOptOptimizationProblem problem,
  * @param[in] upper_bounds A pointer to an array of type cuopt_float_t of size num_variables
  *            containing the upper bounds of the variables
  * @param[in] variable_types A pointer to an array of type char of size num_variables
- *            containing the types of the variables (CUOPT_CONTINUOUS or CUOPT_INTEGER)
+ *            containing the types of the variables (CUOPT_CONTINUOUS, CUOPT_INTEGER, or
+ *            CUOPT_SEMI_CONTINUOUS)
  * @param[out] problem_ptr Pointer to store the created optimization problem
  * @return CUOPT_SUCCESS if successful, CUOPT_ERROR otherwise
  */
@@ -229,8 +240,8 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
  *  cuopt_float_t of size num_variables containing the upper bounds of the variables.
  *
  * @param[in] variable_types - A pointer to an array of type char of size
- *  num_variables containing the types of the variables (CUOPT_CONTINUOUS or
- *  CUOPT_INTEGER).
+ *  num_variables containing the types of the variables (CUOPT_CONTINUOUS,
+ *  CUOPT_INTEGER, or CUOPT_SEMI_CONTINUOUS).
  *
  * @param[out] problem_ptr - A pointer to a cuOptOptimizationProblem.
  * On output the problem will be created and initialized with the provided data.
@@ -585,7 +596,7 @@ cuopt_int_t cuOptGetVariableUpperBounds(cuOptOptimizationProblem problem,
  *
  * @param[out] variable_types_ptr - A pointer to an array of type char of size
  *  num_variables that on output will contain the types of the variables
- *  (CUOPT_CONTINUOUS or CUOPT_INTEGER).
+ *  (CUOPT_CONTINUOUS, CUOPT_INTEGER, or CUOPT_SEMI_CONTINUOUS).
  *
  * @return A status code indicating success or failure.
  */

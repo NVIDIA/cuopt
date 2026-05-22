@@ -1,8 +1,9 @@
 ---
 name: cuopt-numerical-optimization-api-c
-version: "26.06.00"
+version: "26.08.00"
 description: LP, MILP, and QP (beta) with cuOpt — C API only. Use when the user is embedding LP, MILP, or QP in C/C++.
 ---
+
 
 # cuOpt Numerical Optimization — C API
 

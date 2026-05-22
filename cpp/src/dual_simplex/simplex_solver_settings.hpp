@@ -105,6 +105,7 @@ struct simplex_solver_settings_t {
       implied_bound_cuts(-1),
       clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
+      symmetry(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
@@ -192,6 +193,7 @@ struct simplex_solver_settings_t {
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
+  i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change

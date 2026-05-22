@@ -9,6 +9,9 @@
 
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 
+#include <algorithm>
+#include <cctype>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -54,5 +57,90 @@ mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file_path,
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
                                                  bool fixed_mps_format = false);
+
+/**
+ * @brief Reads a linear, mixed-integer, or quadratic optimization problem from
+ *        a file in LP format.
+ *
+ * The LP format is a human-readable alternative to MPS format. This parser
+ * supports the dialect in which the objective and constraints are written
+ * as algebraic expressions over named variables (it does not implement the
+ * alternative tableau-style LP dialect used by some open-source readers).
+ *
+ * Scope: LP, MIP, and QP problems are supported, plus semi-continuous
+ * variables (via a Semi-Continuous section; finite upper bound required)
+ * and quadratic constraints (QCQP; `<=` only).
+ *
+ * Quadratic terms appear inside `[ ... ]` blocks. The convention differs
+ * between objective and constraints:
+ *   - Objective bracket: MUST be followed by `/ 2` (the LP file states
+ *     coefficients in the `0.5 x^T Q x` convention).
+ *   - Constraint bracket: MUST NOT be followed by `/ 2`; coefficients are
+ *     taken at face value (`x^T Q x`).
+ *
+ * SOS constraints, PWL objectives, general constraints, and user cuts cause
+ * a ValidationError when encountered.
+ *
+ * Compressed inputs (.lp.gz, .lp.bz2) are supported when zlib / libbzip2
+ * are installed (same dispatching as parse_mps).
+ *
+ * @param[in] lp_file_path Path to the LP file.
+ * @return mps_data_model_t A fully formed LP/MIP/QP problem representing the
+ *         given file.
+ */
+template <typename i_t, typename f_t>
+mps_data_model_t<i_t, f_t> parse_lp(const std::string& lp_file_path);
+
+/**
+ * @brief Reads an LP, MIP, or QP problem from in-memory file contents.
+ *
+ * This parses the same plain-text LP format as parse_lp(), but the input is
+ * already loaded in memory. Compressed .lp.gz/.lp.bz2 inputs are only
+ * supported by parse_lp() because compression is detected from the file
+ * path. Supports the same scope as parse_lp() (LP, MIP, QP, plus
+ * semi-continuous variables).
+ *
+ * @param[in] lp_contents LP file contents.
+ * @return mps_data_model_t A fully formed LP/MIP/QP problem representing the
+ *         given content.
+ */
+template <typename i_t, typename f_t>
+mps_data_model_t<i_t, f_t> parse_lp_from_string(std::string_view lp_contents);
+
+/**
+ * @brief Reads an optimization problem from a file, dispatching on the file
+ *        extension. Extension matching is case-insensitive.
+ *
+ * Routing:
+ *   - .mps, .mps.gz, .mps.bz2, .qps, .qps.gz, .qps.bz2 → parse_mps()
+ *   - .lp,  .lp.gz,  .lp.bz2                            → parse_lp()
+ *   - anything else → std::logic_error
+ *
+ * This is the entry point of choice for user-facing tools (CLI, C API) that
+ * want both formats to "just work" without an explicit format flag.
+ *
+ * @param[in] path Path to the input file.
+ * @return mps_data_model_t The parsed problem.
+ */
+template <typename i_t, typename f_t>
+inline mps_data_model_t<i_t, f_t> parse_problem(const std::string& path)
+{
+  std::string lower(path);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (lower.ends_with(".mps") || lower.ends_with(".mps.gz") || lower.ends_with(".mps.bz2") ||
+      lower.ends_with(".qps") || lower.ends_with(".qps.gz") || lower.ends_with(".qps.bz2")) {
+    return parse_mps<i_t, f_t>(path);
+  }
+  if (lower.ends_with(".lp") || lower.ends_with(".lp.gz") || lower.ends_with(".lp.bz2")) {
+    return parse_lp<i_t, f_t>(path);
+  }
+  throw std::logic_error(
+    "parse_problem: unrecognized input file extension. Supported (case-insensitive): "
+    ".mps, .mps.gz, .mps.bz2, .qps, .qps.gz, .qps.bz2, .lp, .lp.gz, .lp.bz2. "
+    "Given path: " +
+    path);
+}
 
 }  // namespace cuopt::linear_programming::io

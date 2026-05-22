@@ -49,9 +49,13 @@ cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuo
         string problem_name_
         const vector[quadratic_constraint_t]& get_quadratic_constraints() const
 
-cdef extern from "cuopt/linear_programming/io/utilities/cython_mps_parser.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/linear_programming/io/utilities/cython_parser.hpp" namespace "cuopt::cython": # noqa
 
     cdef unique_ptr[mps_data_model_t[int, double]] call_parse_mps(
         const string& mps_file_path,
         bool fixed_mps_format
+    ) except +
+
+    cdef unique_ptr[mps_data_model_t[int, double]] call_parse_lp(
+        const string& lp_file_path
     ) except +

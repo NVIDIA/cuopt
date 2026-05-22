@@ -152,6 +152,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -208,6 +209,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -239,6 +241,8 @@ jobs:
           - '!notebooks/**'
           - '!python/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/skill-card.md'
+          - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
@@ -272,6 +276,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -300,6 +305,8 @@ jobs:
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/skill-card.md'
+          - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
@@ -333,6 +340,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -362,6 +370,8 @@ jobs:
           - '!ngc/**'
           - '!notebooks/**'
           - '!skills/**/SKILL.md'
+          - '!skills/**/skill-card.md'
+          - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
           - '!skills/**/resources/**'
           - '!sonar-project.properties'
@@ -471,7 +481,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.06-latest"
+      container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]

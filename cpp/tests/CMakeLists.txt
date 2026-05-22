@@ -18,6 +18,8 @@ if(BUILD_TESTS)
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
   )
+  # Third-party headers: SYSTEM matches libcuopt and suppresses NVCC sign-conversion noise.
+  target_include_directories(cuopttestutils SYSTEM PRIVATE "${dejavu_SOURCE_DIR}")
 
   target_link_libraries(cuopttestutils
       PUBLIC
@@ -47,7 +49,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${CUOPT_TEST_DIR}"
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
+    )
+    target_include_directories(${CMAKE_TEST_NAME} SYSTEM PRIVATE
         "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}

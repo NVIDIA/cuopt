@@ -18,6 +18,7 @@
 #include <mip_heuristics/utils.cuh>
 
 #include <utilities/event_handler.cuh>
+#include <utilities/manual_cuda_graph.cuh>
 
 #include <functional>
 
@@ -267,8 +268,7 @@ class fj_t {
   rmm::device_uvector<fj_load_balancing_workid_mapping_t> work_id_to_nonbin_var_idx;
   rmm::device_uvector<i_t> work_ids_for_related_vars;
 
-  cudaGraphExec_t graph_instance;
-  bool graph_created = false;
+  cuopt::manual_cuda_graph_t step_graph_;
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
