@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -207,7 +207,7 @@ typedef simple_scross_test_t<int, float, request_t::PDP> scross_three_routes_tes
 TEST_P(scross_three_routes_test, SCROSS_GES) { test_scross(); }
 INSTANTIATE_TEST_SUITE_P(simple_scross_test,
                          scross_three_routes_test,
-                         ::testing::ValuesIn(reads(scross_three_routes_)));
+                         ::testing::ValuesIn(parse_problems(scross_three_routes_)));
 
 }  // namespace test
 }  // namespace routing

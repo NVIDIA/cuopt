@@ -41,7 +41,7 @@ namespace cuopt::linear_programming::io {
  */
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file_path,
-                                     bool fixed_mps_format = false);
+                                    bool fixed_mps_format = false);
 
 /**
  * @brief Reads an MPS problem from in-memory file contents.
@@ -56,7 +56,7 @@ mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file_path,
  */
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_mps_from_string(std::string_view mps_contents,
-                                                 bool fixed_mps_format = false);
+                                                bool fixed_mps_format = false);
 
 /**
  * @brief Reads a linear, mixed-integer, or quadratic optimization problem from
@@ -125,8 +125,7 @@ mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents);
  * @return mps_data_model_t The parsed problem.
  */
 template <typename i_t, typename f_t>
-inline mps_data_model_t<i_t, f_t> read(const std::string& path,
-                                                bool fixed_mps_format = false)
+inline mps_data_model_t<i_t, f_t> read(const std::string& path, bool fixed_mps_format = false)
 {
   std::string lower(path);
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {

@@ -125,7 +125,7 @@ double q_entry(const mps_data_model_t<int, double>& m, int row, int col)
 class parser_fixture_base : public ::testing::Test {
  protected:
   static mps_data_model_t<int, double> read_mps_file(const std::string& file,
-                                                      bool fixed_format = true)
+                                                     bool fixed_format = true)
   {
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
     return read_mps<int, double>(root + "/" + file, fixed_format);
@@ -2550,7 +2550,7 @@ TEST(read, lp_gz_extension_dispatches_to_lp_parser)
   // LP path. (Routing a .lp.gz to read_mps would either fail at
   // decompression or fail to parse the LP content as MPS.)
   auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.lp.gz");
+                             "/linear_programming/good-mps-1.lp.gz");
   ASSERT_EQ(m.get_variable_names().size(), 2u);
   EXPECT_EQ(m.get_variable_names()[0], "VAR1");
 }
@@ -2558,7 +2558,7 @@ TEST(read, lp_gz_extension_dispatches_to_lp_parser)
 TEST(read, lp_bz2_extension_dispatches_to_lp_parser)
 {
   auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.lp.bz2");
+                             "/linear_programming/good-mps-1.lp.bz2");
   ASSERT_EQ(m.get_variable_names().size(), 2u);
   EXPECT_EQ(m.get_variable_names()[0], "VAR1");
 }
@@ -2583,14 +2583,14 @@ TEST(read, qps_extension_dispatches_to_mps_parser)
 TEST(read, mps_gz_extension_dispatches_to_mps_parser)
 {
   auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.mps.gz");
+                             "/linear_programming/good-mps-1.mps.gz");
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
 TEST(read, mps_bz2_extension_dispatches_to_mps_parser)
 {
   auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.mps.bz2");
+                             "/linear_programming/good-mps-1.mps.bz2");
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
