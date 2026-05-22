@@ -844,11 +844,15 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   std::vector<char> variable_types;
   if (get_n_variables() != 0) {
     auto enum_variable_types = cuopt::host_copy(get_variable_types(), stream);
-    variable_types.resize(enum_variable_types.size());
-
-    // Convert enum types to char types
-    for (size_t i = 0; i < variable_types.size(); ++i) {
-      variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+    if (enum_variable_types.empty()) {
+      // Variable types not set (e.g. pure LP); default to all continuous
+      variable_types.assign(get_n_variables(), 'C');
+    } else {
+      variable_types.resize(enum_variable_types.size());
+      // Convert enum types to char types
+      for (size_t i = 0; i < variable_types.size(); ++i) {
+        variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+      }
     }
 
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());
