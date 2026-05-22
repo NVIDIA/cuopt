@@ -2004,6 +2004,8 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n",
                         static_cast<i_t>(presolve_info.bounded_free_variables.size()));
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
+    csr_matrix_t<i_t, f_t> A_row(A.m, A.n, A.nnz());
+    A.to_compressed_row(A_row);
     // Traverse in reverse order, to ensure that all z_j = 0 after the correction
     for (auto it = presolve_info.bounded_free_variables.rbegin();
          it != presolve_info.bounded_free_variables.rend();
@@ -2013,15 +2015,9 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       if (w_j == 0.0) { continue; }
       const f_t du = w_j / bfv.coefficient;
       input_y[bfv.constraint] += du;
-      for (i_t j = 0; j < A.n; j++) {
-        const i_t col_start = A.col_start[j];
-        const i_t col_end   = A.col_start[j + 1];
-        for (i_t p = col_start; p < col_end; p++) {
-          if (A.i[p] == bfv.constraint) {
-            input_z[j] -= A.x[p] * du;
-            break;
-          }
-        }
+      const auto [row_start, row_end] = A_row.get_constraint_range(bfv.constraint);
+      for (i_t p = row_start; p < row_end; ++p) {
+        input_z[A_row.j[p]] -= A_row.x[p] * du;
       }
     }
   }

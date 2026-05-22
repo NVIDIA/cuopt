@@ -136,7 +136,7 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     data_model.set_problem_name(dm.problem_name_.decode())
 
     cdef size_t qi
-    cdef size_t n_qc = dm_ret.get_quadratic_constraints().size()
+    cdef size_t n_qc = dm.get_quadratic_constraints().size()
     cdef mps_data_model_t[int, double].quadratic_constraint_t qc
     cdef size_t linear_nnz, quadratic_nnz
     cdef double[:] linear_values_view
@@ -146,7 +146,7 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     cdef int[:] quadratic_col_indices_view
 
     for qi in range(n_qc):
-        qc = dm_ret.get_quadratic_constraints()[qi]
+        qc = dm.get_quadratic_constraints()[qi]
         linear_nnz = qc.linear_values.size()
         if linear_nnz > 0:
             linear_values_view = <double[:linear_nnz]>qc.linear_values.data()

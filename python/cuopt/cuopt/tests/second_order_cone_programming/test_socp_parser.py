@@ -10,7 +10,7 @@ import os
 import numpy as np
 import pytest
 
-from cuopt.linear_programming import data_model, mps_parser, solver, solver_settings
+from cuopt.linear_programming import data_model, io as mps_parser, solver, solver_settings
 from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_METHOD,
     CUOPT_PRESOLVE,
