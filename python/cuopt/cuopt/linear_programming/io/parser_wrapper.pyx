@@ -149,7 +149,7 @@ def Read(file_path, fixed_mps_format=False):
 
 
 @catch_io_exception
-def ReadMps(mps_file_path, fixed_mps_format=False):
+def ParseMps(mps_file_path, fixed_mps_format=False):
     data_model = DataModel()
     dm_ret_ptr = move(
         call_parse_mps(

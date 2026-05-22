@@ -10,7 +10,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
-from cuopt.linear_programming import Read
+from cuopt.linear_programming import ParseMps, Read
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
@@ -1837,6 +1837,12 @@ class Problem:
         """
         Initialize a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
 
+        Always invokes the MPS/QPS reader directly (via the
+        ``call_parse_mps`` Cython bridge), bypassing extension-based
+        dispatch. Compressed ``.mps.gz`` / ``.mps.bz2`` / ``.qps.gz`` /
+        ``.qps.bz2`` inputs are still supported via the reader's path-
+        based decompression.
+
         .. deprecated::
             Use :meth:`read` instead.
 
@@ -1850,7 +1856,16 @@ class Problem:
             DeprecationWarning,
             stacklevel=2,
         )
-        return cls.read(mps_file)
+        if not isinstance(mps_file, str) or not mps_file:
+            raise ValueError("mps_file must be a non-empty string")
+        if not os.path.isfile(mps_file):
+            raise FileNotFoundError(f"No such file: {mps_file}")
+
+        problem = cls()
+        data_model = ParseMps(mps_file)
+        problem._from_data_model(data_model)
+        problem.model = data_model
+        return problem
 
     def writeMPS(self, mps_file):
         """

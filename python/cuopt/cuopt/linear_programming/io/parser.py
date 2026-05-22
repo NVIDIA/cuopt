@@ -47,7 +47,7 @@ def Read(file_path: str, fixed_mps_format: bool = False) -> DataModel:
 
 
 @catch_io_exception
-def ReadMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
+def ParseMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
     """Read an MPS or QPS file directly via the MPS/QPS reader.
 
     Unlike :func:`Read`, this function bypasses extension-based dispatch
@@ -77,7 +77,7 @@ def ReadMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
         Parser errors from the underlying C++ reader (via
         ``catch_io_exception``).
     """
-    return parser_wrapper.ReadMps(mps_file_path, fixed_mps_format)
+    return parser_wrapper.ParseMps(mps_file_path, fixed_mps_format)
 
 
 def toDict(model, json=False):
