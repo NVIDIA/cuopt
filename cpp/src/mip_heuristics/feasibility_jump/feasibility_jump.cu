@@ -41,14 +41,13 @@ static constexpr int iterations_per_graph = 1;
 static constexpr int iterations_per_graph = 50;
 #endif
 
-__constant__ fj_settings_t device_settings;
-
 template <typename i_t, typename f_t>
 fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_settings)
   : context(context_),
     pb_ptr(context.problem_ptr),
     handle_ptr(const_cast<raft::handle_t*>(pb_ptr->handle_ptr)),
     settings(in_settings),
+    device_settings(pb_ptr->handle_ptr->get_stream()),
     cstr_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     cstr_right_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
     cstr_left_weights(pb_ptr->n_constraints, pb_ptr->handle_ptr->get_stream()),
@@ -226,7 +225,7 @@ fj_t<i_t, f_t>::climber_data_t::view_t fj_t<i_t, f_t>::climber_data_t::view()
   v.stop_threshold                    = fj.stop_threshold;
   v.iterations_until_feasible_counter = iterations_until_feasible_counter.data();
   v.full_refresh_iteration            = full_refresh_iteration.data();
-  RAFT_CUDA_TRY(cudaGetSymbolAddress((void**)&v.settings, device_settings));
+  v.settings                          = fj.device_settings.data();
 
   return v;
 }

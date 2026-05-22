@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 namespace {
 using cuopt::linear_programming::io::error_type_t;
