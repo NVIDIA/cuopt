@@ -2,7 +2,7 @@
 
 ---
 
-## Skill 1: `cuopt-dimension-architecture`
+## `cuopt-dimension-architecture`
 
 **When to use**: Before implementing any new constraint or objective in cuOpt.
 
@@ -36,7 +36,7 @@ combine(k, k+1) = fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])
 
 ---
 
-## Skill 2: `cuopt-implement-dimension`
+## `cuopt-implement-dimension`
 
 **When to use**: When given a constraint/objective description to implement as a new cuOpt dimension.
 
@@ -93,7 +93,7 @@ compute_cost = fwd_excess[n_nodes] - boundary_correction(fwd_state[n_nodes])
 File: `cpp/src/routing/node/your_node.cuh`
 - Fixed data fields (problem input)
 - `fwd_state[]`, `fwd_excess`, `bwd_state[]`, `bwd_excess`
-- All 9 interface methods listed in Skill 1
+- All 9 interface methods listed in `cuopt-dimension-architecture`
 
 **Step 8 — Create the route class**
 File: `cpp/src/routing/route/your_route.cuh`
@@ -103,7 +103,7 @@ File: `cpp/src/routing/route/your_route.cuh`
 
 ---
 
-## Skill 3: `cuopt-dimension-wiring-checklist`
+## `cuopt-dimension-wiring-checklist`
 
 **When to use**: After writing node/route logic, to ensure the dimension is fully integrated into the framework.
 
@@ -149,52 +149,18 @@ File: `cpp/src/routing/route/your_route.cuh`
 
 ---
 
-## Skill 4: `cuopt-dimension-testing`
+## `cuopt-dimension-testing`
 
 **When to use**: After implementing a new dimension, to write tests that validate correctness end-to-end.
 
 ### C++ unit tests (`cpp/tests/routing/`)
-
-**Propagation correctness**
-- Hand-craft a sequence of nodes with known demands
-- Run `calculate_forward` step by step; assert `fwd_excess` at each position matches manually computed values
-- Run `calculate_backward` step by step; assert `bwd_excess` matches
-
-**Combine invariant test**
-- Build a full route (depot + service nodes + return depot) with known structure
-- For every split point `k` from 0 to `n_nodes-1`, assert `combine(node[k], node[k+1])` returns the same value
-- This is the single most important correctness test
-
-**`get_cost` / `combine` consistency**
-- For several adjacent node pairs, assert `get_cost(prev=k, next=k+1) == combine(k, k+1)`
-
-**`compute_cost` / `combine` consistency**
-- After running a full forward/backward pass, assert `compute_cost(route)` equals `combine(last_node, return_depot)`
-
-**Feasible and infeasible cases**
-- Feasible: route with no violations → excess = 0 at all positions
-- Infeasible: route with a known violation → excess > 0 at exactly the expected positions
+- Add a simple unit test with less than 10 nodes/orders
 
 ### Python integration tests (`python/cuopt/cuopt/tests/routing/`)
-
-**Solver finds feasible solution**
-- Small problem where the dimension constraint is the only hard constraint
-- Assert `is_feasible()` and infeasibility cost for the dimension is 0
-
-**Solver restructures when unconstrained optimal is infeasible**
-- Construct a problem where the greedy/shortest solution violates the dimension
-- Assert the solver either finds a restructured feasible solution or reports infeasibility correctly
-
-**Mixed vehicles**
-- Some vehicles subject to the constraint, some not (via `has_dimension` gating)
-- Assert constrained vehicles comply; unconstrained vehicles are unaffected
-
-**No-regression test**
-- Problem without setting the new dimension's input data
-- Assert solver result matches pre-feature baseline (the dimension being absent should be invisible)
+- Add a similar test in python to test the Python APIs and end-to-end testing
 
 ### What every test should verify
 - `is_feasible()` for the final solution when feasibility is expected
 - Infeasibility cost for the new dimension is 0 in a feasible solution
-- `check_device_host_coherence()` passes (GPU and host agree)
+- Optimal objective value is obtained for curated tests
 - Edge cases: empty route, single-node route, all nodes same type/value

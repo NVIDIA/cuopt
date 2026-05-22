@@ -237,6 +237,6 @@ _Shell-execution, install, sudo, and outside-workspace policies are covered by [
 
 When implementing or debugging **VRP dimensions** (constraints, objectives, forward/backward propagation, `combine`, local-search deltas), read:
 
-- **`skills/cuopt-developer/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
+- **`resources/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
 
 Read it **before** adding a new dimension or changing combine semantics.
