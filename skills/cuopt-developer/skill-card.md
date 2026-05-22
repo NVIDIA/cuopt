@@ -1,5 +1,5 @@
 ## Description: <br>
-LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line. <br>
+Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers solving linear programming, mixed-integer linear programming, or quadratic programming problems from MPS files via the cuopt_cli command-line interface. <br>
+Developers and engineers contributing to the NVIDIA cuOpt codebase use this skill for building, testing, debugging, and submitting pull requests across C++/CUDA, Python, and server components. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,12 +19,13 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuOpt GitHub Repository](https://github.com/NVIDIA/cuopt.git) <br>
+- [CUDA Compatibility Matrix](https://docs.nvidia.com/deploy/cuda-compatibility/) <br>
+- [RAPIDS Maintainers Docs](https://docs.rapids.ai/maintainers/) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Configuration instructions] <br>
+**Output Type(s):** [Code, Shell commands, Configuration instructions] <br>
 **Output Format:** [Markdown with inline bash code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
