@@ -16,7 +16,7 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
 
-from .parser cimport call_read, mps_data_model_t
+from .parser cimport call_read, call_parse_mps, mps_data_model_t
 import warnings
 
 import numpy as np
@@ -142,6 +142,18 @@ def Read(file_path, fixed_mps_format=False):
     dm_ret_ptr = move(
         call_read(
             file_path.encode('utf-8'),
+            fixed_mps_format,
+        )
+    )
+    return _marshal_data_model(dm_ret_ptr.get(), data_model)
+
+
+@catch_io_exception
+def ReadMps(mps_file_path, fixed_mps_format=False):
+    data_model = DataModel()
+    dm_ret_ptr = move(
+        call_parse_mps(
+            mps_file_path.encode('utf-8'),
             fixed_mps_format,
         )
     )

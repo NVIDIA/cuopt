@@ -46,6 +46,40 @@ def Read(file_path: str, fixed_mps_format: bool = False) -> DataModel:
     return parser_wrapper.Read(file_path, fixed_mps_format)
 
 
+@catch_io_exception
+def ReadMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
+    """Read an MPS or QPS file directly via the MPS/QPS reader.
+
+    Unlike :func:`Read`, this function bypasses extension-based dispatch
+    and always invokes the MPS/QPS reader (``read_mps`` on the C++ side),
+    regardless of the filename suffix. Compressed inputs (``.mps.gz``,
+    ``.mps.bz2``, ``.qps.gz``, ``.qps.bz2``) are still supported when
+    zlib / libbz2 are available, because compression is detected from
+    the file path inside the reader.
+
+    Parameters
+    ----------
+    mps_file_path : str
+        Path to an MPS or QPS file (optionally ``.gz`` / ``.bz2``
+        compressed).
+    fixed_mps_format : bool
+        If the MPS/QPS reader should parse the file as fixed MPS format.
+        False by default.
+
+    Returns
+    -------
+    data_model : DataModel
+        A fully formed LP/MILP/QP problem.
+
+    Raises
+    ------
+    InputValidationError, InputRuntimeError, OutOfMemoryError
+        Parser errors from the underlying C++ reader (via
+        ``catch_io_exception``).
+    """
+    return parser_wrapper.ReadMps(mps_file_path, fixed_mps_format)
+
+
 def toDict(model, json=False):
     if not isinstance(model, parser_wrapper.DataModel):
         raise ValueError(
