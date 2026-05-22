@@ -569,6 +569,21 @@ struct primal_reflected_projection {
   const f_t* scalar_;
 };
 
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::primal_reflected_projection_transform(
+  rmm::device_uvector<f_t>& primal_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                          problem_ptr->objective_coefficients.data(),
+                          current_saddle_point_state_.get_current_AtY().data(),
+                          problem_ptr->variable_bounds.data()),
+    reflected_primal_.data(),
+    primal_size_h_,
+    primal_reflected_projection<f_t>(primal_step_size.data()),
+    stream_view_.value());
+}
+
 template <typename f_t>
 struct primal_reflected_projection_batch {
   using f_t2 = typename type_2<f_t>::type;
@@ -598,6 +613,21 @@ struct dual_reflected_major_projection {
   const f_t* scalar_;
 };
 
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::dual_reflected_major_projection_transform(
+  rmm::device_uvector<f_t>& dual_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                          current_saddle_point_state_.get_dual_gradient().data(),
+                          problem_ptr->constraint_lower_bounds.data(),
+                          problem_ptr->constraint_upper_bounds.data()),
+    thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
+    dual_size_h_,
+    dual_reflected_major_projection<f_t>(dual_step_size.data()),
+    stream_view_.value());
+}
+
 template <typename f_t>
 struct dual_reflected_major_projection_batch {
   HDI thrust::tuple<f_t, f_t> operator()(
@@ -625,6 +655,21 @@ struct dual_reflected_projection {
 
   const f_t* scalar_;
 };
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::dual_reflected_projection_transform(
+  rmm::device_uvector<f_t>& dual_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
+                          current_saddle_point_state_.get_dual_gradient().data(),
+                          problem_ptr->constraint_lower_bounds.data(),
+                          problem_ptr->constraint_upper_bounds.data()),
+    reflected_dual_.data(),
+    dual_size_h_,
+    dual_reflected_projection<f_t>(dual_step_size.data()),
+    stream_view_.value());
+}
 
 template <typename f_t>
 struct dual_reflected_projection_batch {
@@ -989,16 +1034,15 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                                current_saddle_point_state_.get_dual_gradient().data(),
-                                problem_ptr->constraint_lower_bounds.data(),
-                                problem_ptr->constraint_upper_bounds.data()),
-          thrust::make_zip_iterator(potential_next_dual_solution_.data(), reflected_dual_.data()),
-          dual_size_h_,
-          dual_reflected_major_projection<f_t>(dual_step_size.data()),
-          stream_view_.value());
+      if (mgpu_engine_ != nullptr) {
+        for (auto& shard : mgpu_engine_->shards) {
+          raft::device_setter guard(shard->device_id);
+          auto& sub_pdlp = *shard->sub_pdlp;
+          sub_pdlp.pdhg_solver_.dual_reflected_major_projection_transform(
+            sub_pdlp.get_dual_step_size());
+        }
+      } else if (!batch_mode_) {
+        dual_reflected_major_projection_transform(dual_step_size);
       } else {
         cub::DeviceFor::Bulk(potential_next_dual_solution_.size(),
                              dual_reflected_major_projection_bulk_op<f_t>{
@@ -1036,16 +1080,15 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             current_saddle_point_state_.get_current_AtY());
 #endif
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                                problem_ptr->objective_coefficients.data(),
-                                current_saddle_point_state_.get_current_AtY().data(),
-                                problem_ptr->variable_bounds.data()),
-          reflected_primal_.data(),
-          primal_size_h_,
-          primal_reflected_projection<f_t>(primal_step_size.data()),
-          stream_view_.value());
+      if (mgpu_engine_ != nullptr) {
+        for (auto& shard : mgpu_engine_->shards) {
+          raft::device_setter guard(shard->device_id);
+          auto& sub_pdlp = *shard->sub_pdlp;
+          sub_pdlp.pdhg_solver_.primal_reflected_projection_transform(
+            sub_pdlp.get_primal_step_size());
+        }
+      } else if (!batch_mode_) {
+        primal_reflected_projection_transform(primal_step_size);
       } else {
         cub::DeviceFor::Bulk(reflected_primal_.size(),
                              primal_reflected_projection_bulk_op<f_t>{
@@ -1097,16 +1140,15 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_dual_solution().data(),
-                                current_saddle_point_state_.get_dual_gradient().data(),
-                                problem_ptr->constraint_lower_bounds.data(),
-                                problem_ptr->constraint_upper_bounds.data()),
-          reflected_dual_.data(),
-          dual_size_h_,
-          dual_reflected_projection<f_t>(dual_step_size.data()),
-          stream_view_.value());
+      if (mgpu_engine_ != nullptr) {
+        for (auto& shard : mgpu_engine_->shards) {
+          raft::device_setter guard(shard->device_id);
+          auto& sub_pdlp = *shard->sub_pdlp;
+          sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(
+            sub_pdlp.get_dual_step_size());
+        }
+      } else if (!batch_mode_) {
+        dual_reflected_projection_transform(dual_step_size);
       } else {
         cub::DeviceFor::Bulk(reflected_dual_.size(),
                              dual_reflected_projection_bulk_op<f_t>{

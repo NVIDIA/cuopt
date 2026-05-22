@@ -289,6 +289,34 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 find_package(CUDSS REQUIRED)
 
 # ##################################################################################################
+# - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
+# NCCL is shipped via the conda env; no canonical CMake config target, so look it
+# up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
+set(NCCL_HINT_PREFIXES "")
+if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+    list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
+endif ()
+find_path(NCCL_INCLUDE_DIR
+    NAMES nccl.h
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES include
+)
+find_library(NCCL_LIBRARY
+    NAMES nccl
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES lib lib64
+)
+if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
+    message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
+endif ()
+add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
+set_target_properties(nccl_external PROPERTIES
+    IMPORTED_LOCATION "${NCCL_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+)
+message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
+
+# ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
 
 if (NOT SKIP_GRPC_BUILD)
@@ -549,6 +577,7 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        nccl_external
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )

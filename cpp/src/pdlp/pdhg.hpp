@@ -91,6 +91,9 @@ class pdhg_solver_t {
   // "if (mgpu_engine_) for shard..." blocks in compute_next_*).
   void primal_reflected_major_projection_transform(
     rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
+  void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
+  void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
 
   // Master PDLP wires up the engine pointer here after the engine is built.
   // Shards' pdhg_solver_ leaves this null so each shard runs single-GPU SpMV

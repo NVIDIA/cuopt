@@ -42,6 +42,7 @@
 
 #include <cmath>
 #include <optional>
+#include <type_traits>
 #include <unordered_set>
 
 namespace cuopt::linear_programming::detail {
@@ -327,6 +328,19 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   cuopt_expects(num_gpus == settings.num_gpus && settings.num_gpus > 1,
                 error_type_t::ValidationError,
                 "This constructor should only be used for distributed PDLP (num_gpus > 1)");
+
+  // Distributed PDLP is currently double-only. The body is guarded with
+  // `if constexpr` so the float instantiation never references the
+  // multi_gpu_engine_t<i_t, float> / partition_loader_t<i_t, float> symbols
+  // (those are intentionally not instantiated in their .cu files), keeping
+  // the link clean. Trying to use distributed PDLP with f_t = float will
+  // throw at runtime instead.
+  if constexpr (!std::is_same_v<f_t, double>) {
+    cuopt_expects(false,
+                  error_type_t::ValidationError,
+                  "Distributed PDLP (num_gpus > 1) currently requires double precision");
+    return;
+  } else {
   // 2. Load partition
   std::vector<i_t> parts;
   if (!settings.multi_gpu_partition_file.empty()) {
@@ -509,6 +523,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
         shard->stream.view());
     }
   }
+  }  // end if constexpr (std::is_same_v<f_t, double>)
 }
 
 template <typename i_t, typename f_t>
