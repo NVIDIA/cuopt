@@ -91,7 +91,9 @@ class pdhg_solver_t {
   // cusparse path on the local matrix.
   void compute_At_y();
   void compute_A_x();
-
+  void spmvop_At_y();
+  void spmvop_A_x();
+  
   // Pure cub-transform extractions. Each one is byte-identical to the inline
   // cub call it replaces — no platform dispatch inside. Callers handle the
   // single-GPU vs per-shard branching at the call site (see the
@@ -124,8 +126,6 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
-  void spmvop_At_y();
-  void spmvop_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};

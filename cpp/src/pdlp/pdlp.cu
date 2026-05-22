@@ -567,6 +567,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
 
   // Project initial primal solution
   if (settings_.hyper_params.project_initial_primal) {
+    // Use refine_initial_primal_projection ???
     using f_t2 = typename type_2<f_t>::type;
     for (auto& shard : multi_gpu_engine->shards) {
       raft::device_setter guard(shard->device_id);
@@ -2672,7 +2673,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         clamp<f_t, f_t2>(),
         stream_view_.value());
 
-      pdhg_solver_.refine_initial_primal_projection();
+      pdhg_solver_.refine_initial_primal_projection(
+        initial_scaling_strategy_.get_bound_rescaling_vector());
 
       if (!settings_.hyper_params.never_restart_to_average) {
         cuopt_expects(!batch_mode_,

@@ -938,15 +938,21 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_cummulative_scaling(
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_h_bound_rescaling(f_t value)
 {
-  h_bound_rescaling = value;
-  bound_rescaling_.set_value_async(value, stream_view_);
+  std::fill(h_bound_rescaling_.begin(), h_bound_rescaling_.end(), value);
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               bound_rescaling_.begin(),
+               bound_rescaling_.end(),
+               value);
 }
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_h_objective_rescaling(f_t value)
 {
-  h_objective_rescaling = value;
-  objective_rescaling_.set_value_async(value, stream_view_);
+  std::fill(h_objective_rescaling_.begin(), h_objective_rescaling_.end(), value);
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               objective_rescaling_.begin(),
+               objective_rescaling_.end(),
+               value);
 }
 
 template <typename i_t, typename f_t>
