@@ -164,7 +164,8 @@ def _client_parseable_extension(path):
 
 def _parse_file_to_data_model(problem_input, solver_config):
     try:
-        from cuopt.linear_programming import io as mps_parser
+        from cuopt.linear_programming import DataModel, Read
+        from cuopt.linear_programming.io import toDict
     except ImportError as e:
         raise ImportError(
             "MPS/LP parsing on the client requires the cuopt package. "
@@ -174,16 +175,16 @@ def _parse_file_to_data_model(problem_input, solver_config):
             "DataModel."
         ) from e
     # problem_input is either a path (str) to an MPS/LP/QPS file (optionally
-    # .gz / .bz2 compressed), or an mps_parser DataModel already handed to us.
-    if isinstance(problem_input, mps_parser.parser_wrapper.DataModel):
+    # .gz / .bz2 compressed), or a DataModel already handed to us.
+    if isinstance(problem_input, DataModel):
         model = problem_input
-        log.debug("Received mps_parser DataModel object")
+        log.debug("Received DataModel object")
     else:
         t0 = time.time()
-        model = mps_parser.Read(problem_input)
+        model = Read(problem_input)
         parse_time = time.time() - t0
         log.debug(f"file parsing time was {parse_time}")
-    problem_data = mps_parser.toDict(model, json=use_zlib)
+    problem_data = toDict(model, json=use_zlib)
 
     if type(solver_config) is dict:
         problem_data["solver_config"] = solver_config
