@@ -21,6 +21,12 @@
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt::linear_programming::detail {
+
+// Forward-declared to avoid include cycle: multi_gpu_engine.hpp itself includes pdhg.hpp
+// (engine calls per-shard pdhg compute_*). pdhg.cu does the full include.
+template <typename i_t, typename f_t>
+struct multi_gpu_engine_t;
+
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
@@ -69,6 +75,21 @@ class pdhg_solver_t {
   void update_solution(cusparse_view_t<i_t, f_t>& current_op_problem_evaluation_cusparse_view_);
   void refine_initial_primal_projection();
 
+  // SpMV primitives. Public so the multi-GPU engine can drive them per-shard
+  // after halo-exchanging the relevant vector. Single-GPU PDLP still calls
+  // them internally via take_step / compute_next_*.
+  //
+  // If set_multi_gpu_engine() has been called, these dispatch to the engine
+  // (halo exchange + per-shard SpMV). Otherwise they run the single-GPU
+  // cusparse path on the local matrix.
+  void compute_At_y();
+  void compute_A_x();
+
+  // Master PDLP wires up the engine pointer here after the engine is built.
+  // Shards' pdhg_solver_ leaves this null so each shard runs single-GPU SpMV
+  // on its local matrix.
+  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
+
   i_t total_pdhg_iterations_;
 
  private:
@@ -84,8 +105,6 @@ class pdhg_solver_t {
 
   void compute_primal_projection_with_gradient(rmm::device_uvector<f_t>& primal_step_size);
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
-  void compute_At_y();
-  void compute_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -132,6 +151,10 @@ class pdhg_solver_t {
   rmm::device_uvector<f_t> new_bounds_lower_;
   rmm::device_uvector<f_t> new_bounds_upper_;
   cuda::fast_mod_div<size_t> batch_size_divisor_;
+
+  // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
+  // (default) means single-GPU path. See compute_At_y / compute_A_x.
+  multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };
 
 }  // namespace cuopt::linear_programming::detail

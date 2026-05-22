@@ -5,6 +5,11 @@
  */
 /* clang-format on */
 #include <pdlp/pdhg.hpp>
+// pdlp.cuh defines pdlp_solver_t which the engine's compute_A_x/compute_At_y
+// template bodies dereference via shard.sub_pdlp->pdhg_solver_. Must be a
+// complete type at the point of template instantiation below.
+#include <pdlp/pdlp.cuh>
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -306,6 +311,15 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
 {
   // A_t @ y
 
+  // Multi-GPU dispatch: when the master pdhg has an engine, drive halo
+  // exchange + per-shard SpMV via the engine. Shards' pdhg_solver_ have no
+  // engine pointer set, so their compute_At_y falls through to the cusparse
+  // path below on each shard's local A_t.
+  if (mgpu_engine_ != nullptr) {
+    mgpu_engine_->distributed_compute_At_y();
+    return;
+  }
+
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
       if (cusparse_view_.mixed_precision_enabled_) {
@@ -354,6 +368,15 @@ template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_A_x()
 {
   // A @ x
+
+  // Multi-GPU dispatch: see compute_At_y. The engine halo-updates the
+  // reflected_primal vector (the buffer this SpMV reads) and then drives
+  // per-shard local cusparse SpMV.
+  if (mgpu_engine_ != nullptr) {
+    mgpu_engine_->distributed_compute_A_x();
+    return;
+  }
+
   if (!batch_mode_) {
     if constexpr (std::is_same_v<f_t, double>) {
       if (cusparse_view_.mixed_precision_enabled_) {

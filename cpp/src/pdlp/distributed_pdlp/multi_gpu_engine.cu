@@ -4,6 +4,10 @@
  */
 
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+// compute_A_x() / compute_At_y() (defined inline in the engine header) call
+// shard.sub_pdlp->pdhg_solver_.compute_* — pdlp_solver_t must be complete at
+// the explicit instantiation point below.
+#include <pdlp/pdlp.cuh>
 
 #include <cuopt/error.hpp>
 

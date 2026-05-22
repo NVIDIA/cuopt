@@ -13,6 +13,7 @@
 #include <raft/core/device_setter.hpp>
 #include <raft/core/handle.hpp>
 #include <rmm/cuda_stream.hpp>
+#include <rmm/device_uvector.hpp>
 
 #include <nccl.h>
 
@@ -83,6 +84,16 @@ struct pdlp_shard_t {
   std::optional<optimization_problem_t<i_t, f_t>> opt_problem;
   std::optional<problem_t<i_t, f_t>> sub_problem;
   std::unique_ptr<pdlp_solver_t<i_t, f_t>> sub_pdlp;
+
+  // Per-peer halo-exchange state. Inner index = peer rank.
+  // Slot for self (peer == this rank) is present but unused (size 0).
+  // var_send_indices_d[peer] : local indices into primal vector to gather and ncclSend
+  // var_send_buf_d    [peer] : staging buffer for outgoing variable values
+  // cstr_send_indices_d/cstr_send_buf_d : same, for dual vector
+  std::vector<rmm::device_uvector<i_t>> var_send_indices_d;
+  std::vector<rmm::device_uvector<f_t>> var_send_buf_d;
+  std::vector<rmm::device_uvector<i_t>> cstr_send_indices_d;
+  std::vector<rmm::device_uvector<f_t>> cstr_send_buf_d;
 };
 
 }  // namespace cuopt::linear_programming::detail

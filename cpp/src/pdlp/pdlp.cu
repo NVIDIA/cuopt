@@ -490,6 +490,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     raft::copy(sub.dual_step_size_.data(), dual_step_size_.data(), 1, shard->stream);
   }
 
+  // Wire the engine into the master pdhg_solver_. Shards' pdhg_solver_ keep
+  // mgpu_engine_ == nullptr so they run plain single-GPU SpMV on local A.
+  pdhg_solver_.set_multi_gpu_engine(&*multi_gpu_engine);
+
   // Project initial primal solution
   if (settings_.hyper_params.project_initial_primal) {
     using f_t2 = typename type_2<f_t>::type;

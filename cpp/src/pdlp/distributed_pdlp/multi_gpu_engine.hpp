@@ -6,12 +6,23 @@
 
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 #include <pdlp/distributed_pdlp/shard.hpp>
+#include <pdlp/pdhg.hpp>
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
+#include <raft/core/device_setter.hpp>
+
 #include <rmm/cuda_stream.hpp>
+#include <rmm/exec_policy.hpp>
+
+#include <cub/device/device_transform.cuh>
+#include <cuda/std/tuple>
+#include <thrust/gather.h>
+
+#include <nccl.h>
 
 #include <memory>
+#include <tuple>
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
@@ -87,6 +98,142 @@ struct multi_gpu_engine_t {
                   Op         op)
   {
   distributed_transform(std::make_tuple(in), out, sz, op);
+  }
+
+  // -------- Halo exchange (variables / x) ---------------------------------
+  // Fills the halo slice [owned_var_size, total_var_size) of the per-shard
+  // reflected_primal vector (the buffer A @ x reads). Step 1: thrust::gather
+  // per-peer outgoing values into staging buffers. Step 2: a single NCCL
+  // group with matched ncclSend / ncclRecv across all (rank, peer) pairs.
+  void halo_exchange_var()
+  {
+    const int nb = static_cast<int>(shards.size());
+
+    // Step 1: gather owned values that each peer needs into per-peer staging.
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      auto& x = s.sub_pdlp->pdhg_solver_.get_reflected_primal();
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        if (s.var_send_indices_d[peer].size() == 0) continue;
+        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                       s.var_send_indices_d[peer].begin(),
+                       s.var_send_indices_d[peer].end(),
+                       x.begin(),
+                       s.var_send_buf_d[peer].begin());
+      }
+    }
+
+    // Step 2: matched send / recv across the whole topology in one NCCL group.
+    ncclGroupStart();
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        ncclSend(s.var_send_buf_d[peer].data(),
+                 s.var_send_buf_d[peer].size(),
+                 ncclFloat64,
+                 peer,
+                 s.comm.get(),
+                 s.stream.view().value());
+      }
+    }
+    for (int r = 0; r < nb; ++r) {
+      auto& s   = *shards[r];
+      auto& rd  = s.rank_data;
+      raft::device_setter guard(s.device_id);
+      auto& x   = s.sub_pdlp->pdhg_solver_.get_reflected_primal();
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
+        ncclRecv(recv_ptr,
+                 static_cast<size_t>(rd.var_recv_counts[peer]),
+                 ncclFloat64,
+                 peer,
+                 s.comm.get(),
+                 s.stream.view().value());
+      }
+    }
+    ncclGroupEnd();
+  }
+
+  // -------- Halo exchange (constraints / y) -------------------------------
+  // Same as halo_exchange_var but for the per-shard dual solution (the buffer
+  // A_T @ y reads) and constraint halos.
+  void halo_exchange_cstr()
+  {
+    const int nb = static_cast<int>(shards.size());
+
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      auto& y = s.sub_pdlp->pdhg_solver_.get_dual_solution();
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        if (s.cstr_send_indices_d[peer].size() == 0) continue;
+        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                       s.cstr_send_indices_d[peer].begin(),
+                       s.cstr_send_indices_d[peer].end(),
+                       y.begin(),
+                       s.cstr_send_buf_d[peer].begin());
+      }
+    }
+
+    ncclGroupStart();
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        ncclSend(s.cstr_send_buf_d[peer].data(),
+                 s.cstr_send_buf_d[peer].size(),
+                 ncclFloat64,
+                 peer,
+                 s.comm.get(),
+                 s.stream.view().value());
+      }
+    }
+    for (int r = 0; r < nb; ++r) {
+      auto& s   = *shards[r];
+      auto& rd  = s.rank_data;
+      raft::device_setter guard(s.device_id);
+      auto& y   = s.sub_pdlp->pdhg_solver_.get_dual_solution();
+      for (int peer = 0; peer < nb; ++peer) {
+        if (peer == r) continue;
+        f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
+        ncclRecv(recv_ptr,
+                 static_cast<size_t>(rd.cstr_recv_counts[peer]),
+                 ncclFloat64,
+                 peer,
+                 s.comm.get(),
+                 s.stream.view().value());
+      }
+    }
+    ncclGroupEnd();
+  }
+
+  // -------- High-level: A @ x and A_T @ y ---------------------------------
+  // A @ x: halo-update the reflected_primal vector, then per-shard SpMV.
+  // Named distributed_* (rather than compute_*) to make call sites in pdhg.cu
+  // self-documenting and to avoid name collision with pdhg_solver_t's own
+  // compute_A_x / compute_At_y, which the engine dispatches into per shard.
+  void distributed_compute_A_x()
+  {
+    halo_exchange_var();
+    for_each_shard([&](auto& shard) {
+      shard.sub_pdlp->pdhg_solver_.compute_A_x();
+    });
+  }
+
+  // A_T @ y: halo-update the dual solution vector, then per-shard SpMV.
+  void distributed_compute_At_y()
+  {
+    halo_exchange_cstr();
+    for_each_shard([&](auto& shard) {
+      shard.sub_pdlp->pdhg_solver_.compute_At_y();
+    });
   }
 
   // Engine-level stream for fork/join orchestration (master side).
