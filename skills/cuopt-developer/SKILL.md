@@ -2,6 +2,15 @@
 name: cuopt-developer
 version: "26.08.00"
 description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - development
+    - contributing
+    - cpp-cuda
+    - python-bindings
 ---
 
 # cuOpt Developer Skill

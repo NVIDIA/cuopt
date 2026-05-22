@@ -2,6 +2,15 @@
 name: cuopt-numerical-optimization-api-python
 version: "26.08.00"
 description: Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. Use when the user asks about optimization with linear or quadratic objectives, linear constraints, integer variables, scheduling, resource allocation, facility location, production planning, portfolio optimization, or least squares.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - linear-programming
+    - milp
+    - qp
+    - python
 ---
 
 # cuOpt Numerical Optimization Skill (Python)

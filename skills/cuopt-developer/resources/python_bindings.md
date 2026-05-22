@@ -106,6 +106,8 @@ def Solve(py_data_model_obj, settings, mip=False):
     return create_solution(move(sol_ret_ptr), data_model_obj)
 ```
 
+Always release the GIL around C++ calls that do GPU work — this allows other Python threads to run during solve.
+
 ### Step 6: C++ implementation receives the call
 
 `cpp/src/math_optimization/solver_settings.cu`:
@@ -144,15 +146,6 @@ cdef unique_ptr[solver_settings_t[int, double]] settings
 settings.reset(new solver_settings_t[int, double]())
 # Auto-destroyed when scope exits
 ```
-
-### Releasing the GIL for GPU work
-
-```cython
-with nogil:
-    result = move(call_solve(problem_ptr, settings_ptr))
-```
-
-Always release the GIL around C++ calls that do GPU work. This allows other Python threads to run during solve.
 
 ### Bridging C++ enums to Python IntEnum
 
