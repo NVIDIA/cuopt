@@ -1227,6 +1227,12 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
     policy.graphviz(search_tree, node_ptr, "lower bound", leaf_obj);
     policy.update_pseudo_costs(node_ptr, leaf_obj);
     node_ptr->lower_bound = leaf_obj;
+    // If the objective is integral or must move in steps than
+    // the lower bound will be different from the leaf objective.
+    // We use the leaf objective for RINS (on_optimal_callback)
+    // and if we are integer feasible (handle_integer_solution).
+    // We use the lower bound to decide if we should fathom the
+    // node or branch.
     if (original_lp_.objective_step.has_step()) {
       f_t step = original_lp_.objective_step.step_size;
       f_t bias = original_lp_.objective_step.bias;
@@ -1244,7 +1250,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
       search_tree.update(node_ptr, node_status_t::INTEGER_FEASIBLE);
       status = node_status_t::INTEGER_FEASIBLE;
 
-    } else if (leaf_obj <= upper_bound + abs_fathom_tol) {
+    } else if (node_ptr->lower_bound <= upper_bound + abs_fathom_tol) {
       auto [branch_var, dir] =
         policy.select_branch_variable(node_ptr, leaf_fractional, leaf_solution.x);
       round_dir = dir;
@@ -1268,7 +1274,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
       status = node_status_t::HAS_CHILDREN;
 
     } else {
-      policy.graphviz(search_tree, node_ptr, "fathomed", leaf_obj);
+      policy.graphviz(search_tree, node_ptr, "fathomed", node_ptr->lower_bound);
       search_tree.update(node_ptr, node_status_t::FATHOMED);
       status = node_status_t::FATHOMED;
     }
