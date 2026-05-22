@@ -505,6 +505,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.ordering                        = settings.ordering;
   barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
   barrier_settings.barrier                         = true;
+  barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement = settings.barrier_iterative_refinement;

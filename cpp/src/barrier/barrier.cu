@@ -65,23 +65,23 @@ namespace cuopt::linear_programming::dual_simplex {
     cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.value());
 }
 
-// out[i] = is_native_free_linear[i] ? 0 : a[i] * b[i]
-[[maybe_unused]] static void pairwise_multiply_skip_native_free_linear(
-  float* a, float* b, int* is_native_free_linear, float* out, int size, rmm::cuda_stream_view stream)
+// out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
+  float* a, float* b, int* is_direct_free_linear, float* out, int size, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(a, b, is_native_free_linear),
+    cuda::std::make_tuple(a, b, is_direct_free_linear),
     out,
     size,
     [] __host__ __device__(float x_j, float d_j, int free_j) { return free_j ? 0.f : x_j * d_j; },
     stream.value());
 }
 
-[[maybe_unused]] static void pairwise_multiply_skip_native_free_linear(
-  double* a, double* b, int* is_native_free_linear, double* out, int size, rmm::cuda_stream_view stream)
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
+  double* a, double* b, int* is_direct_free_linear, double* out, int size, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(a, b, is_native_free_linear),
+    cuda::std::make_tuple(a, b, is_direct_free_linear),
     out,
     size,
     [] __host__ __device__(double x_j, double d_j, int free_j) { return free_j ? 0.0 : x_j * d_j; },
@@ -120,7 +120,7 @@ class iteration_data_t {
  public:
   iteration_data_t(const lp_problem_t<i_t, f_t>& lp,
                    i_t num_upper_bounds,
-                   const std::vector<i_t>& native_free_linear_indices,
+                   const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
                    const simplex_solver_settings_t<i_t, f_t>& settings)
     : upper_bounds(num_upper_bounds),
@@ -195,8 +195,8 @@ class iteration_data_t {
       d_cone_Q_values_(0, lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
-      n_native_free_linear(0),
-      d_is_native_free_linear_(0, lp.handle_ptr->get_stream()),
+      n_direct_free_linear(0),
+      d_is_direct_free_linear_(0, lp.handle_ptr->get_stream()),
       num_factorizations(0),
       has_solve_info(false),
       settings_(settings),
@@ -257,18 +257,18 @@ class iteration_data_t {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
     {
-      raft::common::nvtx::range scope("Barrier: LP Data: native free linear");
-      // Set up native free linear variable tracking (linear columns only, j < cone_start).
-      if (!native_free_linear_indices.empty()) {
-        n_native_free_linear = native_free_linear_indices.size();
-        std::vector<i_t> is_native_free_linear_host(lp.num_cols, 0);
-        for (i_t j : native_free_linear_indices) {
-          is_native_free_linear_host[j] = 1;
+      raft::common::nvtx::range scope("Barrier: LP Data: direct free linear");
+      // Set up direct free linear variable tracking (linear columns only, j < cone_start).
+      if (!direct_free_variables.empty()) {
+        n_direct_free_linear = direct_free_variables.size();
+        std::vector<i_t> is_direct_free_linear_host(lp.num_cols, 0);
+        for (i_t j : direct_free_variables) {
+          is_direct_free_linear_host[j] = 1;
         }
-        d_is_native_free_linear_.resize(lp.num_cols, stream_view_);
+        d_is_direct_free_linear_.resize(lp.num_cols, stream_view_);
         raft::copy(
-          d_is_native_free_linear_.data(), is_native_free_linear_host.data(), lp.num_cols, stream_view_);
-        settings.log.printf("Native free linear (QP): %d\n", n_native_free_linear);
+          d_is_direct_free_linear_.data(), is_direct_free_linear_host.data(), lp.num_cols, stream_view_);
+        settings.log.printf("Direct free linear (QP): %d\n", n_direct_free_linear);
       }
     }
 
@@ -572,8 +572,8 @@ class iteration_data_t {
   {
     const bool has_soc = has_cones();
     f_t degree = static_cast<f_t>(num_primal_variables) + static_cast<f_t>(num_upper_bounds);
-    // Native QP free variables (linear only): no x·z complementarity in the barrier degree.
-    degree -= static_cast<f_t>(n_native_free_linear);
+    // Direct QP free variables (linear only): no x·z complementarity in the barrier degree.
+    degree -= static_cast<f_t>(n_direct_free_linear);
     if (has_soc) {
       degree -= static_cast<f_t>(cone_entry_count());
       degree += static_cast<f_t>(cone_count());
@@ -781,7 +781,7 @@ class iteration_data_t {
       const i_t linear_n = has_soc ? cone_start() : n;
 
       // Primal diagonal: linear block includes dual_perturb; SOC block is filled by scatter below.
-      // Native free variables use barrier D = 0 in augmented_multiply; omit span_diag[j] here so
+      // Direct free variables use barrier D = 0 in augmented_multiply; omit span_diag[j] here so
       // the factorized matrix matches the matvec (only -q_diag - dual_perturb on the diagonal).
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
@@ -790,10 +790,10 @@ class iteration_data_t {
                           span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
                           span_q_diag        = cuopt::make_span(d_Q_diag_),
                           span_diag          = cuopt::make_span(d_diag_),
-                          span_is_native_free_linear       = cuopt::make_span(d_is_native_free_linear_),
+                          span_is_direct_free_linear       = cuopt::make_span(d_is_direct_free_linear_),
                           dual_perturb_value = dual_perturb] __device__(i_t j) {
                            f_t q_diag     = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
-                           const f_t d_j  = (span_is_native_free_linear.size() > 0 && span_is_native_free_linear[j]) ? f_t(0) : span_diag[j];
+                           const f_t d_j  = (span_is_direct_free_linear.size() > 0 && span_is_direct_free_linear[j]) ? f_t(0) : span_diag[j];
                            span_x[span_diag_indices[j]] = -q_diag - d_j - dual_perturb_value;
                          });
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -1725,11 +1725,11 @@ class iteration_data_t {
     rmm::device_uvector<f_t> d_r1(n, handle_ptr->get_stream());
     thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin(), n, f_t(0));
 
-    // r1 <- D * x_1 on linear indices; barrier D is zero on native free variables
+    // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
     const i_t linear_n = has_soc ? cone_start() : n;
-    if (n_native_free_linear > 0) {
-      pairwise_multiply_skip_native_free_linear(
-        d_x1.data(), d_diag_.data(), d_is_native_free_linear_.data(), d_r1.data(), linear_n, stream_view_);
+    if (n_direct_free_linear > 0) {
+      pairwise_multiply_skip_direct_free_linear(
+        d_x1.data(), d_diag_.data(), d_is_direct_free_linear_.data(), d_r1.data(), linear_n, stream_view_);
     } else {
       pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), linear_n, stream_view_);
     }
@@ -1852,8 +1852,8 @@ class iteration_data_t {
 
   bool use_augmented;
   i_t symbolic_status;
-  i_t n_native_free_linear{0};
-  rmm::device_uvector<i_t> d_is_native_free_linear_;  // 1 if native free linear (j < cone_start), else 0
+  i_t n_direct_free_linear{0};
+  rmm::device_uvector<i_t> d_is_direct_free_linear_;  // 1 if direct free linear (j < cone_start), else 0
 
   // Adaptive regularization for the augmented system
   f_t dual_perturb{1e-8};
@@ -2066,7 +2066,18 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented = data.use_augmented;
   const bool has_soc       = data.has_cones();
-  const bool has_native_free_linear      = data.n_native_free_linear > 0;
+  const bool has_direct_free_linear      = data.n_direct_free_linear > 0;
+
+  // Mask used by the two ADAT/augmented branches below to enforce z > 0 on the linear block
+  // while leaving the SOC cone block (kept feasible by NT scaling) alone.
+  std::vector<i_t> nonnegative_z(lp.num_cols, 1);
+  if (has_soc) {
+    const i_t cone_start = data.cone_start();
+    const i_t cone_end   = data.cone_end();
+    for (i_t i = cone_start; i < cone_end; ++i) {
+      nonnegative_z[i] = 0;
+    }
+  }
 
   // Perform a numerical factorization
   i_t status;
@@ -2215,8 +2226,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       data.x[j] = mu;
       data.z[j] = mu;
     }
-    if (has_native_free_linear) {
-      for (i_t j : presolve_info.native_free_linear_indices) {
+    if (has_direct_free_linear) {
+      for (i_t j : presolve_info.direct_free_variables) {
         if (j < cs) { data.z[j] = 0.0; }
       }
     }
@@ -2285,8 +2296,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     }
     // Free variables have z = 0 (no complementarity condition)
-    if (has_native_free_linear) {
-      for (i_t j : presolve_info.native_free_linear_indices) {
+    if (has_direct_free_linear) {
+      for (i_t j : presolve_info.direct_free_variables) {
         data.z[j] = 0.0;
       }
     }
@@ -2310,7 +2321,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.v.multiply_scalar(-1.0);
 
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
+    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   } else {
     // First compute rhs = A*Dinv*c
     dense_vector_t<i_t, f_t> rhs(lp.num_rows);
@@ -2334,7 +2345,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
+    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   }
 
   // Verify A'*y + z - E*v  - Q*x = c
@@ -2351,32 +2362,25 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
                       vector_norm2<i_t, f_t>(data.dual_residual));
 #endif
-  // Make sure (w, x, v, z) > 0. Cone blocks are not nonnegative orthant variables — skip them for
-  // box positivity; NT scaling keeps cone iterates feasible separately.
-  std::vector<f_t> free_x_save;
-  if (has_native_free_linear) {
-    free_x_save.resize(data.n_native_free_linear);
-    for (i_t k = 0; k < data.n_native_free_linear; ++k) {
-      free_x_save[k] = data.x[presolve_info.native_free_linear_indices[k]];
+  // Make sure (w, x, v, z) > 0. Skip cone variables and free variables being handled directly.
+  data.w.ensure_positive(epsilon_adjust);
+  std::vector<i_t> nonnegative_variables(data.x.size(), 1);
+  if (has_soc) {
+    const i_t cone_start = data.cone_start();
+    const i_t cone_end   = data.cone_end();
+    for (i_t i = cone_start; i < cone_end; ++i) {
+      nonnegative_variables[i] = 0;
     }
   }
-  data.w.ensure_positive(epsilon_adjust);
-  if (has_soc) {
-    data.x.ensure_positive_skip_range(epsilon_adjust, data.cone_start(), data.cone_entry_count());
-  } else if (has_native_free_linear) {
-    std::vector<i_t> nonnegative_variables(data.x.size(), 1);
-    for (i_t j : presolve_info.native_free_linear_indices) {
+  if (has_direct_free_linear) {
+    for (i_t j : presolve_info.direct_free_variables) {
       nonnegative_variables[j] = 0;
     }
-    data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
-  } else {
-    data.x.ensure_positive(epsilon_adjust);
   }
-  // Native free variables (QP/SOCP): restore possibly negative x and set z = 0
-  if (has_native_free_linear) {
-    for (i_t k = 0; k < data.n_native_free_linear; ++k) {
-      i_t j     = presolve_info.native_free_linear_indices[k];
-      data.x[j] = free_x_save[k];
+  data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
+  // Direct free variables: reduced cost z = 0 (no complementarity condition).
+  if (has_direct_free_linear) {
+    for (i_t j : presolve_info.direct_free_variables) {
       data.z[j] = 0.0;
     }
   }
@@ -2592,23 +2596,23 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
                                                          const rmm::device_uvector<f_t>& dx)
 {
   const bool has_soc  = data.has_cones() && static_cast<i_t>(x.size()) >= data.cone_end();
-  const bool has_native_free_linear = data.n_native_free_linear > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
+  const bool has_direct_free_linear = data.n_direct_free_linear > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
 
   auto reduce_segment = [&](i_t start, i_t len) -> f_t {
     if (len <= 0) { return f_t(1); }
-    if (has_native_free_linear) {
-      auto native_free_linear_ptr = data.d_is_native_free_linear_.data() + start;
+    if (has_direct_free_linear) {
+      auto direct_free_linear_ptr = data.d_is_direct_free_linear_.data() + start;
       // step size computation for nonnegative variables with free variables
-      auto ratio_test_free = [native_free_linear_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
+      auto ratio_test_free = [direct_free_linear_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
         const f_t dx_val  = thrust::get<0>(t);
         const f_t x_val   = thrust::get<1>(t);
-        const i_t is_native_free_linear = thrust::get<2>(t);
-        if (is_native_free_linear) return f_t(1.0);
+        const i_t is_direct_free_linear = thrust::get<2>(t);
+        if (is_direct_free_linear) return f_t(1.0);
         if (dx_val < f_t(0.0)) return -x_val / dx_val;
         return f_t(1.0);
       };
       return data.transform_reduce_helper_.transform_reduce(
-        thrust::make_zip_iterator(dx.data() + start, x.data() + start, native_free_linear_ptr),
+        thrust::make_zip_iterator(dx.data() + start, x.data() + start, direct_free_linear_ptr),
         thrust::minimum<f_t>(),
         ratio_test_free,
         f_t(1.0),
@@ -2661,7 +2665,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   const bool debug         = false;
   const bool use_augmented = data.use_augmented;
   const bool has_soc       = data.has_cones();
-  const bool has_native_free_linear      = data.n_native_free_linear > 0;
+  const bool has_direct_free_linear      = data.n_direct_free_linear > 0;
   const i_t m_c            = data.cone_entry_count();
   const i_t cone_var_start = data.cone_start();
   const i_t linear_size    = data.linear_xz_size(lp.num_cols);
@@ -2673,14 +2677,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                                        raft::device_span<const f_t> x,
                                        raft::device_span<f_t> dz_span) {
     if (dz_span.empty()) return;
-    if (has_native_free_linear) {
+    if (has_direct_free_linear) {
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(
-          target.data(), z.data(), dx_span.data(), x.data(), data.d_is_native_free_linear_.data()),
+          target.data(), z.data(), dx_span.data(), x.data(), data.d_is_direct_free_linear_.data()),
         dz_span.data(),
         dz_span.size(),
-        [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val, i_t is_native_free_linear) {
-          if (is_native_free_linear) return f_t(0);
+        [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val, i_t is_direct_free_linear) {
+          if (is_direct_free_linear) return f_t(0);
           return target_val - (z_val * dx_val) / x_val;
         },
         stream_view_.value());
@@ -2730,16 +2734,16 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::common::nvtx::range fun_scope("Barrier: GPU diag, inv diag and sqrt inv diag formation");
 
     // diag = z ./ x on the linear (non-cone) coordinates; cone block is overwritten below.
-    if (has_native_free_linear) {
+    if (has_direct_free_linear) {
       if (use_augmented) {
-        // Augmented KKT: D = 0 on native free linear vars (Q curvature is in the KKT block, not D).
+        // Augmented KKT: D = 0 on direct free linear vars (Q curvature is in the KKT block, not D).
         cub::DeviceTransform::Transform(
           cuda::std::make_tuple(
-            data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data()),
+            data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data()),
           data.d_diag_.data(),
           linear_size,
-          [] HD(f_t z_j, f_t x_j, i_t is_native_free_linear) {
-            return is_native_free_linear ? f_t(0) : (z_j / x_j);
+          [] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear) {
+            return is_direct_free_linear ? f_t(0) : (z_j / x_j);
           },
           stream_view_.value());
       } else {
@@ -2747,21 +2751,21 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         if (data.Q.n > 0 && data.Q_diagonal) {
           cub::DeviceTransform::Transform(
             cuda::std::make_tuple(
-              data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data(), data.d_Q_diag_.data()),
+              data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data(), data.d_Q_diag_.data()),
             data.d_diag_.data(),
             linear_size,
-            [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_native_free_linear, f_t q_jj) {
-              if (!is_native_free_linear) return z_j / x_j;
+            [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear, f_t q_jj) {
+              if (!is_direct_free_linear) return z_j / x_j;
               return (q_jj > f_t(0)) ? f_t(0) : free_var_reg;
             },
             stream_view_.value());
         } else {
           cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(), data.d_is_native_free_linear_.data()),
+            cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data()),
             data.d_diag_.data(),
             linear_size,
-            [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_native_free_linear) {
-              return is_native_free_linear ? free_var_reg : (z_j / x_j);
+            [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear) {
+              return is_direct_free_linear ? free_var_reg : (z_j / x_j);
             },
             stream_view_.value());
         }
@@ -2874,7 +2878,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   }
 
   // Primal RHS: dual_rhs - complementarity_target + E*((wv_rhs - v.*bound_rhs)./w)
-  // (linear: target = xz_rhs/x; native free: no xz term). Used as d_r1_ (augmented) and
+  // (linear: target = xz_rhs/x; direct free: no xz term). Used as d_r1_ (augmented) and
   // unscaled input to ADAT's h = primal_rhs + A*inv_diag*tmp3.
   {
     raft::common::nvtx::range fun_scope("Barrier: GPU assemble primal RHS");
@@ -2894,16 +2898,16 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         stream_view_.value());
       RAFT_CHECK_CUDA(stream_view_);
     }
-    if (has_native_free_linear) {
+    if (has_direct_free_linear) {
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_tmp3_.data(),
                               data.d_complementarity_target_.data(),
                               data.d_dual_rhs_.data(),
-                              data.d_is_native_free_linear_.data()),
+                              data.d_is_direct_free_linear_.data()),
         data.d_tmp3_.data(),
         lp.num_cols,
-        [] HD(f_t tmp3, f_t target, f_t dual_rhs, i_t is_native_free_linear) {
-          const f_t comp_term = is_native_free_linear ? f_t(0) : target;
+        [] HD(f_t tmp3, f_t target, f_t dual_rhs, i_t is_direct_free_linear) {
+          const f_t comp_term = is_direct_free_linear ? f_t(0) : target;
           return tmp3 + dual_rhs - comp_term;
         },
         stream_view_.value());
@@ -3517,14 +3521,14 @@ void fill_linear_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                         rmm::cuda_stream_view stream)
 {
   if (target.empty()) return;
-  const bool has_native_free_linear = data.n_native_free_linear > 0;
-  if (has_native_free_linear) {
+  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
+  if (has_direct_free_linear) {
     cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(xz_rhs.data(), x.data(), data.d_is_native_free_linear_.data()),
+      cuda::std::make_tuple(xz_rhs.data(), x.data(), data.d_is_direct_free_linear_.data()),
       target.data(),
       target.size(),
-      [] HD(f_t complementarity_xz_rhs, f_t x_val, i_t is_native_free_linear) {
-        if (is_native_free_linear) return f_t(0);
+      [] HD(f_t complementarity_xz_rhs, f_t x_val, i_t is_direct_free_linear) {
+        if (is_direct_free_linear) return f_t(0);
         return complementarity_xz_rhs / x_val;
       },
       stream.value());
@@ -3730,21 +3734,21 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
   const bool has_soc    = data.has_cones();
-  const bool has_native_free_linear   = data.n_native_free_linear > 0;
+  const bool has_direct_free_linear   = data.n_direct_free_linear > 0;
   const i_t linear_size = data.linear_xz_size(lp.num_cols);
 
   auto fill_linear_cc_rhs = [&](raft::device_span<f_t> out,
                                 raft::device_span<const f_t> dx_aff,
                                 raft::device_span<const f_t> dz_aff) {
     if (out.empty()) return;
-    if (has_native_free_linear) {
-      auto native_free_linear_ptr = data.d_is_native_free_linear_.data();
+    if (has_direct_free_linear) {
+      auto direct_free_linear_ptr = data.d_is_direct_free_linear_.data();
       cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), native_free_linear_ptr),
+        cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), direct_free_linear_ptr),
         out.data(),
         out.size(),
-        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_native_free_linear) {
-          return is_native_free_linear ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
+        [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_direct_free_linear) {
+          return is_direct_free_linear ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
         },
         stream_view_.value());
     } else {
@@ -4263,7 +4267,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     if (lp.Q.n > 0) { create_Q(lp, Q); }
 
     iteration_data_t<i_t, f_t> data(
-      lp, num_upper_bounds, presolve_info.native_free_linear_indices, Q, settings);
+      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
       return lp_status_t::CONCURRENT_LIMIT;

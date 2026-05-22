@@ -305,10 +305,10 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
   EXPECT_EQ(barrier_lp.cone_var_start, 0);
 }
 
-TEST(barrier, presolve_keeps_native_free_variables_before_cones)
+TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
 {
   // Layout: [x0, x1 | cone x2, x3, x4] with x0, x1 free and a 3-dimensional SOC block.
-  // SOCP barrier presolve keeps native free variables (no x = v - w split); cone_var_start
+  // SOCP barrier presolve keeps direct free variables (no x = v - w split); cone_var_start
   // and column count stay unchanged.
   raft::handle_t handle{};
   init_handler(&handle);
@@ -361,9 +361,9 @@ TEST(barrier, presolve_keeps_native_free_variables_before_cones)
   EXPECT_EQ(presolved_lp.cone_var_start, 2);
   EXPECT_EQ(presolved_lp.second_order_cone_dims, std::vector<int>({3}));
   EXPECT_TRUE(presolve_info.free_variable_pairs.empty());
-  ASSERT_EQ(presolve_info.native_free_linear_indices.size(), 2);
-  EXPECT_EQ(presolve_info.native_free_linear_indices[0], 0);
-  EXPECT_EQ(presolve_info.native_free_linear_indices[1], 1);
+  ASSERT_EQ(presolve_info.direct_free_variables.size(), 2);
+  EXPECT_EQ(presolve_info.direct_free_variables[0], 0);
+  EXPECT_EQ(presolve_info.direct_free_variables[1], 1);
   EXPECT_EQ(presolved_lp.lower[0], -inf);
   EXPECT_EQ(presolved_lp.lower[1], -inf);
   EXPECT_EQ(presolved_lp.upper[0], inf);
@@ -874,7 +874,7 @@ TEST(barrier, free_linear_prefix_is_uncrushed_correctly_with_soc_block)
   //            u     = 1
   //            (t, u, v) in Q^3
   //
-  // Native free variable l is kept through presolve; end-to-end solve returns
+  // Direct free variable l is kept through presolve; end-to-end solve returns
   // l* = 1, t* = 1, u* = 1, v* = 0, obj* = 1.
   raft::handle_t handle{};
   init_handler(&handle);

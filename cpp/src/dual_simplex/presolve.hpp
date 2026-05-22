@@ -165,11 +165,10 @@ struct presolve_info_t {
   // Variables that were negated to handle -inf < x_j <= u_j
   std::vector<i_t> negated_variables;
 
-  // Free variable indices for QP/SOCP augmented barrier (not split, handled natively)
-  std::vector<i_t> native_free_linear_indices;
+  // Free variable indices that the barrier solver handles directly in the augmented system
+  // (not split into v - w). Used for QP/SOCP.
+  std::vector<i_t> direct_free_variables;
 
-  // Linear columns where phase 1 tightened a fully free var to a one-sided bound (same x index)
-  std::vector<i_t> phase1_bounded_linear_indices;
   // Originally-free variables that received implied bounds, with the constraint used
   std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
 };
