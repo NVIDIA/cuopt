@@ -2665,13 +2665,31 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     // Project initial primal solution
     if (settings_.hyper_params.project_initial_primal) {
       using f_t2 = typename type_2<f_t>::type;
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
-                              problem_wrap_container(op_problem_scaled_.variable_bounds)),
-        pdhg_solver_.get_primal_solution().data(),
-        pdhg_solver_.get_primal_solution().size(),
-        clamp<f_t, f_t2>(),
-        stream_view_.value());
+      if (batch_mode_) {
+        // In batch mode variable_bounds are shared and only the bound rescaling is per climber.
+        // Apply it here too so the initial point is projected into the correct scaled space.
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(
+            pdhg_solver_.get_primal_solution().data(),
+            thrust::make_transform_iterator(
+              thrust::make_zip_iterator(
+                problem_wrap_container(op_problem_scaled_.variable_bounds),
+                batch_wrapped_container(initial_scaling_strategy_.get_bound_rescaling_vector(),
+                                        primal_size_h_)),
+              scale_bounds_by_scalar_op<f_t>{})),
+          pdhg_solver_.get_primal_solution().data(),
+          pdhg_solver_.get_primal_solution().size(),
+          clamp<f_t, f_t2>(),
+          stream_view_.value());
+      } else {
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(pdhg_solver_.get_primal_solution().data(),
+                                problem_wrap_container(op_problem_scaled_.variable_bounds)),
+          pdhg_solver_.get_primal_solution().data(),
+          pdhg_solver_.get_primal_solution().size(),
+          clamp<f_t, f_t2>(),
+          stream_view_.value());
+      }
 
       pdhg_solver_.refine_initial_primal_projection(
         initial_scaling_strategy_.get_bound_rescaling_vector());
@@ -2718,6 +2736,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                      restart_strategy_.last_restart_duality_gap_.dual_solution_,
                                      dummy);
       }
+      transpose_problem_fields(/*to_row=*/true);
     }
 
     if (verbose) {
