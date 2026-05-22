@@ -52,8 +52,6 @@ TEST(no_constraints_test, simple_test)
   op_problem.set_quadratic_objective_matrix(Q_values_host, 2, Q_indices_host, 2, Q_offsets_host, 3);
 
   auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>();
-  // Tighter than default: unconstrained QP needs small x at the origin, not just small objective.
-  settings.barrier_relative_complementarity_tolerance = 1e-12;
   auto solution = cuopt::linear_programming::solve_lp(op_problem, settings);
 
   EXPECT_EQ(solution.get_termination_status(),

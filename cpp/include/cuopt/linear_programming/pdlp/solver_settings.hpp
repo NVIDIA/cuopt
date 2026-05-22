@@ -280,9 +280,6 @@ class pdlp_solver_settings_t {
   i_t dualize{-1};
   i_t ordering{-1};
   i_t barrier_dual_initial_point{-1};
-  f_t barrier_relative_feasibility_tolerance{1.0e-8};
-  f_t barrier_relative_optimality_tolerance{1.0e-8};
-  f_t barrier_relative_complementarity_tolerance{1.0e-8};
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};

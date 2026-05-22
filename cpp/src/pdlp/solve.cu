@@ -510,11 +510,6 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.barrier_iterative_refinement = settings.barrier_iterative_refinement;
   barrier_settings.barrier_step_scale           = settings.barrier_step_scale;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
-  barrier_settings.barrier_relative_feasibility_tol =
-    settings.barrier_relative_feasibility_tolerance;
-  barrier_settings.barrier_relative_optimality_tol = settings.barrier_relative_optimality_tolerance;
-  barrier_settings.barrier_relative_complementarity_tol =
-    settings.barrier_relative_complementarity_tolerance;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;

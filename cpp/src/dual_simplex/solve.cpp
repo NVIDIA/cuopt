@@ -385,18 +385,20 @@ lp_status_t solve_linear_program_with_advanced_basis(
 
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
-                                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution)
+                                               const simplex_solver_settings_t<i_t, f_t>& settings,
+                                               f_t start_time,
+                                               lp_solution_t<i_t, f_t>& solution)
 {
   lp_status_t status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
 
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
+  simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
+  barrier_settings.barrier_presolve                    = true;
   dualize_info_t<i_t, f_t> dualize_info;
-  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
-  if (!validate_barrier_cone_layout(original_lp, settings)) {
+  convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
+  if (!validate_barrier_cone_layout(original_lp, barrier_settings)) {
     return lp_status_t::NUMERICAL_ISSUES;
   }
 
@@ -405,7 +407,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
   lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
-  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
+  const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
@@ -417,12 +419,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
-  column_scaling(presolved_lp, settings, barrier_lp, column_scales, row_scales);
+  column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, settings);
+  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
@@ -475,7 +477,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
     // Undo presolve
     uncrush_solution(presolve_info,
-                     settings,
+                     barrier_settings,
                      original_lp,
                      unscaled_x,
                      unscaled_y,

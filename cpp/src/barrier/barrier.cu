@@ -4382,11 +4382,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                         relative_complementarity_residual,
                         elapsed_time);
 
-    // TODO: should polish termination condition,
     bool converged = primal_residual_norm < settings.barrier_relative_feasibility_tol &&
-                     dual_residual_norm < settings.barrier_relative_feasibility_tol &&
-                     (duality_gap_abs < settings.barrier_relative_complementarity_tol ||
-                      duality_gap_rel < settings.barrier_relative_complementarity_tol);
+                     dual_residual_norm < settings.barrier_relative_optimality_tol &&
+                     complementarity_residual_norm < settings.barrier_relative_complementarity_tol;
 
     const i_t linear_xz_rhs_size = data.linear_xz_size(data.complementarity_xz_rhs.size());
 
@@ -4607,7 +4605,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                           elapsed_time);
 
       bool primal_feasible = relative_primal_residual < settings.barrier_relative_feasibility_tol;
-      bool dual_feasible   = relative_dual_residual < settings.barrier_relative_feasibility_tol;
+      bool dual_feasible   = relative_dual_residual < settings.barrier_relative_optimality_tol;
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
 

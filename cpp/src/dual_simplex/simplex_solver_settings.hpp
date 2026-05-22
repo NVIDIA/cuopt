@@ -79,7 +79,7 @@ struct simplex_solver_settings_t {
       use_left_looking_lu(false),
       eliminate_singletons(true),
       print_presolve_stats(true),
-      barrier_presolve(true),
+      barrier_presolve(false),
       cudss_deterministic(false),
       deterministic(false),
       barrier(false),
