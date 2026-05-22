@@ -202,9 +202,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   //   send_indices_d[p] : local indices to gather (uploaded from host send plan)
   //   send_buf_d[p]     : f_t staging buffer sized to match
   // Self-peer slot is present but empty (size 0). Used in engine halo exchange.
-  auto build_send_plan = [&](auto const& send_per_peer,
-                             auto& indices_d,
-                             auto& buf_d) {
+  auto build_send_plan = [&](auto const& send_per_peer, auto& indices_d, auto& buf_d) {
     const std::size_t n_peers = send_per_peer.size();
     indices_d.reserve(n_peers);
     buf_d.reserve(n_peers);
@@ -218,7 +216,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
       buf_d.emplace_back(std::move(buf));
     }
   };
-  build_send_plan(rank_data.var_send_per_peer,  var_send_indices_d,  var_send_buf_d);
+  build_send_plan(rank_data.var_send_per_peer, var_send_indices_d, var_send_buf_d);
   build_send_plan(rank_data.cstr_send_per_peer, cstr_send_indices_d, cstr_send_buf_d);
 
   handle.sync_stream(stream_view);

@@ -8,8 +8,8 @@
 // pdlp.cuh defines pdlp_solver_t which the engine's compute_A_x/compute_At_y
 // template bodies dereference via shard.sub_pdlp->pdhg_solver_. Must be a
 // complete type at the point of template instantiation below.
-#include <pdlp/pdlp.cuh>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -628,21 +628,20 @@ void pdhg_solver_t<i_t, f_t>::spmv_At_into(rmm::device_uvector<f_t>& in_buf,
                                            cusparseDnVecDescr_t out_desc)
 {
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution, in_buf.data()));
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
-                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                       reusable_device_scalar_value_1_.data(),
-                                       cusparse_view_.A_T,
-                                       cusparse_view_.dual_solution,
-                                       reusable_device_scalar_value_0_.data(),
-                                       out_desc,
-                                       CUSPARSE_SPMV_CSR_ALG2,
-                                       (f_t*)cusparse_view_.buffer_transpose.data(),
-                                       stream_view_));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view_.A_T,
+                                                       cusparse_view_.dual_solution,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       out_desc,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                                       stream_view_));
   // Restore the canonical binding so subsequent code on this shard that reads
   // cv.dual_solution sees the dual_solution_ buffer it was constructed with.
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(
-    cusparse_view_.dual_solution, current_saddle_point_state_.get_dual_solution().data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution,
+                                           current_saddle_point_state_.get_dual_solution().data()));
 }
 
 template <typename i_t, typename f_t>
@@ -1434,8 +1433,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
         for (auto& shard : mgpu_engine_->shards) {
           raft::device_setter guard(shard->device_id);
           auto& sub_pdlp = *shard->sub_pdlp;
-          sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(
-            sub_pdlp.get_dual_step_size());
+          sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(sub_pdlp.get_dual_step_size());
         }
       } else if (!batch_mode_) {
         dual_reflected_projection_transform(dual_step_size);

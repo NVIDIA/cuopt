@@ -15,9 +15,9 @@
 #include <rmm/cuda_stream.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <thrust/gather.h>
 #include <cub/device/device_transform.cuh>
 #include <cuda/std/tuple>
-#include <thrust/gather.h>
 
 #include <nccl.h>
 
@@ -53,51 +53,35 @@ struct multi_gpu_engine_t {
   multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;
   multi_gpu_engine_t& operator=(const multi_gpu_engine_t&) = delete;
 
-
-
   template <typename Fn>
   void for_each_shard(Fn&& fn)
   {
     for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);   
-      fn(*s);                                     
+      raft::device_setter guard(s->device_id);
+      fn(*s);
     }
   }
 
-  template <typename... InAccess,
-          typename OutAccess,
-          typename SizeAccess,
-          typename Op>
+  template <typename... InAccess, typename OutAccess, typename SizeAccess, typename Op>
   void distributed_transform(std::tuple<InAccess...> in_accessors,
-                            OutAccess                out,
-                            SizeAccess               sz,
-                            Op                       op)
+                             OutAccess out,
+                             SizeAccess sz,
+                             Op op)
   {
     for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
       // turns the Tuple of lambdas into a tuple of rmm::device_uvector
       auto cub_inputs = std::apply(
-        [&sub](auto&... acc) { return cuda::std::make_tuple(acc(sub)...); },
-        in_accessors);
+        [&sub](auto&... acc) { return cuda::std::make_tuple(acc(sub)...); }, in_accessors);
 
-      cub::DeviceTransform::Transform(cub_inputs,
-                                      out(sub),
-                                      sz(sub),
-                                      op,
-                                      shard.stream.view());
+      cub::DeviceTransform::Transform(cub_inputs, out(sub), sz(sub), op, shard.stream.view());
     });
   }
   // --- 2) convenience: single input accessor (delegates) ---
-  template <typename InAccess,
-  typename OutAccess,
-  typename SizeAccess,
-  typename Op>
-  void distributed_transform(InAccess   in,
-                  OutAccess  out,
-                  SizeAccess sz,
-                  Op         op)
+  template <typename InAccess, typename OutAccess, typename SizeAccess, typename Op>
+  void distributed_transform(InAccess in, OutAccess out, SizeAccess sz, Op op)
   {
-  distributed_transform(std::make_tuple(in), out, sz, op);
+    distributed_transform(std::make_tuple(in), out, sz, op);
   }
 
   // -------- Halo exchange (variables / x) ---------------------------------
@@ -143,10 +127,10 @@ struct multi_gpu_engine_t {
       }
     }
     for (int r = 0; r < nb; ++r) {
-      auto& s   = *shards[r];
-      auto& rd  = s.rank_data;
+      auto& s  = *shards[r];
+      auto& rd = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& x   = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& x = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
@@ -199,10 +183,10 @@ struct multi_gpu_engine_t {
       }
     }
     for (int r = 0; r < nb; ++r) {
-      auto& s   = *shards[r];
-      auto& rd  = s.rank_data;
+      auto& s  = *shards[r];
+      auto& rd = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& y   = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& y = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
@@ -230,13 +214,7 @@ struct multi_gpu_engine_t {
     for (auto& s : shards) {
       raft::device_setter guard(s->device_id);
       f_t* buf = ptr_access(*s->sub_pdlp);
-      ncclAllReduce(buf,
-                    buf,
-                    count,
-                    ncclFloat64,
-                    ncclSum,
-                    s->comm.get(),
-                    s->stream.view().value());
+      ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, s->comm.get(), s->stream.view().value());
     }
     ncclGroupEnd();
   }

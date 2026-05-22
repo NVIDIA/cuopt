@@ -19,9 +19,9 @@ std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_
 {
   std::ifstream part_file(file);
   cuopt_expects(part_file.is_open(),
-  error_type_t::ValidationError,
-  "Failed to open partition file: %s",
-  file.c_str());
+                error_type_t::ValidationError,
+                "Failed to open partition file: %s",
+                file.c_str());
 
   // One integer per line; operator>> skips whitespace so blank lines and
   // trailing newlines are tolerated.
@@ -33,9 +33,9 @@ std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_
 
   // We must have hit EOF cleanly; any other state means a malformed token.
   cuopt_expects(part_file.eof(),
-  error_type_t::ValidationError,
-  "Malformed partition file (expected one integer per line): %s",
-  file.c_str());
+                error_type_t::ValidationError,
+                "Malformed partition file (expected one integer per line): %s",
+                file.c_str());
 
   return parts;
 }

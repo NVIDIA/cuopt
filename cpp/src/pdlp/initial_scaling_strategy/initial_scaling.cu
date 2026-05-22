@@ -939,10 +939,8 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_h_bound_rescaling(f_t value)
 {
   std::fill(h_bound_rescaling_.begin(), h_bound_rescaling_.end(), value);
-  thrust::fill(handle_ptr_->get_thrust_policy(),
-               bound_rescaling_.begin(),
-               bound_rescaling_.end(),
-               value);
+  thrust::fill(
+    handle_ptr_->get_thrust_policy(), bound_rescaling_.begin(), bound_rescaling_.end(), value);
 }
 
 template <typename i_t, typename f_t>

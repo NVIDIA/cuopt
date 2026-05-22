@@ -102,13 +102,12 @@ class pdhg_solver_t {
   // No multi-GPU dispatch inside — the engine is the orchestrator.
   void spmv_At_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
-  
+
   // Pure cub-transform extractions. Each one is byte-identical to the inline
   // cub call it replaces — no platform dispatch inside. Callers handle the
   // single-GPU vs per-shard branching at the call site (see the
   // "if (mgpu_engine_) for shard..." blocks in compute_next_*).
-  void primal_reflected_major_projection_transform(
-    rmm::device_uvector<f_t>& primal_step_size);
+  void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
   void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
