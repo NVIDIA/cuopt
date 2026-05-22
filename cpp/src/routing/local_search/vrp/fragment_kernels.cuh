@@ -75,12 +75,11 @@ DI thrust::pair<double, double> evaluate_fragment(
 
   if (!move_candidates.include_objective) { return {0, 0}; }
   // cost check
-  double obj_delta = 0.;
-  double all_forward_1 =
-    route_1.get_node(start_idx_1 + 1 + frag_size_1).distance_dim.distance_forward -
-    route_1.get_node(start_idx_1).distance_dim.distance_forward;
+  double obj_delta     = 0.;
+  double all_forward_1 = route_1.get_node(start_idx_1 + 1 + frag_size_1).cost_dim.cost_forward -
+                         route_1.get_node(start_idx_1).cost_dim.cost_forward;
   if (frag_size_2 == 0) {
-    auto direct = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    auto direct = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       route_1.get_node(start_idx_1).node_info(),
       route_1.get_node(start_idx_1 + 1 + frag_size_1).node_info(),
       route_1.vehicle_info());
@@ -89,30 +88,29 @@ DI thrust::pair<double, double> evaluate_fragment(
 
   if (!reverse) {
     double sd1_sd2_1 =
-      get_arc_of_dimension<i_t, f_t, dim_t::DIST>(route_1.get_node(start_idx_1).node_info(),
+      get_arc_of_dimension<i_t, f_t, dim_t::COST>(route_1.get_node(start_idx_1).node_info(),
                                                   route_2.get_node(start_idx_2 + 1).node_info(),
                                                   route_1.vehicle_info());
 
-    double end_node_2_end_node_1 = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    double end_node_2_end_node_1 = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       route_2.get_node(start_idx_2 + frag_size_2).node_info(),
       route_1.get_node(start_idx_1 + frag_size_1 + 1).node_info(),
       route_1.vehicle_info());
-    double frag_dist = route_2.get_node(start_idx_2 + frag_size_2).distance_dim.distance_forward -
-                       route_2.get_node(start_idx_2 + 1).distance_dim.distance_forward;
+    double frag_dist = route_2.get_node(start_idx_2 + frag_size_2).cost_dim.cost_forward -
+                       route_2.get_node(start_idx_2 + 1).cost_dim.cost_forward;
     obj_delta = sd1_sd2_1 + frag_dist + end_node_2_end_node_1 - all_forward_1;
   } else {
-    double sd1_end_frag_2 = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    double sd1_end_frag_2 = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       route_1.get_node(start_idx_1).node_info(),
       route_2.get_node(start_idx_2 + frag_size_2).node_info(),
       route_1.vehicle_info());
 
-    double sd2_1_end_node_1 = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    double sd2_1_end_node_1 = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       route_2.get_node(start_idx_2 + 1).node_info(),
       route_1.get_node(start_idx_1 + frag_size_1 + 1).node_info(),
       route_1.vehicle_info());
-    double frag_dist =
-      route_2.dimensions.distance_dim.reverse_distance[(start_idx_2 + 1)] -
-      route_2.dimensions.distance_dim.reverse_distance[(start_idx_2 + frag_size_2)];
+    double frag_dist = route_2.dimensions.cost_dim.reverse_cost[(start_idx_2 + 1)] -
+                       route_2.dimensions.cost_dim.reverse_cost[(start_idx_2 + frag_size_2)];
     obj_delta = sd1_end_frag_2 + frag_dist + sd2_1_end_node_1 - all_forward_1;
   }
 

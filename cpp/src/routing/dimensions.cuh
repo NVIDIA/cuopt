@@ -17,7 +17,7 @@ namespace detail {
 constexpr double EPSILON = 0.0001;
 
 enum class dim_t {
-  DIST = 0,
+  COST = 0,
   // time
   TIME,
   // pdp capacity ( positive/negative supply )
@@ -241,8 +241,8 @@ static HDI const auto& get_dimension_of(const T& obj) noexcept
 {
   if constexpr (I == dim_t::TIME) {
     return obj.time_dim;
-  } else if constexpr (I == dim_t::DIST) {
-    return obj.distance_dim;
+  } else if constexpr (I == dim_t::COST) {
+    return obj.cost_dim;
   } else if constexpr (I == dim_t::CAP) {
     return obj.capacity_dim;
   } else if constexpr (I == dim_t::PRIZE) {
@@ -278,8 +278,8 @@ constexpr auto dim_to_string() noexcept
 {
   if constexpr (I == (int)dim_t::TIME) {
     return "Time dimension";
-  } else if constexpr (I == (int)dim_t::DIST) {
-    return "Distance dimension";
+  } else if constexpr (I == (int)dim_t::COST) {
+    return "Cost dimension";
   } else if constexpr (I == (int)dim_t::CAP) {
     return "Capacity dimension";
   } else if constexpr (I == (int)dim_t::PRIZE) {
@@ -395,7 +395,7 @@ class enabled_dimensions_t {
     return get_dimension<(size_t)dim>();
   }
 
-  cost_dimension_info_t distance_dim;
+  cost_dimension_info_t cost_dim;
   time_dimension_info_t time_dim;
   capacity_dimension_info_t capacity_dim;
   prize_dimension_info_t prize_dim;

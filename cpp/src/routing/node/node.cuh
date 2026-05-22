@@ -9,7 +9,7 @@
 
 #include "break_node.cuh"
 #include "capacity_node.cuh"
-#include "distance_node.cuh"
+#include "cost_node.cuh"
 #include "mismatch_node.cuh"
 #include "pdp_node.cuh"
 #include "prize_node.cuh"
@@ -279,7 +279,7 @@ class node_t {
   request_info_t<i_t, REQUEST> request;
   time_node_t<i_t, f_t> time_dim;
   capacity_node_t<i_t, f_t> capacity_dim;
-  distance_node_t<i_t, f_t> distance_dim;
+  cost_node_t<i_t, f_t> cost_dim;
   prize_node_t<i_t, f_t> prize_dim;
   tasks_node_t<i_t, f_t> tasks_dim;
   service_time_node_t<i_t, f_t> service_time_dim;

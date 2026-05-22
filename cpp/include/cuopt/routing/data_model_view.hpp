@@ -55,7 +55,7 @@ class data_model_view_t {
                     i_t num_orders = -1);
 
   /**
-   * @brief Set a cost (distance) matrix for all locations (depot included) at
+   * @brief Set a cost matrix for all locations (depot included) at
    * once. A cost matrix is defined a square matrix containing the
    * costs, taken pairwise, between all locations. Entries are non-negative
    * real numbers. Diagonal elements

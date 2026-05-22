@@ -27,7 +27,7 @@
 
 constexpr bool is_constraint(size_t index)
 {
-  if (index == DIST) return false;
+  if (index == COST) return false;
   return true;
 }
 

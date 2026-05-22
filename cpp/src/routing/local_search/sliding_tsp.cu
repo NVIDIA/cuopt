@@ -25,56 +25,56 @@ DI thrust::pair<double, double> eval_move(
   typename solution_t<i_t, f_t, REQUEST>::view_t& sol,
   typename move_candidates_t<i_t, f_t>::view_t& move_candidates,
   const typename route_t<i_t, f_t, REQUEST>::view_t& s_route,
-  raft::device_span<double> sh_reverse_dist,
+  raft::device_span<double> sh_reverse_cost,
   i_t intra_idx,
   i_t insertion_pos,
   i_t window_size,
   i_t route_max_window_size,
   bool reverse)
 {
-  auto original_window_dist =
-    s_route.dimensions.distance_dim.distance_forward[intra_idx + window_size - 1] -
-    s_route.dimensions.distance_dim.distance_forward[intra_idx];
-  auto new_window_dist = reverse ? sh_reverse_dist[route_max_window_size - 1] -
-                                     sh_reverse_dist[route_max_window_size - window_size]
-                                 : original_window_dist;
+  auto original_window_cost =
+    s_route.dimensions.cost_dim.cost_forward[intra_idx + window_size - 1] -
+    s_route.dimensions.cost_dim.cost_forward[intra_idx];
+  auto new_window_cost = reverse ? sh_reverse_cost[route_max_window_size - 1] -
+                                     sh_reverse_cost[route_max_window_size - window_size]
+                                 : original_window_cost;
 
   auto original_previous_intra_frag_next =
-    s_route.dimensions.distance_dim.distance_forward[intra_idx + window_size] -
-    s_route.dimensions.distance_dim.distance_forward[intra_idx - 1];
+    s_route.dimensions.cost_dim.cost_forward[intra_idx + window_size] -
+    s_route.dimensions.cost_dim.cost_forward[intra_idx - 1];
 
   auto frag_begin = reverse ? intra_idx + window_size - 1 : intra_idx;
   auto frag_end   = reverse ? intra_idx : intra_idx + window_size - 1;
   auto insertion_pos_frag_begin =
-    get_arc_of_dimension<i_t, f_t, dim_t::DIST>(s_route.get_node(insertion_pos).node_info(),
+    get_arc_of_dimension<i_t, f_t, dim_t::COST>(s_route.get_node(insertion_pos).node_info(),
                                                 s_route.get_node(frag_begin).node_info(),
                                                 s_route.vehicle_info());
 
   // in-place
   if (insertion_pos == intra_idx - 1) {
-    auto frag_end_frag_next = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    auto frag_end_frag_next = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       s_route.get_node(frag_end).node_info(),
       s_route.get_node(intra_idx + window_size).node_info(),
       s_route.vehicle_info());
-    auto delta = insertion_pos_frag_begin + new_window_dist + frag_end_frag_next -
+    auto delta = insertion_pos_frag_begin + new_window_cost + frag_end_frag_next -
                  original_previous_intra_frag_next;
     return {delta, delta};
   }
 
   auto frag_end_insertion_pos_next =
-    get_arc_of_dimension<i_t, f_t, dim_t::DIST>(s_route.get_node(frag_end).node_info(),
+    get_arc_of_dimension<i_t, f_t, dim_t::COST>(s_route.get_node(frag_end).node_info(),
                                                 s_route.get_node(insertion_pos + 1).node_info(),
                                                 s_route.vehicle_info());
 
-  auto previous_intra_frag_next = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+  auto previous_intra_frag_next = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
     s_route.get_node(intra_idx - 1).node_info(),
     s_route.get_node(intra_idx + window_size).node_info(),
     s_route.vehicle_info());
   auto insertion_pos_insertion_pos_next =
-    get_arc_of_dimension<i_t, f_t, dim_t::DIST>(s_route.get_node(insertion_pos).node_info(),
+    get_arc_of_dimension<i_t, f_t, dim_t::COST>(s_route.get_node(insertion_pos).node_info(),
                                                 s_route.get_node(insertion_pos + 1).node_info(),
                                                 s_route.vehicle_info());
-  auto delta = previous_intra_frag_next + insertion_pos_frag_begin + new_window_dist +
+  auto delta = previous_intra_frag_next + insertion_pos_frag_begin + new_window_cost +
                frag_end_insertion_pos_next - insertion_pos_insertion_pos_next -
                original_previous_intra_frag_next;
   return {delta, delta};
@@ -126,7 +126,7 @@ __global__ void find_sliding_moves_tsp(
 
   auto s_route = route_t<i_t, f_t, REQUEST>::view_t::create_shared_route(
     (i_t*)shmem, route, route.get_num_nodes(), true);
-  auto sh_reverse_dist = raft::device_span<double>(
+  auto sh_reverse_cost = raft::device_span<double>(
     reinterpret_cast<double*>(raft::alignTo(s_route.shared_end_address(), sizeof(double))),
     route_max_window_size);
   s_route.copy_from(route);
@@ -134,9 +134,9 @@ __global__ void find_sliding_moves_tsp(
 
   // reverse and non reverse fragment
   for (i_t tid = threadIdx.x; tid < route_max_window_size; tid += blockDim.x) {
-    sh_reverse_dist[tid] =
-      route.dimensions.distance_dim
-        .reverse_distance[route.get_num_nodes() - intra_idx - (route_max_window_size - 1) + tid];
+    sh_reverse_cost[tid] =
+      route.dimensions.cost_dim
+        .reverse_cost[route.get_num_nodes() - intra_idx - (route_max_window_size - 1) + tid];
   }
   __syncthreads();
 
@@ -182,7 +182,7 @@ __global__ void find_sliding_moves_tsp(
     thrust::tie(cost_delta, selection_delta) = eval_move<i_t, f_t, REQUEST>(sol,
                                                                             move_candidates,
                                                                             s_route,
-                                                                            sh_reverse_dist,
+                                                                            sh_reverse_cost,
                                                                             intra_idx,
                                                                             insertion_pos,
                                                                             window_size,
@@ -391,29 +391,29 @@ __global__ void execute_sliding_moves_tsp(
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-__global__ void fill_reverse_distances_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
+__global__ void fill_reverse_costs_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
 {
-  auto route             = sol.routes[0];
-  auto n_nodes           = route.get_num_nodes();
-  auto reverse_distances = route.dimensions.distance_dim.reverse_distance;
+  auto route         = sol.routes[0];
+  auto n_nodes       = route.get_num_nodes();
+  auto reverse_costs = route.dimensions.cost_dim.reverse_cost;
   for (i_t tid = blockIdx.x * blockDim.x + threadIdx.x; tid < n_nodes;
        tid += blockDim.x * gridDim.x) {
-    reverse_distances[tid] =
-      get_arc_of_dimension<i_t, f_t, dim_t::DIST>(route.get_node(n_nodes - tid).node_info(),
+    reverse_costs[tid] =
+      get_arc_of_dimension<i_t, f_t, dim_t::COST>(route.get_node(n_nodes - tid).node_info(),
                                                   route.get_node(n_nodes - 1 - tid).node_info(),
                                                   route.vehicle_info());
   }
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>
-__global__ void fill_forward_distances_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
+__global__ void fill_forward_costs_kernel(typename solution_t<i_t, f_t, REQUEST>::view_t sol)
 {
-  auto route             = sol.routes[0];
-  auto n_nodes           = route.get_num_nodes();
-  auto forward_distances = route.dimensions.distance_dim.distance_forward;
+  auto route         = sol.routes[0];
+  auto n_nodes       = route.get_num_nodes();
+  auto forward_costs = route.dimensions.cost_dim.cost_forward;
   for (i_t tid = blockIdx.x * blockDim.x + threadIdx.x; tid < n_nodes;
        tid += blockDim.x * gridDim.x) {
-    forward_distances[tid] = get_arc_of_dimension<i_t, f_t, dim_t::DIST>(
+    forward_costs[tid] = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
       route.get_node(tid).node_info(), route.get_node(tid + 1).node_info(), route.vehicle_info());
   }
 }
@@ -424,11 +424,11 @@ void resize_temp_storage(solution_t<i_t, f_t, REQUEST>& sol,
                          i_t n_nodes,
                          size_t& temp_storage_bytes)
 {
-  auto distances_ptr = sol.get_route(0).dimensions.distance_dim.distance_forward.data();
+  auto costs_ptr = sol.get_route(0).dimensions.cost_dim.cost_forward.data();
   cub::DeviceScan::ExclusiveSum(static_cast<void*>(nullptr),
                                 temp_storage_bytes,
-                                distances_ptr,
-                                distances_ptr,
+                                costs_ptr,
+                                costs_ptr,
                                 n_nodes + 1,
                                 sol.sol_handle->get_stream());
 
@@ -438,21 +438,21 @@ void resize_temp_storage(solution_t<i_t, f_t, REQUEST>& sol,
 }
 
 template <typename i_t, typename f_t, request_t REQUEST, bool reverse>
-void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
-                                  move_candidates_t<i_t, f_t>& move_candidates,
-                                  i_t n_nodes,
-                                  i_t n_threads,
-                                  size_t temp_storage_bytes)
+void compute_cumulative_costs(solution_t<i_t, f_t, REQUEST>& sol,
+                              move_candidates_t<i_t, f_t>& move_candidates,
+                              i_t n_nodes,
+                              i_t n_threads,
+                              size_t temp_storage_bytes)
 {
-  auto distances_ptr = reverse ? sol.get_route(0).dimensions.distance_dim.reverse_distance.data()
-                               : sol.get_route(0).dimensions.distance_dim.distance_forward.data();
+  auto costs_ptr     = reverse ? sol.get_route(0).dimensions.cost_dim.reverse_cost.data()
+                               : sol.get_route(0).dimensions.cost_dim.cost_forward.data();
   auto n_fill_blocks = (sol.get_num_orders() + n_threads - 1) / n_threads;
   if (reverse) {
-    fill_reverse_distances_kernel<i_t, f_t, REQUEST>
+    fill_reverse_costs_kernel<i_t, f_t, REQUEST>
       <<<n_fill_blocks, n_threads, 0, sol.sol_handle->get_stream()>>>(sol.view());
     RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   } else {
-    fill_forward_distances_kernel<i_t, f_t, REQUEST>
+    fill_forward_costs_kernel<i_t, f_t, REQUEST>
       <<<n_fill_blocks, n_threads, 0, sol.sol_handle->get_stream()>>>(sol.view());
     RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
   }
@@ -460,8 +460,8 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
   size_t n_temp_storage_bytes = 0;
   cub::DeviceScan::ExclusiveSum(static_cast<void*>(nullptr),
                                 n_temp_storage_bytes,
-                                distances_ptr,
-                                distances_ptr,
+                                costs_ptr,
+                                costs_ptr,
                                 n_nodes + 2,
                                 sol.sol_handle->get_stream());
 
@@ -473,8 +473,8 @@ void compute_cumulative_distances(solution_t<i_t, f_t, REQUEST>& sol,
 
   cub::DeviceScan::ExclusiveSum(move_candidates.temp_storage.data(),
                                 temp_storage_bytes,
-                                distances_ptr,
-                                distances_ptr,
+                                costs_ptr,
+                                costs_ptr,
                                 n_nodes + 2,
                                 sol.sol_handle->get_stream());
 }
@@ -499,7 +499,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
   size_t temp_storage_bytes = 0;
   resize_temp_storage<i_t, f_t, REQUEST>(sol, move_candidates, n_nodes, temp_storage_bytes);
 
-  compute_cumulative_distances<i_t, f_t, REQUEST, true>(
+  compute_cumulative_costs<i_t, f_t, REQUEST, true>(
     sol, move_candidates, n_nodes, n_threads, temp_storage_bytes);
 
   auto n_blocks = move_candidates.nodes_to_search.n_sampled_nodes;
@@ -558,7 +558,7 @@ bool local_search_t<i_t, f_t, REQUEST>::perform_sliding_tsp(
       cuopt::make_span(moved_regions_));
   RAFT_CHECK_CUDA(sol.sol_handle->get_stream());
 
-  compute_cumulative_distances<i_t, f_t, REQUEST, false>(
+  compute_cumulative_costs<i_t, f_t, REQUEST, false>(
     sol, move_candidates, n_nodes, n_threads, temp_storage_bytes);
 
   cuopt_func_call(sol.compute_cost());

@@ -240,10 +240,10 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   // DIST dimension info
   double cost_obj_weight =
     specified_weights.count(objective_t::COST) ? specified_weights.at(objective_t::COST) : 1.0;
-  dimensions_info.enable_dimension(dim_t::DIST);
+  dimensions_info.enable_dimension(dim_t::COST);
   dimensions_info.enable_objective(objective_t::COST, cost_obj_weight);
 
-  auto& cost_dim_info = dimensions_info.distance_dim;
+  auto& cost_dim_info = dimensions_info.cost_dim;
   if (auto vehicle_max_costs = data_view_ptr->get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     cost_dim_info.has_max_constraint = true;
   }
@@ -352,7 +352,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
   if (data_view_ptr->get_fleet_size() == 1) {
     is_tsp = true;
     loop_over_dimensions(dimensions_info, [&](auto I) {
-      if constexpr (I != (size_t)dim_t::DIST) { is_tsp = false; }
+      if constexpr (I != (size_t)dim_t::COST) { is_tsp = false; }
     });
   }
   dimensions_info.is_tsp = is_tsp;
@@ -361,7 +361,7 @@ void problem_t<i_t, f_t>::populate_dimensions_info()
     is_cvrp_ = !is_pdp() && (data_view_ptr->get_cost_matrices().size() == 1);
     if (is_cvrp_) {
       loop_over_dimensions(dimensions_info, [&](auto I) {
-        if (I != (int)dim_t::DIST && I != (int)dim_t::CAP) { is_cvrp_ = false; }
+        if (I != (int)dim_t::COST && I != (int)dim_t::CAP) { is_cvrp_ = false; }
       });
     }
     is_cvrp_ = is_cvrp_ && n_capacity_dims == 1;

@@ -9,7 +9,7 @@
 
 #include "break_route.cuh"
 #include "capacity_route.cuh"
-#include "distance_route.cuh"
+#include "cost_route.cuh"
 #include "mismatch_route.cuh"
 #include "pdp_route.cuh"
 #include "prize_route.cuh"
@@ -43,8 +43,8 @@ using route_from_dim = typename std::conditional<
   ((dim_t)I == dim_t::TIME),
   time_route_t<i_t, f_t>,
   typename std::conditional<
-    ((dim_t)I == dim_t::DIST),
-    distance_route_t<i_t, f_t>,
+    ((dim_t)I == dim_t::COST),
+    cost_route_t<i_t, f_t>,
     typename std::conditional<
       ((dim_t)I == dim_t::CAP),
       capacity_route_t<i_t, f_t>,
@@ -73,7 +73,7 @@ class dimensions_route_t {
     : sol_handle(sol_handle_),
       time_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::TIME>()),
       capacity_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::CAP>()),
-      distance_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::DIST>()),
+      cost_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::COST>()),
       prize_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::PRIZE>()),
       tasks_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::TASKS>()),
       service_time_dim(sol_handle_, dimensions_info_.get_dimension<dim_t::SERVICE_TIME>()),
@@ -91,7 +91,7 @@ class dimensions_route_t {
     : sol_handle(dim_route.sol_handle),
       time_dim(dim_route.time_dim, dim_route.sol_handle),
       capacity_dim(dim_route.capacity_dim, dim_route.sol_handle),
-      distance_dim(dim_route.distance_dim, dim_route.sol_handle),
+      cost_dim(dim_route.cost_dim, dim_route.sol_handle),
       prize_dim(dim_route.prize_dim, dim_route.sol_handle),
       tasks_dim(dim_route.tasks_dim, dim_route.sol_handle),
       service_time_dim(dim_route.service_time_dim, dim_route.sol_handle),
@@ -209,7 +209,7 @@ class dimensions_route_t {
     }
 
     typename request_route_t<i_t, f_t, REQUEST>::view_t requests;
-    typename distance_route_t<i_t, f_t>::view_t distance_dim;
+    typename cost_route_t<i_t, f_t>::view_t cost_dim;
     typename time_route_t<i_t, f_t>::view_t time_dim;
     typename capacity_route_t<i_t, f_t>::view_t capacity_dim;
     typename prize_route_t<i_t, f_t>::view_t prize_dim;
@@ -265,7 +265,7 @@ class dimensions_route_t {
   request_route_t<i_t, f_t, REQUEST> requests;
 
   // distance route
-  distance_route_t<i_t, f_t> distance_dim;
+  cost_route_t<i_t, f_t> cost_dim;
 
   // time route
   time_route_t<i_t, f_t> time_dim;

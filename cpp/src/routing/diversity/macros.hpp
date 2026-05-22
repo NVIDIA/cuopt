@@ -15,8 +15,8 @@
 #define DEPO 0
 
 // Array indexes for evaluation of distinct features
-// distance
-constexpr int DIST = 0;
+// cost
+constexpr int COST = 0;
 // time
 constexpr int TIME = 1;
 // pdp capacity ( positive/negative supply )
