@@ -81,6 +81,13 @@ class adaptive_step_size_strategy_t {
   const rmm::device_uvector<f_t>& get_norm_squared_delta_primal() const;
   const rmm::device_uvector<f_t>& get_norm_squared_delta_dual() const;
 
+  // Mutable overloads — used by the multi-GPU path to NCCL-allreduce the
+  // per-shard scalar contributions in place and to mirror them back to the
+  // master step_size_strategy_.
+  rmm::device_uvector<f_t>& get_interaction();
+  rmm::device_uvector<f_t>& get_norm_squared_delta_primal();
+  rmm::device_uvector<f_t>& get_norm_squared_delta_dual();
+
   void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
                                         saddle_point_state_t<i_t, f_t>& current_saddle_point_state);

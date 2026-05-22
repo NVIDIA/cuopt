@@ -310,6 +310,26 @@ adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual() const
 }
 
 template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>& adaptive_step_size_strategy_t<i_t, f_t>::get_interaction()
+{
+  return interaction_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_primal()
+{
+  return norm_squared_delta_primal_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+adaptive_step_size_strategy_t<i_t, f_t>::get_norm_squared_delta_dual()
+{
+  return norm_squared_delta_dual_;
+}
+
+template <typename i_t, typename f_t>
 void adaptive_step_size_strategy_t<i_t, f_t>::set_valid_step_size(i_t valid)
 {
   valid_step_size_[0] = valid;

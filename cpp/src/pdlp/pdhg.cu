@@ -624,6 +624,51 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
 }
 
 template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmv_At_into(rmm::device_uvector<f_t>& in_buf,
+                                           cusparseDnVecDescr_t out_desc)
+{
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution, in_buf.data()));
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view_.A_T,
+                                       cusparse_view_.dual_solution,
+                                       reusable_device_scalar_value_0_.data(),
+                                       out_desc,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                       stream_view_));
+  // Restore the canonical binding so subsequent code on this shard that reads
+  // cv.dual_solution sees the dual_solution_ buffer it was constructed with.
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(
+    cusparse_view_.dual_solution, current_saddle_point_state_.get_dual_solution().data()));
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmv_A_into(rmm::device_uvector<f_t>& in_buf,
+                                          cusparseDnVecDescr_t out_desc)
+{
+  RAFT_CUSPARSE_TRY(
+    cusparseDnVecSetValues(cusparse_view_.reflected_primal_solution, in_buf.data()));
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view_.A,
+                                       cusparse_view_.reflected_primal_solution,
+                                       reusable_device_scalar_value_0_.data(),
+                                       out_desc,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                       stream_view_));
+  // Restore the canonical binding so subsequent code on this shard that reads
+  // cv.reflected_primal_solution sees the reflected_primal_ buffer.
+  RAFT_CUSPARSE_TRY(
+    cusparseDnVecSetValues(cusparse_view_.reflected_primal_solution, reflected_primal_.data()));
+}
+
+template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_primal_projection_with_gradient(
   rmm::device_uvector<f_t>& primal_step_size)
 {

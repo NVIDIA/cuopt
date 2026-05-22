@@ -102,10 +102,12 @@ struct multi_gpu_engine_t {
 
   // -------- Halo exchange (variables / x) ---------------------------------
   // Fills the halo slice [owned_var_size, total_var_size) of the per-shard
-  // reflected_primal vector (the buffer A @ x reads). Step 1: thrust::gather
-  // per-peer outgoing values into staging buffers. Step 2: a single NCCL
-  // group with matched ncclSend / ncclRecv across all (rank, peer) pairs.
-  void halo_exchange_var()
+  // input buffer returned by `buf_access(pdhg)` (the buffer A @ x will read).
+  // Step 1: thrust::gather per-peer outgoing values into staging buffers.
+  // Step 2: a single NCCL group with matched ncclSend / ncclRecv across all
+  // (rank, peer) pairs.
+  template <typename BufAccess>
+  void halo_exchange_var(BufAccess&& buf_access)
   {
     const int nb = static_cast<int>(shards.size());
 
@@ -113,7 +115,7 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto& x = s.sub_pdlp->pdhg_solver_.get_reflected_primal();
+      auto& x = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         if (s.var_send_indices_d[peer].size() == 0) continue;
@@ -144,7 +146,7 @@ struct multi_gpu_engine_t {
       auto& s   = *shards[r];
       auto& rd  = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& x   = s.sub_pdlp->pdhg_solver_.get_reflected_primal();
+      auto& x   = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
@@ -160,16 +162,17 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Halo exchange (constraints / y) -------------------------------
-  // Same as halo_exchange_var but for the per-shard dual solution (the buffer
-  // A_T @ y reads) and constraint halos.
-  void halo_exchange_cstr()
+  // Same as halo_exchange_var but for a constraint-shaped buffer (the input
+  // A_T @ y will read) and constraint halos.
+  template <typename BufAccess>
+  void halo_exchange_cstr(BufAccess&& buf_access)
   {
     const int nb = static_cast<int>(shards.size());
 
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto& y = s.sub_pdlp->pdhg_solver_.get_dual_solution();
+      auto& y = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         if (s.cstr_send_indices_d[peer].size() == 0) continue;
@@ -199,7 +202,7 @@ struct multi_gpu_engine_t {
       auto& s   = *shards[r];
       auto& rd  = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& y   = s.sub_pdlp->pdhg_solver_.get_dual_solution();
+      auto& y   = buf_access(s.sub_pdlp->pdhg_solver_);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
@@ -214,26 +217,76 @@ struct multi_gpu_engine_t {
     ncclGroupEnd();
   }
 
-  // -------- High-level: A @ x and A_T @ y ---------------------------------
-  // A @ x: halo-update the reflected_primal vector, then per-shard SpMV.
-  // Named distributed_* (rather than compute_*) to make call sites in pdhg.cu
-  // self-documenting and to avoid name collision with pdhg_solver_t's own
-  // compute_A_x / compute_At_y, which the engine dispatches into per shard.
-  void distributed_compute_A_x()
+  // -------- NCCL allreduce (sum, in place) --------------------------------
+  // Per-shard in-place sum-allreduce. Each shard's stream issues an
+  // ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, ...) inside a single
+  // group. After this returns, every shard's buffer holds the global sum.
+  //
+  // PtrAccess: pdlp_solver_t<i_t,f_t>& -> f_t*  (e.g. into step_size_strategy_).
+  template <typename PtrAccess>
+  void allreduce_sum_inplace(PtrAccess&& ptr_access, size_t count = 1)
   {
-    halo_exchange_var();
+    ncclGroupStart();
+    for (auto& s : shards) {
+      raft::device_setter guard(s->device_id);
+      f_t* buf = ptr_access(*s->sub_pdlp);
+      ncclAllReduce(buf,
+                    buf,
+                    count,
+                    ncclFloat64,
+                    ncclSum,
+                    s->comm.get(),
+                    s->stream.view().value());
+    }
+    ncclGroupEnd();
+  }
+
+  // -------- Generic distributed SpMVs -------------------------------------
+  // distributed_spmv_A : halo-update the var-shaped input buffer returned by
+  // `in_buf(pdhg)`, then per-shard A @ in_buf -> out_desc.
+  // distributed_spmv_At: halo-update the cstr-shaped input buffer returned by
+  // `in_buf(pdhg)`, then per-shard A_T @ in_buf -> out_desc.
+  //
+  // Accessor signatures:
+  //   in_buf  (pdhg_solver_t<i_t,f_t>&) -> rmm::device_uvector<f_t>&
+  //   out_desc(pdhg_solver_t<i_t,f_t>&) -> cusparseDnVecDescr_t
+  template <typename InBufAccess, typename OutDescAccess>
+  void distributed_spmv_A(InBufAccess&& in_buf, OutDescAccess&& out_desc)
+  {
+    halo_exchange_var(in_buf);
     for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->pdhg_solver_.spmvop_A_x();
+      auto& sub_pdhg = shard.sub_pdlp->pdhg_solver_;
+      sub_pdhg.spmv_A_into(in_buf(sub_pdhg), out_desc(sub_pdhg));
     });
   }
 
-  // A_T @ y: halo-update the dual solution vector, then per-shard SpMV.
+  template <typename InBufAccess, typename OutDescAccess>
+  void distributed_spmv_At(InBufAccess&& in_buf, OutDescAccess&& out_desc)
+  {
+    halo_exchange_cstr(in_buf);
+    for_each_shard([&](auto& shard) {
+      auto& sub_pdhg = shard.sub_pdlp->pdhg_solver_;
+      sub_pdhg.spmv_At_into(in_buf(sub_pdhg), out_desc(sub_pdhg));
+    });
+  }
+
+  // -------- High-level: A @ x and A_T @ y ---------------------------------
+  // Thin wrappers used from pdhg_solver_t::compute_A_x / compute_At_y when an
+  // engine is wired in. They use the canonical PDHG buffers/descriptors so the
+  // result lands where single-GPU PDHG would have put it (dual_gradient for A,
+  // current_AtY for A_T).
+  void distributed_compute_A_x()
+  {
+    distributed_spmv_A(
+      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); },
+      [](auto& pdhg) -> cusparseDnVecDescr_t { return pdhg.get_cusparse_view().dual_gradient; });
+  }
+
   void distributed_compute_At_y()
   {
-    halo_exchange_cstr();
-    for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->pdhg_solver_.spmvop_At_y();
-    });
+    distributed_spmv_At(
+      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); },
+      [](auto& pdhg) -> cusparseDnVecDescr_t { return pdhg.get_cusparse_view().current_AtY; });
   }
 
   // Engine-level stream for fork/join orchestration (master side).

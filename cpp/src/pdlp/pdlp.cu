@@ -2221,34 +2221,118 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   // Computing the deltas
   // TODO batch mdoe: this only works if everyone restarts
-  cub::DeviceTransform::Transform(cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
-                                                        pdhg_solver_.get_primal_solution().data()),
-                                  pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
-                                  pdhg_solver_.get_primal_solution().size(),
-                                  cuda::std::minus<f_t>{},
-                                  stream_view_.value());
-  cub::DeviceTransform::Transform(cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
-                                                        pdhg_solver_.get_dual_solution().data()),
-                                  pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
-                                  pdhg_solver_.get_dual_solution().size(),
-                                  cuda::std::minus<f_t>{},
-                                  stream_view_.value());
+  if (multi_gpu_engine) {
+    // Go faire une fonction compute_delta_primal, compute_delta primal ? 
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      auto& sub_pdhg = shard->sub_pdlp->pdhg_solver_;
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(sub_pdhg.get_reflected_primal().data(),
+                              sub_pdhg.get_primal_solution().data()),
+        sub_pdhg.get_saddle_point_state().get_delta_primal().data(),
+        sub_pdhg.get_primal_solution().size(),
+        cuda::std::minus<f_t>{},
+        shard->stream.view());
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(sub_pdhg.get_reflected_dual().data(),
+                              sub_pdhg.get_dual_solution().data()),
+        sub_pdhg.get_saddle_point_state().get_delta_dual().data(),
+        sub_pdhg.get_dual_solution().size(),
+        cuda::std::minus<f_t>{},
+        shard->stream.view());
+    }
+  } else {
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
+                            pdhg_solver_.get_primal_solution().data()),
+      pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
+      pdhg_solver_.get_primal_solution().size(),
+      cuda::std::minus<f_t>{},
+      stream_view_.value());
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
+                            pdhg_solver_.get_dual_solution().data()),
+      pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
+      pdhg_solver_.get_dual_solution().size(),
+      cuda::std::minus<f_t>{},
+      stream_view_.value());
+  }
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
-  // Sync to make sure all previous cuSparse operations are finished before setting the
-  // potential_next_dual_solution
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
-  // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
-                                           (void*)pdhg_solver_.get_reflected_dual().data()));
+  if (multi_gpu_engine) {
 
-  if (batch_mode_)
-    RAFT_CUSPARSE_TRY(cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution,
+    // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and call it naturally
+    // we then reduce the local dot products
+    multi_gpu_engine->halo_exchange_cstr(
+      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_dual(); });
+
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      auto& sub_pdlp = *shard->sub_pdlp;
+      auto& sub_cv   = sub_pdlp.pdhg_solver_.get_cusparse_view();
+
+      RAFT_CUSPARSE_TRY(
+        cusparseDnVecSetValues(sub_cv.potential_next_dual_solution,
+                               (void*)sub_pdlp.pdhg_solver_.get_reflected_dual().data()));
+
+      sub_pdlp.step_size_strategy_.compute_interaction_and_movement(
+        sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
+        sub_cv,
+        sub_pdlp.pdhg_solver_.get_saddle_point_state());
+
+      RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(
+        sub_cv.potential_next_dual_solution,
+        (void*)sub_pdlp.pdhg_solver_.get_potential_next_dual_solution().data()));
+    }
+
+    multi_gpu_engine->allreduce_sum_inplace(
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); }, 1);
+    multi_gpu_engine->allreduce_sum_inplace(
+      [](auto& sp) -> f_t* {
+        return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
+      },
+      1);
+    multi_gpu_engine->allreduce_sum_inplace(
+      [](auto& sp) -> f_t* {
+        return sp.step_size_strategy_.get_norm_squared_delta_dual().data();
+      },
+      1);
+
+    auto& s0 = *multi_gpu_engine->shards[0];
+    {
+      raft::device_setter guard(s0.device_id);
+      RAFT_CUDA_TRY(cudaStreamSynchronize(s0.stream.view().value()));
+    }
+    auto& src_sp = s0.sub_pdlp->step_size_strategy_;
+    raft::copy(step_size_strategy_.get_interaction().data(),
+               src_sp.get_interaction().data(),
+               1,
+               stream_view_);
+    raft::copy(step_size_strategy_.get_norm_squared_delta_primal().data(),
+               src_sp.get_norm_squared_delta_primal().data(),
+               1,
+               stream_view_);
+    raft::copy(step_size_strategy_.get_norm_squared_delta_dual().data(),
+               src_sp.get_norm_squared_delta_dual().data(),
+               1,
+               stream_view_);
+  } else {
+    // Sync to make sure all previous cuSparse operations are finished before setting the
+    // potential_next_dual_solution
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+
+    // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
+    RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
                                              (void*)pdhg_solver_.get_reflected_dual().data()));
 
-  step_size_strategy_.compute_interaction_and_movement(
-    pdhg_solver_.get_primal_tmp_resource(), cusparse_view, pdhg_solver_.get_saddle_point_state());
+    if (batch_mode_)
+      RAFT_CUSPARSE_TRY(cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution,
+                                               (void*)pdhg_solver_.get_reflected_dual().data()));
+
+    step_size_strategy_.compute_interaction_and_movement(
+      pdhg_solver_.get_primal_tmp_resource(), cusparse_view, pdhg_solver_.get_saddle_point_state());
+  }
 
   if (batch_mode_) {
     const auto [grid_size, block_size] = kernel_config_from_batch_size(climber_strategies_.size());
@@ -2279,11 +2363,12 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   // potential_next_dual_solution
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
-  // Put back
+  // Put back, already done in multi-gpu side
+  if (!multi_gpu_engine) {
   RAFT_CUSPARSE_TRY(
     cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
                            (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
-
+    }
   if (batch_mode_) {
     RAFT_CUSPARSE_TRY(
       cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution,
