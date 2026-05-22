@@ -24,7 +24,3 @@ with :func:`~cuopt.linear_programming.Read`:
 
     # High-level API
     problem = Problem.read("good-mps-1.lp")
-
-See ``datasets/linear_programming/good-mps-1-README.md`` for the full set of
-fixture files and why compressed ``.lp.gz`` / ``.lp.bz2`` variants are kept in
-the tree.
