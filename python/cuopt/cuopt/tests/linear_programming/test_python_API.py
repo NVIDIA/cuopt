@@ -150,6 +150,16 @@ def test_model():
     assert prob.ObjValue == pytest.approx(5 * x.Value + 3 * y.Value + 70)
 
 
+def test_constraint_duplicate_terms_slack():
+    """Merged coeffs in vindex_coeff_dict must not be double-counted in slack."""
+    prob = Problem()
+    x = prob.addVariable()
+    c = prob.addConstraint(5 * x + 7 * x <= 18)
+    assert c.getCoefficient(x) == 12
+    x.Value = 1.0
+    assert c.compute_slack() == pytest.approx(6.0)
+
+
 def test_semi_continuous_variable():
     prob = Problem("Semi-continuous")
     x = prob.addVariable(lb=5.0, ub=10.0, vtype=SEMI_CONTINUOUS, name="x")

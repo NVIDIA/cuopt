@@ -49,6 +49,8 @@ struct lp_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   bool objective_is_integral{false};
+  i_t cone_var_start{0};
+  std::vector<i_t> second_order_cone_dims;
 
   void write_mps(const std::string& path) const
   {
@@ -162,10 +164,14 @@ struct presolve_info_t {
 
   // Variables that were negated to handle -inf < x_j <= u_j
   std::vector<i_t> negated_variables;
+
+  // Free variable indices for QP/SOCP augmented barrier (not split, handled natively)
+  std::vector<i_t> native_free_linear_indices;
+
+  // Linear columns where phase 1 tightened a fully free var to a one-sided bound (same x index)
+  std::vector<i_t> phase1_bounded_linear_indices;
   // Originally-free variables that received implied bounds, with the constraint used
   std::vector<bounded_free_var_t<i_t, f_t>> bounded_free_variables;
-  // Free variable indices for QP augmented system (not split, handled natively)
-  std::vector<i_t> free_variable_indices;
 };
 
 template <typename i_t, typename f_t>

@@ -4,6 +4,8 @@
 import os
 import time
 
+import numpy as np
+
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception
 
@@ -287,6 +289,90 @@ class DataModel(data_model_wrapper.DataModel):
         quadratic programming, Q + Q^T should be positive semi-definite.
         """
         super().set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
+
+    def get_quadratic_constraints(self):
+        """
+        Return quadratic (QCMATRIX) constraints appended to this model.
+
+        Each entry is a dict with keys including ``constraint_row_index``,
+        ``constraint_row_name``, ``constraint_row_type``, COO arrays, and ``rhs_value``.
+        """
+        return self.quadratic_constraints
+
+    @catch_cuopt_exception
+    def clear_quadratic_constraints(self):
+        """
+        Remove all quadratic (QCMATRIX) constraints from the model.
+
+        Quadratic constraints are converted to second-order cone form internally
+        and solved with the barrier method.
+        """
+        super().clear_quadratic_constraints()
+
+    @catch_cuopt_exception
+    def add_quadratic_constraint(
+        self,
+        constraint_row_index,
+        constraint_row_name="",
+        linear_values=None,
+        linear_indices=None,
+        rhs_value=0.0,
+        quadratic_values=None,
+        quadratic_row_indices=None,
+        quadratic_col_indices=None,
+        sense="L",
+    ):
+        """
+        Add one quadratic constraint in MPS QCMATRIX form.
+
+        Each constraint has a linear part (optional) and a quadratic part in COO
+        format. Call multiple times to add several QCMATRIX rows; each call must
+        use a distinct ``constraint_row_index``.
+
+        Parameters
+        ----------
+        constraint_row_index : int
+            ROWS declaration index for this quadratic row (among all rows).
+        constraint_row_name : str, optional
+            Optional row name (for MPS export).
+        linear_values, linear_indices : array-like, optional
+            Sparse linear coefficients on the same variable index space.
+        rhs_value : float, optional
+            Right-hand side of the quadratic row.
+        quadratic_values, quadratic_row_indices, quadratic_col_indices : array-like
+            COO triplets for the quadratic matrix Q in
+            ``linear^T x + x^T Q x {sense} rhs_value``.
+        sense : str, optional
+            MPS row type: ``'L'`` (default, ``<=``) or ``'G'`` (``>=``), same values as
+            :meth:`set_row_types`. Rows are stored with the given sense; ``'G'`` is converted to
+            ``'L'`` when the barrier solver builds second-order cones from QCMATRIX data.
+            Equality (``'E'``) is not supported.
+
+        Notes
+        -----
+        When any quadratic constraint is present, cuOpt selects the barrier
+        solver and converts QCMATRIX rows to second-order cones.
+        """
+        if hasattr(sense, "value"):
+            sense = sense.value
+        if sense == "E":
+            raise ValueError("Equality constraints are not supported.")
+        if sense not in ("L", "G"):
+            raise ValueError(
+                f"Invalid sense {sense!r}; use 'L' or 'G' like set_row_types "
+                "(equality 'E' is not supported)."
+            )
+        super().add_quadratic_constraint(
+            constraint_row_index,
+            constraint_row_name,
+            linear_values,
+            linear_indices,
+            rhs_value,
+            quadratic_values,
+            quadratic_row_indices,
+            quadratic_col_indices,
+            constraint_row_type=sense,
+        )
 
     @catch_cuopt_exception
     def set_variable_lower_bounds(self, variable_lower_bounds):

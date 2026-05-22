@@ -184,6 +184,28 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
     }
   }
 
+  void ensure_positive_skip_range(f_t epsilon_adjust, i_t skip_start, i_t skip_count)
+  {
+    if (skip_count == 0) {
+      ensure_positive(epsilon_adjust);
+      return;
+    }
+    const i_t n        = this->size();
+    const i_t skip_end = skip_start + skip_count;
+    f_t min_val        = std::numeric_limits<f_t>::max();
+    for (i_t i = 0; i < n; i++) {
+      if (i >= skip_start && i < skip_end) continue;
+      min_val = std::min(min_val, (*this)[i]);
+    }
+    if (min_val <= 0.0) {
+      const f_t delta = -min_val + epsilon_adjust;
+      for (i_t i = 0; i < n; i++) {
+        if (i >= skip_start && i < skip_end) continue;
+        (*this)[i] += delta;
+      }
+    }
+  }
+
   void ensure_positive(f_t epsilon_adjust, const std::vector<i_t>& mask)
   {
     f_t min_x   = inf;

@@ -157,7 +157,15 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   std::vector<f_t> constraint_bounds(problem_.get_constraint_bounds().size());
   std::vector<f_t> variable_lower_bounds(problem_.get_variable_lower_bounds().size());
   std::vector<f_t> variable_upper_bounds(problem_.get_variable_upper_bounds().size());
-  std::vector<char> variable_types(problem_.get_variable_types().size());
+  // Default unset variable types to continuous ('C'); API models often omit set_variable_types.
+  std::vector<char> variable_types(static_cast<size_t>(n_variables), 'C');
+  {
+    const auto& src_types = problem_.get_variable_types();
+    const size_t n_copy   = std::min(src_types.size(), variable_types.size());
+    for (size_t j = 0; j < n_copy; ++j) {
+      variable_types[j] = src_types[j];
+    }
+  }
   std::vector<char> row_types(problem_.get_row_types().size());
   std::vector<i_t> constraint_matrix_offsets(problem_.get_constraint_matrix_offsets().size());
   std::vector<i_t> constraint_matrix_indices(problem_.get_constraint_matrix_indices().size());
@@ -178,9 +186,6 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     problem_.get_variable_upper_bounds().data(),
     problem_.get_variable_upper_bounds().data() + problem_.get_variable_upper_bounds().size(),
     variable_upper_bounds.data());
-  std::copy(problem_.get_variable_types().data(),
-            problem_.get_variable_types().data() + problem_.get_variable_types().size(),
-            variable_types.data());
   std::copy(problem_.get_row_types().data(),
             problem_.get_row_types().data() + problem_.get_row_types().size(),
             row_types.data());
@@ -243,8 +248,8 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
     const auto& qc = quadratic_constraints[q];
     std::string row_name =
       qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
-    // Quadratic rows are currently restricted to MPS 'L' (<=).
-    mps_file << " L  " << row_name << "\n";
+    char const type = qc.constraint_row_type;
+    mps_file << " " << type << "  " << row_name << "\n";
   }
 
   // COLUMNS section
@@ -497,20 +502,19 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   if (problem_.has_quadratic_constraints()) {
     for (const auto& qc : problem_.get_quadratic_constraints()) {
       mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
-      const i_t n_quad_rows = static_cast<i_t>(qc.quadratic_offsets.size()) - 1;
-      for (i_t i = 0; i < n_quad_rows; ++i) {
+      const i_t nnz = static_cast<i_t>(qc.quadratic_values.size());
+      for (i_t p = 0; p < nnz; ++p) {
+        const i_t i              = qc.quadratic_row_indices[static_cast<size_t>(p)];
+        const i_t j              = qc.quadratic_col_indices[static_cast<size_t>(p)];
+        f_t v                    = qc.quadratic_values[static_cast<size_t>(p)];
         std::string row_var_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
-                                     ? problem_.get_variable_names()[i]
+                                     ? problem_.get_variable_names()[static_cast<size_t>(i)]
                                      : "C" + std::to_string(i);
-        for (i_t p = qc.quadratic_offsets[i]; p < qc.quadratic_offsets[i + 1]; ++p) {
-          i_t j                    = qc.quadratic_indices[p];
-          f_t v                    = qc.quadratic_values[p];
-          std::string col_var_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
-                                       ? problem_.get_variable_names()[j]
-                                       : "C" + std::to_string(j);
-          if (v != f_t(0)) {
-            mps_file << "    " << row_var_name << " " << col_var_name << " " << v << "\n";
-          }
+        std::string col_var_name = static_cast<size_t>(j) < problem_.get_variable_names().size()
+                                     ? problem_.get_variable_names()[static_cast<size_t>(j)]
+                                     : "C" + std::to_string(j);
+        if (v != f_t(0)) {
+          mps_file << "    " << row_var_name << " " << col_var_name << " " << v << "\n";
         }
       }
     }

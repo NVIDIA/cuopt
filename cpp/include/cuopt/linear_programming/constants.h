@@ -47,6 +47,10 @@
 #define CUOPT_DUALIZE                              "dualize"
 #define CUOPT_ORDERING                             "ordering"
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
+#define CUOPT_BARRIER_RELATIVE_FEASIBILITY_TOLERANCE "barrier_relative_feasibility_tolerance"
+#define CUOPT_BARRIER_RELATIVE_OPTIMALITY_TOLERANCE  "barrier_relative_optimality_tolerance"
+#define CUOPT_BARRIER_RELATIVE_COMPLEMENTARITY_TOLERANCE \
+  "barrier_relative_complementarity_tolerance"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
 #define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"

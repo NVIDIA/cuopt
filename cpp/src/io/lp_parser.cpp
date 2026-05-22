@@ -118,41 +118,42 @@ bool is_free_keyword(std::string_view lower) { return lower == "free"; }
 
 bool is_infinity_text(std::string_view lower) { return lower == "inf" || lower == "infinity"; }
 
-// Builds the symmetric Q in CSR from LP-format raw upper-triangular triples.
+// Builds the symmetric Q in COO from LP-format raw upper-triangular triples.
 // Each input triple (i, j, c) with i <= j represents `c * x_i * x_j` in the
 // LP source. The output Q satisfies x^T Q x = sum of those terms.
 //   Diagonal (i == j): Q[i,i] = c (one entry).
 //   Off-diagonal (i != j): Q[i,j] = Q[j,i] = c/2 (two entries; symmetric split).
 template <typename i_t, typename f_t>
-void build_symmetric_q_csr(const std::vector<std::tuple<i_t, i_t, f_t>>& raw_triples,
+void build_symmetric_q_coo(const std::vector<std::tuple<i_t, i_t, f_t>>& raw_triples,
                            i_t n_vars,
-                           std::vector<f_t>& out_values,
-                           std::vector<i_t>& out_indices,
-                           std::vector<i_t>& out_offsets)
+                           std::vector<i_t>& out_row_indices,
+                           std::vector<i_t>& out_col_indices,
+                           std::vector<f_t>& out_values)
 {
-  std::vector<std::vector<std::pair<i_t, f_t>>> row_data(n_vars);
+  std::vector<std::vector<std::pair<i_t, f_t>>> row_data(static_cast<size_t>(n_vars));
   for (const auto& [i, j, c] : raw_triples) {
     if (i == j) {
-      row_data[i].emplace_back(i, c);
+      row_data[static_cast<size_t>(i)].emplace_back(i, c);
     } else {
-      row_data[i].emplace_back(j, c / f_t(2));
-      row_data[j].emplace_back(i, c / f_t(2));
+      row_data[static_cast<size_t>(i)].emplace_back(j, c / f_t(2));
+      row_data[static_cast<size_t>(j)].emplace_back(i, c / f_t(2));
     }
   }
   for (auto& row : row_data) {
     std::sort(row.begin(), row.end());
   }
-  out_offsets.clear();
-  out_indices.clear();
+  out_row_indices.clear();
+  out_col_indices.clear();
   out_values.clear();
-  out_offsets.reserve(static_cast<size_t>(n_vars) + 1);
-  out_offsets.push_back(0);
+  out_row_indices.reserve(raw_triples.size() * 2);
+  out_col_indices.reserve(raw_triples.size() * 2);
+  out_values.reserve(raw_triples.size() * 2);
   for (i_t r = 0; r < n_vars; ++r) {
-    for (const auto& [col, val] : row_data[r]) {
+    for (const auto& [col, val] : row_data[static_cast<size_t>(r)]) {
+      out_row_indices.push_back(r);
+      out_col_indices.push_back(col);
       out_values.push_back(val);
-      out_indices.push_back(col);
     }
-    out_offsets.push_back(static_cast<i_t>(out_values.size()));
   }
 }
 
@@ -1507,10 +1508,10 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
   const i_t linear_row_count = static_cast<i_t>(parser.row_names.size());
   i_t k                      = 0;
   for (const auto& block : parser.quadratic_constraint_blocks) {
+    std::vector<i_t> q_row_indices;
+    std::vector<i_t> q_col_indices;
     std::vector<f_t> q_values;
-    std::vector<i_t> q_indices;
-    std::vector<i_t> q_offsets;
-    build_symmetric_q_csr(block.quad_triples, n_vars, q_values, q_indices, q_offsets);
+    build_symmetric_q_coo(block.quad_triples, n_vars, q_row_indices, q_col_indices, q_values);
     problem.append_quadratic_constraint(linear_row_count + k,
                                         block.row_name,
                                         static_cast<char>(block.row_type),
@@ -1518,8 +1519,8 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                         block.linear_indices,
                                         block.rhs_value,
                                         q_values,
-                                        q_indices,
-                                        q_offsets);
+                                        q_row_indices,
+                                        q_col_indices);
     ++k;
   }
 }

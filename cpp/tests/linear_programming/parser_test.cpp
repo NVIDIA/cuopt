@@ -2155,8 +2155,9 @@ End
   EXPECT_EQ(qc.constraint_row_type, static_cast<char>(LesserThanOrEqual));
   EXPECT_NEAR(qc.rhs_value, 10.0, tolerance);
   EXPECT_TRUE(qc.linear_indices.empty());
-  // Q = diag(1, 1). CSR: offsets=[0, 1, 2], indices=[0, 1], values=[1, 1].
-  EXPECT_EQ(qc.quadratic_offsets, (std::vector<int>{0, 1, 2}));
+  // Q = diag(1, 1) stored as COO triplets (row, col, value).
+  EXPECT_EQ(qc.quadratic_row_indices, (std::vector<int>{0, 1}));
+  EXPECT_EQ(qc.quadratic_col_indices, (std::vector<int>{0, 1}));
   ASSERT_EQ(qc.quadratic_values.size(), 2u);
   EXPECT_NEAR(qc.quadratic_values[0], 1.0, tolerance);
   EXPECT_NEAR(qc.quadratic_values[1], 1.0, tolerance);
@@ -2165,7 +2166,7 @@ End
 TEST(lp_parser, qc_cross_term_splits_symmetrically)
 {
   // `4 x*y` in the LP source means coefficient on x_i * x_j = 4 in the
-  // symmetric x^T Q x. Split into Q[x,y] = Q[y,x] = 2 in the CSR.
+  // symmetric x^T Q x. Split into Q[x,y] = Q[y,x] = 2 in the COO storage.
   auto m = parse_lp_string(R"LP(
 Minimize
   x + y
@@ -2175,8 +2176,9 @@ End
 )LP");
   ASSERT_EQ(m.get_quadratic_constraints().size(), 1u);
   const auto& qc = nth_qc(m, 0);
-  // Q has 4 entries (all of [[1,2],[2,1]]).
-  EXPECT_EQ(qc.quadratic_offsets, (std::vector<int>{0, 2, 4}));
+  // Q has 4 entries (all of [[1,2],[2,1]]) stored as COO triplets.
+  EXPECT_EQ(qc.quadratic_row_indices, (std::vector<int>{0, 0, 1, 1}));
+  EXPECT_EQ(qc.quadratic_col_indices, (std::vector<int>{0, 1, 0, 1}));
   ASSERT_EQ(qc.quadratic_values.size(), 4u);
   EXPECT_NEAR(qc.quadratic_values[0], 1.0, tolerance);  // (0, 0)
   EXPECT_NEAR(qc.quadratic_values[1], 2.0, tolerance);  // (0, 1)
@@ -2730,16 +2732,16 @@ TEST(qps_parser, qcmatrix_append_api)
   model_t::quadratic_constraint_t default_qcm;
   EXPECT_EQ(0, default_qcm.constraint_row_index);
   EXPECT_TRUE(default_qcm.quadratic_values.empty());
-  EXPECT_TRUE(default_qcm.quadratic_indices.empty());
-  EXPECT_TRUE(default_qcm.quadratic_offsets.empty());
+  EXPECT_TRUE(default_qcm.quadratic_row_indices.empty());
+  EXPECT_TRUE(default_qcm.quadratic_col_indices.empty());
   EXPECT_TRUE(default_qcm.linear_values.empty());
   EXPECT_TRUE(default_qcm.linear_indices.empty());
   EXPECT_EQ(0.0, default_qcm.rhs_value);
 
   // QC0: [[10, 2], [2, 2]]
   const std::vector<double> qc0_values        = {10.0, 2.0, 2.0, 2.0};
-  const std::vector<int> qc0_indices          = {0, 1, 0, 1};
-  const std::vector<int> qc0_offsets          = {0, 2, 4};
+  const std::vector<int> qc0_row_indices      = {0, 0, 1, 1};
+  const std::vector<int> qc0_col_indices      = {0, 1, 0, 1};
   const std::vector<double> qc0_linear_values = {1.0, 1.0};
   const std::vector<int> qc0_linear_indices   = {0, 1};
   model.append_quadratic_constraint(0,
@@ -2749,13 +2751,13 @@ TEST(qps_parser, qcmatrix_append_api)
                                     qc0_linear_indices,
                                     5.0,
                                     qc0_values,
-                                    qc0_indices,
-                                    qc0_offsets);
+                                    qc0_row_indices,
+                                    qc0_col_indices);
 
   // QC1: [[4, 1], [1, 6]]
   const std::vector<double> qc1_values        = {4.0, 1.0, 1.0, 6.0};
-  const std::vector<int> qc1_indices          = {0, 1, 0, 1};
-  const std::vector<int> qc1_offsets          = {0, 2, 4};
+  const std::vector<int> qc1_row_indices      = {0, 0, 1, 1};
+  const std::vector<int> qc1_col_indices      = {0, 1, 0, 1};
   const std::vector<double> qc1_linear_values = {3.0, 1.0};
   const std::vector<int> qc1_linear_indices   = {0, 1};
   model.append_quadratic_constraint(1,
@@ -2765,8 +2767,8 @@ TEST(qps_parser, qcmatrix_append_api)
                                     qc1_linear_indices,
                                     10.0,
                                     qc1_values,
-                                    qc1_indices,
-                                    qc1_offsets);
+                                    qc1_row_indices,
+                                    qc1_col_indices);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qcs = model.get_quadratic_constraints();
@@ -2779,8 +2781,8 @@ TEST(qps_parser, qcmatrix_append_api)
   EXPECT_EQ(qc0_linear_indices, qcs[0].linear_indices);
   EXPECT_EQ(5.0, qcs[0].rhs_value);
   EXPECT_EQ(qc0_values, qcs[0].quadratic_values);
-  EXPECT_EQ(qc0_indices, qcs[0].quadratic_indices);
-  EXPECT_EQ(qc0_offsets, qcs[0].quadratic_offsets);
+  EXPECT_EQ(qc0_row_indices, qcs[0].quadratic_row_indices);
+  EXPECT_EQ(qc0_col_indices, qcs[0].quadratic_col_indices);
 
   EXPECT_EQ(1, qcs[1].constraint_row_index);
   EXPECT_EQ("QC1", qcs[1].constraint_row_name);
@@ -2789,8 +2791,8 @@ TEST(qps_parser, qcmatrix_append_api)
   EXPECT_EQ(qc1_linear_indices, qcs[1].linear_indices);
   EXPECT_EQ(10.0, qcs[1].rhs_value);
   EXPECT_EQ(qc1_values, qcs[1].quadratic_values);
-  EXPECT_EQ(qc1_indices, qcs[1].quadratic_indices);
-  EXPECT_EQ(qc1_offsets, qcs[1].quadratic_offsets);
+  EXPECT_EQ(qc1_row_indices, qcs[1].quadratic_row_indices);
+  EXPECT_EQ(qc1_col_indices, qcs[1].quadratic_col_indices);
 }
 
 // QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.

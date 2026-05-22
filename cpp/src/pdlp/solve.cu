@@ -507,9 +507,14 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.barrier                         = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
-  barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
-  barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
+  barrier_settings.barrier_iterative_refinement = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_step_scale           = settings.barrier_step_scale;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
+  barrier_settings.barrier_relative_feasibility_tol =
+    settings.barrier_relative_feasibility_tolerance;
+  barrier_settings.barrier_relative_optimality_tol = settings.barrier_relative_optimality_tolerance;
+  barrier_settings.barrier_relative_complementarity_tol =
+    settings.barrier_relative_complementarity_tolerance;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
   barrier_settings.barrier_relaxed_complementarity_tol = settings.tolerances.relative_gap_tolerance;
@@ -1749,6 +1754,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     auto qp_timer = cuopt::timer_t(settings.time_limit);
 
     raft::common::nvtx::range fun_scope("Running QP solver");
+    if (op_problem.has_quadratic_constraints()) {
+      CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+                     static_cast<int>(op_problem.get_quadratic_constraints().size()));
+    }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
@@ -1802,6 +1811,24 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     // Init libraries before to not include it in solve time
     // This needs to be called before pdlp is initialized
     init_handler(op_problem.get_handle_ptr());
+
+    if (op_problem.has_quadratic_objective() || op_problem.has_quadratic_constraints()) {
+      if (op_problem.has_quadratic_objective()) {
+        CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
+      }
+      if (op_problem.has_quadratic_constraints()) {
+        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+                       static_cast<int>(op_problem.get_quadratic_constraints().size()));
+      }
+      settings.method    = method_t::Barrier;
+      settings.presolver = presolver_t::None;
+      // Quadratic objective support is minimization-only.
+      if (op_problem.has_quadratic_objective() && op_problem.get_sense()) {
+        CUOPT_LOG_ERROR("Quadratic problems must be minimized");
+        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
+                                                         op_problem.get_handle_ptr()->get_stream());
+      }
+    }
 
     raft::common::nvtx::range fun_scope("Running solver");
 
