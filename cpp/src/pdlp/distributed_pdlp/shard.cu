@@ -195,6 +195,8 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   scaling.set_h_bound_rescaling(h_bound_rescaling);
   scaling.set_h_objective_rescaling(h_objective_rescaling);
 
+  sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+    /* is_reflected */ true);
   // ---- 6. Build per-peer halo-exchange plans (ported from metis_tests). ----
   // For each peer p, we precompute:
   //   send_indices_d[p] : local indices to gather (uploaded from host send plan)

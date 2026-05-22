@@ -223,7 +223,7 @@ struct multi_gpu_engine_t {
   {
     halo_exchange_var();
     for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->pdhg_solver_.compute_A_x();
+      shard.sub_pdlp->pdhg_solver_.spmvop_A_x();
     });
   }
 
@@ -232,7 +232,7 @@ struct multi_gpu_engine_t {
   {
     halo_exchange_cstr();
     for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->pdhg_solver_.compute_At_y();
+      shard.sub_pdlp->pdhg_solver_.spmvop_At_y();
     });
   }
 
