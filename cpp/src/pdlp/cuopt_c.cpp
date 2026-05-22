@@ -21,7 +21,6 @@
 
 #include <cuopt/version_config.hpp>
 
-#include <algorithm>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -85,14 +84,15 @@ solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
 
 namespace {
 
-void coordinate_triplets_to_csr(cuopt_int_t num_entries,
-                                const cuopt_int_t* row_index,
-                                const cuopt_int_t* col_index,
-                                const cuopt_float_t* coeff,
-                                cuopt_int_t num_rows,
-                                std::vector<cuopt_int_t>& offsets,
-                                std::vector<cuopt_int_t>& indices,
-                                std::vector<cuopt_float_t>& values)
+void coo_to_csr(cuopt_int_t num_entries,
+                const cuopt_int_t* row_index,
+                const cuopt_int_t* col_index,
+                const cuopt_float_t* coeff,
+                cuopt_int_t num_rows,
+                cuopt_int_t num_cols,
+                std::vector<cuopt_int_t>& offsets,
+                std::vector<cuopt_int_t>& indices,
+                std::vector<cuopt_float_t>& values)
 {
   offsets.assign(num_rows + 1, 0);
   indices.clear();
@@ -101,11 +101,9 @@ void coordinate_triplets_to_csr(cuopt_int_t num_entries,
 
   for (cuopt_int_t k = 0; k < num_entries; ++k) {
     const cuopt_int_t row = row_index[k];
-    if (row < 0 || row >= num_rows) {
-      throw raft::exception("Quadratic matrix row index out of range");
-    }
-    if (col_index[k] < 0 || col_index[k] >= num_rows) {
-      throw raft::exception("Quadratic matrix column index out of range");
+    if (row < 0 || row >= num_rows) { throw raft::exception("Matrix row index out of range"); }
+    if (col_index[k] < 0 || col_index[k] >= num_cols) {
+      throw raft::exception("Matrix column index out of range");
     }
     ++offsets[row + 1];
   }
@@ -122,37 +120,31 @@ void coordinate_triplets_to_csr(cuopt_int_t num_entries,
     perm[static_cast<size_t>(row_cursor[row]++)] = k;
   }
 
-  // Per row: sort by column, merge duplicates, emit CSR. Row grouping is O(nnz + num_rows);
-  // per-row sort is O(k log k) for k entries in that row (no global O(nnz log nnz) sort).
+  // Per row: merge duplicate columns in one pass. col_mark[col] stores the index into
+  // values for the current row's entry; entries from prior rows have index < row_out_start.
   indices.reserve(static_cast<size_t>(num_entries));
   values.reserve(static_cast<size_t>(num_entries));
-
-  const auto col_less = [col_index](cuopt_int_t a, cuopt_int_t b) {
-    return col_index[a] < col_index[b];
-  };
+  std::vector<cuopt_int_t> col_mark(static_cast<size_t>(num_cols), -1);
 
   cuopt_int_t out_nnz = 0;
   for (cuopt_int_t row = 0; row < num_rows; ++row) {
-    const cuopt_int_t start = offsets[row];
-    const cuopt_int_t end   = offsets[row + 1];
-    offsets[row]            = out_nnz;
+    const cuopt_int_t start         = offsets[row];
+    const cuopt_int_t end           = offsets[row + 1];
+    const cuopt_int_t row_out_start = out_nnz;
+    offsets[row]                    = out_nnz;
     if (start >= end) { continue; }
 
-    auto row_begin = perm.begin() + static_cast<ptrdiff_t>(start);
-    auto row_end   = perm.begin() + static_cast<ptrdiff_t>(end);
-    std::sort(row_begin, row_end, col_less);
-
-    cuopt_int_t last_col = -1;
-    for (auto it = row_begin; it != row_end; ++it) {
-      const cuopt_int_t idx = *it;
-      const cuopt_int_t col = col_index[idx];
-      if (it != row_begin && col == last_col) {
-        values.back() += coeff[idx];
-      } else {
+    for (cuopt_int_t p = start; p < end; ++p) {
+      const cuopt_int_t k   = perm[static_cast<size_t>(p)];
+      const cuopt_int_t col = col_index[k];
+      const size_t col_u    = static_cast<size_t>(col);
+      if (col_mark[col_u] < row_out_start) {
+        col_mark[col_u] = out_nnz;
         indices.push_back(col);
-        values.push_back(coeff[idx]);
+        values.push_back(coeff[k]);
         ++out_nnz;
-        last_col = col;
+      } else {
+        values[static_cast<size_t>(col_mark[col_u])] += coeff[k];
       }
     }
   }
@@ -548,8 +540,15 @@ cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
     std::vector<cuopt_int_t> Q_offsets;
     std::vector<cuopt_int_t> Q_indices;
     std::vector<cuopt_float_t> Q_values;
-    coordinate_triplets_to_csr(
-      num_entries, row_index, col_index, coeff, num_variables, Q_offsets, Q_indices, Q_values);
+    coo_to_csr(num_entries,
+               row_index,
+               col_index,
+               coeff,
+               num_variables,
+               num_variables,
+               Q_offsets,
+               Q_indices,
+               Q_values);
     if (Q_values.empty()) { return CUOPT_INVALID_ARGUMENT; }
 
     op_problem->set_quadratic_objective_matrix(Q_values.data(),
@@ -605,8 +604,15 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
     std::vector<cuopt_int_t> Q_offsets;
     std::vector<cuopt_int_t> Q_indices;
     std::vector<cuopt_float_t> Q_values;
-    coordinate_triplets_to_csr(
-      quad_num_entries, row_index, col_index, coeff, num_variables, Q_offsets, Q_indices, Q_values);
+    coo_to_csr(quad_num_entries,
+               row_index,
+               col_index,
+               coeff,
+               num_variables,
+               num_variables,
+               Q_offsets,
+               Q_indices,
+               Q_values);
     if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
 
     op_problem->add_quadratic_constraint(sense,
