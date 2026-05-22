@@ -213,9 +213,9 @@ TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
   user_problem.cone_var_start         = 1;
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = false;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = false;
 
   std::vector<int> new_slacks;
   dualize_info_t<int, double> dualize_info;
@@ -278,9 +278,9 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = false;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = false;
 
   std::vector<int> new_slacks;
   dualize_info_t<int, double> dualize_info;
@@ -336,7 +336,7 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
 
   user_problem.rhs       = {1.0};
   user_problem.row_sense = {'E'};
-  user_problem.lower = {-inf, -inf, 0.0, 0.0, 0.0};
+  user_problem.lower     = {-inf, -inf, 0.0, 0.0, 0.0};
   user_problem.upper.assign(n, inf);
   user_problem.num_range_rows         = 0;
   user_problem.cone_var_start         = 2;
@@ -344,9 +344,9 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = false;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = false;
 
   std::vector<int> new_slacks;
   dualize_info_t<int, double> dualize_info;
@@ -441,8 +441,8 @@ TEST(barrier, rejects_middle_cone_input_before_barrier)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
+  settings.barrier = true;
+  settings.dualize = 0;
   lp_solution_t<int, double> solution(m, n);
 
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -495,8 +495,8 @@ TEST(barrier, socp_min_x0_subject_to_norm_constraint)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
+  settings.barrier = true;
+  settings.dualize = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -558,8 +558,8 @@ TEST(barrier, mixed_linear_and_soc_block)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
+  settings.barrier = true;
+  settings.dualize = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -623,9 +623,9 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = true;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -689,9 +689,9 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling_with_inequality)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = true;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -766,8 +766,8 @@ TEST(barrier, mixed_linear_and_two_soc_blocks)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
+  settings.barrier = true;
+  settings.dualize = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -846,9 +846,9 @@ TEST(barrier, mixed_linear_and_two_soc_blocks_with_inequality)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier          = true;
-  settings.dualize          = 0;
-  settings.scale_columns    = true;
+  settings.barrier       = true;
+  settings.dualize       = 0;
+  settings.scale_columns = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);

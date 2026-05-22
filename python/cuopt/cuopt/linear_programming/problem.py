@@ -1316,7 +1316,9 @@ class Constraint:
             ) = _quadratic_expression_to_qcmatrix(expr, rhs)
             self.linear_values = np.array(linear_values, dtype=np.float64)
             self.linear_indices = np.array(linear_indices, dtype=np.int32)
-            self.quadratic_values = np.array(quadratic_values, dtype=np.float64)
+            self.quadratic_values = np.array(
+                quadratic_values, dtype=np.float64
+            )
             self.quadratic_row_indices = np.array(
                 quadratic_row_indices, dtype=np.int32
             )
@@ -1379,7 +1381,7 @@ class Constraint:
             index_to_var[v_idx].Value * coeff
             for v_idx, coeff in self.vindex_coeff_dict.items()
         )
-        
+
         return self.RHS - lhs
 
 
@@ -1590,7 +1592,9 @@ class Problem:
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
 
-        linear_constr_count = sum(1 for c in self.constrs if not c.is_quadratic)
+        linear_constr_count = sum(
+            1 for c in self.constrs if not c.is_quadratic
+        )
         quad_index = 0
         for constr in self.constrs:
             if not constr.is_quadratic:

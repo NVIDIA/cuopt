@@ -4,7 +4,6 @@
 import os
 import time
 
-import numpy as np
 
 from . import data_model_wrapper
 from .utilities import catch_cuopt_exception

@@ -944,12 +944,13 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              lp_problem_t<i_t, f_t>& problem,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
-  problem = original;
+  problem               = original;
   const i_t linear_cols = linear_var_count(problem);
   const bool has_cones  = !problem.second_order_cone_dims.empty();
   std::vector<char> row_sense(problem.num_rows, '=');
 
-  // Check for free variables (linear block only; cone columns are handled by the barrier SOC layout)
+  // Check for free variables (linear block only; cone columns are handled by the barrier SOC
+  // layout)
   i_t free_variables = 0;
   for (i_t j = 0; j < linear_cols; j++) {
     if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
@@ -991,12 +992,11 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       problem.A.to_compressed_row(Arow);
 
       // Keep only rows safe for bound inference: no cone columns
-      if (has_cones)
-      {
+      if (has_cones) {
         std::vector<i_t> safe_constraints;
         safe_constraints.reserve(constraints_to_check.size());
         for (i_t i : constraints_to_check) {
-          bool touches_cone        = false;
+          bool touches_cone = false;
           for (i_t p = Arow.row_start[i]; p < Arow.row_start[i + 1]; ++p) {
             const i_t j = Arow.j[p];
             if (j >= linear_cols) {
@@ -1022,7 +1022,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         i_t last_free_i       = -1;
         f_t last_free_coeff_i = 0.0;
         for (i_t p = row_start; p < row_end; p++) {
-          const i_t j       = Arow.j[p];
+          const i_t j = Arow.j[p];
           if (j >= linear_cols) { continue; }
           const f_t aij     = Arow.x[p];
           const f_t lower_j = problem.lower[j];
@@ -1075,8 +1075,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
         // And we can derive two bounds from this:
         // x_j >= 1/a_ij * (rhs - lower_activity_i)
         // x_j <= 1/a_ij * (rhs - upper_activity_i)
-        const i_t j         = last_free_i;
-        const f_t a_ij      = last_free_coeff_i;
+        const i_t j    = last_free_i;
+        const f_t a_ij = last_free_coeff_i;
         if (a_ij == 0) { continue; }
         const f_t max_bound = 1e10;
         bool bounded        = false;
@@ -1326,7 +1326,8 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
   problem.Q.check_matrix("Before free variable expansion");
 
   // Free linear variables. We handle them directly in QP/SOCP or split them in LP.
-  const bool direct_free_linear = settings.barrier_presolve && free_variables > 0 && (problem.Q.n > 0 || has_cones);
+  const bool direct_free_linear =
+    settings.barrier_presolve && free_variables > 0 && (problem.Q.n > 0 || has_cones);
   if (direct_free_linear) {
     presolve_info.free_variable_pairs.clear();
     presolve_info.direct_free_variables.clear();
@@ -1397,8 +1398,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     problem.num_cols = num_cols;
   }
 
-  if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0 &&
-      !has_cones) {
+  if (settings.barrier_presolve && settings.folding != 0 && problem.Q.n == 0 && !has_cones) {
     folding(problem, settings, presolve_info);
   }
 

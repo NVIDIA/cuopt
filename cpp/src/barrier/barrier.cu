@@ -66,8 +66,12 @@ namespace cuopt::linear_programming::dual_simplex {
 }
 
 // out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
-[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
-  float* a, float* b, int* is_direct_free_linear, float* out, int size, rmm::cuda_stream_view stream)
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(float* a,
+                                                                       float* b,
+                                                                       int* is_direct_free_linear,
+                                                                       float* out,
+                                                                       int size,
+                                                                       rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b, is_direct_free_linear),
@@ -77,8 +81,12 @@ namespace cuopt::linear_programming::dual_simplex {
     stream.value());
 }
 
-[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
-  double* a, double* b, int* is_direct_free_linear, double* out, int size, rmm::cuda_stream_view stream)
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(double* a,
+                                                                       double* b,
+                                                                       int* is_direct_free_linear,
+                                                                       double* out,
+                                                                       int size,
+                                                                       rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b, is_direct_free_linear),
@@ -266,8 +274,10 @@ class iteration_data_t {
           is_direct_free_linear_host[j] = 1;
         }
         d_is_direct_free_linear_.resize(lp.num_cols, stream_view_);
-        raft::copy(
-          d_is_direct_free_linear_.data(), is_direct_free_linear_host.data(), lp.num_cols, stream_view_);
+        raft::copy(d_is_direct_free_linear_.data(),
+                   is_direct_free_linear_host.data(),
+                   lp.num_cols,
+                   stream_view_);
         settings.log.printf("Direct free linear (QP): %d\n", n_direct_free_linear);
       }
     }
@@ -316,9 +326,9 @@ class iteration_data_t {
     {
       raft::common::nvtx::range scope("Barrier: LP Data: SOC setup");
       if (!lp.second_order_cone_dims.empty()) {
-        cone_var_start_ = lp.cone_var_start;
-        i_t total_cone_dim =
-          std::accumulate(lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
+        cone_var_start_    = lp.cone_var_start;
+        i_t total_cone_dim = std::accumulate(
+          lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
         cuopt_assert(cone_var_start_ >= 0, "cone_var_start must be nonnegative");
         cuopt_assert(cone_var_start_ + total_cone_dim <= lp.num_cols,
                      "cone variables exceed problem dimension");
@@ -330,7 +340,8 @@ class iteration_data_t {
           raft::device_span<f_t>{},
           stream_view_);
         cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
-        cuopt_assert(cone_entry_count() == total_cone_dim, "second-order cone entry count mismatch");
+        cuopt_assert(cone_entry_count() == total_cone_dim,
+                     "second-order cone entry count mismatch");
       }
     }
 
@@ -505,7 +516,7 @@ class iteration_data_t {
     {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
       i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
-      chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
+      chol                   = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
         handle_ptr, settings, factorization_size);
       chol->set_positive_definite(false);
     }
@@ -624,91 +635,91 @@ class iteration_data_t {
       {
         raft::common::nvtx::range scope("Barrier: augmented: host CSR build");
         for (i_t i = 0; i < n; i++) {
-        augmented_CSR.row_start[i] = q;
+          augmented_CSR.row_start[i] = q;
 
-        const bool is_cone_row = is_cone_variable(i);
+          const bool is_cone_row = is_cone_variable(i);
 
-        if (is_cone_row) {
-          // Determine which cone this variable belongs to and its local row
-          i_t local_idx = i - cone_start();
-          i_t k         = 0;
-          while (k + 1 < cone_count() &&
-                 cone_offsets_host[k + 1] <= static_cast<std::size_t>(local_idx)) {
-            k++;
-          }
-          i_t local_r =
-            static_cast<i_t>(static_cast<std::size_t>(local_idx) - cone_offsets_host[k]);
-          i_t q_k            = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
-          i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
-          i_t block_base     = static_cast<i_t>(cone_block_offsets_host[k]) + local_r * q_k;
+          if (is_cone_row) {
+            // Determine which cone this variable belongs to and its local row
+            i_t local_idx = i - cone_start();
+            i_t k         = 0;
+            while (k + 1 < cone_count() &&
+                   cone_offsets_host[k + 1] <= static_cast<std::size_t>(local_idx)) {
+              k++;
+            }
+            i_t local_r =
+              static_cast<i_t>(static_cast<std::size_t>(local_idx) - cone_offsets_host[k]);
+            i_t q_k            = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
+            i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
+            i_t block_base     = static_cast<i_t>(cone_block_offsets_host[k]) + local_r * q_k;
 
-          // Merge-join: Q entries (sorted) with dense cone block columns (contiguous)
-          i_t qp    = (nnzQ > 0) ? Q.col_start[i] : 0;
-          i_t q_end = (nnzQ > 0) ? Q.col_start[i + 1] : 0;
+            // Merge-join: Q entries (sorted) with dense cone block columns (contiguous)
+            i_t qp    = (nnzQ > 0) ? Q.col_start[i] : 0;
+            i_t q_end = (nnzQ > 0) ? Q.col_start[i + 1] : 0;
 
-          // Q entries before cone block
-          while (qp < q_end && Q.i[qp] < cone_col_start) {
-            augmented_CSR.j[q]   = Q.i[qp];
-            augmented_CSR.x[q++] = -Q.x[qp];
-            off_diag_Qnz++;
-            qp++;
-          }
-
-          // Dense cone block, absorbing any Q entries that fall inside
-          for (i_t c = 0; c < q_k; c++) {
-            i_t col         = cone_col_start + c;
-            f_t q_contrib   = f_t(0);
-            f_t initial_val = (c == local_r) ? f_t(-dual_perturb)
-                                             : f_t(0);  // diagonal entry of the cone block column
-
-            if (qp < q_end && Q.i[qp] == col) {
-              q_contrib = Q.x[qp];
+            // Q entries before cone block
+            while (qp < q_end && Q.i[qp] < cone_col_start) {
+              augmented_CSR.j[q]   = Q.i[qp];
+              augmented_CSR.x[q++] = -Q.x[qp];
+              off_diag_Qnz++;
               qp++;
             }
 
-            cone_csr_indices_host[block_base + c] = q;
-            cone_Q_values_host[block_base + c]    = q_contrib;
-            if (col == i) { augmented_diagonal_indices[i] = q; }
-            augmented_CSR.j[q]   = col;
-            augmented_CSR.x[q++] = initial_val - q_contrib;
-          }
+            // Dense cone block, absorbing any Q entries that fall inside
+            for (i_t c = 0; c < q_k; c++) {
+              i_t col         = cone_col_start + c;
+              f_t q_contrib   = f_t(0);
+              f_t initial_val = (c == local_r) ? f_t(-dual_perturb)
+                                               : f_t(0);  // diagonal entry of the cone block column
 
-          // Q entries after cone block
-          while (qp < q_end) {
-            augmented_CSR.j[q]   = Q.i[qp];
-            augmented_CSR.x[q++] = -Q.x[qp];
-            off_diag_Qnz++;
-            qp++;
-          }
-        } else if (nnzQ == 0) {
-          augmented_diagonal_indices[i] = q;
-          augmented_CSR.j[q]            = i;
-          augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
-        } else {
-          // Q is symmetric
-          const i_t q_col_beg = Q.col_start[i];
-          const i_t q_col_end = Q.col_start[i + 1];
-          bool has_diagonal   = false;
-          for (i_t p = q_col_beg; p < q_col_end; ++p) {
-            augmented_CSR.j[q] = Q.i[p];
-            if (Q.i[p] == i) {
-              has_diagonal                  = true;
-              augmented_diagonal_indices[i] = q;
-              augmented_CSR.x[q++]          = -Q.x[p] - diag[i] - dual_perturb;
-            } else {
-              off_diag_Qnz++;
-              augmented_CSR.x[q++] = -Q.x[p];
+              if (qp < q_end && Q.i[qp] == col) {
+                q_contrib = Q.x[qp];
+                qp++;
+              }
+
+              cone_csr_indices_host[block_base + c] = q;
+              cone_Q_values_host[block_base + c]    = q_contrib;
+              if (col == i) { augmented_diagonal_indices[i] = q; }
+              augmented_CSR.j[q]   = col;
+              augmented_CSR.x[q++] = initial_val - q_contrib;
             }
-          }
-          if (!has_diagonal) {
+
+            // Q entries after cone block
+            while (qp < q_end) {
+              augmented_CSR.j[q]   = Q.i[qp];
+              augmented_CSR.x[q++] = -Q.x[qp];
+              off_diag_Qnz++;
+              qp++;
+            }
+          } else if (nnzQ == 0) {
             augmented_diagonal_indices[i] = q;
             augmented_CSR.j[q]            = i;
             augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
+          } else {
+            // Q is symmetric
+            const i_t q_col_beg = Q.col_start[i];
+            const i_t q_col_end = Q.col_start[i + 1];
+            bool has_diagonal   = false;
+            for (i_t p = q_col_beg; p < q_col_end; ++p) {
+              augmented_CSR.j[q] = Q.i[p];
+              if (Q.i[p] == i) {
+                has_diagonal                  = true;
+                augmented_diagonal_indices[i] = q;
+                augmented_CSR.x[q++]          = -Q.x[p] - diag[i] - dual_perturb;
+              } else {
+                off_diag_Qnz++;
+                augmented_CSR.x[q++] = -Q.x[p];
+              }
+            }
+            if (!has_diagonal) {
+              augmented_diagonal_indices[i] = q;
+              augmented_CSR.j[q]            = i;
+              augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
+            }
           }
-        }
-        // AT block, we can use A in csc directly
-        const i_t col_beg = A.col_start[i];
-        const i_t col_end = A.col_start[i + 1];
+          // AT block, we can use A in csc directly
+          const i_t col_beg = A.col_start[i];
+          const i_t col_end = A.col_start[i + 1];
           for (i_t p = col_beg; p < col_end; ++p) {
             augmented_CSR.j[q]   = A.i[p] + n;
             augmented_CSR.x[q++] = A.x[p];
@@ -783,19 +794,22 @@ class iteration_data_t {
       // Primal diagonal: linear block includes dual_perturb; SOC block is filled by scatter below.
       // Direct free variables use barrier D = 0 in augmented_multiply; omit span_diag[j] here so
       // the factorized matrix matches the matvec (only -q_diag - dual_perturb on the diagonal).
-      thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
-                         thrust::make_counting_iterator<i_t>(0),
-                         linear_n,
-                         [span_x             = cuopt::make_span(device_augmented.x),
-                          span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
-                          span_q_diag        = cuopt::make_span(d_Q_diag_),
-                          span_diag          = cuopt::make_span(d_diag_),
-                          span_is_direct_free_linear       = cuopt::make_span(d_is_direct_free_linear_),
-                          dual_perturb_value = dual_perturb] __device__(i_t j) {
-                           f_t q_diag     = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
-                           const f_t d_j  = (span_is_direct_free_linear.size() > 0 && span_is_direct_free_linear[j]) ? f_t(0) : span_diag[j];
-                           span_x[span_diag_indices[j]] = -q_diag - d_j - dual_perturb_value;
-                         });
+      thrust::for_each_n(
+        rmm::exec_policy(handle_ptr->get_stream()),
+        thrust::make_counting_iterator<i_t>(0),
+        linear_n,
+        [span_x                     = cuopt::make_span(device_augmented.x),
+         span_diag_indices          = cuopt::make_span(d_augmented_diagonal_indices_),
+         span_q_diag                = cuopt::make_span(d_Q_diag_),
+         span_diag                  = cuopt::make_span(d_diag_),
+         span_is_direct_free_linear = cuopt::make_span(d_is_direct_free_linear_),
+         dual_perturb_value         = dual_perturb] __device__(i_t j) {
+          f_t q_diag    = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
+          const f_t d_j = (span_is_direct_free_linear.size() > 0 && span_is_direct_free_linear[j])
+                            ? f_t(0)
+                            : span_diag[j];
+          span_x[span_diag_indices[j]] = -q_diag - d_j - dual_perturb_value;
+        });
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
@@ -1728,8 +1742,12 @@ class iteration_data_t {
     // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
     const i_t linear_n = has_soc ? cone_start() : n;
     if (n_direct_free_linear > 0) {
-      pairwise_multiply_skip_direct_free_linear(
-        d_x1.data(), d_diag_.data(), d_is_direct_free_linear_.data(), d_r1.data(), linear_n, stream_view_);
+      pairwise_multiply_skip_direct_free_linear(d_x1.data(),
+                                                d_diag_.data(),
+                                                d_is_direct_free_linear_.data(),
+                                                d_r1.data(),
+                                                linear_n,
+                                                stream_view_);
     } else {
       pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), linear_n, stream_view_);
     }
@@ -1853,7 +1871,8 @@ class iteration_data_t {
   bool use_augmented;
   i_t symbolic_status;
   i_t n_direct_free_linear{0};
-  rmm::device_uvector<i_t> d_is_direct_free_linear_;  // 1 if direct free linear (j < cone_start), else 0
+  rmm::device_uvector<i_t>
+    d_is_direct_free_linear_;  // 1 if direct free linear (j < cone_start), else 0
 
   // Adaptive regularization for the augmented system
   f_t dual_perturb{1e-8};
@@ -2064,9 +2083,9 @@ template <typename i_t, typename f_t>
 int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
-  const bool use_augmented = data.use_augmented;
-  const bool has_soc       = data.has_cones();
-  const bool has_direct_free_linear      = data.n_direct_free_linear > 0;
+  const bool use_augmented          = data.use_augmented;
+  const bool has_soc                = data.has_cones();
+  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
   // Mask used by the two ADAT/augmented branches below to enforce z > 0 on the linear block
   // while leaving the SOC cone block (kept feasible by NT scaling) alone.
@@ -2595,8 +2614,9 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
                                                          const rmm::device_uvector<f_t>& x,
                                                          const rmm::device_uvector<f_t>& dx)
 {
-  const bool has_soc  = data.has_cones() && static_cast<i_t>(x.size()) >= data.cone_end();
-  const bool has_direct_free_linear = data.n_direct_free_linear > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
+  const bool has_soc = data.has_cones() && static_cast<i_t>(x.size()) >= data.cone_end();
+  const bool has_direct_free_linear =
+    data.n_direct_free_linear > 0 && static_cast<i_t>(x.size()) == lp.num_cols;
 
   auto reduce_segment = [&](i_t start, i_t len) -> f_t {
     if (len <= 0) { return f_t(1); }
@@ -2604,8 +2624,8 @@ f_t barrier_solver_t<i_t, f_t>::gpu_max_step_to_boundary(iteration_data_t<i_t, f
       auto direct_free_linear_ptr = data.d_is_direct_free_linear_.data() + start;
       // step size computation for nonnegative variables with free variables
       auto ratio_test_free = [direct_free_linear_ptr] HD(const thrust::tuple<f_t, f_t, i_t> t) {
-        const f_t dx_val  = thrust::get<0>(t);
-        const f_t x_val   = thrust::get<1>(t);
+        const f_t dx_val                = thrust::get<0>(t);
+        const f_t x_val                 = thrust::get<1>(t);
         const i_t is_direct_free_linear = thrust::get<2>(t);
         if (is_direct_free_linear) return f_t(1.0);
         if (dx_val < f_t(0.0)) return -x_val / dx_val;
@@ -2662,13 +2682,13 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_search_direction");
 
-  const bool debug         = false;
-  const bool use_augmented = data.use_augmented;
-  const bool has_soc       = data.has_cones();
-  const bool has_direct_free_linear      = data.n_direct_free_linear > 0;
-  const i_t m_c            = data.cone_entry_count();
-  const i_t cone_var_start = data.cone_start();
-  const i_t linear_size    = data.linear_xz_size(lp.num_cols);
+  const bool debug                  = false;
+  const bool use_augmented          = data.use_augmented;
+  const bool has_soc                = data.has_cones();
+  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
+  const i_t m_c                     = data.cone_entry_count();
+  const i_t cone_var_start          = data.cone_start();
+  const i_t linear_size             = data.linear_xz_size(lp.num_cols);
 
   // Linear (orthant) block only; SOC uses recover_cone_dz_from_target.
   auto recover_linear_orthant_dz = [&](raft::device_span<const f_t> target,
@@ -2750,8 +2770,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         constexpr f_t free_var_reg = 1e-7;
         if (data.Q.n > 0 && data.Q_diagonal) {
           cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(
-              data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data(), data.d_Q_diag_.data()),
+            cuda::std::make_tuple(data.d_z_.data(),
+                                  data.d_x_.data(),
+                                  data.d_is_direct_free_linear_.data(),
+                                  data.d_Q_diag_.data()),
             data.d_diag_.data(),
             linear_size,
             [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear, f_t q_jj) {
@@ -2761,7 +2783,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
             stream_view_.value());
         } else {
           cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data()),
+            cuda::std::make_tuple(
+              data.d_z_.data(), data.d_x_.data(), data.d_is_direct_free_linear_.data()),
             data.d_diag_.data(),
             linear_size,
             [free_var_reg] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear) {
@@ -2942,7 +2965,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // Augmented RHS [dx; dy]: primal block is d_r1_ (assembled above).
     //   linear j: dual_rhs[j] - complementarity_target[j]
     //             + E_j*((complementarity_wv_rhs - v.*bound_rhs)./w)  (target = xz_rhs/x; free: 0)
-    //   cone j:   dual_rhs[j] - complementarity_target[j]  (NT target: -z or combined centering term)
+    //   cone j:   dual_rhs[j] - complementarity_target[j]  (NT target: -z or combined centering
+    //   term)
     // Constraint block: primal_rhs.
 
     // TODO: d_augmented_rhs can be preallocated
@@ -3469,10 +3493,8 @@ void copy_host_iterate_to_device(iteration_data_t<i_t, f_t>& data, rmm::cuda_str
   raft::copy(data.d_y_.data(), data.y.data(), data.y.size(), stream);
 
   data.d_upper_bounds_.resize(data.upper_bounds.size(), stream);
-  raft::copy(data.d_upper_bounds_.data(),
-             data.upper_bounds.data(),
-             data.upper_bounds.size(),
-             stream);
+  raft::copy(
+    data.d_upper_bounds_.data(), data.upper_bounds.data(), data.upper_bounds.size(), stream);
 }
 
 // One-time static problem data (constant across barrier iterations).
@@ -3493,15 +3515,15 @@ void copy_static_problem_data_to_device(const lp_problem_t<i_t, f_t>& lp,
   data.d_dw_residual_.resize(data.n_upper_bounds, stream);
 }
 
-// Per Mehrotra step: affine/corrector RHS only (iterate stays on device from initial sync / next_iterate).
+// Per Mehrotra step: affine/corrector RHS only (iterate stays on device from initial sync /
+// next_iterate).
 template <typename i_t, typename f_t>
 void copy_step_rhs_to_device(iteration_data_t<i_t, f_t>& data, rmm::cuda_stream_view stream)
 {
   raft::common::nvtx::range fun_scope("Barrier: copy_step_rhs_to_device");
 
   data.d_bound_rhs_.resize(data.bound_rhs.size(), stream);
-  raft::copy(
-    data.d_bound_rhs_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream);
+  raft::copy(data.d_bound_rhs_.data(), data.bound_rhs.data(), data.bound_rhs.size(), stream);
 
   raft::copy(data.d_h_.data(), data.primal_rhs.data(), data.primal_rhs.size(), stream);
   raft::copy(data.d_dual_rhs_.data(), data.dual_rhs.data(), data.dual_rhs.size(), stream);
@@ -3556,11 +3578,7 @@ void fill_affine_cone_complementarity_target(iteration_data_t<i_t, f_t>& data,
   auto cone_target =
     raft::device_span<f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c);
   cub::DeviceTransform::Transform(
-    cones.z.data(),
-    cone_target.data(),
-    m_c,
-    [] HD(f_t z_val) { return -z_val; },
-    stream.value());
+    cones.z.data(), cone_target.data(), m_c, [] HD(f_t z_val) { return -z_val; }, stream.value());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
   RAFT_CHECK_CUDA(stream);
 }
@@ -3578,20 +3596,21 @@ void fill_corrector_cone_complementarity_target(iteration_data_t<i_t, f_t>& data
   cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
   auto cone_target =
     raft::device_span<f_t>(data.d_complementarity_target_.data() + cone_var_start, m_c);
-  compute_combined_cone_rhs_term(raft::device_span<const f_t>(data.d_dx_aff_.data() + cone_var_start, m_c),
-                                 raft::device_span<const f_t>(data.d_dz_aff_.data() + cone_var_start, m_c),
-                                 cones,
-                                 sigma_mu,
-                                 cone_target,
-                                 stream);
+  compute_combined_cone_rhs_term(
+    raft::device_span<const f_t>(data.d_dx_aff_.data() + cone_var_start, m_c),
+    raft::device_span<const f_t>(data.d_dz_aff_.data() + cone_var_start, m_c),
+    cones,
+    sigma_mu,
+    cone_target,
+    stream);
 }
 
 template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_affine_rhs(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_affine_rhs");
-  const bool has_soc    = data.has_cones();
-  const i_t linear_size = data.linear_xz_size(lp.num_cols);
+  const bool has_soc       = data.has_cones();
+  const i_t linear_size    = data.linear_xz_size(lp.num_cols);
   const i_t cone_var_start = data.cone_start();
   const i_t m_c            = data.cone_entry_count();
 
@@ -3723,19 +3742,19 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
     stream_view_);
 
   complementarity_aff_sum = complementarity_xz_aff_sum + complementarity_wv_aff_sum;
-  const f_t mu_denom = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
-  mu_aff             = complementarity_aff_sum / mu_denom;
-  sigma              = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
-  new_mu             = sigma * mu;
+  const f_t mu_denom      = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
+  mu_aff                  = complementarity_aff_sum / mu_denom;
+  sigma                   = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
+  new_mu                  = sigma * mu;
 }
 
 template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data, f_t& new_mu)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
-  const bool has_soc    = data.has_cones();
-  const bool has_direct_free_linear   = data.n_direct_free_linear > 0;
-  const i_t linear_size = data.linear_xz_size(lp.num_cols);
+  const bool has_soc                = data.has_cones();
+  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
+  const i_t linear_size             = data.linear_xz_size(lp.num_cols);
 
   auto fill_linear_cc_rhs = [&](raft::device_span<f_t> out,
                                 raft::device_span<const f_t> dx_aff,

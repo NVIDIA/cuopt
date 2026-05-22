@@ -197,9 +197,8 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     max_col_norm       = std::max(col_norm, max_col_norm);
     min_col_norm       = std::min(col_norm, min_col_norm);
   }
-  settings.log.printf("Scaling matrix. Maximum column norm %e, minimum column norm %e\n",
-                      max_col_norm,
-                      min_col_norm);
+  settings.log.printf(
+    "Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max_col_norm, min_col_norm);
 
   // scaled_A = unscaled_A * C
   for (i_t j = 0; j < n; ++j) {
