@@ -356,12 +356,12 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
     std::vector<var_t> variable_types_host(num_variables);
     if (variable_types != nullptr) {
-      for (int j = 0; j < num_variables; j++) {
+      for (cuopt_int_t j = 0; j < num_variables; ++j) {
         variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
       }
     } else {
       // Default to all continuous
-      for (int j = 0; j < num_variables; j++) {
+      for (cuopt_int_t j = 0; j < num_variables; ++j) {
         variable_types_host[j] = var_t::CONTINUOUS;
       }
     }
@@ -559,6 +559,8 @@ cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
                                                static_cast<cuopt_int_t>(Q_offsets.size()));
   } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
+  } catch (const std::exception&) {
+    return CUOPT_RUNTIME_ERROR;
   }
   return CUOPT_SUCCESS;
 }
@@ -629,6 +631,8 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
                                          num_lin_entries);
   } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
+  } catch (const std::exception&) {
+    return CUOPT_RUNTIME_ERROR;
   }
   return CUOPT_SUCCESS;
 }
