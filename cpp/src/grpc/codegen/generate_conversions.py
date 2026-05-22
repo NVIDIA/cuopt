@@ -300,6 +300,35 @@ def _find_problem_field(obj, name):
     return None
 
 
+def _group_presence_field(fields):
+    """Pick the structural sentinel for a setter group. For CSR-style groups
+    (values/indices/offsets), offsets is always non-empty even when nnz=0, so
+    it's the correct presence sentinel. Falls back to the first field."""
+    for f in fields:
+        if f is not None and f["name"].endswith("_offsets"):
+            return f
+    return next((f for f in fields if f is not None), None)
+
+
+def _group_companion_pair(fields):
+    """Identify the (values, indices) pair within a CSR-style setter group,
+    used to validate that companion arrays have matching lengths. Returns
+    (values_field, indices_field) or (None, None) if not applicable."""
+    values = next(
+        (f for f in fields if f is not None and f["name"].endswith("_values")),
+        None,
+    )
+    indices = next(
+        (
+            f
+            for f in fields
+            if f is not None and f["name"].endswith("_indices")
+        ),
+        None,
+    )
+    return values, indices
+
+
 def _field_array_id_name(f):
     """Derive ArrayFieldId enum name from field name: FIELD_{UPPER_SNAKE(name)}."""
     return f"FIELD_{f['name'].upper()}"
@@ -1184,34 +1213,33 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
     args = [f"std::move({n})" for n in array_names]
     args += [scalar_vars.get(s, f"_{s}") for s in arg_scalars]
 
-    # Warm start — emitted only when the section actually declares arrays.
-    # Presence is detected by probing the first array's ResultFieldId, so an
-    # empty arrays list has no sentinel and cannot be decoded here.
+    # Warm start — fire reconstruction if any warm-start array is present in
+    # the chunked payload. Using arrays.count() (rather than the first array's
+    # contents) avoids dropping a payload whose first warm-start array happens
+    # to be empty while others carry data.
     if ws and ws.get("arrays"):
         ws_arrays = ws["arrays"]
         ws_rid_prefix = ws.get("result_id_prefix", "")
         ws_ch_prefix = ws.get("chunked_header_prefix", "")
-        first_array = parse_field(ws_arrays[0])
-        detect_eid = _field_result_id_name(first_array, prefix=ws_rid_prefix)
+        detect_eids = [
+            _field_result_id_name(parse_field(e), prefix=ws_rid_prefix)
+            for e in ws_arrays
+        ]
         lines.append("")
-        lines.append(
-            f"{ind}auto _ws_detect = bytes_to_typed<f_t>(arrays, cuopt::remote::{detect_eid});"
+        detect_expr = " || ".join(
+            f"arrays.count(cuopt::remote::{eid}) != 0" for eid in detect_eids
         )
-        lines.append(f"{ind}if (!_ws_detect.empty()) {{")
+        lines.append(f"{ind}bool _ws_present = {detect_expr};")
+        lines.append(f"{ind}if (_ws_present) {{")
         lines.append(f"{ind}  cpu_pdlp_warm_start_data_t<i_t, f_t> ws;")
 
-        first = True
         for entry in ws_arrays:
             f = parse_field(entry)
             member = f.get("member", f["name"])
             eid = _field_result_id_name(f, prefix=ws_rid_prefix)
-            if first:
-                lines.append(f"{ind}  ws.{member} = std::move(_ws_detect);")
-                first = False
-            else:
-                lines.append(
-                    f"{ind}  ws.{member} = bytes_to_typed<f_t>(arrays, cuopt::remote::{eid});"
-                )
+            lines.append(
+                f"{ind}  ws.{member} = bytes_to_typed<f_t>(arrays, cuopt::remote::{eid});"
+            )
 
         for entry in ws.get("scalars", []):
             f = parse_field(entry)
@@ -1397,17 +1425,19 @@ def _gen_proto_to_problem(registry, indent="  "):
 
     lines.append("")
 
-    # Setter groups — guard on first field having data
-    for gname, gdef in setter_groups.items():
+    # Setter groups — guard on the structural sentinel (offsets). For CSR-style
+    # groups, offsets is non-empty even when nnz=0; using values/indices as the
+    # sentinel would silently drop zero-nnz matrices.
+    for _gname, gdef in setter_groups.items():
         setter_name = gdef["setter"]
         fields = [
             _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
         ]
-        first = next((f for f in fields if f is not None), None)
-        if first is None:
+        sentinel = _group_presence_field(fields)
+        if sentinel is None:
             continue
-        first_pname = _proto_cpp_name(first["name"])
-        lines.append(f"{ind}if (pb_problem.{first_pname}_size() > 0) {{")
+        sentinel_pname = _proto_cpp_name(sentinel["name"])
+        lines.append(f"{ind}if (pb_problem.{sentinel_pname}_size() > 0) {{")
         ii = ind + "  "
 
         for f in fields:
@@ -1419,6 +1449,16 @@ def _gen_proto_to_problem(registry, indent="  "):
             lines.append(
                 f"{ii}std::vector<{cpp_t}> {f['name']}(pb_problem.{pname}().begin(), pb_problem.{pname}().end());"
             )
+
+        values_f, indices_f = _group_companion_pair(fields)
+        if values_f is not None and indices_f is not None:
+            lines.append(
+                f"{ii}if ({values_f['name']}.size() != {indices_f['name']}.size()) {{"
+            )
+            lines.append(
+                f'{ii}  throw std::invalid_argument("{setter_name}: values/indices size mismatch");'
+            )
+            lines.append(f"{ii}}}")
 
         args = []
         for f in fields:
@@ -1633,9 +1673,13 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
     lines.append(
         f"{ind}  if (it == arrays.end() || it->second.empty()) return {{}};"
     )
+    lines.append(f"{ind}  if (it->second.size() % sizeof(double) != 0) {{")
     lines.append(
-        f"{ind}  if (it->second.size() % sizeof(double) != 0) return {{}};"
+        f'{ind}    throw std::invalid_argument("get_doubles: payload size " + '
+        f'std::to_string(it->second.size()) + " for field_id " + '
+        f'std::to_string(field_id) + " is not a multiple of sizeof(double)");'
     )
+    lines.append(f"{ind}  }}")
     lines.append(f"{ind}  size_t n = it->second.size() / sizeof(double);")
     lines.append(f"{ind}  if constexpr (std::is_same_v<f_t, double>) {{")
     lines.append(f"{ind}    std::vector<double> v(n);")
@@ -1660,9 +1704,13 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
     lines.append(
         f"{ind}  if (it == arrays.end() || it->second.empty()) return {{}};"
     )
+    lines.append(f"{ind}  if (it->second.size() % sizeof(int32_t) != 0) {{")
     lines.append(
-        f"{ind}  if (it->second.size() % sizeof(int32_t) != 0) return {{}};"
+        f'{ind}    throw std::invalid_argument("get_ints: payload size " + '
+        f'std::to_string(it->second.size()) + " for field_id " + '
+        f'std::to_string(field_id) + " is not a multiple of sizeof(int32_t)");'
     )
+    lines.append(f"{ind}  }}")
     lines.append(f"{ind}  size_t n = it->second.size() / sizeof(int32_t);")
     lines.append(f"{ind}  if constexpr (std::is_same_v<i_t, int32_t>) {{")
     lines.append(f"{ind}    std::vector<int32_t> v(n);")
@@ -1718,12 +1766,17 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
     lines.append(f"{ind}}};")
     lines.append("")
 
-    # Setter groups
-    for gname, gdef in setter_groups.items():
+    # Setter groups — guard on the structural sentinel (offsets). For CSR-style
+    # groups, offsets is non-empty even when nnz=0; requiring all companion
+    # arrays to be non-empty would silently drop zero-nnz matrices.
+    for _gname, gdef in setter_groups.items():
         setter_name = gdef["setter"]
         fields = [
             _find_problem_field(obj, fn) for fn in gdef.get("fields", [])
         ]
+        sentinel = _group_presence_field(fields)
+        if sentinel is None:
+            continue
 
         for f in fields:
             if f is None:
@@ -1735,8 +1788,17 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 f"{ind}auto {f['name']} = {extract_fn}(cuopt::remote::{afid});"
             )
 
-        guard_parts = [f"!{f['name']}.empty()" for f in fields if f]
-        lines.append(f"{ind}if ({' && '.join(guard_parts)}) {{")
+        lines.append(f"{ind}if (!{sentinel['name']}.empty()) {{")
+
+        values_f, indices_f = _group_companion_pair(fields)
+        if values_f is not None and indices_f is not None:
+            lines.append(
+                f"{ind}  if ({values_f['name']}.size() != {indices_f['name']}.size()) {{"
+            )
+            lines.append(
+                f'{ind}    throw std::invalid_argument("{setter_name}: values/indices size mismatch");'
+            )
+            lines.append(f"{ind}  }}")
 
         args = []
         for f in fields:
@@ -2082,6 +2144,17 @@ def _validate_registry_uniqueness(registry):
         ):
             rid_pairs.append((num, f"{key}.warm_start.arrays.{name}"))
     _check_unique("ResultFieldId", rid_pairs, errors)
+
+    # ArrayFieldId pool — keys problem-side chunked array payloads. Duplicates
+    # would make chunked uploads ambiguous (two fields share a payload slot).
+    problem = registry.get("optimization_problem") or {}
+    afid_pairs = [
+        (num, f"optimization_problem.arrays.{name}")
+        for num, name in _iter_named_field_nums(
+            problem.get("arrays", []), "array_id"
+        )
+    ]
+    _check_unique("ArrayFieldId", afid_pairs, errors)
 
     if errors:
         raise ValueError(

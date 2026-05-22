@@ -7,7 +7,9 @@
   auto get_doubles = [&](int32_t field_id) -> std::vector<f_t> {
     auto it = arrays.find(field_id);
     if (it == arrays.end() || it->second.empty()) return {};
-    if (it->second.size() % sizeof(double) != 0) return {};
+    if (it->second.size() % sizeof(double) != 0) {
+      throw std::invalid_argument("get_doubles: payload size " + std::to_string(it->second.size()) + " for field_id " + std::to_string(field_id) + " is not a multiple of sizeof(double)");
+    }
     size_t n = it->second.size() / sizeof(double);
     if constexpr (std::is_same_v<f_t, double>) {
       std::vector<double> v(n);
@@ -23,7 +25,9 @@
   auto get_ints = [&](int32_t field_id) -> std::vector<i_t> {
     auto it = arrays.find(field_id);
     if (it == arrays.end() || it->second.empty()) return {};
-    if (it->second.size() % sizeof(int32_t) != 0) return {};
+    if (it->second.size() % sizeof(int32_t) != 0) {
+      throw std::invalid_argument("get_ints: payload size " + std::to_string(it->second.size()) + " for field_id " + std::to_string(field_id) + " is not a multiple of sizeof(int32_t)");
+    }
     size_t n = it->second.size() / sizeof(int32_t);
     if constexpr (std::is_same_v<i_t, int32_t>) {
       std::vector<int32_t> v(n);
@@ -61,14 +65,20 @@
   auto A_values = get_doubles(cuopt::remote::FIELD_A_VALUES);
   auto A_indices = get_ints(cuopt::remote::FIELD_A_INDICES);
   auto A_offsets = get_ints(cuopt::remote::FIELD_A_OFFSETS);
-  if (!A_values.empty() && !A_indices.empty() && !A_offsets.empty()) {
+  if (!A_offsets.empty()) {
+    if (A_values.size() != A_indices.size()) {
+      throw std::invalid_argument("set_csr_constraint_matrix: values/indices size mismatch");
+    }
     cpu_problem.set_csr_constraint_matrix(A_values.data(), static_cast<i_t>(A_values.size()), A_indices.data(), static_cast<i_t>(A_indices.size()), A_offsets.data(), static_cast<i_t>(A_offsets.size()));
   }
 
   auto Q_values = get_doubles(cuopt::remote::FIELD_Q_VALUES);
   auto Q_indices = get_ints(cuopt::remote::FIELD_Q_INDICES);
   auto Q_offsets = get_ints(cuopt::remote::FIELD_Q_OFFSETS);
-  if (!Q_values.empty() && !Q_indices.empty() && !Q_offsets.empty()) {
+  if (!Q_offsets.empty()) {
+    if (Q_values.size() != Q_indices.size()) {
+      throw std::invalid_argument("set_quadratic_objective_matrix: values/indices size mismatch");
+    }
     cpu_problem.set_quadratic_objective_matrix(Q_values.data(), static_cast<i_t>(Q_values.size()), Q_indices.data(), static_cast<i_t>(Q_indices.size()), Q_offsets.data(), static_cast<i_t>(Q_offsets.size()));
   }
 
