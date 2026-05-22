@@ -277,7 +277,7 @@
     "question": "Walk me through pushing a feature branch and opening a PR for cuOpt.",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "cuOpt uses a fork workflow \u2014 branches are never pushed directly to NVIDIA/cuopt. The user clones the upstream repo, adds their fork as a remote (e.g., 'git remote add fork git@github.com:<username>/cuopt.git'), creates a feature branch from the appropriate base, commits work with 'git commit -s' for DCO sign-off, pushes to the fork ('git push fork <branch>'), and opens the PR from the fork to the upstream base branch. If the agent itself opens the PR (gh pr create), it must be a draft (--draft) so the developer can review before reviewers are pinged. The agent asks before running write operations like git push.",
+    "ground_truth": "cuOpt uses a fork workflow \u2014 branches are never pushed directly to NVIDIA/cuopt. The user clones the upstream repo, adds their fork as a remote (e.g., 'git remote add fork https://github.com/<username>/cuopt.git'), creates a feature branch from the appropriate base, commits work with 'git commit -s' for DCO sign-off, pushes to the fork ('git push fork <branch>'), and opens the PR from the fork to the upstream base branch. If the agent itself opens the PR (gh pr create), it must be a draft (--draft) so the developer can review before reviewers are pinged. The agent asks before running write operations like git push.",
     "expected_behavior": [
       "Names the fork workflow and that branches must not be pushed to upstream directly",
       "Mentions adding the fork remote (e.g., 'git remote add fork ...')",
