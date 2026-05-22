@@ -88,38 +88,108 @@ class omp_atomic_t {
   T operator--() { return fetch_sub(T(1)) - 1; }
   T operator--(int) { return fetch_sub(T(1)); }
 
-  T load() const
+  // Possible values for memory order: relaxed, acquire, seq_cst
+  T load(std::memory_order memory_order = std::memory_order::seq_cst) const
   {
     T res;
+    if (memory_order == std::memory_order::relaxed) {
+#pragma omp atomic read relaxed
+      res = val;
+    } else if (memory_order == std::memory_order::acquire) {
+#pragma omp atomic read acquire
+      res = val;
+    } else {
 #pragma omp atomic read
-    res = val;
+      res = val;
+    }
     return res;
   }
 
-  void store(T new_val)
+  // Possible values for memory order: relaxed, release, seq_cst
+  void store(T new_val, std::memory_order memory_order = std::memory_order::seq_cst)
   {
+    if (memory_order == std::memory_order::relaxed) {
+#pragma omp atomic write relaxed
+      val = new_val;
+    } else if (memory_order == std::memory_order::release) {
+#pragma omp atomic write release
+      val = new_val;
+    } else {
 #pragma omp atomic write
-    val = new_val;
+      val = new_val;
+    }
   }
 
-  T exchange(T other)
+  T exchange(T other, std::memory_order memory_order = std::memory_order::seq_cst)
   {
     T old;
+    if (memory_order == std::memory_order::relaxed) {
+#pragma omp atomic capture relaxed
+      {
+        old = val;
+        val = other;
+      }
+    } else if (memory_order == std::memory_order::acquire) {
+#pragma omp atomic capture acquire
+      {
+        old = val;
+        val = other;
+      }
+    } else if (memory_order == std::memory_order::release) {
+#pragma omp atomic capture release
+      {
+        old = val;
+        val = other;
+      }
+    } else if (memory_order == std::memory_order::acq_rel) {
+#pragma omp atomic capture acq_rel
+      {
+        old = val;
+        val = other;
+      }
+    } else {
 #pragma omp atomic capture
-    {
-      old = val;
-      val = other;
+      {
+        old = val;
+        val = other;
+      }
     }
     return old;
   }
 
-  T fetch_add(T inc)
+  T fetch_add(T inc, std::memory_order memory_order = std::memory_order::seq_cst)
   {
     T old;
+    if (memory_order == std::memory_order::relaxed) {
+#pragma omp atomic capture relaxed
+      {
+        old = val;
+        val += inc;
+      }
+    } else if (memory_order == std::memory_order::acquire) {
+#pragma omp atomic capture acquire
+      {
+        old = val;
+        val += inc;
+      }
+    } else if (memory_order == std::memory_order::release) {
+#pragma omp atomic capture release
+      {
+        old = val;
+        val += inc;
+      }
+    } else if (memory_order == std::memory_order::acq_rel) {
+#pragma omp atomic capture acq_rel
+      {
+        old = val;
+        val += inc;
+      }
+    } else {
 #pragma omp atomic capture
-    {
-      old = val;
-      val += inc;
+      {
+        old = val;
+        val += inc;
+      }
     }
     return old;
   }

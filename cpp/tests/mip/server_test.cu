@@ -8,8 +8,8 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -26,9 +26,9 @@
 namespace cuopt::linear_programming::test {
 
 // Create standard LP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
+io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   // Set up constraint matrix in CSR format
   std::vector<int> offsets         = {0, 2};
@@ -57,7 +57,7 @@ mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
 }
 
 // Create standard MILP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
 

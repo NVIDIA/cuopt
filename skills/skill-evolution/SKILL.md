@@ -1,8 +1,9 @@
 ---
 name: skill-evolution
-version: "26.06.00"
+version: "26.08.00"
 description: After solving a non-trivial problem, detect generalizable learnings and propose skill updates so future interactions benefit automatically. Always active — applies to every interaction.
 ---
+
 
 # Skill Evolution
 
@@ -89,8 +90,8 @@ If a draft proposal feels heavy-handed or rigid, rewrite it as if explaining the
 Always place the learning in the **single skill where it has the widest effect**. Do NOT duplicate the same content across multiple skills.
 
 Choose the target using this priority:
-1. **Common / concept skill** (e.g. `lp-milp-formulation`, `routing-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
-2. **API skill** (e.g. `cuopt-lp-milp-api-python`, `cuopt-routing-api-python`) — if the learning is specific to one API or language.
+1. **Common / concept skill** (e.g. `numerical-optimization-formulation`, `routing-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
+2. **API skill** (e.g. `cuopt-numerical-optimization-api-python`, `cuopt-routing-api-python`) — if the learning is specific to one API or language.
 3. **New skill** — only if the learning doesn't fit any existing skill.
 
 If a gotcha affects both Python and C users but is about the solver behavior (not the API), it belongs in the common formulation skill, not in both `api-python` and `api-c`.
@@ -127,7 +128,7 @@ Skill-evolution changes need a traceable origin so a reviewer can find and audit
 
 ### Updates to existing skills
 
-For inline edits to an existing SKILL.md (new bullets, table rows, paragraphs), do NOT wrap content in HTML comment markers. The visible noise compounds across many small edits, and `git log` / `git blame` already attribute every line to the commit that introduced it. Use the commit message and PR description as the audit trail: write a clear commit subject (e.g. "skill-evolution: add large-objective recursion gotcha to lp-milp-formulation") so the origin is greppable in history.
+For inline edits to an existing SKILL.md (new bullets, table rows, paragraphs), do NOT wrap content in HTML comment markers. The visible noise compounds across many small edits, and `git log` / `git blame` already attribute every line to the commit that introduced it. Use the commit message and PR description as the audit trail: write a clear commit subject (e.g. "skill-evolution: add large-objective recursion gotcha to numerical-optimization-formulation") so the origin is greppable in history.
 
 ### New skills
 
@@ -136,7 +137,7 @@ When skill evolution creates an entirely new skill directory, add `origin: skill
 ```yaml
 ---
 name: new-skill-name
-version: "26.06.00"
+version: "26.08.00"
 description: ...
 origin: skill-evolution
 ---

@@ -71,9 +71,7 @@ void weighted_average_solution_t<i_t, f_t>::add_current_solution_to_weighted_ave
   // (same for primal and dual although julia repo makes it seem as though these should/could be
   // different)
 
-  if (!graph.is_initialized(total_pdlp_iterations)) {
-    graph.start_capture(total_pdlp_iterations);
-
+  graph.run(total_pdlp_iterations, [&]() {
     cub::DeviceTransform::Transform(
       cuda::std::make_tuple(sum_primal_solutions_.data(), primal_solution),
       sum_primal_solutions_.data(),
@@ -93,10 +91,7 @@ void weighted_average_solution_t<i_t, f_t>::add_current_solution_to_weighted_ave
                                                weight.data(),
                                                sum_primal_solution_weights_.data(),
                                                sum_dual_solution_weights_.data());
-
-    graph.end_capture(total_pdlp_iterations);
-  }
-  graph.launch(total_pdlp_iterations);
+  });
 
   iterations_since_last_restart_ += 1;
 }
