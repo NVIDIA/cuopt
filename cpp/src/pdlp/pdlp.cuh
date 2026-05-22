@@ -114,6 +114,12 @@ class pdlp_solver_t {
     return initial_scaling_strategy_;
   }
 
+  // Per-shard primal/dual step sizes are private state on pdlp_solver_t but
+  // are needed inside the multi-GPU dispatch paths that fan out a master cub
+  // call across all shards' pdhg_solver_t::*_transform methods.
+  rmm::device_uvector<f_t>& get_primal_step_size() { return primal_step_size_; }
+  rmm::device_uvector<f_t>& get_dual_step_size() { return dual_step_size_; }
+
  private:
   void print_termination_criteria(const timer_t& timer, bool is_average = false);
   void print_final_termination_criteria(

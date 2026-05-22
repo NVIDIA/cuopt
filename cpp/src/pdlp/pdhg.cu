@@ -521,6 +521,26 @@ struct primal_reflected_major_projection {
   const f_t* scalar_;
 };
 
+// Pure cub-transform extract — body byte-identical to the non-batch inline
+// path in compute_next_primal_dual_solution_reflected. The platform dispatch
+// (single-GPU vs per-shard fan-out) lives at the call site, not here.
+// Placed after primal_reflected_major_projection so the functor is visible.
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::primal_reflected_major_projection_transform(
+  rmm::device_uvector<f_t>& primal_step_size)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
+                          problem_ptr->objective_coefficients.data(),
+                          current_saddle_point_state_.get_current_AtY().data(),
+                          problem_ptr->variable_bounds.data()),
+    thrust::make_zip_iterator(
+      potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
+    primal_size_h_,
+    primal_reflected_major_projection<f_t>(primal_step_size.data()),
+    stream_view_.value());
+}
+
 template <typename f_t>
 struct primal_reflected_major_projection_batch {
   using f_t2 = typename type_2<f_t>::type;
@@ -910,17 +930,15 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       graph_all.start_capture(should_major);
 
       compute_At_y();
-      if (!batch_mode_) {
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(current_saddle_point_state_.get_primal_solution().data(),
-                                problem_ptr->objective_coefficients.data(),
-                                current_saddle_point_state_.get_current_AtY().data(),
-                                problem_ptr->variable_bounds.data()),
-          thrust::make_zip_iterator(
-            potential_next_primal_solution_.data(), dual_slack_.data(), reflected_primal_.data()),
-          primal_size_h_,
-          primal_reflected_major_projection<f_t>(primal_step_size.data()),
-          stream_view_.value());
+      if (mgpu_engine_ != nullptr) {
+        for (auto& shard : mgpu_engine_->shards) {
+          raft::device_setter guard(shard->device_id);
+          auto& sub_pdlp = *shard->sub_pdlp;
+          sub_pdlp.pdhg_solver_.primal_reflected_major_projection_transform(
+            sub_pdlp.get_primal_step_size());
+        }
+      } else if (!batch_mode_) {
+        primal_reflected_major_projection_transform(primal_step_size);
       } else {
         cub::DeviceFor::Bulk(potential_next_primal_solution_.size(),
                              primal_reflected_major_projection_bulk_op<f_t>{

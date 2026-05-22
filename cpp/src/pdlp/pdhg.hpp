@@ -85,6 +85,13 @@ class pdhg_solver_t {
   void compute_At_y();
   void compute_A_x();
 
+  // Pure cub-transform extractions. Each one is byte-identical to the inline
+  // cub call it replaces — no platform dispatch inside. Callers handle the
+  // single-GPU vs per-shard branching at the call site (see the
+  // "if (mgpu_engine_) for shard..." blocks in compute_next_*).
+  void primal_reflected_major_projection_transform(
+    rmm::device_uvector<f_t>& primal_step_size);
+
   // Master PDLP wires up the engine pointer here after the engine is built.
   // Shards' pdhg_solver_ leaves this null so each shard runs single-GPU SpMV
   // on its local matrix.

@@ -501,11 +501,12 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       raft::device_setter guard(shard->device_id);
       auto& sub = *shard->sub_pdlp;
       cub::DeviceTransform::Transform(
-        std::make_tuple(sub.pdhg_solver_.get_primal_solution().data(),
-                        sub.get_op_problem_scaled().variable_bounds.data()),
+        cuda::std::make_tuple(sub.pdhg_solver_.get_primal_solution().data(),
+                              sub.get_op_problem_scaled().variable_bounds.data()),
         sub.pdhg_solver_.get_primal_solution().data(),
         sub.pdhg_solver_.get_primal_solution().size(),
-        clamp<f_t, f_t2>(), shard->stream);
+        clamp<f_t, f_t2>(),
+        shard->stream.view());
     }
   }
 }
