@@ -225,6 +225,6 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 }
 
 template struct pdlp_shard_t<int, double>;
-// template struct pdlp_shard_t<int, float>;
+template struct pdlp_shard_t<int, float>;
 
 }  // namespace cuopt::linear_programming::detail
