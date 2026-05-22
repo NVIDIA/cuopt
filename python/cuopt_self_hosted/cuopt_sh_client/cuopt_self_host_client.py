@@ -136,7 +136,7 @@ def is_uuid(cuopt_problem_data):
 
 # File extensions (case-insensitive, after stripping a compression suffix) that
 # the cuopt.linear_programming.io package can parse client-side. Matches the
-# dispatch table in parse_problem() on the C++ side.
+# dispatch table in read() on the C++ side.
 _PARSEABLE_LP_EXTS = (".lp",)
 _PARSEABLE_MPS_EXTS = (".mps", ".qps")
 _COMPRESSION_SUFFIXES = (".gz", ".bz2")
@@ -180,7 +180,7 @@ def _parse_file_to_data_model(problem_input, solver_config):
         log.debug("Received mps_parser DataModel object")
     else:
         t0 = time.time()
-        model = mps_parser.ParseProblem(problem_input)
+        model = mps_parser.Read(problem_input)
         parse_time = time.time() - t0
         log.debug(f"file parsing time was {parse_time}")
     problem_data = mps_parser.toDict(model, json=use_zlib)

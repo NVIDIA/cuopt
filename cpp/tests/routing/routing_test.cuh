@@ -112,7 +112,7 @@ struct test_data_t {
 };
 
 template <typename problem_t, typename i_t = int, typename f_t = float>
-static test_data_t<i_t, f_t> parse_problem(problem_t&& problem)
+static test_data_t<i_t, f_t> read(problem_t&& problem)
 {
   return {problem.x_h,
           problem.y_h,
@@ -146,9 +146,9 @@ static test_data_t<i_t, f_t> parse_problem(problem_t&& problem)
 }
 
 template <typename... Args>
-std::vector<test_data_t<int, float>> parse_problems(Args&&... args)
+std::vector<test_data_t<int, float>> reads(Args&&... args)
 {
-  return {parse_problem(std::forward<Args>(args))...};
+  return {read(std::forward<Args>(args))...};
 }
 
 template <typename i_t, typename f_t>

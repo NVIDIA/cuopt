@@ -16,7 +16,7 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
 
-from .parser cimport call_parse_problem, mps_data_model_t
+from .parser cimport call_read, mps_data_model_t
 import warnings
 
 import numpy as np
@@ -137,10 +137,10 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
 
 
 @catch_io_exception
-def ParseProblem(file_path, fixed_mps_format=False):
+def Read(file_path, fixed_mps_format=False):
     data_model = DataModel()
     dm_ret_ptr = move(
-        call_parse_problem(
+        call_read(
             file_path.encode('utf-8'),
             fixed_mps_format,
         )

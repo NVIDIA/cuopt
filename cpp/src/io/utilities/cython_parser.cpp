@@ -11,11 +11,11 @@
 namespace cuopt {
 namespace cython {
 
-std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> call_parse_problem(
+std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> call_read(
   const std::string& file_path, bool fixed_mps_format)
 {
   return std::make_unique<cuopt::linear_programming::io::mps_data_model_t<int, double>>(std::move(
-    cuopt::linear_programming::io::parse_problem<int, double>(file_path, fixed_mps_format)));
+    cuopt::linear_programming::io::read<int, double>(file_path, fixed_mps_format)));
 }
 
 }  // namespace cython

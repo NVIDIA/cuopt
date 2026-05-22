@@ -3,7 +3,7 @@
 
 import os
 
-from cuopt.linear_programming import ParseProblem
+from cuopt.linear_programming import Read
 from cuopt.linear_programming.io import toDict
 import msgpack
 
@@ -33,7 +33,7 @@ def test_warmstart(cuoptproc):  # noqa
         RAPIDS_DATASET_ROOT_DIR,
         "linear_programming/square41/square41.mps",
     )
-    data_model_obj = ParseProblem(file_path)
+    data_model_obj = Read(file_path)
     data = toDict(data_model_obj, json=True)
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-4)

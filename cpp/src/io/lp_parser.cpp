@@ -199,7 +199,7 @@ template <typename i_t, typename f_t>
 class LpParseEngine {
  public:
   LpParseEngine(lp_parser_t<i_t, f_t>& out, const std::string& file);
-  // Parses `text` directly (used by parse_lp_from_string()).
+  // Parses `text` directly (used by read_lp_from_string()).
   LpParseEngine(lp_parser_t<i_t, f_t>& out, std::string_view text);
 
  private:
@@ -1546,11 +1546,11 @@ template class lp_parser_t<int, float>;
 template class lp_parser_t<int, double>;
 
 // ===========================================================================
-// Public parse_lp() / parse_lp_from_string()
+// Public read_lp() / read_lp_from_string()
 // ===========================================================================
 
 template <typename i_t, typename f_t>
-mps_data_model_t<i_t, f_t> parse_lp(const std::string& lp_file_path)
+mps_data_model_t<i_t, f_t> read_lp(const std::string& lp_file_path)
 {
   mps_data_model_t<i_t, f_t> problem;
   lp_parser_t<i_t, f_t> parser(problem, lp_file_path);
@@ -1558,16 +1558,16 @@ mps_data_model_t<i_t, f_t> parse_lp(const std::string& lp_file_path)
 }
 
 template <typename i_t, typename f_t>
-mps_data_model_t<i_t, f_t> parse_lp_from_string(std::string_view lp_contents)
+mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents)
 {
   mps_data_model_t<i_t, f_t> problem;
   lp_parser_t<i_t, f_t> parser(problem, lp_contents);
   return problem;
 }
 
-template mps_data_model_t<int, float> parse_lp<int, float>(const std::string&);
-template mps_data_model_t<int, double> parse_lp<int, double>(const std::string&);
-template mps_data_model_t<int, float> parse_lp_from_string<int, float>(std::string_view);
-template mps_data_model_t<int, double> parse_lp_from_string<int, double>(std::string_view);
+template mps_data_model_t<int, float> read_lp<int, float>(const std::string&);
+template mps_data_model_t<int, double> read_lp<int, double>(const std::string&);
+template mps_data_model_t<int, float> read_lp_from_string<int, float>(std::string_view);
+template mps_data_model_t<int, double> read_lp_from_string<int, double>(std::string_view);
 
 }  // namespace cuopt::linear_programming::io

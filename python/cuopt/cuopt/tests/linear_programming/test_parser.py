@@ -4,7 +4,7 @@
 import os
 import tempfile
 
-from cuopt.linear_programming import ParseProblem
+from cuopt.linear_programming import Read
 import numpy as np
 import pytest
 from cuopt.linear_programming.io.utilities import InputValidationError
@@ -49,11 +49,11 @@ def _assert_good_mps_1_model(data_model):
 
 
 @pytest.mark.parametrize("filename", GOOD_MPS_1_VARIANTS)
-def test_parse_problem_good_mps_1_variants(filename):
+def test_read_good_mps_1_variants(filename):
     path = os.path.join(GOOD_MPS_1_DIR, filename)
     if not os.path.isfile(path):
         pytest.skip(f"missing dataset {path}")
-    _assert_good_mps_1_model(ParseProblem(path))
+    _assert_good_mps_1_model(Read(path))
 
 
 def test_bad_mps_files():
@@ -64,14 +64,14 @@ def test_bad_mps_files():
         )
         if os.path.exists(file_path):
             with pytest.raises(InputValidationError):
-                ParseProblem(file_path, fixed_mps_format=True)
+                Read(file_path, fixed_mps_format=True)
 
 
 def test_good_mps_file():
     file_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
     )
-    data_model = ParseProblem(file_path)
+    data_model = Read(file_path)
 
     assert not data_model.get_sense()
 
@@ -112,7 +112,7 @@ def test_good_mps_file():
 
 
 # Minimal LP content that should parse identically regardless of whether it's
-# routed through ParseProblem() or the server's extension-based dispatch path.
+# routed through Read() or the server's extension-based dispatch path.
 _MINIMAL_LP = """
 Minimize
   x
@@ -131,7 +131,7 @@ def test_parse_lp_basic():
         f.write(_MINIMAL_LP)
         path = f.name
     try:
-        data_model = ParseProblem(path)
+        data_model = Read(path)
     finally:
         os.unlink(path)
 
@@ -168,7 +168,7 @@ End
         path = f.name
     try:
         with pytest.raises(InputValidationError):
-            ParseProblem(path)
+            Read(path)
     finally:
         os.unlink(path)
 
@@ -202,8 +202,8 @@ def test_parse_lp_and_parse_mps_agree_on_trivial_problem():
         f.write(_MINIMAL_LP)
         lp_path = f.name
     try:
-        lp_model = ParseProblem(lp_path)
-        mps_model = ParseProblem(mps_path)
+        lp_model = Read(lp_path)
+        mps_model = Read(mps_path)
     finally:
         os.unlink(mps_path)
         os.unlink(lp_path)
@@ -227,15 +227,15 @@ def test_parse_lp_and_parse_mps_agree_on_trivial_problem():
     )
 
 
-def test_parse_problem_dispatches_mps_and_lp():
+def test_read_dispatches_mps_and_lp():
     mps_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
     )
     lp_path = (
         RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.lp"
     )
-    mps_model = ParseProblem(mps_path)
-    lp_model = ParseProblem(lp_path)
+    mps_model = Read(mps_path)
+    lp_model = Read(lp_path)
     assert mps_model.get_sense() == lp_model.get_sense()
     assert (
         mps_model.get_variable_names().tolist()
@@ -243,7 +243,7 @@ def test_parse_problem_dispatches_mps_and_lp():
     )
 
 
-def test_parse_problem_unrecognized_extension():
+def test_read_unrecognized_extension():
     with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False) as f:
         f.write(b"x\n")
         path = f.name
@@ -251,6 +251,6 @@ def test_parse_problem_unrecognized_extension():
         with pytest.raises(
             RuntimeError, match="unrecognized input file extension"
         ):
-            ParseProblem(path)
+            Read(path)
     finally:
         os.unlink(path)

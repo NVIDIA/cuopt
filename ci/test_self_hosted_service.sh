@@ -125,7 +125,7 @@ if [ "$doservertest" -eq 1 ]; then
     # Success, small Batch LP problem with LP format. Data will be transformed to JSON
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp ../../datasets/linear_programming/good-mps-1.lp
 
-    # Success, compressed LP inputs (.lp.gz / .lp.bz2) via ParseProblem dispatch
+    # Success, compressed LP inputs (.lp.gz / .lp.bz2) via Read dispatch
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp.gz
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp.bz2
 

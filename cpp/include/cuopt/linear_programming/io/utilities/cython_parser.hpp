@@ -14,7 +14,7 @@
 namespace cuopt {
 namespace cython {
 
-std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> call_parse_problem(
+std::unique_ptr<cuopt::linear_programming::io::mps_data_model_t<int, double>> call_read(
   const std::string& file_path, bool fixed_mps_format);
 
 }  // namespace cython

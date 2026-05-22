@@ -271,7 +271,7 @@ Generate Datamodel using Problem File Parser
 --------------------------------------------
 
 Use a :class:`~cuopt.linear_programming.data_model.DataModel` built with
-:func:`~cuopt.linear_programming.io.ParseProblem` as input to ``get_LP_solve``;
+:func:`~cuopt.linear_programming.io.Read` as input to ``get_LP_solve``;
 the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
 including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
 :doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.

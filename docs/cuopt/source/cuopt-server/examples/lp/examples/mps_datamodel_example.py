@@ -4,7 +4,7 @@
 LP DataModel from MPS file parser example
 
 This example demonstrates how to:
-- Parse an MPS file using cuopt.linear_programming.ParseProblem
+- Read an MPS file using cuopt.linear_programming.Read
 - Create a DataModel from the parsed MPS
 - Solve using the DataModel via the server
 - Extract detailed solution information
@@ -32,7 +32,7 @@ from cuopt_sh_client import (
     ThinClientSolverSettings,
     PDLPSolverMode,
 )
-from cuopt.linear_programming import ParseProblem
+from cuopt.linear_programming import Read
 import time
 
 
@@ -65,7 +65,7 @@ ENDATA
     # Parse the MPS file and measure the time spent
     print("\n=== Parsing MPS File ===")
     parse_start = time.time()
-    data_model = ParseProblem(data)
+    data_model = Read(data)
     parse_time = time.time() - parse_start
     print(f"Parse time: {parse_time:.3f} seconds")
 

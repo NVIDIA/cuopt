@@ -13,9 +13,9 @@ format is dispatched automatically from the file extension
   variants) → parsed as MPS / QPS
 
 Any other extension (including no extension) is rejected with an error
-listing the supported suffixes. See ``parse_problem`` in
+listing the supported suffixes. See ``read`` in
 ``cuopt/linear_programming/io/parser.hpp`` (and the Python
-:func:`~cuopt.linear_programming.io.ParseProblem` wrapper).
+:func:`~cuopt.linear_programming.io.Read` wrapper).
 
 The ``good-mps-1`` fixtures under ``datasets/linear_programming/`` include
 plain and compressed ``.mps`` / ``.lp`` files used in parser and CLI tests;

@@ -10,11 +10,11 @@ from cuopt.linear_programming.io.utilities import (
 
 
 @catch_io_exception
-def ParseProblem(file_path: str, fixed_mps_format: bool = False) -> DataModel:
+def Read(file_path: str, fixed_mps_format: bool = False) -> DataModel:
     """Read an optimization problem from a file, dispatching on extension.
 
-    Dispatches to the MPS/QPS or LP parser based on the filename suffix
-    (case-insensitive), matching the C++ ``parse_problem`` entry point:
+    Dispatches to the MPS/QPS or LP reader based on the filename suffix
+    (case-insensitive), matching the C++ ``read`` entry point:
 
     - ``.mps``, ``.mps.gz``, ``.mps.bz2``, ``.qps``, ``.qps.gz``, ``.qps.bz2``
       → MPS/QPS reader
@@ -41,9 +41,9 @@ def ParseProblem(file_path: str, fixed_mps_format: bool = False) -> DataModel:
         ``catch_io_exception``).
     RuntimeError
         If the file extension is not one of the supported suffixes (raised by
-        the C++ ``parse_problem`` dispatch).
+        the C++ ``read`` dispatch).
     """
-    return parser_wrapper.ParseProblem(file_path, fixed_mps_format)
+    return parser_wrapper.Read(file_path, fixed_mps_format)
 
 
 def toDict(model, json=False):

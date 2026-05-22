@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from cuopt.linear_programming import ParseProblem
+from cuopt.linear_programming import Read
 import pytest
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
@@ -304,7 +304,7 @@ def _impl_lp_solve_cpu_only():
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = ParseProblem(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
     solution = linear_programming.Solve(
@@ -333,7 +333,7 @@ def _impl_lp_dual_solution_cpu_only():
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = ParseProblem(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
     n_cons = len(dm.get_constraint_bounds())
 
@@ -365,7 +365,7 @@ def _impl_mip_solve_cpu_only():
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/mip/bb_optimality.mps"
-    dm = ParseProblem(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
     settings = linear_programming.SolverSettings()
@@ -400,7 +400,7 @@ def _impl_warmstart_cpu_only():
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = ParseProblem(mps_file)
+    dm = Read(mps_file)
 
     settings = linear_programming.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
@@ -654,7 +654,7 @@ class TestSolutionInterfacePolymorphism:
         mps_file = (
             f"{RAPIDS_DATASET_ROOT_DIR}/linear_programming/afiro_original.mps"
         )
-        dm = ParseProblem(mps_file)
+        dm = Read(mps_file)
         n_vars = len(dm.get_objective_coefficients())
         n_cons = len(dm.get_constraint_bounds())
 
@@ -683,7 +683,7 @@ class TestSolutionInterfacePolymorphism:
     def test_mip_solution_values(self):
         """MIP solve of bb_optimality.mps returns valid stats."""
         mps_file = f"{RAPIDS_DATASET_ROOT_DIR}/mip/bb_optimality.mps"
-        dm = ParseProblem(mps_file)
+        dm = Read(mps_file)
         n_vars = len(dm.get_objective_coefficients())
 
         settings = linear_programming.SolverSettings()

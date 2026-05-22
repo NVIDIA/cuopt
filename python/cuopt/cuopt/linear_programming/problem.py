@@ -10,7 +10,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
-from cuopt.linear_programming import ParseProblem
+from cuopt.linear_programming import Read
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
@@ -1798,7 +1798,7 @@ class Problem:
         """
         Initialize a problem from an MPS, QPS, or LP file.
 
-        Dispatches on the file extension via the C++ ``parse_problem`` entry
+        Dispatches on the file extension via the C++ ``read`` entry
         point (case-insensitive): ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2``
         variants) use the MPS/QPS reader; ``.lp`` (and compressed variants)
         use the LP reader.
@@ -1827,7 +1827,7 @@ class Problem:
             raise FileNotFoundError(f"No such file: {file_path}")
 
         problem = cls()
-        data_model = ParseProblem(file_path, fixed_mps_format)
+        data_model = Read(file_path, fixed_mps_format)
         problem._from_data_model(data_model)
         problem.model = data_model
         return problem

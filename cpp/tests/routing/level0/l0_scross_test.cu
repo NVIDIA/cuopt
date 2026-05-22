@@ -207,7 +207,7 @@ typedef simple_scross_test_t<int, float, request_t::PDP> scross_three_routes_tes
 TEST_P(scross_three_routes_test, SCROSS_GES) { test_scross(); }
 INSTANTIATE_TEST_SUITE_P(simple_scross_test,
                          scross_three_routes_test,
-                         ::testing::ValuesIn(parse_problems(scross_three_routes_)));
+                         ::testing::ValuesIn(reads(scross_three_routes_)));
 
 }  // namespace test
 }  // namespace routing

@@ -238,7 +238,7 @@ INSTANTIATE_TEST_SUITE_P(level0_ges, double_test_pdp, ::testing::Values(std::mak
 TEST_P(simple_routes_test_pdp, GES_PDP) { test_cvrptw(); }
 INSTANTIATE_TEST_SUITE_P(level0_ges,
                          simple_routes_test_pdp,
-                         ::testing::ValuesIn(parse_problems(simple_three_routes_)));
+                         ::testing::ValuesIn(reads(simple_three_routes_)));
 
 TEST_P(double_test_vrp, GES_VRP) { test_cvrptw(); }
 INSTANTIATE_TEST_SUITE_P(level0_ges, double_test_vrp, ::testing::Values(std::make_tuple(true)));
