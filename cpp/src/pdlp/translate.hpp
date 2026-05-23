@@ -191,7 +191,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.Q_values  = model.Q_values;
 
   if (model.original_problem_ptr->has_quadratic_constraints()) {
-    detail::apply_soc_qcmatrix_conversion_for_simplex<i_t, f_t>(
+    detail::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(
       n, model.original_problem_ptr->get_quadratic_constraints(), csr_A, user_problem);
   }
 
@@ -302,7 +302,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.Q_values  = model.get_quadratic_objective_values();
 
   if (model.has_quadratic_constraints()) {
-    detail::apply_soc_qcmatrix_conversion_for_simplex<i_t, f_t>(
+    detail::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(
       static_cast<int>(n), model.get_quadratic_constraints(), csr_A, user_problem);
   }
 
