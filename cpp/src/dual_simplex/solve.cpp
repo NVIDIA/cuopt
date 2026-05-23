@@ -209,7 +209,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   std::vector<f_t> row_scales_simplex;
   {
     raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
-    column_scaling(presolved_lp, settings, lp, column_scales, row_scales_simplex);
+    scaling(presolved_lp, settings, lp, column_scales, row_scales_simplex);
   }
   assert(presolved_lp.num_cols == lp.num_cols);
   lp_problem_t<i_t, f_t> phase1_problem(original_lp.handle_ptr, 1, 1, 1);
@@ -419,7 +419,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
   std::vector<f_t> row_scales;
-  column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
+  scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);

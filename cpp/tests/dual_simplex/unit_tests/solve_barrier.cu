@@ -234,7 +234,7 @@ TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
                                        original_lp.A.col_start[original_lp.num_cols]);
   std::vector<double> column_scales;
   std::vector<double> row_scales;
-  column_scaling(original_lp, settings, barrier_lp, column_scales, row_scales);
+  scaling(original_lp, settings, barrier_lp, column_scales, row_scales);
 
   EXPECT_EQ(barrier_lp.second_order_cone_dims, user_problem.second_order_cone_dims);
   EXPECT_EQ(barrier_lp.cone_var_start, 2);
@@ -301,7 +301,7 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
                                        presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<double> column_scales;
   std::vector<double> row_scales;
-  ASSERT_EQ(column_scaling(presolved_lp, settings, barrier_lp, column_scales, row_scales), 0);
+  ASSERT_EQ(scaling(presolved_lp, settings, barrier_lp, column_scales, row_scales), 0);
   EXPECT_EQ(barrier_lp.cone_var_start, 0);
 }
 

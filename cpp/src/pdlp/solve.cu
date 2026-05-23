@@ -1751,7 +1751,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
 
     raft::common::nvtx::range fun_scope("Running QP solver");
     if (op_problem.has_quadratic_constraints()) {
-      CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+      CUOPT_LOG_INFO("Problem has %d quadratic constraints. Converting to second-order cones and solving with barrier.",
                      static_cast<int>(op_problem.get_quadratic_constraints().size()));
     }
     if (settings.user_problem_file != "") {
@@ -1813,7 +1813,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
       }
       if (op_problem.has_quadratic_constraints()) {
-        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Using Barrier with SOC conversion.",
+        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Converting to second-order cones and solving with barrier.",
                        static_cast<int>(op_problem.get_quadratic_constraints().size()));
       }
       settings.method    = method_t::Barrier;

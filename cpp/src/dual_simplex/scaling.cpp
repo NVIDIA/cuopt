@@ -13,11 +13,11 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
-i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
-                   const simplex_solver_settings_t<i_t, f_t>& settings,
-                   lp_problem_t<i_t, f_t>& scaled,
-                   std::vector<f_t>& col_scale,
-                   std::vector<f_t>& row_scale)
+i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
+            const simplex_solver_settings_t<i_t, f_t>& settings,
+            lp_problem_t<i_t, f_t>& scaled,
+            std::vector<f_t>& col_scale,
+            std::vector<f_t>& row_scale)
 {
   scaled = unscaled;
   i_t m  = scaled.num_rows;
@@ -161,6 +161,16 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       if (max_deviation < 0.1) break;
     }
 
+    // Ruiz col_scale accumulates reciprocals (c[j] = 1/sqrt(norm)), so invert
+    // to store column norms: C(j,j) = 1/col_scale[j].
+    for (i_t j = 0; j < n; ++j) {
+      col_scale[j] = f_t(1) / col_scale[j];
+    }
+    // Same for row_scale: invert so R(i,i) = 1/row_scale[i].
+    for (i_t i = 0; i < m; ++i) {
+      row_scale[i] = f_t(1) / row_scale[i];
+    }
+
     f_t a_min = std::numeric_limits<f_t>::max();
     f_t a_max = 0;
     for (i_t p = 0; p < scaled.A.col_start[n]; ++p) {
@@ -192,24 +202,31 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
       const f_t x = scaled.A.x[p];
       sum += x * x;
     }
-    const f_t col_norm = sum > 0 ? std::sqrt(sum) : 1.0;
-    col_scale[j]       = f_t(1) / col_norm;
-    max_col_norm       = std::max(col_norm, max_col_norm);
-    min_col_norm       = std::min(col_norm, min_col_norm);
+    f_t col_norm_j = col_scale[j] = sum > 0 ? std::sqrt(sum) : 1.0;
+    max_col_norm                   = std::max(col_norm_j, max_col_norm);
+    min_col_norm                   = std::min(col_norm_j, min_col_norm);
   }
   settings.log.printf(
     "Scaling matrix. Maximum column norm %e, minimum column norm %e\n", max_col_norm, min_col_norm);
+  // C(j, j) = 1/col_scale(j)
 
   // scaled_A = unscaled_A * C
   for (i_t j = 0; j < n; ++j) {
     const i_t col_start = scaled.A.col_start[j];
     const i_t col_end   = scaled.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; ++p) {
-      scaled.A.x[p] *= col_scale[j];
+      scaled.A.x[p] /= col_scale[j];
     }
-    scaled.objective[j] *= col_scale[j];
-    if (scaled.lower[j] > -1e20) scaled.lower[j] /= col_scale[j];
-    if (scaled.upper[j] < 1e20) scaled.upper[j] /= col_scale[j];
+  }
+  // scaled_obj = C*unscaled_obj
+  for (i_t j = 0; j < n; ++j) {
+    scaled.objective[j] /= col_scale[j];
+  }
+  // scaled_lower = C^{-1} * unscaled_lower
+  // scaled_upper = C^{-1} * unscaled_upper
+  for (i_t j = 0; j < n; ++j) {
+    scaled.lower[j] *= col_scale[j];
+    scaled.upper[j] *= col_scale[j];
   }
 
   for (i_t i = 0; i < unscaled.Q.n; ++i) {
@@ -217,7 +234,7 @@ i_t column_scaling(const lp_problem_t<i_t, f_t>& unscaled,
     const i_t row_end   = unscaled.Q.row_start[i + 1];
     for (i_t p = row_start; p < row_end; ++p) {
       const i_t col = unscaled.Q.j[p];
-      scaled.Q.x[p] = unscaled.Q.x[p] * col_scale[i] * col_scale[col];
+      scaled.Q.x[p] = unscaled.Q.x[p] / (col_scale[i] * col_scale[col]);
     }
   }
   return 0;
@@ -236,28 +253,27 @@ void unscale_solution(const std::vector<f_t>& col_scale,
   const i_t n = scaled_x.size();
   unscaled_x.resize(n);
   unscaled_z.resize(n);
+  // C(j,j) = 1/col_scale[j], so x_orig = x_scaled / col_scale, z_orig = z_scaled * col_scale
   for (i_t j = 0; j < n; ++j) {
-    // column_scaling multiplies A(:,j) and c_j by col_scale[j], divides bounds:
-    // x_orig = col_scale .* x_scaled, z_orig = z_scaled / col_scale.
-    unscaled_x[j] = scaled_x[j] * col_scale[j];
-    unscaled_z[j] = scaled_z[j] / col_scale[j];
+    unscaled_x[j] = scaled_x[j] / col_scale[j];
+    unscaled_z[j] = scaled_z[j] * col_scale[j];
   }
 
   const i_t m = scaled_y.size();
   unscaled_y.resize(m);
+  // R(i,i) = 1/row_scale[i], so y_orig = y_scaled / row_scale
   for (i_t i = 0; i < m; ++i) {
-    // y_unscaled = R * y_scaled  (row scaling: constraint was scaled by R)
-    unscaled_y[i] = scaled_y[i] * row_scale[i];
+    unscaled_y[i] = scaled_y[i] / row_scale[i];
   }
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int column_scaling<int, double>(const lp_problem_t<int, double>& unscaled,
-                                         const simplex_solver_settings_t<int, double>& settings,
-                                         lp_problem_t<int, double>& scaled,
-                                         std::vector<double>& col_scale,
-                                         std::vector<double>& row_scale);
+template int scaling<int, double>(const lp_problem_t<int, double>& unscaled,
+                                  const simplex_solver_settings_t<int, double>& settings,
+                                  lp_problem_t<int, double>& scaled,
+                                  std::vector<double>& col_scale,
+                                  std::vector<double>& row_scale);
 
 template void unscale_solution<int, double>(const std::vector<double>& col_scale,
                                             const std::vector<double>& row_scale,
