@@ -103,6 +103,12 @@ contributing to. Start with _Step 3_ from above, commenting on the issue to let
 others know you are working on it. If you have any questions related to the
 implementation of the issue, ask them in the issue instead of the PR.
 
+### NVSkills CI for skill changes
+
+PRs that change content under `skills/` must be validated by NVSkills CI before merge. A maintainer or admin comments `/nvskills-ci` on the PR; the `nv-nvskill-ci[bot]` pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR. Re-comment `/nvskills-ci` after any further pushes to re-sign.
+
+NVSkills CI requires the PR to originate from a branch in `NVIDIA/cuopt`; fork-based PRs are not supported.
+
 ## Setting up your build environment
 
 The following instructions are for developers and contributors to NVIDIA cuOpt development. These

@@ -1662,6 +1662,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       }
     }
 
+    if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      break;
+    }
+
     worker->node_queue.lock();
     mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
     if (!start_node) {
@@ -1753,7 +1758,10 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
       continue;
     }
 
-    if (toc(exploration_stats_.start_time) > settings_.time_limit) { break; }
+    if (toc(exploration_stats_.start_time) > settings_.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      break;
+    }
     if (dive_stats.nodes_explored > diving_node_limit) { break; }
 
     dual::status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
@@ -2657,7 +2665,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   set_uninitialized_steepest_edge_norms(original_lp_, basic_list, edge_norms_);
 
   pc_.resize(original_lp_.num_cols);
-  original_lp_.A.transpose(*pc_.AT);
+  pc_.Arow = Arow_;
   {
     raft::common::nvtx::range scope_sb("BB::strong_branching");
     strong_branching<i_t, f_t>(original_lp_,
