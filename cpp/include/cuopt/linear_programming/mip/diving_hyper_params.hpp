@@ -57,7 +57,7 @@ struct mip_diving_hyper_params_t {
   //   F = Farkas diving
   //   V = vector-length diving
   //   U = unknown
-  bool log_diving_type = false;
+  bool show_diving_type = false;
 };
 
 }  // namespace cuopt::linear_programming

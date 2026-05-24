@@ -756,7 +756,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 {
   bool send_solution = false;
 
-  const bool log_diving_type = settings_.diving_settings.log_diving_type;
+  const bool log_diving_type = settings_.diving_settings.show_diving_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
                       feasible_solution_symbol(thread_type, log_diving_type),
                       compute_user_objective(original_lp_, leaf_objective));
@@ -3448,7 +3448,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
-      report(feasible_solution_symbol(worker_type, settings_.diving_settings.log_diving_type),
+      report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_diving_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
