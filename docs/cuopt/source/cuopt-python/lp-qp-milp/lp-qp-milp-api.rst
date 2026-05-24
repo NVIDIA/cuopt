@@ -47,3 +47,5 @@ LP, QP and MILP API Reference
    :member-order: bysource
    :undoc-members:
    :exclude-members: __new__, __init__, _generate_next_value_, as_integer_ratio, bit_count, bit_length, conjugate, denominator, from_bytes, imag, is_integer, numerator, real, to_bytes
+
+.. autofunction:: cuopt.linear_programming.io.Read

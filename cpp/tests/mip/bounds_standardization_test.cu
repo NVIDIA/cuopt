@@ -46,7 +46,7 @@ void test_bounds_standardization_test(std::string test_instance)
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);

@@ -209,8 +209,8 @@ io::mps_data_model_t<int, double>& get_neos8_model_cached()
   static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     const auto neos8_path = make_path_absolute("mip/neos8.mps");
-    auto neos8_model = cuopt::linear_programming::io::parse_mps<int, double>(neos8_path, false);
-    model_ptr        = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
+    auto neos8_model      = cuopt::linear_programming::io::read_mps<int, double>(neos8_path, false);
+    model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 model");
   return *model_ptr;

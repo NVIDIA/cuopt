@@ -172,7 +172,7 @@ int run_single_file(std::string file_path,
     CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
     try {
       mps_data_model =
-        cuopt::linear_programming::io::parse_mps<int, double>(file_path, input_mps_strict);
+        cuopt::linear_programming::io::read_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
       parsing_failed = true;

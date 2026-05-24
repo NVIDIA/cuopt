@@ -113,7 +113,7 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -165,7 +165,7 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 

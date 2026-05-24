@@ -15,8 +15,14 @@
 #include <pdlp/solve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
+#include <pdlp/translate.hpp>
+
+// Must match the setting in solve.cu
+#define DETECT_SYMMETRY_AFTER_PRESOLVE
+
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -286,6 +292,22 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   context.work_unit_scheduler_.register_context(context.gpu_heur_loop);
 
+#ifdef DETECT_SYMMETRY_AFTER_PRESOLVE
+  // Detect symmetry after all presolve steps (PaPILO, cuOpt probing, bounds, trivial presolve).
+  // context.problem_ptr is the final reduced problem with correct variable indices.
+  if (context.settings.symmetry != 0 && !context.problem_ptr->empty) {
+    cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+    simplex_settings.set_log(true);
+    simplex_settings.time_limit = context.settings.time_limit;
+    cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
+      cuopt_problem_to_user_problem<i_t, f_t>(context.problem_ptr->handle_ptr,
+                                              *context.problem_ptr);
+    bool has_symmetry_post = false;
+    context.symmetry       = cuopt::linear_programming::dual_simplex::detect_symmetry(
+      post_presolve_problem, simplex_settings, has_symmetry_post);
+  }
+#endif
+
   namespace dual_simplex                             = cuopt::linear_programming::dual_simplex;
   dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
@@ -357,6 +379,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.reduced_cost_strengthening == -1
         ? 2
         : context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.symmetry = context.settings.symmetry;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -391,7 +414,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound_settings,
       timer_.get_tic_start(),
       probing_implied_bound,
-      context.problem_ptr->clique_table);
+      context.problem_ptr->clique_table,
+      context.symmetry.get());
     context.branch_and_bound_ptr = branch_and_bound.get();
 
     // Convert the best external upper bound from user-space to B&B's internal objective space.

@@ -2,12 +2,7 @@
 cuOpt MPS/LP Parser API Reference
 ===============================
 
-MPS Parser
-----------
+MPS/QPS/LP parser
+-------------------
 
-.. autofunction:: cuopt.linear_programming.io.ParseMps
-
-LP Parser
----------
-
-.. autofunction:: cuopt.linear_programming.io.ParseLp
+.. autofunction:: cuopt.linear_programming.io.Read

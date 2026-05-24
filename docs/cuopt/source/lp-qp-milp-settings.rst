@@ -451,6 +451,14 @@ gap is infinity.
 .. note:: The default value is ``1e-4``.
 
 
+Node Limit
+^^^^^^^^^^
+
+``CUOPT_NODE_LIMIT`` controls the maximum number of branch-and-bound nodes the MILP solver will explore before stopping and returning the current best feasible solution (if any). If set along with the time limit, cuOpt stops at whichever limit is hit first.
+
+.. note:: By default there is no node limit. The setting only affects MILP;
+   it is ignored for LP and QP.
+
 Cut Passes
 ^^^^^^^^^^
 

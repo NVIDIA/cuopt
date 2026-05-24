@@ -16,6 +16,7 @@
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <list>
 #include <memory>
 #include <vector>
@@ -44,18 +45,35 @@ class mip_node_t {
   {
     // Iterative teardown to avoid stack overflow on deep trees.
     // Detach all descendants breadth-first, then destroy them as leaves.
-    std::vector<std::unique_ptr<mip_node_t>> nodes;
-    for (auto& c : children) {
-      if (c) { nodes.push_back(std::move(c)); }
-    }
-    // nodes.size() grows so that this loop only terminates when only leaves remain
-    for (size_t i = 0; i < nodes.size(); ++i) {
-      for (auto& c : nodes[i]->children) {
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Under OOM, any not-yet-detached descendants are destroyed
+    // via the recursive unique_ptr chain in `children` as this frame unwinds.
+    try {
+      std::vector<std::unique_ptr<mip_node_t>> nodes;
+      for (auto& c : children) {
         if (c) { nodes.push_back(std::move(c)); }
       }
-    }
+      // nodes.size() grows so that this loop only terminates when only leaves remain
+      for (size_t i = 0; i < nodes.size(); ++i) {
+        for (auto& c : nodes[i]->children) {
+          if (c) { nodes.push_back(std::move(c)); }
+        }
+      }
 
-    // scope-exit ensure destruction of all detached leaves
+      // scope-exit ensure destruction of all detached leaves
+    } catch (const std::exception& e) {
+      // fprintf to stderr is allocation-free and cannot throw; using the
+      // project logger here would risk a secondary bad_alloc that would
+      // escape the destructor and re-introduce std::terminate.
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (%s); falling back to "
+                   "recursive unique_ptr destruction.\n",
+                   e.what());
+    } catch (...) {
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (unknown exception); "
+                   "falling back to recursive unique_ptr destruction.\n");
+    }
   }
 
   mip_node_t(mip_node_t&&) noexcept            = default;
@@ -275,6 +293,8 @@ class mip_node_t {
     copy.children[1]        = nullptr;
     copy.status             = node_status_t::PENDING;
 
+    copy.orbital_fix_zero = orbital_fix_zero;
+    copy.orbital_fix_one  = orbital_fix_one;
     copy.origin_worker_id = origin_worker_id;
     copy.creation_seq     = creation_seq;
     return copy;
@@ -300,6 +320,12 @@ class mip_node_t {
   // Indicate if we can dive from this node or not. This is set to false when
   // this node was already selected for diving once.
   omp_atomic_t<bool> can_dive{true};
+
+  // Cumulative orbital fixing bound changes from root to this node.
+  // Stored so that when a child starts a new plunge, the parent's
+  // orbital fixings can be restored without re-derivation.
+  std::vector<i_t> orbital_fix_zero;
+  std::vector<i_t> orbital_fix_one;
 
   // Worker-local identification for deterministic ordering:
   // - origin_worker_id: which worker created this node

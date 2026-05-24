@@ -293,6 +293,20 @@ FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
 
+# dejavu - header-only graph automorphism library for MIP symmetry detection
+# https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
+FetchContent_Declare(
+  dejavu
+  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+  GIT_TAG "v2.1"
+  GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
+  SYSTEM
+  SOURCE_SUBDIR _nonexistent
+)
+FetchContent_MakeAvailable(dejavu)
+message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
+
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
 rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt-exports)
@@ -485,7 +499,8 @@ target_include_directories(cuopt PRIVATE
 )
 
 target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
+  "${pslp_SOURCE_DIR}/include"
+  "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt

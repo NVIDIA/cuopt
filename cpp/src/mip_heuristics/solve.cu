@@ -39,6 +39,17 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
+#include <branch_and_bound/symmetry.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <pdlp/translate.hpp>
+
+// Choose when to detect symmetry:
+// DETECT_SYMMETRY_BEFORE_PRESOLVE: detect on original problem, disable presolve if symmetry found.
+//   Finds maximum symmetry but loses presolve benefits.
+// DETECT_SYMMETRY_AFTER_PRESOLVE: detect after PaPILO + trivial presolve on the reduced problem.
+//   Presolve runs at full power; symmetry detection on whatever structure remains.
+#define DETECT_SYMMETRY_AFTER_PRESOLVE
+
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -92,11 +103,13 @@ static void invoke_solution_callbacks(
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> run_mip_solver(detail::problem_t<i_t, f_t>& problem,
-                                        mip_solver_settings_t<i_t, f_t> const& settings,
-                                        timer_t& timer,
-                                        f_t& initial_upper_bound,
-                                        std::vector<f_t>& initial_incumbent_assignment)
+mip_solution_t<i_t, f_t> run_mip_solver(
+  detail::problem_t<i_t, f_t>& problem,
+  mip_solver_settings_t<i_t, f_t> const& settings,
+  timer_t& timer,
+  f_t& initial_upper_bound,
+  std::vector<f_t>& initial_incumbent_assignment,
+  std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
@@ -180,13 +193,44 @@ mip_solution_t<i_t, f_t> run_mip_solver(detail::problem_t<i_t, f_t>& problem,
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
+    const i_t n_vars_before                = scaled_problem.n_variables;
     detail::trivial_presolve(scaled_problem);
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
+    // Trivial presolve may remove unused variables and renumber the remaining ones.
+    // When that happens the symmetry generators and binary_variables reference the
+    // original (pre-trivial-presolve) column indices which are now invalid.
+    // Re-detect symmetry on the reduced problem.
+    if (symmetry != nullptr && scaled_problem.n_variables != n_vars_before) {
+      CUOPT_LOG_INFO(
+        "Trivial presolve changed variable count (%d -> %d); "
+        "re-detecting symmetry on reduced problem",
+        n_vars_before,
+        scaled_problem.n_variables);
+      symmetry.reset();
+      if (settings.symmetry != 0) {
+        dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex_settings.set_log(true);
+        simplex_settings.time_limit = settings.time_limit;
+        dual_simplex::user_problem_t<i_t, f_t> reduced_user_problem =
+          cuopt_problem_to_user_problem<i_t, f_t>(
+            scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+        bool has_symmetry_reduced = false;
+        symmetry                  = dual_simplex::detect_symmetry(
+          reduced_user_problem, simplex_settings, has_symmetry_reduced);
+      }
+    }
+#endif
+
+    // Note: DETECT_SYMMETRY_AFTER_PRESOLVE detection is done in solver.cu::run_solver()
+    // after cuOpt's presolve (probing cache, bounds propagation, trivial presolve) completes.
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
     // It will be converted to the target solver-space at each consumption point.
     solver.context.initial_upper_bound          = initial_upper_bound;
     solver.context.initial_incumbent_assignment = initial_incumbent_assignment;
+    solver.context.symmetry                     = std::move(symmetry);
     if (timer.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached before main solve");
       detail::solution_t<i_t, f_t> sol(problem);
@@ -371,6 +415,23 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       callback->template setup<f_t>(callback_num_variables);
     }
 
+    // Start symmetry detection
+    std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
+    bool has_symmetry = false;
+    if (settings.symmetry != 0) {
+      detail::problem_t<i_t, f_t> problem(op_problem);
+      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex_settings.set_log(true);
+      simplex_settings.time_limit = settings.time_limit;
+      dual_simplex::user_problem_t<i_t, f_t> user_problem =
+        cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
+      symmetry = dual_simplex::detect_symmetry(user_problem, simplex_settings, has_symmetry);
+      if (has_symmetry) { settings.presolver = presolver_t::None; }
+    }
+#endif
+
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);
@@ -551,9 +612,15 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
     // early_best_user_obj is in user-space.
-    // run_mip stores it in context.initial_upper_bound and converts to target spaces as needed.
-    auto sol =
-      run_mip_solver(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
+    // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
+    // needed.
+    auto sol = run_mip_solver(problem,
+                              settings,
+                              timer,
+                              early_best_user_obj,
+                              early_best_user_assignment,
+                              std::move(symmetry));
+
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
 
     if (run_presolve) {

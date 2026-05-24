@@ -56,14 +56,14 @@ bool file_exists(const std::string& file)
 
 namespace {
 
-// Non-template forwarding wrapper around parse_lp_from_string<int, double>.
-// Exists only so EXPECT_THROW(parse_lp_string(R"LP(...)LP"), exc) is parsed
+// Non-template forwarding wrapper around read_lp_from_string<int, double>.
+// Exists only so EXPECT_THROW(read_lp_string(R"LP(...)LP"), exc) is parsed
 // correctly — gtest's macro splits its args on top-level commas, and the
 // comma inside <int, double> would otherwise be treated as a macro-arg
 // separator.
-mps_data_model_t<int, double> parse_lp_string(std::string_view content)
+mps_data_model_t<int, double> read_lp_string(std::string_view content)
 {
-  return parse_lp_from_string<int, double>(content);
+  return read_lp_from_string<int, double>(content);
 }
 
 // Returns the index of `name` in the variable list, or -1 if absent.
@@ -118,23 +118,23 @@ double q_entry(const mps_data_model_t<int, double>& m, int row, int col)
 // MPS and LP TEST_F cases within a fixture share the same `check_model`
 // method, so the expected values live in exactly one place per fixture.
 //
-// All fixtures inherit a common base that supplies parse_mps_file and
-// parse_lp_file helpers.
+// All fixtures inherit a common base that supplies read_mps_file and
+// read_lp_file helpers.
 // ===========================================================================
 
 class parser_fixture_base : public ::testing::Test {
  protected:
-  static mps_data_model_t<int, double> parse_mps_file(const std::string& file,
-                                                      bool fixed_format = true)
+  static mps_data_model_t<int, double> read_mps_file(const std::string& file,
+                                                     bool fixed_format = true)
   {
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
-    return parse_mps<int, double>(root + "/" + file, fixed_format);
+    return read_mps<int, double>(root + "/" + file, fixed_format);
   }
 
-  static mps_data_model_t<int, double> parse_lp_file(const std::string& file)
+  static mps_data_model_t<int, double> read_lp_file(const std::string& file)
   {
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
-    return parse_lp<int, double>(root + "/" + file);
+    return read_lp<int, double>(root + "/" + file);
   }
 };
 
@@ -359,7 +359,7 @@ TEST(mps_parser, bad_mps_files)
 
 TEST_F(good_mps_1_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-1.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-1.mps"));
   // Parser-struct fields that are MPS-only (not exposed via the data model).
   auto mps = read_from_mps("linear_programming/good-mps-1.mps");
   EXPECT_EQ("good-1", mps.problem_name);
@@ -369,19 +369,19 @@ TEST_F(good_mps_1_test, mps)
   EXPECT_EQ(LesserThanOrEqual, mps.row_types[1]);
 }
 
-TEST_F(good_mps_1_test, lp) { check_model(parse_lp_file("linear_programming/good-mps-1.lp")); }
+TEST_F(good_mps_1_test, lp) { check_model(read_lp_file("linear_programming/good-mps-1.lp")); }
 
-// Compressed-LP coverage: parse_lp() shares file_to_string() with parse_mps(),
+// Compressed-LP coverage: read_lp() shares file_to_string() with read_mps(),
 // so the same dlopen-based decompression path that handles .mps.gz / .mps.bz2
 // must also work for .lp.gz / .lp.bz2.
 TEST_F(good_mps_1_test, lp_zlib_compressed)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-1.lp.gz"));
+  check_model(read_lp_file("linear_programming/good-mps-1.lp.gz"));
 }
 
 TEST_F(good_mps_1_test, lp_bzip2_compressed)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-1.lp.bz2"));
+  check_model(read_lp_file("linear_programming/good-mps-1.lp.bz2"));
 }
 
 TEST(mps_parser, good_mps_file_clrf)
@@ -594,7 +594,7 @@ TEST(mps_parser_free_format, bad_mps_files_free_format)
 
 TEST_F(up_low_bounds_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
+  check_model(read_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
   auto mps = read_from_mps("linear_programming/lp_model_with_var_bounds.mps", false);
   EXPECT_EQ("lp_model_with_var_bounds", mps.problem_name);
   EXPECT_EQ("OBJ", mps.objective_name);
@@ -604,54 +604,54 @@ TEST_F(up_low_bounds_test, mps)
 
 TEST_F(up_low_bounds_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/lp_model_with_var_bounds.lp"));
+  check_model(read_lp_file("linear_programming/lp_model_with_var_bounds.lp"));
 }
 
 TEST_F(good_mps_1_test, mps_free_format)
 {
   // free-format-mps-1.mps encodes the same problem as good-mps-1 with default
   // [0, +inf) bounds (no BOUNDS section), so it satisfies the same checker.
-  check_model(parse_mps_file("linear_programming/free-format-mps-1.mps", false));
+  check_model(read_mps_file("linear_programming/free-format-mps-1.mps", false));
 }
 
 TEST_F(some_var_bounds_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
 }
 
 TEST_F(some_var_bounds_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-some-var-bounds.lp"));
+  check_model(read_lp_file("linear_programming/good-mps-some-var-bounds.lp"));
 }
 
 TEST_F(fixed_var_bound_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-fixed-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-fixed-var.mps"));
 }
 
 TEST_F(fixed_var_bound_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-fixed-var.lp"));
+  check_model(read_lp_file("linear_programming/good-mps-fixed-var.lp"));
 }
 
 TEST_F(free_var_bound_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-free-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-free-var.mps"));
 }
 
 TEST_F(free_var_bound_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-free-var.lp"));
+  check_model(read_lp_file("linear_programming/good-mps-free-var.lp"));
 }
 
 TEST_F(lower_inf_var_bound_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
 }
 
 TEST_F(lower_inf_var_bound_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-lower-bound-inf-var.lp"));
+  check_model(read_lp_file("linear_programming/good-mps-lower-bound-inf-var.lp"));
 }
 
 TEST(mps_bounds, rhs_cost)
@@ -664,12 +664,12 @@ TEST(mps_bounds, rhs_cost)
 
 TEST_F(upper_inf_var_bound_test, mps)
 {
-  check_model(parse_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
 }
 
 TEST_F(upper_inf_var_bound_test, lp)
 {
-  check_model(parse_lp_file("linear_programming/good-mps-upper-bound-inf-var.lp"));
+  check_model(read_lp_file("linear_programming/good-mps-upper-bound-inf-var.lp"));
 }
 
 TEST(mps_ranges, fixed_ranges)
@@ -685,7 +685,7 @@ TEST(mps_ranges, fixed_ranges)
   std::string rel_file{};
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
-  auto data_model                         = parse_mps<int, double>(rel_file, true);
+  auto data_model                         = read_mps<int, double>(rel_file, true);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
   EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
@@ -726,7 +726,7 @@ TEST(mps_ranges, free_ranges)
   std::string rel_file{};
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
-  auto data_model                         = parse_mps<int, double>(rel_file, false);
+  auto data_model                         = read_mps<int, double>(rel_file, false);
 
   EXPECT_NEAR(1.2, data_model.get_constraint_lower_bounds()[0], tolerance);  // ROW1 lower bound
   EXPECT_NEAR(5.4, data_model.get_constraint_upper_bounds()[0], tolerance);  // ROW1 upper bound
@@ -819,7 +819,7 @@ TEST(mps_bounds, unsupported_or_invalid_mps_types)
 
 TEST_F(mip_with_bounds_test, mps)
 {
-  check_model(parse_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
   auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-1.mps", false);
   EXPECT_EQ("COST", mps.objective_name);
   ASSERT_EQ(int(2), mps.row_types.size());
@@ -829,7 +829,7 @@ TEST_F(mip_with_bounds_test, mps)
 
 TEST_F(mip_with_bounds_test, lp)
 {
-  check_model(parse_lp_file("mixed_integer_programming/good-mip-mps-1.lp"));
+  check_model(read_lp_file("mixed_integer_programming/good-mip-mps-1.lp"));
 }
 
 TEST(mps_parser, good_mps_file_mip_no_marker)
@@ -879,22 +879,22 @@ TEST(mps_parser, good_mps_file_mip_no_marker)
 
 TEST_F(mip_no_bounds_test, mps)
 {
-  check_model(parse_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
 }
 
 TEST_F(mip_no_bounds_test, lp)
 {
-  check_model(parse_lp_file("mixed_integer_programming/good-mip-mps-no-bounds.lp"));
+  check_model(read_lp_file("mixed_integer_programming/good-mip-mps-no-bounds.lp"));
 }
 
 TEST_F(mip_partial_bounds_test, mps)
 {
-  check_model(parse_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
 }
 
 TEST_F(mip_partial_bounds_test, lp)
 {
-  check_model(parse_lp_file("mixed_integer_programming/good-mip-mps-partial-bounds.lp"));
+  check_model(read_lp_file("mixed_integer_programming/good-mip-mps-partial-bounds.lp"));
 }
 
 #ifdef MPS_PARSER_WITH_BZIP2
@@ -1003,7 +1003,7 @@ TEST(qps_parser, test_qps_files)
 {
   // Test QP_Test_1.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_1.qps")) {
-    auto parsed_data = parse_mps<int, double>(
+    auto parsed_data = read_mps<int, double>(
       cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps", false);
 
     EXPECT_EQ("QP_Test_1", parsed_data.get_problem_name());
@@ -1023,7 +1023,7 @@ TEST(qps_parser, test_qps_files)
 
   // Test QP_Test_2.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_2.qps")) {
-    auto parsed_data = parse_mps<int, double>(
+    auto parsed_data = read_mps<int, double>(
       cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps", false);
 
     EXPECT_EQ("QP_Test_2", parsed_data.get_problem_name());
@@ -1194,14 +1194,14 @@ TEST(mps_roundtrip, linear_programming_basic)
   temp_file_t temp_file(".mps");
 
   // Read original
-  auto original = parse_mps<int, double>(input_file, true);
+  auto original = read_mps<int, double>(input_file, true);
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
 
   // Compare
   compare_data_models(original, reloaded);
@@ -1218,14 +1218,14 @@ TEST(mps_roundtrip, linear_programming_with_bounds)
   temp_file_t temp_file(".mps");
 
   // Read original
-  auto original = parse_mps<int, double>(input_file, false);
+  auto original = read_mps<int, double>(input_file, false);
 
   // Write to temp file
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
 
   // Compare
   compare_data_models(original, reloaded);
@@ -1242,7 +1242,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
   temp_file_t temp_file(".mps");
 
   // Read original
-  auto original = parse_mps<int, double>(input_file, false);
+  auto original = read_mps<int, double>(input_file, false);
   ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
 
   // Write to temp file
@@ -1250,7 +1250,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_1)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
@@ -1268,7 +1268,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
   temp_file_t temp_file(".mps");
 
   // Read original
-  auto original = parse_mps<int, double>(input_file, false);
+  auto original = read_mps<int, double>(input_file, false);
   ASSERT_TRUE(original.has_quadratic_objective()) << "Original should have quadratic objective";
 
   // Write to temp file
@@ -1276,7 +1276,7 @@ TEST(mps_roundtrip, quadratic_programming_qp_test_2)
   writer.write(temp_file.string());
 
   // Read back
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
   ASSERT_TRUE(reloaded.has_quadratic_objective()) << "Reloaded should have quadratic objective";
 
   // Compare
@@ -1295,12 +1295,12 @@ TEST_F(good_mps_1_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
-  auto original = parse_lp_file("linear_programming/good-mps-1.lp");
+  auto original = read_lp_file("linear_programming/good-mps-1.lp");
 
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
 }
@@ -1309,12 +1309,12 @@ TEST_F(up_low_bounds_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
-  auto original = parse_lp_file("linear_programming/lp_model_with_var_bounds.lp");
+  auto original = read_lp_file("linear_programming/lp_model_with_var_bounds.lp");
 
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
 }
@@ -1323,23 +1323,23 @@ TEST_F(mip_with_bounds_test, lp_roundtrip)
 {
   temp_file_t temp_file(".mps");
 
-  auto original = parse_lp_file("mixed_integer_programming/good-mip-mps-1.lp");
+  auto original = read_lp_file("mixed_integer_programming/good-mip-mps-1.lp");
 
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
 
   compare_data_models(original, reloaded);
 }
 
 // ================================================================================================
-// LP syntax / feature / error-path tests (parse_lp on inline LP content)
+// LP syntax / feature / error-path tests (read_lp on inline LP content)
 // ================================================================================================
 
 TEST(lp_parser, trivial)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1369,7 +1369,7 @@ End
 
 TEST(lp_parser, basic_lp_with_float_coefficients)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x1 + x2
 Subject To
@@ -1401,7 +1401,7 @@ End
 
 TEST(lp_parser, maximize_flips_sense)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Maximize
   3 x + 2 y
 Subject To
@@ -1419,7 +1419,7 @@ End
 
 TEST(lp_parser, equality_constraints)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   c1 + 2 c2 + 3 c3 + 4 c4
 Subject To
@@ -1444,7 +1444,7 @@ End
 
 TEST(lp_parser, mixed_constraint_relations)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + 2 y + 3 z
 Subject To
@@ -1470,7 +1470,7 @@ End
 
 TEST(lp_parser, free_and_negative_lower_bound_variables)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   xfree + xneg_lb + xstd
 Subject To
@@ -1500,7 +1500,7 @@ End
 
 TEST(lp_parser, bounds_variety)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   xfixed + xub_only + xlb_pos
 Subject To
@@ -1525,7 +1525,7 @@ End
 
 TEST(lp_parser, general_integers)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Maximize
   3 x + 5 y
 Subject To
@@ -1547,7 +1547,7 @@ End
 
 TEST(lp_parser, binaries_set_zero_one_bounds)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Maximize
   3 x1 + 5 x2 + 4 x3 + 2 x4
 Subject To
@@ -1567,7 +1567,7 @@ End
 
 TEST(lp_parser, mixed_continuous_integer_binary)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Maximize
   3 xc + 4 xi + 7 xb
 Subject To
@@ -1591,7 +1591,7 @@ End
 
 TEST(lp_parser, quadratic_diagonal_only)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y + [ 2 x ^2 + 4 y ^2 ] / 2
 Subject To
@@ -1617,7 +1617,7 @@ End
 
 TEST(lp_parser, quadratic_with_cross_terms)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   - 3 x - 4 y - 2 z + [ 2 x ^2 + 2 x * y + 2 y ^2 + 2 y * z + 2 z ^2 ] / 2
 Subject To
@@ -1652,7 +1652,7 @@ End
 
 TEST(lp_parser, miqp_integer_with_quadratic_objective)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   - 4 xi - 2 xc + [ 2 xi ^2 + 2 xc ^2 ] / 2
 Subject To
@@ -1675,7 +1675,7 @@ End
 
 TEST(lp_parser, infeasible_model_parses_faithfully)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -1696,7 +1696,7 @@ End
 
 TEST(lp_parser, unbounded_model_parses)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Maximize
   x + y
 Subject To
@@ -1712,7 +1712,7 @@ End
 
 TEST(lp_parser, missing_objective_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Subject To
  c1: x + y <= 5
 End
@@ -1722,7 +1722,7 @@ End
 
 TEST(lp_parser, unsupported_sos_section_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1736,7 +1736,7 @@ End
 
 TEST(lp_parser, semi_continuous_basic)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -1763,7 +1763,7 @@ TEST(lp_parser, semi_continuous_bare_semi_keyword)
 {
   // The LP-format convention accepts the bare "Semi" keyword as a synonym
   // for the "Semi-Continuous" section header.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1785,7 +1785,7 @@ TEST(lp_parser, semi_continuous_bare_semis_keyword)
 {
   // The LP-format convention accepts the bare "Semis" keyword as a synonym
   // for the "Semi-Continuous" section header.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1805,7 +1805,7 @@ End
 
 TEST(lp_parser, semi_continuous_default_lower_is_zero)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1827,7 +1827,7 @@ End
 TEST(lp_parser, semi_continuous_missing_upper_throws)
 {
   // No upper bound specified ⇒ infinity ⇒ semantics degenerate, reject.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1843,7 +1843,7 @@ TEST(lp_parser, semi_continuous_and_generals_conflict_throws)
 {
   // Variable appearing in both Semi-Continuous and Generals is ambiguous
   // (integer vs. continuous-or-zero) ⇒ reject.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1861,7 +1861,7 @@ End
 
 TEST(lp_parser, semi_continuous_and_binaries_conflict_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1880,7 +1880,7 @@ End
 TEST(lp_parser, semi_continuous_before_generals_conflict_throws)
 {
   // Conflict must also be detected when Semi-Continuous is declared first.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1898,7 +1898,7 @@ End
 
 TEST(lp_parser, unsupported_pwlobj_section_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1913,7 +1913,7 @@ End
 TEST(lp_parser, unsupported_lazy_constraints_section_throws)
 {
   // Lazy constraints and user cuts are scope-limited out: LP/MIP/QP only.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1927,7 +1927,7 @@ End
 
 TEST(lp_parser, unsupported_user_cuts_section_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1941,13 +1941,13 @@ End
 
 TEST(lp_parser, unknown_file_throws)
 {
-  auto call = [] { return parse_lp<int, double>("/definitely/does/not/exist.lp"); };
+  auto call = [] { return read_lp<int, double>("/definitely/does/not/exist.lp"); };
   EXPECT_THROW(call(), std::logic_error);
 }
 
 TEST(lp_parser, case_insensitive_section_keywords)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 MINIMIZE
   x
 SUBJECT TO
@@ -1962,7 +1962,7 @@ END
 
 TEST(lp_parser, backslash_comments_are_ignored)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 \ This is a comment
 Minimize
   x \ trailing comment
@@ -1977,7 +1977,7 @@ End
 TEST(lp_parser, missing_end_warns_but_succeeds)
 {
   // No End — should still parse. (A warning is printed; see parse_all().)
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -1988,7 +1988,7 @@ Subject To
 
 TEST(lp_parser, auto_generates_names_for_unlabeled_constraints)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2004,7 +2004,7 @@ End
 
 TEST(lp_parser, infinity_keyword_in_bounds)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2023,7 +2023,7 @@ End
 
 TEST(lp_parser, coefficient_one_implicit_with_leading_minus)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   - x + y
 Subject To
@@ -2043,7 +2043,7 @@ TEST(lp_parser, quadratic_without_slash_two_is_rejected)
   // The quadratic bracket in the objective must be followed by '/ 2'.
   // Without it there's no unambiguous way to tell whether the user meant
   // '/ 2' and forgot or intended the bare coefficients, so cuopt rejects.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   [ 1 x ^2 ]
 Subject To
@@ -2058,7 +2058,7 @@ TEST(lp_parser, leading_coefficient_before_objective_bracket_rejected)
   // '2 [ x^2 ] / 2' is ambiguous between "constant 2 plus 0.5 x^2" and
   // "scalar 2 times 0.5 x^2"; the LP convention is to place coefficients
   // inside the brackets, so reject.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   2 [ x ^ 2 ] / 2
 Subject To
@@ -2071,7 +2071,7 @@ End
 TEST(lp_parser, leading_coefficient_before_constraint_bracket_rejected)
 {
   // Same ambiguity as the objective case, in a quadratic constraint.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2085,7 +2085,7 @@ TEST(lp_parser, constant_then_signed_bracket_in_objective_is_accepted)
 {
   // The positive form: a literal constant in the objective followed by a
   // signed quadratic bracket still parses (constant becomes objective offset).
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   5 + [ x ^ 2 ] / 2
 Subject To
@@ -2100,7 +2100,7 @@ TEST(lp_parser, stray_star_after_number_without_variable_rejected)
 {
   // '3 *' followed by a relation, section header, or EOL must error rather
   // than silently drop the '*' and treat the '3' as a bare constant.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   3 *
 Subject To
@@ -2113,7 +2113,7 @@ End
 TEST(lp_parser, explicit_star_between_coefficient_and_variable_is_accepted)
 {
   // The positive form: '3 * x' is the same as '3 x'.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   3 * x
 Subject To
@@ -2139,7 +2139,7 @@ const auto& nth_qc(const mps_data_model_t<int, double>& m, size_t k)
 
 TEST(lp_parser, qc_basic_diagonal_only)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2166,7 +2166,7 @@ TEST(lp_parser, qc_cross_term_splits_symmetrically)
 {
   // `4 x*y` in the LP source means coefficient on x_i * x_j = 4 in the
   // symmetric x^T Q x. Split into Q[x,y] = Q[y,x] = 2 in the CSR.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2186,7 +2186,7 @@ End
 
 TEST(lp_parser, qc_linear_and_quadratic_mixed)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2212,7 +2212,7 @@ TEST(lp_parser, qc_multiple_constraints_indexing)
 {
   // 2 linear constraints, then 2 quadratic constraints. Per the data-model
   // convention, quadratic rows are indexed after all linear rows.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2236,7 +2236,7 @@ TEST(lp_parser, qc_outer_minus_sign_flips_quadratic)
   // After moving the constant to the RHS: -x^2 - 2 x <= rhs - 5.
   // Here the RHS is 10, so the row becomes: -x^2 - 2 x <= 5  (in x^T Q x form
   // Q[x,x] = -1).
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2259,7 +2259,7 @@ TEST(lp_parser, bare_linear_inside_objective_bracket_rejected)
   // The LP-format convention reserves `[ ... ]` for quadratic terms only
   // (squared and product). A bare linear term like `2 x` inside the
   // bracket is malformed; the user should write it outside.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   obj: [ x ^ 2 + 2 x ] / 2
 Subject To
@@ -2271,7 +2271,7 @@ End
 
 TEST(lp_parser, bare_linear_inside_constraint_bracket_rejected)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2283,7 +2283,7 @@ End
 
 TEST(lp_parser, qc_named_constraint)
 {
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2296,7 +2296,7 @@ End
 
 TEST(lp_parser, qc_ge_relation_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2308,7 +2308,7 @@ End
 
 TEST(lp_parser, qc_eq_relation_throws)
 {
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2322,7 +2322,7 @@ TEST(lp_parser, qc_with_slash_two_is_rejected)
 {
   // '/ 2' is reserved for the objective bracket; using it in a constraint
   // bracket is rejected so the convention is unambiguous.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2336,7 +2336,7 @@ TEST(lp_parser, qc_linear_only_bracket_is_rejected)
 {
   // A bracket with no quadratic terms inside is meaningless in a constraint
   // (the user could just write the linear terms directly).
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2350,7 +2350,7 @@ TEST(lp_parser, qc_objective_quadratic_still_requires_slash_two)
 {
   // Regression: the existing '/ 2' requirement on the objective bracket
   // must not change after adding constraint-bracket support.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   [ x ^ 2 ]
 Subject To
@@ -2363,7 +2363,7 @@ End
 TEST(lp_parser, duplicate_coefficient_accumulates)
 {
   // Repeated variable in the objective should sum coefficients.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   2 x + 3 x + y
 Subject To
@@ -2380,7 +2380,7 @@ TEST(lp_parser, subject_to_variant_st_dot)
 {
   // 'st.' with a trailing period is a Subject-To synonym in the LP-format
   // convention.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 st.
@@ -2396,7 +2396,7 @@ TEST(lp_parser, swapped_relational_operators_eq_lt_and_eq_gt)
   // '=<' is an alias for '<=' and '=>' for '>=', in both constraints and
   // bounds. Tokenizer must produce LessEq / GreaterEq tokens regardless of
   // spelling.
-  auto m   = parse_lp_string(R"LP(
+  auto m   = read_lp_string(R"LP(
 Minimize
   x + y
 Subject To
@@ -2424,7 +2424,7 @@ TEST(lp_parser, variable_names_with_special_characters)
   // Per the LP-format convention, variable names may contain assorted
   // punctuation beyond letters + underscore. The names are treated as
   // opaque identifiers; cuopt just has to keep them distinct.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x!a + x#b + x$c + x@d + x'e + x~f + x.g + x_h + x|i + x{j} + x(k) + a/b
 Subject To
@@ -2442,7 +2442,7 @@ TEST(lp_parser, negative_upper_without_explicit_lower_throws)
 {
   // 'x <= -1' with no explicit lower makes the default lb=0 collide with the
   // upper. cuopt rejects rather than accept a silently infeasible problem.
-  EXPECT_THROW(parse_lp_string(R"LP(
+  EXPECT_THROW(read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2457,7 +2457,7 @@ End
 TEST(lp_parser, negative_upper_with_explicit_lower_ok)
 {
   // Same test as above, but now the lower bound is explicit: no error.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2475,7 +2475,7 @@ End
 TEST(lp_parser, negative_upper_with_range_bound_ok)
 {
   // -5 <= x <= -1 declares both bounds in a single line: no error.
-  auto m = parse_lp_string(R"LP(
+  auto m = read_lp_string(R"LP(
 Minimize
   x
 Subject To
@@ -2490,7 +2490,7 @@ End
 }
 
 // ================================================================================================
-// parse_problem dispatch tests
+// read dispatch tests
 //
 // Verifies the extension-based dispatch used by cuopt_cli and the C API.
 // ================================================================================================
@@ -2498,8 +2498,8 @@ End
 namespace {
 
 // Writes `content` to a temp file with the given suffix, parses it via
-// parse_problem, and returns the resulting model. temp_file_t removes the
-// file on every scope exit (including when parse_problem throws).
+// read, and returns the resulting model. temp_file_t removes the
+// file on every scope exit (including when read throws).
 mps_data_model_t<int, double> dispatch_parse(const std::string& content, const std::string& suffix)
 {
   temp_file_t tmp(suffix);
@@ -2507,7 +2507,7 @@ mps_data_model_t<int, double> dispatch_parse(const std::string& content, const s
     std::ofstream out(tmp.string());
     out << content;
   }
-  return parse_problem<int, double>(tmp.string());
+  return read<int, double>(tmp.string());
 }
 
 constexpr const char* kTrivialLp = R"LP(
@@ -2536,7 +2536,7 @@ ENDATA
 
 }  // namespace
 
-TEST(parse_problem, lp_extension_dispatches_to_lp_parser)
+TEST(read, lp_extension_dispatches_to_lp_parser)
 {
   auto m = dispatch_parse(kTrivialLp, ".lp");
   ASSERT_EQ(m.get_variable_names().size(), 1u);
@@ -2544,26 +2544,26 @@ TEST(parse_problem, lp_extension_dispatches_to_lp_parser)
   EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
 }
 
-TEST(parse_problem, lp_gz_extension_dispatches_to_lp_parser)
+TEST(read, lp_gz_extension_dispatches_to_lp_parser)
 {
   // Real compressed LP fixture; successful parse proves dispatch picked the
-  // LP path. (Routing a .lp.gz to parse_mps would either fail at
+  // LP path. (Routing a .lp.gz to read_mps would either fail at
   // decompression or fail to parse the LP content as MPS.)
-  auto m = parse_problem<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.lp.gz");
+  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
+                             "/linear_programming/good-mps-1.lp.gz");
   ASSERT_EQ(m.get_variable_names().size(), 2u);
   EXPECT_EQ(m.get_variable_names()[0], "VAR1");
 }
 
-TEST(parse_problem, lp_bz2_extension_dispatches_to_lp_parser)
+TEST(read, lp_bz2_extension_dispatches_to_lp_parser)
 {
-  auto m = parse_problem<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.lp.bz2");
+  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
+                             "/linear_programming/good-mps-1.lp.bz2");
   ASSERT_EQ(m.get_variable_names().size(), 2u);
   EXPECT_EQ(m.get_variable_names()[0], "VAR1");
 }
 
-TEST(parse_problem, mps_extension_dispatches_to_mps_parser)
+TEST(read, mps_extension_dispatches_to_mps_parser)
 {
   auto m = dispatch_parse(kTrivialMps, ".mps");
   ASSERT_EQ(m.get_variable_names().size(), 1u);
@@ -2571,45 +2571,45 @@ TEST(parse_problem, mps_extension_dispatches_to_mps_parser)
   EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
 }
 
-TEST(parse_problem, qps_extension_dispatches_to_mps_parser)
+TEST(read, qps_extension_dispatches_to_mps_parser)
 {
   // QPS is a superset of MPS; the MPS parser handles both. We just need
-  // parse_problem to route ".qps" to it.
+  // read to route ".qps" to it.
   auto m = dispatch_parse(kTrivialMps, ".qps");
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
-TEST(parse_problem, mps_gz_extension_dispatches_to_mps_parser)
+TEST(read, mps_gz_extension_dispatches_to_mps_parser)
 {
-  auto m = parse_problem<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.mps.gz");
+  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
+                             "/linear_programming/good-mps-1.mps.gz");
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
-TEST(parse_problem, mps_bz2_extension_dispatches_to_mps_parser)
+TEST(read, mps_bz2_extension_dispatches_to_mps_parser)
 {
-  auto m = parse_problem<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
-                                      "/linear_programming/good-mps-1.mps.bz2");
+  auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
+                             "/linear_programming/good-mps-1.mps.bz2");
   EXPECT_EQ("good-1", m.get_problem_name());
 }
 
-TEST(parse_problem, uppercase_lp_extension_dispatches_to_lp_parser)
+TEST(read, uppercase_lp_extension_dispatches_to_lp_parser)
 {
-  // Matching is case-insensitive: .LP must still route to parse_lp.
+  // Matching is case-insensitive: .LP must still route to read_lp.
   auto m = dispatch_parse(kTrivialLp, ".LP");
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
-TEST(parse_problem, mixed_case_mps_extension_dispatches_to_mps_parser)
+TEST(read, mixed_case_mps_extension_dispatches_to_mps_parser)
 {
   auto m = dispatch_parse(kTrivialMps, ".MpS");
   ASSERT_EQ(m.get_variable_names().size(), 1u);
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
-TEST(parse_problem, unrecognized_extension_throws)
+TEST(read, unrecognized_extension_throws)
 {
   // Extensionless and unrelated suffixes are rejected; case doesn't matter
   // (matching is case-insensitive, so ".lpgz" stays rejected too).
@@ -2799,7 +2799,7 @@ TEST(qps_parser, qcmatrix_mps_linear_rhs_and_bounds)
   if (!file_exists("qcqp/QC_Test_1.mps")) {
     GTEST_SKIP() << "qcqp/QC_Test_1.mps not in dataset root";
   }
-  const auto model = parse_mps<int, double>(
+  const auto model = read_mps<int, double>(
     cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/QC_Test_1.mps", false);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
@@ -2851,7 +2851,7 @@ TEST(qps_parser, qcqp_p0033_mps_sections)
   if (!file_exists("qcqp/p0033_qc1.mps")) {
     GTEST_SKIP() << "qcqp/p0033_qc1.mps not in dataset root";
   }
-  const auto model = parse_mps<int, double>(
+  const auto model = read_mps<int, double>(
     cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps", false);
 
   EXPECT_EQ(12, model.get_n_constraints());
@@ -2882,17 +2882,17 @@ TEST(mps_roundtrip, qcqp_p0033_qc1)
   temp_file_t temp_file(".mps");
   temp_file_t temp_file_2(".mps");
 
-  auto original = parse_mps<int, double>(input_file, false);
+  auto original = read_mps<int, double>(input_file, false);
   ASSERT_TRUE(original.has_quadratic_objective());
   ASSERT_TRUE(original.has_quadratic_constraints());
 
   mps_writer_t<int, double> writer(original);
   writer.write(temp_file.string());
 
-  auto reloaded = parse_mps<int, double>(temp_file.string(), false);
+  auto reloaded = read_mps<int, double>(temp_file.string(), false);
   mps_writer_t<int, double> writer_r2(reloaded);
   writer_r2.write(temp_file_2.string());
-  auto reloaded_2 = parse_mps<int, double>(temp_file_2.string(), false);
+  auto reloaded_2 = read_mps<int, double>(temp_file_2.string(), false);
   compare_data_models(reloaded, reloaded_2);
 }
 }  // namespace cuopt::linear_programming::io

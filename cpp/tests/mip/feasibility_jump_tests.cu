@@ -69,7 +69,7 @@ static fj_state_t run_fj(std::string test_instance,
 
   auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
