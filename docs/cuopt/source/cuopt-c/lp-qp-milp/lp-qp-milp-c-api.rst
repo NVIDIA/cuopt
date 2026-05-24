@@ -175,6 +175,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
 .. doxygendefine:: CUOPT_MIP_PRESOLVE
 .. doxygendefine:: CUOPT_PRESOLVE
+.. doxygendefine:: CUOPT_MIP_PROBING
 .. doxygendefine:: CUOPT_LOG_TO_CONSOLE
 .. doxygendefine:: CUOPT_CROSSOVER
 .. doxygendefine:: CUOPT_FOLDING

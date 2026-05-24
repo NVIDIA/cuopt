@@ -5,7 +5,7 @@ import math
 import os
 from enum import IntEnum
 
-from cuopt.linear_programming import mps_parser
+from cuopt.linear_programming import io as mps_parser
 import numpy as np
 import pytest
 

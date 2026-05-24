@@ -1,6 +1,22 @@
 Examples
 ========
 
+Input File Format
+#################
+
+``cuopt_cli`` accepts both **MPS** and **LP** format input files. The
+format is dispatched automatically from the file extension
+(case-insensitive):
+
+- ``*.lp``, ``*.lp.gz``, ``*.lp.bz2`` → parsed as LP format
+- ``*.mps``, ``*.mps.gz``, ``*.mps.bz2`` (and the equivalent ``*.qps``
+  variants) → parsed as MPS / QPS
+
+Any other extension (including no extension) is rejected with an error
+listing the supported suffixes. See the ``parse_lp`` / ``parse_mps``
+declarations in ``cuopt/linear_programming/io/parser.hpp`` for the
+supported subset of each format.
+
 Basic Usage
 ###########
 

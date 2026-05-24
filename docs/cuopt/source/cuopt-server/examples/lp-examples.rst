@@ -208,10 +208,13 @@ The response would be as follows:
     }
 
 
-Using MPS file directly
------------------------
+Using MPS or LP file directly
+-----------------------------
 
-An example on using .mps files as input is shown below:
+The self-hosted client accepts both MPS and LP format files — the client
+dispatches on the file extension (``.lp`` ⇒ LP parser, otherwise MPS) and
+sends the parsed data model to the server. An example on using .mps files
+as input is shown below:
 
 :download:`mps_file_example.py <lp/examples/mps_file_example.py>`
 

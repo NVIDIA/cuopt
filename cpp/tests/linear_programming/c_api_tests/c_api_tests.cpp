@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -113,6 +114,67 @@ TEST(c_api, mip_get_set_callbacks) { EXPECT_EQ(test_mip_get_set_callbacks(), CUO
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 
 TEST(c_api, test_missing_file) { EXPECT_EQ(test_missing_file(), CUOPT_MPS_FILE_ERROR); }
+
+TEST(c_api, read_problem_null_or_empty_inputs_rejected)
+{
+  cuOptOptimizationProblem handle = nullptr;
+  // Null filename pointer.
+  EXPECT_EQ(cuOptReadProblem(nullptr, &handle), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+  // Empty filename string.
+  EXPECT_EQ(cuOptReadProblem("", &handle), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(handle, nullptr);
+  // Null out-pointer.
+  EXPECT_EQ(cuOptReadProblem("any.lp", nullptr), CUOPT_INVALID_ARGUMENT);
+}
+
+// Verifies that cuOptReadProblem dispatches to the LP parser when given a
+// path with a .lp extension. The input is a minimal LP (1 variable, 1
+// constraint); we just check the round-trip read produces the expected shape.
+TEST(c_api, read_lp_file_by_extension)
+{
+  constexpr const char* lp_text = R"LP(
+Minimize
+  x
+Subject To
+ c1: x >= 2.5
+Bounds
+ x <= 10
+End
+)LP";
+  std::filesystem::path lp_path =
+    std::filesystem::temp_directory_path() /
+    (std::string{"c_api_read_lp_"} + std::to_string(::getpid()) + ".lp");
+  {
+    std::ofstream out(lp_path);
+    out << lp_text;
+  }
+
+  cuOptOptimizationProblem handle = nullptr;
+  // Scope guard: tear the temp file and the problem handle down on every
+  // exit path (including assertion failure) so the test doesn't leak.
+  struct cleanup_t {
+    cuOptOptimizationProblem* handle_ptr;
+    const std::filesystem::path& lp_path;
+    ~cleanup_t()
+    {
+      if (*handle_ptr != nullptr) { cuOptDestroyProblem(handle_ptr); }
+      std::error_code ec;
+      std::filesystem::remove(lp_path, ec);
+    }
+  } cleanup{&handle, lp_path};
+
+  cuopt_int_t status = cuOptReadProblem(lp_path.string().c_str(), &handle);
+  EXPECT_EQ(status, CUOPT_SUCCESS);
+  ASSERT_NE(handle, nullptr);
+
+  cuopt_int_t n_vars    = 0;
+  cuopt_int_t n_constrs = 0;
+  EXPECT_EQ(cuOptGetNumVariables(handle, &n_vars), CUOPT_SUCCESS);
+  EXPECT_EQ(cuOptGetNumConstraints(handle, &n_constrs), CUOPT_SUCCESS);
+  EXPECT_EQ(n_vars, 1);
+  EXPECT_EQ(n_constrs, 1);
+}
 
 TEST(c_api, test_infeasible_problem) { EXPECT_EQ(test_infeasible_problem(), CUOPT_SUCCESS); }
 

@@ -51,6 +51,7 @@
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
 #define CUOPT_PRESOLVE                             "presolve"
+#define CUOPT_MIP_PROBING                          "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                       "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                 "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE               "mip_absolute_tolerance"
