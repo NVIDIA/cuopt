@@ -100,6 +100,7 @@ class mip_solver_settings_t {
   bool heuristics_only          = false;
   i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
+  i_t symmetry                  = -1;
   i_t max_cut_passes            = 10;  // number of cut passes to make
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;

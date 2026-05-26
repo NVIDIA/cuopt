@@ -113,14 +113,29 @@ if [ "$doservertest" -eq 1 ]; then
     # Success, small MILP problem with pure JSON which returns a solution with Optimal status
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c $CLIENT_CERT -p $CUOPT_SERVER_PORT -t LP ../../datasets/mixed_integer_programming/milp_data.json
 
-    # Succes, small LP problem with mps. Data will be transformed to JSON
+    # Success, small LP problem with MPS. Data will be transformed to JSON
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps
 
-    # Succes, small Batch LP problem with mps. Data will be transformed to JSON
+    # Success, small Batch LP problem with MPS. Data will be transformed to JSON
     run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps ../../datasets/linear_programming/good-mps-1.mps
 
-    # Error, local file mode is not allowed with mps
+    # Success, small LP problem with LP format. Data will be transformed to JSON
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp
+
+    # Success, small Batch LP problem with LP format. Data will be transformed to JSON
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp ../../datasets/linear_programming/good-mps-1.lp
+
+    # Success, compressed LP inputs (.lp.gz / .lp.bz2) via Read dispatch
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp.gz
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.lp.bz2
+
+    # Success, compressed MPS inputs (.mps.gz / .mps.bz2) for parity
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps.gz
+    run_cli_test "'status': 'Optimal'" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP ../../datasets/linear_programming/good-mps-1.mps.bz2
+
+    # Error, local file mode is not allowed with MPS/LP file inputs
     run_cli_test "Cannot use local file mode with MPS/LP data" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP -f good-mps-1.mps
+    run_cli_test "Cannot use local file mode with MPS/LP data" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -t LP -f good-mps-1.lp
 
     # Just run validator
     cp ../../datasets/cuopt_service_data/cuopt_problem_data.json "$CUOPT_DATA_DIR"

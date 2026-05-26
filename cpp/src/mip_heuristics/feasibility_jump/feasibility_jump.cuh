@@ -632,6 +632,10 @@ class fj_t {
   std::vector<std::unique_ptr<climber_data_t>> climbers;
   rmm::device_uvector<typename climber_data_t::view_t> climber_views;
   fj_settings_t settings;
+  // Device-side mirror of `settings`. `run_step_device` pushes the host
+  // `settings` here before each kernel launch; kernels read it via
+  // `view_t::settings`.
+  rmm::device_scalar<fj_settings_t> device_settings;
 
   fj_improvement_callback_t<f_t> improvement_callback;
   f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};

@@ -81,6 +81,27 @@ General FAQ
 
    #. The complete round-trip solve time might be more than what was set.
 
+.. dropdown:: Why am I getting "libssl.so.3: cannot open shared object file" or "libcrypto.so.3: cannot open shared object file" when importing cuOpt?
+
+   The cuOpt wheel links against OpenSSL 3 and intentionally does not bundle ``libssl.so.3`` / ``libcrypto.so.3``; the host must provide them. This keeps libcrypto and any FIPS provider (system or mounted) byte-version-matched at runtime.
+
+   Most modern Linux distributions provide OpenSSL 3 out of the box: Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 9+, and Fedora 36+. For older distributions:
+
+   - **RHEL / Rocky / Alma / CentOS 8**: install the ``openssl3`` runtime package from EPEL:
+
+     .. code-block:: bash
+
+         dnf install -y epel-release
+         dnf install -y openssl3
+         # Verify
+         ldconfig -p | grep -E 'libssl\.so\.3|libcrypto\.so\.3'
+
+   - **Ubuntu 20.04**: install OpenSSL 3 from a PPA or backport, or use the cuOpt container image (Ubuntu 22.04 base) instead.
+
+   - **Other distributions**: install your distribution's OpenSSL 3 development/runtime package, or use the cuOpt container.
+
+   After installing, re-run ``pip install`` (or restart the Python process) and the import should succeed.
+
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 
    This error indicates that the cuOpt shared library is not found. Please check the following:

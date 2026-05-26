@@ -47,6 +47,9 @@ struct clique_table_t;
 
 namespace cuopt::linear_programming::dual_simplex {
 
+template <typename i_t, typename f_t>
+struct mip_symmetry_t;
+
 enum class mip_status_t {
   OPTIMAL    = 0,  // The optimal integer solution was found
   UNBOUNDED  = 1,  // The problem is unbounded
@@ -80,7 +83,8 @@ class branch_and_bound_t {
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
+                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                     mip_symmetry_t<i_t, f_t>* symmetry                             = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -163,6 +167,7 @@ class branch_and_bound_t {
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool> signal_extend_cliques_{false};
+  mip_symmetry_t<i_t, f_t>* symmetry_;
 
   work_limit_context_t work_unit_context_{"B&B"};
 
@@ -334,6 +339,14 @@ class branch_and_bound_t {
                                branch_and_bound_worker_t<i_t, f_t>* worker,
                                branch_and_bound_stats_t<i_t, f_t>& stats,
                                logger_t& log);
+
+  // Apply symmetry-based bound reductions (orbital fixing and, when
+  // settings_.symmetry == 2, lexical reduction) to the current node.
+  // Tightens worker->leaf_problem bounds and updates stats. Returns false
+  // if lexical reduction proves the node infeasible.
+  bool apply_symmetry_reductions(mip_node_t<i_t, f_t>* node_ptr,
+                                 branch_and_bound_worker_t<i_t, f_t>* worker,
+                                 branch_and_bound_stats_t<i_t, f_t>& stats);
 
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,

@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
 #include <mutex>
 #include <random>
@@ -230,10 +231,22 @@ class timing_raii_t {
 
   ~timing_raii_t()
   {
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration =
-      std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
-    times_vec_.push_back(duration.count());
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Losing one timing sample under OOM is acceptable.
+    // fprintf to stderr is allocation-free and cannot throw; using the project
+    // logger here would risk a secondary bad_alloc that would escape the
+    // destructor and re-introduce std::terminate.
+    try {
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto duration =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end_time - start_time_);
+      times_vec_.push_back(duration.count());
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "timing_raii_t destructor: failed to record sample (%s).\n", e.what());
+    } catch (...) {
+      std::fprintf(stderr,
+                   "timing_raii_t destructor: failed to record sample (unknown exception).\n");
+    }
   }
 
  private:

@@ -136,7 +136,7 @@ def is_uuid(cuopt_problem_data):
 
 # File extensions (case-insensitive, after stripping a compression suffix) that
 # the cuopt.linear_programming.io package can parse client-side. Matches the
-# dispatch table in parse_problem() on the C++ side.
+# dispatch table in read() on the C++ side.
 _PARSEABLE_LP_EXTS = (".lp",)
 _PARSEABLE_MPS_EXTS = (".mps", ".qps")
 _COMPRESSION_SUFFIXES = (".gz", ".bz2")
@@ -164,7 +164,8 @@ def _client_parseable_extension(path):
 
 def _parse_file_to_data_model(problem_input, solver_config):
     try:
-        from cuopt.linear_programming import io as mps_parser
+        from cuopt.linear_programming import DataModel, Read
+        from cuopt.linear_programming.io import toDict
     except ImportError as e:
         raise ImportError(
             "MPS/LP parsing on the client requires the cuopt package. "
@@ -174,27 +175,16 @@ def _parse_file_to_data_model(problem_input, solver_config):
             "DataModel."
         ) from e
     # problem_input is either a path (str) to an MPS/LP/QPS file (optionally
-    # .gz / .bz2 compressed), or an mps_parser DataModel already handed to us.
-    if isinstance(problem_input, mps_parser.parser_wrapper.DataModel):
+    # .gz / .bz2 compressed), or a DataModel already handed to us.
+    if isinstance(problem_input, DataModel):
         model = problem_input
-        log.debug("Received mps_parser DataModel object")
+        log.debug("Received DataModel object")
     else:
         t0 = time.time()
-        kind = (
-            _client_parseable_extension(problem_input)
-            if isinstance(problem_input, str)
-            else None
-        )
-        if kind == "lp":
-            model = mps_parser.ParseLp(problem_input)
-        else:
-            # MPS, QPS, and any unrecognized extension fall through to the
-            # MPS parser, which accepts both .mps and .qps (and their .gz /
-            # .bz2 variants) via the underlying C++ parse_mps().
-            model = mps_parser.ParseMps(problem_input)
+        model = Read(problem_input)
         parse_time = time.time() - t0
         log.debug(f"file parsing time was {parse_time}")
-    problem_data = mps_parser.toDict(model, json=use_zlib)
+    problem_data = toDict(model, json=use_zlib)
 
     if type(solver_config) is dict:
         problem_data["solver_config"] = solver_config

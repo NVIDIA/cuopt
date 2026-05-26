@@ -37,7 +37,7 @@ void expect_optimal_solution(const std::string& lp_text,
                              const std::vector<double>& expected_x)
 {
   raft::handle_t handle;
-  auto problem  = io::parse_lp_from_string<int, double>(lp_text);
+  auto problem  = io::read_lp_from_string<int, double>(lp_text);
   auto settings = pdlp_solver_settings_t<int, double>();
   auto solution = solve_lp(&handle, problem, settings);
 

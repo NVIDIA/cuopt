@@ -108,7 +108,7 @@ int run_single_file(const std::string& file_path,
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      mps_data_model = cuopt::linear_programming::io::parse_problem<int, double>(file_path);
+      mps_data_model = cuopt::linear_programming::io::read<int, double>(file_path);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
