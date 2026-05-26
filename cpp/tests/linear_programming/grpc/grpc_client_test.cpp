@@ -1667,6 +1667,9 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.mip_scaling     = true;
   orig.symmetry        = 2;  // orbital fixing + lexical reduction
 
+  // Semi-continuous variables
+  orig.semi_continuous_big_m = 7.5e9;  // not the default 1e10, to detect overwrite-on-decode
+
   // Branching
   orig.reliability_branching           = 32;
   orig.mip_batch_pdlp_strong_branching = 16;
@@ -1714,6 +1717,9 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_EQ(restored.presolver, presolver_t::Default);
   EXPECT_EQ(restored.mip_scaling, true);
   EXPECT_EQ(restored.symmetry, 2);
+
+  // Semi-continuous variables
+  EXPECT_DOUBLE_EQ(restored.semi_continuous_big_m, 7.5e9);
 
   // Branching
   EXPECT_EQ(restored.reliability_branching, 32);

@@ -37,3 +37,4 @@
   settings.determinism_mode = pb_settings.determinism_mode();
   settings.seed = pb_settings.seed();
   settings.probing = pb_settings.probing();
+  settings.semi_continuous_big_m = pb_settings.semi_continuous_big_m();

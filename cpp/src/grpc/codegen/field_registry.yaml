@@ -627,6 +627,13 @@ mip_settings:
       field_num: 29
       type: bool
 
+    # Semi-continuous variables
+    # Fallback upper bound for semi-continuous variables when bounds-strengthening
+    # cannot derive a finite UB. Local-solve binding restricts the range to
+    # [1.0, +inf] with default 1e10; see solver_settings.cu.
+  - semi_continuous_big_m:
+      field_num: 34
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)
 # ─────────────────────────────────────────────────────────────────────────────

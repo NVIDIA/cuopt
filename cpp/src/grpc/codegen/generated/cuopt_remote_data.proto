@@ -193,6 +193,7 @@ message MIPSolverSettings {
   int32 implied_bound_cuts = 31;
   int32 mip_batch_pdlp_reliability_branching = 32;
   int32 symmetry = 33;
+  double semi_continuous_big_m = 34;
 }
 
 message PDLPWarmStartData {

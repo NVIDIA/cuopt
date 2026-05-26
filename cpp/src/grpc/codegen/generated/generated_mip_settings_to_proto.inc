@@ -39,3 +39,4 @@
   pb_settings->set_determinism_mode(settings.determinism_mode);
   pb_settings->set_seed(settings.seed);
   pb_settings->set_probing(settings.probing);
+  pb_settings->set_semi_continuous_big_m(settings.semi_continuous_big_m);
