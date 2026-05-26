@@ -3,21 +3,37 @@
 ## Release Notes 26.06
 
 ### New Features (26.06)
+- LP-format problem files are now supported; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`).
 
 ### Breaking Changes (26.06)
 - Drop `const` qualifier in `raft::handle_t` on the `data_model_view_t` (routing).
+- Folded `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`.
 
 ### Improvements (26.06)
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
 - Reduce memory footprint of cuPDLPx by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
 - Add option for specifying a maximum number of nodes that can be explored in B&B
+- Unified `read` API on `Problem` for both MPS and LP file formats; the older `readMPS` is now deprecated.
+- Built and tested with CUDA 13.2.
+- gRPC is now built against OpenSSL 3 in the container and wheel.
+- Substantially expanded the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server. Added NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`.
 
 ### Bug Fixes (26.06)
 - Probing cache now correctly update the model after each batch
 - Fix quadratic cost when adding slack variables in the crossover
 
 ### Documentation (26.06)
+- Refreshed the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope.
+- Updated the MIP scaling guide.
+- Migrated the support link to GitHub Discussions and tidied broken doc links.
+
+### New Contributors (26.06)
+- @np96
+- @srib
+- @yuwenchen95
+- @Bubullzz
+- @aycsi
 
 ## Release Notes 26.04
 
