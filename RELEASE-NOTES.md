@@ -7,6 +7,8 @@
 ### Breaking Changes (26.06)
 
 ### Improvements (26.06)
+- Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
+- Reduce memory footprint of cuPDLPx by around 50%
 
 ### Bug Fixes (26.06)
 
