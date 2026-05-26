@@ -127,6 +127,7 @@ class pdhg_solver_t {
   // rows). Called from shard.cu right after sub_pdlp is constructed.
   void set_is_multi_gpu(bool v) { is_multi_gpu_ = v; }
   bool is_multi_gpu() const { return is_multi_gpu_; }
+  multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
 
   i_t total_pdhg_iterations_;
 
