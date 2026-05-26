@@ -31,6 +31,8 @@
   settings.ordering = pb_settings.ordering();
   settings.barrier_dual_initial_point = pb_settings.barrier_dual_initial_point();
   settings.eliminate_dense_columns = pb_settings.eliminate_dense_columns();
+  settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
+  settings.barrier_step_scale = pb_settings.barrier_step_scale();
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();
   settings.pdlp_precision = static_cast<pdlp_precision_t>(pb_settings.pdlp_precision());

@@ -490,6 +490,20 @@ pdlp_settings:
   - eliminate_dense_columns:
       field_num: 27
       type: bool
+  - barrier_iterative_refinement:
+      # Whether the barrier method runs iterative refinement after each solve
+      # (see cpp/src/barrier/barrier.cu). C++ default is `true`; if an old
+      # client (predating this field) hits a newer server, the proto3 wire
+      # default of `false` will overwrite the C++ default. This matches the
+      # pre-existing behavior of mip_settings.probing (also default-true bool).
+      field_num: 31
+      type: bool
+  - barrier_step_scale:
+      # Step scale used by the barrier method primal/dual updates. Local-solve
+      # binding restricts the range to [0.5, 0.9999] with default 0.9; see
+      # solver_settings.cu. No post-decode clamp is applied here for
+      # consistency with the other f_t scalars (tolerances, time_limit, ...).
+      field_num: 32
   - save_best_primal_so_far:
       field_num: 28
       type: bool

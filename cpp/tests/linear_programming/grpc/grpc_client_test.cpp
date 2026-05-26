@@ -1940,28 +1940,30 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.tolerances.absolute_primal_tolerance   = 5e-7;
   orig.tolerances.relative_primal_tolerance   = 6e-7;
 
-  orig.time_limit                 = 99.5;
-  orig.iteration_limit            = 10000;
-  orig.log_to_console             = false;
-  orig.detect_infeasibility       = true;
-  orig.strict_infeasibility       = true;
-  orig.pdlp_solver_mode           = pdlp_solver_mode_t::Fast1;
-  orig.method                     = method_t::Barrier;
-  orig.presolver                  = presolver_t::Default;
-  orig.dual_postsolve             = true;
-  orig.crossover                  = true;
-  orig.num_gpus                   = 4;
-  orig.per_constraint_residual    = true;
-  orig.cudss_deterministic        = true;
-  orig.folding                    = 1;
-  orig.augmented                  = 1;
-  orig.dualize                    = 1;
-  orig.ordering                   = 2;
-  orig.barrier_dual_initial_point = 1;
-  orig.eliminate_dense_columns    = true;
-  orig.pdlp_precision             = pdlp_precision_t::MixedPrecision;
-  orig.save_best_primal_so_far    = true;
-  orig.first_primal_feasible      = true;
+  orig.time_limit                   = 99.5;
+  orig.iteration_limit              = 10000;
+  orig.log_to_console               = false;
+  orig.detect_infeasibility         = true;
+  orig.strict_infeasibility         = true;
+  orig.pdlp_solver_mode             = pdlp_solver_mode_t::Fast1;
+  orig.method                       = method_t::Barrier;
+  orig.presolver                    = presolver_t::Default;
+  orig.dual_postsolve               = true;
+  orig.crossover                    = true;
+  orig.num_gpus                     = 4;
+  orig.per_constraint_residual      = true;
+  orig.cudss_deterministic          = true;
+  orig.folding                      = 1;
+  orig.augmented                    = 1;
+  orig.dualize                      = 1;
+  orig.ordering                     = 2;
+  orig.barrier_dual_initial_point   = 1;
+  orig.eliminate_dense_columns      = true;
+  orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
+  orig.barrier_step_scale           = 0.75;   // not the default 0.9
+  orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
+  orig.save_best_primal_so_far      = true;
+  orig.first_primal_feasible        = true;
 
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
@@ -1997,6 +1999,8 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.ordering, 2);
   EXPECT_EQ(restored.barrier_dual_initial_point, 1);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
+  EXPECT_EQ(restored.barrier_iterative_refinement, false);
+  EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
