@@ -328,22 +328,30 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Solution gather (shards -> master) ----------------------------
-  // Assembles the global potential_next primal/dual solutions on the master
-  // pdhg_solver_ from the owned slices distributed across shards. Each shard's
-  // first owned_var_size (resp. owned_cstr_size) entries of its
-  // potential_next_primal_solution_ (resp. _dual_) are the live, up-to-date
-  // owned values; the master pdhg_solver_'s buffers are not updated during
-  // iterations and would otherwise return stale data.
+  // Assembles the global potential_next primal/dual solutions and the
+  // reduced_cost on the master from the owned slices distributed across
+  // shards. Each shard's first owned_var_size (resp. owned_cstr_size) entries
+  // of its potential_next_primal_solution_ / reduced_cost_ (resp.
+  // potential_next_dual_solution_) are the live, up-to-date owned values; the
+  // master buffers are not updated during iterations and would otherwise
+  // return stale data.
   //
   // Used right before fill_return_problem_solution() at the return sites in
   // pdlp_solver_t::check_termination() and pdlp_solver_t::check_limits(): the
-  // user-visible solution must contain gathered global values.
+  // user-visible solution must contain gathered global values for primal,
+  // dual, and reduced_cost.
   //
   // Mirrors the metis_tests engine::get_x_output / get_y_output pattern:
   // per shard: alloc small host tmp, copy owned slice device->host, sync,
   // host-scatter via rank_data.local_to_global_{var,cstr} into a contiguous
-  // host buffer. Then one host->device copy into the master pdhg buffer.
-  void gather_potential_next_solutions_to_master(pdhg_solver_t<i_t, f_t>& master_pdhg)
+  // host buffer. Then one host->device copy into the master buffer per field.
+  //
+  // master_pdhg          : provides destinations for primal / dual.
+  // master_reduced_cost  : destination for the reduced_cost (var-shaped, lives
+  //                        in the master pdlp_solver_t's termination strategy
+  //                        convergence_information_).
+  void gather_potential_next_solutions_to_master(
+    pdhg_solver_t<i_t, f_t>& master_pdhg, rmm::device_uvector<f_t>& master_reduced_cost)
   {
     const std::size_t total_vars =
       master_pdhg.get_potential_next_primal_solution().size();
@@ -352,6 +360,7 @@ struct multi_gpu_engine_t {
 
     std::vector<f_t> h_primal(total_vars);
     std::vector<f_t> h_dual(total_cstrs);
+    std::vector<f_t> h_reduced_cost(total_vars);
 
     for (auto& s_uptr : shards) {
       auto& s = *s_uptr;
@@ -361,6 +370,11 @@ struct multi_gpu_engine_t {
 
       std::vector<f_t> tmp_primal(nv);
       std::vector<f_t> tmp_dual(nc);
+      std::vector<f_t> tmp_reduced_cost(nv);
+
+      auto& sub_reduced_cost = s.sub_pdlp->get_current_termination_strategy()
+                                 .get_convergence_information()
+                                 .get_reduced_cost();
 
       if (nv > 0) {
         RAFT_CUDA_TRY(
@@ -369,6 +383,11 @@ struct multi_gpu_engine_t {
                           static_cast<std::size_t>(nv) * sizeof(f_t),
                           cudaMemcpyDeviceToHost,
                           s.stream.view().value()));
+        RAFT_CUDA_TRY(cudaMemcpyAsync(tmp_reduced_cost.data(),
+                                      sub_reduced_cost.data(),
+                                      static_cast<std::size_t>(nv) * sizeof(f_t),
+                                      cudaMemcpyDeviceToHost,
+                                      s.stream.view().value()));
       }
       if (nc > 0) {
         RAFT_CUDA_TRY(
@@ -386,6 +405,11 @@ struct multi_gpu_engine_t {
                         tmp_primal.end(),
                         s.rank_data.local_to_global_var.begin(),
                         h_primal.begin());
+        thrust::scatter(thrust::host,
+                        tmp_reduced_cost.begin(),
+                        tmp_reduced_cost.end(),
+                        s.rank_data.local_to_global_var.begin(),
+                        h_reduced_cost.begin());
       }
       if (nc > 0) {
         thrust::scatter(thrust::host,
@@ -406,6 +430,11 @@ struct multi_gpu_engine_t {
     RAFT_CUDA_TRY(cudaMemcpyAsync(master_pdhg.get_potential_next_dual_solution().data(),
                                   h_dual.data(),
                                   total_cstrs * sizeof(f_t),
+                                  cudaMemcpyHostToDevice,
+                                  stream.view().value()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(master_reduced_cost.data(),
+                                  h_reduced_cost.data(),
+                                  total_vars * sizeof(f_t),
                                   cudaMemcpyHostToDevice,
                                   stream.view().value()));
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));

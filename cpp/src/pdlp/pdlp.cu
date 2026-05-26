@@ -662,7 +662,9 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     std::cout << "Time Limit reached, returning current solution" << std::endl;
 #endif
     if (auto* engine = pdhg_solver_.get_mgpu_engine()) {
-      engine->gather_potential_next_solutions_to_master(pdhg_solver_);
+      engine->gather_potential_next_solutions_to_master(
+        pdhg_solver_,
+        current_termination_strategy_.get_convergence_information().get_reduced_cost());
     }
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
@@ -698,7 +700,9 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     }
 
     if (auto* engine = pdhg_solver_.get_mgpu_engine()) {
-      engine->gather_potential_next_solutions_to_master(pdhg_solver_);
+      engine->gather_potential_next_solutions_to_master(
+        pdhg_solver_,
+        current_termination_strategy_.get_convergence_information().get_reduced_cost());
     }
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
@@ -1378,7 +1382,9 @@ std::optional<optimization_problem_solution_t<i_t, f_t>> pdlp_solver_t<i_t, f_t>
     print_final_termination_criteria(
       timer, current_termination_strategy_.get_convergence_information(), termination_current);
     if (auto* engine = pdhg_solver_.get_mgpu_engine()) {
-      engine->gather_potential_next_solutions_to_master(pdhg_solver_);
+      engine->gather_potential_next_solutions_to_master(
+        pdhg_solver_,
+        current_termination_strategy_.get_convergence_information().get_reduced_cost());
     }
     return current_termination_strategy_.fill_return_problem_solution(
       internal_solver_iterations_,
