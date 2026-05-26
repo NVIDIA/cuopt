@@ -1600,10 +1600,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       --exploration_stats_.nodes_being_solved;
-      std::cout << std::format("bfs worker {} triggered timeout 2 at {:.2f}s",
-                               worker->worker_id,
-                               toc(exploration_stats_.start_time))
-                << std::endl;
       break;
     }
 
@@ -1624,10 +1620,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
-      std::cout << std::format("bfs worker {} triggered timeout 3 at {:.2f}s",
-                               worker->worker_id,
-                               toc(exploration_stats_.start_time))
-                << std::endl;
       break;
     }
 
@@ -1757,10 +1749,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
-      std::cout << std::format("bfs worker {} triggered timeout 1 at {:.2f}s",
-                               worker->worker_id,
-                               toc(exploration_stats_.start_time))
-                << std::endl;
       break;
     }
 
@@ -1858,10 +1846,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 
     if (toc(exploration_stats_.start_time) > settings_.time_limit) {
       solver_status_ = mip_status_t::TIME_LIMIT;
-      std::cout << std::format("diving worker {} triggered timeout 1 at {:.2f}s",
-                               worker->worker_id,
-                               toc(exploration_stats_.start_time))
-                << std::endl;
       break;
     }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
@@ -1871,10 +1855,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 
     if (lp_status == dual::status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
-      std::cout << std::format("diving worker {} triggered timeout 2 at {:.2f}s",
-                               worker->worker_id,
-                               toc(exploration_stats_.start_time))
-                << std::endl;
       break;
     }
     if (lp_status == dual::status_t::CONCURRENT_LIMIT) { break; }
@@ -2903,11 +2883,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   is_running_ = false;
 
-  std::cout << std::format("B&B finished at {:.2f}s with status {}",
-                           toc(exploration_stats_.start_time),
-                           (int)solver_status_.load())
-            << std::endl;
-
   // Compute final lower bound
   f_t lower_bound;
   if (deterministic_mode_enabled_) {
@@ -2941,9 +2916,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
     if (!std::isfinite(lower_bound)) { lower_bound = search_tree_.root.lower_bound; }
   }
-
-  std::cout << std::format("Queue cleaning finished at {:.2f}s", toc(exploration_stats_.start_time))
-            << std::endl;
 
   set_final_solution(solution, lower_bound);
   return solver_status_;
