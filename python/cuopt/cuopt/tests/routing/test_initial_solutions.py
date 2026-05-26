@@ -22,15 +22,18 @@ class TestOption(Enum):
 def get_initial_solutions(routing_solution, n_initial_sols=5):
     initial_sol = routing_solution.get_route()
     sol_offsets = [0]
-    vehicle_ids = cudf.Series()
-    routes = cudf.Series()
-    types = cudf.Series()
+    vehicle_ids_parts = []
+    routes_parts = []
+    types_parts = []
     # simply expand the same solution for convenience
     for i in range(0, n_initial_sols):
-        vehicle_ids = cudf.concat([vehicle_ids, initial_sol["truck_id"]])
-        routes = cudf.concat([routes, initial_sol["route"]])
-        types = cudf.concat([types, initial_sol["type"]])
+        vehicle_ids_parts.append(initial_sol["truck_id"])
+        routes_parts.append(initial_sol["route"])
+        types_parts.append(initial_sol["type"])
         sol_offsets.append(sol_offsets[i] + initial_sol["route"].shape[0])
+    vehicle_ids = cudf.concat(vehicle_ids_parts)
+    routes = cudf.concat(routes_parts)
+    types = cudf.concat(types_parts)
     sol_offsets = cudf.Series(sol_offsets)
     return vehicle_ids, routes, types, sol_offsets
 
