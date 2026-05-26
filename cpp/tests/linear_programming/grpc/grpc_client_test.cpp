@@ -1689,6 +1689,27 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.determinism_mode = CUOPT_MODE_DETERMINISTIC;
   orig.seed             = 12345;
 
+  // Heuristic hyper-parameters (mip_heuristics_hyper_params_t).
+  // Set every field to a value distinct from its C++ default so a missed
+  // mapping line would produce a default-valued mismatch on decode.
+  orig.heuristic_params.population_size                    = 64;     // default 32
+  orig.heuristic_params.num_cpufj_threads                  = 4;      // default 8
+  orig.heuristic_params.presolve_time_ratio                = 0.2;    // default 0.1
+  orig.heuristic_params.presolve_max_time                  = 45.0;   // default 60.0
+  orig.heuristic_params.root_lp_time_ratio                 = 0.25;   // default 0.1
+  orig.heuristic_params.root_lp_max_time                   = 7.5;    // default 15.0
+  orig.heuristic_params.rins_time_limit                    = 4.0;    // default 3.0
+  orig.heuristic_params.rins_max_time_limit                = 25.0;   // default 20.0
+  orig.heuristic_params.rins_fix_rate                      = 0.75;   // default 0.5
+  orig.heuristic_params.stagnation_trigger                 = 5;      // default 3
+  orig.heuristic_params.max_iterations_without_improvement = 12;     // default 8
+  orig.heuristic_params.initial_infeasibility_weight       = 500.0;  // default 1000.0
+  orig.heuristic_params.n_of_minimums_for_exit             = 9000;   // default 7000
+  orig.heuristic_params.enabled_recombiners                = 7;      // default 15 (bitmask)
+  orig.heuristic_params.cycle_detection_length             = 40;     // default 30
+  orig.heuristic_params.relaxed_lp_time_limit              = 2.5;    // default 1.0
+  orig.heuristic_params.related_vars_time_limit            = 45.0;   // default 30.0
+
   // Roundtrip: C++ -> proto -> C++
   cuopt::remote::MIPSolverSettings pb;
   map_mip_settings_to_proto(orig, &pb);
@@ -1739,6 +1760,25 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Determinism and reproducibility
   EXPECT_EQ(restored.determinism_mode, CUOPT_MODE_DETERMINISTIC);
   EXPECT_EQ(restored.seed, 12345);
+
+  // Heuristic hyper-parameters
+  EXPECT_EQ(restored.heuristic_params.population_size, 64);
+  EXPECT_EQ(restored.heuristic_params.num_cpufj_threads, 4);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_time_ratio, 0.2);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_max_time, 45.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_time_ratio, 0.25);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_max_time, 7.5);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_time_limit, 4.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_max_time_limit, 25.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_fix_rate, 0.75);
+  EXPECT_EQ(restored.heuristic_params.stagnation_trigger, 5);
+  EXPECT_EQ(restored.heuristic_params.max_iterations_without_improvement, 12);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.initial_infeasibility_weight, 500.0);
+  EXPECT_EQ(restored.heuristic_params.n_of_minimums_for_exit, 9000);
+  EXPECT_EQ(restored.heuristic_params.enabled_recombiners, 7);
+  EXPECT_EQ(restored.heuristic_params.cycle_detection_length, 40);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.relaxed_lp_time_limit, 2.5);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.related_vars_time_limit, 45.0);
 }
 
 TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)

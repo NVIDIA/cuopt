@@ -196,6 +196,23 @@ message MIPSolverSettings {
   int32 mip_batch_pdlp_reliability_branching = 32;
   int32 symmetry = 33;
   double semi_continuous_big_m = 34;
+  int32 population_size = 35;
+  int32 num_cpufj_threads = 36;
+  double presolve_time_ratio = 37;
+  double presolve_max_time = 38;
+  double root_lp_time_ratio = 39;
+  double root_lp_max_time = 40;
+  double rins_time_limit = 41;
+  double rins_max_time_limit = 42;
+  double rins_fix_rate = 43;
+  int32 stagnation_trigger = 44;
+  int32 max_iterations_without_improvement = 45;
+  double initial_infeasibility_weight = 46;
+  int32 n_of_minimums_for_exit = 47;
+  int32 enabled_recombiners = 48;
+  int32 cycle_detection_length = 49;
+  double relaxed_lp_time_limit = 50;
+  double related_vars_time_limit = 51;
 }
 
 message PDLPWarmStartData {

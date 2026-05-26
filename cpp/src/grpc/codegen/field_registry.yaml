@@ -648,6 +648,57 @@ mip_settings:
   - semi_continuous_big_m:
       field_num: 34
 
+    # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
+    # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
+    # in cpp/include/cuopt/linear_programming/mip/heuristics_hyper_params.hpp.
+    # All fields carry non-zero defaults on the C++ side, so an old client
+    # predating any of these fields will silently revert the corresponding
+    # value to the proto3 wire default (0) on the server. This matches the
+    # pre-existing behavior of mip_settings.probing / barrier settings, and
+    # is the price of using bare scalars in proto3 (no field-presence).
+  - heuristic_params:
+    - population_size:
+        field_num: 35
+        type: int32
+    - num_cpufj_threads:
+        field_num: 36
+        type: int32
+    - presolve_time_ratio:
+        field_num: 37
+    - presolve_max_time:
+        field_num: 38
+    - root_lp_time_ratio:
+        field_num: 39
+    - root_lp_max_time:
+        field_num: 40
+    - rins_time_limit:
+        field_num: 41
+    - rins_max_time_limit:
+        field_num: 42
+    - rins_fix_rate:
+        field_num: 43
+    - stagnation_trigger:
+        field_num: 44
+        type: int32
+    - max_iterations_without_improvement:
+        field_num: 45
+        type: int32
+    - initial_infeasibility_weight:
+        field_num: 46
+    - n_of_minimums_for_exit:
+        field_num: 47
+        type: int32
+    - enabled_recombiners:
+        field_num: 48
+        type: int32
+    - cycle_detection_length:
+        field_num: 49
+        type: int32
+    - relaxed_lp_time_limit:
+        field_num: 50
+    - related_vars_time_limit:
+        field_num: 51
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)
 # ─────────────────────────────────────────────────────────────────────────────
