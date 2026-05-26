@@ -114,8 +114,19 @@ class pdhg_solver_t {
 
   // Master PDLP wires up the engine pointer here after the engine is built.
   // Shards' pdhg_solver_ leaves this null so each shard runs single-GPU SpMV
-  // on its local matrix.
-  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
+  // on its local matrix. Also flips is_multi_gpu_ — convenience flag that any
+  // pdhg participating in a distributed run (master OR shard) carries true.
+  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine)
+  {
+    mgpu_engine_  = engine;
+    is_multi_gpu_ = (engine != nullptr);
+  }
+
+  // Mark a shard's pdhg_solver_ as part of a distributed run without giving it
+  // an engine (shards don't orchestrate; they only run local SpMV on owned
+  // rows). Called from shard.cu right after sub_pdlp is constructed.
+  void set_is_multi_gpu(bool v) { is_multi_gpu_ = v; }
+  bool is_multi_gpu() const { return is_multi_gpu_; }
 
   i_t total_pdhg_iterations_;
 
@@ -136,6 +147,7 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
 
   bool batch_mode_{false};
+  bool is_multi_gpu_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 

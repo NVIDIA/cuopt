@@ -155,6 +155,8 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   //         unit cumulative factors (sub-settings disable Ruiz / PC iters).
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(*sub_problem, settings, /*batch=*/false);
 
+  sub_pdlp->pdhg_solver_.set_is_multi_gpu(true);
+
   // Inject master-scaled buffers inside sub_pdlp
   auto& scaled = sub_pdlp->get_op_problem_scaled();
   raft::copy(scaled.coefficients.data(),
