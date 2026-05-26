@@ -2896,6 +2896,9 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         // 1. At the very beginning of the solver, when no steps have been taken yet
         // 2. After a single step, since average of one step is the same step
         if (internal_solver_iterations_ <= 1) {
+          if (multi_gpu_engine) {
+            assert(false && "Not implemented");
+          }
           raft::copy(unscaled_primal_avg_solution_.data(),
                      pdhg_solver_.get_primal_solution().data(),
                      primal_size_h_,
@@ -2946,8 +2949,22 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                                     unscaled_dual_avg_solution_);
       }
       if (settings_.hyper_params.use_adaptive_step_size_strategy) {
-        initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
-                                                    pdhg_solver_.get_dual_solution());
+        if (multi_gpu_engine) {
+          // Master's pdhg_solver_.{primal,dual}_solution_ is stale in mGPU mode
+          // (live state lives on shards). Unscale in place on each shard with
+          // the shard's own initial_scaling_strategy_, which already holds the
+          // global cumulative scaling factors for its owned slice (set up in
+          // shard.cu via set_cummulative_scaling). Halo slots have unit scaling
+          // so unscaling is a no-op there (their values are junk anyway).
+          multi_gpu_engine->for_each_shard([&](auto& shard) {
+            auto& sub = *shard.sub_pdlp;
+            sub.get_initial_scaling_strategy().unscale_solutions(
+              sub.pdhg_solver_.get_primal_solution(), sub.pdhg_solver_.get_dual_solution());
+          });
+        } else {
+          initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
+                                                      pdhg_solver_.get_dual_solution());
+        }
       } else {
         initial_scaling_strategy_.unscale_solutions(
           pdhg_solver_.get_potential_next_primal_solution(),
@@ -2981,8 +2998,20 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                                     unscaled_dual_avg_solution_);
         }
         if (settings_.hyper_params.use_adaptive_step_size_strategy) {
-          initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
-                                                    pdhg_solver_.get_dual_solution());
+          if (multi_gpu_engine) {
+            // Symmetric to the unscale dispatch above. Live state lives on
+            // shards; each shard's initial_scaling_strategy_ holds the global
+            // cumulative scaling factors for its owned slice (halo slots have
+            // unit scaling, so they're no-ops). Scale in place per shard.
+            multi_gpu_engine->for_each_shard([&](auto& shard) {
+              auto& sub = *shard.sub_pdlp;
+              sub.get_initial_scaling_strategy().scale_solutions(
+                sub.pdhg_solver_.get_primal_solution(), sub.pdhg_solver_.get_dual_solution());
+            });
+          } else {
+            initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
+                                                      pdhg_solver_.get_dual_solution());
+          }
         } else {
           initial_scaling_strategy_.scale_solutions(
             pdhg_solver_.get_potential_next_primal_solution(),
@@ -3085,8 +3114,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      if (multi_gpu_engine_) {
-        multi_gpu_engine_->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
+      if (multi_gpu_engine) {
+        multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
       } else {
         halpern_update();
       }
@@ -3095,8 +3124,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     ++total_pdlp_iterations_;
     ++internal_solver_iterations_;
     if (settings_.hyper_params.never_restart_to_average) {
-      if (multi_gpu_engine_) {
-        multi_gpu_engine_->for_each_shard([&](auto& shard) { shard.sub_pdlp->restart_strategy_.increment_iteration_since_last_restart(); });
+      if (multi_gpu_engine) {
+        multi_gpu_engine->for_each_shard([&](auto& shard) {
+          shard.sub_pdlp->restart_strategy_.increment_iteration_since_last_restart();
+        });
       } else {
         restart_strategy_.increment_iteration_since_last_restart();
       }
