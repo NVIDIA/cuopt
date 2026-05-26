@@ -2289,15 +2289,13 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     }
 
     multi_gpu_engine->allreduce_sum_inplace(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); }, 1);
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); });
     multi_gpu_engine->allreduce_sum_inplace(
       [](auto& sp) -> f_t* {
         return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
-      },
-      1);
+      });
     multi_gpu_engine->allreduce_sum_inplace(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); },
-      1);
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); });
 
     auto& s0 = *multi_gpu_engine->shards[0];
     {

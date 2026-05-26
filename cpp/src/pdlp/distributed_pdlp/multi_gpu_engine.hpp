@@ -7,10 +7,12 @@
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 #include <pdlp/distributed_pdlp/shard.hpp>
 #include <pdlp/pdhg.hpp>
+#include <utilities/cuda_helpers.cuh>
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
 #include <raft/core/device_setter.hpp>
+#include <raft/linalg/detail/cublas_wrappers.hpp>
 
 #include <rmm/cuda_stream.hpp>
 #include <rmm/exec_policy.hpp>
@@ -26,6 +28,16 @@
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+// Element-wise sqrt functor. Defined at namespace scope (not as a local
+// extended HD lambda) because nvcc disallows extended __host__ __device__
+// lambdas appearing inside templates whose template arguments are
+// themselves local lambda types (which happens when distributed_l2_norm is
+// invoked with closure accessors).
+template <typename f_t>
+struct sqrt_inplace_op_t {
+  __host__ __device__ f_t operator()(f_t x) const { return raft::sqrt(x); }
+};
 
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t {
@@ -217,6 +229,52 @@ struct multi_gpu_engine_t {
       ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, s->comm.get(), s->stream.view().value());
     }
     ncclGroupEnd();
+  }
+
+  // -------- Distributed L2 norm ------------------------------------------
+  // Computes sqrt(Σ_k Σ_{i ∈ owned_k} buf_k[i]²) and writes the scalar into
+  // the buffer returned by `out_access` on EVERY shard.
+  //
+  // Algorithm:
+  //   1) per shard: out = cublasdot(buf[0:n_owned], buf[0:n_owned])  (partial Σ²)
+  //   2) NCCL allreduce SUM on out (count = 1)                       (global Σ²)
+  //   3) per shard: out = sqrt(out)
+  //
+  // The caller is responsible for clipping correctness via `size_access`
+  // (which picks `rank_data.owned_var_size` or `rank_data.owned_cstr_size`
+  // depending on the shape of the input buffer), and for mirroring the
+  // result back to master if downstream code needs it there.
+  //
+  // BufAccess  : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
+  // OutAccess  : pdlp_solver_t<i_t,f_t>& -> f_t*   (single scalar in shard memory)
+  // SizeAccess : pdlp_shard_t<i_t,f_t>&  -> i_t    (owned slice length)
+  template <typename BufAccess, typename OutAccess, typename SizeAccess>
+  void distributed_l2_norm(BufAccess&& buf_access,
+                           OutAccess&& out_access,
+                           SizeAccess&& size_access)
+  {
+    for_each_shard([&](auto& shard) {
+      auto& sub   = *shard.sub_pdlp;
+      auto& buf   = buf_access(sub);
+      const i_t n = size_access(shard);
+      f_t* out    = out_access(sub);
+      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(shard.handle.get_cublas_handle(),
+                                                      static_cast<int>(n),
+                                                      buf.data(),
+                                                      1,
+                                                      buf.data(),
+                                                      1,
+                                                      out,
+                                                      shard.stream.view().value()));
+    });
+
+    allreduce_sum_inplace(out_access, /*count=*/1);
+
+    for_each_shard([&](auto& shard) {
+      f_t* out = out_access(*shard.sub_pdlp);
+      cub::DeviceTransform::Transform(
+        out, out, 1, sqrt_inplace_op_t<f_t>{}, shard.stream.view().value());
+    });
   }
 
   // -------- Generic distributed SpMVs -------------------------------------
