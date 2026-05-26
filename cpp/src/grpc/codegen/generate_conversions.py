@@ -122,19 +122,6 @@ def camel_to_upper_snake(name):
     return s.upper()
 
 
-def proto_type(t):
-    """Map YAML type to proto type."""
-    return {
-        "double": "double",
-        "float": "float",
-        "int32": "int32",
-        "int64": "int64",
-        "bool": "bool",
-        "string": "string",
-        "bytes": "bytes",
-    }.get(t, t)
-
-
 def _from_proto_cast(ftype):
     """Return C++ cast for reading a proto field back into template type."""
     if ftype in ("double", "float"):
@@ -359,7 +346,7 @@ def _problem_field_proto_type(registry, ftype):
     edef = _lookup_enum(registry, ftype)
     if edef:
         return _enum_proto_type(ftype, edef)
-    return proto_type(ftype)
+    return ftype
 
 
 def _settings_field_proto_type(registry, f):
@@ -368,7 +355,7 @@ def _settings_field_proto_type(registry, f):
     edef = _lookup_enum(registry, ftype)
     if edef:
         return _enum_proto_type(ftype, edef)
-    return proto_type(ftype)
+    return ftype
 
 
 def _solution_scalar_proto_type(registry, f):
@@ -377,7 +364,7 @@ def _solution_scalar_proto_type(registry, f):
     edef = _lookup_enum(registry, ftype)
     if edef:
         return _enum_proto_type(ftype, edef)
-    return proto_type(ftype)
+    return ftype
 
 
 # ============================================================================
@@ -535,7 +522,12 @@ def generate_array_field_id_enum(registry):
 
 
 def generate_array_field_element_size_inc(registry):
-    """Generate body of array_field_element_size() switch function."""
+    """Generate body of array_field_element_size() switch function.
+
+    Emits every known ArrayFieldId case explicitly and returns -1 after the
+    switch for unrecognized values, rather than a default case. A default
+    case would silently coerce an unknown field id to some size and mask
+    enum-vs-code drift; the -1 sentinel lets callers detect the mismatch."""
     obj = registry.get("optimization_problem", {})
     cases_by_size = {}
     for entry in obj.get("arrays", []):
@@ -545,13 +537,11 @@ def generate_array_field_element_size_inc(registry):
         cases_by_size.setdefault(size, []).append(afid)
     lines = ["  switch (field_id) {"]
     for size in sorted(cases_by_size.keys()):
-        if size == 8:
-            continue
         for afid in cases_by_size[size]:
             lines.append(f"    case cuopt::remote::{afid}:")
         lines.append(f"      return {size};")
-    lines.append("    default: return 8;")
     lines.append("  }")
+    lines.append("  return -1;")
     return "\n".join(lines)
 
 
@@ -690,7 +680,7 @@ def generate_warm_start_message_proto(registry):
             lines.append(
                 (
                     num,
-                    f"  {proto_type(f.get('type', 'double'))} {f['name']} = {num};",
+                    f"  {f.get('type', 'double')} {f['name']} = {num};",
                 )
             )
     lines.sort(key=lambda x: x[0])
@@ -782,7 +772,7 @@ def generate_chunked_result_header_proto(registry):
                 lines.append(
                     (
                         num,
-                        f"  {proto_type(f.get('type', 'double'))} {ch_name} = {num};",
+                        f"  {f.get('type', 'double')} {ch_name} = {num};",
                     )
                 )
     lines.extend(_iter_embeds(registry.get("chunked_result_header", {})))

@@ -13,5 +13,16 @@
     case cuopt::remote::FIELD_Q_INDICES:
     case cuopt::remote::FIELD_Q_OFFSETS:
       return 4;
-    default: return 8;
+    case cuopt::remote::FIELD_A_VALUES:
+    case cuopt::remote::FIELD_C:
+    case cuopt::remote::FIELD_B:
+    case cuopt::remote::FIELD_VARIABLE_LOWER_BOUNDS:
+    case cuopt::remote::FIELD_VARIABLE_UPPER_BOUNDS:
+    case cuopt::remote::FIELD_CONSTRAINT_LOWER_BOUNDS:
+    case cuopt::remote::FIELD_CONSTRAINT_UPPER_BOUNDS:
+    case cuopt::remote::FIELD_INITIAL_PRIMAL_SOLUTION:
+    case cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION:
+    case cuopt::remote::FIELD_Q_VALUES:
+      return 8;
   }
+  return -1;

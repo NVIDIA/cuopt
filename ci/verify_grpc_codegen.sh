@@ -11,7 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CODEGEN_DIR="${REPO_DIR}/cpp/src/grpc/codegen"
 GENERATED_DIR="${CODEGEN_DIR}/generated"
-PROTO_DEST="${REPO_DIR}/cpp/src/grpc/cuopt_remote_data.proto"
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf ${TMPDIR}' EXIT
@@ -48,13 +47,6 @@ for committed in "${GENERATED_DIR}"/*; do
         FAILED=1
     fi
 done
-
-if [ -f "${TMPDIR}/cuopt_remote_data.proto" ] && [ -f "${PROTO_DEST}" ]; then
-    if ! diff -q "${TMPDIR}/cuopt_remote_data.proto" "${PROTO_DEST}" > /dev/null 2>&1; then
-        echo "MISMATCH: cpp/src/grpc/cuopt_remote_data.proto (not copied from codegen/generated)"
-        FAILED=1
-    fi
-fi
 
 if [ ${FAILED} -ne 0 ]; then
     echo ""

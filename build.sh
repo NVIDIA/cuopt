@@ -352,8 +352,6 @@ if hasArg codegen; then
     python "${REPODIR}"/cpp/src/grpc/codegen/generate_conversions.py \
         --registry "${REPODIR}"/cpp/src/grpc/codegen/field_registry.yaml \
         --output-dir "${REPODIR}"/cpp/src/grpc/codegen/generated
-    cp "${REPODIR}"/cpp/src/grpc/codegen/generated/cuopt_remote_data.proto \
-       "${REPODIR}"/cpp/src/grpc/cuopt_remote_data.proto
     echo "Done. Remember to commit the generated files."
 fi
 

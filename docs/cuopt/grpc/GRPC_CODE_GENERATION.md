@@ -325,9 +325,11 @@ Warm start field names match the C++ struct member names directly (e.g.
 attribute is only needed if the proto field name cannot match the C++ name
 due to ambiguity.
 
-Warm start detection during chunked deserialization is auto-derived: if the
-first array in the warm start section is present (non-empty), warm start data
-is considered present.
+Warm start detection during chunked deserialization is auto-derived: warm
+start data is reconstructed whenever any warm-start array is present in the
+chunked payload. The generator emits `arrays.count(...) != 0` checks OR'd
+across every warm-start array — so a payload whose first warm-start array
+happens to be empty but others carry data is still picked up.
 
 ---
 
@@ -497,8 +499,14 @@ Arrays that belong to a setter group are excluded from normal per-field
 deserialization and handled as a batch instead.
 
 During deserialization, the generator automatically guards setter group calls
-by checking if the first field has data (e.g. `if (pb_problem.a_values_size() > 0)`).
-This is derived from the group structure — no explicit condition attribute is needed.
+on the structural sentinel field — preferring any field whose name ends with
+`_offsets` (so CSR-style groups still trigger when nnz=0, because `*_offsets`
+is non-empty even when `*_values`/`*_indices` are empty) and falling back to
+the first field otherwise. The generated guard looks like
+`if (pb_problem.a_offsets_size() > 0)`. For groups that contain
+`_values`/`_indices` pairs, the generator additionally emits a size-mismatch
+check that throws `std::invalid_argument` if the companion arrays disagree —
+no explicit condition attribute is needed in the registry.
 
 ---
 

@@ -3,20 +3,31 @@
 #
 # Field registry for auto-generating proto definitions and C++ conversion code.
 #
-# Convention-over-configuration:
-#   - Bare field name = double type, getter = get_<name>()
-#   - "field: type" = specified type
-#   - "field: { type: T, ... }" = full override
+# Convention-over-configuration. Each entry under scalars: / arrays: can be
+# written in any of three forms (see parse_field in generate_conversions.py):
+#   - Bare name           – defaults to double for scalars, repeated double for arrays
+#   - "name: type"        – specified type
+#   - "name: { type: T, ... }" – full override
 #
-# Scalar getters default to get_<name>().
-# Array getters default to get_<name>_host() (for optimization_problem) or
-#   get_<name>_host() for solution arrays.
+# Default getters: scalars → get_<name>(); arrays → get_<name>_host() (both
+#   problem and solution arrays).
+# Default setters: set_<name>().
 # Proto field name = registry field name (always).
 # Enum conventions: see the "Enums" section below for full defaults.
 #
 # Field numbers:
-#   field_num  – proto message field number (auto-assigned if missing)
-#   array_id   – enum value for ArrayFieldId or ResultFieldId (auto-assigned)
+#   field_num  – proto message field tag (scoped to its proto message). Used
+#                  by the unary path (SubmitJob / GetResult), where the whole
+#                  problem or solution fits in one proto message.
+#   array_id   – enum value for ArrayFieldId (problem) or ResultFieldId
+#                  (solution + warm-start). Used by the chunked path
+#                  (SendArrayChunk / GetResultChunk) to route each chunk back
+#                  to the right array — independent of any proto message.
+#
+# Both are normally assigned manually. Passing --auto-number to the generator
+# fills in missing values. Without --auto-number, a fully-stripped registry is
+# an error and a partially-stripped one will silently emit broken code for
+# the unassigned entries.
 #
 # Numbering is contiguous within each proto message (no artificial caps).
 # The only hard ranges are for solution scalars that share ChunkedResultHeader:
@@ -24,12 +35,12 @@
 #   MIP: 2000-2999
 #   WS:  3000-3999
 #
-# Attributes (all optional):
+# Attributes (all optional unless noted):
 #
 # Per-field:
 #   type               – proto wire type (default: double for scalars, repeated double for arrays)
-#   field_num          – proto message field number (auto-assigned if missing)
-#   array_id           – enum value for ArrayFieldId or ResultFieldId (auto-assigned)
+#   field_num          – proto message field number (see "Field numbers" above)
+#   array_id           – enum value for ArrayFieldId or ResultFieldId
 #   setter_getter_root – C++ getter/setter root when different from field name
 #   getter             – explicit C++ getter expression (overrides setter_getter_root)
 #   setter             – explicit C++ setter name
@@ -47,6 +58,15 @@
 #   constructor_args   – mapping of constructor parameter names to field sources
 #   presence_check     – predicate expression to test if optional data is present
 #   getter             – (per-section) expression to access the section's C++ data
+#   embeds             – list of submessages embedded as fields (e.g. PDLPWarmStartData)
+#   proto_type         – fully-qualified C++ proto type (settings sections)
+#   proto_message      – proto message name (optimization_problem)
+#   fields             – list of fields (settings sections; supports nested sub-structs)
+#   setter_groups      – multi-array C++ setters keyed by group name (optimization_problem)
+#
+# Warm-start sub-section adds:
+#   result_id_prefix      – prefix for derived RESULT_<PREFIX>_<NAME> ids
+#   chunked_header_prefix – prefix applied to scalar field names in ChunkedResultHeader
 #
 # See GRPC_CODE_GENERATION.md for the full specification and examples.
 
@@ -54,14 +74,20 @@
 # Enums
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Convention-based defaults (override any field explicitly when needed):
-#   cpp_type    — {key}_t
-#   proto_type  — PascalCase from key (acronyms PDLP/MIP/LP/QP/VRP/PDP uppercased)
-#   to_proto_fn — to_proto_{key}()
-#   from_proto  — from_proto_{key}()
-#   default     — first value (proto3 zero-value)
-#   values      — bare names auto-number from 0; {Name: N} resets counter to N
-#   proto_prefix — "" (no prefix); set when proto values need disambiguation
+# Attributes (override any field explicitly when needed):
+#   domain        — required: one of `problem`, `settings`, `solution`. Controls
+#                    which generated_enum_converters_*.inc file the converters
+#                    land in.
+#   cpp_type      — {key}_t
+#   proto_type    — PascalCase from key (acronyms PDLP/MIP/LP/QP/VRP/PDP uppercased)
+#   to_proto_fn   — to_proto_{key}()
+#   from_proto_fn — from_proto_{key}()
+#   default       — first value (proto3 zero-value)
+#   values        — bare names auto-number from 0; {Name: N} resets counter to N
+#   proto_prefix  — "" (no prefix); set when proto values need disambiguation
+#   aliases       — optional mapping of additional enum value names to numeric
+#                    ids; used by the auto-derived `result_field_id` enum to
+#                    preserve legacy abbreviated names alongside canonical ones
 #
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
@@ -128,8 +154,7 @@ enums:
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
   # Aliases here preserve backward compatibility with upstream's abbreviated
-  # rapids-pre-commit-hooks: disable-next-line
-  # names (26.04) while the codegen uses full, consistent canonical names.
+  # legacy names while the codegen uses full, consistent canonical names.
   result_field_id:
     aliases:
       RESULT_WS_CURRENT_PRIMAL: 3
