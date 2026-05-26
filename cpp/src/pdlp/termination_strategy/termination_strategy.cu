@@ -196,6 +196,13 @@ pdlp_termination_strategy_t<i_t, f_t>::get_convergence_information() const
 }
 
 template <typename i_t, typename f_t>
+convergence_information_t<i_t, f_t>&
+pdlp_termination_strategy_t<i_t, f_t>::get_convergence_information()
+{
+  return convergence_information_;
+}
+
+template <typename i_t, typename f_t>
 const infeasibility_information_t<i_t, f_t>&
 pdlp_termination_strategy_t<i_t, f_t>::get_infeasibility_information() const
 {
