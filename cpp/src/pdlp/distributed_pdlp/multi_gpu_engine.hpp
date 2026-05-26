@@ -17,7 +17,9 @@
 #include <rmm/cuda_stream.hpp>
 #include <rmm/exec_policy.hpp>
 
+#include <thrust/execution_policy.h>
 #include <thrust/gather.h>
+#include <thrust/scatter.h>
 #include <cub/device/device_transform.cuh>
 #include <cuda/std/tuple>
 
@@ -323,6 +325,90 @@ struct multi_gpu_engine_t {
     distributed_spmv_At(
       [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); },
       [](auto& pdhg) -> cusparseDnVecDescr_t { return pdhg.get_cusparse_view().current_AtY; });
+  }
+
+  // -------- Solution gather (shards -> master) ----------------------------
+  // Assembles the global potential_next primal/dual solutions on the master
+  // pdhg_solver_ from the owned slices distributed across shards. Each shard's
+  // first owned_var_size (resp. owned_cstr_size) entries of its
+  // potential_next_primal_solution_ (resp. _dual_) are the live, up-to-date
+  // owned values; the master pdhg_solver_'s buffers are not updated during
+  // iterations and would otherwise return stale data.
+  //
+  // Used right before fill_return_problem_solution() at the return sites in
+  // pdlp_solver_t::check_termination() and pdlp_solver_t::check_limits(): the
+  // user-visible solution must contain gathered global values.
+  //
+  // Mirrors the metis_tests engine::get_x_output / get_y_output pattern:
+  // per shard: alloc small host tmp, copy owned slice device->host, sync,
+  // host-scatter via rank_data.local_to_global_{var,cstr} into a contiguous
+  // host buffer. Then one host->device copy into the master pdhg buffer.
+  void gather_potential_next_solutions_to_master(pdhg_solver_t<i_t, f_t>& master_pdhg)
+  {
+    const std::size_t total_vars =
+      master_pdhg.get_potential_next_primal_solution().size();
+    const std::size_t total_cstrs =
+      master_pdhg.get_potential_next_dual_solution().size();
+
+    std::vector<f_t> h_primal(total_vars);
+    std::vector<f_t> h_dual(total_cstrs);
+
+    for (auto& s_uptr : shards) {
+      auto& s = *s_uptr;
+      raft::device_setter guard(s.device_id);
+      const i_t nv = s.rank_data.owned_var_size;
+      const i_t nc = s.rank_data.owned_cstr_size;
+
+      std::vector<f_t> tmp_primal(nv);
+      std::vector<f_t> tmp_dual(nc);
+
+      if (nv > 0) {
+        RAFT_CUDA_TRY(
+          cudaMemcpyAsync(tmp_primal.data(),
+                          s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
+                          static_cast<std::size_t>(nv) * sizeof(f_t),
+                          cudaMemcpyDeviceToHost,
+                          s.stream.view().value()));
+      }
+      if (nc > 0) {
+        RAFT_CUDA_TRY(
+          cudaMemcpyAsync(tmp_dual.data(),
+                          s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
+                          static_cast<std::size_t>(nc) * sizeof(f_t),
+                          cudaMemcpyDeviceToHost,
+                          s.stream.view().value()));
+      }
+      RAFT_CUDA_TRY(cudaStreamSynchronize(s.stream.view().value()));
+
+      if (nv > 0) {
+        thrust::scatter(thrust::host,
+                        tmp_primal.begin(),
+                        tmp_primal.end(),
+                        s.rank_data.local_to_global_var.begin(),
+                        h_primal.begin());
+      }
+      if (nc > 0) {
+        thrust::scatter(thrust::host,
+                        tmp_dual.begin(),
+                        tmp_dual.end(),
+                        s.rank_data.local_to_global_cstr.begin(),
+                        h_dual.begin());
+      }
+    }
+
+    // Host -> master device. engine.stream lives on the master device
+    // (created at engine construction when master device was current).
+    RAFT_CUDA_TRY(cudaMemcpyAsync(master_pdhg.get_potential_next_primal_solution().data(),
+                                  h_primal.data(),
+                                  total_vars * sizeof(f_t),
+                                  cudaMemcpyHostToDevice,
+                                  stream.view().value()));
+    RAFT_CUDA_TRY(cudaMemcpyAsync(master_pdhg.get_potential_next_dual_solution().data(),
+                                  h_dual.data(),
+                                  total_cstrs * sizeof(f_t),
+                                  cudaMemcpyHostToDevice,
+                                  stream.view().value()));
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));
   }
 
   // Engine-level stream for fork/join orchestration (master side).
