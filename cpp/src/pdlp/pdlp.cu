@@ -2950,12 +2950,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       }
       if (settings_.hyper_params.use_adaptive_step_size_strategy) {
         if (multi_gpu_engine) {
-          // Master's pdhg_solver_.{primal,dual}_solution_ is stale in mGPU mode
-          // (live state lives on shards). Unscale in place on each shard with
-          // the shard's own initial_scaling_strategy_, which already holds the
-          // global cumulative scaling factors for its owned slice (set up in
-          // shard.cu via set_cummulative_scaling). Halo slots have unit scaling
-          // so unscaling is a no-op there (their values are junk anyway).
+          // The only branch in cuPDLPx
           multi_gpu_engine->for_each_shard([&](auto& shard) {
             auto& sub = *shard.sub_pdlp;
             sub.get_initial_scaling_strategy().unscale_solutions(
@@ -2999,10 +2994,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         }
         if (settings_.hyper_params.use_adaptive_step_size_strategy) {
           if (multi_gpu_engine) {
-            // Symmetric to the unscale dispatch above. Live state lives on
-            // shards; each shard's initial_scaling_strategy_ holds the global
-            // cumulative scaling factors for its owned slice (halo slots have
-            // unit scaling, so they're no-ops). Scale in place per shard.
+            // The only branch in cuPDLPx
             multi_gpu_engine->for_each_shard([&](auto& shard) {
               auto& sub = *shard.sub_pdlp;
               sub.get_initial_scaling_strategy().scale_solutions(
