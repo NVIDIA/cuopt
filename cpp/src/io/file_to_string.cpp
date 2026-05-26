@@ -66,11 +66,20 @@ std::vector<char> bz2_file_to_string(const std::string& file)
     BZ2_bzReadClose_t fptr = nullptr;
   };
 
-  std::unique_ptr<void, DlCloseDeleter> lbz2handle{dlopen("libbz2.so", RTLD_LAZY)};
+  // bzip2 upstream's stable SONAME is "libbz2.so.1.0". On most distros only the
+  // versioned name(s) ship in the runtime package; the unversioned "libbz2.so"
+  // symlink is dev-only. Try names in decreasing specificity.
+  void* raw_lbz2handle = nullptr;
+  for (const char* soname : {"libbz2.so.1.0", "libbz2.so.1", "libbz2.so"}) {
+    raw_lbz2handle = dlopen(soname, RTLD_LAZY);
+    if (raw_lbz2handle != nullptr) break;
+  }
+  std::unique_ptr<void, DlCloseDeleter> lbz2handle{raw_lbz2handle};
   mps_parser_expects(
     lbz2handle != nullptr,
     error_type_t::ValidationError,
-    "Could not open .bz2 file since libbz2.so was not found. In order to open .bz2 files "
+    "Could not open .bz2 file since libbz2 was not found "
+    "(tried libbz2.so.1.0, libbz2.so.1, libbz2.so). In order to open .bz2 files "
     "directly, please ensure libbzip2 is installed. Alternatively, decompress the .bz2 file "
     "manually and open the uncompressed file. Given path: %s",
     file.c_str());

@@ -368,7 +368,7 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
 // This test legitimately uses the MPS parser since it tests that pipeline
 TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem)
 {
-  auto mps_data = cuopt::linear_programming::io::parse_mps<int, double>(lp_file_);
+  auto mps_data = cuopt::linear_programming::io::read_mps<int, double>(lp_file_);
   raft::handle_t handle;
 
   auto problem = mps_data_model_to_optimization_problem(&handle, mps_data);

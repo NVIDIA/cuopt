@@ -16,8 +16,7 @@ from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
 
-from .parser cimport call_parse_lp, call_parse_mps, mps_data_model_t
-
+from .parser cimport call_read, call_parse_mps, mps_data_model_t
 import warnings
 
 import numpy as np
@@ -32,8 +31,7 @@ def type_cast(np_obj, np_type, name):
 
 
 # Copies the C++ data model behind `dm` into the Python-side `data_model`.
-# Shared by ParseMps and ParseLp — every field on mps_data_model_t is
-# format-agnostic.
+# Copies every field on mps_data_model_t into the Python DataModel.
 cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     A_values_data = dm.A_.data()
     A_values_size = dm.A_.size()
@@ -139,21 +137,24 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
 
 
 @catch_io_exception
-def ParseMps(mps_file_path, fixed_mps_formats):
+def Read(file_path, fixed_mps_format=False):
     data_model = DataModel()
     dm_ret_ptr = move(
-        call_parse_mps(
-            mps_file_path.encode('utf-8'),
-            fixed_mps_formats
+        call_read(
+            file_path.encode('utf-8'),
+            fixed_mps_format,
         )
     )
     return _marshal_data_model(dm_ret_ptr.get(), data_model)
 
 
 @catch_io_exception
-def ParseLp(lp_file_path):
+def ParseMps(mps_file_path, fixed_mps_format=False):
     data_model = DataModel()
     dm_ret_ptr = move(
-        call_parse_lp(lp_file_path.encode('utf-8'))
+        call_parse_mps(
+            mps_file_path.encode('utf-8'),
+            fixed_mps_format,
+        )
     )
     return _marshal_data_model(dm_ret_ptr.get(), data_model)

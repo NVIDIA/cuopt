@@ -39,11 +39,12 @@ cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuo
 
 cdef extern from "cuopt/linear_programming/io/utilities/cython_parser.hpp" namespace "cuopt::cython": # noqa
 
-    cdef unique_ptr[mps_data_model_t[int, double]] call_parse_mps(
-        const string& mps_file_path,
+    cdef unique_ptr[mps_data_model_t[int, double]] call_read(
+        const string& file_path,
         bool fixed_mps_format
     ) except +
 
-    cdef unique_ptr[mps_data_model_t[int, double]] call_parse_lp(
-        const string& lp_file_path
+    cdef unique_ptr[mps_data_model_t[int, double]] call_parse_mps(
+        const string& mps_file_path,
+        bool fixed_mps_format
     ) except +

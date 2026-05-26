@@ -17,7 +17,7 @@ def Solve(data_model, solver_settings=None):
 
     Data Model object can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt.linear_programming.ParseMps function)
+    (see cuopt.linear_programming.Read function)
 
 
     Notes
@@ -124,7 +124,7 @@ def BatchSolve(data_model_list, solver_settings=None):
 
     Data Model objects can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt.linear_programming.ParseMps function)
+    (see cuopt.linear_programming.Read function)
 
 
     Notes
@@ -160,11 +160,11 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
     >>> from cuopt.linear_programming.solver.solver_parameters import *
-    >>> from cuopt.linear_programming import ParseMps
+    >>> from cuopt.linear_programming import Read
     >>>
     >>> data_models = []
     >>> for i in range(...):
-    >>>     data_models.append(ParseMps(...))
+    >>>     data_models.append(Read(...))
     >>>
     >>> # Build a solver setting object
     >>> settings = linear_programming.SolverSettings()

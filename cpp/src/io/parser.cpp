@@ -12,7 +12,7 @@
 namespace cuopt::linear_programming::io {
 
 template <typename i_t, typename f_t>
-mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file, bool fixed_mps_format)
+mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file, bool fixed_mps_format)
 {
   mps_data_model_t<i_t, f_t> problem;
   mps_parser_t<i_t, f_t> parser(problem, mps_file, fixed_mps_format);
@@ -20,20 +20,19 @@ mps_data_model_t<i_t, f_t> parse_mps(const std::string& mps_file, bool fixed_mps
 }
 
 template <typename i_t, typename f_t>
-mps_data_model_t<i_t, f_t> parse_mps_from_string(std::string_view mps_contents,
-                                                 bool fixed_mps_format)
+mps_data_model_t<i_t, f_t> read_mps_from_string(std::string_view mps_contents,
+                                                bool fixed_mps_format)
 {
   mps_data_model_t<i_t, f_t> problem;
   mps_parser_t<i_t, f_t> parser(problem, mps_contents, fixed_mps_format);
   return problem;
 }
 
-template mps_data_model_t<int, float> parse_mps(const std::string& mps_file, bool fixed_mps_format);
-template mps_data_model_t<int, double> parse_mps(const std::string& mps_file,
-                                                 bool fixed_mps_format);
-template mps_data_model_t<int, float> parse_mps_from_string(std::string_view mps_contents,
+template mps_data_model_t<int, float> read_mps(const std::string& mps_file, bool fixed_mps_format);
+template mps_data_model_t<int, double> read_mps(const std::string& mps_file, bool fixed_mps_format);
+template mps_data_model_t<int, float> read_mps_from_string(std::string_view mps_contents,
+                                                           bool fixed_mps_format);
+template mps_data_model_t<int, double> read_mps_from_string(std::string_view mps_contents,
                                                             bool fixed_mps_format);
-template mps_data_model_t<int, double> parse_mps_from_string(std::string_view mps_contents,
-                                                             bool fixed_mps_format);
 
 }  // namespace cuopt::linear_programming::io

@@ -339,6 +339,30 @@ def test_read_write_mps_and_relaxation():
         assert v.getValue() == pytest.approx(expected_values_lp[i])
 
 
+def test_problem_read_mps_and_lp():
+    mps_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
+    )
+    lp_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.lp"
+    )
+    mps_problem = Problem.read(mps_path)
+    lp_problem = Problem.read(lp_path)
+    assert mps_problem.NumVariables == lp_problem.NumVariables == 2
+    mps_names = {v.VariableName for v in mps_problem.getVariables()}
+    lp_names = {v.VariableName for v in lp_problem.getVariables()}
+    assert mps_names == lp_names == {"VAR1", "VAR2"}
+
+
+def test_problem_read_mps_deprecated():
+    mps_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-free-var.mps"
+    )
+    with pytest.warns(DeprecationWarning, match="readMPS is deprecated"):
+        problem = Problem.readMPS(mps_path)
+    assert problem.NumVariables == 2
+
+
 def _run_incumbent_solutions(include_set_callback):
     # Callback for incumbent solution
     class CustomGetSolutionCallback(GetSolutionCallback):

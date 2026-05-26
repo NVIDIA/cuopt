@@ -39,7 +39,7 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
 
   auto path = make_path_absolute(test_instance.file);
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   // set the time limit depending on we are in assert mode or not
 #ifdef ASSERT_MODE
@@ -81,7 +81,7 @@ TEST(mip_solve, low_thread_count_test)
 
   auto path = make_path_absolute("mip/dominating_set.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
@@ -105,7 +105,7 @@ TEST(mip_solve, node_limit_test)
 
   auto path = make_path_absolute("mip/swath1.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);

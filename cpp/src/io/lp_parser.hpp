@@ -36,7 +36,7 @@ class lp_parser_t {
   lp_parser_t(mps_data_model_t<i_t, f_t>& problem, const std::string& file);
 
   // Parses `input` (LP format text already loaded in memory) and populates
-  // `problem`. Used by parse_lp_from_string() — compressed inputs are only
+  // `problem`. Used by read_lp_from_string() — compressed inputs are only
   // supported via the file-path constructor since compression is detected
   // from the path suffix.
   lp_parser_t(mps_data_model_t<i_t, f_t>& problem, std::string_view input);

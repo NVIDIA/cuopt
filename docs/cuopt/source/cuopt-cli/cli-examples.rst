@@ -13,9 +13,10 @@ format is dispatched automatically from the file extension
   variants) → parsed as MPS / QPS
 
 Any other extension (including no extension) is rejected with an error
-listing the supported suffixes. See the ``parse_lp`` / ``parse_mps``
-declarations in ``cuopt/linear_programming/io/parser.hpp`` for the
-supported subset of each format.
+listing the supported suffixes. See ``read`` in
+``cuopt/linear_programming/io/parser.hpp`` (and the Python
+:func:`~cuopt.linear_programming.io.Read` wrapper).
+
 
 Basic Usage
 ###########

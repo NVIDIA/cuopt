@@ -3,13 +3,14 @@
 
 
 import copy
+import os
 from enum import Enum
 
 import numpy as np
 from scipy.sparse import coo_matrix
 
 import cuopt.linear_programming.data_model as data_model
-import cuopt.linear_programming.io as mps_parser
+from cuopt.linear_programming import ParseMps, Read
 import cuopt.linear_programming.solver as solver
 import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
@@ -1793,15 +1794,75 @@ class Problem:
                 return c
 
     @classmethod
+    def read(cls, file_path, fixed_mps_format=False):
+        """
+        Initialize a problem from an MPS, QPS, or LP file.
+
+        Dispatches on the file extension via the C++ ``read`` entry
+        point (case-insensitive): ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2``
+        variants) use the MPS/QPS reader; ``.lp`` (and compressed variants)
+        use the LP reader.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to an MPS, QPS, or LP file.
+        fixed_mps_format : bool
+            If the MPS/QPS reader should parse as fixed MPS format. Ignored
+            for LP inputs. False by default.
+
+        Returns
+        -------
+        Problem
+            A problem populated from the file.
+
+        Examples
+        --------
+        >>> problem = problem.Problem.read("model.mps")
+        >>> lp_problem = problem.Problem.read("model.lp")
+        """
+        if not isinstance(file_path, str) or not file_path:
+            raise ValueError("file_path must be a non-empty string")
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"No such file: {file_path}")
+
+        problem = cls()
+        data_model = Read(file_path, fixed_mps_format)
+        problem._from_data_model(data_model)
+        problem.model = data_model
+        return problem
+
+    @classmethod
     def readMPS(cls, mps_file):
         """
-        Initiliaze a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+        Initialize a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        Always invokes the MPS/QPS reader directly (via the
+        ``call_parse_mps`` Cython bridge), bypassing extension-based
+        dispatch. Compressed ``.mps.gz`` / ``.mps.bz2`` / ``.qps.gz`` /
+        ``.qps.bz2`` inputs are still supported via the reader's path-
+        based decompression.
+
+        .. deprecated::
+            Use :meth:`read` instead.
+
         Examples
         --------
         >>> problem = problem.Problem.readMPS("model.mps")
         """
+        warnings.warn(
+            "Problem.readMPS is deprecated and will be removed in a future "
+            "release. Use Problem.read instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if not isinstance(mps_file, str) or not mps_file:
+            raise ValueError("mps_file must be a non-empty string")
+        if not os.path.isfile(mps_file):
+            raise FileNotFoundError(f"No such file: {mps_file}")
+
         problem = cls()
-        data_model = mps_parser.ParseMps(mps_file)
+        data_model = ParseMps(mps_file)
         problem._from_data_model(data_model)
         problem.model = data_model
         return problem
