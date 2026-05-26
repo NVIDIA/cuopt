@@ -267,10 +267,17 @@ The response is:
     }
 
 
-Generate Datamodel from MPS Parser
-----------------------------------
+Generate Datamodel using Problem File Parser
+--------------------------------------------
 
-Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.
+Use a :class:`~cuopt.linear_programming.data_model.DataModel` built with
+:func:`~cuopt.linear_programming.io.Read` as input to ``get_LP_solve``;
+the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
+including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
+:doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.
+
+MPS format
+~~~~~~~~~~
 
 :download:`mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
 
@@ -278,8 +285,17 @@ Use a datamodel generated from mps file as input; this yields a solution object 
    :language: python
    :linenos:
 
+LP format
+~~~~~~~~~
 
-The response would be as follows:
+:download:`lp_datamodel_example.py <lp/examples/lp_datamodel_example.py>`
+
+.. literalinclude:: lp/examples/lp_datamodel_example.py
+   :language: python
+   :linenos:
+
+Expected output (either example, same problem instance)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
    :linenos:
@@ -288,7 +304,7 @@ The response would be as follows:
     1
     Objective Value:
     -0.36000000000000004
-    Mps Parse time: 0.000 sec
+    MPS Parse time: 0.000 sec
     Network time: 1.062 sec
     Engine Solve time: 0.004 sec
     Total end to end time: 1.066 sec

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -21,6 +21,12 @@ cuopt_cli --help | grep "Usage: cuopt_cli" > /dev/null || (echo "Expected usage 
 # Run solver and check for optimal status - fail if not found
 
 cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.mps | grep -q "Status: " || (echo "Expected solution not found" && exit 1)
+
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp | grep -q "Status: " || (echo "Expected solution not found for .lp" && exit 1)
+
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp.gz | grep -q "Status: " || (echo "Expected solution not found for .lp.gz" && exit 1)
+
+cuopt_cli "${RAPIDS_DATASET_ROOT_DIR}"/linear_programming/good-mps-1.lp.bz2 | grep -q "Status: " || (echo "Expected solution not found for .lp.bz2" && exit 1)
 
 # Add a for mixed integer programming test with options
 

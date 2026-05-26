@@ -31,7 +31,7 @@ cuopt::linear_programming::io::mps_data_model_t<int, double> read_from_mps(
   // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
-  return cuopt::linear_programming::io::parse_mps<int, double>(rel_file, fixed_mps_format);
+  return cuopt::linear_programming::io::read_mps<int, double>(rel_file, fixed_mps_format);
 }
 
 TEST(optimization_problem_t, good_mps_file_1)

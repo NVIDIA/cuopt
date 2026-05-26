@@ -168,7 +168,7 @@ static std::tuple<mip_termination_status_t, double, double> test_mps_file(
 
   auto path = make_path_absolute(test_instance);
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   mip_solver_settings_t<int, double> settings;
   settings.time_limit                  = time_limit;

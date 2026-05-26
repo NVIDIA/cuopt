@@ -379,7 +379,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
   cpu_optimization_problem_t<int32_t, double> load_problem_from_mps(const std::string& mps_path)
   {
-    auto mps_data = cuopt::linear_programming::io::parse_mps<int32_t, double>(mps_path);
+    auto mps_data = cuopt::linear_programming::io::read_mps<int32_t, double>(mps_path);
     cpu_optimization_problem_t<int32_t, double> problem;
     populate_from_mps_data_model(&problem, mps_data);
     return problem;
