@@ -22,9 +22,9 @@ cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuo
             vector[double] linear_values
             vector[int] linear_indices
             double rhs_value
-            vector[int] quadratic_row_indices
-            vector[int] quadratic_col_indices
-            vector[double] quadratic_values
+            vector[int] rows
+            vector[int] cols
+            vector[double] vals
 
         bool maximize_
         vector[f_t] A_

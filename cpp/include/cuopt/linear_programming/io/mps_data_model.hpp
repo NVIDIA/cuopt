@@ -252,17 +252,17 @@ class mps_data_model_t {
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
     /** Q nonzeros: parallel arrays, same length (COO / SoA). Sorted by (row, col) in append. */
-    std::vector<i_t> quadratic_row_indices{};
-    std::vector<i_t> quadratic_col_indices{};
-    std::vector<f_t> quadratic_values{};
+    std::vector<i_t> rows{};
+    std::vector<i_t> cols{};
+    std::vector<f_t> vals{};
   };
 
   /**
    * @brief Append one complete quadratic constraint (row + linear + rhs + quadratic Q).
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
-   * @param quadratic_values, quadratic_row_indices, quadratic_col_indices COO triplets; same
-   *        length; may all be empty if Q is empty. Stored sorted by (row, col).
+   * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
+   *        Stored sorted by (row, col).
    * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
    *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
    *        not supported.
@@ -273,9 +273,9 @@ class mps_data_model_t {
                                    std::span<const f_t> linear_values,
                                    std::span<const i_t> linear_indices,
                                    f_t rhs_value,
-                                   std::span<const f_t> quadratic_values,
-                                   std::span<const i_t> quadratic_row_indices,
-                                   std::span<const i_t> quadratic_col_indices);
+                                   std::span<const f_t> vals,
+                                   std::span<const i_t> rows,
+                                   std::span<const i_t> cols);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 

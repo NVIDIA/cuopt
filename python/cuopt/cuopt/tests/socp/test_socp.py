@@ -85,10 +85,10 @@ def _quadratic_constraint_violation(constr, variables) -> float:
     """QCMATRIX row value minus rhs (should be <= 0 for L rows)."""
     vals = [var.Value for var in variables]
     quad = 0.0
-    for k in range(len(constr.quadratic_values)):
-        i = int(constr.quadratic_row_indices[k])
-        j = int(constr.quadratic_col_indices[k])
-        quad += float(constr.quadratic_values[k]) * vals[i] * vals[j]
+    for k in range(len(constr.vals)):
+        i = int(constr.rows[k])
+        j = int(constr.cols[k])
+        quad += float(constr.vals[k]) * vals[i] * vals[j]
     lin = 0.0
     for k in range(len(constr.linear_values)):
         lin += float(constr.linear_values[k]) * vals[int(constr.linear_indices[k])]

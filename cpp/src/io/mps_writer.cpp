@@ -502,11 +502,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   if (problem_.has_quadratic_constraints()) {
     for (const auto& qc : problem_.get_quadratic_constraints()) {
       mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
-      const i_t nnz = static_cast<i_t>(qc.quadratic_values.size());
+      const i_t nnz = static_cast<i_t>(qc.vals.size());
       for (i_t p = 0; p < nnz; ++p) {
-        const i_t i              = qc.quadratic_row_indices[static_cast<size_t>(p)];
-        const i_t j              = qc.quadratic_col_indices[static_cast<size_t>(p)];
-        f_t v                    = qc.quadratic_values[static_cast<size_t>(p)];
+        const i_t i              = qc.rows[static_cast<size_t>(p)];
+        const i_t j              = qc.cols[static_cast<size_t>(p)];
+        f_t v                    = qc.vals[static_cast<size_t>(p)];
         std::string row_var_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
                                      ? problem_.get_variable_names()[static_cast<size_t>(i)]
                                      : "C" + std::to_string(i);

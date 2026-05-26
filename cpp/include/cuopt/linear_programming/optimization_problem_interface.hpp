@@ -65,9 +65,9 @@ class optimization_problem_interface_t {
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
     /** Q in COO: parallel arrays, same length. */
-    std::vector<i_t> quadratic_row_indices{};
-    std::vector<i_t> quadratic_col_indices{};
-    std::vector<f_t> quadratic_values{};
+    std::vector<i_t> rows{};
+    std::vector<i_t> cols{};
+    std::vector<f_t> vals{};
   };
 
   virtual ~optimization_problem_interface_t() = default;
@@ -90,9 +90,9 @@ class optimization_problem_interface_t {
          std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
          std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
          static_cast<f_t>(qc.rhs_value),
-         std::vector<i_t>(qc.quadratic_row_indices.begin(), qc.quadratic_row_indices.end()),
-         std::vector<i_t>(qc.quadratic_col_indices.begin(), qc.quadratic_col_indices.end()),
-         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end())});
+         std::vector<i_t>(qc.rows.begin(), qc.rows.end()),
+         std::vector<i_t>(qc.cols.begin(), qc.cols.end()),
+         std::vector<f_t>(qc.vals.begin(), qc.vals.end())});
     }
     set_quadratic_constraints(std::move(converted_constraints));
   }

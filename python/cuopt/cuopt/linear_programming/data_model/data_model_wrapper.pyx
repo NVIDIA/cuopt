@@ -78,9 +78,9 @@ cdef class DataModel:
         linear_values=None,
         linear_indices=None,
         rhs_value=0.0,
-        quadratic_values=None,
-        quadratic_row_indices=None,
-        quadratic_col_indices=None,
+        vals=None,
+        rows=None,
+        cols=None,
         constraint_row_type="L",
     ):
         linear_values = (
@@ -95,30 +95,23 @@ cdef class DataModel:
         )
         if linear_values.shape[0] != linear_indices.shape[0]:
             raise ValueError("linear_values and linear_indices must have the same length")
-        quadratic_values = (
+        vals = (
             np.array([], dtype=np.float64)
-            if quadratic_values is None
-            else type_cast(quadratic_values, np.float64, "quadratic_values")
+            if vals is None
+            else type_cast(vals, np.float64, "vals")
         )
-        quadratic_row_indices = (
+        rows = (
             np.array([], dtype=np.int32)
-            if quadratic_row_indices is None
-            else type_cast(quadratic_row_indices, np.int32, "quadratic_row_indices")
+            if rows is None
+            else type_cast(rows, np.int32, "rows")
         )
-        quadratic_col_indices = (
+        cols = (
             np.array([], dtype=np.int32)
-            if quadratic_col_indices is None
-            else type_cast(quadratic_col_indices, np.int32, "quadratic_col_indices")
+            if cols is None
+            else type_cast(cols, np.int32, "cols")
         )
-        if not (
-            quadratic_values.shape[0]
-            == quadratic_row_indices.shape[0]
-            == quadratic_col_indices.shape[0]
-        ):
-            raise ValueError(
-                "quadratic_values, quadratic_row_indices, and "
-                "quadratic_col_indices must have the same length"
-            )
+        if not (vals.shape[0] == rows.shape[0] == cols.shape[0]):
+            raise ValueError("vals, rows, and cols must have the same length")
         row_type = str(constraint_row_type)
         if row_type == "E":
             raise ValueError("Equality constraints are not supported.")
@@ -134,9 +127,9 @@ cdef class DataModel:
                 "linear_values": linear_values,
                 "linear_indices": linear_indices,
                 "rhs_value": float(rhs_value),
-                "quadratic_values": quadratic_values,
-                "quadratic_row_indices": quadratic_row_indices,
-                "quadratic_col_indices": quadratic_col_indices,
+                "vals": vals,
+                "rows": rows,
+                "cols": cols,
             }
         )
 
@@ -468,9 +461,9 @@ cdef class DataModel:
         cdef size_t i
         cdef uintptr_t c_linear_values
         cdef uintptr_t c_linear_indices
-        cdef uintptr_t c_quadratic_values
-        cdef uintptr_t c_quadratic_row_indices
-        cdef uintptr_t c_quadratic_col_indices
+        cdef uintptr_t c_vals
+        cdef uintptr_t c_rows
+        cdef uintptr_t c_cols
         cdef size_t linear_nnz
         cdef size_t quadratic_nnz
 
@@ -490,18 +483,18 @@ cdef class DataModel:
                     qc.linear_values[i] = (<double*>c_linear_values)[i]
                     qc.linear_indices[i] = (<int*>c_linear_indices)[i]
 
-            quadratic_nnz = item["quadratic_values"].shape[0]
-            qc.quadratic_values.resize(quadratic_nnz)
-            qc.quadratic_row_indices.resize(quadratic_nnz)
-            qc.quadratic_col_indices.resize(quadratic_nnz)
+            quadratic_nnz = item["vals"].shape[0]
+            qc.vals.resize(quadratic_nnz)
+            qc.rows.resize(quadratic_nnz)
+            qc.cols.resize(quadratic_nnz)
             if quadratic_nnz > 0:
-                c_quadratic_values = get_data_ptr(item["quadratic_values"])
-                c_quadratic_row_indices = get_data_ptr(item["quadratic_row_indices"])
-                c_quadratic_col_indices = get_data_ptr(item["quadratic_col_indices"])
+                c_vals = get_data_ptr(item["vals"])
+                c_rows = get_data_ptr(item["rows"])
+                c_cols = get_data_ptr(item["cols"])
                 for i in range(quadratic_nnz):
-                    qc.quadratic_values[i] = (<double*>c_quadratic_values)[i]
-                    qc.quadratic_row_indices[i] = (<int*>c_quadratic_row_indices)[i]
-                    qc.quadratic_col_indices[i] = (<int*>c_quadratic_col_indices)[i]
+                    qc.vals[i] = (<double*>c_vals)[i]
+                    qc.rows[i] = (<int*>c_rows)[i]
+                    qc.cols[i] = (<int*>c_cols)[i]
 
             constraints.push_back(qc)
 

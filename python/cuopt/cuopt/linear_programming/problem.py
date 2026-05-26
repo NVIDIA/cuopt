@@ -1317,15 +1317,9 @@ class Constraint:
             ) = _quadratic_expression_to_qcmatrix(expr, rhs)
             self.linear_values = np.array(linear_values, dtype=np.float64)
             self.linear_indices = np.array(linear_indices, dtype=np.int32)
-            self.quadratic_values = np.array(
-                quadratic_values, dtype=np.float64
-            )
-            self.quadratic_row_indices = np.array(
-                quadratic_row_indices, dtype=np.int32
-            )
-            self.quadratic_col_indices = np.array(
-                quadratic_col_indices, dtype=np.int32
-            )
+            self.vals = np.array(quadratic_values, dtype=np.float64)
+            self.rows = np.array(quadratic_row_indices, dtype=np.int32)
+            self.cols = np.array(quadratic_col_indices, dtype=np.int32)
             self.rhs_value = rhs_value
             self.RHS = rhs_value
             self.vindex_coeff_dict = {}
@@ -1609,9 +1603,9 @@ class Problem:
                 linear_values=constr.linear_values,
                 linear_indices=constr.linear_indices,
                 rhs_value=constr.rhs_value,
-                quadratic_values=constr.quadratic_values,
-                quadratic_row_indices=constr.quadratic_row_indices,
-                quadratic_col_indices=constr.quadratic_col_indices,
+                vals=constr.vals,
+                rows=constr.rows,
+                cols=constr.cols,
                 sense=constr.Sense,
             )
             quad_index += 1

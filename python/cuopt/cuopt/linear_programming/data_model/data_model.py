@@ -316,9 +316,9 @@ class DataModel(data_model_wrapper.DataModel):
         linear_values=None,
         linear_indices=None,
         rhs_value=0.0,
-        quadratic_values=None,
-        quadratic_row_indices=None,
-        quadratic_col_indices=None,
+        vals=None,
+        rows=None,
+        cols=None,
         sense="L",
     ):
         """
@@ -338,7 +338,7 @@ class DataModel(data_model_wrapper.DataModel):
             Sparse linear coefficients on the same variable index space.
         rhs_value : float, optional
             Right-hand side of the quadratic row.
-        quadratic_values, quadratic_row_indices, quadratic_col_indices : array-like
+        vals, rows, cols : array-like
             COO triplets for the quadratic matrix Q in
             ``linear^T x + x^T Q x {sense} rhs_value``.
         sense : str, optional
@@ -367,9 +367,9 @@ class DataModel(data_model_wrapper.DataModel):
             linear_values,
             linear_indices,
             rhs_value,
-            quadratic_values,
-            quadratic_row_indices,
-            quadratic_col_indices,
+            vals,
+            rows,
+            cols,
             constraint_row_type=sense,
         )
 

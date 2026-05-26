@@ -155,13 +155,13 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
             linear_values = None
             linear_indices = None
 
-        quadratic_nnz = qc.quadratic_values.size()
+        quadratic_nnz = qc.vals.size()
         if quadratic_nnz > 0:
-            quadratic_values_view = <double[:quadratic_nnz]>qc.quadratic_values.data()
+            quadratic_values_view = <double[:quadratic_nnz]>qc.vals.data()
             quadratic_values = np.asarray(quadratic_values_view).copy()
-            quadratic_row_indices_view = <int[:quadratic_nnz]>qc.quadratic_row_indices.data()
+            quadratic_row_indices_view = <int[:quadratic_nnz]>qc.rows.data()
             quadratic_row_indices = np.asarray(quadratic_row_indices_view).copy()
-            quadratic_col_indices_view = <int[:quadratic_nnz]>qc.quadratic_col_indices.data()
+            quadratic_col_indices_view = <int[:quadratic_nnz]>qc.cols.data()
             quadratic_col_indices = np.asarray(quadratic_col_indices_view).copy()
         else:
             quadratic_values = None
@@ -174,9 +174,9 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
             linear_values=linear_values,
             linear_indices=linear_indices,
             rhs_value=qc.rhs_value,
-            quadratic_values=quadratic_values,
-            quadratic_row_indices=quadratic_row_indices,
-            quadratic_col_indices=quadratic_col_indices,
+            vals=quadratic_values,
+            rows=quadratic_row_indices,
+            cols=quadratic_col_indices,
             sense=chr(qc.constraint_row_type),
         )
 

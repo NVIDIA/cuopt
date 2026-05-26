@@ -34,7 +34,7 @@ void normalize_quadratic_constraint_g_to_l(qc_t& qc)
   for (auto& v : qc.linear_values) {
     v = -v;
   }
-  for (auto& v : qc.quadratic_values) {
+  for (auto& v : qc.vals) {
     v = -v;
   }
   qc.rhs_value           = -qc.rhs_value;
@@ -129,9 +129,9 @@ void convert_quadratic_constraints_to_second_order_cones(
                   "Quadratic constraint '%s' linear_values and linear_indices length mismatch",
                   qc.constraint_row_name.c_str());
 
-    const i_t q_nnz = static_cast<i_t>(qc.quadratic_values.size());
-    cuopt_expects(qc.quadratic_row_indices.size() == static_cast<size_t>(q_nnz) &&
-                    qc.quadratic_col_indices.size() == static_cast<size_t>(q_nnz),
+    const i_t q_nnz = static_cast<i_t>(qc.vals.size());
+    cuopt_expects(qc.rows.size() == static_cast<size_t>(q_nnz) &&
+                    qc.cols.size() == static_cast<size_t>(q_nnz),
                   error_type_t::ValidationError,
                   "Quadratic constraint '%s' Q COO row/col/value length mismatch",
                   qc.constraint_row_name.c_str());
@@ -182,19 +182,19 @@ void convert_quadratic_constraints_to_second_order_cones(
     std::vector<size_t> perm(static_cast<size_t>(q_nnz));
     std::iota(perm.begin(), perm.end(), size_t{0});
     std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
-      const i_t ra = qc.quadratic_row_indices[a];
-      const i_t rb = qc.quadratic_row_indices[b];
+      const i_t ra = qc.rows[a];
+      const i_t rb = qc.rows[b];
       if (ra != rb) { return ra < rb; }
-      return qc.quadratic_col_indices[a] < qc.quadratic_col_indices[b];
+      return qc.cols[a] < qc.cols[b];
     });
 
     std::vector<std::tuple<i_t, i_t, f_t>> q_entries;
     q_entries.reserve(static_cast<size_t>(q_nnz));
     for (size_t t = 0; t < static_cast<size_t>(q_nnz); ++t) {
       const size_t ix = perm[t];
-      const i_t r     = qc.quadratic_row_indices[ix];
-      const i_t c     = qc.quadratic_col_indices[ix];
-      const f_t v     = qc.quadratic_values[ix];
+      const i_t r     = qc.rows[ix];
+      const i_t c     = qc.cols[ix];
+      const f_t v     = qc.vals[ix];
       cuopt_expects(r >= 0 && r < n && c >= 0 && c < n,
                     error_type_t::ValidationError,
                     "Quadratic constraint '%s' Q entry (%d,%d) outside [0,%d)",
