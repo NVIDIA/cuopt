@@ -5,12 +5,17 @@
 ### New Features (26.06)
 
 ### Breaking Changes (26.06)
+- Drop `const` qualifier in `raft::handle_t` on the `data_model_view_t` (routing).
 
 ### Improvements (26.06)
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
 - Reduce memory footprint of cuPDLPx by around 50%
+- Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
+- Add option for specifying a maximum number of nodes that can be explored in B&B
 
 ### Bug Fixes (26.06)
+- Probing cache now correctly update the model after each batch
+- Fix quadratic cost when adding slack variables in the crossover
 
 ### Documentation (26.06)
 
