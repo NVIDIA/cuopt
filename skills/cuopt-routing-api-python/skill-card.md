@@ -20,8 +20,8 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
-- [Routing Python API Examples](resources/examples.md) <br>
-- [Routing REST Server Examples](resources/server_examples.md) <br>
+- [Routing Python API Examples](references/examples.md) <br>
+- [Routing REST Server Examples](references/server_examples.md) <br>
 
 
 ## Skill Output: <br>

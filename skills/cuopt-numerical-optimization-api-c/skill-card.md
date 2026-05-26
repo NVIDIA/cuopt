@@ -19,7 +19,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [examples.md](resources/examples.md) <br>
+- [examples.md](references/examples.md) <br>
 - [assets/README.md](assets/README.md) <br>
 
 

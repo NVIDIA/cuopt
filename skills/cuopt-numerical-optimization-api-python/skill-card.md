@@ -21,7 +21,7 @@ Mitigation: Review and scan skill before deployment. <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
 - [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
-- [QP Examples (resource)](resources/qp_examples.md) <br>
+- [QP Examples (resource)](references/qp_examples.md) <br>
 
 
 ## Skill Output: <br>
