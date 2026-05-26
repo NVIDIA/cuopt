@@ -87,26 +87,20 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
-// non-template wrappers to work around clang compiler bug
+template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
-  float* a, float* b, float* out, int size, rmm::cuda_stream_view stream)
-{
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.value());
-}
-
-[[maybe_unused]] static void pairwise_multiply(
-  double* a, double* b, double* out, int size, rmm::cuda_stream_view stream)
+  f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b), out, size, cuda::std::multiplies<>{}, stream.value());
 }
 
 // out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
-[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(float* a,
-                                                                       float* b,
+template <typename f_t>
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(f_t* a,
+                                                                       f_t* b,
                                                                        int* is_direct_free_linear,
-                                                                       float* out,
+                                                                       f_t* out,
                                                                        int size,
                                                                        rmm::cuda_stream_view stream)
 {
@@ -114,41 +108,16 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
     cuda::std::make_tuple(a, b, is_direct_free_linear),
     out,
     size,
-    [] __host__ __device__(float x_j, float d_j, int free_j) { return free_j ? 0.f : x_j * d_j; },
+    [] __host__ __device__(f_t x_j, f_t d_j, int free_j) { return free_j ? f_t{0} : x_j * d_j; },
     stream.value());
 }
 
-[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(double* a,
-                                                                       double* b,
-                                                                       int* is_direct_free_linear,
-                                                                       double* out,
-                                                                       int size,
-                                                                       rmm::cuda_stream_view stream)
-{
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(a, b, is_direct_free_linear),
-    out,
-    size,
-    [] __host__ __device__(double x_j, double d_j, int free_j) { return free_j ? 0.0 : x_j * d_j; },
-    stream.value());
-}
-
-[[maybe_unused]] static void axpy(
-  float alpha, float* x, float beta, float* y, float* out, int size, rmm::cuda_stream_view stream)
-{
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(x, y),
-    out,
-    size,
-    [alpha, beta] __host__ __device__(float a, float b) { return alpha * a + beta * b; },
-    stream.value());
-}
-
-[[maybe_unused]] static void axpy(double alpha,
-                                  double* x,
-                                  double beta,
-                                  double* y,
-                                  double* out,
+template <typename f_t>
+[[maybe_unused]] static void axpy(f_t alpha,
+                                  f_t* x,
+                                  f_t beta,
+                                  f_t* y,
+                                  f_t* out,
                                   int size,
                                   rmm::cuda_stream_view stream)
 {
@@ -156,7 +125,7 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
     cuda::std::make_tuple(x, y),
     out,
     size,
-    [alpha, beta] __host__ __device__(double a, double b) { return alpha * a + beta * b; },
+    [alpha, beta] __host__ __device__(f_t a, f_t b) { return alpha * a + beta * b; },
     stream.value());
 }
 
@@ -353,6 +322,8 @@ class iteration_data_t {
         } else if (settings.check_Q) {
           // TODO: Check to ensure that Q is positive semi-definite
           // This requires us to perform a Cholesky factorization.
+          settings.log.printf(
+            "Warning: positive semidefiniteness check for general Q is not implemented yet.\n");
         }
 
         d_Q_diag_.resize(lp.num_cols, stream_view_);
@@ -387,7 +358,7 @@ class iteration_data_t {
       const i_t linear_xz_rhs_size = linear_xz_size(lp.num_cols);
       d_complementarity_xz_rhs_.resize(linear_xz_rhs_size, stream_view_);
 
-      // Allocating GPU flag data for Form ADAT
+      // Allocate GPU flag data for Form ADAT
       RAFT_CUDA_TRY(cub::DeviceSelect::Flagged(
         nullptr,
         flag_buffer_size,
