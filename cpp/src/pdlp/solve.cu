@@ -525,6 +525,8 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution);
 
+  detail::project_barrier_solution_to_model_variables(user_problem, solution);
+
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
 
@@ -1796,8 +1798,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
 
     raft::common::nvtx::range fun_scope("Running QP solver");
     if (op_problem.has_quadratic_constraints()) {
-      CUOPT_LOG_INFO("Problem has %d quadratic constraints. Converting to second-order cones and solving with barrier.",
-                     static_cast<int>(op_problem.get_quadratic_constraints().size()));
+      CUOPT_LOG_INFO(
+        "Problem has %d quadratic constraints. Converting to second-order cones and solving with "
+        "barrier.",
+        static_cast<int>(op_problem.get_quadratic_constraints().size()));
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
@@ -1858,8 +1862,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         CUOPT_LOG_INFO("Problem has a quadratic objective. Using Barrier.");
       }
       if (op_problem.has_quadratic_constraints()) {
-        CUOPT_LOG_INFO("Problem has %d quadratic constraints. Converting to second-order cones and solving with barrier.",
-                       static_cast<int>(op_problem.get_quadratic_constraints().size()));
+        CUOPT_LOG_INFO(
+          "Problem has %d quadratic constraints. Converting to second-order cones and solving with "
+          "barrier.",
+          static_cast<int>(op_problem.get_quadratic_constraints().size()));
       }
       settings.method    = method_t::Barrier;
       settings.presolver = presolver_t::None;

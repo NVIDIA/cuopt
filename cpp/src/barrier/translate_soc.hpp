@@ -10,6 +10,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 
+#include <dual_simplex/solution.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
 
@@ -120,7 +121,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                   "Quadratic constraint '%s' ROWS type must be 'L' (<=) or 'G' (>=)",
                   qc.constraint_row_name.c_str());
     normalize_quadratic_constraint_g_to_l(qc);
-    cuopt_expects(qc.rhs_value < tol && qc.rhs_value > -tol,
+    cuopt_expects((qc.rhs_value < tol) && (qc.rhs_value > -tol),
                   error_type_t::ValidationError,
                   "SOC conversion currently requires rhs = 0 for quadratic constraints");
     cuopt_expects(qc.linear_values.size() == qc.linear_indices.size(),
@@ -822,8 +823,9 @@ void convert_quadratic_constraints_to_second_order_cones(
     }
   }
 
-  // Box-bounded originals cannot sit in the cone block: introduce a free cone copy and
-  // alias - original = 0 so linear rows/objective keep the bounded variable.
+  // Bounded cone participants cannot sit in the cone block:
+  // introduce a free cone copy and alias - original = 0 so the original keeps its bounds
+  // in the linear block while the barrier sees an unconstrained cone variable.
   {
     const f_t neg_inf = -std::numeric_limits<f_t>::infinity();
     const f_t pos_inf = std::numeric_limits<f_t>::infinity();
@@ -1039,6 +1041,37 @@ void convert_quadratic_constraints_to_second_order_cones(
   user_problem.second_order_cone_dims = std::move(cone_dims);
   user_problem.num_rows               = csr_A.m;
   user_problem.num_cols               = n_prob;
+
+  user_problem.model_num_cols = static_cast<i_t>(n);
+  user_problem.model_col_old_to_new.resize(static_cast<size_t>(n));
+  for (i_t old_j = 0; old_j < static_cast<i_t>(n); ++old_j) {
+    user_problem.model_col_old_to_new[static_cast<size_t>(old_j)] =
+      old_to_new[static_cast<size_t>(old_j)];
+  }
+}
+
+/** Map barrier primal/reduced-cost vectors from expanded SOC layout back to original model columns. */
+template <typename i_t, typename f_t>
+void project_barrier_solution_to_model_variables(
+  const dual_simplex::user_problem_t<i_t, f_t>& user_problem,
+  dual_simplex::lp_solution_t<i_t, f_t>& solution)
+{
+  const i_t n_model = user_problem.model_num_cols;
+  if (n_model <= 0) { return; }
+  if (static_cast<i_t>(user_problem.model_col_old_to_new.size()) != n_model) { return; }
+  if (static_cast<i_t>(solution.x.size()) == n_model) { return; }
+
+  std::vector<f_t> model_x(static_cast<size_t>(n_model));
+  std::vector<f_t> model_z(static_cast<size_t>(n_model));
+  for (i_t j = 0; j < n_model; ++j) {
+    const i_t expanded_j = user_problem.model_col_old_to_new[static_cast<size_t>(j)];
+    model_x[static_cast<size_t>(j)] = solution.x[static_cast<size_t>(expanded_j)];
+    model_z[static_cast<size_t>(j)] = solution.z[static_cast<size_t>(expanded_j)];
+  }
+  const i_t m = static_cast<i_t>(solution.y.size());
+  solution.resize(m, n_model);
+  solution.x = std::move(model_x);
+  solution.z = std::move(model_z);
 }
 
 }  // namespace cuopt::linear_programming::detail

@@ -61,42 +61,6 @@ void write_matlab(const std::string& filename, const dual_simplex::lp_problem_t<
   fclose(fid);
 }
 
-template <typename i_t, typename f_t>
-bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings)
-{
-  if (problem.second_order_cone_dims.empty()) { return true; }
-
-  i_t cone_end = problem.cone_var_start;
-  for (auto q_k : problem.second_order_cone_dims) {
-    if (q_k <= 1) {
-      settings.log.printf(
-        "Error: second-order cone dimensions must be at least 2; use linear variables instead of "
-        "Q^1\n");
-      return false;
-    }
-    cone_end += q_k;
-  }
-
-  if (cone_end != problem.num_cols) {
-    settings.log.printf("Error: conic variables must form a trailing block [linear | cone]\n");
-    return false;
-  }
-
-  for (i_t j = problem.cone_var_start; j < cone_end; ++j) {
-    if (problem.lower[j] != 0.0 && problem.lower[j] > -inf) {
-      settings.log.printf("Error: explicit lower bound on conic variable %d is not supported\n", j);
-      return false;
-    }
-    if (problem.upper[j] < inf) {
-      settings.log.printf("Error: explicit upper bound on conic variable %d is not supported\n", j);
-      return false;
-    }
-  }
-
-  return true;
-}
-
 }  // namespace
 
 template <typename i_t, typename f_t>

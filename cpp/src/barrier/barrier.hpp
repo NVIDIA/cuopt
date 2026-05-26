@@ -19,6 +19,11 @@
 #include <rmm/device_uvector.hpp>
 namespace cuopt::linear_programming::dual_simplex {
 
+/** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
+template <typename i_t, typename f_t>
+bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
+                                  const simplex_solver_settings_t<i_t, f_t>& settings);
+
 template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
 
