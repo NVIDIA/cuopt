@@ -1850,25 +1850,50 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   // Then you can show that A^T y_bar + z_bar = c + Qx and
   // z_bar_{j_f} = 0.
   if (!presolve_info.bounded_free_variables.empty()) {
-    settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n",
-                        static_cast<i_t>(presolve_info.bounded_free_variables.size()));
+    const i_t num_bfv = static_cast<i_t>(presolve_info.bounded_free_variables.size());
+    settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
+    // Column scan costs O(num_bfv * nnz); CSR row slices cost O(nnz) conversion plus
+    // O(sum of row nnz touched). Use CSR when num_bfv is large or column scan work dominates.
+    constexpr i_t k_csr_dual_correction_min_bfv = 64;
+    const bool use_csr_row_access =
+      num_bfv >= k_csr_dual_correction_min_bfv || num_bfv * A.n > A.nnz();
+
     // Traverse in reverse order, to ensure that all z_j = 0 after the correction
-    for (auto it = presolve_info.bounded_free_variables.rbegin();
-         it != presolve_info.bounded_free_variables.rend();
-         ++it) {
-      const auto& bfv = *it;
-      const f_t w_j   = input_z[bfv.variable];
-      if (w_j == 0.0) { continue; }
-      const f_t du = w_j / bfv.coefficient;
-      input_y[bfv.constraint] += du;
-      for (i_t j = 0; j < A.n; j++) {
-        const i_t col_start = A.col_start[j];
-        const i_t col_end   = A.col_start[j + 1];
-        for (i_t p = col_start; p < col_end; p++) {
-          if (A.i[p] == bfv.constraint) {
-            input_z[j] -= A.x[p] * du;
-            break;
+    if (use_csr_row_access) {
+      csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+      A.to_compressed_row(Arow);
+      for (auto it = presolve_info.bounded_free_variables.rbegin();
+           it != presolve_info.bounded_free_variables.rend();
+           ++it) {
+        const auto& bfv = *it;
+        const f_t w_j   = input_z[bfv.variable];
+        if (w_j == 0.0) { continue; }
+        const f_t du = w_j / bfv.coefficient;
+        input_y[bfv.constraint] += du;
+        const i_t row_start = Arow.row_start[bfv.constraint];
+        const i_t row_end   = Arow.row_start[bfv.constraint + 1];
+        for (i_t p = row_start; p < row_end; ++p) {
+          input_z[Arow.j[p]] -= Arow.x[p] * du;
+        }
+      }
+    } else {
+      for (auto it = presolve_info.bounded_free_variables.rbegin();
+           it != presolve_info.bounded_free_variables.rend();
+           ++it) {
+        const auto& bfv = *it;
+        const f_t w_j   = input_z[bfv.variable];
+        if (w_j == 0.0) { continue; }
+        const f_t du = w_j / bfv.coefficient;
+        input_y[bfv.constraint] += du;
+        for (i_t j = 0; j < A.n; j++) {
+          const i_t col_start = A.col_start[j];
+          const i_t col_end   = A.col_start[j + 1];
+          for (i_t p = col_start; p < col_end; p++) {
+            if (A.i[p] == bfv.constraint) {
+              input_z[j] -= A.x[p] * du;
+              break;
+            }
           }
         }
       }
