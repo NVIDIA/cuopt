@@ -119,21 +119,28 @@ cuopt_int_t solve_mps_file(const char* filename)
          termination_status_to_string(termination_status),
          termination_status);
   printf("Solve time: %f seconds\n", time);
-  printf("Objective value: %f\n", objective_value);
 
-  // Get and print solution variables
   if (has_primal_solution) {
-  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
-  status          = cuOptGetPrimalSolution(solution, solution_values);
-  if (status != CUOPT_SUCCESS) {
-    printf("Error getting solution values: %d\n", status);
-    goto DONE;
-  }
-  }
+    printf("Objective value: %f\n", objective_value);
 
-  printf("\nSolution: \n");
-  for (cuopt_int_t i = 0; i < num_variables; i++) {
-    printf("x%d = %f\n", i + 1, solution_values[i]);
+    // Get and print solution variables
+    solution_values =
+      (cuopt_float_t*)malloc((size_t)num_variables * sizeof(cuopt_float_t));
+    if (solution_values == NULL) {
+      printf("Error allocating solution buffer\n");
+      status = CUOPT_OUT_OF_MEMORY;
+      goto DONE;
+    }
+    status = cuOptGetPrimalSolution(solution, solution_values);
+    if (status != CUOPT_SUCCESS) {
+      printf("Error getting solution values: %d\n", status);
+      goto DONE;
+    }
+
+    printf("\nSolution: \n");
+    for (cuopt_int_t i = 0; i < num_variables; i++) {
+      printf("x%d = %f\n", i + 1, solution_values[i]);
+    }
   }
 
 DONE:

@@ -2,61 +2,90 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from cuopt.linear_programming.mps_parser import parser_wrapper
-from cuopt.linear_programming.mps_parser.utilities import (
-    catch_mps_parser_exception,
+from cuopt.linear_programming.data_model import DataModel
+from cuopt.linear_programming.io import parser_wrapper
+from cuopt.linear_programming.io.utilities import (
+    catch_io_exception,
 )
 
 
-@catch_mps_parser_exception
-def ParseMps(mps_file_path, fixed_mps_format=False):
-    """
-    Reads the equation from the input text file which is MPS formatted
+@catch_io_exception
+def Read(file_path: str, fixed_mps_format: bool = False) -> DataModel:
+    """Read an optimization problem from a file, dispatching on extension.
 
-    Notes
-    -----
-    Read this link http://lpsolve.sourceforge.net/5.5/mps-format.htm for more
-    details on both free and fixed MPS format.
+    Dispatches to the MPS/QPS or LP reader based on the filename suffix
+    (case-insensitive), matching the C++ ``read`` entry point:
+
+    - ``.mps``, ``.mps.gz``, ``.mps.bz2``, ``.qps``, ``.qps.gz``, ``.qps.bz2``
+      → MPS/QPS reader
+    - ``.lp``, ``.lp.gz``, ``.lp.bz2`` → LP reader
+
+    Parameters
+    ----------
+    file_path : str
+        Path to an MPS, QPS, or LP file (optionally ``.gz`` / ``.bz2``
+        compressed).
+    fixed_mps_format : bool
+        If the MPS/QPS reader should parse as fixed MPS format. Ignored for
+        LP inputs. False by default.
+
+    Returns
+    -------
+    data_model : DataModel
+        A fully formed LP/MILP/QP problem.
+
+    Raises
+    ------
+    InputValidationError, InputRuntimeError, OutOfMemoryError
+        Parser errors from the underlying C++ readers (via
+        ``catch_io_exception``).
+    RuntimeError
+        If the file extension is not one of the supported suffixes (raised by
+        the C++ ``read`` dispatch).
+    """
+    return parser_wrapper.Read(file_path, fixed_mps_format)
+
+
+@catch_io_exception
+def ParseMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
+    """Read an MPS or QPS file directly via the MPS/QPS reader.
+
+    Unlike :func:`Read`, this function bypasses extension-based dispatch
+    and always invokes the MPS/QPS reader (``read_mps`` on the C++ side),
+    regardless of the filename suffix. Compressed inputs (``.mps.gz``,
+    ``.mps.bz2``, ``.qps.gz``, ``.qps.bz2``) are still supported when
+    zlib / libbz2 are available, because compression is detected from
+    the file path inside the reader.
 
     Parameters
     ----------
     mps_file_path : str
-        Path to MPS formatted file
+        Path to an MPS or QPS file (optionally ``.gz`` / ``.bz2``
+        compressed).
     fixed_mps_format : bool
-        If MPS file should be parsed as fixed, false by default
+        If the MPS/QPS reader should parse the file as fixed MPS format.
+        False by default.
 
     Returns
     -------
-    data_model: DataModel
-        A fully formed LP problem which represents the given MPS file
+    data_model : DataModel
+        A fully formed LP/MILP/QP problem.
 
-    Examples
-    --------
-    >>> from cuopt import linear_programming
-    >>>
-    >>> data_model = linear_programming.ParseMps(mps_file_path)
-    >>>
-    >>> # Build a solver setting object & lower the accuracy from 1e-4 to 1e-2
-    >>> solver_settings = linear_programming.SolverSettings()
-    >>> solver_settings.set_optimality_tolerance(1e-2)
-    >>>
-    >>> # Call solve
-    >>> solution = linear_programming.Solve(data_model, solver_settings)
-    >>>
-    >>> # Print solution
-    >>> print(solution.get_primal_solution())
+    Raises
+    ------
+    InputValidationError, InputRuntimeError, OutOfMemoryError
+        Parser errors from the underlying C++ reader (via
+        ``catch_io_exception``).
     """
-
     return parser_wrapper.ParseMps(mps_file_path, fixed_mps_format)
 
 
 def toDict(model, json=False):
     if not isinstance(model, parser_wrapper.DataModel):
         raise ValueError(
-            "model must be a cuopt.linear_programming.mps_parser.parser_wrapper.DataModel"
+            "model must be a cuopt.linear_programming.io.parser_wrapper.DataModel"
         )
 
-    # Replace numpy objects in generated data so that it is JSON serializable
     def transform(data):
         for key, value in data.items():
             if isinstance(value, dict):

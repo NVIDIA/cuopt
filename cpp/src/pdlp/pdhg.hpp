@@ -95,6 +95,8 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
   void compute_At_y();
   void compute_A_x();
+  void spmvop_At_y();
+  void spmvop_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};

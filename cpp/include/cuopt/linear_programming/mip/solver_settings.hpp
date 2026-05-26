@@ -101,6 +101,7 @@ class mip_solver_settings_t {
   bool heuristics_only          = false;
   i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
+  i_t symmetry                  = -1;
   i_t max_cut_passes            = 10;  // number of cut passes to make
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
@@ -128,6 +129,14 @@ class mip_solver_settings_t {
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
+  /**
+   * @brief Enable the cuOpt internal probing-cache step of presolve (MIP only).
+   *
+   * Probing is part of cuOpt's internal MIP presolve and runs only when the
+   * higher-level presolve is enabled (i.e. `presolver != presolver_t::None`).
+   * When this is `false`, probing is skipped even if presolve is otherwise on.
+   */
+  bool probing{true};
   /**
    * @brief Determinism mode for MIP solver.
    *

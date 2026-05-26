@@ -22,6 +22,10 @@
 #define CUOPT_MIP_BATCH_PDLP_REQUIRED_THREAD_COUNT  3
 #define CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT 3
 
+// MIP-only gate: skip the concurrent barrier when fewer threads are available than this
+// (1 PDLP + 1 dual simplex + 1 barrier). Stand-alone LP always runs all three.
+#define CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT 3
+
 /* @brief Priority classes for the omp tasks. Highest value = higher priority.
  * Note that this only gives a hint to the runtime, such that the high priority
  * is not guarantee to be executed before a low priority one (i.e., do not rely on

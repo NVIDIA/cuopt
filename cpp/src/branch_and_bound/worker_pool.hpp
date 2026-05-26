@@ -22,6 +22,7 @@ class worker_pool_t {
             const lp_problem_t<i_t, f_t>& original_lp,
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<variable_type_t>& var_type,
+            mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex_solver_settings_t<i_t, f_t>& settings,
             const uint64_t rng_offset = 0)
   {
@@ -35,6 +36,9 @@ class worker_pool_t {
       workers_[i] =
         std::make_unique<WorkerType>(i, original_lp, Arow, var_type, settings, rng_offset);
       idle_workers_.push_back(i);
+      // Propagate the (possibly null) symmetry pointer; workers lazily build
+      // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
+      workers_[i]->symmetry_ptr = symmetry;
     }
 
     is_initialized = true;

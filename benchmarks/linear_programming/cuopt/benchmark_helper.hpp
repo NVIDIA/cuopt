@@ -275,7 +275,7 @@ void mps_file_to_binary(const std::filesystem::path& filename)
   std::string p = std::string(filename);
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(p);
+    cuopt::linear_programming::io::read_mps<int, double>(p);
 
   auto filename_string = filename.filename().string();
 
