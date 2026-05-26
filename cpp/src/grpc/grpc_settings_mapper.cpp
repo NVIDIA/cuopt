@@ -82,6 +82,12 @@ void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settin
       settings.mip_scaling = CUOPT_MIP_SCALING_ON;
     }
   }
+  {
+    // symmetry: valid range matches the local-solve binding in
+    // solver_settings.cu ({CUOPT_MIP_SYMMETRY, ..., -1, 2, -1}).
+    auto sv = pb_settings.symmetry();
+    if (sv < -1 || sv > 2) { settings.symmetry = -1; }
+  }
 }
 
 // Explicit template instantiations

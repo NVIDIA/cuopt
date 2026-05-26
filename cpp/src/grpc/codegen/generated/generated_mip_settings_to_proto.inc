@@ -15,6 +15,7 @@
   pb_settings->set_num_gpus(settings.num_gpus);
   pb_settings->set_presolver(static_cast<int32_t>(settings.presolver));
   pb_settings->set_mip_scaling(settings.mip_scaling);
+  pb_settings->set_symmetry(settings.symmetry);
   pb_settings->set_work_limit(settings.work_limit);
   if (settings.node_limit == std::numeric_limits<i_t>::max()) {
     pb_settings->set_node_limit(-1);

@@ -192,6 +192,7 @@ message MIPSolverSettings {
   int32 strong_branching_simplex_iteration_limit = 30;
   int32 implied_bound_cuts = 31;
   int32 mip_batch_pdlp_reliability_branching = 32;
+  int32 symmetry = 33;
 }
 
 message PDLPWarmStartData {

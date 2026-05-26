@@ -15,6 +15,7 @@
   settings.num_gpus = pb_settings.num_gpus();
   settings.presolver = static_cast<presolver_t>(pb_settings.presolver());
   settings.mip_scaling = pb_settings.mip_scaling();
+  settings.symmetry = pb_settings.symmetry();
   settings.work_limit = pb_settings.work_limit();
   if (pb_settings.node_limit() >= 0) {
     settings.node_limit = static_cast<i_t>(pb_settings.node_limit());

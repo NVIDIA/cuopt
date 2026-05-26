@@ -550,6 +550,13 @@ mip_settings:
   - mip_scaling:
       field_num: 13
       type: int32
+  - symmetry:
+      # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
+      # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
+      # mapper clamps out-of-range values to -1 to match the local-solve
+      # range check in cpp/src/math_optimization/solver_settings.cu.
+      field_num: 33
+      type: int32
 
     # Additional limits
   - work_limit:

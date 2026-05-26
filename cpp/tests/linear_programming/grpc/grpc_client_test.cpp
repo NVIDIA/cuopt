@@ -1665,6 +1665,7 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.num_gpus        = 2;
   orig.presolver       = presolver_t::Default;
   orig.mip_scaling     = true;
+  orig.symmetry        = 2;  // orbital fixing + lexical reduction
 
   // Branching
   orig.reliability_branching           = 32;
@@ -1712,6 +1713,7 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_EQ(restored.num_gpus, 2);
   EXPECT_EQ(restored.presolver, presolver_t::Default);
   EXPECT_EQ(restored.mip_scaling, true);
+  EXPECT_EQ(restored.symmetry, 2);
 
   // Branching
   EXPECT_EQ(restored.reliability_branching, 32);
@@ -1731,6 +1733,34 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Determinism and reproducibility
   EXPECT_EQ(restored.determinism_mode, CUOPT_MODE_DETERMINISTIC);
   EXPECT_EQ(restored.seed, 12345);
+}
+
+TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
+{
+  // The local-solve binding (solver_settings.cu) restricts symmetry to [-1, 2].
+  // The mapper applies the same range to defend against buggy/untrusted clients.
+  for (int bad_value : {-2, 3, 99, std::numeric_limits<int32_t>::min()}) {
+    cuopt::remote::MIPSolverSettings pb;
+    pb.set_symmetry(bad_value);
+
+    mip_solver_settings_t<int32_t, double> restored;
+    restored.symmetry = 0;  // confirm clamp actively overwrites
+    map_proto_to_mip_settings(pb, restored);
+
+    EXPECT_EQ(restored.symmetry, -1) << "symmetry=" << bad_value << " should clamp to -1 (default)";
+  }
+
+  // In-range values pass through unchanged.
+  for (int good_value : {-1, 0, 1, 2}) {
+    cuopt::remote::MIPSolverSettings pb;
+    pb.set_symmetry(good_value);
+
+    mip_solver_settings_t<int32_t, double> restored;
+    map_proto_to_mip_settings(pb, restored);
+
+    EXPECT_EQ(restored.symmetry, good_value)
+      << "symmetry=" << good_value << " should round-trip unchanged";
+  }
 }
 
 TEST(MapperRoundtrip, MIPSettingsNodeLimitSentinel)
