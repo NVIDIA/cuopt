@@ -15,18 +15,15 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 // Best rational approximation p/q to x with q <= max_denominator, via continued fractions.
-// Stops as soon as the current convergent is within `epsilon` of x, so a coarser epsilon
-// yields shorter-denominator approximations (e.g. for x ≈ 0.333333 and epsilon = 1e-6 this
-// returns 1/3 rather than chasing a 7-digit convergent). On success, returns true with
-// numerator/denominator set to a rational within `epsilon` of x. On failure (overflow, or no
-// approximation within `epsilon` for q <= max_denominator), returns false; the out parameters
-// hold the best convergent found, or are left untouched on early overflow.
+// On success, returns true with numerator/denominator set to a rational within 1e-14 of x.
+// On failure (overflow, or no approximation within 1e-14 for q <= max_denominator), returns
+// false; the out parameters hold the best convergent found, or are left untouched on early
+// overflow.
 template <typename f_t>
 bool rational_approximation(f_t x,
                             int64_t max_denominator,
                             int64_t& numerator,
-                            int64_t& denominator,
-                            f_t epsilon = static_cast<f_t>(1e-14))
+                            int64_t& denominator)
 {
   int64_t a, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
   f_t val       = x;
@@ -48,16 +45,8 @@ bool rational_approximation(f_t x,
     p1 = p2;
     q1 = q2;
 
-    // Early exit: if the current convergent is already within epsilon of |x|, stop here.
-    // val holds |x|, and p1/q1 is the continued-fractions convergent of val (non-negative).
-    // For the default epsilon (1e-14) this fires at the same iteration as the rem check
-    // below, preserving the historical behavior. For coarser epsilon (e.g. 1e-6) it lets
-    // callers like find_scaling_rational pick up short-denominator approximations.
-    f_t approx_curr = static_cast<f_t>(p1) / static_cast<f_t>(q1);
-    if (std::abs(approx_curr - val) <= epsilon) { break; }
-
     f_t rem = val - a;
-    if (rem < epsilon) { break; }
+    if (rem < 1e-14) { break; }
     val = 1.0 / rem;
   }
 
@@ -66,7 +55,7 @@ bool rational_approximation(f_t x,
 
   f_t approx = static_cast<f_t>(numerator) / static_cast<f_t>(denominator);
   f_t err    = std::abs(approx - x);
-  return err <= epsilon;
+  return err <= 1e-14;
 }
 
 // Rational number: p/q with q > 0.
@@ -142,7 +131,7 @@ struct rational128_t {
 
 // GCD of two rationals: gcd(a/b, c/d) = gcd(a*d, c*b) / (b*d).
 // Treats both operands as non-negative (operates on their absolute values).
-// Intended to be found via ADL on the rational128_t<f_t> argument type.
+// Intended to be found via Argument-Dependent Lookup on the rational128_t<f_t> argument type.
 template <typename f_t>
 rational128_t<f_t> gcd(rational128_t<f_t> a, rational128_t<f_t> b)
 {

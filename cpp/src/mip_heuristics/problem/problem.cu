@@ -18,6 +18,7 @@
 #include <pdlp/utils.cuh>
 
 #include <cuts/objective_step.hpp>
+#include <dual_simplex/tic_toc.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
@@ -1423,14 +1424,15 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_objective_step()
 {
-  // Stage the per-variable device inputs the host computation needs.
+  f_t start_time = dual_simplex::tic();
+  // Copy info from device to host
   auto h_obj_coefs  = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   auto h_var_types  = cuopt::host_copy(variable_types, handle_ptr->get_stream());
   auto h_var_flags  = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
   auto h_var_bounds = cuopt::host_copy(variable_bounds, handle_ptr->get_stream());
 
-  // Project the CUDA-side per-variable inputs onto a vector of lower bounds and a bool per
-  // variable indicating whether its lattice is already known at entry (integer or
+  // Compute a vector of lower bounds and a vector of bools
+  // indicating whether a variable's lattice is already known (integer or
   // implied-integer). Track whether every variable with nonzero objective coefficient is
   // already lattice-known: in that case we take the fast path below and never need to read
   // the constraint matrix.

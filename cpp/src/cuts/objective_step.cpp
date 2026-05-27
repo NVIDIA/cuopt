@@ -19,27 +19,6 @@ namespace cuopt::linear_programming::dual_simplex {
 
 namespace {
 
-// Find the first unknown variable (step_r[j].is_zero()) in constraint i, optionally
-// restricted to non-singleton unknowns (those appearing in more than one constraint).
-// Returns -1 if no qualifying unknown exists. Used by propagate_lattice; pulled out so
-// the scan is invoked only on the branches that actually need to pick a variable.
-template <typename i_t, typename f_t>
-i_t first_unknown(i_t i,
-                  bool require_non_singleton,
-                  const std::vector<i_t>& offsets,
-                  const std::vector<i_t>& variables,
-                  const std::vector<rational128_t<f_t>>& step_r,
-                  const std::vector<i_t>& constraints_per_variable)
-{
-  for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
-    i_t j = variables[p];
-    if (!step_r[j].is_zero()) continue;
-    if (require_non_singleton && constraints_per_variable[j] == 1) continue;
-    return j;
-  }
-  return i_t{-1};
-}
-
 // Solve constraint i for solve_for under rational arithmetic and return the resulting
 // lattice (step, bias) for solve_for. The RHS accumulator b starts at rhs_i and is
 // reduced by every other variable's known lattice contribution, leaving only solve_for's
@@ -117,13 +96,11 @@ bool propagate_lattice(i_t n_vars,
     coef_r[p] = rational128_t<f_t>::from_floating_point(coefficients[p]);
   }
 
-  // Per-constraint RHS (rationalized) and implicit-slack flag.
-  // A true equality (lb == ub) has has_implicit_slack[i] == false; a
-  // one-sided inequality (or a range constraint, for which we treat ub as the rhs) has
-  // has_implicit_slack[i] == true. Callers guarantee no constraint is free, i.e. every
+  // Per-constraint RHS (rationalized). For a true equality (lb == ub) we use that common
+  // value; for a one-sided inequality (or a range constraint, for which we treat ub as
+  // the rhs) we use the finite side. Callers guarantee no constraint is free, i.e. every
   // row has at least one finite bound.
   std::vector<rational128_t<f_t>> rhs(n_cons);
-  std::vector<bool> has_implicit_slack(n_cons);
   for (i_t i = 0; i < n_cons; ++i) {
     bool lb_finite = std::isfinite(con_lb[i]);
     bool ub_finite = std::isfinite(con_ub[i]);
@@ -131,16 +108,13 @@ bool propagate_lattice(i_t n_vars,
                  "propagate_lattice: free constraints are not supported");
 
     if (lb_finite && ub_finite && std::abs(con_lb[i] - con_ub[i]) < eq_tol) {
-      rhs[i]                = rational128_t<f_t>::from_floating_point(con_lb[i]);
-      has_implicit_slack[i] = false;
+      rhs[i] = rational128_t<f_t>::from_floating_point(con_lb[i]);
     } else {
       rhs[i] = rational128_t<f_t>::from_floating_point(ub_finite ? con_ub[i] : con_lb[i]);
-      has_implicit_slack[i] = true;
     }
   }
 
-  // Track how many constraints each variable appears in. Used in the inner loop to detect
-  // slack-like variables (singletons) so they don't block lattice discovery.
+  // Track how many constraints each variable appears in.
   std::vector<i_t> constraints_per_variable(n_vars, 0);
   for (i_t i = 0; i < n_cons; ++i) {
     for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
@@ -148,14 +122,31 @@ bool propagate_lattice(i_t n_vars,
     }
   }
 
-  // Reverse adjacency: for each variable, the list of constraints it appears in. Used by
-  // the worklist propagation below to enqueue, after each pass, exactly the constraints
-  // touched by the variables whose lattice was just discovered.
-  std::vector<std::vector<i_t>> constraints_of_variable(n_vars);
+  // Convert the CSR representation to CSC for fast access. Don't store nonzero values
+  // Just store the adjacency information / sparsity pattern.
+  struct csc_adjacency_t {
+    std::vector<i_t> col_start;
+    std::vector<i_t> i;
+  };
+  csc_adjacency_t A_col;
+  // Compute the col_start array by taking the cumulative sum of constraints_per_variable.
+  A_col.col_start.assign(n_vars + 1, 0);
+  for (i_t j = 0; j < n_vars; ++j) {
+    A_col.col_start[j + 1] = A_col.col_start[j] + constraints_per_variable[j];
+  }
+  // Use the col_start array to populate the i array. This shifts col_start by one to the right
+  A_col.i.resize(A_col.col_start[n_vars]);
   for (i_t i = 0; i < n_cons; ++i) {
     for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
-      constraints_of_variable[variables[p]].push_back(i);
+      A_col.i[A_col.col_start[variables[p]]++] = i;
     }
+  }
+  // Restore the col_start array
+  i_t carry = 0;
+  for (i_t j = 0; j <= n_vars; ++j) {
+    const i_t next     = A_col.col_start[j];
+    A_col.col_start[j] = carry;
+    carry              = next;
   }
 
   // Number of currently-unknown variables in each constraint, and the subset of those
@@ -237,49 +228,48 @@ bool propagate_lattice(i_t n_vars,
       const i_t unknown_singletons     = unknown_singleton_count[i];
       const i_t non_singleton_unknowns = unknown_count - unknown_singletons;
 
-      // Determine which variable to solve for. The non-singleton unknown is found lazily
-      // because only the productive branches actually need it.
-      i_t solve_for = -1;
-      if (has_implicit_slack[i]) {
-        if (non_singleton_unknowns == 1) {
-          solve_for = first_unknown<i_t, f_t>(
-            i, /*require_non_singleton=*/true, offsets, variables, step_r, constraints_per_variable);
-        } else if (non_singleton_unknowns == 0 && unknown_count > 0) {
-          solve_for = first_unknown<i_t, f_t>(
-            i, /*require_non_singleton=*/false, offsets, variables, step_r, constraints_per_variable);
-        }
-      } else {
-        if (unknown_count == 1) {
-          solve_for = first_unknown<i_t, f_t>(
-            i, /*require_non_singleton=*/false, offsets, variables, step_r, constraints_per_variable);
-        } else if (non_singleton_unknowns == 1) {
-          solve_for = first_unknown<i_t, f_t>(
-            i, /*require_non_singleton=*/true, offsets, variables, step_r, constraints_per_variable);
-        } else if (non_singleton_unknowns == 0 && unknown_count > 0) {
-          solve_for = first_unknown<i_t, f_t>(
-            i, /*require_non_singleton=*/false, offsets, variables, step_r, constraints_per_variable);
+      // Determine the variable x_j to solve for. A constraint is productive when at most
+      // one non-singleton unknown remains; any other unknowns are necessarily singletons
+      // appearing only in this row, which compute_lattice_for_unknown treats as free
+      // (it skips unknown variables). The equality vs. inequality distinction collapses
+      // here because both cases yield the same productive conditions.
+      //
+      // Pick the first qualifying unknown in row i: when exactly one non-singleton unknown
+      // exists we must select it (singletons are free); when all unknowns are singletons
+      // any of them works.
+      i_t j = -1;
+      if (unknown_count > 0 && non_singleton_unknowns <= 1) {
+        const bool require_non_singleton = (non_singleton_unknowns == 1);
+        for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
+          const i_t candidate = variables[p];
+          if (!step_r[candidate].is_zero()) continue;
+          if (require_non_singleton && constraints_per_variable[candidate] == 1) continue;
+          j = candidate;
+          break;
         }
       }
 
-      if (solve_for < 0) continue;
+      if (j < 0) continue;
 
       auto [new_step, new_bias] = compute_lattice_for_unknown<i_t, f_t>(
-        i, solve_for, offsets, variables, coef_r, step_r, bias_r, rhs[i]);
+        i, j, offsets, variables, coef_r, step_r, bias_r, rhs[i]);
 
       if (!new_step.is_zero()) {
-        step_r[solve_for] = new_step.reduced();
-        bias_r[solve_for] = new_bias.reduced();
-        discovered_variables.push_back(solve_for);
-        // Every constraint touching solve_for now has one fewer unknown.
-        for (i_t i_other : constraints_of_variable[solve_for]) {
-          unknown_count_per_constraint[i_other]--;
+        step_r[j] = new_step.reduced();
+        bias_r[j] = new_bias.reduced();
+        discovered_variables.push_back(j);
+        // Every constraint touching j now has one fewer unknown.
+        const i_t col_start = A_col.col_start[j];
+        const i_t col_end   = A_col.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; ++p) {
+          unknown_count_per_constraint[A_col.i[p]]--;
         }
         // A singleton variable appears only in constraint i, so only this constraint's
         // unknown-singleton count is affected by its discovery.
-        if (constraints_per_variable[solve_for] == 1) {
+        if (constraints_per_variable[j] == 1) {
           unknown_singleton_count[i]--;
         }
-        // solve_for had step_r zero, which means is_lattice_known_initially[solve_for]
+        // j had step_r zero, which means is_lattice_known_initially[j]
         // was false: any discovery here is therefore of an originally-unknown variable.
         any_discovered = true;
       }
@@ -290,7 +280,10 @@ bool propagate_lattice(i_t n_vars,
     // next_changed_constraints' preallocated storage and track the active length manually.
     i_t num_next = 0;
     for (i_t j : discovered_variables) {
-      for (i_t i : constraints_of_variable[j]) {
+      const i_t col_start = A_col.col_start[j];
+      const i_t col_end = A_col.col_start[j + 1];
+      for (i_t p = col_start; p < col_end; ++p) {
+        const i_t i = A_col.i[p];
         if (!in_next_pass[i]) {
           in_next_pass[i] = true;
           next_changed_constraints[num_next++] = i;
@@ -388,6 +381,18 @@ template bool propagate_lattice<int, double>(int,
                                              std::vector<double>&,
                                              std::vector<double>&);
 
+template bool propagate_lattice<int, float>(int,
+                                            int,
+                                            const std::vector<int>&,
+                                            const std::vector<int>&,
+                                            const std::vector<float>&,
+                                            const std::vector<float>&,
+                                            const std::vector<float>&,
+                                            const std::vector<float>&,
+                                            const std::vector<bool>&,
+                                            std::vector<float>&,
+                                            std::vector<float>&);
+
 template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&,
   const std::vector<double>&,
@@ -397,5 +402,15 @@ template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&,
   const std::vector<double>&,
   const std::vector<double>&);
+
+template objective_step_t<float> compute_objective_step_info<int, float>(
+  const std::vector<float>&,
+  const std::vector<float>&,
+  const std::vector<bool>&,
+  const std::vector<int>&,
+  const std::vector<int>&,
+  const std::vector<float>&,
+  const std::vector<float>&,
+  const std::vector<float>&);
 
 }  // namespace cuopt::linear_programming::dual_simplex
