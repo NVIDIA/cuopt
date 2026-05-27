@@ -4,14 +4,10 @@
     "question": "I have the cuOpt REST server running locally. List the HTTP endpoints I need to call to submit a routing problem and retrieve the solution, and the key payload field names for VRP with time windows. No full client script.",
     "expected_skill": "cuopt-server-api-python",
     "expected_script": null,
-    "ground_truth": "The agent lists the request flow: (1) GET /cuopt/health to confirm the server is up. (2) POST /cuopt/request with a JSON payload — the response carries a reqId. (3) GET /cuopt/solution/{reqId} and poll until the solution is ready. The key payload fields for a routing VRPTW: cost_matrix_data (with the nested 'data' map keyed by vehicle type), travel_time_matrix_data (note: not transit_time_matrix_data — that's the Python-API name), task_data with task_locations / demand / task_time_windows / service_times, fleet_data with vehicle_locations / capacities / vehicle_time_windows, and solver_config with at least time_limit. The agent flags two common payload mistakes: (a) using transit_time_matrix_data instead of travel_time_matrix_data, and (b) shape of capacities — [[50, 50]] (one row per vehicle, one column per dimension) not [[50], [50]]. References the OpenAPI spec at /cuopt.yaml for the authoritative field list.",
+    "ground_truth": "The agent describes the asynchronous submit-then-poll pattern: POST /cuopt/request returns a reqId, then GET /cuopt/solution/{reqId} until the solution is ready. The top-level VRPTW payload fields are cost_matrix_data, travel_time_matrix_data (note: REST uses travel_time_matrix_data, not the Python-API name transit_time_matrix_data), task_data, fleet_data, and solver_config. Does not produce a runnable client script.",
     "expected_behavior": [
-      "Names GET /cuopt/health, POST /cuopt/request, GET /cuopt/solution/{reqId}",
-      "Describes the request-id + polling flow (POST then GET by reqId)",
-      "Names cost_matrix_data, travel_time_matrix_data, task_data, fleet_data, solver_config as the top-level payload fields",
-      "Calls out travel_time_matrix_data (REST) vs transit_time_matrix_data (Python API) and that the REST name is required",
-      "Calls out the capacities shape ([[50, 50]] not [[50], [50]]) as a common 422 cause",
-      "References the OpenAPI spec (/cuopt.yaml) as the canonical field reference",
+      "Describes the POST /cuopt/request → reqId → GET /cuopt/solution/{reqId} polling flow",
+      "Names cost_matrix_data, travel_time_matrix_data, task_data, fleet_data, solver_config as the VRPTW payload fields and flags the travel_time_matrix_data (REST) vs transit_time_matrix_data (Python) naming",
       "Does not produce a full runnable client script"
     ]
   }
