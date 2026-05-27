@@ -1758,13 +1758,19 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   if (num_free_variables > 0) {
     settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
     // We added free variables so we need to map the crushed solution back to the original variables
+    std::vector<i_t> partner_cols;
+    partner_cols.reserve(num_free_variables);
     for (i_t k = 0; k < 2 * num_free_variables; k += 2) {
       const i_t u = free_variable_pairs[k];
       const i_t v = free_variable_pairs[k + 1];
       input_x[u] -= input_x[v];
+      partner_cols.push_back(v);
     }
-    input_z.resize(input_z.size() - num_free_variables);
-    input_x.resize(input_x.size() - num_free_variables);
+    std::sort(partner_cols.begin(), partner_cols.end(), std::greater<i_t>());
+    for (i_t v : partner_cols) {
+      input_x.erase(input_x.begin() + v);
+      if (v < static_cast<i_t>(input_z.size())) { input_z.erase(input_z.begin() + v); }
+    }
   }
 
   if (presolve_info.removed_variables.size() > 0) {
