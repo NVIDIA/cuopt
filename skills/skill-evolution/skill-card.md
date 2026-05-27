@@ -1,5 +1,5 @@
 ## Description: <br>
-After solving a non-trivial problem, this skill reads the in-conversation history to detect generalizable learnings and drafts a proposal that modifies a single existing SKILL.md file. The proposal is shown to the user and is not applied without explicit approval. <br>
+After solving a non-trivial problem, detect generalizable learnings and propose skill updates so future interactions benefit automatically. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-At the end of any interaction the agent checks whether one of four deterministic post-correction triggers occurred in the session: the user explicitly corrected the agent's output, the agent's initial approach failed and required a retry, the agent observed an API behavior not described in any existing SKILL.md, or the agent applied a workaround not described in any existing SKILL.md. If a trigger occurred, the agent reads the in-conversation history, distills a generalizable learning, and produces a proposal in a fixed four-field format (Target, Trigger, Scored, Diff) that names exactly one existing SKILL.md file for modification. The proposal is presented to the user; no SKILL.md is modified without the user's explicit approval. <br>
+Developers and engineers using cuOpt skills who want to continuously improve skill quality by capturing generalizable learnings from problem-solving interactions. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,6 +19,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
+- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>

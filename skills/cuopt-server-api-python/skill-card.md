@@ -1,5 +1,5 @@
 ## Description: <br>
-End-to-end recipe for running the cuOpt REST server locally (pip-installed launcher or Docker container) and talking to it from Python or curl. Covers the `/cuopt/request` submit, the async `/cuopt/solution/{reqId}` poll, the OpenAPI spec at `/cuopt.yaml`, and ready-to-run client examples for VRPTW, LP, MILP, and PDP. For conceptual server background without runnable code, see `cuopt-server-common`. <br>
+cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers deploying the cuOpt REST server and building client applications that submit optimization requests (routing, LP, MILP) via HTTP endpoints. <br>
+Developers and engineers deploying or integrating with the NVIDIA cuOpt REST server for GPU-accelerated optimization (routing, LP, MILP), using Python or curl client examples to submit problems and retrieve solutions. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -24,7 +24,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [API Calls, Code, Shell commands, Configuration instructions] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Format:** [Markdown with inline code blocks (Python and bash)] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
