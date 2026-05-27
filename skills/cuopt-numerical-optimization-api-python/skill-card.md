@@ -1,5 +1,5 @@
 ## Description: <br>
-Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. <br>
+Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the NVIDIA cuOpt Python API. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to model and solve linear, mixed-integer linear, and quadratic optimization problems using NVIDIA cuOpt's GPU-accelerated Python API for scheduling, resource allocation, production planning, portfolio optimization, and related tasks. <br>
+Developers and engineers who need to formulate and solve linear, mixed-integer linear, and quadratic optimization problems using NVIDIA cuOpt's GPU-accelerated Python API for applications such as scheduling, resource allocation, facility location, production planning, and portfolio optimization. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -18,9 +18,9 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [QP Examples (Python API)](references/qp_examples.md) <br>
+- [QP Python API Examples](references/qp_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
 
 
 ## Skill Output: <br>
