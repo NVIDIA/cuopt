@@ -268,7 +268,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 
 /** @brief Create an optimization problem of the form
  *
- * @deprecated Use ``cuOptCreateProblem`` to set up the linear problem, then
+ * @note **Deprecated:** Use ``cuOptCreateProblem`` to set up the linear problem, then
  *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
  *
  * @verbatim
@@ -343,7 +343,7 @@ cuopt_int_t cuOptCreateQuadraticProblem(
 
 /** @brief Create an optimization problem of the form *
  *
- * @deprecated Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
+ * @note **Deprecated:** Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
  *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
  *             For QCQP models, use ``cuOptAddQuadraticConstraint`` for each quadratic constraint.
  *
