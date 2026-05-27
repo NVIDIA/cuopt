@@ -202,17 +202,9 @@ cleanup:
 
 ## Build & Run
 
-```bash
-# Set paths (conda example)
-export INCLUDE_PATH="${CONDA_PREFIX}/include"
-export LIB_PATH="${CONDA_PREFIX}/lib"
-
-# Compile
-gcc -I${INCLUDE_PATH} -L${LIB_PATH} -o lp_example lp_example.c -lcuopt
-
-# Run
-LD_LIBRARY_PATH=${LIB_PATH}:$LD_LIBRARY_PATH ./lp_example
-```
+See [`assets/README.md`](../assets/README.md) for the canonical conda-env
+include/library/`LD_LIBRARY_PATH` setup, plus a `gcc` build command. The
+same recipe applies here — substitute `lp_example.c` for the file name.
 
 ## Constants Reference
 

@@ -86,15 +86,8 @@ conda install -c rapidsai -c conda-forge -c nvidia libcuopt
 
 ### Verify
 
-```bash
-# conda:
-find $CONDA_PREFIX -name "cuopt_c.h"
-find $CONDA_PREFIX -name "libcuopt.so"
-
-# pip (venv):
-find "$(python -c 'import sys; print(sys.prefix)')" -name "cuopt_c.h"
-find "$(python -c 'import sys; print(sys.prefix)')" -name "libcuopt.so"
-```
+See [`references/verification_examples.md`](references/verification_examples.md)
+for the canonical C-API header/library `find` commands (conda and pip/venv variants).
 
 ## Server (REST)
 
