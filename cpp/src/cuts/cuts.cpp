@@ -3566,12 +3566,6 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   }
   f_t start_time = tic();
 
-  struct variable_bound_edge_t {
-    i_t variable;
-    f_t weight;
-    f_t bias;
-  };
-
   // This is shared variable-bound preprocessing used by multiple cut separators.
   // Flow-cover applies its own 0-1 controller filter when it consumes these bounds.
   auto is_variable_bound_controller = [&](i_t j) {
@@ -3702,10 +3696,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable upper bound
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              upper_variables.push_back(edge.variable);
-              upper_weights.push_back(edge.weight);
-              upper_biases.push_back(edge.bias);
+              upper_variables.push_back(l);
+              upper_weights.push_back(-a_il / a_ij);
+              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
               upper_edges++;
             }
           }
@@ -3734,10 +3727,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable upper bound
               // x_j <= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              upper_variables.push_back(edge.variable);
-              upper_weights.push_back(edge.weight);
-              upper_biases.push_back(edge.bias);
+              upper_variables.push_back(l);
+              upper_weights.push_back(-a_il / a_ij);
+              upper_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
               upper_edges++;
             }
           }
@@ -3795,10 +3787,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable lower bound
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              lower_variables.push_back(edge.variable);
-              lower_weights.push_back(edge.weight);
-              lower_biases.push_back(edge.bias);
+              lower_variables.push_back(l);
+              lower_weights.push_back(-a_il / a_ij);
+              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
               lower_edges++;
             }
           }
@@ -3827,10 +3818,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
               // We have a valid variable lower bound
               // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik *
               // bound(x_k)
-              const variable_bound_edge_t edge{l, -a_il / a_ij, beta / a_ij - (1.0 / a_ij) * sum};
-              lower_variables.push_back(edge.variable);
-              lower_weights.push_back(edge.weight);
-              lower_biases.push_back(edge.bias);
+              lower_variables.push_back(l);
+              lower_weights.push_back(-a_il / a_ij);
+              lower_biases.push_back(beta / a_ij - (1.0 / a_ij) * sum);
               lower_edges++;
             }
           }
