@@ -1502,6 +1502,126 @@ DONE:
   return status;
 }
 
+cuopt_int_t test_quadratic_constraint_problem(cuopt_int_t* termination_status_ptr,
+                                              cuopt_float_t* objective_ptr,
+                                              cuopt_float_t* solution_values)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  // Same QCQP as python/cuopt/cuopt/tests/socp/test_socp.py::build_socp_1:
+  //   min  3*x0 + 2*x1 + x2
+  //   s.t. x0^2 + x1^2 + x2^2 - y^2 <= 0
+  //        x0 + x1 + 3*x2 >= 1
+  //        0 <= y <= 5
+  //   (x0, x1, x2 free)
+  cuopt_int_t num_variables         = 4;
+  cuopt_int_t num_linear_constraints = 1;
+  cuopt_int_t objective_sense            = CUOPT_MINIMIZE;
+  cuopt_float_t objective_offset         = 0.0;
+  cuopt_float_t objective_coefficients[] = {3.0, 2.0, 1.0, 0.0};
+
+  cuopt_int_t row_offsets[]    = {0, 3};
+  cuopt_int_t column_indices[] = {0, 1, 2};
+  cuopt_float_t values[]       = {1.0, 1.0, 3.0};
+
+  cuopt_float_t constraint_bounds[] = {1.0};
+  char constraint_sense[]           = {CUOPT_GREATER_THAN};
+
+  cuopt_float_t var_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY, -CUOPT_INFINITY, 0.0};
+  cuopt_float_t var_upper_bounds[] = {
+    CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY, 5.0};
+  char variable_types[]            = {CUOPT_CONTINUOUS,
+                           CUOPT_CONTINUOUS,
+                           CUOPT_CONTINUOUS,
+                           CUOPT_CONTINUOUS};
+
+  cuopt_int_t qc_row_index[] = {0, 1, 2, 3};
+  cuopt_int_t qc_col_index[] = {0, 1, 2, 3};
+  cuopt_float_t qc_coeff[]   = {1.0, 1.0, 1.0, -1.0};
+
+  cuopt_int_t status;
+
+  status = cuOptCreateProblem(num_linear_constraints,
+                              num_variables,
+                              objective_sense,
+                              objective_offset,
+                              objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              constraint_bounds,
+                              var_lower_bounds,
+                              var_upper_bounds,
+                              variable_types,
+                              &problem);
+
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptAddQuadraticConstraint(problem,
+                                       4,
+                                       qc_row_index,
+                                       qc_col_index,
+                                       qc_coeff,
+                                       0,
+                                       NULL,
+                                       NULL,
+                                       CUOPT_LESS_THAN,
+                                       0.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_BARRIER);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting barrier method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, termination_status_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, objective_ptr);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting primal solution: %d\n", status);
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
 cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename)
 {
   cuOptOptimizationProblem problem      = NULL;

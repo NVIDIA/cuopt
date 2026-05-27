@@ -140,16 +140,15 @@ void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(std::span<const 
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
-  i_t constraint_row_index,
-  const std::string& constraint_row_name,
-  char constraint_row_type,
-  std::span<const f_t> linear_values,
-  std::span<const i_t> linear_indices,
-  f_t rhs_value,
-  std::span<const f_t> vals,
-  std::span<const i_t> rows,
-  std::span<const i_t> cols)
+void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_index,
+                                                             const std::string& constraint_row_name,
+                                                             char constraint_row_type,
+                                                             std::span<const f_t> linear_values,
+                                                             std::span<const i_t> linear_indices,
+                                                             f_t rhs_value,
+                                                             std::span<const f_t> vals,
+                                                             std::span<const i_t> rows,
+                                                             std::span<const i_t> cols)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
@@ -165,12 +164,10 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
                      "linear_values and linear_indices must have the same nnz count");
 
   const size_t q_nnz = vals.size();
-  mps_parser_expects(q_nnz == rows.size(),
-                     error_type_t::ValidationError,
-                     "vals and rows must have the same length");
-  mps_parser_expects(q_nnz == cols.size(),
-                     error_type_t::ValidationError,
-                     "vals and cols must have the same length");
+  mps_parser_expects(
+    q_nnz == rows.size(), error_type_t::ValidationError, "vals and rows must have the same length");
+  mps_parser_expects(
+    q_nnz == cols.size(), error_type_t::ValidationError, "vals and cols must have the same length");
 
   if (!linear_values.empty()) {
     mps_parser_expects(linear_values.data() != nullptr && linear_indices.data() != nullptr,
@@ -179,8 +176,7 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
   }
 
   if (q_nnz > 0) {
-    mps_parser_expects(vals.data() != nullptr && rows.data() != nullptr &&
-                         cols.data() != nullptr,
+    mps_parser_expects(vals.data() != nullptr && rows.data() != nullptr && cols.data() != nullptr,
                        error_type_t::ValidationError,
                        "Q COO spans cannot be null when nnz > 0");
   }
@@ -213,10 +209,10 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
     qc.cols.resize(q_nnz);
     qc.vals.resize(q_nnz);
     for (size_t t = 0; t < q_nnz; ++t) {
-      const size_t ix             = perm[t];
-      qc.rows[t] = wr[ix];
-      qc.cols[t] = wc[ix];
-      qc.vals[t] = wv[ix];
+      const size_t ix = perm[t];
+      qc.rows[t]      = wr[ix];
+      qc.cols[t]      = wc[ix];
+      qc.vals[t]      = wv[ix];
     }
   }
 

@@ -80,8 +80,8 @@ void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
     return;
   }
 
-  const size_t nc  = static_cast<size_t>(num_cols);
-  const size_t nr  = static_cast<size_t>(num_rows);
+  const size_t nc = static_cast<size_t>(num_cols);
+  const size_t nr = static_cast<size_t>(num_rows);
 
   scratch.col_nnz.assign(nc, 0);
   for (const auto& entry : entries) {

@@ -603,28 +603,12 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
   }
 
   try {
-    std::vector<cuopt_int_t> Q_offsets;
-    std::vector<cuopt_int_t> Q_indices;
-    std::vector<cuopt_float_t> Q_values;
-    coo_to_csr(quad_num_entries,
-               row_index,
-               col_index,
-               coeff,
-               num_variables,
-               num_variables,
-               Q_offsets,
-               Q_indices,
-               Q_values);
-    if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
-
     op_problem->add_quadratic_constraint(sense,
                                          rhs,
-                                         Q_values.data(),
-                                         static_cast<cuopt_int_t>(Q_values.size()),
-                                         Q_indices.data(),
-                                         static_cast<cuopt_int_t>(Q_indices.size()),
-                                         Q_offsets.data(),
-                                         static_cast<cuopt_int_t>(Q_offsets.size()),
+                                         row_index,
+                                         col_index,
+                                         coeff,
+                                         quad_num_entries,
                                          linear_coeff,
                                          num_lin_entries,
                                          linear_index,

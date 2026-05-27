@@ -130,11 +130,11 @@ void convert_quadratic_constraints_to_second_order_cones(
                   qc.constraint_row_name.c_str());
 
     const i_t q_nnz = static_cast<i_t>(qc.vals.size());
-    cuopt_expects(qc.rows.size() == static_cast<size_t>(q_nnz) &&
-                    qc.cols.size() == static_cast<size_t>(q_nnz),
-                  error_type_t::ValidationError,
-                  "Quadratic constraint '%s' Q COO row/col/value length mismatch",
-                  qc.constraint_row_name.c_str());
+    cuopt_expects(
+      qc.rows.size() == static_cast<size_t>(q_nnz) && qc.cols.size() == static_cast<size_t>(q_nnz),
+      error_type_t::ValidationError,
+      "Quadratic constraint '%s' Q COO row/col/value length mismatch",
+      qc.constraint_row_name.c_str());
     cuopt_expects(q_nnz >= 1,
                   error_type_t::ValidationError,
                   "Quadratic constraint '%s' SOC must have at least 1 entry in Q (nnz %d)",
@@ -775,8 +775,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
       for (const auto& [alias, original] : cone_alias_pairs) {
         // Cone copies are not box-constrained; linking rows tie them to the linear original.
-        user_problem.lower[static_cast<size_t>(alias)] =
-          -std::numeric_limits<f_t>::infinity();
+        user_problem.lower[static_cast<size_t>(alias)] = -std::numeric_limits<f_t>::infinity();
         user_problem.upper[static_cast<size_t>(alias)] = std::numeric_limits<f_t>::infinity();
         user_problem.var_types[static_cast<size_t>(alias)] =
           user_problem.var_types[static_cast<size_t>(original)];
@@ -1050,7 +1049,8 @@ void convert_quadratic_constraints_to_second_order_cones(
   }
 }
 
-/** Map barrier primal/reduced-cost vectors from expanded SOC layout back to original model columns. */
+/** Map barrier primal/reduced-cost vectors from expanded SOC layout back to original model columns.
+ */
 template <typename i_t, typename f_t>
 void project_barrier_solution_to_model_variables(
   const dual_simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -1064,7 +1064,7 @@ void project_barrier_solution_to_model_variables(
   std::vector<f_t> model_x(static_cast<size_t>(n_model));
   std::vector<f_t> model_z(static_cast<size_t>(n_model));
   for (i_t j = 0; j < n_model; ++j) {
-    const i_t expanded_j = user_problem.model_col_old_to_new[static_cast<size_t>(j)];
+    const i_t expanded_j            = user_problem.model_col_old_to_new[static_cast<size_t>(j)];
     model_x[static_cast<size_t>(j)] = solution.x[static_cast<size_t>(expanded_j)];
     model_z[static_cast<size_t>(j)] = solution.z[static_cast<size_t>(expanded_j)];
   }

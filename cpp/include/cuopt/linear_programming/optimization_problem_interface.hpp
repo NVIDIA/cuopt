@@ -80,18 +80,16 @@ class optimization_problem_interface_t {
   /**
    * @brief Append one quadratic constraint x^T Q x + d^T x {<=, >=} rhs.
    *
-   * Quadratic matrix Q is CSR (values, indices, offsets). Linear term d uses parallel
+   * Quadratic matrix Q is COO (row_index, col_index, coeff). Linear term d uses parallel
    * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
    * automatically as n_linear_constraints + n_existing_quadratic_constraints.
    */
   virtual void add_quadratic_constraint(char constraint_row_type,
                                         f_t rhs_value,
-                                        const f_t* quadratic_values,
-                                        i_t size_quadratic_values,
-                                        const i_t* quadratic_indices,
-                                        i_t size_quadratic_indices,
-                                        const i_t* quadratic_offsets,
-                                        i_t size_quadratic_offsets,
+                                        const i_t* row_index,
+                                        const i_t* col_index,
+                                        const f_t* coeff,
+                                        i_t num_entries,
                                         const f_t* linear_values,
                                         i_t size_linear_values,
                                         const i_t* linear_indices,

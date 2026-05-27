@@ -97,12 +97,8 @@ template <typename f_t>
 
 // out[i] = is_direct_free_linear[i] ? 0 : a[i] * b[i]
 template <typename f_t>
-[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(f_t* a,
-                                                                       f_t* b,
-                                                                       int* is_direct_free_linear,
-                                                                       f_t* out,
-                                                                       int size,
-                                                                       rmm::cuda_stream_view stream)
+[[maybe_unused]] static void pairwise_multiply_skip_direct_free_linear(
+  f_t* a, f_t* b, int* is_direct_free_linear, f_t* out, int size, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(a, b, is_direct_free_linear),
@@ -113,13 +109,8 @@ template <typename f_t>
 }
 
 template <typename f_t>
-[[maybe_unused]] static void axpy(f_t alpha,
-                                  f_t* x,
-                                  f_t beta,
-                                  f_t* y,
-                                  f_t* out,
-                                  int size,
-                                  rmm::cuda_stream_view stream)
+[[maybe_unused]] static void axpy(
+  f_t alpha, f_t* x, f_t beta, f_t* y, f_t* out, int size, rmm::cuda_stream_view stream)
 {
   cub::DeviceTransform::Transform(
     cuda::std::make_tuple(x, y),

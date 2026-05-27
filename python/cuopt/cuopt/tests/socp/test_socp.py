@@ -16,7 +16,10 @@ import pytest
 
 from cuopt.linear_programming.problem import EQ, GE, LE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
-from cuopt.linear_programming.solver_settings import SolverMethod, SolverSettings
+from cuopt.linear_programming.solver_settings import (
+    SolverMethod,
+    SolverSettings,
+)
 
 EXPECTED_SOCP_1_OBJECTIVE = -13.548638904065102
 EXPECTED_SOCP_1_X = (-3.874621860638774, -2.129788233677883, 2.33480343377204)
@@ -46,7 +49,7 @@ def _soc_two_dim_constraint(problem, x0, x1, mat, head) -> None:
 
 
 def build_socp_1() -> tuple[Problem, tuple]:
-    """min 3*x0+2*x1+x2  s.t. ||x||_2 <= y, x0+x1+3*x2 >= 1, 0 <= y <= 5."""
+    """Min 3*x0+2*x1+x2  s.t. ||x||_2 <= y, x0+x1+3*x2 >= 1, 0 <= y <= 5."""
     problem = Problem("socp_1")
     x0 = problem.addVariable(lb=-np.inf, name="x0")
     x1 = problem.addVariable(lb=-np.inf, name="x1")
@@ -61,7 +64,7 @@ def build_socp_1() -> tuple[Problem, tuple]:
 
 
 def build_socp_3() -> tuple[Problem, tuple]:
-    """min -x0+2*x1  s.t. ||M_i x||_2 <= 1  for three fixed 2x2 maps M_i."""
+    """Min -x0+2*x1  s.t. ||M_i x||_2 <= 1  for three fixed 2x2 maps M_i."""
     root2 = np.sqrt(2.0)
     u = np.array([[1 / root2, -1 / root2], [1 / root2, 1 / root2]])
     mat1 = np.diag([root2, 1 / root2]) @ u.T
@@ -91,7 +94,10 @@ def _quadratic_constraint_violation(constr, variables) -> float:
         quad += float(constr.vals[k]) * vals[i] * vals[j]
     lin = 0.0
     for k in range(len(constr.linear_values)):
-        lin += float(constr.linear_values[k]) * vals[int(constr.linear_indices[k])]
+        lin += (
+            float(constr.linear_values[k])
+            * vals[int(constr.linear_indices[k])]
+        )
     return quad + lin - float(constr.rhs_value)
 
 
@@ -110,7 +116,9 @@ def _assert_feasible(problem: Problem) -> None:
     variables = problem.getVariables()
     for constr in problem.getConstraints():
         if constr.is_quadratic:
-            assert _quadratic_constraint_violation(constr, variables) <= FEAS_TOL
+            assert (
+                _quadratic_constraint_violation(constr, variables) <= FEAS_TOL
+            )
             continue
         slack = constr.compute_slack()
         if constr.Sense == LE:
@@ -134,7 +142,9 @@ def test_socp_1_barrier_solution():
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(EXPECTED_SOCP_1_OBJECTIVE, abs=OBJ_TOL)
+    assert problem.ObjValue == pytest.approx(
+        EXPECTED_SOCP_1_OBJECTIVE, abs=OBJ_TOL
+    )
     assert x0.Value == pytest.approx(EXPECTED_SOCP_1_X[0], abs=PRIMAL_TOL)
     assert x1.Value == pytest.approx(EXPECTED_SOCP_1_X[1], abs=PRIMAL_TOL)
     assert x2.Value == pytest.approx(EXPECTED_SOCP_1_X[2], abs=PRIMAL_TOL)
@@ -147,7 +157,9 @@ def test_socp_3_barrier_solution():
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(EXPECTED_SOCP_3_OBJECTIVE, abs=OBJ_TOL)
+    assert problem.ObjValue == pytest.approx(
+        EXPECTED_SOCP_3_OBJECTIVE, abs=OBJ_TOL
+    )
     assert x0.Value == pytest.approx(EXPECTED_SOCP_3_X[0], abs=PRIMAL_TOL)
     assert x1.Value == pytest.approx(EXPECTED_SOCP_3_X[1], abs=PRIMAL_TOL)
     assert h1.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
